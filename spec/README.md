@@ -8,8 +8,9 @@ open-source, cross-platform, agentic testing framework.
 ## Why
 
 There is no cross-platform testing framework built on agentic testing.
-`e2e` replaces Playwright and Maestro with one API — deterministic parity
-for migrators (12-migration.md), agentic testing as the reason to switch:
+`e2e` is one cross-platform API — deterministic parity with Playwright and
+Maestro for migrators (12-migration.md), agentic testing as the reason to
+switch:
 
 > The last testing framework you will ever need.
 
@@ -19,8 +20,8 @@ for migrators (12-migration.md), agentic testing as the reason to switch:
 |---|---|
 | [01-principles.md](./01-principles.md) | Why, design principles, non-goals |
 | [02-test-api.md](./02-test-api.md) | `test()`, fixtures, `agent` (planning + instant actions) |
-| [03-assertions.md](./03-assertions.md) | `expect()` (locator + resource matchers), `agent.assert()` |
-| [04-resources.md](./04-resources.md) | `email`, `credentials` (webhook/files/phone are roadmap) |
+| [03-assertions.md](./03-assertions.md) | `expect()` (locator/web/value matchers), `agent.assert()` |
+| [04-resources.md](./04-resources.md) | `credentials`; the resource model (email/webhook/files/phone are extensions, roadmap) |
 | [05-config.md](./05-config.md) | `defineConfig()` and `e2e.config.ts` |
 | [06-cli.md](./06-cli.md) | `npx e2e …` command surface |
 | [07-cloud.md](./07-cloud.md) | TesterArmy Cloud boundary: what is OSS vs Cloud |

@@ -4,15 +4,15 @@
 
 There is no cross-platform testing framework built on agentic testing.
 Playwright owns web; Detox/Maestro fragment mobile; the AI testing tools are
-web-only libraries bolted onto other runners. `e2e` is the successor
-category: one framework where a test is a *user workflow* — executed by an
-agent, pinned down deterministically where you choose — running unchanged on
-web, iOS, and Android.
+web-only libraries bolted onto other runners. `e2e` is a new category: one
+framework where a test is a *user workflow* — executed by an agent, pinned
+down deterministically where you choose — running unchanged on web, iOS,
+and Android.
 
-The ambition: replace Playwright **and** Maestro with one API — full
-deterministic parity for migrators (see 12-migration.md), agentic testing
-as the reason to switch. Starting from scratch is the advantage: take the
-best of both, fix what each got wrong, owe nothing to either.
+The ambition: one API spanning what Playwright (web) and Maestro (mobile)
+each cover — full deterministic parity for migrators (see 12-migration.md),
+agentic testing as the reason to switch. Starting from scratch is the
+advantage: take the best of both without inheriting either's constraints.
 
 > **The last testing framework you will ever need.**
 
@@ -48,8 +48,8 @@ trailing options object. This keeps signatures evolvable without breaking
 changes.
 
 ```ts
-await agent.act('enter the verification code', { code });
-await inbox.code({ from: 'noreply@example.com', timeout: 30_000 });
+await agent.act('invite a teammate as viewer', { email: 'ada@example.test' });
+await agent.waitFor('the invite list has loaded', { timeout: 30_000 });
 ```
 
 ### 4. A control gradient, not a mode switch
@@ -90,9 +90,10 @@ config line (see 09-drivers.md).
 
 ### 6. Resources, not plumbing
 
-Email inboxes and credentials are declared as resources with clean handles.
-Users never poll IMAP or wire OTP plumbing by hand. The same model extends
-to webhook captures, files, and phone numbers post-v0 (roadmap).
+Test-world primitives are declared as resources with clean handles. v0
+ships `credentials`; email inboxes, webhook captures, files, and phone
+numbers follow as extensions on the same model — users will never poll
+IMAP or wire OTP plumbing by hand.
 
 ### 7. Local-first, cloud-better
 
@@ -110,8 +111,9 @@ Determinism comes from two places:
    queries; `act()` paths cache as reviewable traces. Agentic once,
    near-deterministic after.
 
-World-state assertions (`expect(inbox).toHaveEmail(…)`) are always
-deterministic. See 10-determinism.md.
+World-state assertions (resource matchers, e.g. a future
+`expect(inbox).toHaveEmail(…)`) are always deterministic. See
+10-determinism.md.
 
 ### 9. Cross-platform by design
 

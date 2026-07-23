@@ -7,7 +7,7 @@ phase is done until it's proven by use.
 ## Phase 1 — Cross-platform deterministic API + agent orchestration + runner
 
 Two workstreams. The deterministic API is not an escape hatch — it's the
-Playwright/Maestro replacement surface, and [12-migration.md](./spec/12-migration.md)
+Playwright/Maestro parity surface, and [12-migration.md](./spec/12-migration.md)
 is its checklist (every ✅ row must work; P1 rows are the fast-follow list).
 
 **Workstream A — deterministic surface** (web driver first):
@@ -30,9 +30,9 @@ is its checklist (every ✅ row must work; P1 rows are the fast-follow list).
 - `defineConfig` (+ `e2e.cloud.config.ts` overlay), `APP_URL` happy path — [05](./spec/05-config.md)
 - CLI: `e2e run`, `e2e init` — [06](./spec/06-cli.md)
 
-Deliberately deferred within phase: sessions/`test.setup` and the `email`
-resource land in Phase 3; `test.each`, sharding, `e2e dev`, `e2e open`,
-webhook/files resources are post-v0 ([spec/roadmap](./spec/roadmap/README.md)).
+Deliberately deferred within phase: sessions/`test.setup` land in Phase 3;
+resource extensions (email first), `test.each`, sharding, `e2e dev`,
+`e2e open` are post-v0 ([spec/roadmap](./spec/roadmap/README.md)).
 
 **Exit: (a) a Playwright test of moderate complexity ports 1:1 using the
 migration table with no dead ends; (b) a signup-style test with mixed
@@ -59,10 +59,10 @@ human-readable in a PR.**
 - Write the TesterArmy web app's own suite in `e2e`
 - GitHub Actions workflow (`npx e2e run` on PRs), artifacts uploaded
 - Fix what hurts: flakiness, error messages, report quality, CI ergonomics
-- Add what the dogfood forces (likely: `test.setup` + sessions, `email`
-  inbox resource for signup flows — [11](./spec/11-lifecycle.md),
-  [04](./spec/04-resources.md); `e2e dev` if the authoring loop hurts —
-  the Vitest lesson says the inner loop is the retention engine)
+- Add what the dogfood forces (likely: `test.setup` + sessions —
+  [11](./spec/11-lifecycle.md); `e2e dev` if the authoring loop hurts —
+  the Vitest lesson says the inner loop is the retention engine; the
+  `email` extension only if signup flows demand it)
 
 **Exit: TesterArmy CI gates on e2e tests for two weeks without the team
 routing around it.**
@@ -72,13 +72,13 @@ routing around it.**
 `runner: 'cloud'` as the only switch. — [07](./spec/07-cloud.md)
 
 - Cloud execution of unchanged test files, hosted step-timeline replays
-- Managed resources: email inboxes first, then SMS/phone
-  ([04](./spec/04-resources.md) shapes are already reserved)
+- Resource extensions, local + managed: email inboxes first, then
+  SMS/phone ([04](./spec/04-resources.md) shapes are reserved)
 - Shared agent cache + sessions across workers/team
 - `e2e login`, `TESTERARMY_TOKEN`, `--cloud`
 
 **Exit: the Phase 3 suite runs in Cloud with zero test-file changes, with
-managed inboxes replacing the local catcher.**
+managed resource backends swapped in via config.**
 
 ## Phase 5 — iOS/Android platforms
 
@@ -107,20 +107,18 @@ managed sandbox in Cloud, same file.**
 
 ## The Vitest playbook
 
-Vitest displaced Jest in ~3 years (State of JS 2025: ~96% vs <70%
-satisfaction; the greenfield default). Its mechanics, mapped onto
-e2e-vs-Playwright — with the caveat that Playwright is a healthy incumbent
-(91% satisfaction), so the fight is for the authoring layer, never the
-automation engine:
+Vitest became the greenfield default over Jest in ~3 years (State of JS
+2025: ~96% vs <70% satisfaction). Its mechanics, mapped onto e2e — with
+the caveat that Playwright is a healthy incumbent (91% satisfaction), so
+the opportunity is the authoring layer, never the automation engine:
 
 1. **Absorb the engine, don't fight it.** Vitest reused Vite's pipeline
    instead of rebuilding Babel. e2e ships Playwright as the default driver
    — its excellence becomes ours; the driver SPI keeps us unmarried.
-2. **Attack structural pain, not features.** Jest's CJS core couldn't
-   follow ESM. Playwright's selector-first, web-only, plumbing-heavy model
-   can't follow agent-native execution, cross-platform targets, or managed
-   resources without becoming a different product. Position there, only
-   there.
+2. **Solve structural pain, not features.** Jest's CJS core couldn't
+   follow ESM. Playwright's selector-first, web-only model doesn't aim at
+   agent-native execution, cross-platform targets, or managed resources —
+   that's a different product. Position there, only there.
 3. **Compatibility makes switching an afternoon.** Vitest's Jest-compat API
    + codemods meant migrations were mechanical, and coexistence (new tests
    first, dual CI, sunset) de-risked adoption.

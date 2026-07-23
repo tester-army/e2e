@@ -17,7 +17,7 @@ All three tiers are cross-platform.
 | navigate | `agent.act('go to pricing')` | — | `app.open('/pricing')` |
 | interact | `agent.act('buy the pro plan')` | `agent.tap('the Buy button')` | `screen.getByRole('button', { name: 'Buy' }).tap()` |
 | assert UI | `agent.assert('dashboard is visible')` | `agent.waitFor('results loaded')` | `expect(screen.getByText('Dashboard')).toBeVisible()` |
-| assert world | — | — | `expect(inbox).toHaveEmail(…)` — always deterministic |
+| assert world | — | — | `expect(resource)` matchers — always deterministic (extensions, post-v0) |
 | extract | `agent.extract('cart total', { schema })` | — | `screen.getByTestId('total').textContent()` |
 | login | `agent.login(credentials.user('admin'))` | `agent.type('password field', credential)` | scripted fill via `screen` |
 | evidence | auto-screenshots per step | — | `app.screenshot('label')` |
@@ -27,15 +27,15 @@ know the steps, `screen` when you know the elements. Mixing within one test
 is the expected style, not a smell:
 
 ```ts
-export default test('invite teammate', async ({ app, agent }) => {
-  const inbox = email.inbox('teammate');
-
+export default test('invite teammate', async ({ app, agent, screen }) => {
   await app.open('/team');                                       // deterministic
-  await agent.act('invite a teammate using this email', {        // agentic
-    email: inbox.address,
+  await agent.act('invite a teammate as viewer', {               // agentic
+    email: 'ada@example.test',
   });
-  await expect(inbox).toHaveEmail({ subject: /invitation/i });   // deterministic
-  await agent.assert('the pending invite is listed');            // agentic
+  await expect(
+    screen.getByRole('listitem').filter({ hasText: 'ada@example.test' }),
+  ).toBeVisible();                                               // deterministic
+  await agent.assert('the invite is shown as pending');          // agentic
 });
 ```
 

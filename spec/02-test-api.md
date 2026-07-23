@@ -142,11 +142,11 @@ agent.act(instruction: string, params?: AgentParams, options?: AgentOptions): Pr
   are validated against it and typed.
 
 ```ts
-await agent.act('create an account using this email', {
-  email: inbox.address,
-});
+await agent.act('create a project called "Rocketry" in the Engineering category');
 
-await agent.act('enter the verification code', { code });
+await agent.act('invite a teammate as viewer', {
+  email: 'ada@example.test',
+});
 
 // typed structured output
 const { data } = await agent.act('add the three cheapest items to the cart', undefined, {
@@ -184,7 +184,7 @@ description — never a selector — so instant actions stay cross-platform:
 
 ```ts
 await agent.tap('the login button');
-await agent.type('the email field', inbox.address);
+await agent.type('the email field', 'ada@example.test');
 await agent.type('the search box', 'headphones', { submit: true });
 await agent.scroll({ direction: 'down' });
 await agent.scroll({ direction: 'down', momentum: 'fast', within: 'the plans list' });

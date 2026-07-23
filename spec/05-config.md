@@ -82,10 +82,12 @@ type E2EConfig = {
     password: string; // reference env: process.env.ADMIN_PASSWORD!
   }>;
 
-  /** Resource backends. Default: everything 'local'. */
-  resources?: {
-    email?: 'local' | 'managed';
-  };
+  /**
+   * Resource backends, per extension (post-v0; e.g. email: 'local' |
+   * 'managed'). Reserved — v0's only resource (credentials) resolves via
+   * env/config/vault.
+   */
+  resources?: Record<string, string>;
 
   /** Cloud settings (used when runner: 'cloud'). */
   project?: string;
@@ -102,9 +104,6 @@ export default defineConfig({
   runner: 'cloud',
   project: 'my-project',
   token: process.env.TESTERARMY_TOKEN,
-  resources: {
-    email: 'managed',
-  },
 });
 ```
 
@@ -126,7 +125,6 @@ import { defineConfig } from 'e2e';
 export default defineConfig({
   project: 'my-project',
   token: process.env.TESTERARMY_TOKEN,
-  resources: { email: 'managed' },
   workers: 8,
 });
 ```

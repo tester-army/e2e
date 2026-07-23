@@ -1,10 +1,10 @@
 # 12 — Migration: Playwright & Maestro Parity
 
-`e2e` aims to replace Playwright (web) **and** Maestro (mobile) with one
-cross-platform API — with the agent tiers layered on top. Starting from
-scratch is the advantage: we take the best of both and fix what each got
-wrong (Playwright's web-lock and config sprawl; Maestro's YAML ceilings and
-weak assertions).
+`e2e` gives migrators from Playwright (web) and Maestro (mobile) one
+cross-platform API with full parity — the agent tiers layered on top.
+Starting from scratch is the advantage: we take the best of both without
+inheriting their constraints (Playwright is web-only by design; Maestro's
+YAML has ceilings).
 
 These tables are the parity contract. Every row is either mapped, planned
 (P1/P2), or rejected with a reason — a migrator should never discover a
@@ -62,6 +62,7 @@ Status: ✅ v0 · P1 (fast follow) · P2 (later) · ✖ deliberate no.
 | viewport / device emulation | target `viewport`; `web.setViewport` | ✅ |
 | multi-tab / popups (`context.waitForEvent('page')`) | — | P1 |
 | `page.screenshot` | `app.screenshot` (evidence) | ✅ |
+| `locator.screenshot` | element screenshot (crop to `boundingBox`), cross-platform | P1 |
 | trace viewer / HTML report | HTML step-timeline report (`e2e open` UI post-v0) | ✅ (Phase 2) |
 | projects | `targets` | ✅ |
 | fixtures (`test.extend`) | `test.extend` (reserved) | P1 |

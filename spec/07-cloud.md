@@ -24,7 +24,6 @@ these primitives. Cloud will be rebuilt on top of them.
 | `test()`, `agent.act()`, `agent.assert()` | ✅ bring-your-own model key | ✅ managed models, tuned agent |
 | Browsers | local browsers | managed browser fleet, more OS/devices |
 | Mobile targets (iOS/Android) | local simulators/emulators (v1) | managed real-device fleet, OS/device matrix |
-| `email.inbox()` | local SMTP catcher / adapters | real deliverable managed inboxes |
 | `credentials.user()` | env / config | team vault, rotation, audit |
 | Agent path cache | local `.e2e/cache` | shared across team + CI, flake-aware invalidation |
 | Sessions (`test.setup`) | `.e2e/sessions` on disk | per-run, shared across workers, encrypted |
@@ -32,8 +31,9 @@ these primitives. Cloud will be rebuilt on top of them.
 | Scheduling/monitors | ❌ | ✅ cron runs, alerting |
 | Flake triage | retries | historical flake detection, quarantine |
 
-Roadmap resources (webhook captures, files, phone/SMS) follow the same
-local/managed split when they land — see roadmap/.
+Resource extensions (email inboxes first, then webhook captures, files,
+phone/SMS) follow the same local/managed split when they land — see
+roadmap/.
 
 ## Switching
 
@@ -100,8 +100,8 @@ Deterministic layer:
   suite, `e2e/playwright` as the reference driver
 
 Resources:
-- `email.inbox()` (`.code()`/`.link()`), `credentials.user()` (env/config)
-- `expect(inbox).toHaveEmail()`
+- `credentials.user()` (env/config) — the resource model; extensions
+  (email first) come post-v0
 
 Tooling:
 - `defineConfig()` (+ `e2e.cloud.config.ts` overlay)
@@ -109,9 +109,9 @@ Tooling:
 - GitHub Actions examples
 
 Explicitly **not** in v0 (see spec/roadmap/): iOS/Android execution (v1),
-webhook/files/phone resources, `test.each`/`skipIf`/`failsIf`/`fixme`/
-`test.extend`, `globalSetup`/`globalTeardown`, sharding, watch mode
-(`e2e dev`), inspector (`e2e open`), credentials store CLI, soft
+email/webhook/files/phone resources, `test.each`/`skipIf`/`failsIf`/
+`fixme`/`test.extend`, `globalSetup`/`globalTeardown`, sharding, watch
+mode (`e2e dev`), inspector (`e2e open`), credentials store CLI, soft
 assertions, PR testing, service emulation, scheduling.
 
 ## Positioning line

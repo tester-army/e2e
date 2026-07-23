@@ -13,7 +13,7 @@ Once the package exists, they compile against it in CI.
 | [`e2e.config.ts`](./e2e.config.ts) | targets (web/ios/android), credentials, agent config |
 | [`e2e.cloud.config.ts`](./e2e.cloud.config.ts) | cloud overlay — only the deltas |
 | [`tests/auth.setup.e2e.ts`](./tests/auth.setup.e2e.ts) | setup tests producing sessions |
-| [`tests/signup.e2e.ts`](./tests/signup.e2e.ts) | the happy path: agent + email inbox + OTP |
+| [`tests/signup.e2e.ts`](./tests/signup.e2e.ts) | the happy path: pure agentic flow + a deterministic check |
 | [`tests/onboarding.e2e.ts`](./tests/onboarding.e2e.ts) | serial group, cross-step data via `extract` + typed schema |
 | [`tests/tasks/task-crud.e2e.ts`](./tests/tasks/task-crud.e2e.ts) | deterministic-heavy `screen` tests, chaining/filtering, sessions |
 | [`tests/billing/checkout.e2e.ts`](./tests/billing/checkout.e2e.ts) | all three tiers in one test, tags |

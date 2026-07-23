@@ -12,22 +12,18 @@ fixtures are capabilities (`web`, `device`) provided per driver.
 > A test describes a **user workflow**. A **target** decides where it runs.
 
 ```ts
-import { test, expect, email } from 'e2e';
+import { test, credentials } from 'e2e';
 
-export default test('email signup works', async ({ agent, app }) => {
-  const inbox = email.inbox('signup');
-
+export default test('admin can invite a teammate', async ({ agent, app }) => {
   await app.open();
 
-  await agent.act('create an account using this email', {
-    email: inbox.address,
+  await agent.login(credentials.user('admin'));
+
+  await agent.act('invite a teammate as viewer', {
+    email: 'ada@example.test',
   });
 
-  const code = await inbox.code();
-
-  await agent.act('enter the verification code', { code });
-
-  await agent.assert('the user is signed in and sees the dashboard');
+  await agent.assert('the pending invite for ada@example.test is listed');
 });
 ```
 
@@ -147,7 +143,26 @@ hardcodes**: `web` is present wherever the driver provides the web surface
 the current target's driver doesn't provide throws a clear, actionable
 error.
 
-Resources (`email`, `credentials`) are platform-agnostic.
+Resources (`credentials` in v0; extensions later) are platform-agnostic.
+
+## How the surface scales
+
+The deterministic surface is layered so it grows without forking per
+platform:
+
+1. **The portable core is the intersection.** `screen` queries, `Locator`
+   actions/reads, `app` lifecycle. Grows only under the growth rule below:
+   every platform must project a method faithfully. Deliberately small.
+2. **Everything platform-specific is a capability.** Web-only power lands
+   on `web`, mobile-only on `device` — the union never pollutes the core.
+   New platform families bring their own capabilities via driver packages
+   (roadmap: driver-provided fixtures).
+3. **The agent tier is the pressure valve.** The deterministic surface
+   doesn't have to express the long tail — canvas, maps, native pickers,
+   OS dialogs — `agent.*` covers it in natural language, and the locate
+   cache converges hot paths back into deterministic `screen` replays.
+   This is why the core can stay small where selector-only frameworks had
+   to sprawl.
 
 ## `screen` — cross-platform deterministic queries
 
@@ -386,8 +401,8 @@ Plus `expect(web).toHaveURL/toHaveTitle` (03-assertions.md).
 
 The Maestro-side equivalents (app lifecycle, permissions, system gestures)
 live on `app` and `device`. Together, `screen` + `web` + `app` + `device`
-form the deterministic surface that replaces Playwright *and* Maestro — see
-12-migration.md for the mapping tables.
+form the deterministic surface with full Playwright *and* Maestro parity —
+see 12-migration.md for the mapping tables.
 
 ### `device` — mobile system utils (mobile targets)
 

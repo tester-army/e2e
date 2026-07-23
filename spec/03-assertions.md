@@ -3,8 +3,7 @@
 Two assertion surfaces, deliberately split:
 
 - **`expect()`** — deterministic: UI state via `screen` locators
-  (cross-platform), and eventually-consistent **world-state** via resources
-  (inboxes).
+  (cross-platform), web state via `web`, and plain values.
 - **`agent.assert()`** — AI judgment of the current screen, in natural
   language.
 
@@ -63,57 +62,23 @@ Semantics:
 ```
 agent.assert: "the dashboard is visible" — FAILED
 Agent saw: a login form with an error banner "Invalid verification code".
-Screenshot: artifacts/signup-email/assert-1.png
+Screenshot: artifacts/signup/assert-1.png
 ```
 
 - `agent.assert()` is bound to the current target implicitly (no target
   argument needed).
 
-## `expect()` — resource matchers
-
-`expect()` accepts resource handles (see 04-resources.md) and plain values —
-assertions about the world outside the screen:
-
-```ts
-const inbox = email.inbox('signup');
-
-await expect(inbox).toHaveEmail({ subject: /welcome/i });
-```
-
-### Matcher inventory (v0)
-
-| Subject | Matcher | Meaning |
-|---|---|---|
-| `inbox` | `toHaveEmail(match)` | email matching `{ from?, subject?, … }` arrived |
-
-Further resource matchers (`expect(hook).toHaveReceived(…)` for webhook
-captures, `expect(stripe).toHavePayment(…)`, Slack, …) are roadmap — see
-roadmap/.
-
-Resource matchers are **eventually-consistent**: they poll until the state
-matches or `timeout` (default 15_000 ms) elapses. Options object as last arg:
-
-```ts
-await expect(inbox).toHaveEmail({ subject: /welcome/i }, { timeout: 30_000 });
-```
-
-### Negation
-
-```ts
-await expect(inbox).not.toHaveEmail({ subject: /error/i });
-```
-
-Negated eventually-consistent matchers wait a grace window (default 5_000 ms)
-and pass if the state never matched.
-
 ## `expect(value)` — plain data
 
-Values pulled out of resources or `agent.extract()` are plain data — assert
-them with the usual value matchers (`toBe`, `toEqual`, `toContain`, …):
+Values pulled out of `agent.extract()` (or any code) are plain data —
+assert them with the usual value matchers (`toBe`, `toEqual`, `toContain`,
+…):
 
 ```ts
-const message = await inbox.email({ subject: /invitation/i });
-expect(message.from).toBe('noreply@example.com');
+const { total } = await agent.extract('the cart total as a number', {
+  schema: z.object({ total: z.number() }),
+});
+expect(total).toBeLessThan(100);
 ```
 
 Implementation note (the Vitest move): plain-value matchers may delegate to
@@ -124,14 +89,18 @@ Chai chains. Locator/resource/web matchers are e2e-owned: async, retrying,
 driver-reading, evidence-attaching — no assertion library provides that.
 Custom matchers (`expect.extend`) are roadmap.
 
-## Partial matching
+## Resource matchers (with resource extensions, post-v0)
 
-All `match` objects are deep-partial: only specified keys are compared.
-Values may be literals, regexps, or predicate functions:
+When resource extensions land (email first — see 04-resources.md), they
+bring **world-state matchers**: `expect(inbox).toHaveEmail({ subject:
+/welcome/i })`, `expect(hook).toHaveReceived(…)`, later
+`expect(stripe).toHavePayment(…)`. The reserved semantics:
 
-```ts
-await expect(inbox).toHaveEmail({
-  from: 'noreply@example.com',
-  subject: /welcome/i,
-});
-```
+- **Eventually-consistent**: poll until the state matches or `timeout`
+  (default 15_000 ms) elapses; options object as last arg.
+- **Negation waits a grace window** (default 5_000 ms) and passes if the
+  state never matched.
+- **Match objects are deep-partial**: only specified keys compare; values
+  may be literals, regexps, or predicate functions. Serializable by design
+  (they appear in reports and the ledger).
+- Always deterministic — world-state assertions never involve the model.

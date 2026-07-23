@@ -23,6 +23,7 @@ deliberate addition, not a drive-by.
 
 | Item | Shape |
 |---|---|
+| Email inboxes | the first resource extension: `email.inbox()` → unique `address`, `.code()`/`.link()` OTP extraction, `expect(inbox).toHaveEmail(…)`; local SMTP catcher or managed deliverable inboxes |
 | Webhook captures | `webhook.capture()` → `hook.url` / `waitFor()`; `expect(hook).toHaveReceived({ body })` |
 | File fixtures | `files.from(path, { context })`, act `files` param, `files.index()` |
 | Phone/SMS resources | `phone.number()` with SMS/OTP extraction — Cloud-first |

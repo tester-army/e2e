@@ -5,7 +5,4 @@ export default defineConfig({
   project: 'orbit',
   token: process.env.TESTERARMY_TOKEN,
   workers: 8,
-  resources: {
-    email: 'managed',
-  },
 });
