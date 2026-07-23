@@ -74,6 +74,7 @@ type TestFixtures = {
   screen: Screen;          // deterministic cross-platform queries — zero AI
   platform: Platform;      // 'web' | 'ios' | 'android'
   session: Session;        // save/restore app state (see 11-lifecycle.md)
+  web: Web;                // web-only deterministic surface — web targets only
   device: Device;          // mobile system utils — mobile targets only
 };
 ```
@@ -89,10 +90,12 @@ export default test('checkout', async ({ screen, agent }) => {
 });
 ```
 
-Every fixture except `device` is platform-agnostic; `app.open()` is the
-portable navigation (target URL on web, app launch on mobile). Backends
-(Playwright, native drivers, …) are internal to drivers and never exposed
-in the API.
+Every fixture except `web` and `device` is platform-agnostic; `app.open()`
+is the portable navigation (target URL on web, app launch on mobile). `web`
+carries the Playwright-parity capabilities with no mobile meaning
+(navigation, css, network interception, dialogs — see 08-platforms.md).
+Backends (Playwright, native drivers, …) are internal to drivers and never
+exposed in the API.
 
 ## `agent`
 
@@ -136,6 +139,8 @@ agent.act(instruction: string, params?: AgentParams, options?: AgentOptions): Pr
   conclude with `AgentError.code = 'STEP_BUDGET_EXHAUSTED'`.
 - `options.cache` — use/record the cached action path for this instruction
   (default: config `agent.cache`; see 10-determinism.md).
+- `options.schema` — a Standard Schema; extracted values in `result.data`
+  are validated against it and typed.
 
 ```ts
 await agent.act('create an account using this email', {
@@ -147,15 +152,21 @@ await agent.act('enter the verification code', { code });
 await agent.act('apply for the job and attach the resume', {
   files: [files.from('fixtures/resume.pdf')],
 });
+
+// typed structured output
+const { data } = await agent.act('add the three cheapest items to the cart', undefined, {
+  schema: z.object({ addedItems: z.array(z.string()), total: z.number() }),
+});
+data.total; // number
 ```
 
 Returns `AgentResult`:
 
 ```ts
-type AgentResult = {
+type AgentResult<T = Record<string, unknown>> = {
   ok: true;
   steps: AgentStep[];      // what the agent actually did (for reports/replay)
-  data?: Record<string, unknown>; // values the agent was asked to extract
+  data?: T;                // extracted values; typed when a schema is passed
 };
 ```
 
@@ -164,7 +175,7 @@ final screenshot, the agent's own explanation of what went wrong, and a
 typed `code` separating setup failures from product failures (see
 10-determinism.md).
 
-### Instant actions — `tap`, `type`, `scroll`, `longPress`, `waitFor`
+### Instant actions — `tap`, `type`, `scroll`, `scrollTo`, `longPress`, `waitFor`
 
 Granular, locate-then-act primitives. The target is a natural-language
 description — never a selector — so instant actions stay cross-platform:
@@ -173,8 +184,9 @@ description — never a selector — so instant actions stay cross-platform:
 await agent.tap('the login button');
 await agent.type('the email field', inbox.address);
 await agent.type('the search box', 'headphones', { submit: true });
-await agent.scroll('down');
-await agent.scroll('the plans list', 'down');
+await agent.scroll({ direction: 'down' });
+await agent.scroll({ direction: 'down', momentum: 'fast', within: 'the plans list' });
+await agent.scrollTo('the 20th item in the results list');
 await agent.longPress('the message from Ada');
 await agent.waitFor('the results list has loaded');
 ```
@@ -184,8 +196,8 @@ Signatures (target-first, always):
 ```ts
 agent.tap(target: string, options?: InstantActionOptions): Promise<void>;
 agent.type(target: string, value: string, options?: InstantActionOptions & { submit?: boolean; clear?: boolean }): Promise<void>;
-agent.scroll(direction: ScrollDirection, options?: InstantActionOptions): Promise<void>;
-agent.scroll(target: string, direction: ScrollDirection, options?: InstantActionOptions): Promise<void>;
+agent.scroll(options: InstantActionOptions & { direction: ScrollDirection; momentum?: 'none' | 'slow' | 'fast'; within?: string }): Promise<void>;
+agent.scrollTo(target: string, options?: InstantActionOptions & { direction?: ScrollDirection }): Promise<void>;
 agent.longPress(target: string, options?: InstantActionOptions & { duration?: number }): Promise<void>;
 agent.waitFor(condition: string, options?: { timeout?: number; interval?: number }): Promise<void>;
 
@@ -296,10 +308,10 @@ test.describe('billing', { tags: ['billing'], session: 'admin' }, () => {
   test('invoice email arrives', async ({ agent }) => { /* … */ });
 });
 
-test.describe.serial('onboarding wizard', () => { /* ordered, shared state */ });
+test.describe('onboarding wizard', { serial: true }, () => { /* ordered, shared state */ });
 ```
 
-Group options apply to every test inside (test-level overrides). Serial
+Group options apply to every test inside (test-level overrides). `serial`
 groups run in order in one worker; a failure skips the rest. Details in
 11-lifecycle.md.
 

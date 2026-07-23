@@ -104,7 +104,7 @@ test.describe('billing', { tags: ['billing'], session: 'admin' }, () => {
 ### Serial mode
 
 ```ts
-test.describe.serial('onboarding wizard', () => {
+test.describe('onboarding wizard', { serial: true }, () => {
   test('step 1: company info', /* … */);
   test('step 2: invite team', /* … */);
   test('step 3: finish', /* … */);

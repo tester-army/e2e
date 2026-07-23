@@ -29,9 +29,11 @@ npx e2e run
 
 There is no cross-platform testing framework built on agentic testing.
 Playwright owns web. Detox and Maestro fragment mobile. AI testing tools are
-web-only libraries bolted onto other runners. `e2e` is the successor
-category: a test describes a **user workflow** — executed by an agent,
-pinned down deterministically where you choose — and a **target** decides
+web-only libraries bolted onto other runners. `e2e` replaces Playwright and
+Maestro with one API: full deterministic parity for migrators (locators,
+network interception, gestures, app lifecycle — see
+[spec/12-migration.md](./spec/12-migration.md)), and agentic testing as the
+reason to switch. A test describes a **user workflow**; a **target** decides
 where it runs. Write it once; run it on web, iOS, and Android.
 
 And the messy parts of real E2E — email verification codes, test accounts,

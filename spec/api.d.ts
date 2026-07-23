@@ -78,6 +78,13 @@ export interface RoleOptions extends TextMatchOptions {
  * displayValue > testId (last resort). Also the agent's selector policy —
  * instant-action locations cache as these queries.
  */
+export type Momentum = 'none' | 'slow' | 'fast';
+
+export interface SwipeOptions {
+  direction: ScrollDirection;
+  momentum?: Momentum;
+}
+
 export interface Screen {
   getByRole(role: Role, options?: RoleOptions): Locator;
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
@@ -86,6 +93,11 @@ export interface Screen {
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
   /** Last resort. data-testid (web) / accessibilityIdentifier, RN testID (iOS) / resource-id (Android). */
   getByTestId(id: string): Locator;
+
+  // Cross-platform gestures (Maestro heritage; touch/trackpad on web).
+  swipe(options: SwipeOptions): Promise<void>;
+  /** Scroll (in `direction`, default 'down') until the target is visible. */
+  scrollUntilVisible(target: Locator, options?: { direction?: ScrollDirection; timeout?: number }): Promise<void>;
 }
 
 /**
@@ -95,19 +107,41 @@ export interface Screen {
  * Absence is asserted, not queried: expect(locator).not.toBeVisible().
  */
 export interface Locator extends Screen {
+  // Actions — actionability-checked: acting on hidden/disabled/covered
+  // elements fails with an actionable error, never a silent no-op.
   tap(options?: { timeout?: number }): Promise<void>;
   /** Alias of tap() for web muscle memory. */
   click(options?: { timeout?: number }): Promise<void>;
-  fill(value: string): Promise<void>;
+  doubleTap(options?: { timeout?: number }): Promise<void>;
   longPress(options?: { duration?: number }): Promise<void>;
+  fill(value: string): Promise<void>;
+  clear(): Promise<void>;
+  press(key: string): Promise<void>;
+  check(): Promise<void>;
+  uncheck(): Promise<void>;
+  /** Native <select> on web; picker on mobile. */
+  selectOption(value: string | { label?: string; index?: number }): Promise<void>;
+  focus(): Promise<void>;
+  dragTo(target: Locator): Promise<void>;
   scrollIntoView(): Promise<void>;
+  /** Swipe gesture scoped to this element. */
+  swipe(options: SwipeOptions): Promise<void>;
 
+  // Reads
   textContent(): Promise<string | null>;
+  inputValue(): Promise<string>;
+  getAttribute(name: string): Promise<string | null>;
   isVisible(): Promise<boolean>;
+  isEnabled(): Promise<boolean>;
+  isChecked(): Promise<boolean>;
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
   count(): Promise<number>;
   waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void>;
 
+  // Refinement
+  filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
   first(): Locator;
+  last(): Locator;
   nth(index: number): Locator;
 }
 
@@ -154,8 +188,16 @@ export type Target =
 export interface App {
   /** Navigate to the target URL (web) or launch the app (mobile). */
   open(path?: string): Promise<void>;
-  /** Kill and relaunch (mobile) / fresh context + goto (web). */
+  /**
+   * Kill and relaunch (mobile) / fresh context + goto (web).
+   * NOTE: does NOT clear persisted app data (keychain, storage, defaults) —
+   * use clearState() for a factory-fresh app.
+   */
   restart(): Promise<void>;
+  /** Wipe persisted app data (web: cookies/storage; mobile: app data), then relaunch. */
+  clearState(): Promise<void>;
+  /** System back (Android hardware back / browser history back / iOS back gesture). */
+  back(): Promise<void>;
   /** Open a deep link / universal link. */
   deepLink(url: string): Promise<void>;
   /** Evidence screenshot for the report, any platform. Returns artifact path. */
@@ -167,6 +209,7 @@ export interface Device {
   readonly platform: 'ios' | 'android';
 
   home(): Promise<void>;
+  hideKeyboard(): Promise<void>;
   openUrl(url: string): Promise<void>;
   setLocation(lat: number, lng: number): Promise<void>;
   setPermission(
@@ -176,6 +219,84 @@ export interface Device {
 
   /** Inject a push notification (simulator/emulator; managed devices in Cloud). */
   pushNotification(payload: Record<string, unknown>): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// web — web-only deterministic surface (e2e-owned, driver-projected)
+//
+// Playwright-parity capabilities with no mobile meaning. Still no backend
+// object exposed: `web` is e2e's own interface, implemented by the target's
+// web driver. Using it constrains the test to web (platforms: ['web']).
+// ---------------------------------------------------------------------------
+
+export interface Cookie {
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+export interface WebRoute {
+  request: { url: string; method: string; headers: Record<string, string>; postData?: string };
+  fulfill(response: { status?: number; json?: unknown; body?: string; headers?: Record<string, string> }): Promise<void>;
+  continue(): Promise<void>;
+  abort(): Promise<void>;
+}
+
+export interface WebResponse {
+  url: string;
+  status: number;
+  headers: Record<string, string>;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+}
+
+export interface Web {
+  // navigation
+  goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }): Promise<void>;
+  reload(): Promise<void>;
+  back(): Promise<void>;
+  forward(): Promise<void>;
+  url(): string;
+  title(): Promise<string>;
+  waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
+
+  /** CSS/XPath escape hatch — web-only by nature; prefer screen.getBy*. */
+  locator(selector: string): Locator;
+  /** Scoped queries inside an iframe. */
+  frameLocator(selector: string): Screen;
+
+  evaluate<T>(fn: string | (() => T)): Promise<T>;
+
+  // network
+  route(pattern: string | RegExp, handler: (route: WebRoute) => void | Promise<void>): Promise<void>;
+  unroute(pattern: string | RegExp): Promise<void>;
+  waitForResponse(pattern: string | RegExp, options?: { timeout?: number }): Promise<WebResponse>;
+
+  // browser state
+  cookies(): Promise<Cookie[]>;
+  setCookies(cookies: Cookie[]): Promise<void>;
+  setViewport(size: { width: number; height: number }): Promise<void>;
+
+  // events
+  onDialog(handler: 'accept' | 'dismiss' | ((dialog: { message: string; accept(text?: string): Promise<void>; dismiss(): Promise<void> }) => void)): void;
+  waitForDownload(trigger: () => Promise<void>): Promise<{ path: string; suggestedFilename: string }>;
+
+  // raw input (web only — no cross-platform equivalent)
+  keyboard: {
+    press(key: string): Promise<void>;
+    type(text: string): Promise<void>;
+  };
+  mouse: {
+    move(x: number, y: number): Promise<void>;
+    wheel(deltaX: number, deltaY: number): Promise<void>;
+    down(): Promise<void>;
+    up(): Promise<void>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +315,8 @@ export interface TestFixtures {
   /** Save/restore app state (see 11-lifecycle.md). */
   session: Session;
 
+  /** Web-only deterministic surface (navigation, css, network, dialogs) — web targets only. */
+  web: Web;
   /** Mobile system utils (push, permissions, location) — mobile targets only. */
   device: Device;
 }
@@ -258,9 +381,6 @@ export interface TestFunction {
   describe: {
     (title: string, fn: () => void): void;
     (title: string, options: GroupOptions, fn: () => void): void;
-    /** Ordered, one worker, shared state; a failure skips the rest. */
-    serial(title: string, fn: () => void): void;
-    serial(title: string, options: GroupOptions, fn: () => void): void;
   };
 
   beforeEach(fn: (fixtures: TestFixtures) => Promise<void> | void): void;
@@ -287,6 +407,8 @@ export interface GroupOptions {
   platforms?: Platform[];
   timeout?: number;
   retries?: number;
+  /** Ordered, one worker, shared state; a failure skips the rest. */
+  serial?: boolean;
 }
 
 /** Saved app state: cookies/localStorage/IndexedDB on web, app data on mobile. */
@@ -342,10 +464,11 @@ export interface AgentStep {
   durationMs: number;
 }
 
-export interface AgentResult {
+export interface AgentResult<T = Record<string, unknown>> {
   ok: true;
   steps: AgentStep[];
-  data?: Record<string, unknown>;
+  /** Typed when a schema is passed to act(); see AgentOptions.schema. */
+  data?: T;
 }
 
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
@@ -362,6 +485,8 @@ export interface Agent {
    * the described goal. Use when you know the goal, not the steps.
    */
   act(instruction: string, params?: AgentParams, options?: AgentOptions): Promise<AgentResult>;
+  /** With a schema, extracted values in result.data are validated and typed. */
+  act<T>(instruction: string, params: AgentParams | undefined, options: AgentOptions & { schema: StandardSchema<T> }): Promise<AgentResult<T>>;
 
   // Instant actions: AI locates the described element (one model call);
   // the action itself is deterministic — no planning loop, no alternate
@@ -374,8 +499,9 @@ export interface Agent {
   click(target: string, options?: InstantActionOptions): Promise<void>;
   /** Value may be a Credential — filled host-side, never in model context. */
   type(target: string, value: string | Credential, options?: InstantActionOptions & { submit?: boolean; clear?: boolean }): Promise<void>;
-  scroll(direction: ScrollDirection, options?: InstantActionOptions): Promise<void>;
-  scroll(target: string, direction: ScrollDirection, options?: InstantActionOptions): Promise<void>;
+  scroll(options: InstantActionOptions & { direction: ScrollDirection; momentum?: Momentum; within?: string }): Promise<void>;
+  /** Scroll until the described element is visible ("the 20th item"). */
+  scrollTo(target: string, options?: InstantActionOptions & { direction?: ScrollDirection }): Promise<void>;
   longPress(target: string, options?: InstantActionOptions & { duration?: number }): Promise<void>;
   /** Poll a natural-language condition until true or timeout. */
   waitFor(condition: string, options?: { timeout?: number; interval?: number }): Promise<void>;
@@ -463,8 +589,15 @@ export interface LocatorExpectations {
   not: LocatorExpectations;
 }
 
+export interface WebExpectations {
+  toHaveURL(url: string | RegExp, options?: EventualMatcherOptions): Promise<void>;
+  toHaveTitle(title: TextMatch, options?: EventualMatcherOptions): Promise<void>;
+  not: WebExpectations;
+}
+
 export interface ExpectFunction {
   (subject: Locator): LocatorExpectations;
+  (subject: Web): WebExpectations;
   (subject: Inbox): InboxExpectations;
   (subject: WebhookCapture): WebhookCaptureExpectations;
   <T>(subject: T): any; // generic value assertions (toBe, toEqual, …)
@@ -569,12 +702,24 @@ export declare const webhook: WebhookResource;
 
 /** File fixture handle; the agent may only use files explicitly given to a step. */
 export interface FileRef {
+  /**
+   * Optional description the agent can use when deciding how/where to use
+   * the file ("signed NDA, PDF, 2 pages"). Set manually via files.from()
+   * options or generated by files.index().
+   */
+  readonly context?: string;
   readonly name: string;
   readonly mimeType: string;
 }
 
 export interface FilesResource {
-  from(path: string, options?: { name?: string; mimeType?: string }): FileRef;
+  from(path: string, options?: { name?: string; mimeType?: string; context?: string }): FileRef;
+  /**
+   * Agent-generated context for all registered files (content summary,
+   * type, purpose). Optional; improves agent file handling. Results are
+   * cached alongside the agent cache.
+   */
+  index(): Promise<void>;
 }
 
 export declare const files: FilesResource;

@@ -27,6 +27,9 @@ Paired positives avoid double negations (`toBeDisabled` over
 (`toHaveClass`, `toHaveAttribute`, `toHaveStyle`) — they don't exist
 off-web and violate the resemble-the-user principle.
 
+`expect(web)` covers web-level state: `toHaveURL(url)`, `toHaveTitle(title)`
+(web targets only).
+
 **Absence** is asserted, never queried:
 `await expect(screen.getByText('Error')).not.toBeVisible()` — retried with
 the negation grace window. Matcher failures print the accessibility tree

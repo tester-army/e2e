@@ -192,10 +192,20 @@ await agent.act('apply for the job and attach the resume', {
 type FileRef = {
   readonly name: string;
   readonly mimeType: string;
+  /** Optional description the agent uses when deciding how/where to use the file. */
+  readonly context?: string;
 };
 
-files.from(path: string, options?: { name?: string; mimeType?: string }): FileRef;
+files.from(path: string, options?: { name?: string; mimeType?: string; context?: string }): FileRef;
+
+/** Agent-generated context for all registered files. Optional; cached. */
+files.index(): Promise<void>;
 ```
+
+`context` improves agent file handling ("signed NDA, PDF, 2 pages" beats a
+bare filename). Set it manually, or call `files.index()` once to have the
+agent inspect registered files and generate context; results are cached
+alongside the agent cache.
 
 Delivery supports direct `<input type=file>` writes and staged mode for
 native/File System Access pickers. In Cloud, files can also resolve from

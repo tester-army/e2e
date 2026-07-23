@@ -8,7 +8,8 @@ open-source, cross-platform, agentic testing framework.
 ## Why
 
 There is no cross-platform testing framework built on agentic testing.
-`e2e` is the successor category — the ultimate Playwright replacement:
+`e2e` replaces Playwright and Maestro with one API — deterministic parity
+for migrators (12-migration.md), agentic testing as the reason to switch:
 
 > The last testing framework you will ever need.
 
@@ -23,10 +24,11 @@ There is no cross-platform testing framework built on agentic testing.
 | [05-config.md](./05-config.md) | `defineConfig()` and `e2e.config.ts` |
 | [06-cli.md](./06-cli.md) | `npx e2e …` command surface |
 | [07-cloud.md](./07-cloud.md) | TesterArmy Cloud boundary: what is OSS vs Cloud |
-| [08-platforms.md](./08-platforms.md) | Cross-platform targets, `screen` queries, `app`, `device` |
+| [08-platforms.md](./08-platforms.md) | Cross-platform targets, `screen` queries, `web`, `app`, `device` |
 | [09-drivers.md](./09-drivers.md) | Drivers as packages: community backends, public SPI (`e2e/driver`) |
 | [10-determinism.md](./10-determinism.md) | The control gradient, execution model, caching, error codes |
 | [11-lifecycle.md](./11-lifecycle.md) | Setup/teardown, setup tests + sessions, groups, `test.each`, sharding, watch mode |
+| [12-migration.md](./12-migration.md) | Playwright & Maestro parity tables — the migration contract |
 | [api.d.ts](./api.d.ts) | Canonical TypeScript surface (the normative spec) |
 | [roadmap/](./roadmap/README.md) | Deferred designs: PR testing, service emulation |
 

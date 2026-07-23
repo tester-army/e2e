@@ -9,7 +9,10 @@ category: one framework where a test is a *user workflow* — executed by an
 agent, pinned down deterministically where you choose — running unchanged on
 web, iOS, and Android.
 
-The ambition: the ultimate Playwright replacement.
+The ambition: replace Playwright **and** Maestro with one API — full
+deterministic parity for migrators (see 12-migration.md), agentic testing
+as the reason to switch. Starting from scratch is the advantage: take the
+best of both, fix what each got wrong, owe nothing to either.
 
 > **The last testing framework you will ever need.**
 
@@ -57,11 +60,15 @@ Every step chooses how much model to use — three tiers on one gradient:
 2. `agent.tap('the login button')` — AI locates once (cached), action is deterministic
 3. `screen.getByRole('button', { name: 'Login' }).tap()` — zero AI
 
-All three are cross-platform. `screen` is a **projection layer, not an
-automation engine**: queries delegate to the target's backend automation
-(browser locators on web, accessibility queries on mobile) — waiting and
-actionability are the backend's, and which backend is an internal driver
-detail, never exposed in the API.
+All three are cross-platform, and tier 3 is a headline, not a fallback:
+`screen` + `web` + `app` + `device` form a deterministic surface with
+Playwright/Maestro parity (12-migration.md). `screen` is a **projection
+layer, not an automation engine**: queries delegate to the target's backend
+automation (browser locators on web, accessibility queries on mobile) —
+waiting and actionability are the backend's, and which backend is an
+internal driver detail, never exposed in the API. Web-only capabilities
+(css, network interception, dialogs) live on `web`; mobile system utils on
+`device`.
 
 ### 5. Provider abstraction, not provider lock-in
 

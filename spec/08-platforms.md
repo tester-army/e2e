@@ -97,7 +97,8 @@ driver-package instances (`driver: hyperdrive()`), built on the public
 | `agent` | ✅ | ✅ | ✅ | drives browser DOM or native accessibility tree |
 | `app` | ✅ | ✅ | ✅ | platform-agnostic app handle (open, restart, deepLink) |
 | `screen` | ✅ | ✅ | ✅ | cross-platform deterministic queries — zero AI |
-| `device` | ❌ | ✅ | ✅ | mobile system utils (push, permissions, location) |
+| `web` | ✅ | ❌ | ❌ | web-only deterministic surface (navigation, css, network) |
+| `device` | ❌ | ✅ | ✅ | mobile system utils (push, permissions, location, keyboard) |
 | `platform` | ✅ | ✅ | ✅ | `'web' \| 'ios' \| 'android'` for branching |
 
 Resources (`email`, `credentials`, `webhook`, `phone`) are platform-agnostic.
@@ -137,6 +138,10 @@ type Screen = {
   getByText(text: TextMatch, options?: TextMatchOptions): Locator;
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
   getByTestId(id: string): Locator;   // last resort
+
+  // cross-platform gestures (Maestro heritage; touch/trackpad on web)
+  swipe(options: { direction: ScrollDirection; momentum?: Momentum }): Promise<void>;
+  scrollUntilVisible(target: Locator, options?: { direction?: ScrollDirection; timeout?: number }): Promise<void>;
 };
 ```
 
@@ -169,27 +174,21 @@ Roles are an e2e-owned vocabulary matched literally per platform:
 
 ### Locators
 
-```ts
-type Locator = Screen & {   // locators are also scopes: chaining = within()
-  // cross-platform actions — actionability delegated to the backend
-  tap(options?: { timeout?: number }): Promise<void>;   // click() alias
-  fill(value: string): Promise<void>;
-  longPress(options?: { duration?: number }): Promise<void>;
-  scrollIntoView(): Promise<void>;
+The full surface is normative in `api.d.ts`; it deliberately covers the
+Playwright ∩ Maestro union — see 12-migration.md:
 
-  textContent(): Promise<string | null>;
-  isVisible(): Promise<boolean>;
-  count(): Promise<number>;
-  waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void>;
-  first(): Locator;
-  nth(index: number): Locator;
-};
-```
+- **Actions**: `tap`/`click`, `doubleTap`, `longPress`, `fill`, `clear`,
+  `press`, `check`/`uncheck`, `selectOption`, `focus`, `dragTo`,
+  `scrollIntoView`, `swipe`
+- **Reads**: `textContent`, `inputValue`, `getAttribute`, `isVisible`,
+  `isEnabled`, `isChecked`, `boundingBox`, `count`, `waitFor`
+- **Refinement**: `filter({ hasText, has })`, `first`/`last`/`nth`,
+  chaining (= `within()`)
 
-Growth rule: a method is added only if **all** platforms can project it
-faithfully onto their backend. There is deliberately no backend escape
-hatch in v0 — if a capability matters, it earns a cross-platform primitive
-(or an issue), rather than leaking a backend object into tests.
+Growth rule: a method joins `Locator` only if **all** platforms can project
+it faithfully onto their backend. Web-only capabilities go to `web`;
+mobile-only to `device`. There is no backend escape hatch — if a capability
+matters, it earns an e2e-owned primitive.
 
 ### `app` — the portable app handle
 
@@ -197,14 +196,52 @@ hatch in v0 — if a capability matters, it earns a cross-platform primitive
 type App = {
   /** Navigate to app.url (web) or launch the app (mobile). */
   open(path?: string): Promise<void>;
-  /** Kill and relaunch (mobile) / new context + goto (web). */
+  /** Kill and relaunch (mobile) / new context + goto (web). Does NOT clear persisted data. */
   restart(): Promise<void>;
+  /** Wipe persisted app data (web: cookies/storage; mobile: app data), then relaunch. */
+  clearState(): Promise<void>;
+  /** System back: Android hardware back / browser history / iOS back gesture. */
+  back(): Promise<void>;
   /** Open a deep link / universal link on any platform. */
   deepLink(url: string): Promise<void>;
   /** Evidence screenshot for the report, any platform. Returns artifact path. */
   screenshot(label?: string): Promise<string>;
 };
 ```
+
+Note the `restart()`/`clearState()` split: on mobile, killing and
+relaunching an app does **not** remove device-saved data (defaults,
+keychain, storage). Tests that need a factory-fresh app must use
+`clearState()`; `restart()` is for "cold start with existing state".
+
+### `web` — web-only deterministic surface (web targets)
+
+Playwright-parity capabilities that have no mobile meaning. Still e2e-owned
+and driver-projected — no backend object is exposed. Using `web` constrains
+the test to web (`platforms: ['web']`).
+
+```ts
+export default test('checkout with stubbed flags', { platforms: ['web'] }, async ({ web, screen, agent }) => {
+  await web.route('**/api/flags', r => r.fulfill({ json: { beta: true } }));
+  await web.goto('/pricing');
+
+  await screen.getByRole('button', { name: 'Annual' }).tap();
+  await web.waitForURL(/checkout/);
+
+  await agent.assert('the annual discount is applied');
+});
+```
+
+Surface (normative in `api.d.ts`): navigation (`goto`, `reload`, `back`,
+`forward`, `url`, `waitForURL`), `locator(css)`, `frameLocator`, `evaluate`,
+network interception (`route`, `waitForResponse`), `cookies`/`setCookies`,
+`setViewport`, dialogs (`onDialog`), downloads (`waitForDownload`), raw
+`keyboard`/`mouse`. Plus `expect(web).toHaveURL/toHaveTitle`.
+
+The Maestro-side equivalents (app lifecycle, permissions, system gestures)
+live on `app` and `device`. Together, `screen` + `web` + `app` + `device`
+form the deterministic surface that replaces Playwright *and* Maestro — see
+12-migration.md for the mapping tables.
 
 ### `device` — mobile system utils (mobile targets)
 
@@ -217,6 +254,7 @@ type Device = {
 
   /** System-level actions. */
   home(): Promise<void>;
+  hideKeyboard(): Promise<void>;
   openUrl(url: string): Promise<void>;
   setLocation(lat: number, lng: number): Promise<void>;
   setPermission(permission: 'camera' | 'location' | 'notifications' | 'contacts', state: 'allow' | 'deny'): Promise<void>;

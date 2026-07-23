@@ -115,6 +115,27 @@ export default defineConfig({
 
 CLI flags override config: `npx e2e run --cloud` forces `runner: 'cloud'`.
 
+### Split configs
+
+Keeping one config with a `runner` field forces edits to switch modes.
+Instead, an overlay file is supported:
+
+- `e2e.config.ts` — base, always loaded
+- `e2e.cloud.config.ts` — deep-merged on top **when running with `--cloud`**
+  (or `runner: 'cloud'`). Its presence does not force cloud mode.
+
+```ts
+// e2e.cloud.config.ts — only the cloud-specific deltas
+import { defineConfig } from 'e2e';
+
+export default defineConfig({
+  project: 'my-project',
+  token: process.env.TESTERARMY_TOKEN,
+  resources: { email: 'managed' },
+  workers: 8,
+});
+```
+
 ## Environment variables
 
 | Var | Meaning |
