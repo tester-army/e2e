@@ -30,6 +30,7 @@ for migrators (12-migration.md), agentic testing as the reason to switch:
 | [11-lifecycle.md](./11-lifecycle.md) | Setup/teardown, setup tests + sessions, groups, `test.each`, sharding, watch mode |
 | [12-migration.md](./12-migration.md) | Playwright & Maestro parity tables — the migration contract |
 | [api.d.ts](./api.d.ts) | Canonical TypeScript surface (the normative spec) |
+| [examples/](./examples/README.md) | Realistic suite: groups, sessions, cross-platform, scale conventions |
 | [roadmap/](./roadmap/README.md) | Deferred designs: PR testing, service emulation |
 
 ## Package

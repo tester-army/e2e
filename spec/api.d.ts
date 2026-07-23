@@ -51,6 +51,9 @@ export type Role =
   | 'heading'
   | 'tab'
   | 'menuitem'
+  | 'listitem'
+  | 'status'
+  | 'dialog'
   | 'alert';
 
 /** Testing Library TextMatch. Trim + whitespace-collapse always applied. */
@@ -371,7 +374,10 @@ export interface TestFunction {
    */
   each<Case extends Record<string, unknown>>(
     cases: readonly Case[],
-  ): (title: string, fn: (fixtures: TestFixtures, testCase: Case) => Promise<void>) => TestCase[];
+  ): {
+    (title: string, fn: (fixtures: TestFixtures, testCase: Case) => Promise<void>): TestCase[];
+    (title: string, options: TestOptions, fn: (fixtures: TestFixtures, testCase: Case) => Promise<void>): TestCase[];
+  };
 
   /** Conditional skip; the condition source is used as the reason. */
   skipIf(condition: boolean | (() => boolean)): TestFunction;
@@ -409,6 +415,8 @@ export interface GroupOptions {
   retries?: number;
   /** Ordered, one worker, shared state; a failure skips the rest. */
   serial?: boolean;
+  /** Ambient agent context for every test in the group. */
+  agentContext?: string;
 }
 
 /** Saved app state: cookies/localStorage/IndexedDB on web, app data on mobile. */

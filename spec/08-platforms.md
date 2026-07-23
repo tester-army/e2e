@@ -170,7 +170,7 @@ type Screen = {
 | `getByTestId` | `data-testid` | `accessibilityIdentifier` (RN `testID`) | `resource-id` |
 
 Roles are an e2e-owned vocabulary matched literally per platform:
-`'button' | 'link' | 'textbox' | 'checkbox' | 'switch' | 'slider' | 'image' | 'heading' | 'tab' | 'menuitem' | 'alert'`.
+`'button' | 'link' | 'textbox' | 'checkbox' | 'switch' | 'slider' | 'image' | 'heading' | 'tab' | 'menuitem' | 'listitem' | 'status' | 'dialog' | 'alert'`.
 
 ### Locators
 
