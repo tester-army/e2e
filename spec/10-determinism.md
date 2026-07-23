@@ -160,6 +160,12 @@ Hard rule:
   steps, traces, or artifacts.
 - `agent.login(credential)` pins that credential: the agent cannot substitute
   a different one mid-step.
+- **Observations are scrubbed before they reach the model.** A filled
+  field can echo its value back through the semantic tree — so drivers
+  mask secure-field values at the source (`SemanticNode.states.secure`),
+  and the runner additionally scrubs every registered secret value from
+  observations and artifacts as defense in depth. The agent sees `•••`,
+  on every platform, in both the tree and the evidence.
 - Recorded traces and reports are redacted against sensitive-value patterns.
 
 ## Agent caching (agentic once, deterministic after)

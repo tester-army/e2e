@@ -15,7 +15,7 @@ adoption.
 | Visual snapshots | — | `toMatchScreenshot` pixel diffing, complementing `agent.assert` semantic judgment |
 | Network interception | — | cross-platform request routing, if it earns its place over service emulation |
 | New platforms (Electron, desktop, TV) | enabled by design ([08](../08-platforms.md)/[09](../09-drivers.md)) | arrive as driver packages on the open platform model — no core changes; "official" status = docs + conformance in CI |
-| Driver-provided fixtures | — | platform-specific capability surfaces beyond `web`/`device` (e.g. an Electron IPC handle) exposed by driver packages |
+| Driver-provided fixtures | mechanism specced ([02](../02-test-api.md)/[09](../09-drivers.md)): module augmentation on `TestFixtures` | the first non-browser/mobile family surface ships with its platform driver; the generic SPI slot is finalized then |
 
 ## Deferred from the v0 core
 

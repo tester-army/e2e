@@ -32,6 +32,7 @@ these primitives. Cloud will be rebuilt on top of them.
 | Agent path cache | local `.e2e/cache` | shared across team + CI, flake-aware invalidation |
 | Sessions (`test.setup`) | `.e2e/sessions` on disk | per-run, shared across workers, encrypted |
 | Artifacts | trace/screenshot/video + HTML report on disk | hosted replays, retention, sharing |
+| 2FA / bot detection (your own app) | test bypasses, allowlisting | real OTP via managed inboxes/numbers, host-side TOTP, stable allowlistable egress, real-device traffic |
 | Scheduling/monitors | ❌ | ✅ cron runs, alerting |
 | Flake triage | retries | historical flake detection, quarantine |
 

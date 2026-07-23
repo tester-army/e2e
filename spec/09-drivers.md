@@ -151,8 +151,9 @@ type SemanticNode = {
   role?: string;
   name?: string;
   text?: string;
+  /** Must be masked when states.secure (password/secure text fields) — see 10-determinism.md. */
   value?: string;
-  states?: Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden', boolean>>;
+  states?: Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure', boolean>>;
   /** Element attributes where the platform has them (web: DOM attributes). */
   attributes?: Record<string, string>;
   rect?: { x: number; y: number; width: number; height: number };
@@ -266,12 +267,17 @@ Design rules:
   (`verifyDriver(myDriver)`) that community drivers run in their own CI —
   the ecosystem's compatibility guarantee. Passing it is also what makes a
   *new* platform real: project the query vocabulary, observe, act — and
-  every portable test runs.
-- **Capabilities, not new fixtures.** A driver provides the shared
-  surfaces (`app`, `screen`, observation/actions) plus the optional
-  capabilities (`web`, `device`). Driver-defined fixture surfaces (e.g. an
-  Electron IPC handle) are a roadmap design — in v0 the fixture set stays
-  e2e-owned.
+  every portable test runs. Secure-field masking (`states.secure`, masked
+  `value`) is part of the suite: a driver that leaks secrets into
+  observations doesn't conform.
+- **Capabilities, not ad-hoc fixtures.** A driver provides the shared
+  surfaces (`app`, `screen`, observation/actions) plus capability
+  surfaces — one per platform family, named for the family. Core ships
+  `web` and `device`; a new family's driver contributes its own fixture
+  via module augmentation on `TestFixtures` (02-test-api.md) and exposes
+  the runtime object from its session. The SPI slot for arbitrary family
+  surfaces is finalized alongside the first non-browser/mobile family
+  (v0 keeps the typed `web?`/`device?` members).
 
 ## Consequences elsewhere in the spec
 

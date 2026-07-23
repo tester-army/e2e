@@ -69,15 +69,56 @@ lazy: nothing is created until first accessed.
 
 ```ts
 type TestFixtures = {
+  // The universal five — present on every target. Frozen: this set does
+  // not grow.
   agent: Agent;            // AI agent bound to the current target
   app: App;                // portable app handle: open/restart/deepLink/screenshot
   screen: Screen;          // deterministic cross-platform queries — zero AI
-  platform: Platform;      // current target's platform id ('web' | 'ios' | 'android' | driver-provided)
+  platform: Platform;      // current target's platform id, for branching
   session: Session;        // save/restore app state (see 11-lifecycle.md)
-  web: Web;                // web capability — targets whose driver provides it
-  device: Device;          // mobile system utils — targets whose driver provides it
+
+  // Capability fixtures — one per platform family, named for the family,
+  // present when the target's driver provides it (08-platforms.md).
+  // Open set: new families contribute their own via module augmentation.
+  web: Web;                // browser-family deterministic surface
+  device: Device;          // mobile-family system utils
 };
 ```
+
+`TestFixtures` is an interface: a driver package that introduces a new
+platform family ships its capability fixture by augmenting it — no core
+release, no accessor indirection:
+
+```ts
+// e2e-driver-desktop's types — `({ desktop })` works once installed
+declare module 'e2e' {
+  interface TestFixtures {
+    desktop: DesktopSurface;
+  }
+}
+```
+
+### Fixture growth policy
+
+The fixtures object stays small by rule, not by luck:
+
+- **The universal five are frozen.** Anything universal enough to qualify
+  would already exist.
+- **Capabilities are bounded by reality — and core never adds them.**
+  One per platform family, named for the family, contributed by the
+  family's driver package via module augmentation. Core ships exactly two
+  (`web`, `device`); `desktop` or `tv` arrive with their drivers, not
+  with an e2e release.
+- **Everything else is not a fixture.** Resources (`credentials`, and the
+  email/webhook/files/phone extensions) are root imports with run-scoped
+  identity — that is the extension path for new concerns. Roadmap drafts
+  that sketch fixtures (`services`, `pr`) get re-validated against this
+  rule before adoption.
+- **`test.extend` (post-v0) is the userland growth valve.** Custom
+  fixtures belong to suites, not the core. Overriding a built-in requires
+  a type-compatible override; accidental shadowing is an error.
+- Net effect: adding a built-in fixture is a semver-major, spec-level
+  event — not something a minor release does.
 
 `screen` is the deterministic cross-platform layer — Testing Library
 queries projected onto each platform's backend, zero model calls

@@ -139,9 +139,11 @@ instances.
 them. `web` and `device` are **driver capabilities, not platform
 hardcodes**: `web` is present wherever the driver provides the web surface
 (browsers — and, say, an Electron driver, which is Chromium underneath);
-`device` wherever it provides mobile system utils. Accessing a capability
-the current target's driver doesn't provide throws a clear, actionable
-error.
+`device` wherever it provides mobile system utils. New platform families
+contribute their own capability fixture under the same rule — named for
+the family, shipped by the driver package via module augmentation
+(02-test-api.md). Accessing a capability the current target's driver
+doesn't provide throws a clear, actionable error.
 
 Resources (`credentials` in v0; extensions later) are platform-agnostic.
 
@@ -418,12 +420,22 @@ type Device = {
   hideKeyboard(): Promise<void>;
   openUrl(url: string): Promise<void>;
   setLocation(lat: number, lng: number): Promise<void>;
-  setPermission(permission: 'camera' | 'location' | 'notifications' | 'contacts', state: 'allow' | 'deny'): Promise<void>;
+  /** 'unset' restores the not-yet-asked state — for testing the permission prompt itself. */
+  setPermission(permission: 'camera' | 'location' | 'notifications' | 'contacts', state: 'allow' | 'deny' | 'unset'): Promise<void>;
 
   /** Push notification injection (simulator/emulator). */
   pushNotification(payload: Record<string, unknown>): Promise<void>;
 };
 ```
+
+`setPermission` semantics: mid-test on simulators/emulators (Android via
+`pm grant/revoke`; iOS via `simctl privacy`/TCC), matching Maestro's
+`setPermissions` — a notch better than Detox, which is iOS-only and
+launch-time-only. Applying a change may relaunch the app (iOS requirement);
+iOS notifications may be implemented as automatic prompt handling — the
+driver owns the mechanics. The permission vocabulary grows under the same
+rule as everything else: a name joins when both mobile platforms can honor
+it.
 
 ## Constraining tests to platforms
 

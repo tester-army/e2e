@@ -95,7 +95,7 @@ Status: ✅ v0 · P1 (fast follow) · P2 (later) · ✖ deliberate no.
 | `copyTextFrom` | `locator.textContent()` (real variables — it's TypeScript) | ✅ |
 | `runFlow` / conditionals / loops | plain TS functions/`if`/`for` | ✅ |
 | `evalScript` | plain TS | ✅ |
-| permissions | `device.setPermission()` | ✅ |
+| permissions (`launchApp.permissions` / `setPermissions`) | `device.setPermission()` — mid-test, both platforms | ✅ |
 | location | `device.setLocation()` | ✅ |
 | push notification (bolt-on) | `device.pushNotification()` | ✅ |
 | `takeScreenshot` | `app.screenshot()` | ✅ |
