@@ -18,19 +18,18 @@ for migrators (12-migration.md), agentic testing as the reason to switch:
 | Doc | Contents |
 |---|---|
 | [01-principles.md](./01-principles.md) | Why, design principles, non-goals |
-| [02-test-api.md](./02-test-api.md) | `test()`, fixtures, `agent` (planning + instant actions), `step()` |
+| [02-test-api.md](./02-test-api.md) | `test()`, fixtures, `agent` (planning + instant actions) |
 | [03-assertions.md](./03-assertions.md) | `expect()` (locator + resource matchers), `agent.assert()` |
-| [04-resources.md](./04-resources.md) | `email`, `credentials`, `webhook`, `files`, `phone` |
+| [04-resources.md](./04-resources.md) | `email`, `credentials` (webhook/files/phone are roadmap) |
 | [05-config.md](./05-config.md) | `defineConfig()` and `e2e.config.ts` |
 | [06-cli.md](./06-cli.md) | `npx e2e …` command surface |
 | [07-cloud.md](./07-cloud.md) | TesterArmy Cloud boundary: what is OSS vs Cloud |
 | [08-platforms.md](./08-platforms.md) | Cross-platform targets, `screen` queries, `web`, `app`, `device` |
 | [09-drivers.md](./09-drivers.md) | Drivers as packages: community backends, public SPI (`e2e/driver`) |
 | [10-determinism.md](./10-determinism.md) | The control gradient, execution model, caching, error codes |
-| [11-lifecycle.md](./11-lifecycle.md) | Setup/teardown, setup tests + sessions, groups, `test.each`, sharding, watch mode |
+| [11-lifecycle.md](./11-lifecycle.md) | Setup tests + sessions, hooks, groups, serial mode |
 | [12-migration.md](./12-migration.md) | Playwright & Maestro parity tables — the migration contract |
-| [api.d.ts](./api.d.ts) | Canonical TypeScript surface (the normative spec) |
-| [examples/](./examples/README.md) | Realistic suite: groups, sessions, cross-platform, scale conventions |
+| [examples/](./examples/README.md) | A realistic example suite (Orbit) exercising the full surface |
 | [roadmap/](./roadmap/README.md) | Deferred designs: PR testing, service emulation |
 
 ## Package
@@ -62,5 +61,8 @@ npx e2e run
 
 ## Normativity
 
-When prose and `api.d.ts` disagree, `api.d.ts` wins. Every symbol exported
-from the package must appear in `api.d.ts` first; docs follow.
+These documents are the spec; the TypeScript blocks inside them are the
+normative surface. Every symbol the package exports must appear here first.
+[examples/](./examples/README.md) must stay consistent with the docs — it is
+the acid test that the API works for real suites; once the package exists,
+the examples compile against it in CI.

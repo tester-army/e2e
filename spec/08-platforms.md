@@ -1,9 +1,11 @@
 # 08 — Cross-Platform Targets
 
 `e2e` is a cross-platform testing framework. The same test can run on web,
-iOS, and Android. This works because the entire API — `agent.*`, `screen`
-queries, `app`, resources — is platform-agnostic by design. The only
-platform-specific fixture is `device` (mobile system utils).
+iOS, and Android — and on platforms that don't exist yet (Electron,
+desktop, TV): the platform set is open, extended by driver packages. This
+works because the entire API — `agent.*`, `screen` queries, `app`,
+resources — is platform-agnostic by design. The only platform-specific
+fixtures are capabilities (`web`, `device`) provided per driver.
 
 ## Mental model
 
@@ -59,6 +61,9 @@ With no `targets` config, a single implicit web target is used (`app.url` /
 ### Target shape
 
 ```ts
+/** Open vocabulary: official ids get autocomplete, any driver-provided id is valid. */
+type Platform = 'web' | 'ios' | 'android' | (string & {});
+
 type Target =
   | {
       name?: string;
@@ -83,12 +88,45 @@ type Target =
       app: string;                // .apk path or applicationId
       device?: string;            // emulator/device name
       os?: string;                // API level / version
+    }
+  // Any other platform is introduced by a driver package (09-drivers.md).
+  // Its target options live on the driver factory, fully typed by that
+  // package — not as loose fields here.
+  | {
+      name?: string;
+      /** Inferred from the driver when it supports exactly one platform. */
+      platform?: string;
+      driver: Driver;
     };
 ```
 
 Automation backends per target are switchable via `driver` — bundled ids or
 driver-package instances (`driver: hyperdrive()`), built on the public
 `e2e/driver` SPI. See 09-drivers.md. Defaults mean most users never set it.
+
+### Platforms are an open set
+
+`'web' | 'ios' | 'android'` are the official ids with bundled default
+drivers. Any other platform — Electron, desktop, TV — is introduced by a
+driver package, with **no core release required**:
+
+```ts
+import { electron } from 'e2e-driver-electron';
+
+export default defineConfig({
+  targets: [
+    { name: 'web', platform: 'web' },
+    { name: 'desktop', driver: electron({ main: 'out/main.js' }) }, // platform: 'electron'
+  ],
+});
+```
+
+The portable API is the fixed contract; the platform list is not. A new
+platform must implement the driver SPI (project `screen` queries onto its
+accessibility layer, provide observation and actions, pass `verifyDriver`)
+— and every portable test runs on it unchanged. String platform ids
+resolve to bundled drivers only; new platforms always arrive as driver
+instances.
 
 ## Fixtures per platform
 
@@ -99,9 +137,17 @@ driver-package instances (`driver: hyperdrive()`), built on the public
 | `screen` | ✅ | ✅ | ✅ | cross-platform deterministic queries — zero AI |
 | `web` | ✅ | ❌ | ❌ | web-only deterministic surface (navigation, css, network) |
 | `device` | ❌ | ✅ | ✅ | mobile system utils (push, permissions, location, keyboard) |
-| `platform` | ✅ | ✅ | ✅ | `'web' \| 'ios' \| 'android'` for branching |
+| `platform` | ✅ | ✅ | ✅ | the target's platform id, for branching |
 
-Resources (`email`, `credentials`, `webhook`, `phone`) are platform-agnostic.
+`agent`, `app`, and `screen` are universal — every driver must provide
+them. `web` and `device` are **driver capabilities, not platform
+hardcodes**: `web` is present wherever the driver provides the web surface
+(browsers — and, say, an Electron driver, which is Chromium underneath);
+`device` wherever it provides mobile system utils. Accessing a capability
+the current target's driver doesn't provide throws a clear, actionable
+error.
+
+Resources (`email`, `credentials`) are platform-agnostic.
 
 ## `screen` — cross-platform deterministic queries
 
@@ -140,9 +186,13 @@ type Screen = {
   getByTestId(id: string): Locator;   // last resort
 
   // cross-platform gestures (Maestro heritage; touch/trackpad on web)
-  swipe(options: { direction: ScrollDirection; momentum?: Momentum }): Promise<void>;
+  swipe(options: SwipeOptions): Promise<void>;
   scrollUntilVisible(target: Locator, options?: { direction?: ScrollDirection; timeout?: number }): Promise<void>;
 };
+
+type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+type Momentum = 'none' | 'slow' | 'fast';
+type SwipeOptions = { direction: ScrollDirection; momentum?: Momentum };
 ```
 
 - **Query priority** (Testing Library's, unchanged): role > label >
@@ -174,21 +224,58 @@ Roles are an e2e-owned vocabulary matched literally per platform:
 
 ### Locators
 
-The full surface is normative in `api.d.ts`; it deliberately covers the
-Playwright ∩ Maestro union — see 12-migration.md:
+Lazy, auto-retrying element handles (the backend's waiting/actionability
+mechanics). The surface deliberately covers the Playwright ∩ Maestro union —
+see 12-migration.md. `Locator` extends `Screen`: every locator is also a
+query scope (chaining = `within()`).
 
-- **Actions**: `tap`/`click`, `doubleTap`, `longPress`, `fill`, `clear`,
-  `press`, `check`/`uncheck`, `selectOption`, `focus`, `dragTo`,
-  `scrollIntoView`, `swipe`
-- **Reads**: `textContent`, `inputValue`, `getAttribute`, `isVisible`,
-  `isEnabled`, `isChecked`, `boundingBox`, `count`, `waitFor`
-- **Refinement**: `filter({ hasText, has })`, `first`/`last`/`nth`,
-  chaining (= `within()`)
+```ts
+type Locator = Screen & {
+  // Actions — actionability-checked: acting on hidden/disabled/covered
+  // elements fails with an actionable error, never a silent no-op.
+  tap(options?: { timeout?: number }): Promise<void>;
+  /** Alias of tap() for web muscle memory. */
+  click(options?: { timeout?: number }): Promise<void>;
+  doubleTap(options?: { timeout?: number }): Promise<void>;
+  longPress(options?: { duration?: number }): Promise<void>;
+  fill(value: string): Promise<void>;
+  clear(): Promise<void>;
+  press(key: string): Promise<void>;
+  check(): Promise<void>;
+  uncheck(): Promise<void>;
+  /** Native <select> on web; picker on mobile. */
+  selectOption(value: string | { label?: string; index?: number }): Promise<void>;
+  focus(): Promise<void>;
+  dragTo(target: Locator): Promise<void>;
+  scrollIntoView(): Promise<void>;
+  /** Swipe gesture scoped to this element. */
+  swipe(options: SwipeOptions): Promise<void>;
+
+  // Reads
+  textContent(): Promise<string | null>;
+  inputValue(): Promise<string>;
+  getAttribute(name: string): Promise<string | null>;
+  isVisible(): Promise<boolean>;
+  isEnabled(): Promise<boolean>;
+  isChecked(): Promise<boolean>;
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
+  count(): Promise<number>;
+  waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void>;
+
+  // Refinement
+  filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+  first(): Locator;
+  last(): Locator;
+  nth(index: number): Locator;
+};
+```
 
 Growth rule: a method joins `Locator` only if **all** platforms can project
 it faithfully onto their backend. Web-only capabilities go to `web`;
 mobile-only to `device`. There is no backend escape hatch — if a capability
-matters, it earns an e2e-owned primitive.
+matters, it earns an e2e-owned primitive. The vocabulary is governed here,
+by the official platforms; a new platform projects it (verified by the
+conformance suite), it doesn't fork it.
 
 ### `app` — the portable app handle
 
@@ -232,11 +319,70 @@ export default test('checkout with stubbed flags', { platforms: ['web'] }, async
 });
 ```
 
-Surface (normative in `api.d.ts`): navigation (`goto`, `reload`, `back`,
-`forward`, `url`, `waitForURL`), `locator(css)`, `frameLocator`, `evaluate`,
-network interception (`route`, `waitForResponse`), `cookies`/`setCookies`,
-`setViewport`, dialogs (`onDialog`), downloads (`waitForDownload`), raw
-`keyboard`/`mouse`. Plus `expect(web).toHaveURL/toHaveTitle`.
+```ts
+type Web = {
+  // navigation — relative URLs resolve against app.url
+  goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }): Promise<void>;
+  reload(): Promise<void>;
+  back(): Promise<void>;
+  forward(): Promise<void>;
+  url(): string;
+  title(): Promise<string>;
+  waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
+
+  /** CSS/XPath escape hatch — web-only by nature; prefer screen.getBy*. */
+  locator(selector: string): Locator;
+  /** Scoped queries inside an iframe. */
+  frameLocator(selector: string): Screen;
+
+  evaluate<T>(fn: string | (() => T)): Promise<T>;
+
+  // network interception
+  route(pattern: string | RegExp, handler: (route: WebRoute) => void | Promise<void>): Promise<void>;
+  unroute(pattern: string | RegExp): Promise<void>;
+  waitForResponse(pattern: string | RegExp, options?: { timeout?: number }): Promise<WebResponse>;
+
+  // browser state
+  cookies(): Promise<Cookie[]>;
+  setCookies(cookies: Cookie[]): Promise<void>;
+  setViewport(size: { width: number; height: number }): Promise<void>;
+
+  // events
+  onDialog(handler: 'accept' | 'dismiss' | ((dialog: { message: string; accept(text?: string): Promise<void>; dismiss(): Promise<void> }) => void)): void;
+  waitForDownload(trigger: () => Promise<void>): Promise<{ path: string; suggestedFilename: string }>;
+
+  // raw input (web only — no cross-platform equivalent)
+  keyboard: {
+    press(key: string): Promise<void>;
+    type(text: string): Promise<void>;
+  };
+  mouse: {
+    move(x: number, y: number): Promise<void>;
+    wheel(deltaX: number, deltaY: number): Promise<void>;
+    down(): Promise<void>;
+    up(): Promise<void>;
+  };
+};
+
+type WebRoute = {
+  request: { url: string; method: string; headers: Record<string, string>; postData?: string };
+  fulfill(response: { status?: number; json?: unknown; body?: string; headers?: Record<string, string> }): Promise<void>;
+  continue(): Promise<void>;
+  abort(): Promise<void>;
+};
+
+type WebResponse = {
+  url: string;
+  status: number;
+  headers: Record<string, string>;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+};
+
+type Cookie = { name: string; value: string; domain?: string; path?: string; expires?: number; httpOnly?: boolean; secure?: boolean; sameSite?: 'Strict' | 'Lax' | 'None' };
+```
+
+Plus `expect(web).toHaveURL/toHaveTitle` (03-assertions.md).
 
 The Maestro-side equivalents (app lifecycle, permissions, system gestures)
 live on `app` and `device`. Together, `screen` + `web` + `app` + `device`
@@ -290,10 +436,11 @@ export default test('settings are reachable', async ({ agent, platform }) => {
 });
 ```
 
-Type-level rule: `device` is typed as always present in fixtures, but
-accessing it on a web target throws a clear error telling you to add
-`platforms: […]`. (Alternative — conditional fixture types via
-`test.web()` / `test.mobile()` — was rejected: it forks the primitive.)
+Type-level rule: capability fixtures (`web`, `device`) are typed as always
+present, but accessing one the current target's driver doesn't provide
+throws a clear error telling you to add `platforms: […]`. (Alternative —
+conditional fixture types via `test.web()` / `test.mobile()` — was
+rejected: it forks the primitive.)
 
 ## How the agent works on mobile
 
@@ -315,3 +462,5 @@ per-target: video/screenshots on mobile, trace/video on web.
   portably today run on mobile without edits later.
 - **v1:** iOS + Android on local simulators/emulators (OSS).
 - **Cloud:** managed real-device fleet, OS/device matrix, parallel targets.
+- **Beyond:** new platforms (Electron, desktop, TV, …) arrive as driver
+  packages on the open platform model — the core never gates them.

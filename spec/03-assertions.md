@@ -4,7 +4,7 @@ Two assertion surfaces, deliberately split:
 
 - **`expect()`** — deterministic: UI state via `screen` locators
   (cross-platform), and eventually-consistent **world-state** via resources
-  (inboxes, webhook captures).
+  (inboxes).
 - **`agent.assert()`** — AI judgment of the current screen, in natural
   language.
 
@@ -49,7 +49,6 @@ await agent.assert('no visible regressions were introduced');
 agent.assert(assertion: string, options?: {
   timeout?: number;     // default 30_000
   screenshot?: boolean; // attach evidence to report, default true
-  soft?: boolean;       // record failure, continue the test. Default false
 }): Promise<void>;
 ```
 
@@ -57,8 +56,9 @@ Semantics:
 
 - The agent inspects the current screen (web page or native screen) and
   judges the assertion true/false.
-- Failure rejects with `AssertionError` containing the agent's reasoning and
-  a screenshot. The failure message must be human-readable, e.g.:
+- Failure rejects with `AgentError` (`code: 'ASSERTION_FAILED'`) containing
+  the agent's reasoning and a screenshot. The failure message must be
+  human-readable, e.g.:
 
 ```
 agent.assert: "the dashboard is visible" — FAILED
@@ -76,10 +76,8 @@ assertions about the world outside the screen:
 
 ```ts
 const inbox = email.inbox('signup');
-const hook = webhook.capture('candidate-created');
 
 await expect(inbox).toHaveEmail({ subject: /welcome/i });
-await expect(hook).toHaveReceived({ payload: { name: 'Ada' } });
 ```
 
 ### Matcher inventory (v0)
@@ -87,10 +85,10 @@ await expect(hook).toHaveReceived({ payload: { name: 'Ada' } });
 | Subject | Matcher | Meaning |
 |---|---|---|
 | `inbox` | `toHaveEmail(match)` | email matching `{ from?, subject?, … }` arrived |
-| `webhookCapture` | `toHaveReceived(match)` | app emitted an event with matching payload |
 
-Service-emulation matchers (`expect(stripe).toHavePayment(…)`, Slack, …) are
-roadmap — see roadmap/service-emulation.md.
+Further resource matchers (`expect(hook).toHaveReceived(…)` for webhook
+captures, `expect(stripe).toHavePayment(…)`, Slack, …) are roadmap — see
+roadmap/.
 
 Resource matchers are **eventually-consistent**: they poll until the state
 matches or `timeout` (default 15_000 ms) elapses. Options object as last arg:
@@ -108,15 +106,23 @@ await expect(inbox).not.toHaveEmail({ subject: /error/i });
 Negated eventually-consistent matchers wait a grace window (default 5_000 ms)
 and pass if the state never matched.
 
-## Soft assertions
+## `expect(value)` — plain data
+
+Values pulled out of resources or `agent.extract()` are plain data — assert
+them with the usual value matchers (`toBe`, `toEqual`, `toContain`, …):
 
 ```ts
-await expect.soft(screen.getByRole('status')).toHaveText('Saved');
-await agent.assert('the toast confirms the invite', { soft: true });
+const message = await inbox.email({ subject: /invitation/i });
+expect(message.from).toBe('noreply@example.com');
 ```
 
-Failures are recorded, the test continues, and the test is marked failed at
-the end.
+Implementation note (the Vitest move): plain-value matchers may delegate to
+a battle-tested engine (`@vitest/expect` — Jest's matcher API on a Chai
+core) rather than reimplementing deep equality and diff formatting. The
+engine is invisible: the only public style is `expect(x).toBe(…)` — never
+Chai chains. Locator/resource/web matchers are e2e-owned: async, retrying,
+driver-reading, evidence-attaching — no assertion library provides that.
+Custom matchers (`expect.extend`) are roadmap.
 
 ## Partial matching
 
@@ -124,7 +130,8 @@ All `match` objects are deep-partial: only specified keys are compared.
 Values may be literals, regexps, or predicate functions:
 
 ```ts
-await expect(hook).toHaveReceived({
-  payload: { name: 'Ada', role: /engineer/i },
+await expect(inbox).toHaveEmail({
+  from: 'noreply@example.com',
+  subject: /welcome/i,
 });
 ```

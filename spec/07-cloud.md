@@ -25,15 +25,15 @@ these primitives. Cloud will be rebuilt on top of them.
 | Browsers | local browsers | managed browser fleet, more OS/devices |
 | Mobile targets (iOS/Android) | local simulators/emulators (v1) | managed real-device fleet, OS/device matrix |
 | `email.inbox()` | local SMTP catcher / adapters | real deliverable managed inboxes |
-| `credentials.user()` | env / encrypted local store | team vault, rotation, audit |
-| `webhook.capture()` | localhost URL | public URLs |
-| `phone.number()` | ❌ (roadmap) | ✅ real numbers, SMS/WhatsApp |
+| `credentials.user()` | env / config | team vault, rotation, audit |
 | Agent path cache | local `.e2e/cache` | shared across team + CI, flake-aware invalidation |
 | Sessions (`test.setup`) | `.e2e/sessions` on disk | per-run, shared across workers, encrypted |
-| Artifacts | trace/screenshot/video on disk | hosted replays, retention, sharing |
-| `e2e open` | local inspector | hosted timeline w/ service events |
+| Artifacts | trace/screenshot/video + HTML report on disk | hosted replays, retention, sharing |
 | Scheduling/monitors | ❌ | ✅ cron runs, alerting |
 | Flake triage | retries | historical flake detection, quarantine |
+
+Roadmap resources (webhook captures, files, phone/SMS) follow the same
+local/managed split when they land — see roadmap/.
 
 ## Switching
 
@@ -62,38 +62,57 @@ const run = await cloud.runs.get(id);
 const runs = await cloud.runs.list({ project: 'my-project' });
 ```
 
+```ts
+type CloudRun = {
+  id: string;
+  project: string;
+  status: 'queued' | 'running' | 'passed' | 'failed';
+  url: string;            // hosted replay
+  startedAt: Date;
+  finishedAt?: Date;
+};
+```
+
 Kept out of the root export deliberately — day-one users never see it.
 
 ## v0 ship list (OSS)
 
+The deliberately small core. Everything here must be excellent; everything
+else waits.
+
 Runner:
-- `test()`, modifiers, hooks, `describe` (+ options, serial), `step()`
-- `test.setup()` + sessions, `test.each`, `skipIf`/`failsIf`,
-  `globalSetup`/`globalTeardown`, `--shard`
+- `test()`, `skip`/`only`, hooks, `describe` (+ options, serial)
+- `test.setup()` + sessions
+- Derived step timeline (no `step()` wrapper — steps come from the calls)
 
 Agent:
-- `agent.act()`, `agent.assert()`, `agent.login()`, `agent.extract()`
-- Instant actions (`agent.tap/type/scroll/longPress/waitFor`)
+- `agent.act()` (+ typed `schema` output), `agent.assert()`,
+  `agent.login()`, `agent.extract()`
+- Instant actions (`agent.tap/click/type/scroll/scrollTo/longPress/waitFor`)
 - Locate + path caching, typed `AgentError.code`
 
 Deterministic layer:
 - `screen` queries + `expect(locator)` matchers (web projection in v0)
+- `web` surface + `expect(web)` matchers
 - Cross-platform type surface (`app`, `screen`, `platform`, `targets`,
   `platforms`) — web execution only in v0
 - Driver SPI (`e2e/driver`): `defineDriver`, `verifyDriver` conformance
   suite, `e2e/playwright` as the reference driver
 
 Resources:
-- `email.inbox().code()/.link()`, `credentials.user()`, `webhook.capture()`, `files.from()`
-- `expect()` resource matchers
+- `email.inbox()` (`.code()`/`.link()`), `credentials.user()` (env/config)
+- `expect(inbox).toHaveEmail()`
 
 Tooling:
-- `defineConfig()`
-- CLI: `init`, `run`, `dev`, `open`, `credentials`
+- `defineConfig()` (+ `e2e.cloud.config.ts` overlay)
+- CLI: `init`, `run`
 - GitHub Actions examples
 
-Explicitly **not** in v0: iOS/Android execution (v1), PR testing, service
-emulation (Stripe/Slack/OAuth), phone/SMS, scheduling. See spec/roadmap/.
+Explicitly **not** in v0 (see spec/roadmap/): iOS/Android execution (v1),
+webhook/files/phone resources, `test.each`/`skipIf`/`failsIf`/`fixme`/
+`test.extend`, `globalSetup`/`globalTeardown`, sharding, watch mode
+(`e2e dev`), inspector (`e2e open`), credentials store CLI, soft
+assertions, PR testing, service emulation, scheduling.
 
 ## Positioning line
 

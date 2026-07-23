@@ -1,7 +1,7 @@
 # Roadmap — Pull Request Testing
 
-> **Status: roadmap.** Not part of the v0 spec or `api.d.ts`. This draft
-> predates several core-API changes and will be re-validated before adoption.
+> **Status: roadmap.** Not part of the v0 spec. This draft predates several
+> core-API changes and will be re-validated before adoption.
 
 PR testing is a first-class primitive, not GitHub Actions glue. The SDK
 exposes PR metadata as a resource and supports three modes: static tests on

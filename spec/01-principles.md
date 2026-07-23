@@ -90,9 +90,9 @@ config line (see 09-drivers.md).
 
 ### 6. Resources, not plumbing
 
-Email inboxes, credentials, webhook captures, and phone numbers are declared
-as resources with clean handles. Users never poll IMAP or parse webhook
-payload plumbing by hand.
+Email inboxes and credentials are declared as resources with clean handles.
+Users never poll IMAP or wire OTP plumbing by hand. The same model extends
+to webhook captures, files, and phone numbers post-v0 (roadmap).
 
 ### 7. Local-first, cloud-better
 
@@ -120,8 +120,10 @@ the agentic API (`agent.*`, `app.*`, resources) and the
 deterministic one (`screen.getByRole(…).tap()`, Testing Library-style) are
 platform-agnostic — the React Native principle: one set of primitives, each
 platform implements them natively. Only `device` (mobile system utils) and
-platform-specific flows constrain a test to a platform. See 08-platforms.md
-and 09-drivers.md.
+platform-specific flows constrain a test to a platform. And the platform
+set itself is **open**: web/iOS/Android are official, but a driver package
+can introduce Electron, desktop, or TV without a core release. See
+08-platforms.md and 09-drivers.md.
 
 Testing Library's guiding principle carries over: *the more your tests
 resemble the way your software is used, the more confidence they give you.*
@@ -158,3 +160,8 @@ optional for the happy path.
 - Agent verbs are plain English: `agent.act()`, `agent.login()`,
   `agent.assert()`.
 - Test files end in `.e2e.ts`.
+- **Boring names on purpose.** The deterministic surface deliberately
+  mirrors Playwright and Testing Library vocabulary (`getByRole`, `fill`,
+  `toBeVisible`, …). Humans migrate by muscle memory — and models trained
+  on those ecosystems emit near-valid e2e code without knowing e2e exists.
+  Familiarity is also AI-legibility (see 12-migration.md).

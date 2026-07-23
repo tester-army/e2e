@@ -1,13 +1,13 @@
 # 04 — Resources
 
-Resources are managed test-world primitives: inboxes, credentials, webhooks,
-phone numbers. They resolve to a local adapter or a managed Cloud backend
-depending on config — the test code is identical.
+Resources are managed test-world primitives. v0 ships two: **email inboxes**
+and **credentials**. They resolve to a local adapter or a managed Cloud
+backend depending on config — the test code is identical.
 
 All resource factories are importable from the root:
 
 ```ts
-import { email, credentials, webhook, phone } from 'e2e';
+import { email, credentials } from 'e2e';
 ```
 
 ## `email` — inboxes
@@ -106,8 +106,7 @@ code by default — handles are passed to `agent.login()` or form fills.
 type Credential = {
   name: string;          // 'admin'
   username: string;      // readable (email/login)
-  /** Password is write-only by default; reveal() requires config opt-in. */
-  reveal(): Promise<{ username: string; password: string }>;
+  // the password is write-only: filled host-side, never readable in test code
 };
 ```
 
@@ -115,8 +114,7 @@ type Credential = {
 
 1. `E2E_USER_<NAME>_USERNAME` / `E2E_USER_<NAME>_PASSWORD` env vars
 2. `credentials` block in `e2e.config.ts` (values may reference env)
-3. Encrypted local store (`npx e2e credentials set admin`)
-4. TesterArmy Cloud vault (when `runner: 'cloud'`)
+3. TesterArmy Cloud vault (when `runner: 'cloud'`)
 
 ### Usage
 
@@ -135,93 +133,13 @@ export default test('admin can invite teammate', async ({ app, agent }) => {
 });
 ```
 
-## `webhook` — backend event capture
+## Post-v0 resources
 
-Assert that your app emitted an event to the outside world, or feed events in.
-
-```ts
-const callback = webhook.capture('candidate-created');
-```
-
-- The capture exposes a URL your app (or emulated service) can be pointed at.
-- In local mode this is a localhost endpoint; in Cloud it is a public URL.
-
-```ts
-type WebhookCapture = {
-  url: string;
-
-  /** Wait for the next matching delivery. */
-  waitFor(match?: DeepPartial<unknown>, options?: { timeout?: number }): Promise<WebhookDelivery>;
-
-  /** All deliveries so far. */
-  deliveries(): Promise<WebhookDelivery[]>;
-};
-
-type WebhookDelivery = {
-  headers: Record<string, string>;
-  body: unknown;
-  receivedAt: Date;
-};
-```
-
-```ts
-const hook = webhook.capture('candidate-created');
-
-await agent.act('create a candidate named Ada');
-
-const delivery = await hook.waitFor({ type: 'candidate.created' });
-await expect(hook).toHaveReceived({ payload: { name: 'Ada' } });
-```
-
-## `files` — file fixtures
-
-File handles for upload flows. The agent can only use files explicitly
-passed to a step — never files it picks itself (see 10-determinism.md):
-
-```ts
-import { test, files } from 'e2e';
-
-const resume = files.from('fixtures/resume.pdf');
-
-await agent.act('apply for the job and attach the resume', {
-  files: [resume],
-});
-```
-
-```ts
-type FileRef = {
-  readonly name: string;
-  readonly mimeType: string;
-  /** Optional description the agent uses when deciding how/where to use the file. */
-  readonly context?: string;
-};
-
-files.from(path: string, options?: { name?: string; mimeType?: string; context?: string }): FileRef;
-
-/** Agent-generated context for all registered files. Optional; cached. */
-files.index(): Promise<void>;
-```
-
-`context` improves agent file handling ("signed NDA, PDF, 2 pages" beats a
-bare filename). Set it manually, or call `files.index()` once to have the
-agent inspect registered files and generate context; results are cached
-alongside the agent cache.
-
-Delivery supports direct `<input type=file>` writes and staged mode for
-native/File System Access pickers. In Cloud, files can also resolve from
-managed project fixtures.
-
-## `phone` — SMS/voice numbers (Cloud-first, post-v0)
-
-Reserved API shape; not shipped in v0 OSS.
-
-```ts
-const number = phone.number('candidate');
-
-number.address;                       // E.164 string
-await number.sms({ timeout: 60_000 }); // next SMS
-await number.code();                   // extract OTP from next SMS
-```
+`webhook.capture()` (backend event capture), `files.from()` (upload
+fixtures), and `phone.number()` (SMS/OTP) are deliberately not in the v0
+core — see [roadmap/](./roadmap/README.md) for the reserved designs. The
+resource model above (labels, per-test isolation, local/managed backends)
+is how they will ship.
 
 ## Lifecycle & isolation
 

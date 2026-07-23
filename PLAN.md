@@ -30,8 +30,9 @@ is its checklist (every ✅ row must work; P1 rows are the fast-follow list).
 - `defineConfig` (+ `e2e.cloud.config.ts` overlay), `APP_URL` happy path — [05](./spec/05-config.md)
 - CLI: `e2e run`, `e2e init` — [06](./spec/06-cli.md)
 
-Deliberately deferred within phase: sessions/`test.setup`, `test.each`,
-sharding, `e2e dev`, `e2e open`, resources beyond `credentials` (env-based).
+Deliberately deferred within phase: sessions/`test.setup` and the `email`
+resource land in Phase 3; `test.each`, sharding, `e2e dev`, `e2e open`,
+webhook/files resources are post-v0 ([spec/roadmap](./spec/roadmap/README.md)).
 
 **Exit: (a) a Playwright test of moderate complexity ports 1:1 using the
 migration table with no dead ends; (b) a signup-style test with mixed
@@ -60,7 +61,8 @@ human-readable in a PR.**
 - Fix what hurts: flakiness, error messages, report quality, CI ergonomics
 - Add what the dogfood forces (likely: `test.setup` + sessions, `email`
   inbox resource for signup flows — [11](./spec/11-lifecycle.md),
-  [04](./spec/04-resources.md))
+  [04](./spec/04-resources.md); `e2e dev` if the authoring loop hurts —
+  the Vitest lesson says the inner loop is the retention engine)
 
 **Exit: TesterArmy CI gates on e2e tests for two weeks without the team
 routing around it.**
@@ -103,6 +105,39 @@ managed sandbox in Cloud, same file.**
 
 ---
 
-Principles for the build-out: `api.d.ts` stays normative (implement to it,
+## The Vitest playbook
+
+Vitest displaced Jest in ~3 years (State of JS 2025: ~96% vs <70%
+satisfaction; the greenfield default). Its mechanics, mapped onto
+e2e-vs-Playwright — with the caveat that Playwright is a healthy incumbent
+(91% satisfaction), so the fight is for the authoring layer, never the
+automation engine:
+
+1. **Absorb the engine, don't fight it.** Vitest reused Vite's pipeline
+   instead of rebuilding Babel. e2e ships Playwright as the default driver
+   — its excellence becomes ours; the driver SPI keeps us unmarried.
+2. **Attack structural pain, not features.** Jest's CJS core couldn't
+   follow ESM. Playwright's selector-first, web-only, plumbing-heavy model
+   can't follow agent-native execution, cross-platform targets, or managed
+   resources without becoming a different product. Position there, only
+   there.
+3. **Compatibility makes switching an afternoon.** Vitest's Jest-compat API
+   + codemods meant migrations were mechanical, and coexistence (new tests
+   first, dual CI, sunset) de-risked adoption.
+   [12-migration.md](./spec/12-migration.md) is our version; an
+   `e2e migrate` codemod is roadmap. Bonus: models trained on Playwright
+   emit near-valid e2e code — compat neutralizes "the AI doesn't know it".
+4. **The inner loop is the retention engine.** Vitest's ~100ms watch reruns
+   produced ~98% retention, and retention produced the defaults. Our
+   equivalents: instant actions replaying from cache as `screen` calls,
+   warm sessions, and eventually `e2e dev`. Watch Phase 3 for this.
+5. **Zero config, deletion as the reward.** TS/ESM-native runner, no
+   transform ceremony, auto browser install — migrating from Playwright
+   should mean deleting config, not porting it.
+6. **Distribution is defaults.** Vitest won via framework starter
+   templates. Our channel is coding agents: `e2e init` writing AGENTS.md
+   guidance, skills, llms.txt, machine-readable reports.
+
+Principles for the build-out: the spec stays normative (implement to it,
 change it deliberately); every phase lands with the dogfood suite green;
 cut scope before cutting quality.

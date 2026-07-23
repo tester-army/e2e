@@ -1,38 +1,17 @@
-# 11 — Lifecycle, Groups, Sessions, Parameterization
+# 11 — Lifecycle, Groups, Sessions
 
 The table-stakes primitives every serious framework has, adapted to e2e's
-model.
+model — kept to the v0 minimum.
 
 ## Setup and teardown
 
-Four layers, from widest to narrowest scope:
+Three layers, from widest to narrowest scope:
 
 | Layer | API | Runs |
 |---|---|---|
-| Global | `globalSetup` / `globalTeardown` in config | once per run, before/after everything |
 | Setup tests | `test.setup()` | once per run, before dependent tests; produce sessions |
 | File/group | `test.beforeAll` / `test.afterAll` | once per file or group |
 | Test | `test.beforeEach` / `test.afterEach` | around every test |
-
-### Global setup/teardown
-
-```ts
-// e2e.config.ts
-export default defineConfig({
-  globalSetup: './e2e.setup.ts',
-  globalTeardown: './e2e.teardown.ts',
-});
-```
-
-```ts
-// e2e.setup.ts — plain async function, full access to resources
-export default async function () {
-  await seedDatabase();
-}
-```
-
-Runs in one process before workers start. For app state seeding, external
-provisioning, service warmup. Teardown always runs, even on failure/abort.
 
 ### Setup tests — `test.setup()`
 
@@ -97,8 +76,10 @@ test.describe('billing', { tags: ['billing'], session: 'admin' }, () => {
 });
 ```
 
-- Group options (`tags`, `session`, `platforms`, `timeout`, `retries`) apply
-  to every test inside; test-level options override.
+- Group options (`tags`, `session`, `platforms`, `timeout`, `retries`,
+  `agentContext`, `serial`) apply to every test inside; test-level options
+  override — except `tags`, which union, and `agentContext`, which
+  concatenates.
 - Groups nest; hooks declared inside a group scope to it.
 
 ### Serial mode
@@ -116,82 +97,23 @@ test.describe('onboarding wizard', { serial: true }, () => {
 - This is the escape hatch for genuinely sequential flows — independent
   tests stay the default and parallelize freely.
 
-## Parameterization — `test.each`
+## Deferred to post-v0
 
-```ts
-test.each([
-  { plan: 'starter', price: 900 },
-  { plan: 'pro', price: 2900 },
-  { plan: 'enterprise', price: 9900 },
-])('user can buy the $plan plan', async ({ agent }, { plan, price }) => {
-  await agent.act(`buy the ${plan} plan with the test card`);
-  await agent.assert(`the receipt shows $${price / 100} charged`);
-});
-```
+Designed but deliberately out of the v0 core (see roadmap/ for the parked
+shapes):
 
-- Each case is a separate test result; `$key` interpolation in titles.
-- Cases must be statically known (no async case factories) so listing/
-  sharding stays deterministic.
-
-## Conditional skips
-
-```ts
-test.skipIf(!process.env.BILLING_ENABLED)('checkout works', async ({ agent }) => { /* … */ });
-test.failsIf(process.env.CI)('flaky on CI, tracked in #123', /* … */);
-```
-
-- `skipIf(condition)` — skip with the condition source as reason.
-- `failsIf(condition)` — expected failure: passes report as "expected fail",
-  unexpected pass fails the test (keeps known bugs visible without red CI).
-
-## Custom fixtures — `test.extend()` (reserved, post-v0)
-
-Playwright-proven model, reserved shape:
-
-```ts
-// fixtures.ts
-import { test as base } from 'e2e';
-
-export const test = base.extend<{ tenant: Tenant }>({
-  tenant: async ({}, use) => {
-    const tenant = await createTenant();      // setup
-    await use(tenant);                        // provide to test
-    await deleteTenant(tenant.id);            // teardown, always runs
-  },
-});
-```
-
-Fixtures are lazy (created only if the test uses them) and torn down in
-reverse order. This is also the intended home for the app-state seeding
-story (per-test tenants, DB fixtures).
-
-## Sharding
-
-```bash
-npx e2e run --shard 1/4
-```
-
-Deterministic test-to-shard assignment based on the full test list (file +
-title + target). GitHub Actions matrix example ships in docs. Cloud runner
-shards automatically — `--shard` is for self-hosted CI.
-
-## Watch mode
-
-```bash
-npx e2e dev            # watch files, re-run affected tests, headed browser
-npx e2e dev tests/checkout.e2e.ts
-```
-
-Dev loop: keeps the browser/app alive between runs, re-runs on file change,
-`agent` path cache warm. This is the local authoring experience; `run`
-stays the CI-shaped command.
-
-## Considered and deferred
-
-- **Network interception**: a cross-platform request-routing primitive may
-  come later if it earns its place; service emulation (roadmap) is the
-  intended answer for third parties.
+- **`globalSetup` / `globalTeardown`** — config-level run hooks for DB
+  seeding and provisioning.
+- **`test.each`** — parameterized tests with `$key` title interpolation.
+- **`test.skipIf` / `test.failsIf` / `test.fixme`** — conditional skips and
+  expected failures.
+- **`test.extend()`** — Playwright-style custom fixtures with lazy
+  setup/teardown; the intended home for per-test tenants and DB fixtures.
+- **Sharding (`--shard n/total`)** — deterministic CI fan-out.
+- **Watch mode (`e2e dev`)** — the local authoring loop.
+- **Network interception (cross-platform)**: may come later if it earns its
+  place; service emulation (roadmap) is the intended answer for third
+  parties.
 - **Clock control**: valuable (trials expiring, cron UIs); needs a
-  cross-driver design. Roadmap.
-- **Custom reporter SPI**: config `reporters` accepts built-ins now
-  (`list`, `json`, `github`); a documented SPI comes post-v0.
+  cross-driver design.
+- **Custom reporter SPI**: v0 ships `list` and `json` built-ins only.

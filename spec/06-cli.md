@@ -2,6 +2,25 @@
 
 Binary name: `e2e` (via `npx e2e …`).
 
+## DX guarantees
+
+The Vitest bar, adopted wholesale:
+
+- **TS + ESM native.** Test files are TypeScript/ESM and just run — no
+  Babel, no transform config, no `tsconfig` ceremony. There is no
+  `transform` key anywhere in e2e.
+- **Zero to first green run in minutes.** `npx e2e init && npx e2e run`
+  works with only `APP_URL` set: browsers are provisioned automatically on
+  first run (no separate install step), the example test passes, artifacts
+  land in `.e2e/`.
+- **No API key required for the deterministic tier.** Suites using only
+  `screen`/`web`/`expect` run fully offline. `agent.*` calls without a
+  configured model fail upfront with a clear setup message — never
+  mid-suite.
+- **Migrating means deleting config, not porting it.** A Playwright
+  project adopting e2e should end up with *less* configuration than it
+  started with.
+
 ## Commands
 
 ### `e2e init`
@@ -12,8 +31,6 @@ Scaffold in an existing project:
 - creates `tests/example.e2e.ts` (the signup happy path)
 - adds `.gitignore` entries for artifacts
 - prints next steps (`npx e2e run`)
-
-Flags: `--template <basic|email-signup>`.
 
 ### `e2e run [files…]`
 
@@ -34,52 +51,18 @@ npx e2e run --cloud
 | `--headed` | run with visible browser |
 | `--retries <n>` | override retries |
 | `--workers <n>` | override parallelism |
-| `--reporter <list\|json\|github>` | output format |
+| `--reporter <list\|json>` | output format |
 | `--artifacts <dir>` | artifact output dir (default `.e2e/artifacts`) |
 | `--no-agent-cache` | ignore cached agent action paths, force fresh reasoning |
-| `--shard <n/total>` | deterministic sharding for CI matrices (see 11-lifecycle.md) |
 
-Behavior: boots `app.command` if configured, runs tests, writes artifacts,
-exits non-zero on failure.
+Behavior: boots `app.command` if configured, runs tests, writes artifacts
+(including the HTML step-timeline report), exits non-zero on failure.
 
-### `e2e dev`
+### Post-v0 commands
 
-Watch mode — the local authoring loop (see 11-lifecycle.md): headed browser,
-sessions kept alive between runs, re-runs affected tests on file change,
-warm agent path cache.
-
-```bash
-npx e2e dev
-npx e2e dev tests/checkout.e2e.ts
-```
-
-### `e2e open`
-
-Open the local report/inspector UI for the last run: timeline of agent
-steps, screenshots, traces, and resource events (emails, webhook
-deliveries) correlated with app actions.
-
-```bash
-npx e2e open
-npx e2e open --run <id>
-```
-
-In Cloud mode, prints the hosted replay URL instead.
-
-### `e2e credentials`
-
-Manage the encrypted local credential store:
-
-```bash
-npx e2e credentials set admin
-npx e2e credentials list
-npx e2e credentials rm admin
-```
-
-### `e2e login` / `e2e logout`
-
-Authenticate the CLI with TesterArmy Cloud (device flow). `TESTERARMY_TOKEN`
-env always wins over stored login (CI-friendly).
+`e2e dev` (watch mode), `e2e open` (report/inspector UI), `e2e credentials`
+(encrypted local store), and `e2e login` (Cloud auth; `TESTERARMY_TOKEN` env
+covers CI) are deliberately not in the v0 core — see roadmap/.
 
 ## Exit codes
 
@@ -95,5 +78,4 @@ env always wins over stored login (CI-friendly).
 - Default reporter is a clean live list (Vitest-style), agent steps rendered
   as an indented narrative under each test.
 - Failures print: agent's explanation, last screenshot path, artifact dir,
-  and a copy-pasteable `npx e2e open` hint.
-- `--reporter github` emits workflow annotations.
+  and the path to the HTML step-timeline report.

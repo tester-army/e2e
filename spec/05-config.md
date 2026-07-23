@@ -46,10 +46,6 @@ type E2EConfig = {
   /** Test file glob(s). Default: 'tests/**/*.e2e.ts'. */
   tests?: string | string[];
 
-  /** Run once before/after everything (see 11-lifecycle.md). */
-  globalSetup?: string;
-  globalTeardown?: string;
-
   /** Per-test timeout ms. Default: 120_000. */
   timeout?: number;
 
@@ -59,8 +55,8 @@ type E2EConfig = {
   /** Parallel workers. Default: CPU-based locally, 1 in CI. */
   workers?: number;
 
-  /** What to save on failure (always) and success (opt-in via object form). */
-  artifacts?: Array<'trace' | 'screenshot' | 'video' | 'har'>;
+  /** What to save on failure. Default: ['trace', 'screenshot']. */
+  artifacts?: Array<'trace' | 'screenshot' | 'video'>;
 
   /** Cross-platform query layer (see 08-platforms.md). */
   screen?: {
@@ -89,7 +85,6 @@ type E2EConfig = {
   /** Resource backends. Default: everything 'local'. */
   resources?: {
     email?: 'local' | 'managed';
-    phone?: 'managed';
   };
 
   /** Cloud settings (used when runner: 'cloud'). */

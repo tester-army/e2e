@@ -20,7 +20,6 @@ All three tiers are cross-platform.
 | assert world | — | — | `expect(inbox).toHaveEmail(…)` — always deterministic |
 | extract | `agent.extract('cart total', { schema })` | — | `screen.getByTestId('total').textContent()` |
 | login | `agent.login(credentials.user('admin'))` | `agent.type('password field', credential)` | scripted fill via `screen` |
-| upload | `agent.act('attach the resume', { files: […] })` | — | — (files delivery is the primary path) |
 | evidence | auto-screenshots per step | — | `app.screenshot('label')` |
 
 The rule of thumb: `act()` when you know the goal, instant actions when you
@@ -53,70 +52,31 @@ decomposes into a timeline of named steps with status, duration, and
 evidence — which is all a dashboard needs to render, no dedicated DSL
 required.
 
-## `step()` — report structure
+## Steps — derived, never declared
 
-Group calls into named steps; reports and the Cloud timeline render tests as
-a list of steps with status, duration, and evidence:
+Every `agent.*` call, `screen`/`web` action, resource `expect()`, and
+`app.*` call is a **step**: status, duration, evidence, one line in the
+report and the Cloud timeline. Labels are derived from the call itself:
 
-```ts
-import { test, step } from 'e2e';
-
-export default test('signup', async ({ app, agent }) => {
-  await step('open the app', async () => {
-    await app.open('/');
-  });
-
-  await step('create an account', async () => {
-    await agent.act('sign up as a new user');
-  });
-
-  await agent.assert('the dashboard is visible'); // top-level calls are implicit steps
-});
+```
+✓ app.open('/')
+✓ act "sign up as a new user"                    2 model steps · 4.1s
+✓ assert "the dashboard is visible"              screenshot
 ```
 
-```ts
-step<T>(title: string, fn: () => Promise<T>): Promise<T>;
-```
-
-Every `agent.*` call, `expect()` on resources, and `app.screenshot()` outside
-an explicit `step()` is reported as its own implicit step — a plain SDK test
-still renders as a clean step timeline without ceremony.
-
-## Files
-
-File fixtures are a resource. The agent can only use files explicitly given
-to a step — it never picks files on its own (host-side narrowing):
-
-```ts
-import { test, files } from 'e2e';
-
-export default test('candidate uploads resume', async ({ agent }) => {
-  const resume = files.from('fixtures/resume.pdf');
-
-  await agent.act('apply for the job and attach the resume', {
-    files: [resume],
-  });
-});
-```
-
-```ts
-type FileRef = {
-  readonly name: string;
-  readonly mimeType: string;
-};
-
-files.from(path: string, options?: { name?: string; mimeType?: string }): FileRef;
-```
-
-Delivery handles both direct `<input type=file>` writes and staged mode for
-native/File System Access pickers.
+There is deliberately no `step()` wrapper API. It would be the only
+primitive whose entire effect is presentation, and it solves Playwright's
+problem (`click('#btn-3')` needs narration), not ours — natural-language
+calls self-document, and `screen` queries read as well as they run. If
+real suites show timeline noise around long deterministic sequences, a
+closure-less section marker is the roadmap candidate — not a wrapper.
 
 ## Evidence screenshots
 
 `app.screenshot(label?)` captures **evidence for the report** on any
 platform. It is not agent observation — the agent observes through the
 driver's semantic tree + its own screenshots automatically. Returns the
-artifact path; attached to the current step in the report.
+artifact path; appears as its own step in the report timeline.
 
 ## Execution model: code drives, agents are bounded
 
@@ -272,6 +232,14 @@ type AgentErrorCode =
   | 'STEP_NO_CONCLUSION'
   // product — the app is broken (default for assertion failures)
   | 'ASSERTION_FAILED';
+
+class AgentError extends Error {
+  code: AgentErrorCode;
+  steps: AgentStep[];
+  /** The agent's own explanation of what went wrong. */
+  explanation: string;
+  screenshot?: string;
+}
 ```
 
 Setup errors are reported as *infrastructure* (CLI exit code 2/3), never as

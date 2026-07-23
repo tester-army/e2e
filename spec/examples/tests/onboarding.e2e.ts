@@ -1,4 +1,4 @@
-import { test, step } from 'e2e';
+import { test } from 'e2e';
 import { z } from 'zod';
 
 /**
@@ -18,9 +18,7 @@ test.describe('workspace onboarding wizard', { serial: true, session: 'member', 
   });
 
   test('step 2: generate an invite link', async ({ agent }) => {
-    await step('generate link', async () => {
-      await agent.act('generate a shareable invite link for teammates');
-    });
+    await agent.act('generate a shareable invite link for teammates');
 
     const data = await agent.extract('the invite link shown in the dialog', {
       schema: z.object({ inviteLink: z.string().url() }),

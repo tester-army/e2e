@@ -1,7 +1,7 @@
 # Roadmap — Service Emulation
 
-> **Status: roadmap.** Not part of the v0 spec or `api.d.ts`. This draft
-> predates several core-API changes and will be re-validated before adoption.
+> **Status: roadmap.** Not part of the v0 spec. This draft predates several
+> core-API changes and will be re-validated before adoption.
 
 Real E2E tests are hard because of the world around the app: Stripe, Slack,
 OAuth, webhooks, email. `e2e` ships local, stateful service emulators with

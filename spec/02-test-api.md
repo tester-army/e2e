@@ -40,9 +40,10 @@ type TestOptions = {
   only?: boolean;
   /**
    * Platforms this test can run on. Default: all configured targets.
-   * Required implicitly when using `device` (mobile) or platform-specific flows.
+   * Required implicitly when using `device` (mobile) or platform-specific
+   * flows. Open vocabulary — driver-provided ids work (08-platforms.md).
    */
-  platforms?: Array<'web' | 'ios' | 'android'>;
+  platforms?: Platform[];
   /** Start from a saved session (see 11-lifecycle.md). */
   session?: string;
   /** Ambient agent context for this test, appended to config agent.context. */
@@ -55,12 +56,11 @@ type TestOptions = {
 ```ts
 test.skip('title', fn);          // always skipped
 test.only('title', fn);          // focus locally
-test.fixme('title', fn);         // known-broken, reported but not failing CI
 test.setup('title', fn);         // setup test producing sessions (see 11-lifecycle.md)
-test.each(cases)('title', fn);   // parameterized (see 11-lifecycle.md)
-test.skipIf(cond)('title', fn);  // conditional skip
-test.failsIf(cond)('title', fn); // expected failure under condition
 ```
+
+Post-v0 (see roadmap): `test.fixme`, `test.each`, `test.skipIf`/`failsIf`,
+`test.extend`.
 
 ## Fixtures
 
@@ -72,10 +72,10 @@ type TestFixtures = {
   agent: Agent;            // AI agent bound to the current target
   app: App;                // portable app handle: open/restart/deepLink/screenshot
   screen: Screen;          // deterministic cross-platform queries — zero AI
-  platform: Platform;      // 'web' | 'ios' | 'android'
+  platform: Platform;      // current target's platform id ('web' | 'ios' | 'android' | driver-provided)
   session: Session;        // save/restore app state (see 11-lifecycle.md)
-  web: Web;                // web-only deterministic surface — web targets only
-  device: Device;          // mobile system utils — mobile targets only
+  web: Web;                // web capability — targets whose driver provides it
+  device: Device;          // mobile system utils — targets whose driver provides it
 };
 ```
 
@@ -132,8 +132,7 @@ agent.act(instruction: string, params?: AgentParams, options?: AgentOptions): Pr
 - `params` — structured values the agent may use. Values are passed verbatim
   (never invented): emails, codes, names, form data. Values may also be
   `Credential` handles (filled host-side by reference; the raw secret never
-  enters model context) and `FileRef`s (the agent can only use files
-  explicitly given here — see 10-determinism.md).
+  enters model context).
 - `options.timeout` — max ms for the whole action.
 - `options.maxSteps` — action budget; on exhaustion the step is forced to
   conclude with `AgentError.code = 'STEP_BUDGET_EXHAUSTED'`.
@@ -149,10 +148,6 @@ await agent.act('create an account using this email', {
 
 await agent.act('enter the verification code', { code });
 
-await agent.act('apply for the job and attach the resume', {
-  files: [files.from('fixtures/resume.pdf')],
-});
-
 // typed structured output
 const { data } = await agent.act('add the three cheapest items to the cart', undefined, {
   schema: z.object({ addedItems: z.array(z.string()), total: z.number() }),
@@ -166,7 +161,14 @@ Returns `AgentResult`:
 type AgentResult<T = Record<string, unknown>> = {
   ok: true;
   steps: AgentStep[];      // what the agent actually did (for reports/replay)
-  data?: T;                // extracted values; typed when a schema is passed
+  data?: T;                // extracted values; present + typed when a schema is passed
+};
+
+type AgentStep = {
+  action: string;          // human-readable, e.g. 'tap "Sign up"'
+  screenshot?: string;     // artifact path
+  startedAt: Date;
+  durationMs: number;
 };
 ```
 
@@ -238,13 +240,10 @@ looks like.
 ```ts
 const admin = credentials.user('admin');
 await agent.login(admin);
-
-// or: sign up fresh with a temporary inbox (OTP/magic links handled)
-await agent.login({ temporaryEmail: true });
 ```
 
 ```ts
-agent.login(user: Credential | { temporaryEmail: true }, options?: AgentOptions): Promise<AgentResult>;
+agent.login(user: Credential, options?: AgentOptions): Promise<AgentResult>;
 ```
 
 The credential is **pinned** for the step: the agent cannot substitute a
@@ -267,19 +266,14 @@ agent.extract<T>(instruction: string, options: { schema: StandardSchema<T>; time
 
 Schema is any Standard Schema (zod, valibot, arktype).
 
-## `step()` — report structure
+## Steps — the report structure, for free
 
-Group calls into named steps for reports and the Cloud timeline (see
-10-determinism.md). Ungrouped `agent.*`/service-matcher calls become
-implicit steps automatically.
-
-```ts
-import { test, step } from 'e2e';
-
-await step('create an account', async () => {
-  await agent.act('sign up as a new user');
-});
-```
+There is no `step()` wrapper. Every `agent.*` call, `screen` action,
+resource `expect()`, and `app.screenshot()` is a **step** in the report
+timeline automatically, labeled by the call itself — `agent.act('sign up
+as a new user')` is its own report line. Natural-language-first calls
+self-document; no narration API needed (see 10-determinism.md). An
+explicit grouping marker is roadmap if real suites show timeline noise.
 
 ## Hooks
 
