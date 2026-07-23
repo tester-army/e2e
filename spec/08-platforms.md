@@ -420,7 +420,7 @@ type Device = {
   setLocation(lat: number, lng: number): Promise<void>;
   setPermission(permission: 'camera' | 'location' | 'notifications' | 'contacts', state: 'allow' | 'deny'): Promise<void>;
 
-  /** Push notification injection (simulator/emulator; managed devices in Cloud). */
+  /** Push notification injection (simulator/emulator). */
   pushNotification(payload: Record<string, unknown>): Promise<void>;
 };
 ```
@@ -476,6 +476,6 @@ per-target: video/screenshots on mobile, trace/video on web.
   and `platforms` ship in the type surface from day one so tests written
   portably today run on mobile without edits later.
 - **v1:** iOS + Android on local simulators/emulators (OSS).
-- **Cloud:** managed real-device fleet, OS/device matrix, parallel targets.
 - **Beyond:** new platforms (Electron, desktop, TV, …) arrive as driver
   packages on the open platform model — the core never gates them.
+  Managed device fleets are part of the cloud roadmap (roadmap/cloud.md).

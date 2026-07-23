@@ -10,7 +10,6 @@ export default defineConfig({
   app: {
     url: process.env.APP_URL,
   },
-  runner: 'local',
   browser: 'chromium',
   retries: 1,
   artifacts: ['trace', 'screenshot'],
@@ -30,9 +29,6 @@ type E2EConfig = {
     /** Wait for this URL to respond before starting. Defaults to app.url. */
     readyUrl?: string;
   };
-
-  /** Where tests execute. Default: 'local'. */
-  runner?: 'local' | 'cloud';
 
   /**
    * Cross-platform targets (see 08-platforms.md). Default: one implicit
@@ -85,56 +81,20 @@ type E2EConfig = {
   /**
    * Resource backends, per extension (post-v0; e.g. email: 'local' |
    * 'managed'). Reserved — v0's only resource (credentials) resolves via
-   * env/config/vault.
+   * env/config.
    */
   resources?: Record<string, string>;
-
-  /** Cloud settings (used when runner: 'cloud'). */
-  project?: string;
-  token?: string; // process.env.TESTERARMY_TOKEN
 };
 ```
 
-## Cloud upgrade
-
-The Vercel move — same tests, one config switch:
-
-```ts
-export default defineConfig({
-  runner: 'cloud',
-  project: 'my-project',
-  token: process.env.TESTERARMY_TOKEN,
-});
-```
-
-CLI flags override config: `npx e2e run --cloud` forces `runner: 'cloud'`.
-
-### Split configs
-
-Keeping one config with a `runner` field forces edits to switch modes.
-Instead, an overlay file is supported:
-
-- `e2e.config.ts` — base, always loaded
-- `e2e.cloud.config.ts` — deep-merged on top **when running with `--cloud`**
-  (or `runner: 'cloud'`). Its presence does not force cloud mode.
-
-```ts
-// e2e.cloud.config.ts — only the cloud-specific deltas
-import { defineConfig } from 'e2e';
-
-export default defineConfig({
-  project: 'my-project',
-  token: process.env.TESTERARMY_TOKEN,
-  workers: 8,
-});
-```
+Reserved for the cloud roadmap (see roadmap/cloud.md), not in v0:
+`runner`, `project`, `token`, and the `e2e.cloud.config.ts` overlay.
 
 ## Environment variables
 
 | Var | Meaning |
 |---|---|
 | `APP_URL` | default `app.url` |
-| `TESTERARMY_TOKEN` | Cloud auth |
 | `E2E_USER_<NAME>_USERNAME` / `_PASSWORD` | credential resolution |
 | `CI` | flips CI defaults (retries, workers, reporters) |
 

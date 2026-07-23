@@ -27,7 +27,7 @@ is its checklist (every ✅ row must work; P1 rows are the fast-follow list).
   handoff compaction, ambient context — [10](./spec/10-determinism.md)
 - `agent.act` (+ typed `schema` output) /`assert/extract/login` + instant
   actions (`tap/type/scroll/scrollTo/longPress/waitFor`) — [02](./spec/02-test-api.md)
-- `defineConfig` (+ `e2e.cloud.config.ts` overlay), `APP_URL` happy path — [05](./spec/05-config.md)
+- `defineConfig`, `APP_URL` happy path — [05](./spec/05-config.md)
 - CLI: `e2e run`, `e2e init` — [06](./spec/06-cli.md)
 
 Deliberately deferred within phase: sessions/`test.setup` land in Phase 3;
@@ -69,7 +69,9 @@ routing around it.**
 
 ## Phase 4 — Cloud runner + managed resources
 
-`runner: 'cloud'` as the only switch. — [07](./spec/07-cloud.md)
+Promote [roadmap/cloud.md](./spec/roadmap/cloud.md) into the spec,
+re-validated against the by-then-real core API. `runner: 'cloud'` as the
+only switch.
 
 - Cloud execution of unchanged test files, hosted step-timeline replays
 - Resource extensions, local + managed: email inboxes first, then

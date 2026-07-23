@@ -42,10 +42,10 @@ export default test('invite teammate', async ({ app, agent, screen }) => {
 ## The SDK is the canonical model
 
 There is no separate "blocks" API to stay compatible with. The e2e SDK is
-the source of truth for what a test *is*; TesterArmy Cloud is built on top
-of it — it executes SDK tests and renders their steps. If a visual/hosted
-authoring layer exists, it generates and edits SDK code, not a parallel
-format.
+the source of truth for what a test *is*; any hosted product built later
+(roadmap/cloud.md) sits on top of it — executing SDK tests and rendering
+their steps. If a visual/hosted authoring layer ever exists, it generates
+and edits SDK code, not a parallel format.
 
 The step/report model (below) is what makes this work: any SDK test
 decomposes into a timeline of named steps with status, duration, and
@@ -56,7 +56,7 @@ required.
 
 Every `agent.*` call, `screen`/`web` action, resource `expect()`, and
 `app.*` call is a **step**: status, duration, evidence, one line in the
-report and the Cloud timeline. Labels are derived from the call itself:
+report timeline. Labels are derived from the call itself:
 
 ```
 ✓ app.open('/')
@@ -201,8 +201,8 @@ agent: {
 npx e2e run --no-agent-cache   # force fresh reasoning
 ```
 
-Local: traces stored in `.e2e/cache`. Cloud: shared across the team + CI,
-with flake-aware invalidation.
+Traces are stored in `.e2e/cache`, committable and reviewable. (Team-shared
+caches with flake-aware invalidation are part of the cloud roadmap.)
 
 ## Budgets and forced conclusions
 

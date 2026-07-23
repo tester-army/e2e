@@ -11,7 +11,6 @@ Once the package exists, they compile against it in CI.
 | File | Demonstrates |
 |---|---|
 | [`e2e.config.ts`](./e2e.config.ts) | targets (web/ios/android), credentials, agent config |
-| [`e2e.cloud.config.ts`](./e2e.cloud.config.ts) | cloud overlay — only the deltas |
 | [`tests/auth.setup.e2e.ts`](./tests/auth.setup.e2e.ts) | setup tests producing sessions |
 | [`tests/signup.e2e.ts`](./tests/signup.e2e.ts) | the happy path: pure agentic flow + a deterministic check |
 | [`tests/onboarding.e2e.ts`](./tests/onboarding.e2e.ts) | serial group, cross-step data via `extract` + typed schema |
@@ -32,7 +31,6 @@ tests/
   billing/
   mobile/                    # platforms: ['ios','android'] flows
 e2e.config.ts
-e2e.cloud.config.ts
 ```
 
 Conventions that keep it manageable:

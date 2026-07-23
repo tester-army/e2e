@@ -60,8 +60,7 @@ type Session = {
 
 - The `session` test/group option restores state **before** the test starts —
   the fast path.
-- Locally sessions persist in `.e2e/sessions` (re-login only when expired);
-  in Cloud they are per-run, shared across workers, and encrypted.
+- Sessions persist in `.e2e/sessions` (re-login only when expired).
 - Session names are per-target: `admin` on `web` and `admin` on `ios` are
   captured independently by running the setup test per target.
 

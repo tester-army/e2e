@@ -2,9 +2,9 @@
 
 Resources are managed test-world primitives. v0 ships one: **credentials**.
 The model is the point: a resource is declared with a clean handle and
-resolves to a local adapter or a managed Cloud backend depending on config —
-the test code is identical. Email inboxes, webhook captures, files, and
-phone numbers ship later as **extensions** on this exact model.
+resolves to a backend chosen in config — the test code is identical
+whatever serves it. Email inboxes, webhook captures, files, and phone
+numbers ship later as **extensions** on this exact model.
 
 Resource factories are importable from the root:
 
@@ -33,7 +33,8 @@ type Credential = {
 
 1. `E2E_USER_<NAME>_USERNAME` / `E2E_USER_<NAME>_PASSWORD` env vars
 2. `credentials` block in `e2e.config.ts` (values may reference env)
-3. TesterArmy Cloud vault (when `runner: 'cloud'`)
+
+(A managed team vault is part of the cloud roadmap — roadmap/cloud.md.)
 
 ### Usage
 
@@ -62,11 +63,12 @@ the reserved designs:
   deliverable inboxes. The first extension to land.
 - **`webhook.capture()`** — backend event capture with a pointable URL.
 - **`files.from()`** — upload fixtures the agent may use, host-narrowed.
-- **`phone.number()`** — SMS/OTP, Cloud-first.
+- **`phone.number()`** — SMS/OTP; needs managed infrastructure
+  (roadmap/cloud.md).
 
 Extensions follow the driver philosophy: the core defines the resource
-model; each extension arrives as its own module with a local backend and a
-managed Cloud backend, no new syntax.
+model; each extension arrives as its own module with a local backend
+(managed backends are the cloud roadmap), no new syntax.
 
 ## Lifecycle & isolation
 

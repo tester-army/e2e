@@ -6,8 +6,9 @@
 describes a **user workflow**; an agent executes it; a **target** decides
 where it runs — web, iOS, or Android, unchanged. One API covers what today
 takes Playwright (web) plus Maestro (mobile): full deterministic parity
-for migrators, agentic testing as the reason to switch. Local-first OSS;
-TesterArmy Cloud is one config switch, never different syntax.
+for migrators, agentic testing as the reason to switch. Local-first OSS:
+no account, no hosted service — managed backends are a roadmap design
+behind the same API.
 
 > The last testing framework you will ever need.
 
@@ -101,11 +102,11 @@ fallback on mismatch); `act()` paths replay as guidance with
 re-observation. Repeat runs of unchanged UI approach zero model calls.
 
 **Resources** ([04](./spec/04-resources.md)). v0 ships the model plus one
-resource: `credentials.user()` (write-only handles, env/config/vault
+resource: `credentials.user()` (write-only handles, env/config
 resolution). Email inboxes (`.code()`/`.link()` OTP extraction,
 `toHaveEmail`), webhook captures, files, and phone numbers follow as
-**extensions** on the same model — local backends by default, managed in
-Cloud, identical test code.
+**extensions** on the same model — identical test code whatever backend
+serves the resource.
 
 **Open platforms via a driver SPI** ([09](./spec/09-drivers.md)). Drivers
 are npm packages implementing a small contract (query projection,
@@ -120,10 +121,12 @@ auto-provision. Deterministic-only suites need no API key. Reports are a
 derived step timeline — every call is a self-labeled step; no `step()`
 ceremony. Exit codes separate test failures from config and infra errors.
 
-**OSS/Cloud boundary** ([07](./spec/07-cloud.md)). If it appears in a test
-file, it works locally. `runner: 'cloud'` swaps in managed browsers and
-devices, managed resource backends, shared caches and sessions, hosted
-replays — zero test-file changes, a hard API guarantee.
+**Local-first, standalone** ([07](./spec/07-scope.md)). If it appears in a
+test file, it works locally, today — no account, no hosted service.
+Managed backends (browsers, devices, resources, shared caches, hosted
+replays) are a reserved roadmap design behind the exact same API
+([roadmap/cloud.md](./spec/roadmap/cloud.md)) — if they land, it's a
+config value, never new syntax.
 
 ## Drawbacks
 

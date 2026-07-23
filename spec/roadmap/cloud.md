@@ -1,7 +1,11 @@
-# 07 — OSS / Cloud Boundary
+# Roadmap — TesterArmy Cloud
 
-The OSS package must be fully useful standalone. Cloud is the same API with
-better backends — never different syntax.
+> **Status: roadmap.** Not part of the v0 framework. v0 is local-first and
+> fully useful standalone — no account, nothing to sell. This design is
+> preserved so the core keeps the door open; it will be re-validated
+> against the then-current API before it lands (PLAN.md Phase 4).
+
+Cloud is the same API with better backends — never different syntax.
 
 The dependency direction is fixed: **Cloud is built on the SDK**, not the
 other way around. The SDK is the canonical model of what a test is; Cloud
@@ -32,10 +36,9 @@ these primitives. Cloud will be rebuilt on top of them.
 | Flake triage | retries | historical flake detection, quarantine |
 
 Resource extensions (email inboxes first, then webhook captures, files,
-phone/SMS) follow the same local/managed split when they land — see
-roadmap/.
+phone/SMS) follow the same local/managed split when they land.
 
-## Switching
+## Switching (reserved shape)
 
 Exactly one of:
 
@@ -49,9 +52,12 @@ export default defineConfig({ runner: 'cloud', token: process.env.TESTERARMY_TOK
 npx e2e run --cloud
 ```
 
-No test-file changes, ever. This is a hard API guarantee.
+No test-file changes, ever. This is a hard API guarantee. The `runner`,
+`project`, and `token` config fields, the `e2e.cloud.config.ts` overlay,
+`--cloud`, `e2e login`, and `TESTERARMY_TOKEN` are all reserved for this
+design — none ship in v0.
 
-## `e2e/cloud` subpath
+## `e2e/cloud` subpath (reserved)
 
 Advanced, optional programmatic access (dashboards, custom tooling):
 
@@ -74,49 +80,3 @@ type CloudRun = {
 ```
 
 Kept out of the root export deliberately — day-one users never see it.
-
-## v0 ship list (OSS)
-
-The deliberately small core. Everything here must be excellent; everything
-else waits.
-
-Runner:
-- `test()`, `skip`/`only`, hooks, `describe` (+ options, serial)
-- `test.setup()` + sessions
-- Derived step timeline (no `step()` wrapper — steps come from the calls)
-
-Agent:
-- `agent.act()` (+ typed `schema` output), `agent.assert()`,
-  `agent.login()`, `agent.extract()`
-- Instant actions (`agent.tap/click/type/scroll/scrollTo/longPress/waitFor`)
-- Locate + path caching, typed `AgentError.code`
-
-Deterministic layer:
-- `screen` queries + `expect(locator)` matchers (web projection in v0)
-- `web` surface + `expect(web)` matchers
-- Cross-platform type surface (`app`, `screen`, `platform`, `targets`,
-  `platforms`) — web execution only in v0
-- Driver SPI (`e2e/driver`): `defineDriver`, `verifyDriver` conformance
-  suite, `e2e/playwright` as the reference driver
-
-Resources:
-- `credentials.user()` (env/config) — the resource model; extensions
-  (email first) come post-v0
-
-Tooling:
-- `defineConfig()` (+ `e2e.cloud.config.ts` overlay)
-- CLI: `init`, `run`
-- GitHub Actions examples
-
-Explicitly **not** in v0 (see spec/roadmap/): iOS/Android execution (v1),
-email/webhook/files/phone resources, `test.each`/`skipIf`/`failsIf`/
-`fixme`/`test.extend`, `globalSetup`/`globalTeardown`, sharding, watch
-mode (`e2e dev`), inspector (`e2e open`), credentials store CLI, soft
-assertions, PR testing, service emulation, scheduling.
-
-## Positioning line
-
-> `e2e` is the open-source, cross-platform, agentic testing framework —
-> one test runs on web, iOS, and Android. The last testing framework you
-> will ever need. Use TesterArmy Cloud for managed browsers and devices,
-> test identities, email/phone resources, and replays.

@@ -2,9 +2,9 @@
 
 Tests are written against e2e-owned surfaces (`agent`, `screen`, `app`,
 `device`); **drivers** implement them per target. Backends are switchable
-without touching test code — same philosophy as `runner: 'local' | 'cloud'`
-and `resources.email: 'local' | 'managed'`. Nothing driver-specific is
-reachable from a test: backends are a fully internal implementation detail.
+without touching test code — the same provider-abstraction philosophy as
+resource backends. Nothing driver-specific is reachable from a test:
+backends are a fully internal implementation detail.
 
 ## Why
 
@@ -14,7 +14,8 @@ reachable from a test: backends are a fully internal implementation detail.
   `npm install` and one config line — zero test changes.
 - The community must be able to build backends we never thought of — the
   driver SPI is a public contract, not an internal detail.
-- Cloud can run a different backend than local without test changes.
+- Hosted runners (roadmap/cloud.md) can run a different backend than local
+  without test changes.
 - The agent needs a uniform observation/action layer anyway — drivers are
   that layer.
 
@@ -23,8 +24,8 @@ reachable from a test: backends are a fully internal implementation detail.
 A driver exports a factory built with `defineDriver()` from `e2e/driver`.
 Official drivers live under the `e2e` package's own namespace as **subpath
 exports** (the `@e2e/*` npm scope is not available — and subpaths are
-better anyway: one memorable namespace, consistent with `e2e/driver` and
-`e2e/cloud`). Community drivers are their own npm packages:
+better anyway: one memorable namespace, consistent with `e2e/driver`).
+Community drivers are their own npm packages:
 
 | Import | Platform | Notes |
 |---|---|---|

@@ -24,7 +24,7 @@ switch:
 | [04-resources.md](./04-resources.md) | `credentials`; the resource model (email/webhook/files/phone are extensions, roadmap) |
 | [05-config.md](./05-config.md) | `defineConfig()` and `e2e.config.ts` |
 | [06-cli.md](./06-cli.md) | `npx e2e …` command surface |
-| [07-cloud.md](./07-cloud.md) | TesterArmy Cloud boundary: what is OSS vs Cloud |
+| [07-scope.md](./07-scope.md) | The v0 ship list — what's in, what's explicitly not |
 | [08-platforms.md](./08-platforms.md) | Cross-platform targets, `screen` queries, `web`, `app`, `device` |
 | [09-drivers.md](./09-drivers.md) | Drivers as packages: community backends, public SPI (`e2e/driver`) |
 | [10-determinism.md](./10-determinism.md) | The control gradient, execution model, caching, error codes |
@@ -36,7 +36,7 @@ switch:
 ## Package
 
 - npm package: `e2e`
-- Subpath exports: `e2e`, `e2e/cloud`, `e2e/driver` (SPI for backend packages)
+- Subpath exports: `e2e`, `e2e/driver` (SPI for backend packages)
 - Official drivers: `e2e/playwright`, `e2e/agent-device`, … (subpath exports, optional peer deps); community: `e2e-driver-*` packages
 - Test files: `*.e2e.ts` (default glob: `tests/**/*.e2e.ts`)
 - Config file: `e2e.config.ts`

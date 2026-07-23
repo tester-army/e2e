@@ -34,18 +34,16 @@ Scaffold in an existing project:
 
 ### `e2e run [files…]`
 
-Run tests locally (or in Cloud with `--cloud`).
+Run tests.
 
 ```bash
 npx e2e run
 npx e2e run tests/signup.e2e.ts
 npx e2e run --tag smoke
-npx e2e run --cloud
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--cloud` | force `runner: 'cloud'` |
 | `--target <names>` | run only these targets, e.g. `--target ios` or `--target web,android` |
 | `--tag <tag>` | filter by test tags |
 | `--headed` | run with visible browser |
@@ -60,9 +58,10 @@ Behavior: boots `app.command` if configured, runs tests, writes artifacts
 
 ### Post-v0 commands
 
-`e2e dev` (watch mode), `e2e open` (report/inspector UI), `e2e credentials`
-(encrypted local store), and `e2e login` (Cloud auth; `TESTERARMY_TOKEN` env
-covers CI) are deliberately not in the v0 core — see roadmap/.
+`e2e dev` (watch mode), `e2e open` (report/inspector UI), and
+`e2e credentials` (encrypted local store) are deliberately not in the v0
+core — see roadmap/. Cloud commands (`--cloud`, `e2e login`) are reserved
+in [roadmap/cloud.md](./roadmap/cloud.md).
 
 ## Exit codes
 
@@ -71,7 +70,7 @@ covers CI) are deliberately not in the v0 core — see roadmap/.
 | 0 | all tests passed |
 | 1 | test failures |
 | 2 | configuration/environment error (bad config, missing credentials) |
-| 3 | infrastructure error (browser/device/cloud unavailable) |
+| 3 | infrastructure error (browser/device unavailable) |
 
 ## Output principles
 

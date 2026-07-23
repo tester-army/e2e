@@ -38,7 +38,7 @@ import { test, expect } from 'e2e';
 ```
 
 All day-one usage comes from the root export. Advanced surfaces live behind
-subpath exports (`e2e/cloud`) so the root stays
+subpath exports (`e2e/driver`) so the root stays
 small and greppable.
 
 ### 3. Options objects everywhere
@@ -72,21 +72,21 @@ internal driver detail, never exposed in the API. Web-only capabilities
 
 ### 5. Provider abstraction, not provider lock-in
 
-Runners, browsers, automation backends, and resources are values in config,
+Browsers, automation backends, and resource backends are values in config,
 not code changes:
 
 ```ts
-runner: 'local' | 'cloud'
 browser: 'chromium' | 'firefox' | 'webkit'
 driver: 'playwright' | agentBrowser() | anyCommunityDriver()
-resources: { email: 'local' | 'managed' }
+resources: { email: 'local' | 'managed' }   // reserved, with extensions
 ```
 
-The same test file runs locally, in CI, and in TesterArmy Cloud unchanged.
-Automation backends are **separate packages** built on a public driver SPI
-(`e2e/driver`) — the community can ship backends we never thought of, and
-if a 100× faster browser engine appears, adopting it is one install and one
-config line (see 09-drivers.md).
+The same test file runs locally and in CI unchanged — and the same
+abstraction keeps room for hosted backends later (roadmap/cloud.md)
+without new syntax. Automation backends are **separate packages** built on
+a public driver SPI (`e2e/driver`) — the community can ship backends we
+never thought of, and if a 100× faster browser engine appears, adopting it
+is one install and one config line (see 09-drivers.md).
 
 ### 6. Resources, not plumbing
 
@@ -95,11 +95,12 @@ ships `credentials`; email inboxes, webhook captures, files, and phone
 numbers follow as extensions on the same model — users will never poll
 IMAP or wire OTP plumbing by hand.
 
-### 7. Local-first, cloud-better
+### 7. Local-first
 
-Everything in the OSS package works fully offline/CI with no account.
-TesterArmy Cloud is a one-line config change (`runner: 'cloud'`) that swaps in
-managed backends for the exact same API. No cloud-only syntax.
+Everything works fully offline and in CI with no account and no hosted
+service. The architecture reserves room for managed backends behind the
+exact same API (roadmap/cloud.md) — if that ever lands, it's a config
+value, never new syntax. v0's job is only to be the best framework.
 
 ### 8. Deterministic and agentic — both, interleaved
 
@@ -154,7 +155,7 @@ optional for the happy path.
 - v0 runs web targets only; iOS/Android land in v1. But the API is
   cross-platform from day one — portable tests written today run on mobile
   without edits (see 08-platforms.md).
-- v0 does not ship phone/SMS resources (Cloud roadmap).
+- v0 does not ship phone/SMS resources (roadmap).
 
 ## Naming rules
 

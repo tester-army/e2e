@@ -69,7 +69,7 @@ extensions after the core.
 - **Deterministic where it counts** — instant-action locations cache as readable `screen` queries; world-state assertions are always deterministic; the cache is committable and reviewable.
 - **Cross-platform** — one test, many targets: `npx e2e run --target ios`.
 - **Bring your own backend — or your own platform** — automation backends are separate packages on a public driver SPI. Playwright is just the default web driver; if something 100× faster ships tomorrow, it's `npm install` + one config line. And the platform set is open: an `e2e-driver-electron` package makes `electron` a first-class target, no core release needed. Community drivers welcome: `e2e-driver-*`.
-- **Local-first** — runs offline and in CI with no account. [TesterArmy Cloud](https://tester.army) is one config switch for managed browsers and devices, resources, and replays.
+- **Local-first** — runs offline and in CI with no account and no hosted service. Your machine, your model key, your artifacts.
 
 ## Roadmap
 
@@ -77,6 +77,7 @@ extensions after the core.
 - **PR testing** — preview-URL resolution, changed-file test selection, exploratory `test.dynamic`, GitHub Checks
 - **More resources** — webhook captures, file fixtures, phone/SMS
 - **Runner niceties** — `test.each`, sharding, watch mode (`e2e dev`), inspector (`e2e open`), visual snapshots
+- **Managed backends** — hosted runners, browsers/devices, resources, and replays behind the same API ([design](./spec/roadmap/cloud.md))
 
 ## Status
 

@@ -9,6 +9,7 @@ adoption.
 
 | Item | Design | Summary |
 |---|---|---|
+| TesterArmy Cloud | [cloud.md](./cloud.md) | Hosted runner + managed backends (browsers, devices, resources, replays, shared caches) behind the same API — one config switch, zero test-file changes; `runner`/`token`/`--cloud`/`e2e login` reserved |
 | Service emulation | [service-emulation.md](./service-emulation.md) | Local, stateful Stripe/Slack/email emulators as a `services` fixture with first-class assertions (`expect(stripe).toHavePayment(…)`); managed sandboxes in Cloud |
 | PR testing | [pr-testing.md](./pr-testing.md) | `pr.context()`, preview-URL resolution, changed-file test selection, exploratory `test.dynamic`, automatic GitHub Checks |
 | Visual snapshots | — | `toMatchScreenshot` pixel diffing, complementing `agent.assert` semantic judgment |
