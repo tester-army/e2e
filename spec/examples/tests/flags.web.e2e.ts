@@ -2,9 +2,10 @@ import { test, expect } from 'e2e';
 
 /**
  * Web-only powers via the `web` fixture — network stubbing, URL assertions,
- * dialogs. Using `web` is what constrains this test to `platforms: ['web']`.
+ * dialogs. The web capability requirement is explicit and can also match a
+ * future non-web platform that provides compatible browser semantics.
  */
-test.describe('feature flags', { platforms: ['web'], session: 'admin', tags: ['flags'] }, () => {
+test.describe('feature flags', { requires: ['web'], session: 'admin', tags: ['flags'] }, () => {
   test('beta board renders behind the flag', async ({ web, screen, agent }) => {
     await web.route('**/api/flags', route =>
       route.fulfill({ json: { betaBoard: true } }),
@@ -23,7 +24,7 @@ test.describe('feature flags', { platforms: ['web'], session: 'admin', tags: ['f
     await web.goto('/boards/rocketry/settings');
     await screen.getByLabel('Board name').fill('Rocketry v2');
 
-    web.onDialog('dismiss');                     // stay on the page
+    await web.onDialog('dismiss');               // stay on the page
     await web.back();
 
     await expect(web).toHaveURL(/settings/);

@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "report-1",
+  "run": {
+    "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab",
+    "specVersion": "0.1",
+    "runner": {
+      "name": "e2e",
+      "version": "0.1.0"
+    },
+    "status": "passed",
+    "exitCode": 0,
+    "startedAt": "2026-07-24T12:00:00.000Z",
+    "finishedAt": "2026-07-24T12:00:01.000Z",
+    "project": {
+      "id": "dev.testerarmy.example",
+      "configDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "environment": {
+      "ci": false,
+      "trustNoticeShown": true,
+      "os": "darwin",
+      "arch": "arm64",
+      "runtime": "node-26.4.0"
+    },
+    "targets": [
+      {
+        "id": "web",
+        "index": 0,
+        "platform": "web",
+        "browser": "chromium",
+        "browserVersion": "128.0.0",
+        "viewport": {
+          "width": 1280,
+          "height": 720,
+          "scale": 1
+        },
+        "baseOrigin": "https://example.test",
+        "environment": "test",
+        "allowProduction": false,
+        "testIdAttribute": "data-testid",
+        "driver": {
+          "id": "playwright",
+          "version": "1.0.0",
+          "spiVersion": 1
+        },
+        "capabilities": ["web"],
+        "artifactCapabilities": ["screenshot", "trace", "video"],
+        "stateCapability": true
+      }
+    ],
+    "serialGroups": [],
+    "results": [
+      {
+        "id": "4bbfd0a6dbf44ac1018dd6ca1a6243d742b24607aa735b28d57541e1128507d3",
+        "testId": "tests/example.e2e.ts::opens%20app",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": ["opens app"],
+        "file": "tests/example.e2e.ts",
+        "source": {
+          "file": "tests/example.e2e.ts",
+          "line": 3,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "status": "passed",
+        "attempts": [
+          {
+            "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab",
+            "index": 0,
+            "status": "passed",
+            "startedAt": "2026-07-24T12:00:00.000Z",
+            "durationMs": 1000,
+            "steps": [],
+            "artifacts": [],
+            "secondaryErrors": [],
+            "cleanup": "complete"
+          }
+        ]
+      }
+    ],
+    "errors": [],
+    "summary": {
+      "discovered": 1,
+      "selected": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "flaky": 0,
+      "skipped": 0
+    },
+    "limits": {
+      "maxDiscoveredResults": 100000,
+      "maxCacheBytes": 262144,
+      "maxTerminalFieldBytes": 8192,
+      "maxAgentContextBytes": 16384,
+      "maxLedgerBytes": 8192,
+      "maxObservationBytes": 1048576,
+      "maxArtifactBytes": 104857600,
+      "maxArtifactTotalBytes": 1073741824,
+      "maxDownloadBytes": 104857600,
+      "maxDownloads": 10,
+      "maxReportBytes": 52428800,
+      "maxEventsPerStep": 1000,
+      "maxModelTokensPerCall": 64000,
+      "maxModelCallsPerStep": 25,
+      "maxActionStepsPerStep": 25
+    },
+    "usage": {
+      "discoveredResults": 1,
+      "maxCacheEntryBytes": 0,
+      "maxTerminalFieldBytes": 0,
+      "maxAgentContextBytes": 0,
+      "maxLedgerBytes": 0,
+      "maxObservationBytes": 0,
+      "artifactBytes": 0,
+      "downloads": 0,
+      "reportBytes": 3345,
+      "events": 0,
+      "modelTokens": 0,
+      "maxModelCallsInStep": 0,
+      "maxActionStepsInStep": 0
+    }
+  }
+}

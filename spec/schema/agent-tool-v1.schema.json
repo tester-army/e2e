@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/agent-tool-v1.schema.json",
+  "title": "e2e agent-tool-1 call",
+  "oneOf": [
+    { "$ref": "#/$defs/tap" },
+    { "$ref": "#/$defs/plainType" },
+    { "$ref": "#/$defs/secretType" },
+    { "$ref": "#/$defs/scroll" },
+    { "$ref": "#/$defs/press" },
+    { "$ref": "#/$defs/longPress" },
+    { "$ref": "#/$defs/navigate" },
+    { "$ref": "#/$defs/observe" },
+    { "$ref": "#/$defs/conclude" }
+  ],
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "tap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "target"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "tap" },
+        "target": { "$ref": "#/$defs/node" }
+      }
+    },
+    "plainType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "target", "value"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "type" },
+        "target": { "$ref": "#/$defs/node" },
+        "value": { "type": "string", "maxLength": 65536 }
+      }
+    },
+    "secretType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "target", "sensitiveName", "purpose"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "type" },
+        "target": { "$ref": "#/$defs/node" },
+        "sensitiveName": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "purpose": { "enum": ["password", "one-time-code", "generic-secret"] }
+      }
+    },
+    "scroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "direction"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "scroll" },
+        "direction": { "enum": ["up", "down", "left", "right"] },
+        "momentum": { "enum": ["none", "slow", "fast"] },
+        "target": { "$ref": "#/$defs/node" }
+      }
+    },
+    "press": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "key"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "press" },
+        "key": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "longPress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "target"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "longPress" },
+        "target": { "$ref": "#/$defs/node" },
+        "durationMs": { "type": "integer", "minimum": 100, "maximum": 10000 }
+      }
+    },
+    "navigate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "url"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "navigate" },
+        "url": { "type": "string", "minLength": 1, "maxLength": 8192 }
+      }
+    },
+    "observe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "observe" }
+      }
+    },
+    "conclude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolVersion", "kind", "status", "explanation"],
+      "properties": {
+        "toolVersion": { "const": "agent-tool-1" },
+        "kind": { "const": "conclude" },
+        "status": { "enum": ["success", "failure"] },
+        "explanation": { "type": "string", "maxLength": 8192 },
+        "data": {}
+      }
+    }
+  }
+}

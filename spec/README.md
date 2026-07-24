@@ -1,69 +1,82 @@
-# e2e — API Specification
+# e2e Specification
 
-This directory is the source of truth for the public API of `e2e`, the
-open-source, cross-platform, agentic testing framework.
+This directory defines e2e specification **0.1**, a local-first agentic testing
+framework standard.
 
-**Status: draft. Spec only — no implementation exists yet.**
+**Status: frozen implementation contract. No implementation exists yet.**
 
-## Why
-
-There is no cross-platform testing framework built on agentic testing.
-`e2e` is one cross-platform API — deterministic parity with Playwright and
-Maestro for migrators (12-migration.md), agentic testing as the reason to
-switch:
-
-> The last testing framework you will ever need.
+v0 executes web targets. The API is designed for future mobile profiles, but
+iOS and Android execution are not claimed until their conformance suites exist.
 
 ## Documents
 
-| Doc | Contents |
+| Document | Contract |
 |---|---|
-| [01-principles.md](./01-principles.md) | Why, design principles, non-goals |
-| [02-test-api.md](./02-test-api.md) | `test()`, fixtures, `agent` (planning + instant actions) |
-| [03-assertions.md](./03-assertions.md) | `expect()` (locator/web/value matchers), `agent.assert()` |
-| [04-resources.md](./04-resources.md) | `credentials`; the resource model (email/webhook/files/phone are extensions, roadmap) |
-| [05-config.md](./05-config.md) | `defineConfig()` and `e2e.config.ts` |
-| [06-cli.md](./06-cli.md) | `npx e2e …` command surface |
-| [07-scope.md](./07-scope.md) | The v0 ship list — what's in, what's explicitly not |
-| [08-platforms.md](./08-platforms.md) | Cross-platform targets, `screen` queries, `web`, `app`, `device` |
-| [09-drivers.md](./09-drivers.md) | Drivers as packages: community backends, public SPI (`e2e/driver`) |
-| [10-determinism.md](./10-determinism.md) | The control gradient, execution model, caching, error codes |
-| [11-lifecycle.md](./11-lifecycle.md) | Setup tests + sessions, hooks, groups, serial mode |
-| [12-migration.md](./12-migration.md) | Playwright & Maestro parity tables — the migration contract |
-| [examples/](./examples/README.md) | A realistic example suite (Orbit) exercising the full surface |
-| [roadmap/](./roadmap/README.md) | Deferred designs: PR testing, service emulation |
+| [00-conformance.md](./00-conformance.md) | normativity, profiles, versions, portability |
+| [01-principles.md](./01-principles.md) | design laws and non-goals |
+| [02-test-api.md](./02-test-api.md) | registration, fixtures, agent calls |
+| [03-assertions.md](./03-assertions.md) | deterministic and agent assertions |
+| [04-resources.md](./04-resources.md) | credentials and resource ownership |
+| [05-config.md](./05-config.md) | config loading, defaults, targets, model |
+| [06-cli.md](./06-cli.md) | commands, selection, reports, exit codes |
+| [07-scope.md](./07-scope.md) | frozen v0 release boundary |
+| [08-platforms.md](./08-platforms.md) | web profile, queries, app/web behavior |
+| [09-drivers.md](./09-drivers.md) | versioned driver SPI and conformance |
+| [10-determinism.md](./10-determinism.md) | control gradient, ledger, caches |
+| [11-lifecycle.md](./11-lifecycle.md) | collection, hooks, attempts, sessions |
+| [12-migration.md](./12-migration.md) | informative migration coverage |
+| [13-reporting.md](./13-reporting.md) | report/cache/session wire semantics |
+| [14-security.md](./14-security.md) | trust, origins, secrets, CI, redaction |
+| [15-conformance-matrix.md](./15-conformance-matrix.md) | complete required-ID manifest |
+| [examples/](./examples/README.md) | canonical source examples |
+| [roadmap/](./roadmap/README.md) | nonnormative deferred designs |
+
+Canonical declarations:
+
+- [`api/e2e.d.ts`](./api/e2e.d.ts) for `sdk-0.1`;
+- [`api/driver.d.ts`](./api/driver.d.ts) for `driver-1`.
+
+Canonical wire schemas:
+
+- [`schema/report-v1.schema.json`](./schema/report-v1.schema.json);
+- [`schema/cache-v1.schema.json`](./schema/cache-v1.schema.json);
+- [`schema/session-v1.schema.json`](./schema/session-v1.schema.json);
+- [`schema/agent-locate-v1.schema.json`](./schema/agent-locate-v1.schema.json);
+- [`schema/agent-judgment-v1.schema.json`](./schema/agent-judgment-v1.schema.json);
+- [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json);
+- [`schema/conformance-v1.schema.json`](./schema/conformance-v1.schema.json).
+
+Required conformance IDs:
+
+- [`conformance/v0-requirements.json`](./conformance/v0-requirements.json).
 
 ## Package
 
-- npm package: `e2e`
-- Subpath exports: `e2e`, `e2e/driver` (SPI for backend packages)
-- Official drivers: `e2e/playwright`, `e2e/agent-device`, … (subpath exports, optional peer deps); community: `e2e-driver-*` packages
-- Test files: `*.e2e.ts` (default glob: `tests/**/*.e2e.ts`)
-- Config file: `e2e.config.ts`
+- npm package and CLI: `e2e`;
+- root SDK import: `e2e`;
+- driver authoring import: `e2e/driver`;
+- reference web driver: `e2e/playwright`;
+- default tests: `tests/**/*.e2e.ts`;
+- config: `e2e.config.ts` or `e2e.config.mts`.
 
-## The 10-second pitch
+## Minimal test
 
 ```ts
 import { test } from 'e2e';
 
-export default test('user can sign up', async ({ app, agent }) => {
+test('user can sign up', async ({ app, agent }) => {
   await app.open();
-
   await agent.act('sign up as a new user');
-
   await agent.assert('the dashboard is visible');
 });
 ```
 
-```bash
-pnpm add e2e
-npx e2e run
-```
+Agent tests require an explicit model. Deterministic tests do not.
 
 ## Normativity
 
-These documents are the spec; the TypeScript blocks inside them are the
-normative surface. Every symbol the package exports must appear here first.
-[examples/](./examples/README.md) must stay consistent with the docs — it is
-the acid test that the API works for real suites; once the package exists,
-the examples compile against it in CI.
+Normative precedence and BCP 14 language are defined only in
+00-conformance.md. Root documents, examples, migration guidance, and roadmap
+designs are informative and must be checked against the canonical contracts.
+Canonical declarations and examples are type-checked in CI. Schema and semantic
+validation land with the implementation conformance suites before release.

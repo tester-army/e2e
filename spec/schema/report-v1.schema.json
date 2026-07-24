@@ -1,0 +1,610 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/report-v1.schema.json",
+  "title": "e2e report-1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "run"],
+  "properties": {
+    "schemaVersion": { "const": "report-1" },
+    "run": { "$ref": "#/$defs/run" }
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "format": "date-time"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)[^/\\u0000]+(?:/[^/\\u0000]+)*$"
+    },
+    "extensions": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 128,
+        "pattern": "^(?:[a-z0-9]+(?:[.-][a-z0-9]+)+|@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*)$"
+      },
+      "additionalProperties": true
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "column"],
+      "properties": {
+        "file": { "$ref": "#/$defs/relativePath" },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "code", "message", "retryable"],
+      "properties": {
+        "category": {
+          "enum": ["test", "configuration", "infrastructure", "internal", "interrupted"]
+        },
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 8192 },
+        "retryable": { "type": "boolean" },
+        "phase": {
+          "enum": ["config", "collection", "launch", "beforeAll", "beforeEach", "body", "afterEach", "afterAll", "cleanup", "report"]
+        },
+        "scopeId": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "source": { "$ref": "#/$defs/source" },
+        "stack": { "type": "string", "maxLength": 65536 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "mediaType", "redaction", "producer"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["screenshot", "trace", "video", "download", "log", "other"] },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "size": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "redaction": { "enum": ["complete", "not-required", "incomplete"] },
+        "producer": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "stepId"],
+              "properties": {
+                "kind": { "const": "step" },
+                "stepId": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "const": "attempt" } }
+            }
+          ]
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "redaction": { "const": "incomplete" } } },
+          "then": {
+            "properties": {
+              "path": false,
+              "size": false,
+              "sha256": false
+            }
+          },
+          "else": {
+            "properties": {
+              "path": { "$ref": "#/$defs/relativePath" },
+              "size": { "type": "integer", "minimum": 0 },
+              "sha256": { "$ref": "#/$defs/sha256" }
+            },
+            "required": ["path", "size", "sha256"]
+          }
+        }
+      ]
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "endpoint", "adapterVersion", "policyVersion", "calls", "tokenAccounting", "peakTokensPerCall", "inputTokens", "outputTokens"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "endpoint": {
+          "oneOf": [
+            { "const": "local" },
+            { "type": "string", "format": "uri" }
+          ]
+        },
+        "adapterVersion": { "type": "string", "minLength": 1 },
+        "policyVersion": { "type": "string", "minLength": 1 },
+        "calls": { "type": "integer", "minimum": 1 },
+        "tokenAccounting": { "enum": ["provider", "adapter-upper-bound"] },
+        "peakTokensPerCall": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "estimatedCostUsd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["miss", "hit", "invalid", "bypassed", "written"] },
+        "keyHash": { "$ref": "#/$defs/sha256" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "bypassed" } } },
+          "then": { "properties": { "keyHash": false } },
+          "else": {
+            "properties": { "keyHash": { "$ref": "#/$defs/sha256" } },
+            "required": ["keyHash"]
+          }
+        }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "startedAt", "durationMs", "status"],
+      "properties": {
+        "kind": {
+          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "driver", "schema"]
+        },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["passed", "failed", "cancelled"] },
+        "name": { "type": "string", "maxLength": 256 },
+        "count": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "decision": { "enum": ["allowed", "denied"] },
+        "code": { "type": "string", "maxLength": 128 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "stepMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelCalls", "actionSteps", "observationBytes", "contextBytes", "ledgerBytes"],
+      "properties": {
+        "modelCalls": { "type": "integer", "minimum": 0 },
+        "actionSteps": { "type": "integer", "minimum": 0 },
+        "observationBytes": { "type": "integer", "minimum": 0 },
+        "contextBytes": { "type": "integer", "minimum": 0 },
+        "ledgerBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "kind", "api", "label", "source", "status", "startedAt", "durationMs", "events", "artifacts"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "web", "session", "resource"] },
+        "api": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "maxLength": 8192 },
+        "source": { "$ref": "#/$defs/source" },
+        "status": { "enum": ["passed", "failed", "timed-out", "cancelled"] },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "observationRevision": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "explanation": { "type": "string", "maxLength": 8192 },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "scale"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "scale": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "metrics": { "$ref": "#/$defs/stepMetrics" },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "model": { "$ref": "#/$defs/model" },
+        "cache": { "$ref": "#/$defs/cache" },
+        "error": { "$ref": "#/$defs/error" },
+        "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "agent" } } },
+          "then": {
+            "properties": { "metrics": { "$ref": "#/$defs/stepMetrics" } },
+            "required": ["metrics"]
+          }
+        },
+        {
+          "if": { "properties": { "api": { "const": "agent.assert" } } },
+          "then": {
+            "properties": {
+              "observationRevision": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "explanation": { "type": "string", "maxLength": 8192 }
+            },
+            "required": ["observationRevision", "explanation"]
+          }
+        },
+        {
+          "if": { "properties": { "api": { "const": "web.setViewport" } } },
+          "then": {
+            "properties": {
+              "viewport": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["width", "height", "scale"],
+                "properties": {
+                  "width": { "type": "integer", "minimum": 1 },
+                  "height": { "type": "integer", "minimum": 1 },
+                  "scale": { "type": "number", "exclusiveMinimum": 0 }
+                }
+              }
+            },
+            "required": ["viewport"]
+          }
+        }
+      ]
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "status", "startedAt", "durationMs", "steps", "artifacts", "secondaryErrors", "cleanup"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidV7" },
+        "index": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["passed", "failed", "timed-out", "interrupted"] },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+        "error": { "$ref": "#/$defs/error" },
+        "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
+        "cleanup": { "enum": ["complete", "failed", "forced"] },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "skip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cause", "reason"],
+      "properties": {
+        "cause": {
+          "enum": ["explicit", "filtered", "platform-unavailable", "capability-unavailable", "setup-failed", "serial-predecessor-failed", "hook-failed", "infrastructure-unavailable"]
+        },
+        "reason": { "type": "string", "maxLength": 8192 },
+        "relatedId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "serialMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "testId", "status", "startedAt", "durationMs", "steps", "secondaryErrors"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "testId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "failed", "timed-out", "interrupted", "skipped"] },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "error": { "$ref": "#/$defs/error" },
+        "skip": { "$ref": "#/$defs/skip" },
+        "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "skipped" } } },
+          "then": {
+            "required": ["skip"],
+            "properties": {
+              "skip": { "$ref": "#/$defs/skip" },
+              "steps": { "type": "array", "maxItems": 0, "items": { "$ref": "#/$defs/step" } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "skipped" } } },
+          "else": { "properties": { "skip": false } }
+        }
+      ]
+    },
+    "serialAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "status", "startedAt", "durationMs", "members", "artifacts", "secondaryErrors", "cleanup"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidV7" },
+        "index": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["passed", "failed", "timed-out", "interrupted"] },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/serialMember" } },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+        "error": { "$ref": "#/$defs/error" },
+        "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
+        "cleanup": { "enum": ["complete", "failed", "forced"] },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "serialGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "serialId", "declarationIndex", "file", "source", "titlePath", "targetId", "platform", "memberTestIds", "status", "attempts"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "serialId": { "type": "string", "minLength": 1 },
+        "declarationIndex": { "type": "integer", "minimum": 0 },
+        "file": { "$ref": "#/$defs/relativePath" },
+        "source": { "$ref": "#/$defs/source" },
+        "titlePath": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "targetId": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 },
+        "memberTestIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "status": { "enum": ["passed", "flaky", "failed", "timed-out", "interrupted", "skipped"] },
+        "skip": { "$ref": "#/$defs/skip" },
+        "attempts": { "type": "array", "items": { "$ref": "#/$defs/serialAttempt" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "skipped" } } },
+          "then": {
+            "properties": {
+              "skip": { "$ref": "#/$defs/skip" },
+              "attempts": { "type": "array", "maxItems": 0, "items": { "$ref": "#/$defs/serialAttempt" } }
+            },
+            "required": ["skip"]
+          },
+          "else": {
+            "properties": {
+              "attempts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/serialAttempt" } },
+              "skip": false
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "testId", "kind", "declarationIndex", "titlePath", "file", "source", "targetId", "platform", "status", "attempts"],
+      "properties": {
+        "id": { "$ref": "#/$defs/sha256" },
+        "testId": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["test", "setup"] },
+        "declarationIndex": { "type": "integer", "minimum": 0 },
+        "titlePath": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "file": { "$ref": "#/$defs/relativePath" },
+        "source": { "$ref": "#/$defs/source" },
+        "targetId": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 },
+        "serialGroupId": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "flaky", "failed", "timed-out", "interrupted", "skipped"] },
+        "skip": { "$ref": "#/$defs/skip" },
+        "attempts": { "type": "array", "items": { "$ref": "#/$defs/attempt" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "serialGroupId": { "type": "string", "minLength": 1 } },
+            "required": ["serialGroupId"]
+          },
+          "then": {
+            "properties": {
+              "attempts": {
+                "type": "array",
+                "maxItems": 0,
+                "items": { "$ref": "#/$defs/attempt" }
+              }
+            }
+          },
+          "else": {
+            "if": { "properties": { "status": { "const": "skipped" } } },
+            "then": {
+              "required": ["skip"],
+              "properties": {
+                "skip": { "$ref": "#/$defs/skip" },
+                "attempts": {
+                  "type": "array",
+                  "maxItems": 0,
+                  "items": { "$ref": "#/$defs/attempt" }
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "attempts": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "#/$defs/attempt" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "skipped" } } },
+          "else": { "properties": { "skip": false } }
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "platform", "browser", "browserVersion", "viewport", "baseOrigin", "environment", "allowProduction", "testIdAttribute", "driver", "capabilities", "artifactCapabilities", "stateCapability"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "platform": { "type": "string", "minLength": 1 },
+        "browser": { "enum": ["chromium", "firefox", "webkit"] },
+        "browserVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "scale"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "scale": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "baseOrigin": { "type": "string", "format": "uri" },
+        "environment": { "enum": ["test", "staging", "production"] },
+        "allowProduction": { "type": "boolean" },
+        "testIdAttribute": { "type": "string", "minLength": 1 },
+        "driver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "spiVersion"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 },
+            "spiVersion": { "const": 1 }
+          }
+        },
+        "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "artifactCapabilities": {
+          "type": "array",
+          "items": { "enum": ["screenshot", "trace", "video"] },
+          "uniqueItems": true
+        },
+        "stateCapability": { "type": "boolean" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discovered", "selected", "executed", "passed", "failed", "flaky", "skipped"],
+      "properties": {
+        "discovered": { "type": "integer", "minimum": 0 },
+        "selected": { "type": "integer", "minimum": 0 },
+        "executed": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "flaky": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxDiscoveredResults", "maxCacheBytes", "maxTerminalFieldBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "maxArtifactBytes", "maxArtifactTotalBytes", "maxDownloadBytes", "maxDownloads", "maxReportBytes", "maxEventsPerStep", "maxModelTokensPerCall", "maxModelCallsPerStep", "maxActionStepsPerStep"],
+      "properties": {
+        "maxDiscoveredResults": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "maxCacheBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
+        "maxTerminalFieldBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
+        "maxAgentContextBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
+        "maxLedgerBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
+        "maxObservationBytes": { "type": "integer", "minimum": 1024, "maximum": 16777216 },
+        "maxArtifactBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+        "maxArtifactTotalBytes": { "type": "integer", "minimum": 1, "maximum": 10737418240 },
+        "maxDownloadBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+        "maxDownloads": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "maxReportBytes": { "type": "integer", "minimum": 1, "maximum": 104857600 },
+        "maxEventsPerStep": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "maxModelTokensPerCall": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "maxModelCallsPerStep": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "maxActionStepsPerStep": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "maxEstimatedCostUsd": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discoveredResults", "maxCacheEntryBytes", "maxTerminalFieldBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "downloads", "reportBytes", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
+      "properties": {
+        "discoveredResults": { "type": "integer", "minimum": 0 },
+        "maxCacheEntryBytes": { "type": "integer", "minimum": 0 },
+        "maxTerminalFieldBytes": { "type": "integer", "minimum": 0 },
+        "maxAgentContextBytes": { "type": "integer", "minimum": 0 },
+        "maxLedgerBytes": { "type": "integer", "minimum": 0 },
+        "maxObservationBytes": { "type": "integer", "minimum": 0 },
+        "artifactBytes": { "type": "integer", "minimum": 0 },
+        "downloads": { "type": "integer", "minimum": 0 },
+        "reportBytes": { "type": "integer", "minimum": 0 },
+        "events": { "type": "integer", "minimum": 0 },
+        "modelTokens": { "type": "integer", "minimum": 0 },
+        "maxModelCallsInStep": { "type": "integer", "minimum": 0 },
+        "maxActionStepsInStep": { "type": "integer", "minimum": 0 },
+        "estimatedCostUsd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "specVersion", "runner", "status", "exitCode", "startedAt", "project", "environment", "targets", "serialGroups", "results", "errors", "summary", "limits", "usage"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidV7" },
+        "specVersion": { "const": "0.1" },
+        "runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 }
+          }
+        },
+        "status": { "enum": ["passed", "failed", "error", "interrupted"] },
+        "exitCode": { "enum": [0, 1, 2, 3, 4, 130] },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "finishedAt": { "$ref": "#/$defs/timestamp" },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "configDigest"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "configDigest": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ci", "trustNoticeShown", "os", "arch", "runtime"],
+          "properties": {
+            "ci": { "type": "boolean" },
+            "trustNoticeShown": { "type": "boolean" },
+            "os": { "type": "string", "minLength": 1 },
+            "arch": { "type": "string", "minLength": 1 },
+            "runtime": { "type": "string", "minLength": 1 }
+          }
+        },
+        "targets": { "type": "array", "items": { "$ref": "#/$defs/target" } },
+        "serialGroups": { "type": "array", "items": { "$ref": "#/$defs/serialGroup" } },
+        "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
+        "summary": { "$ref": "#/$defs/summary" },
+        "limits": { "$ref": "#/$defs/limits" },
+        "usage": { "$ref": "#/$defs/usage" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    }
+  }
+}

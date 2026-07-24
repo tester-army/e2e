@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "session-1",
+  "runId": "018f0f5c-7b2a-7abc-8abc-0123456789ab",
+  "name": "member",
+  "targetId": "web",
+  "platform": "web",
+  "driver": {
+    "id": "playwright",
+    "version": "1.0.0",
+    "spiVersion": 1
+  },
+  "appIdentity": "0000000000000000000000000000000000000000000000000000000000000000",
+  "createdAt": "2026-07-24T12:00:00Z",
+  "state": {
+    "format": "playwright-state",
+    "version": 1,
+    "algorithm": "none",
+    "iv": "",
+    "tag": "",
+    "ciphertext": "plain text"
+  }
+}

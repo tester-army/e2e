@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/agent-judgment-v1.schema.json",
+  "title": "e2e agent-judgment-1 response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "result", "explanation"],
+  "properties": {
+    "protocolVersion": { "const": "agent-judgment-1" },
+    "result": { "type": "boolean" },
+    "explanation": { "type": "string", "maxLength": 8192 }
+  }
+}

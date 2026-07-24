@@ -1,90 +1,73 @@
 # e2e
 
-The open-source, cross-platform, agentic testing framework. One test runs
-on web, iOS, and Android.
+An open, local-first standard for agentic end-to-end testing.
 
-**The last testing framework you will ever need.**
+The specified v0 runs web tests through a reference Playwright driver. The portable API and
+driver model are designed for future iOS and Android profiles without claiming
+mobile support before those profiles pass conformance.
 
-```bash
-pnpm add e2e
-```
+The following is the locked usage contract; no runner implementation has
+shipped yet.
 
 ```ts
 import { test } from 'e2e';
 
-export default test('user can sign up', async ({ app, agent }) => {
+test('user can sign up', async ({ app, agent }) => {
   await app.open();
-
   await agent.act('sign up as a new user');
-
   await agent.assert('the dashboard is visible');
 });
 ```
 
 ```bash
-npx e2e run
+E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... pnpm e2e run
 ```
+
+Deterministic suites using `screen`, `app`, `web`, and `expect` need no model.
 
 ## Why
 
-There is no cross-platform testing framework built on agentic testing.
-Playwright owns web. Detox and Maestro fragment mobile. AI testing tools are
-web-only libraries bolted onto other runners. `e2e` is one API for all of
-it: full deterministic parity for migrators (locators, network
-interception, gestures, app lifecycle — see
-[spec/12-migration.md](./spec/12-migration.md)), and agentic testing as the
-reason to switch.
-
-The approach mirrors how Vitest built on Vite: reuse a great engine,
-innovate on the layer above. `e2e` ships Playwright as its default web
-driver and focuses where no automation engine aims — agent-native
-execution, one API across platforms, and managed resources. A test describes a **user workflow**; a **target** decides
-where it runs. Write it once; run it on web, iOS, and Android.
-
-And the messy parts of real E2E — test accounts, secrets — are first-class
-resources, not plumbing:
+Agentic testing should not require surrendering test control, portability, or
+diagnostics. e2e makes each agent call a bounded operation inside ordinary
+TypeScript and lets deterministic semantic actions interleave with it:
 
 ```ts
-import { test, credentials } from 'e2e';
-
-export default test('admin can invite a teammate', async ({ app, agent }) => {
-  await app.open();
-
-  await agent.login(credentials.user('admin')); // secret never enters the model
-
-  await agent.act('invite a teammate as viewer', {
-    email: 'ada@example.test',
-  });
-
-  await agent.assert('the pending invite is listed');
-});
+await agent.act('open billing and start an upgrade');
+await agent.tap('the Pro plan card');
+await screen.getByRole('button', { name: 'Confirm' }).tap();
 ```
 
-The same resource model extends to email inboxes (OTP/magic-link
-extraction), webhook captures, files, and phone numbers — shipped as
-extensions after the core.
+- Code owns order and values; agents are bounded fixtures.
+- The runner owns waiting, retries, policy, caching, and reports.
+- Drivers implement a versioned query/action/observation/state contract.
+- Credentials remain opaque to models and reports.
+- Locate caches become readable semantic queries; path caches remain guarded
+  model guidance rather than blind replay.
+- Reports, caches, and sessions use versioned schemas.
+- Local execution requires no e2e account or hosted runner.
 
-- **A control gradient, not a mode switch** — `agent.act('goal')` plans a flow; `agent.tap('the login button')` uses AI only to locate (cached); `screen.getByRole('button', { name: 'Login' }).tap()` is zero-AI. All three tiers are cross-platform.
-- **Testing Library on every platform** — `screen` projects role/label/text/testId queries onto ARIA (web) and native accessibility (iOS/Android). One deterministic layer, shared primitives, native implementations — the React Native way.
-- **Deterministic where it counts** — instant-action locations cache as readable `screen` queries; world-state assertions are always deterministic; the cache is committable and reviewable.
-- **Cross-platform** — one test, many targets: `npx e2e run --target ios`.
-- **Bring your own backend — or your own platform** — automation backends are separate packages on a public driver SPI. Playwright is just the default web driver; if something 100× faster ships tomorrow, it's `npm install` + one config line. And the platform set is open: an `e2e-driver-electron` package makes `electron` a first-class target, no core release needed. Community drivers welcome: `e2e-driver-*`.
-- **Local-first** — runs offline and in CI with no account and no hosted service. Your machine, your model key, your artifacts.
+## Standard
 
-## Roadmap
+The frozen specification is under [`spec/`](./spec):
 
-- **Service emulation** — local, stateful Stripe/Slack/OAuth emulators with assertions: `expect(stripe).toHavePayment(…)`
-- **PR testing** — preview-URL resolution, changed-file test selection, exploratory `test.dynamic`, GitHub Checks
-- **More resources** — webhook captures, file fixtures, phone/SMS
-- **Runner niceties** — `test.each`, sharding, watch mode (`e2e dev`), inspector (`e2e open`), visual snapshots
-- **Managed backends** — hosted runners, browsers/devices, resources, and replays behind the same API ([design](./spec/roadmap/cloud.md))
+- [`spec/00-conformance.md`](./spec/00-conformance.md) defines profiles and
+  conformance;
+- [`spec/api/`](./spec/api) contains canonical TypeScript declarations;
+- [`spec/schema/`](./spec/schema) contains canonical wire schemas;
+- [`spec/14-security.md`](./spec/14-security.md) defines mandatory safety
+  behavior;
+- [`spec/12-migration.md`](./spec/12-migration.md) documents migration coverage
+  without claiming unsupported parity.
 
 ## Status
 
-Spec phase — see [RFC.md](./RFC.md) for the one-page case,
-[spec/](./spec) for the full API specification,
-[spec/roadmap/](./spec/roadmap) for deferred designs, and [PLAN.md](./PLAN.md)
-for the implementation plan.
+Specification 0.1 is the implementation baseline. v0 consists of every required
+profile listed in [`spec/00-conformance.md`](./spec/00-conformance.md). The
+normative release gate is in [`spec/07-scope.md`](./spec/07-scope.md);
+[`PLAN.md`](./PLAN.md) only orders implementation work.
+
+Deferred mobile, resource, PR, service, and hosted-runner designs live under
+[`spec/roadmap/`](./spec/roadmap) and are nonnormative.
 
 ---
 

@@ -1,0 +1,112 @@
+{
+  "specVersion": "0.1",
+  "suiteVersion": "0.1.0",
+  "profiles": {
+    "sdk-0.1": [
+      { "id": "SDK-TYPES-001", "source": "api/e2e.d.ts", "requirement": "Canonical SDK declarations compile in strict TypeScript." },
+      { "id": "SDK-TYPES-002", "source": "api/type-tests.ts", "requirement": "Schema overload returns required inferred data and plain act does not." },
+      { "id": "SDK-TYPES-003", "source": "api/type-tests.ts", "requirement": "Async describe callbacks are rejected by the type surface." },
+      { "id": "SDK-TYPES-004", "source": "examples", "requirement": "Every canonical example type-checks without implementation-only types." },
+      { "id": "SDK-TYPES-005", "source": "02-test-api.md", "requirement": "Setup-only and ordinary fixture authority remain type-distinct." },
+      { "id": "SDK-TYPES-006", "source": "api/e2e.d.ts", "requirement": "Driver handles and secret handles are nominal and nonforgeable." }
+    ],
+    "runner-0.1": [
+      { "id": "RUNNER-CONFIG-001", "source": "05-config.md", "requirement": "Project/config discovery, unknown-key rejection, and precedence are deterministic." },
+      { "id": "RUNNER-CONFIG-002", "source": "05-config.md", "requirement": "Glob matching follows the frozen grammar and ordering." },
+      { "id": "RUNNER-CONFIG-003", "source": "05-config.md", "requirement": "Effective URL, environment, origin, model, and limit validation fail before execution." },
+      { "id": "RUNNER-COLLECT-001", "source": "11-lifecycle.md", "requirement": "Modules register synchronously and exports never cause collection or duplication." },
+      { "id": "RUNNER-COLLECT-002", "source": "11-lifecycle.md", "requirement": "Stable test/setup/serial IDs and duplicate detection match the specified encoding." },
+      { "id": "RUNNER-SELECT-001", "source": "11-lifecycle.md", "requirement": "File, tag, target, platform, capability, only, skip, and zero-test selection match the algorithm." },
+      { "id": "RUNNER-SELECT-002", "source": "11-lifecycle.md", "requirement": "Session producers and serial closure are selected statically and atomically." },
+      { "id": "RUNNER-HOOK-001", "source": "11-lifecycle.md", "requirement": "Nested hook order, entered-scope teardown, and primary/secondary errors are exact." },
+      { "id": "RUNNER-ATTEMPT-001", "source": "11-lifecycle.md", "requirement": "Independent attempts receive fresh logical driver, fixture, handler, ledger, and artifact state." },
+      { "id": "RUNNER-RETRY-001", "source": "11-lifecycle.md", "requirement": "Retry eligibility, realm replacement, cache bypass, and flaky outcome match the transition table." },
+      { "id": "RUNNER-SERIAL-001", "source": "11-lifecycle.md", "requirement": "Serial groups restore once, share state, retry from member one, and report every member attempt." },
+      { "id": "RUNNER-CANCEL-001", "source": "11-lifecycle.md", "requirement": "Timeout and signal cancellation propagate; forced realm death preserves host finalizers and partial results." },
+      { "id": "RUNNER-PROCESS-001", "source": "05-config.md", "requirement": "App process startup, safe environment, readiness, process-group shutdown, and force kill are bounded." },
+      { "id": "RUNNER-CLI-001", "source": "06-cli.md", "requirement": "Flags, reporter behavior, unconditional JSON report, and exit precedence match the contract." },
+      { "id": "RUNNER-SECURITY-001", "source": "14-security.md", "requirement": "Prompt and tool injection cannot expand runner policy or execute unknown tools." },
+      { "id": "RUNNER-SECURITY-002", "source": "14-security.md", "requirement": "Origin, redirect, frame, scheme, DNS/IP, HTTPS, and production policy fail closed." },
+      { "id": "RUNNER-SECURITY-003", "source": "14-security.md", "requirement": "Credential handle, purpose, origin, revision, and destination checks precede plaintext resolution." },
+      { "id": "RUNNER-SECURITY-004", "source": "14-security.md", "requirement": "Secret taint removes pixel/video evidence and textual secret redaction remains complete." },
+      { "id": "RUNNER-SECURITY-005", "source": "14-security.md", "requirement": "The runner never claims to sandbox trusted code; untrusted execution requires an external no-secret boundary." },
+      { "id": "RUNNER-OUTPUT-001", "source": "06-cli.md", "requirement": "Terminal and HTML output escape untrusted content and enforce path/size/CSP policy." }
+    ],
+    "core-0.1": [
+      { "id": "DRIVER-QUERY-001", "source": "08-platforms.md", "requirement": "Complete immutable locator AST preserves query, scope, frame, filters, and index." },
+      { "id": "DRIVER-QUERY-002", "source": "08-platforms.md", "requirement": "Resolve/read are immediate; runner owns polling, strictness, and deadlines." },
+      { "id": "DRIVER-QUERY-003", "source": "08-platforms.md", "requirement": "Ordering, descendant scope, conjunctive filters, and direct-read cardinality are exact." },
+      { "id": "DRIVER-ACTION-001", "source": "09-drivers.md", "requirement": "Every public locator and agent action preserves normalized options." },
+      { "id": "DRIVER-ACTION-002", "source": "09-drivers.md", "requirement": "Every mutator distinguishes precommit stale state from possibly committed failure." },
+      { "id": "DRIVER-OBSERVE-001", "source": "09-drivers.md", "requirement": "Observation tree and optional screenshot share one revision and valid node references." },
+      { "id": "DRIVER-OBSERVE-002", "source": "09-drivers.md", "requirement": "Secure values, input purpose, sensitive attributes, and screenshot taint satisfy policy." },
+      { "id": "DRIVER-STATE-001", "source": "09-drivers.md", "requirement": "State capture is complete for the profile and restore replaces rather than merges." },
+      { "id": "DRIVER-ARTIFACT-001", "source": "09-drivers.md", "requirement": "Artifact capabilities, containment, masking, limits, and finalization are exact." },
+      { "id": "DRIVER-CANCEL-001", "source": "09-drivers.md", "requirement": "Every operation and event decision honors timeout and abort without later mutation." }
+    ],
+    "web-0.1": [
+      { "id": "WEB-QUERY-001", "source": "08-platforms.md", "requirement": "ARIA 1.2 roles and AccName 1.2 names match reference vectors." },
+      { "id": "WEB-QUERY-002", "source": "03-assertions.md", "requirement": "Text normalization, regexp, hidden, state, and assertion semantics match vectors." },
+      { "id": "WEB-ACTION-001", "source": "08-platforms.md", "requirement": "Web actionability and action timeout semantics match the profile." },
+      { "id": "WEB-SCROLL-001", "source": "08-platforms.md", "requirement": "Scroll/swipe distance, duration, direction, and no-progress termination are normalized." },
+      { "id": "WEB-APP-001", "source": "08-platforms.md", "requirement": "Open, restart, clearState, back, deepLink, and screenshot state semantics are exact." },
+      { "id": "WEB-NAV-001", "source": "08-platforms.md", "requirement": "Navigation, redirects, wait states, URL matching, and origin checks are exact." },
+      { "id": "WEB-FRAME-001", "source": "08-platforms.md", "requirement": "Frame AST, strict frame resolution, and cross-origin policy are exact." },
+      { "id": "WEB-ROUTE-001", "source": "08-platforms.md", "requirement": "Route grammar, ordering, one decision, errors, and cleanup match the profile." },
+      { "id": "WEB-EVAL-001", "source": "08-platforms.md", "requirement": "Evaluation accepts only trusted source and JSON-safe arguments/results." },
+      { "id": "WEB-STATE-001", "source": "08-platforms.md", "requirement": "Cookies, viewport, secure reads, and session stores match the profile." },
+      { "id": "WEB-EVENT-001", "source": "08-platforms.md", "requirement": "Dialogs and downloads register before triggers and cancel/clean deterministically." },
+      { "id": "WEB-INPUT-001", "source": "08-platforms.md", "requirement": "Keyboard and trusted web mouse operations are bounded and reported." },
+      { "id": "WEB-BROWSER-001", "source": "07-scope.md", "requirement": "The same required vectors pass pinned Chromium, Firefox, and WebKit." }
+    ],
+    "driver-1": [
+      { "id": "SPI-MANIFEST-001", "source": "api/driver.d.ts", "requirement": "Branded handle exposes immutable identity, version, platforms, and capabilities before launch." },
+      { "id": "SPI-LAUNCH-001", "source": "09-drivers.md", "requirement": "Launch is bounded and rolls back every partial acquisition on rejection." },
+      { "id": "SPI-CONTEXT-001", "source": "api/driver.d.ts", "requirement": "Resolved app/query policy and operation context reach every required primitive." },
+      { "id": "SPI-CLOSE-001", "source": "09-drivers.md", "requirement": "Close is idempotent, uses fresh cleanup context, and leaves no owned work running." },
+      { "id": "SPI-ERROR-001", "source": "09-drivers.md", "requirement": "Closed driver errors report retry and commit safety without assigning test status." },
+      { "id": "SPI-EVENT-001", "source": "api/driver.d.ts", "requirement": "Route, dialog, and download event bridges preserve runner callback authority and cancellation." },
+      { "id": "SPI-CAPABILITY-001", "source": "09-drivers.md", "requirement": "Manifest capability and runtime capability fixtures agree exactly." },
+      { "id": "SPI-VERIFY-001", "source": "09-drivers.md", "requirement": "Verifier runs the reference app and emits artifact-bound conformance-1 reports." }
+    ],
+    "agent-protocol-1": [
+      { "id": "AGENT-TOOL-001", "source": "schema/agent-tool-v1.schema.json", "requirement": "Every model tool call validates against one closed discriminated schema." },
+      { "id": "AGENT-TOOL-002", "source": "02-test-api.md", "requirement": "Each agent method receives only its documented tool subset and budget." },
+      { "id": "AGENT-TOOL-003", "source": "14-security.md", "requirement": "Model calls cannot submit coordinates, code, selectors, unknown fields, or policy changes." },
+      { "id": "AGENT-TOOL-004", "source": "14-security.md", "requirement": "Secret tool calls contain name/purpose only and require host authorization." },
+      { "id": "AGENT-TOOL-005", "source": "02-test-api.md", "requirement": "Conclusions, schema repair, repetition, timeout, and budget errors are runner-owned." },
+      { "id": "AGENT-TOOL-006", "source": "schema/agent-locate-v1.schema.json", "requirement": "Located methods accept node identity only and expose no action authority to the model." },
+      { "id": "AGENT-TOOL-007", "source": "schema/agent-judgment-v1.schema.json", "requirement": "Judgment methods accept only boolean result and bounded explanation." }
+    ],
+    "report-1": [
+      { "id": "REPORT-SCHEMA-001", "source": "schema/report-v1.schema.json", "requirement": "Positive and hostile report fixtures satisfy strict schema expectations." },
+      { "id": "REPORT-SEMANTIC-001", "source": "13-reporting.md", "requirement": "Reference validator recomputes identity, order, status, summary, references, and usage." },
+      { "id": "REPORT-PATH-001", "source": "13-reporting.md", "requirement": "All paths are relative POSIX, canonical, contained, and symlink safe." },
+      { "id": "REPORT-PROVENANCE-001", "source": "13-reporting.md", "requirement": "Target, driver, model, policy, cache, environment, and production provenance is complete." },
+      { "id": "REPORT-ARTIFACT-001", "source": "13-reporting.md", "requirement": "Artifact producer, digest, size, redaction, and incomplete-evidence rules are exact." },
+      { "id": "REPORT-PARTIAL-001", "source": "13-reporting.md", "requirement": "Interrupted/error runs atomically produce valid bounded partial reports." },
+      { "id": "REPORT-HOSTILE-001", "source": "14-security.md", "requirement": "Hostile schema-valid reports cannot bypass semantic validation or renderer escaping." }
+    ],
+    "cache-1": [
+      { "id": "CACHE-SCHEMA-001", "source": "schema/cache-v1.schema.json", "requirement": "Cache entries use strict action-specific schema with no executable/free-form guidance." },
+      { "id": "CACHE-IDENTITY-001", "source": "10-determinism.md", "requirement": "RFC 8785/SHA-256 key identity includes every specified version/input/context field." },
+      { "id": "CACHE-LOCATE-001", "source": "10-determinism.md", "requirement": "Locate hits store semantic locators only and require one compatible node." },
+      { "id": "CACHE-PATH-001", "source": "10-determinism.md", "requirement": "Path guidance reobserves and never restarts after a committed mutation." },
+      { "id": "CACHE-WRITE-001", "source": "10-determinism.md", "requirement": "Per-key locking, generation, fsync, atomic rename, and corruption cleanup are safe." },
+      { "id": "CACHE-SECURITY-001", "source": "14-security.md", "requirement": "Poisoned, oversized, mismatched, traversal, and untrusted-CI cache inputs fail closed." }
+    ],
+    "session-1": [
+      { "id": "SESSION-SCHEMA-001", "source": "schema/session-v1.schema.json", "requirement": "Session envelope and positive/hostile fixtures satisfy strict schema and expiry semantics." },
+      { "id": "SESSION-CRYPTO-001", "source": "11-lifecycle.md", "requirement": "AES-256-GCM uses random memory-only per-run key and authenticates all metadata." },
+      { "id": "SESSION-BIND-001", "source": "11-lifecycle.md", "requirement": "Run, name, target, platform, driver version/SPI, app identity, and expiry all bind restore." },
+      { "id": "SESSION-PUBLISH-001", "source": "11-lifecycle.md", "requirement": "Only successful setup attempts atomically publish every declared output once." },
+      { "id": "SESSION-CLEANUP-001", "source": "11-lifecycle.md", "requirement": "Owner-only files are per-run, deleted on cleanup, and abandoned ciphertext is scavenged." }
+    ],
+    "conformance-1": [
+      { "id": "CONFORMANCE-SCHEMA-001", "source": "schema/conformance-v1.schema.json", "requirement": "Conformance documents validate strictly and bind one exact profile/artifact/suite." },
+      { "id": "CONFORMANCE-COMPLETE-001", "source": "00-conformance.md", "requirement": "Every manifest ID appears exactly once and unknown, missing, duplicate, or skipped IDs fail." },
+      { "id": "CONFORMANCE-STATUS-001", "source": "13-reporting.md", "requirement": "Overall status is derived from requirement results." },
+      { "id": "CONFORMANCE-EVIDENCE-001", "source": "00-conformance.md", "requirement": "Claims are accepted only after a trusted reference-suite rerun against the digest-pinned artifact." }
+    ]
+  }
+}

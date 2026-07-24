@@ -1,119 +1,91 @@
-# 12 — Migration: Playwright & Maestro Parity
+# 12 - Migration Coverage
 
-`e2e` gives migrators from Playwright (web) and Maestro (mobile) one
-cross-platform API with full parity — the agent tiers layered on top.
-Starting from scratch is the advantage: we take the best of both without
-inheriting their constraints (Playwright is web-only by design; Maestro's
-YAML has ceilings).
+This is an informative adoption map, not a claim of full API parity. e2e
+intentionally standardizes a portable semantic subset and documents every
+known migration gap. Normative behavior lives in the numbered API/profile
+documents and canonical declarations.
 
-These tables are the parity contract. Every row is either mapped, planned
-(P1/P2), or rejected with a reason — a migrator should never discover a
-hole we didn't document. This doc is also the Phase 1 checklist
-(PLAN.md).
+Status: `v0` ships in the web profile, `future mobile` requires unassigned mobile profiles,
+`later` is unscheduled, and `no` is deliberately excluded.
 
-## Adoption path (the Vitest move)
+## Adoption
 
-Nobody rewrites a working suite on day one — Vitest won by making
-coexistence cheap, and so does e2e:
+Existing suites can run beside `tests/**/*.e2e.ts`. Teams can write new tests
+first, port touched flows, and remove the old runner only when the documented
+subset covers their needs. Backend reuse does not make unsupported Playwright
+objects or semantics implicitly available.
 
-1. **Run alongside.** e2e lives in `tests/**/*.e2e.ts`; the existing
-   Playwright suite keeps running untouched. Two runners, one repo, no
-   conflict — e2e uses Playwright as its driver anyway.
-2. **New tests first.** New flows are written in e2e (agentic where it
-   pays, parity surface everywhere else). The migration tables mean zero
-   dead ends when porting muscle memory.
-3. **Port on touch.** When an old spec needs editing anyway, port it —
-   the mapping is mechanical by design (same locator/matcher names).
-4. **Sunset.** When the old suite stops earning its CI minutes, delete it
-   along with its config. Migrating should mean *deleting* configuration,
-   not porting it.
-
-A `e2e migrate` codemod for mechanical spec conversion is roadmap.
-
-Deliberate side effect of API compatibility: models trained on Playwright
-and Testing Library emit near-valid e2e code out of the box — familiarity
-is also AI-legibility.
-
-Status: ✅ v0 · P1 (fast follow) · P2 (later) · ✖ deliberate no.
-
-## Playwright → e2e
+## Playwright to e2e
 
 | Playwright | e2e | Status |
 |---|---|---|
-| `page.goto/reload/goBack/goForward` | `web.goto/reload/back/forward` (portable: `app.open`) | ✅ |
-| `page.url()` / `waitForURL` | `web.url()` / `web.waitForURL` | ✅ |
-| `page.getByRole/Label/Placeholder/Text/TestId` | `screen.getBy*` (cross-platform) | ✅ |
-| `page.getByAltText/Title` | folded into `getByLabel`/`getByText` (RNTL precedent) | ✖ |
-| `page.locator(css/xpath)` | `web.locator(css)` | ✅ |
-| `locator.filter({ hasText, has })` / `first/last/nth` | same | ✅ |
-| `click/dblclick/fill/clear/press/check/uncheck/selectOption/focus/hover/dragTo` | `Locator` — same names (`tap` alias; `hover` P1, web-only via `web`) | ✅ / P1 |
-| `setInputFiles` | `files` resource (roadmap) + agent, or `web` | P1 |
-| `textContent/inputValue/getAttribute/isVisible/isEnabled/isChecked/boundingBox` | `Locator` — same names | ✅ |
-| web-first `expect(locator)` matchers | `expect(locator)` (semantic set; no `toHaveClass/Attribute/Style`) | ✅ / ✖ |
-| `expect(page).toHaveURL/toHaveTitle` | `expect(web).toHaveURL/toHaveTitle` | ✅ |
-| `page.route/unroute` / `waitForResponse` | `web.route/unroute/waitForResponse` | ✅ |
-| `context.cookies/addCookies` | `web.cookies/setCookies` | ✅ |
-| `storageState` (auth reuse) | `session.save()` / `test.setup()` — better: cross-platform | ✅ |
-| `page.evaluate` | `web.evaluate` | ✅ |
-| dialogs (`page.on('dialog')`) | `web.onDialog` | ✅ |
-| downloads | `web.waitForDownload` | ✅ |
-| `keyboard`/`mouse` raw | `web.keyboard`/`web.mouse` | ✅ |
-| `frameLocator` | `web.frameLocator` (queries only) | ✅ |
-| viewport / device emulation | target `viewport`; `web.setViewport` | ✅ |
-| multi-tab / popups (`context.waitForEvent('page')`) | — | P1 |
-| `page.screenshot` | `app.screenshot` (evidence) | ✅ |
-| `locator.screenshot` | element screenshot (crop to `boundingBox`), cross-platform | P1 |
-| trace viewer / HTML report | HTML step-timeline report (`e2e open` UI post-v0) | ✅ (Phase 2) |
-| projects | `targets` | ✅ |
-| fixtures (`test.extend`) | `test.extend` (reserved) | P1 |
-| `test.step` | not needed: steps are derived from calls (self-labeling); grouping marker is roadmap | ✅ |
-| retries / serial / tags | `retries`, `{ serial: true }`, `tags` | ✅ |
-| `--shard` | `--shard` (post-v0) | P1 |
-| `webServer` | `app.command` | ✅ |
-| clock API | — | P2 |
-| HAR record/replay | — | P2 |
-| `toMatchScreenshot` visual diff | — (roadmap; `agent.assert` covers semantic checks) | P2 |
-| component testing | — | ✖ (workflows only) |
+| `page.goto/reload/goBack/goForward` | `web.goto/reload/back/forward` | v0 |
+| `page.url` / `waitForURL` | `web.url` / `web.waitForURL` | v0 |
+| role/label/placeholder/text/testId queries | `screen.getBy*` | v0 |
+| `getByAltText` / `getByTitle` | use role/name or text where equivalent | no direct API |
+| CSS/XPath locators | `web.locator`, explicit `xpath=` | v0 |
+| locator filters and first/last/nth | same concepts | v0 |
+| click/double-click/fill/clear/press/check/select/focus/drag | `Locator` | v0 |
+| hover | web capability addition | later |
+| input files | file-resource/web addition | later |
+| locator reads | normalized `Locator` reads | v0 |
+| semantic locator assertions | `expect(locator)` | v0 |
+| class/attribute/style assertions | intentionally implementation-facing | no |
+| URL/title assertions | `expect(web)` | v0 |
+| route/unroute/waitForResponse | `web` | v0 |
+| cookies | `web.cookies/setCookies` | v0 |
+| storage state | setup tests plus per-run sessions | v0 |
+| `page.evaluate` | constrained `web.evaluate` | v0 |
+| dialogs | attempt-scoped `web.onDialog` | v0 |
+| downloads | contained `web.waitForDownload` | v0 |
+| keyboard/mouse | `web.keyboard/mouse` | v0 |
+| frame locator | query-only `web.frameLocator` | v0 |
+| viewport | target viewport / `web.setViewport` | v0 |
+| multi-page contexts/popups | no v0 equivalent | later |
+| screenshots | redacted `app.screenshot` | v0 |
+| element screenshots | crop artifact | later |
+| traces/video/HTML report | driver artifacts plus `report-1` | v0 |
+| projects | named targets | v0 |
+| custom fixtures | `test.extend` | later |
+| `test.step` | derived steps; grouping marker if needed | no direct API |
+| retries/serial/tags | runner options | v0 |
+| sharding | planned runner capability | later |
+| web server | structured `app.command` | v0 |
+| clock/HAR/visual diff | dedicated future profiles | later |
+| component testing | workflows only | no |
 
-## Maestro → e2e
+## Maestro to e2e
 
-| Maestro | e2e | Status |
+The following mappings are design targets for future mobile profiles. Their presence does
+not make a v0 web runner mobile-conformant.
+
+| Maestro | Reserved e2e shape | Status |
 |---|---|---|
-| `launchApp` / `stopApp` | `app.open()` / `app.restart()` | ✅ |
-| `launchApp: clearState` | `app.clearState()` (explicitly ≠ `restart()`) | ✅ |
-| `openLink` | `app.deepLink()` | ✅ |
-| `tapOn` (text/id) | `screen.getByText/TestId(…).tap()` or `agent.tap('…')` | ✅ |
-| `tapOn: point` | — (agent handles; raw coords are driver-internal) | ✖ |
-| `doubleTapOn` / `longPressOn` | `locator.doubleTap()` / `longPress()` | ✅ |
-| `inputText` / `eraseText` | `locator.fill()` / `clear()` | ✅ |
-| `hideKeyboard` | `device.hideKeyboard()` | ✅ |
-| `swipe` | `screen.swipe({ direction, momentum })` / `locator.swipe()` | ✅ |
-| `scroll` / `scrollUntilVisible` | `screen.scrollUntilVisible(locator)`; agent: `agent.scrollTo('…')` | ✅ |
-| `back` | `app.back()` | ✅ |
-| `assertVisible/assertNotVisible` | `expect(locator).toBeVisible()/.not.toBeVisible()` | ✅ |
-| `extendedWaitUntil` | `locator.waitFor()` / `agent.waitFor('…')` | ✅ |
-| `copyTextFrom` | `locator.textContent()` (real variables — it's TypeScript) | ✅ |
-| `runFlow` / conditionals / loops | plain TS functions/`if`/`for` | ✅ |
-| `evalScript` | plain TS | ✅ |
-| permissions (`launchApp.permissions` / `setPermissions`) | `device.setPermission()` — mid-test, both platforms | ✅ |
-| location | `device.setLocation()` | ✅ |
-| push notification (bolt-on) | `device.pushNotification()` | ✅ |
-| `takeScreenshot` | `app.screenshot()` | ✅ |
-| `startRecording` | `artifacts: ['video']` | ✅ |
-| `addMedia` | — | P1 |
-| airplane mode / `setAirplaneMode` | — | P2 |
-| Maestro Studio (recorder) | — (non-goal: recorder-first; `e2e dev` is the loop) | ✖ |
-| `waitForAnimationToEnd` | driver-internal (settle heuristics) | ✅ |
+| launch/stop/clear state | `app.open/restart/clearState` | future mobile |
+| open link | `app.deepLink` | future mobile |
+| text/id tap | `screen` locator or located agent action | future mobile |
+| raw point tap | intentionally driver-internal | no |
+| double tap/long press | `Locator` actions | future mobile |
+| input/erase text | `fill/clear` | future mobile |
+| hide keyboard | `device.hideKeyboard` | future mobile |
+| swipe/scroll | `screen` and locator gestures | future mobile |
+| back | `app.back` | future mobile |
+| visible/not visible | locator assertions | future mobile |
+| extended wait | locator/agent waits | future mobile |
+| copy text | locator reads and TypeScript variables | future mobile |
+| flows/conditionals/loops | TypeScript | future mobile |
+| permissions/location/push | `device` capability | future mobile |
+| screenshot/video | driver artifacts | future mobile |
+| media injection/airplane mode | undecided | later |
+| recorder/studio | recorder-first workflow is a non-goal | no |
+| animation settling | profile-defined actionability | future mobile |
 
-## What "taking the best of both" means
+## Deliberate differences
 
-- **From Playwright**: locator model + auto-waiting, web-first assertions,
-  network interception, projects/parallelism/sharding, trace-style
-  artifacts, `webServer`.
-- **From Maestro**: app-lifecycle primitives (`clearState`, `back`,
-  `deepLink`), gesture vocabulary (`swipe`, `scrollUntilVisible`),
-  permissions/location as one-liners, flow simplicity.
-- **From neither (ours)**: one API across platforms, the agent tiers,
-  natural-language targets with cached locations, resources
-  (email/credentials in v0; webhooks/files/phone next), sessions that work
-  on mobile too, the step ledger and QA-report failures.
+- e2e owns runner polling, cardinality, policy, reports, and retries; it does
+  not inherit every backend default.
+- Backend objects never appear in tests.
+- Sessions isolate client state, not application databases.
+- Agent path guidance remains model-assisted and is not deterministic replay.
+- Credentials are the only v0 resource; email, files, webhooks, and phone are
+  extensions after v0.

@@ -6,7 +6,7 @@ import { test, expect } from 'e2e';
  * selectors, act() where the flow is genuinely dynamic. Every call below
  * is its own step in the report timeline — no wrapper ceremony.
  */
-export default test('member upgrades to the Pro plan', { tags: ['billing', 'smoke'], session: 'member' }, async ({ app, agent, screen }) => {
+test('member upgrades to the Pro plan', { tags: ['billing', 'smoke'], session: 'member' }, async ({ app, agent, screen }) => {
   await app.open('/settings/billing');
   await screen.getByRole('button', { name: 'Upgrade' }).tap();      // tier 3: deterministic
   await agent.tap('the Pro plan card');                             // tier 2: AI locates, cached

@@ -6,7 +6,7 @@ import { test, expect } from 'e2e';
  * 2. a mobile-only test using `device` (declares `platforms`).
  */
 
-export const mentionBadge = test('mention shows an unread badge', { session: 'member' }, async ({ app, agent, screen, platform }) => {
+test('mention shows an unread badge', { session: 'member' }, async ({ app, agent, screen, platform }) => {
   await app.open('/boards/rocketry');
 
   if (platform === 'web') {
@@ -22,9 +22,9 @@ export const mentionBadge = test('mention shows an unread badge', { session: 'me
   await expect(screen.getByRole('status', { name: 'Unread notifications' })).toBeVisible();
 });
 
-export const pushNotification = test(
+test(
   'tapping a push notification opens the task',
-  { platforms: ['ios', 'android'], session: 'member' },
+  { platforms: ['ios', 'android'], requires: ['device'], session: 'member' },
   async ({ device, agent }) => {
     await device.setPermission('notifications', 'allow');
     await device.home();

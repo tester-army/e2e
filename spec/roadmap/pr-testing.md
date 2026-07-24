@@ -1,213 +1,70 @@
-# Roadmap — Pull Request Testing
+# Roadmap - Pull Request Testing
 
-> **Status: roadmap.** Not part of the v0 spec. This draft predates several
-> core-API changes and will be re-validated before adoption.
+This document is nonnormative. PR metadata, selection, dynamic exploration,
+GitHub reporting, and an `e2e pr` command are not part of v0.
 
-PR testing is a first-class primitive, not GitHub Actions glue. The SDK
-exposes PR metadata as a resource and supports three modes: static tests on
-a preview URL, selective test runs based on changed files, and exploratory
-dynamic tests.
+## Goals
 
-## `pr` — PR context resource
+- run ordinary static tests against an explicitly allowed preview target;
+- deterministically select tests from changed files without hiding coverage;
+- optionally perform advisory model exploration;
+- publish results without giving untrusted code privileged tokens.
 
-```ts
-import { test, expect, pr } from 'e2e';
-```
+## Trust split
 
-### `pr.context()`
+PR code, dependencies, config, tests, metadata, diff, preview app, caches, and
+generated reports are untrusted. A safe design requires two jobs:
 
-```ts
-type PullRequestContext = {
-  provider: 'github' | 'gitlab' | 'local';
-  repo: string;
-  owner: string;
-  number: number;
-  title: string;
-  body?: string;
-  branch: string;
-  baseBranch: string;
-  sha: string;
-  changedFiles: string[];
-  diff: string;
-  previewUrl?: string;
-  labels: string[];
-};
+1. An unprivileged execution job checks out and runs PR code with no repository
+   secrets, write token, production credentials, shared cache/session writes,
+   or trusted network placement. It emits a sanitized signed report through the
+   quarantined repository/run/head-bound channel defined by a future profile.
+2. A trusted reporting job does not checkout, import, build, or execute PR code.
+   It validates the report artifact and uses a narrowly scoped token to publish
+   a check.
 
-pr.context(): Promise<PullRequestContext>;
-```
+`pull_request_target` must never combine a privileged context with untrusted
+checkout or dependencies. Fork behavior, token permissions, artifact integrity,
+retention, and replay protection must be conformance-tested.
 
-Detection: reads CI provider env (GitHub Actions first), fetches diff/files
-via `GITHUB_TOKEN` when available, falls back to local `git` against
-`baseBranch`. Outside a PR, `pr.context()` rejects with a helpful error
-(`test.dynamic` tests are then skipped, not failed).
+## Metadata resource
 
-### Convenience accessors
+If adopted, PR metadata belongs in a versioned extension import rather than a
+universal fixture. The wire-safe value may contain provider, repository,
+number, base/head commit, changed paths, labels, preview URL, and bounded diff.
+PR title/body/diff are quoted untrusted model data and cannot alter policy.
 
-```ts
-pr.previewUrl(options?: PreviewUrlOptions): Promise<string>;
-pr.changedFiles(): Promise<string[]>;
-pr.diff(): Promise<string>;
-```
+Local fallback must use explicit base/head commits and fail when history is
+insufficient; it must not silently choose the current branch or skip tests.
 
-### Preview URL resolution
+## Preview policy
 
-```ts
-type PreviewUrlOptions = {
-  providers?: Array<'vercel' | 'netlify' | 'render' | 'railway'>;
-  fallbackEnv?: string[]; // default ['E2E_PREVIEW_URL', 'VERCEL_URL']
-};
-```
+Preview URLs pass normal target environment/origin policy. Resolution is
+deterministic and records which trusted source supplied the URL. Redirects,
+frames, production domains, link-local addresses, and credential scopes remain
+restricted by 14-security.md.
 
-Priority order:
+## Selection
 
-1. `E2E_PREVIEW_URL` env var
-2. Explicit `pr.previewUrl` in config
-3. Vercel deployment for the PR sha (GitHub deployments/checks API)
-4. Netlify / Render / Railway env conventions
-5. GitHub deployment status
-6. Fail with an actionable error listing what was checked
+Path-to-test mapping is deterministic, versioned, and reported. Selection
+errors fail closed. Framework/config/dependency/unknown changes select the full
+suite by default. A smoke fallback is allowed only through explicit project
+policy.
 
-## Mode 1 — static tests on preview URL (v0)
+The report lists discovered, selected, filtered, skipped, and executed
+test-target pairs. Zero selected tests is an error unless explicitly permitted.
 
-Nothing new to learn; the preview URL is just the base URL:
+## Dynamic exploration
 
-```ts
-export default test('checkout still works', async ({ app, agent }) => {
-  await app.open(await pr.previewUrl());
+Exploratory PR testing, if added, is a separate advisory result kind with an
+explicit blocking policy. It receives bounded metadata, existing test names,
+and allowed app observations. It cannot inspect repository files, execute diff
+content, expand origins/tools, or publish privileged output directly.
 
-  await agent.act('buy the pro plan');
-  await agent.assert('the checkout succeeds');
-});
-```
+## GitHub output
 
-## Mode 2 — selective runs on changed files
-
-Config-level mapping from path globs to test tags/files. Deterministic
-speedup, no agent involved in selection:
-
-```ts
-// e2e.config.ts
-export default defineConfig({
-  pr: {
-    selectTests: {
-      'app/billing/**': ['checkout', 'stripe-webhook'],
-      'app/integrations/slack/**': ['slack-notification'],
-      'app/auth/**': ['signup', 'password-reset'],
-    },
-  },
-});
-```
-
-- Keys: path globs matched against `pr.changedFiles()`.
-- Values: test tags or test file paths.
-- `npx e2e pr` runs the union of matched tests; unmatched changes run the
-  `pr.fallback` set (default: all tests tagged `smoke`).
-
-## Mode 3 — exploratory dynamic tests
-
-`test.dynamic()` marks a test as agent-driven and non-deterministic. It gets
-the `pr` fixture bound automatically:
-
-```ts
-export default test.dynamic('changed user flows still work', async ({ app, agent, pr }) => {
-  await app.open(pr.previewUrl);
-
-  await agent.act('test the user-facing flows affected by this pull request', {
-    title: pr.title,
-    body: pr.body,
-    diff: pr.diff,
-    changedFiles: pr.changedFiles,
-  });
-
-  await agent.assert('the changed flows work without visible regressions');
-});
-```
-
-Semantics of `test.dynamic`:
-
-- Inside `test.dynamic`, the `pr` fixture is the **resolved**
-  `PullRequestContext` (already awaited; properties, not promises).
-- Skipped (not failed) when no PR context exists.
-- Reported separately from static tests: results are advisory by default
-  (`pr.dynamic.blocking: false` in config), so agent judgment doesn't flake
-  merges until teams opt in.
-- The agent may consult: PR title/body, diff, changed files, route map,
-  existing test titles, prior failures, and running service emulators.
-
-## Per-PR service sandboxes (Cloud)
-
-```ts
-export default defineConfig({
-  runner: 'cloud',
-  resources: {
-    stripe: 'managed-per-pr',
-    slack: 'managed-per-pr',
-    email: 'managed-per-pr',
-  },
-});
-```
-
-Each PR gets isolated hosted sandboxes; env for the preview deployment is
-injected automatically.
-
-## GitHub Check output
-
-Users never write reporting code. When `GITHUB_TOKEN` is present, `npx e2e pr`
-posts a check automatically:
-
-- OSS: pass/fail check + summary comment, local artifacts uploaded as
-  workflow artifacts.
-- Cloud: rich check with video/trace links, per-file annotations, and an AI
-  summary of what broke.
-
-Programmatic surface (advanced, `e2e/github`):
-
-```ts
-import { github } from 'e2e/github';
-
-await github.check({
-  name: 'e2e',
-  conclusion: 'failure',
-  summary: 'Checkout regression detected',
-  annotations: [{ path: 'app/billing/checkout.tsx', message: '…' }],
-});
-```
-
-## CLI
-
-```bash
-npx e2e pr
-```
-
-Does, in order: detect CI provider → resolve PR metadata → resolve preview
-URL → select static tests (Mode 2 config) → run them → run `test.dynamic`
-tests → collect artifacts → post GitHub Check.
-
-## GitHub Actions
-
-OSS:
-
-```yaml
-name: e2e
-on: pull_request
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm ci
-      - run: npx e2e pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          E2E_PREVIEW_URL: ${{ steps.preview.outputs.url }}
-```
-
-Cloud:
-
-```yaml
-      - run: npx e2e pr --cloud
-        env:
-          TESTERARMY_TOKEN: ${{ secrets.TESTERARMY_TOKEN }}
-```
-
-Roadmap: `uses: testerarmy/pr-check@v1` wrapping the above.
+Publishing consumes a validated versioned report and produces escaped,
+size-bounded annotations. It does not trust model-suggested file paths or line
+numbers without validating them against the base repository. Workflow examples
+use frozen lockfiles, local binaries, immutable action SHAs, and minimal
+permissions.

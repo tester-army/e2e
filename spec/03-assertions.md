@@ -1,106 +1,78 @@
-# 03 — Assertions
+# 03 - Assertions
 
-Two assertion surfaces, deliberately split:
+The canonical matcher declarations are in
+[`api/e2e.d.ts`](./api/e2e.d.ts). This document defines `runner-0.1`
+assertion behavior.
 
-- **`expect()`** — deterministic: UI state via `screen` locators
-  (cross-platform), web state via `web`, and plain values.
-- **`agent.assert()`** — AI judgment of the current screen, in natural
-  language.
+## Deterministic locator assertions
 
-## `expect(locator)` — deterministic UI matchers
+Locator assertions are runner-owned polling operations. Drivers perform one
+immediate query/read per poll; they do not own assertion retries.
 
-Locator matchers mirror `getByRole` state options — one semantic model for
-querying and asserting, normalized per platform, working identically on
-web, iOS, and Android:
+The default assertion timeout is `config.assertionTimeout`, 5 seconds. An
+explicit matcher timeout overrides it. Polling uses an implementation-selected
+interval no longer than 100 ms locally and 250 ms for a remote driver. A runner
+MAY react immediately to driver state-change notifications.
 
-```ts
-await expect(screen.getByRole('heading')).toHaveText('Dashboard');
-await expect(screen.getByRole('switch', { name: 'Notifications' })).toBeChecked();
-```
+Except for `toHaveCount`, a positive matcher requires exactly one matching
+node. Zero matches keep polling; multiple matches fail immediately with
+`LOCATOR_AMBIGUOUS`. `toHaveCount` evaluates the complete current match set.
 
-Vocabulary: `toBeVisible`/`toBeHidden`, `toBeEnabled`/`toBeDisabled`,
-`toBeChecked`, `toBeSelected`, `toBeExpanded`, `toHaveText`,
-`toContainText`, `toHaveValue`, `toHaveCount`, `toHaveAccessibleName`.
-Paired positives avoid double negations (`toBeDisabled` over
-`not.toBeEnabled`). Deliberately absent: implementation-surface matchers
-(`toHaveClass`, `toHaveAttribute`, `toHaveStyle`) — they don't exist
-off-web and violate the resemble-the-user principle.
+`toBeHidden` and negated visibility accept zero matches. Other negated
+single-node matchers still require an unambiguous node. A negated condition
+passes only after it remains true continuously for a one-second grace window;
+the grace window must fit inside the matcher timeout. This prevents a transient
+absence from passing immediately.
 
-`expect(web)` covers web-level state: `toHaveURL(url)`, `toHaveTitle(title)`
-(web targets only).
+On timeout, the failure includes the normalized locator expression, final
+match count, relevant semantic subtree, last observed value, target, elapsed
+time, and an artifact reference. The runner MAY suggest a higher-priority query
+but MUST NOT execute or cache the suggestion automatically.
 
-**Absence** is asserted, never queried:
-`await expect(screen.getByText('Error')).not.toBeVisible()` — retried with
-the negation grace window. Matcher failures print the accessibility tree
-around the query scope, plus a query suggestion when a better one exists.
+## Matching rules
 
-## `agent.assert()` — natural-language assertion
+Text is normalized by trimming leading/trailing whitespace and replacing every
+nonempty run of Unicode whitespace with one ASCII space. String matching is
+exact by default; `exact: false` performs case-insensitive substring matching.
+Regular expressions use ECMAScript source and flags and ignore `exact`.
 
-```ts
-await agent.assert('the dashboard is visible');
-await agent.assert('the user is signed in and sees the dashboard');
-await agent.assert('no visible regressions were introduced');
-```
+`toHaveText` compares complete normalized text. `toContainText` uses substring
+or regexp matching. `toHaveValue` compares the normalized exposed input value.
+`toHaveAccessibleName` uses the profile's accessible-name algorithm.
 
-### Signature
+Visibility, enabled, checked, selected, and expanded states use the normalized
+semantic definitions in [08-platforms.md](./08-platforms.md), not raw DOM
+attributes. Missing platform state is `false`, except enabled defaults to true
+when neither disabled nor unavailable is reported.
 
-```ts
-agent.assert(assertion: string, options?: {
-  timeout?: number;     // default 30_000
-  screenshot?: boolean; // attach evidence to report, default true
-}): Promise<void>;
-```
+## Web assertions
 
-Semantics:
+`expect(web).toHaveURL` and `toHaveTitle` use the same timeout and polling
+rules. Relative expected URL strings resolve against the target base URL.
+String URL matching is exact after WHATWG URL parsing/serialization, including
+IDNA ASCII host conversion, dot-segment removal, and default-port removal;
+regular expressions test the complete serialized URL.
 
-- The agent inspects the current screen (web page or native screen) and
-  judges the assertion true/false.
-- Failure rejects with `AgentError` (`code: 'ASSERTION_FAILED'`) containing
-  the agent's reasoning and a screenshot. The failure message must be
-  human-readable, e.g.:
+## Agent assertions
 
-```
-agent.assert: "the dashboard is visible" — FAILED
-Agent saw: a login form with an error banner "Invalid verification code".
-Screenshot: artifacts/signup/assert-1.png
-```
+`agent.assert` is a single model judgment, not a retrying matcher. It uses one
+atomic observation and rejects false with `ASSERTION_FAILED`. The report keeps
+the assertion, sanitized explanation, model provenance, observation revision,
+and a redacted screenshot only when `screenshot` is true and pixel evidence is
+permitted by security policy. Eventually true natural-language conditions
+belong in `agent.waitFor`.
 
-- `agent.assert()` is bound to the current target implicitly (no target
-  argument needed).
+## Plain values
 
-## `expect(value)` — plain data
+The value matcher set is closed by `api/e2e.d.ts`. Value matchers execute
+synchronously and never involve drivers or models. Their observable behavior,
+including equality and diff formatting, is pinned to `@vitest/expect` 4.1.10.
+An implementation MAY use another engine only when it passes vectors generated
+from that exact reference version.
 
-Values pulled out of `agent.extract()` (or any code) are plain data —
-assert them with the usual value matchers (`toBe`, `toEqual`, `toContain`,
-…):
+## Future resource matchers
 
-```ts
-const { total } = await agent.extract('the cart total as a number', {
-  schema: z.object({ total: z.number() }),
-});
-expect(total).toBeLessThan(100);
-```
-
-Implementation note (the Vitest move): plain-value matchers may delegate to
-a battle-tested engine (`@vitest/expect` — Jest's matcher API on a Chai
-core) rather than reimplementing deep equality and diff formatting. The
-engine is invisible: the only public style is `expect(x).toBe(…)` — never
-Chai chains. Locator/resource/web matchers are e2e-owned: async, retrying,
-driver-reading, evidence-attaching — no assertion library provides that.
-Custom matchers (`expect.extend`) are roadmap.
-
-## Resource matchers (with resource extensions, post-v0)
-
-When resource extensions land (email first — see 04-resources.md), they
-bring **world-state matchers**: `expect(inbox).toHaveEmail({ subject:
-/welcome/i })`, `expect(hook).toHaveReceived(…)`, later
-`expect(stripe).toHavePayment(…)`. The reserved semantics:
-
-- **Eventually-consistent**: poll until the state matches or `timeout`
-  (default 15_000 ms) elapses; options object as last arg.
-- **Negation waits a grace window** (default 5_000 ms) and passes if the
-  state never matched.
-- **Match objects are deep-partial**: only specified keys compare; values
-  may be literals, regexps, or predicate functions. Serializable by design
-  (they appear in reports and the ledger).
-- Always deterministic — world-state assertions never involve the model.
+Resource matchers are not part of v0. A future profile may add deterministic,
+eventually consistent world-state assertions. Predicate functions are not a
+wire-serializable matcher form and will not appear in reports or remote
+protocols without an explicit representation.

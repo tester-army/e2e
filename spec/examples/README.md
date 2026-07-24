@@ -1,64 +1,61 @@
 # Examples
 
-A realistic suite for **Orbit** — a fictional project-management SaaS with a
-web app and a React Native mobile app. These files are spec artifacts: they
-must read well and stay true to the [spec docs](../README.md); they are the
-acid test that the API works for real use cases, not just the README pitch.
-Once the package exists, they compile against it in CI.
+This is the canonical source suite for Orbit, a fictional project-management
+app. Examples are informative but MUST type-check against `sdk-0.1` and remain
+consistent with normative behavior.
 
-## What each example demonstrates
+The config runs one web target because v0 is web-only. Portable test source can
+be used by future mobile profiles; `notifications.e2e.ts` includes one reserved
+mobile example that is filtered out of the v0 target matrix.
+
+## Coverage
 
 | File | Demonstrates |
 |---|---|
-| [`e2e.config.ts`](./e2e.config.ts) | targets (web/ios/android), credentials, agent config |
-| [`tests/auth.setup.e2e.ts`](./tests/auth.setup.e2e.ts) | setup tests producing sessions |
-| [`tests/signup.e2e.ts`](./tests/signup.e2e.ts) | the happy path: pure agentic flow + a deterministic check |
-| [`tests/onboarding.e2e.ts`](./tests/onboarding.e2e.ts) | serial group, cross-step data via `extract` + typed schema |
-| [`tests/tasks/task-crud.e2e.ts`](./tests/tasks/task-crud.e2e.ts) | deterministic-heavy `screen` tests, chaining/filtering, sessions |
-| [`tests/billing/checkout.e2e.ts`](./tests/billing/checkout.e2e.ts) | all three tiers in one test, tags |
-| [`tests/notifications.e2e.ts`](./tests/notifications.e2e.ts) | cross-platform branching, mobile-only `device`, `platforms` |
-| [`tests/flags.web.e2e.ts`](./tests/flags.web.e2e.ts) | `web`-only powers: `route()` stubbing, dialogs, `waitForURL` |
+| `e2e.config.ts` | web target, structured app process, credentials, model/cache config |
+| `auth.setup.e2e.ts` | static setup outputs and per-target sessions |
+| `signup.e2e.ts` | planning plus deterministic assertion |
+| `onboarding.e2e.ts` | whole-group serial state, typed extraction, code data flow |
+| `tasks/task-crud.e2e.ts` | independent deterministic tests and locator refinement |
+| `billing/checkout.e2e.ts` | all three control tiers |
+| `notifications.e2e.ts` | platform branch and reserved mobile capability |
+| `flags.web.e2e.ts` | explicit web capability, routes, dialogs, URL waits |
 
-## Organizing a large suite
+## Isolation conventions
 
-What this structure looks like at ~300 tests:
+The runner isolates driver/client attempts, not Orbit's database. The task
+examples use separately seeded boards so parallel tests do not mutate the same
+records. Real suites should use per-test tenants, unique entities, isolated
+fixtures, or serial groups for shared backend workflows.
 
-```
-tests/
-  auth.setup.e2e.ts          # sessions: 'member', 'admin', 'owner'
-  smoke/                     # tag: smoke — the PR gate, < 5 min
-  tasks/                     # feature areas own their folders
-  billing/
-  mobile/                    # platforms: ['ios','android'] flows
-e2e.config.ts
-```
+Sessions remove repeated UI login but do not isolate accounts or server data.
+Setup state is captured fresh for every runner invocation.
 
-Conventions that keep it manageable:
+## Suite organization
 
-- **Sessions over logins.** One setup test per role; hundreds of tests start
-  authenticated (`session: 'member'`). Login flows themselves are tested
-  once, in `auth.setup` + dedicated auth tests.
-- **Tags are the execution axis, folders the ownership axis.**
-  `tags: ['smoke']` for the PR gate, `['billing']` for team filters:
-  `npx e2e run --tag smoke`.
-- **Independent by default.** `{ serial: true }` only for genuinely
-  sequential flows (wizards). Everything else parallelizes freely across
-  workers with no cooperation from test authors.
-- **Tier discipline.** Stable, hot paths drift toward `screen`
-  (deterministic, free); flows where the UI churns stay agentic — the
-  locate cache converges them anyway. `agentContext` per group captures app
-  quirks once.
+Tags are the execution axis and folders are the ownership axis. Serial groups
+are limited to workflows whose members intentionally share state. Stable hot
+paths use `screen`; dynamic flows use the narrowest agent method that fits.
 
-CI (GitHub Actions):
+## CI
+
+CI installs from a frozen lockfile and runs the local binary. Agent tests need
+an explicit model and provider credential. The workflow below is for a trusted
+branch or internal PR only. It MUST NOT run fork code with these secrets.
+Untrusted fork execution requires an external ephemeral sandbox with no secrets,
+write token, production access, or shared state; privileged reporting belongs
+in a separate trusted job as required by 14-security.md.
 
 ```yaml
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm ci
-      - run: npx e2e run
-        env:
-          APP_URL: ${{ steps.preview.outputs.url }}
+steps:
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  - run: pnpm install --frozen-lockfile
+  - run: pnpm e2e run
+    env:
+      APP_URL: ${{ steps.preview.outputs.url }}
+      APP_ENVIRONMENT: staging
+      E2E_MODEL: ${{ vars.E2E_MODEL }}
+      E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+      MEMBER_PASSWORD: ${{ secrets.MEMBER_PASSWORD }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
 ```

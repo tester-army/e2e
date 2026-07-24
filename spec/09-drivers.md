@@ -1,290 +1,260 @@
-# 09 — Drivers (Automation Backends)
+# 09 - Driver SPI
 
-Tests are written against e2e-owned surfaces (`agent`, `screen`, `app`,
-`device`); **drivers** implement them per target. Backends are switchable
-without touching test code — the same provider-abstraction philosophy as
-resource backends. Nothing driver-specific is reachable from a test:
-backends are a fully internal implementation detail.
+The canonical `driver-1` contract is
+[`api/driver.d.ts`](./api/driver.d.ts). Drivers are trusted executable packages
+that map e2e-owned semantics onto an automation backend.
 
-## Why
+## Packaging and selection
 
-- No lock-in to Playwright (or anything else). The web ecosystem is moving
-  (agent-first browsers, CDP-native tools); mobile has no single winner. If
-  a 100× faster browser backend ships tomorrow, adopting it must be one
-  `npm install` and one config line — zero test changes.
-- The community must be able to build backends we never thought of — the
-  driver SPI is a public contract, not an internal detail.
-- Hosted runners (roadmap/cloud.md) can run a different backend than local
-  without test changes.
-- The agent needs a uniform observation/action layer anyway — drivers are
-  that layer.
-
-## Drivers are packages
-
-A driver exports a factory built with `defineDriver()` from `e2e/driver`.
-Official drivers live under the `e2e` package's own namespace as **subpath
-exports** (the `@e2e/*` npm scope is not available — and subpaths are
-better anyway: one memorable namespace, consistent with `e2e/driver`).
-Community drivers are their own npm packages:
-
-| Import | Platform | Notes |
-|---|---|---|
-| `e2e/playwright` | web | default for web targets |
-| `e2e/agent-browser` | web | agent-optimized browser backend |
-| `e2e/agent-device` | ios, android | default for mobile targets |
-| `e2e/appium` | ios, android | compatibility option |
-| `e2e-driver-*` (npm) | any, **including new ones** | community convention |
-
-Names are illustrative until v1; the guarantees are the *shape* (driver =
-a `defineDriver` factory) and the SPI contract.
-
-Drivers do more than swap backends: **they introduce platforms**. The
-platform vocabulary is open (08-platforms.md) — a driver declaring
-`platforms: ['electron']` makes `electron` a valid target platform, and
-`agent`, `app`, `screen`, and `expect` work there unchanged because they
-only ever speak the SPI. Electron, desktop, TV: none of them need a core
-release.
-
-Weight discipline: official driver subpaths declare their backends as
-**optional peer dependencies** — installing `e2e` pulls in only the default
-drivers' backends; importing `e2e/appium` without `appium` installed fails
-with a clear "install appium" error. Internally, official drivers may be
-separate workspace packages re-exported through subpaths — that's an
-implementation detail, not API.
-
-## Selection
-
-Two forms — a string id for bundled defaults, or an imported instance
-(the Vite-plugin pattern) for everything else:
-
-```ts
-// e2e.config.ts
-import { defineConfig } from 'e2e';
-import { agentBrowser } from 'e2e/agent-browser';
-import { hyperdrive } from 'e2e-driver-hyperdrive'; // community: the 100x one
-import { electron } from 'e2e-driver-electron';     // community: a new platform
-
-export default defineConfig({
-  targets: [
-    { name: 'web', platform: 'web', url: process.env.APP_URL },            // default: 'playwright'
-    { name: 'web-agentic', platform: 'web', driver: agentBrowser(), url: process.env.APP_URL },
-    { name: 'web-fast', platform: 'web', driver: hyperdrive(), url: process.env.APP_URL },
-    { name: 'ios', platform: 'ios', app: 'build/MyApp.app' },              // default: 'agent-device'
-    { name: 'desktop', driver: electron({ main: 'out/main.js' }) },        // platform: 'electron'
-  ],
-});
-```
-
-```ts
-driver?: string | Driver;   // string ids resolve to bundled drivers only
-```
-
-`driver` is optional for official platforms — each has a bundled default,
-and most users never set it. Target-level `platform` is inferred when a
-driver instance supports exactly one platform; a driver spanning several
-(like `agent-device`) needs the target to say which. Platform-specific
-options for community platforms live on the driver factory (typed by its
-package), not as loose target fields.
-
-## The contract
-
-Drivers implement four capabilities. Note the deliberate boundary: `screen`
-is a **query projection**, not an automation engine — waiting and
-actionability belong to the backend:
-
-1. **Query projection (`screen`)** — map the e2e query vocabulary
-   (role/label/placeholder/text/displayValue/testId + state options) onto
-   the backend's own locators (browser locators on web, accessibility
-   queries on mobile). The backend's auto-waiting and actionability checks
-   are used as-is.
-2. **Observation** — what the agent sees: screenshot + semantic tree
-   (DOM/AXTree on web, native accessibility tree on mobile). This is why
-   `agent.act()` / `agent.assert()` work identically on every backend.
-3. **Action execution** — the primitive actions the agent performs
-   (tap/type/scroll by node reference or coordinate), plus the `app` handle,
-   the `web` surface on web, and `device` system utils on mobile.
-4. **Artifacts** — screenshots, video, traces (driver-dependent fidelity).
-
-The backend object itself (e.g. a Playwright `Page` inside `e2e/playwright`)
-is **never exposed to tests**. An unpack escape hatch was considered and
-deliberately deferred — it would freeze backend choices into the public
-contract.
-
-## Driver SPI — `e2e/driver`
-
-Public contract, versioned independently of the test-facing API
-(`spiVersion`), so driver packages can declare compatibility:
+`e2e/playwright` is the required reference driver for `web-0.1`. Community
+drivers use their own package names, conventionally `e2e-driver-*`, and create
+instances with `defineDriver` from `e2e/driver`.
 
 ```ts
 import { defineDriver } from 'e2e/driver';
 
-export function hyperdrive(options?: HyperdriveOptions) {
-  return defineDriver({
+export const hyperdrive = () =>
+  defineDriver({
     id: 'hyperdrive',
+    version: '1.0.0',
     platforms: ['web'],
     spiVersion: 1,
-
-    async launch(ctx) {
-      // boot the backend for ctx.target; return a session
-      return {
-        app: { /* open/restart/clearState/back/deepLink/screenshot */ },
-        screen: { /* resolve e2e queries → node refs; perform locator actions */ },
-        observe: {
-          async screenshot() { /* … */ },
-          async semanticTree() { /* SemanticNode tree with stable refs */ },
-        },
-        act: { /* tap/type/scroll/press by node ref or coordinate */ },
-        async close() { /* … */ },
-      };
+    capabilities: {
+      fixtures: ['web'],
+      artifacts: ['screenshot', 'trace'],
+      state: true,
+    },
+    async launch(context) {
+      return createSession(context);
     },
   });
-}
 ```
 
-The full SPI contract:
+String IDs resolve only to drivers bundled by the runner. Third-party drivers
+are imported handles branded by `defineDriver`; metadata-only objects are not
+accepted in target config. A multi-platform driver still requires an explicit
+target platform. Driver `id` is stable across releases and contains
+lowercase ASCII letters, numbers, `-`, `.`, or `/`.
 
-```ts
-/** A node in the semantic tree. `ref` is stable within one screen state. */
-type SemanticNode = {
-  /** Opaque, driver-issued reference — the currency between queries, agent actions, and the locate cache. */
-  ref: string;
-  role?: string;
-  name?: string;
-  text?: string;
-  /** Must be masked when states.secure (password/secure text fields) — see 10-determinism.md. */
-  value?: string;
-  states?: Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure', boolean>>;
-  /** Element attributes where the platform has them (web: DOM attributes). */
-  attributes?: Record<string, string>;
-  rect?: { x: number; y: number; width: number; height: number };
-  children?: SemanticNode[];
-};
+Drivers declare platforms and capabilities synchronously. The runner validates
+target and configured artifact requirements before collection. It validates
+selected fixture/session requirements after collection and selection, when
+their use is known, but before launch. A driver MUST NOT change its manifest
+after launch.
 
-/** e2e query, normalized — what the runner hands a driver to resolve. */
-type ResolvedQuery = {
-  kind: 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' | 'testId';
-  value: string | RegExp;
-  options?: RoleOptions & TextMatchOptions;
-  /** Scope chain (within): resolve relative to this node. */
-  within?: string; // parent ref
-};
+## Trust boundary
 
-/** Every Locator action, normalized — the driver maps each onto its backend. */
-type LocatorAction =
-  | { kind: 'tap' | 'doubleTap' | 'longPress' | 'check' | 'uncheck' | 'clear' | 'focus' | 'scrollIntoView' }
-  | { kind: 'fill'; value: string }
-  | { kind: 'press'; key: string }
-  | { kind: 'selectOption'; value: string | { label?: string; index?: number } }
-  | { kind: 'dragTo'; target: string /* ref */ }
-  | { kind: 'swipe'; direction: ScrollDirection; momentum?: Momentum };
+An in-process driver has the same authority as test and config code: it can
+read environment variables, repository files, browser state, and raw values it
+is asked to type. `verifyDriver` is compatibility testing, not security
+certification. Users MUST treat installed drivers as trusted dependencies.
 
-type DriverContext = {
-  target: Target;
-  artifactsDir: string;
-};
+A runner MAY support out-of-process sandboxed drivers, but that is not a v0
+portability guarantee. Package provenance and sandbox claims are implementation
+metadata, never inferred from conformance.
 
-type DriverSession = {
-  /** Backs the `app` fixture — the full portable surface (08-platforms.md). */
-  app: {
-    open(path?: string): Promise<void>;
-    restart(): Promise<void>;
-    clearState(): Promise<void>;
-    back(): Promise<void>;
-    deepLink(url: string): Promise<void>;
-    /** Returns artifact path. */
-    screenshot(label?: string): Promise<string>;
-  };
+`driver-1` itself is an in-process TypeScript boundary. A backend using another
+process supplies an in-process proxy that performs serialization, callback
+delivery, cancellation, and teardown while preserving this contract.
 
-  /** Query projection backing `screen` — backend waiting/actionability used as-is. */
-  screen: {
-    /** Resolve a query to matching node refs (no waiting; the runner drives retry). */
-    resolve(query: ResolvedQuery): Promise<string[]>;
-    /** Perform a locator action on a resolved node, with backend actionability checks. */
-    perform(ref: string, action: LocatorAction): Promise<void>;
-    /** Read state for matchers and locator reads (visible/checked/text/value/attributes/rect). */
-    read(ref: string): Promise<SemanticNode>;
-  };
+## Lifecycle
 
-  /** Observation backing the agent — same contract on every backend. */
-  observe: {
-    screenshot(): Promise<string>;
-    semanticTree(): Promise<SemanticNode>;
-  };
+`launch` creates one logical test attempt or serial-group attempt. It receives
+stable run, attempt, target, resolved app/query policy, artifact, deadline, and
+cancellation context. Launch receives `config.launchTimeout`, independent of a
+test/member timeout. `--headed` reaches every driver as immutable launch
+options. If launch rejects,
+the driver MUST roll back every partial acquisition before rejection because no
+session exists for the runner to close. `close` receives a fresh cleanup signal
+and budget independent of the cancelled attempt. It is idempotent and releases
+every process, page, listener, temporary file, and device lease.
 
-  /** Primitive actions the agent performs (by node ref or coordinate). */
-  act: {
-    tap(target: { ref: string } | { x: number; y: number }): Promise<void>;
-    type(target: { ref: string }, text: string): Promise<void>;
-    scroll(direction: ScrollDirection, options?: { target?: { ref: string }; momentum?: Momentum }): Promise<void>;
-    press(key: string): Promise<void>;
-  };
+The runner calls `close` after pass, failure, timeout, cancellation, and signal.
+A driver operation MUST observe both `AbortSignal` and `timeoutMs`. Aborted work
+must stop before the promise settles. A driver that cannot stop an operation
+must isolate it in a terminable child process and terminate that process.
 
-  /**
-   * Web-parity surface backing the `web` fixture (08-platforms.md) — web
-   * drivers only. Reuses the public interface: one contract, no drift.
-   */
-  web?: Web;
+No operation may continue mutating an app after it rejects or after `close`
+resolves. Route/dialog decision methods and download waiters are bound to the
+attempt signal and receive a current operation context for each decision.
 
-  /** Mobile system utils backing `device` (08-platforms.md) — mobile drivers only. */
-  device?: Device;
+`runtime()` supplies current viewport/scale and backend provenance. A
+`web-0.1` session MUST return browser engine and exact version. The runner reads
+it after launch to populate target provenance and after viewport changes to
+record the operation's resulting runtime state.
 
-  /** Optional artifact recorders; fidelity is driver-dependent. */
-  artifacts?: {
-    startVideo?(): Promise<void>;
-    stopVideo?(): Promise<string>;   // artifact path
-    startTrace?(): Promise<void>;
-    stopTrace?(): Promise<string>;   // artifact path
-  };
+## Ownership boundary
 
-  close(): Promise<void>;
-};
+| Concern | Owner |
+|---|---|
+| collection, targets, retries, hooks, sessions | runner |
+| query polling and strict cardinality | runner |
+| assertion polling | runner |
+| one immediate query/read | driver |
+| one node's actionability and input dispatch | driver |
+| agent planning, prompts, budgets, ledger | runner |
+| tool authorization and secret resolution | runner |
+| backend process/page/device mechanics | driver |
+| step/report/cache schemas | runner |
+| source masking of secure observations | driver |
+| defense-in-depth redaction | runner |
 
-type Driver = {
-  readonly id: string;
-  readonly platforms: Platform[];
-  /** SPI compatibility version. Current: 1. */
-  readonly spiVersion: 1;
-  launch(ctx: DriverContext): Promise<DriverSession>;
-};
+A driver MUST NOT add hidden query retries. Backend actionability waiting is
+allowed only inside `perform` and only within the supplied operation budget.
 
-/** Identity helper with type checking — how driver packages are built. */
-function defineDriver(driver: Driver): Driver;
+## Locator expressions
 
-/** Reusable conformance suite; driver packages run it in their own CI. */
-function verifyDriver(driver: Driver): void;
-```
+The runner sends a complete immutable `LocatorExpression`, including scope,
+filters, and index. `resolve` immediately returns all current matching
+revision-bound node references. The driver does not enforce single-match
+strictness.
 
-Design rules:
+`read` accepts only a current reference. `perform` executes exactly one action
+against exactly one reference. A stale reference before dispatch is
+`NODE_STALE` and retryable. If input may have reached the app, the driver MUST
+throw `ACTION_MAY_HAVE_COMMITTED` with `retryable: false`; the runner will not
+repeat it in that attempt.
 
-- **Small on purpose.** A driver maps queries, observes, acts, and produces
-  artifacts. Caching, budgets, the ledger, reporting, retries — all
-  runner-side, identical across drivers. A driver author writes the mapping,
-  not a framework.
-- **`SemanticNode.ref` is the currency**: queries resolve to refs, the agent
-  targets refs, the locate cache stores query→ref recipes. Stable refs
-  within a screen are the driver's one hard problem.
-- **Conformance suite**: `e2e/driver` ships a reusable test suite
-  (`verifyDriver(myDriver)`) that community drivers run in their own CI —
-  the ecosystem's compatibility guarantee. Passing it is also what makes a
-  *new* platform real: project the query vocabulary, observe, act — and
-  every portable test runs. Secure-field masking (`states.secure`, masked
-  `value`) is part of the suite: a driver that leaks secrets into
-  observations doesn't conform.
-- **Capabilities, not ad-hoc fixtures.** A driver provides the shared
-  surfaces (`app`, `screen`, observation/actions) plus capability
-  surfaces — one per platform family, named for the family. Core ships
-  `web` and `device`; a new family's driver contributes its own fixture
-  via module augmentation on `TestFixtures` (02-test-api.md) and exposes
-  the runtime object from its session. The SPI slot for arbitrary family
-  surfaces is finalized alongside the first non-browser/mobile family
-  (v0 keeps the typed `web?`/`device?` members).
+The complete public action set maps to `LocatorAction`. Options such as
+long-press duration, sensitive fill, swipe momentum, select index, and drag
+target MUST survive normalization unchanged. The runner resolves omitted
+long-press duration to 500 ms before calling the driver.
 
-## Consequences elsewhere in the spec
+The stale/commit contract applies to every mutator: locator actions, agent
+actions, viewport swipes, app lifecycle, web navigation/input, route decisions,
+and both nodes of a drag. Before dispatch, stale state is retryable. After any
+input, navigation, or state mutation may have committed, failure is
+`ACTION_MAY_HAVE_COMMITTED` and non-retryable. A driver MUST NOT report an
+unknown commit state as retryable.
 
-- `expect(locator)` matchers exist and are cross-platform (03) — they
-  project onto the backend's assertion mechanics the same way queries do.
-- No browser/context/page object appears anywhere in the public API — the
-  framework is not committed to Playwright (or any backend) long-term.
-- The instant-action locate cache stores `screen`-shaped queries (10),
-  which drivers replay through the same projection — one resolution path
-  for cached agent actions and hand-written deterministic steps.
+## Observation
+
+`observe` atomically returns screenshot and semantic tree evidence for one
+revision. References are unique within a session and valid only for that
+revision. The root and every actionable node have stable geometry for the
+captured viewport.
+
+Secure fields have `states.secure: true`; their `value`, text, and sensitive
+attributes are masked. `inputPurpose` is derived from standardized profile
+rules. On web, password input type maps to `password`; autocomplete tokens
+`username`, `current-password`/`new-password`, and `one-time-code` map to their
+corresponding purposes; an explicitly registered secure custom field maps to
+`generic-secret`; all others are `none`. Screenshot evidence is optional after
+secret taint as defined in 14-security.md. `redaction.complete` is false if the
+driver cannot prove required masking, and the runner then rejects the
+observation without sending it to a model or persisting it.
+
+Attributes are allowlisted by each execution profile. A web driver MUST omit
+authorization data, cookies, inline script content, hidden form values, and
+event-handler source.
+
+## State capture
+
+A driver declaring `state: true` implements `captureState` and `restoreState`.
+Capture returns opaque JSON-safe `DriverState`; it never writes shared files.
+The runner owns the `session-1` envelope, atomic persistence, target/app
+validation, permissions, and cleanup.
+
+Restore replaces all captured stores. It MUST NOT merge with the current
+context. A driver that cannot faithfully capture every store required by its
+profile cannot declare state capability. For `web-0.1`, required stores are
+cookies, local storage, and IndexedDB.
+
+## Web capability
+
+The public `Web` object is a runner proxy. Drivers expose lower-level
+`DriverWeb` operations that all receive operation context, allowing the runner
+to apply deadlines, policy, step recording, path containment, and redaction.
+Drivers MUST NOT return their backend page/context objects.
+
+Public callback functions are trusted local code. The runner serializes
+`evaluate` source and `JsonValue` arguments; remote/out-of-process drivers MUST
+reject values outside that contract.
+
+The runner executes route/dialog callbacks. It wraps driver event methods with
+fresh operation contexts and never lets the driver invoke arbitrary test code
+without runner accounting. Download waiting is two-phase: begin waiter, execute
+the trigger in the runner, then finish or cancel the waiter.
+
+## Artifacts
+
+Screenshot is required by every driver profile. Trace and video are explicit
+manifest capabilities. `web-0.1` requires screenshot, trace, and video; a driver
+implementing only `core-0.1` may omit trace/video. Configuring an unsupported
+artifact is a pre-run error.
+
+Returned paths are relative POSIX paths beneath the provided attempt artifact
+directory. Drivers canonicalize paths, reject traversal and symlink escape, and
+finalize partial artifacts during `close`. Artifact recorder start/stop pairs
+are idempotent under cancellation.
+
+## Capability fixtures
+
+Standard capabilities use standardized IDs and public types. A third-party
+family returns runtime values in `capabilityFixtures` under its namespaced ID
+and augments `TestFixtures` with the corresponding property. A manifest entry
+without a runtime value, or a runtime value without a manifest entry, is a
+driver error.
+
+Capabilities do not bypass the universal SPI. Every platform still implements
+`app`, `screen`, observation, actions, artifacts, cancellation, and cleanup.
+
+## Errors
+
+Drivers throw `DriverError` for expected backend conditions. `retryable` means
+the exact operation is known not to have committed and may be attempted again
+within the same deadline. Unknown exceptions become non-retryable
+`DRIVER_FAILURE` and retain sanitized cause metadata.
+
+Drivers never assign `AgentErrorCode`, test status, or process exit code. Those
+are runner decisions.
+
+Legal retryability is closed: `NODE_STALE` and `FRAME_NOT_FOUND` are true;
+`FRAME_AMBIGUOUS`, `NOT_ACTIONABLE`, `ACTION_MAY_HAVE_COMMITTED`,
+`OPERATION_TIMEOUT`, `CANCELLED`, `UNSUPPORTED_CAPABILITY`, `INVALID_STATE`, and
+`DRIVER_FAILURE` are false. Any other combination is `DRIVER_FAILURE`. The
+runner MUST retry stale node or missing frame resolution while the original
+operation deadline remains; it MUST NOT retry another driver error in place.
+
+## Conformance
+
+`verifyDriver` is async and boots the versioned reference application. The
+caller supplies a target factory; the verifier supplies its URL and fixtures.
+It returns a machine-readable report rather than registering tests implicitly.
+
+The `core-0.1` vectors cover:
+
+- launch/close idempotence and cancellation;
+- locator expression projection, cardinality inputs, and stale references;
+- every locator and agent primitive, including option preservation;
+- atomic observation and secure-field masking;
+- state replacement and target isolation;
+- artifact containment and cleanup;
+- structured error behavior.
+
+The `driver-1` vectors cover manifest branding/versioning, launch rollback,
+operation/cleanup contexts, legal error combinations, capability consistency,
+event bridges, and conformance-report artifact binding. `verifyDriver` emits a
+separate `conformance-1` document for `driver-1`, `core-0.1`, and `web-0.1` when
+all three are requested.
+
+The `web-0.1` vectors additionally cover ARIA/name computation, text
+normalization, actionability, navigation, routes, frames, cookies, dialogs,
+downloads, evaluation, keyboard/mouse, trace, and video when declared.
+
+Every vector has a stable requirement ID. Skipping a required vector fails that
+profile. Implementations publish the conformance report generated against the
+exact released driver artifact. The report uses `conformance-1`, includes the
+driver package version and artifact digest, and requires evidence references for
+every failed vector.
+
+Consumers verify a driver claim by running `verifyDriver` themselves against
+the digest-pinned artifact in a trusted environment. The verifier does not
+accept a package-provided report as proof.
+
+## SPI compatibility
+
+`spiVersion: 1` is exact. A runner rejects another major version before launch.
+Additive optional members do not change the major version; changing required
+semantics does. The test-facing SDK and driver SPI version independently as
+defined in 00-conformance.md.

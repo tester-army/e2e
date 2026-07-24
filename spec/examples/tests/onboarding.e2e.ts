@@ -8,7 +8,11 @@ import { z } from 'zod';
  * awareness ("step 1 already happened") flows through the step ledger
  * automatically.
  */
-test.describe('workspace onboarding wizard', { serial: true, session: 'member', agentContext: 'The onboarding wizard appears once per new workspace.' }, () => {
+test.describe('workspace onboarding wizard', {
+  serial: true,
+  session: 'member',
+  agentContext: 'The onboarding wizard appears once per new workspace.',
+}, () => {
   let inviteLink: string;
 
   test('step 1: create the workspace', async ({ app, agent }) => {

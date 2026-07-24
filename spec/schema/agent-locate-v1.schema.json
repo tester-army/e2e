@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/agent-locate-v1.schema.json",
+  "title": "e2e agent-locate-1 response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "target"],
+  "properties": {
+    "protocolVersion": { "const": "agent-locate-1" },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
+  }
+}

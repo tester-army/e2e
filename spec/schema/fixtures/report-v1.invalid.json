@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "report-1",
+  "run": {
+    "id": "not-a-uuid",
+    "status": "passed",
+    "exitCode": 4,
+    "targets": [],
+    "results": []
+  }
+}

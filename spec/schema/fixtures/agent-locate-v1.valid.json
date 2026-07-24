@@ -1,0 +1,7 @@
+{
+  "protocolVersion": "agent-locate-1",
+  "target": {
+    "id": "node-1",
+    "revision": "revision-1"
+  }
+}

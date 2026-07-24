@@ -1,0 +1,8 @@
+{
+  "toolVersion": "agent-tool-1",
+  "kind": "tap",
+  "target": {
+    "x": 10,
+    "y": 20
+  }
+}

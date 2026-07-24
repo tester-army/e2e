@@ -1,12 +1,11 @@
 import { test, expect } from 'e2e';
 
 /**
- * The canonical happy path: a pure agentic flow. Runs unchanged on web,
- * iOS, and Android — nothing here is platform-specific. (Signup flows
- * gated on email verification will use the `email` resource extension —
- * see spec/roadmap.)
+ * The canonical happy path: a pure agentic flow. Its source is portable;
+ * v0 executes it on web. Signup flows gated on email verification use a
+ * future `email` resource extension.
  */
-export default test('user can sign up', { tags: ['smoke', 'auth'] }, async ({ app, agent, screen }) => {
+test('user can sign up', { tags: ['smoke', 'auth'] }, async ({ app, agent, screen }) => {
   await app.open();
 
   await agent.act('sign up as a new user named Ada Lovelace');

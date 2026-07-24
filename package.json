@@ -1,10 +1,23 @@
 {
   "name": "e2e",
   "version": "0.1.0",
-  "description": "",
-  "keywords": ["e2e", "tester army"],
+  "description": "Open standard for agentic end-to-end testing",
+  "keywords": [
+    "e2e",
+    "testing",
+    "agentic"
+  ],
+  "scripts": {
+    "check": "npm run check:types",
+    "check:types": "tsc --project tsconfig.spec.json"
+  },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "7.0.2",
+    "zod": "4.4.3"
+  }
 }

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "e2e": [
+        "./spec/api/e2e.d.ts"
+      ],
+      "e2e/driver": [
+        "./spec/api/driver.d.ts"
+      ]
+    },
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "skipLibCheck": false,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "spec/api/**/*.ts",
+    "spec/examples/**/*.ts"
+  ]
+}

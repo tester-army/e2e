@@ -1,83 +1,63 @@
-# Roadmap — TesterArmy Cloud
+# Roadmap - Hosted Runner
 
-> **Status: roadmap.** Not part of the v0 framework. v0 is local-first and
-> fully useful standalone — no account, nothing to sell. This design is
-> preserved so the core keeps the door open; it will be re-validated
-> against the then-current API before it lands (PLAN.md Phase 4).
+This document is nonnormative. No cloud config, CLI flag, token, or subpath is
+reserved by specification 0.1.
 
-Cloud is the same API with better backends — never different syntax.
+The product goal is unchanged test source with a hosted implementation of the
+same versioned profiles. That promise is not valid until these protocols exist.
 
-The dependency direction is fixed: **Cloud is built on the SDK**, not the
-other way around. The SDK is the canonical model of what a test is; Cloud
-executes SDK tests and renders their step timeline. There is no parallel
-hosted test format to stay compatible with — this spec is a greenfield
-design. Learnings from running the current TesterArmy platform (host-side
-secret filling, path caching, budgets, typed error codes) inform the
-execution model, but no existing schema, API, or storage format constrains
-these primitives. Cloud will be rebuilt on top of them.
+## Required profiles
 
-## Rule
+### Execution bundle
 
-> If it appears in a test file, it works locally.
-> Cloud only changes *how well* it works.
+A bundle must identify source files, package manager and frozen lockfile,
+runtime/OS/architecture, config digest, SDK/driver/model-adapter versions,
+browser/device artifacts, environment variable names, and allowed filesystem
+roots. Arbitrary local closures and driver instances must resolve from the
+bundle, not be serialized as values.
 
-## Matrix
+The service must verify integrity and build in an ephemeral sandbox with no
+ambient customer credentials.
 
-| Capability | OSS (local) | TesterArmy Cloud |
-|---|---|---|
-| `test()`, `agent.act()`, `agent.assert()` | ✅ bring-your-own model key | ✅ managed models, tuned agent |
-| Browsers | local browsers | managed browser fleet, more OS/devices |
-| Mobile targets (iOS/Android) | local simulators/emulators (v1) | managed real-device fleet, OS/device matrix |
-| `credentials.user()` | env / config | team vault, rotation, audit |
-| Agent path cache | local `.e2e/cache` | shared across team + CI, flake-aware invalidation |
-| Sessions (`test.setup`) | `.e2e/sessions` on disk | per-run, shared across workers, encrypted |
-| Artifacts | trace/screenshot/video + HTML report on disk | hosted replays, retention, sharing |
-| 2FA / bot detection (your own app) | test bypasses, allowlisting | real OTP via managed inboxes/numbers, host-side TOTP, stable allowlistable egress, real-device traffic |
-| Scheduling/monitors | ❌ | ✅ cron runs, alerting |
-| Flake triage | retries | historical flake detection, quarantine |
+### Identity and tokens
 
-Resource extensions (email inboxes first, then webhook captures, files,
-phone/SMS) follow the same local/managed split when they land.
+CI authentication should use OIDC and short-lived scoped credentials. Runner
+tokens must not be visible to test/config/driver processes. Tenant, project,
+repository, branch, and run identity are distinct authorization dimensions.
 
-## Switching (reserved shape)
+### Isolation
 
-Exactly one of:
+Each run needs an ephemeral tenant-isolated filesystem, process namespace,
+network policy, browser/device lease, artifact namespace, cache namespace, and
+session namespace. Untrusted branches cannot read or write trusted branch data.
 
-```ts
-// config
-export default defineConfig({ runner: 'cloud', token: process.env.TESTERARMY_TOKEN });
-```
+### Secrets and sessions
 
-```bash
-# CLI
-npx e2e run --cloud
-```
+Secrets are brokered to authorized sinks without entering the test process when
+possible. Persisted sessions require authenticated encryption, KMS-backed key
+separation, TTL, revocation, audit, and app/target/driver binding. Cross-run
+reuse is opt-in and never implied by local `session-1`.
 
-No test-file changes, ever. This is a hard API guarantee. The `runner`,
-`project`, and `token` config fields, the `e2e.cloud.config.ts` overlay,
-`--cloud`, `e2e login`, and `TESTERARMY_TOKEN` are all reserved for this
-design — none ship in v0.
+### Reports and artifacts
 
-## `e2e/cloud` subpath (reserved)
+Hosted execution negotiates every required SDK/runner/core/web/driver/agent-tool/
+report/cache/session/conformance profile before upload. `report-1` remains downloadable. Artifacts are
+private, encrypted, integrity-checked, retention-bounded, access-audited, and
+deletable. Redaction requirements remain fail-closed.
 
-Advanced, optional programmatic access (dashboards, custom tooling):
+### Cancellation and billing
 
-```ts
-import { cloud } from 'e2e/cloud';
+Cancellation propagates through models, drivers, devices, app processes,
+resources, uploads, and queues. Partial reports survive. Quotas and estimated
+cost are visible before and during execution; exceeded quota cannot leave
+billable work running.
 
-const run = await cloud.runs.get(id);
-const runs = await cloud.runs.list({ project: 'my-project' });
-```
+## Candidate UX
 
-```ts
-type CloudRun = {
-  id: string;
-  project: string;
-  status: 'queued' | 'running' | 'passed' | 'failed';
-  url: string;            // hosted replay
-  startedAt: Date;
-  finishedAt?: Date;
-};
-```
+Only after those profiles freeze may a config or CLI choose a hosted runner.
+The intended UX is one execution-location switch and zero test-file changes,
+but exact names remain undecided.
 
-Kept out of the root export deliberately — day-one users never see it.
+Managed browsers/devices, models, resource extensions, shared read-only cache,
+scheduled runs, and hosted reports can then be capabilities of the hosted
+profile rather than a parallel test format.

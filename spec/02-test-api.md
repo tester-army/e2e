@@ -1,357 +1,226 @@
-# 02 — Core Test API
+# 02 - Core Test API
 
-## `test()`
+The canonical `sdk-0.1` declarations are
+[`api/e2e.d.ts`](./api/e2e.d.ts). This document defines their behavior.
 
-The single test primitive. A test file default-exports (or named-exports) one
-or more tests.
+## Registration
+
+`test()` registers a test synchronously when its module is evaluated:
 
 ```ts
 import { test } from 'e2e';
 
-export default test('user can sign up', async ({ app, agent }) => {
+test('user can sign up', async ({ app, agent }) => {
   await app.open();
-
   await agent.act('sign up as a new user');
-
   await agent.assert('the dashboard is visible');
 });
 ```
 
-### Signature
+Exports are ignored. A file MAY export a returned `TestCase` for ordinary
+TypeScript composition, but doing so does not affect discovery. The collection
+algorithm, stable IDs, duplicate rules, and option inheritance are specified in
+[11-lifecycle.md](./11-lifecycle.md).
+
+`test.skip` and `test.only` are declaration shortcuts. `test.only` is local
+authoring behavior and is a configuration error in CI. `test.setup` requires a
+static `sessions` list:
 
 ```ts
-test(title: string, fn: TestFn): TestCase;
-test(title: string, options: TestOptions, fn: TestFn): TestCase;
+test.setup('authenticate', { sessions: ['member'] }, async fixtures => {
+  await fixtures.app.open();
+  await fixtures.agent.login(credentials.user('member'));
+  await fixtures.session.save('member');
+});
 ```
-
-### `TestOptions`
-
-```ts
-type TestOptions = {
-  /** Per-test timeout in ms. Default: config.timeout (120_000). */
-  timeout?: number;
-  /** Per-test retries. Default: config.retries. */
-  retries?: number;
-  /** Tags for filtering: `npx e2e run --tag smoke`. */
-  tags?: string[];
-  /** Skip with a reason (shown in reports). */
-  skip?: boolean | string;
-  /** Run only this test (local dev convenience). */
-  only?: boolean;
-  /**
-   * Platforms this test can run on. Default: all configured targets.
-   * Required implicitly when using `device` (mobile) or platform-specific
-   * flows. Open vocabulary — driver-provided ids work (08-platforms.md).
-   */
-  platforms?: Platform[];
-  /** Start from a saved session (see 11-lifecycle.md). */
-  session?: string;
-  /** Ambient agent context for this test, appended to config agent.context. */
-  agentContext?: string;
-};
-```
-
-### Modifiers
-
-```ts
-test.skip('title', fn);          // always skipped
-test.only('title', fn);          // focus locally
-test.setup('title', fn);         // setup test producing sessions (see 11-lifecycle.md)
-```
-
-Post-v0 (see roadmap): `test.fixme`, `test.each`, `test.skipIf`/`failsIf`,
-`test.extend`.
 
 ## Fixtures
 
-The test function receives a destructurable fixtures object. Fixtures are
-lazy: nothing is created until first accessed.
+The four universal test fixtures are `agent`, `app`, `screen`, and `platform`.
+Their names are frozen for `sdk-0.1`. The setup-only `session` fixture can save
+declared outputs. Ordinary tests restore only through the static `session` test
+option. `web` is the capability fixture required by `web-0.1`; `device` is
+reserved for future mobile profiles. Driver packages MAY augment the
+`TestFixtures` interface with one fixture per platform family.
+
+Fixtures are lazy. Accessing a fixture acquires it in the active attempt scope.
+Destructuring a fixture in the callback parameter therefore acquires it before
+the first statement in the body. Acquiring `agent` without model configuration
+fails with `MODEL_UNAVAILABLE`; the runner does not claim whole-suite static
+analysis of arbitrary TypeScript.
+
+Capability use is explicit in portable suites:
 
 ```ts
-type TestFixtures = {
-  // The universal five — present on every target. Frozen: this set does
-  // not grow.
-  agent: Agent;            // AI agent bound to the current target
-  app: App;                // portable app handle: open/restart/deepLink/screenshot
-  screen: Screen;          // deterministic cross-platform queries — zero AI
-  platform: Platform;      // current target's platform id, for branching
-  session: Session;        // save/restore app state (see 11-lifecycle.md)
-
-  // Capability fixtures — one per platform family, named for the family,
-  // present when the target's driver provides it (08-platforms.md).
-  // Open set: new families contribute their own via module augmentation.
-  web: Web;                // browser-family deterministic surface
-  device: Device;          // mobile-family system utils
-};
+test(
+  'feature flags can be overridden',
+  { requires: ['web'] },
+  async ({ web }) => {
+    await web.goto('/flags');
+  },
+);
 ```
 
-`TestFixtures` is an interface: a driver package that introduces a new
-platform family ships its capability fixture by augmenting it — no core
-release, no accessor indirection:
+The runner filters a target that lacks a declared capability before execution.
+Accessing an undeclared unavailable capability is a configuration error. A
+capability ID is distinct from a platform ID: an Electron target can provide
+`web` without having platform `web`.
 
-```ts
-// e2e-driver-desktop's types — `({ desktop })` works once installed
-declare module 'e2e' {
-  interface TestFixtures {
-    desktop: DesktopSurface;
-  }
-}
-```
+Resources are imports, not fixtures. Custom suite fixtures and `test.extend`
+are post-v0.
 
-### Fixture growth policy
+## Agent execution boundary
 
-The fixtures object stays small by rule, not by luck:
+Test code drives execution. Every `agent.*` call is a separate invocation with
+a fresh observation, an explicit deadline, a model-call budget, and no shared
+model transcript. The bounded ledger supplies prior-step context as described
+in [10-determinism.md](./10-determinism.md).
 
-- **The universal five are frozen.** Anything universal enough to qualify
-  would already exist.
-- **Capabilities are bounded by reality — and core never adds them.**
-  One per platform family, named for the family, contributed by the
-  family's driver package via module augmentation. Core ships exactly two
-  (`web`, `device`); `desktop` or `tv` arrive with their drivers, not
-  with an e2e release.
-- **Everything else is not a fixture.** Resources (`credentials`, and the
-  email/webhook/files/phone extensions) are root imports with run-scoped
-  identity — that is the extension path for new concerns. Roadmap drafts
-  that sketch fixtures (`services`, `pr`) get re-validated against this
-  rule before adoption.
-- **`test.extend` (post-v0) is the userland growth valve.** Custom
-  fixtures belong to suites, not the core. Overriding a built-in requires
-  a type-compatible override; accidental shadowing is an error.
-- Net effect: adding a built-in fixture is a semver-major, spec-level
-  event — not something a minor release does.
+The runner owns tool authorization, budget accounting, error assignment, and
+reporting. Model output is untrusted input and cannot directly invoke a driver.
+The runner validates every proposed tool call against the method's allowed
+tools and the security policy in [14-security.md](./14-security.md).
 
-`screen` is the deterministic cross-platform layer — Testing Library
-queries projected onto each platform's backend, zero model calls
-(08-platforms.md):
+| Method | Accepted model response | Permitted model tools |
+|---|---|---|
+| `act` | `agent-tool-1` sequence | tap, plain/secret type, scroll, press, long-press, allowed navigation, observe, conclude |
+| `login` | `agent-tool-1` sequence | tap, pinned username/password type, scroll, press, allowed navigation, observe, conclude |
+| `tap`, `click`, `type`, `longPress` | one `agent-locate-1` response | none; runner performs the predetermined action |
+| `scroll` without `within` | no model response | none |
+| `scroll` with `within` | one `agent-locate-1` response | none; runner scrolls deterministically |
+| `scrollTo` | repeated bounded `agent-locate-1` responses | none; runner scrolls deterministically |
+| `waitFor`, `assert` | `agent-judgment-1` response | none |
+| `extract` | user-supplied Standard Schema output | none |
 
-```ts
-export default test('checkout', async ({ screen, agent }) => {
-  await screen.getByRole('link', { name: 'Pricing' }).tap();   // deterministic, cross-platform
-  await agent.act('buy the pro plan with the test card');      // agentic
-});
-```
+Any other response kind or tool is `POLICY_DENIED` before driver dispatch.
 
-Every fixture except `web` and `device` is platform-agnostic; `app.open()`
-is the portable navigation (target URL on web, app launch on mobile). `web`
-carries the Playwright-parity capabilities with no mobile meaning
-(navigation, css, network interception, dialogs — see 08-platforms.md).
-Backends (Playwright, native drivers, …) are internal to drivers and never
-exposed in the API.
+## `agent.act`
 
-## `agent`
+`agent.act` plans and executes a multi-action flow. `maxSteps` counts committed
+driver actions. `maxModelCalls` counts every model request, including schema
+repair. Observations do not consume action steps but do consume model calls and
+the test timeout.
 
-The agent performs actions against the current target. On web it sees the
-page (DOM + screenshot) and acts via the browser; on mobile it sees the
-native accessibility tree + screenshot and acts via the native driver. Same
-contract everywhere.
+Parameters are immutable structured values. Plain values are disclosed to the
+model. A `Secret` is represented to the model only by its name and purpose; its
+value is resolved immediately before an authorized sensitive input operation.
+Instructions/conditions/assertions are 1 through 8 KiB UTF-8 after NFC.
+Canonical non-secret parameters are capped at 64 KiB and 32 levels of nesting.
 
-Execution model: **the test code drives; each `agent.*` call is a bounded,
-isolated sub-agent invocation**. Continuity between calls comes from the
-step ledger (compact handoff summaries — "login already happened"), not
-shared transcripts; values move explicitly through code. See
-10-determinism.md, "Execution model".
+When a Standard Schema v1 schema is supplied, the successful result contains a
+required, inferred `data` field. The runner validates proposed output with the
+schema's async-capable `~standard.validate`. Invalid output may be returned to
+the model for repair while budget remains. Exhaustion rejects with
+`MODEL_OUTPUT_INVALID`; an unhandled schema exception is an internal runner
+error.
 
-The agent API has **two tiers** (see 10-determinism.md):
+An invocation succeeds only after the agent explicitly concludes and all
+requested schema output validates. Budget exhaustion never becomes a guessed
+success.
 
-- **Planning** — `agent.act('…')`: the agent plans and executes a multi-step
-  flow. Maximum leverage, most model freedom.
-- **Instant actions** — `agent.tap('…')`, `agent.type('…', value)`, …: AI is
-  used for exactly one thing — *locating* the described element. The action
-  itself is deterministic. One model call, faster, cheaper, cacheable, and
-  minimal wiggle room.
+## Instant actions
 
-Use instant actions when you know the steps; use `act()` when you know the
-goal.
+`tap`, `click`, `type`, and `longPress` use the model only to select exactly one
+node from one fresh observation. On a valid locate-cache hit they use zero model
+calls. On a miss they use exactly one model call and then execute exactly one
+driver action. They never replan, navigate, or choose an alternate action.
 
-### `agent.act()`
+The model returns a semantic node reference plus a runner-generated query. The
+runner validates that both identify the same unique node before acting. Zero
+matches rejects with `LOCATOR_NOT_FOUND`; multiple matches rejects with
+`LOCATOR_AMBIGUOUS`; actionability failure rejects with `ACTION_FAILED`.
 
-```ts
-agent.act(instruction: string, params?: AgentParams, options?: AgentOptions): Promise<AgentResult>;
-```
+`agent.type` replaces the target's current content and accepts plain strings or
+opaque `Secret` values. It never submits the field; submission is a separate
+tap/click/press step. A secret may be sent only to an authorized secure input
+sink and is never included in a model request, cache key, ledger, report, or
+artifact.
 
-- `instruction` — plain-English action ("buy the pro plan").
-- `params` — structured values the agent may use. Values are passed verbatim
-  (never invented): emails, codes, names, form data. Values may also be
-  `Credential` handles (filled host-side by reference; the raw secret never
-  enters model context).
-- `options.timeout` — max ms for the whole action.
-- `options.maxSteps` — action budget; on exhaustion the step is forced to
-  conclude with `AgentError.code = 'STEP_BUDGET_EXHAUSTED'`.
-- `options.cache` — use/record the cached action path for this instruction
-  (default: config `agent.cache`; see 10-determinism.md).
-- `options.schema` — a Standard Schema; extracted values in `result.data`
-  are validated against it and typed.
+`agent.scroll` uses no model when `within` is absent and one locate call when it
+is present. `scrollTo` and `waitFor` are assisted polling operations rather than
+single-call instant actions:
 
-```ts
-await agent.act('create a project called "Rocketry" in the Engineering category');
+- `scrollTo` alternates deterministic scrolling and fresh locate judgments
+  until the node is found or the timeout/model-call budget expires.
+- `waitFor` makes one fresh observation and judgment per `intervalMs`, default
+  3,000 ms. It succeeds on the first true judgment. The interval is an integer
+  from 100 through 60,000 ms.
 
-await agent.act('invite a teammate as viewer', {
-  email: 'ada@example.test',
-});
+Every polling method is bounded by both its timeout and the resolved
+`maxModelCalls` limit.
 
-// typed structured output
-const { data } = await agent.act('add the three cheapest items to the cart', undefined, {
-  schema: z.object({ addedItems: z.array(z.string()), total: z.number() }),
-});
-data.total; // number
-```
+Long-press `durationMs` defaults to 500 ms and must be an integer from 100
+through 10,000 ms on both agent and locator surfaces.
 
-Returns `AgentResult`:
+## `agent.login`
 
-```ts
-type AgentResult<T = Record<string, unknown>> = {
-  ok: true;
-  steps: AgentStep[];      // what the agent actually did (for reports/replay)
-  data?: T;                // extracted values; present + typed when a schema is passed
-};
+`agent.login(credential)` is a planning invocation with one pinned credential.
+The model may request username or password fills only for that credential. The
+runner authorizes each destination origin and field purpose independently. A
+rejected login is `AUTHENTICATION_FAILED`; missing material is
+`AUTH_CREDENTIAL_UNAVAILABLE`.
 
-type AgentStep = {
-  action: string;          // human-readable, e.g. 'tap "Sign up"'
-  screenshot?: string;     // artifact path
-  startedAt: Date;
-  durationMs: number;
-};
-```
+The method does not implicitly open the app. Calling it before `app.open()` or
+equivalent navigation fails with the test error `APP_NOT_OPEN`.
+Login is never path-cached; setup sessions provide the authentication fast path.
 
-On failure the promise rejects with `AgentError` containing the step trail,
-final screenshot, the agent's own explanation of what went wrong, and a
-typed `code` separating setup failures from product failures (see
-10-determinism.md).
+## `agent.extract`
 
-### Instant actions — `tap`, `type`, `scroll`, `scrollTo`, `longPress`, `waitFor`
+`agent.extract` takes one fresh observation, asks for structured output, and
+validates it with Standard Schema v1. It performs no app actions. Validation
+repair is allowed while `maxModelCalls` and timeout remain. The resolved value,
+not an `AgentResult`, is returned.
 
-Granular, locate-then-act primitives. The target is a natural-language
-description — never a selector — so instant actions stay cross-platform:
+## `agent.assert`
 
-```ts
-await agent.tap('the login button');
-await agent.type('the email field', 'ada@example.test');
-await agent.type('the search box', 'headphones', { submit: true });
-await agent.scroll({ direction: 'down' });
-await agent.scroll({ direction: 'down', momentum: 'fast', within: 'the plans list' });
-await agent.scrollTo('the 20th item in the results list');
-await agent.longPress('the message from Ada');
-await agent.waitFor('the results list has loaded');
-```
+`agent.assert` performs one fresh observation and one model judgment. Its
+timeout limits that operation; it does not poll. A false judgment rejects with
+`ASSERTION_FAILED` and includes the runner-sanitized explanation and evidence.
+Use `agent.waitFor` for eventually true natural-language conditions.
 
-Signatures (target-first, always):
+## Errors
 
-```ts
-agent.tap(target: string, options?: InstantActionOptions): Promise<void>;
-agent.type(target: string, value: string, options?: InstantActionOptions & { submit?: boolean; clear?: boolean }): Promise<void>;
-agent.scroll(options: InstantActionOptions & { direction: ScrollDirection; momentum?: 'none' | 'slow' | 'fast'; within?: string }): Promise<void>;
-agent.scrollTo(target: string, options?: InstantActionOptions & { direction?: ScrollDirection }): Promise<void>;
-agent.longPress(target: string, options?: InstantActionOptions & { duration?: number }): Promise<void>;
-agent.waitFor(condition: string, options?: { timeout?: number; interval?: number }): Promise<void>;
+`AgentError.code` is assigned by runner logic, never accepted from model text.
+The closed code set is declared in `api/e2e.d.ts`. Error-to-result and exit-code
+mapping is defined in [06-cli.md](./06-cli.md). Provider errors, policy denials,
+timeouts, cancellations, and product assertions remain distinguishable.
 
-type ScrollDirection = 'up' | 'down' | 'left' | 'right';
-type InstantActionOptions = {
-  timeout?: number;
-  /** Use/record the cached location for this target. Default: config.agent.cache. */
-  cache?: boolean;
-};
-```
+## Option defaults
 
-Semantics:
+| Method | Default timeout | Model calls | Action steps | Cache |
+|---|---:|---:|---:|---|
+| `act` | 60 s | config limit | config `maxSteps` | inherited mode |
+| `login` | 60 s | config limit | config `maxSteps` | off |
+| `tap/click/type/longPress` | action timeout | 1 on miss | exactly 1 | inherited mode |
+| `scroll` | action timeout | 0 or 1 with `within` | exactly 1 | locate only |
+| `scrollTo`, `waitFor` | 30 s | config limit | bounded by calls | locate only/off |
+| `extract` | 30 s | 2 | 0 | off |
+| `assert` | 30 s | exactly 1 | 0 | off |
 
-- **One model call**: locate the described element on the current screen.
-  The tap/type/scroll itself is executed deterministically by the driver —
-  no planning loop, no replanning, no alternate paths.
-- `click()` is an alias of `tap()` for web muscle memory.
-- **Locate caching**: successful locations are cached by target description
-  (semantic node reference, validated on replay, AI fallback on mismatch) —
-  repeat runs skip the model entirely. Stronger than `act()` path caching
-  because there is no plan to invalidate.
-- **Failures are precise and typed**: element not found or ambiguous →
-  `AgentError` with the accessibility-tree evidence ("found 3 buttons
-  matching 'the delete button'"). No self-healing detours: an instant
-  action never does something else instead.
-- Values are passed verbatim (like `AgentParams`): `agent.type` accepts
-  `Credential` (filled host-side, never in model context) and plain
-  strings.
-- `waitFor(condition)` polls a natural-language condition (interval default
-  3s) — for loading states where `agent.assert` would be premature.
+Every timeout is capped by the remaining test timeout. `cache: false` disables
+cache for that call; `cache: true` uses the resolved run mode and cannot upgrade
+read-only to read-write. `assert.screenshot` defaults to true unless pixel
+evidence is security-tainted. Per-call budgets MUST be positive integers and
+cannot exceed config or hard security limits.
 
-### `agent.login()`
+The closed model response grammars are
+[`schema/agent-locate-v1.schema.json`](./schema/agent-locate-v1.schema.json),
+[`schema/agent-judgment-v1.schema.json`](./schema/agent-judgment-v1.schema.json),
+and [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json).
+Unknown or method-incompatible responses are policy errors.
 
-Sugar for the most common flow. Accepts a credential handle (see
-04-resources.md) and gets the user authenticated, whatever the app's login UI
-looks like.
+## Steps
 
-```ts
-const admin = credentials.user('admin');
-await agent.login(admin);
-```
+The exact step-producing calls and report fields are defined in
+[13-reporting.md](./13-reporting.md). Internal model turns are events nested
+inside one public API step; they are not top-level test steps.
 
-```ts
-agent.login(user: Credential, options?: AgentOptions): Promise<AgentResult>;
-```
+## Hooks and groups
 
-The credential is **pinned** for the step: the agent cannot substitute a
-different one, and the secret is filled host-side by reference — it never
-enters model context.
+`beforeEach` and `afterEach` receive test fixtures. `beforeAll` and `afterAll`
+receive only `SuiteFixtures`, currently `platform`, so suite hooks cannot leak
+driver state into logically fresh test attempts.
 
-### `agent.extract()`
-
-Pull structured data off the page without selectors.
-
-```ts
-const { total } = await agent.extract('the cart total as a number', {
-  schema: z.object({ total: z.number() }),
-});
-```
-
-```ts
-agent.extract<T>(instruction: string, options: { schema: StandardSchema<T>; timeout?: number }): Promise<T>;
-```
-
-Schema is any Standard Schema (zod, valibot, arktype).
-
-## Steps — the report structure, for free
-
-There is no `step()` wrapper. Every `agent.*` call, `screen` action,
-resource `expect()`, and `app.screenshot()` is a **step** in the report
-timeline automatically, labeled by the call itself — `agent.act('sign up
-as a new user')` is its own report line. Natural-language-first calls
-self-document; no narration API needed (see 10-determinism.md). An
-explicit grouping marker is roadmap if real suites show timeline noise.
-
-## Hooks
-
-Playwright-familiar, imported from the root:
-
-```ts
-import { test } from 'e2e';
-
-test.beforeEach(async ({ app }) => {
-  await app.open('/');
-});
-
-test.afterEach(async ({ app }) => {
-  await app.restart(); // fresh state between tests when needed
-});
-
-test.beforeAll(fn);
-test.afterAll(fn);
-```
-
-## Grouping
-
-```ts
-test.describe('billing', { tags: ['billing'], session: 'admin' }, () => {
-  test('checkout works', async ({ agent }) => { /* … */ });
-  test('invoice email arrives', async ({ agent }) => { /* … */ });
-});
-
-test.describe('onboarding wizard', { serial: true }, () => { /* ordered, shared state */ });
-```
-
-Group options apply to every test inside (test-level overrides). `serial`
-groups run in order in one worker; a failure skips the rest. Details in
-11-lifecycle.md.
-
-## File conventions
-
-- Default glob: `tests/**/*.e2e.ts`
-- A file may export multiple tests (named or array default export).
-- `export default test(…)` is the canonical single-test file shape.
+Groups nest and inherit options. `serial: true` creates one ordered retry unit
+with shared app state and ledger. Complete ordering, failure, teardown, session,
+and retry rules are specified in 11-lifecycle.md.
