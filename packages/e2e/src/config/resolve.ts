@@ -1,0 +1,465 @@
+/** Config validation, defaults, and resolution (spec 05-config.md). */
+
+import { existsSync, readFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { ConfigurationError } from '../internal/errors.js';
+import { canonicalDigest, sha256Hex } from '../internal/ids.js';
+import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.js';
+import { isDriverHandle, type Driver } from '../driver/index.js';
+import type { CommandConfig, E2EConfig } from '../types.js';
+
+export interface ResolvedTarget {
+  readonly name: string;
+  readonly index: number;
+  readonly platform: 'web';
+  readonly browser: 'chromium' | 'firefox' | 'webkit';
+  readonly viewport: { readonly width: number; readonly height: number } | undefined;
+  /** Bundled driver ID or an imported branded driver handle. */
+  readonly driver: 'playwright' | Driver;
+}
+
+export interface ResolvedCredential {
+  readonly name: string;
+  readonly username: string;
+  readonly password: string;
+  readonly allowedOrigins: readonly string[] | undefined;
+}
+
+export interface ResolvedConfig {
+  readonly specVersion: '0.1';
+  readonly projectId: string;
+  readonly projectRoot: string;
+  readonly configPath: string | undefined;
+  readonly ci: boolean;
+  readonly app: {
+    readonly base: NormalizedBaseUrl;
+    readonly readyUrl: string;
+    readonly allowedOrigins: readonly string[];
+    readonly environment: 'test' | 'staging' | 'production';
+    readonly allowProduction: boolean;
+    readonly command: CommandConfig | undefined;
+  };
+  readonly targets: readonly ResolvedTarget[];
+  readonly tests: readonly string[];
+  readonly timeout: number;
+  readonly launchTimeout: number;
+  readonly actionTimeout: number;
+  readonly assertionTimeout: number;
+  readonly cleanupTimeout: number;
+  readonly retries: number;
+  readonly workers: number;
+  readonly artifacts: readonly ('trace' | 'screenshot' | 'video')[];
+  readonly reporters: readonly ('list' | 'json' | 'html')[];
+  readonly testIdAttribute: string;
+  readonly credentials: ReadonlyMap<string, ResolvedCredential>;
+  readonly configDigest: string;
+}
+
+export interface CliOverrides {
+  retries?: number;
+  workers?: number;
+  reporters?: readonly ('list' | 'json' | 'html')[];
+  headed?: boolean;
+  artifactsDir?: string;
+}
+
+const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.\-]+$/;
+
+const TOP_LEVEL_KEYS = new Set([
+  'specVersion',
+  'projectId',
+  'app',
+  'targets',
+  'browser',
+  'tests',
+  'timeout',
+  'launchTimeout',
+  'actionTimeout',
+  'assertionTimeout',
+  'cleanupTimeout',
+  'retries',
+  'workers',
+  'artifacts',
+  'reporters',
+  'screen',
+  'agent',
+  'limits',
+  'credentials',
+]);
+
+const APP_KEYS = new Set([
+  'url',
+  'command',
+  'readyUrl',
+  'allowedOrigins',
+  'environment',
+  'allowProduction',
+]);
+
+/** True when CI mode is active per 05-config.md. */
+export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env['CI'];
+  if (raw === undefined) return false;
+  const value = raw.trim().toLowerCase();
+  return value !== '' && value !== '0' && value !== 'false';
+}
+
+/** Resolves a raw config object plus environment into an immutable resolved config. */
+export function resolveConfig(
+  raw: E2EConfig,
+  options: {
+    projectRoot: string;
+    configPath?: string;
+    env?: NodeJS.ProcessEnv;
+    cli?: CliOverrides;
+  },
+): ResolvedConfig {
+  const env = options.env ?? process.env;
+  const cli = options.cli ?? {};
+  const ci = isCiMode(env);
+
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'config must be an object');
+  }
+  for (const key of Object.keys(raw)) {
+    if (!TOP_LEVEL_KEYS.has(key)) {
+      throw new ConfigurationError('INVALID_CONFIG', `unknown config key "${key}"`);
+    }
+  }
+  if (raw.specVersion !== undefined && raw.specVersion !== '0.1') {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `unsupported specVersion ${JSON.stringify(raw.specVersion)}; this runner implements 0.1`,
+    );
+  }
+
+  const app = resolveApp(raw, env);
+  const targets = resolveTargets(raw);
+  const tests = normalizeTests(raw.tests);
+
+  const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
+  const launchTimeout = positiveInt(raw.launchTimeout, 'launchTimeout') ?? 60_000;
+  const actionTimeout = positiveInt(raw.actionTimeout, 'actionTimeout') ?? 30_000;
+  const assertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout') ?? 5_000;
+  const cleanupTimeout = positiveInt(raw.cleanupTimeout, 'cleanupTimeout') ?? 30_000;
+
+  const retries = cli.retries ?? boundedInt(raw.retries, 'retries', 0, 10) ?? (ci ? 1 : 0);
+  const workers =
+    cli.workers ??
+    boundedInt(raw.workers, 'workers', 1, 1024) ??
+    (ci ? 1 : Math.max(1, Math.floor(os.availableParallelism() / 2)));
+
+  const artifacts = raw.artifacts ?? (['screenshot', 'trace'] as const);
+  for (const artifact of artifacts) {
+    if (!['screenshot', 'trace', 'video'].includes(artifact)) {
+      throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${artifact}"`);
+    }
+  }
+  const reporters = cli.reporters ?? raw.reporters ?? (['list', 'html'] as const);
+  for (const reporter of reporters) {
+    if (!['list', 'json', 'html'].includes(reporter)) {
+      throw new ConfigurationError('INVALID_CONFIG', `unknown reporter "${reporter}"`);
+    }
+  }
+  if (reporters.includes('json') && reporters.includes('list')) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'the json renderer cannot be combined with list',
+    );
+  }
+
+  const testIdAttribute = raw.screen?.testIdAttribute ?? 'data-testid';
+  const projectId = resolveProjectId(raw.projectId, options.projectRoot);
+  const credentials = resolveCredentials(raw, env);
+
+  const resolved: ResolvedConfig = {
+    specVersion: '0.1',
+    projectId,
+    projectRoot: options.projectRoot,
+    configPath: options.configPath,
+    ci,
+    app,
+    targets,
+    tests,
+    timeout,
+    launchTimeout,
+    actionTimeout,
+    assertionTimeout,
+    cleanupTimeout,
+    retries,
+    workers,
+    artifacts,
+    reporters,
+    testIdAttribute,
+    credentials,
+    configDigest: computeConfigDigest(raw, projectId),
+  };
+  return resolved;
+}
+
+function positiveInt(value: number | undefined, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label} must be a positive safe integer`);
+  }
+  return value;
+}
+
+function boundedInt(
+  value: number | undefined,
+  label: string,
+  min: number,
+  max: number,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} must be an integer from ${min} through ${max}`,
+    );
+  }
+  return value;
+}
+
+function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app'] {
+  if (raw.app !== undefined) {
+    for (const key of Object.keys(raw.app)) {
+      if (!APP_KEYS.has(key)) {
+        throw new ConfigurationError('INVALID_CONFIG', `unknown app config key "${key}"`);
+      }
+    }
+  }
+  const rawUrl = raw.app?.url ?? env['APP_URL'];
+  if (rawUrl === undefined || rawUrl === '') {
+    throw new ConfigurationError(
+      'APP_URL_REQUIRED',
+      'an app URL is required: set app.url in e2e.config.ts or the APP_URL environment variable',
+    );
+  }
+  const base = normalizeBaseUrl(rawUrl);
+  const baseHost = new URL(base.href).hostname;
+
+  let environment = raw.app?.environment;
+  if (environment === undefined) {
+    if (!isImplicitTestHost(baseHost)) {
+      throw new ConfigurationError(
+        'ENVIRONMENT_REQUIRED',
+        `host ${baseHost} requires an explicit app.environment of "test", "staging", or "production"`,
+      );
+    }
+    environment = 'test';
+  }
+  if (!['test', 'staging', 'production'].includes(environment)) {
+    throw new ConfigurationError('INVALID_CONFIG', `invalid app.environment "${environment}"`);
+  }
+  const allowProduction = raw.app?.allowProduction ?? false;
+  if (environment === 'production' && !allowProduction) {
+    throw new ConfigurationError(
+      'PRODUCTION_NOT_ALLOWED',
+      'a production target is rejected unless allowProduction: true',
+    );
+  }
+
+  const allowedOrigins = raw.app?.allowedOrigins ?? [base.origin];
+  for (const origin of allowedOrigins) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new ConfigurationError('INVALID_CONFIG', `invalid allowed origin: ${origin}`);
+    }
+    if (parsed.origin !== origin) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `allowed origin must be a serialized origin, got ${origin} (expected ${parsed.origin})`,
+      );
+    }
+  }
+
+  const command = raw.app?.command;
+  if (command !== undefined) {
+    if (typeof command.executable !== 'string' || command.executable.length === 0) {
+      throw new ConfigurationError('INVALID_CONFIG', 'app.command.executable is required');
+    }
+  }
+
+  return {
+    base,
+    readyUrl: raw.app?.readyUrl ?? base.href,
+    allowedOrigins,
+    environment,
+    allowProduction,
+    command,
+  };
+}
+
+function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
+  if (raw.targets !== undefined && raw.browser !== undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'defining both top-level browser and explicit targets is an error',
+    );
+  }
+  if (raw.targets === undefined) {
+    return [
+      {
+        name: 'web',
+        index: 0,
+        platform: 'web',
+        browser: raw.browser ?? 'chromium',
+        viewport: undefined,
+        driver: 'playwright',
+      },
+    ];
+  }
+  if (raw.targets.length === 0) {
+    throw new ConfigurationError('INVALID_CONFIG', 'targets must not be empty');
+  }
+  const seen = new Set<string>();
+  return raw.targets.map((target, index) => {
+    if (typeof target.name !== 'string' || !TARGET_NAME_PATTERN.test(target.name)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `target names are required and limited to ASCII letters, numbers, "_", "-", and "."`,
+      );
+    }
+    if (seen.has(target.name)) {
+      throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${target.name}"`);
+    }
+    seen.add(target.name);
+    if (target.platform !== 'web') {
+      throw new ConfigurationError(
+        'PLATFORM_UNSUPPORTED',
+        `target "${target.name}" requests platform "${target.platform}"; this v0 runner executes web targets only`,
+      );
+    }
+    const webTarget = target as import('../types.js').WebTarget;
+    let driver: 'playwright' | Driver;
+    if (webTarget.driver === undefined || webTarget.driver === 'playwright') {
+      driver = 'playwright';
+    } else if (isDriverHandle(webTarget.driver)) {
+      driver = webTarget.driver;
+    } else {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `target "${target.name}" driver must be "playwright" or a defineDriver handle`,
+      );
+    }
+    const browser = webTarget.browser ?? 'chromium';
+    if (!['chromium', 'firefox', 'webkit'].includes(browser)) {
+      throw new ConfigurationError('INVALID_CONFIG', `invalid browser "${browser}"`);
+    }
+    return {
+      name: target.name,
+      index,
+      platform: 'web' as const,
+      browser,
+      viewport: webTarget.viewport,
+      driver,
+    };
+  });
+}
+
+function normalizeTests(tests: E2EConfig['tests']): readonly string[] {
+  const list = tests === undefined ? ['tests/**/*.e2e.ts'] : typeof tests === 'string' ? [tests] : tests;
+  if (list.length === 0) {
+    throw new ConfigurationError('INVALID_CONFIG', 'tests must not be empty');
+  }
+  return [...new Set(list)];
+}
+
+function resolveProjectId(explicit: string | undefined, projectRoot: string): string {
+  if (explicit !== undefined) {
+    if (explicit.length === 0 || explicit.length > 256) {
+      throw new ConfigurationError('INVALID_CONFIG', 'projectId must be 1 through 256 characters');
+    }
+    return explicit;
+  }
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { name?: unknown };
+      if (typeof parsed.name === 'string' && parsed.name.length > 0) return parsed.name;
+    } catch {
+      // fall through to hashed identity
+    }
+  }
+  return `unportable-${sha256Hex(projectRoot).slice(0, 32)}`;
+}
+
+function resolveCredentials(
+  raw: E2EConfig,
+  env: NodeJS.ProcessEnv,
+): ReadonlyMap<string, ResolvedCredential> {
+  const resolved = new Map<string, ResolvedCredential>();
+  for (const [name, credential] of Object.entries(raw.credentials ?? {})) {
+    const envPrefix = `E2E_USER_${name.toUpperCase().replaceAll(/[^A-Z0-9]/g, '_')}`;
+    const username = env[`${envPrefix}_USERNAME`] ?? credential.username;
+    const password = env[`${envPrefix}_PASSWORD`] ?? credential.password;
+    resolved.set(name, {
+      name,
+      username,
+      password,
+      allowedOrigins: credential.allowedOrigins,
+    });
+  }
+  return resolved;
+}
+
+/**
+ * SHA-256/JCS digest of resolved config after replacing credential material
+ * with `{ secretName }` and env values with `{ envName }` (13-reporting.md).
+ */
+function computeConfigDigest(raw: E2EConfig, projectId: string): string {
+  const sanitized: Record<string, unknown> = {
+    ...(structuredCloneJsonSafe(raw) as Record<string, unknown>),
+    projectId,
+  };
+  if (raw.credentials !== undefined) {
+    sanitized['credentials'] = Object.fromEntries(
+      Object.entries(raw.credentials).map(([name, credential]) => [
+        name,
+        {
+          username: credential.username,
+          password: { secretName: name },
+          ...(credential.allowedOrigins !== undefined
+            ? { allowedOrigins: credential.allowedOrigins }
+            : {}),
+        },
+      ]),
+    );
+  }
+  if (raw.app?.command?.env !== undefined) {
+    const app = sanitized['app'] as { command: { env: unknown } };
+    app.command.env = Object.fromEntries(
+      Object.keys(raw.app.command.env).map((key) => [key, { envName: key }]),
+    );
+  }
+  if (raw.targets !== undefined) {
+    sanitized['targets'] = raw.targets.map((target) => {
+      if ('driver' in target && isDriverHandle(target.driver)) {
+        const { driver, ...rest } = target;
+        return {
+          ...rest,
+          driver: {
+            id: driver.id,
+            version: driver.version,
+            platforms: driver.platforms,
+            spiVersion: driver.spiVersion,
+            capabilities: driver.capabilities,
+          },
+        };
+      }
+      return target;
+    });
+  }
+  return canonicalDigest(sanitized);
+}
+
+function structuredCloneJsonSafe(value: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(value, (_key, item: unknown) => (typeof item === 'function' ? undefined : item)) ??
+      'null',
+  );
+}

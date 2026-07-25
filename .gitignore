@@ -1,5 +1,8 @@
 node_modules/
+dist/
+*.tsbuildinfo
 .e2e/artifacts/
 .e2e/sessions/
 .e2e/report.json
 .e2e/report.html
+packages/e2e/tests/tmp-projects/
