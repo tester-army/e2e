@@ -4,10 +4,16 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { RunOptions, RunOutcome } from '../../src/run/runner.js';
+import type { E2EConfig } from '../../src/index.js';
+
+export type { RunOptions, RunOutcome };
+
 // The built runner is used so fixture test files resolving the "e2e"
-// self-reference share the same registry instance.
-import { run, type RunOptions, type RunOutcome } from '../../dist/run/runner.js';
-import type { E2EConfig } from '../../dist/index.js';
+// self-reference share the same registry instance. The specifier is kept
+// non-literal so typechecking does not require a prior build.
+const builtRunnerModule = '../../dist/run/runner.js';
+const { run } = (await import(builtRunnerModule)) as typeof import('../../src/run/runner.js');
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
