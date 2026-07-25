@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit && e2e run",
-    "test:headed": "e2e run --headed",
-    "test:public": "e2e run --config e2e.public.config.ts",
+    "test": "tsc --noEmit && node node_modules/e2e/dist/cli/bin.js run",
+    "test:headed": "node node_modules/e2e/dist/cli/bin.js run --headed",
+    "test:public": "node node_modules/e2e/dist/cli/bin.js run --config e2e.public.config.ts",
     "app": "node app/server.mjs"
   },
   "dependencies": {
