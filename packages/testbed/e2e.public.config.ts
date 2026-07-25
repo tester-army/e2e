@@ -1,0 +1,26 @@
+import { defineConfig } from 'e2e';
+
+/**
+ * Opt-in suite against real public websites. Run manually:
+ *
+ *   pnpm --filter @e2e/testbed test:public
+ *
+ * Not part of CI: public sites change and rate-limit, and the point of this
+ * config is dogfooding the production opt-in and multi-origin policy.
+ */
+export default defineConfig({
+  specVersion: '0.1',
+  projectId: 'dev.e2e.testbed-public',
+  app: {
+    url: 'https://example.com',
+    environment: 'production',
+    allowProduction: true,
+    allowedOrigins: [
+      'https://example.com',
+      'https://www.iana.org',
+      'https://playwright.dev',
+    ],
+  },
+  tests: 'tests-public/**/*.e2e.ts',
+  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+})

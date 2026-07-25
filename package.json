@@ -13,7 +13,9 @@
     "check": "pnpm run check:spec && pnpm run typecheck",
     "check:spec": "tsc --project tsconfig.spec.json",
     "typecheck": "pnpm --filter e2e typecheck",
-    "test": "pnpm --filter e2e test"
+    "test": "pnpm --filter e2e test",
+    "test:testbed": "pnpm --filter e2e build && pnpm --filter @e2e/testbed test",
+    "test:public": "pnpm --filter e2e build && pnpm --filter @e2e/testbed test:public"
   },
   "contributors": [
     "Oskar Kwa\u015bniewski <oskar@tester.army>",

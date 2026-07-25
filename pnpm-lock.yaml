@@ -55,6 +55,19 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@26.1.1)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(tsx@4.23.1))
 
+  packages/testbed:
+    dependencies:
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+    devDependencies:
+      '@types/node':
+        specifier: 26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
 packages:
 
   '@clack/core@1.4.3':

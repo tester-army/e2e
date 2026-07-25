@@ -22,3 +22,4 @@ jobs:
       - run: pnpm check
       - run: pnpm --filter e2e exec playwright install chromium --with-deps
       - run: pnpm test
+      - run: pnpm --filter @e2e/testbed test
