@@ -39,6 +39,40 @@ interface SessionEnvelope {
   };
 }
 
+/**
+ * Collects states saved by one setup attempt and owns the setup session
+ * contract: each declared name saved exactly once, nothing undeclared.
+ */
+export class SessionStaging {
+  private readonly staged = new Map<string, DriverState>();
+
+  constructor(private readonly declared: readonly string[]) {}
+
+  /** Stages one captured state, rejecting duplicate or undeclared names. */
+  stage(name: string, state: DriverState): void {
+    if (this.staged.has(name)) {
+      throw new E2EError('test', 'SESSION_CONTRACT', `session "${name}" saved twice`);
+    }
+    if (!this.declared.includes(name)) {
+      throw new E2EError(
+        'test',
+        'SESSION_CONTRACT',
+        `session "${name}" was not declared by this setup test`,
+      );
+    }
+    this.staged.set(name, state);
+  }
+
+  /** Declared names the attempt finished without saving. */
+  missing(): string[] {
+    return this.declared.filter((name) => !this.staged.has(name));
+  }
+
+  entries(): IterableIterator<[string, DriverState]> {
+    return this.staged.entries();
+  }
+}
+
 /** Holds the per-run AES-256-GCM key in memory and owns the session directory. */
 export class SessionStore {
   private readonly key = randomBytes(32);

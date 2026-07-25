@@ -19,7 +19,9 @@ implements the deterministic subset of specification 0.1:
 
 Not implemented yet: agentic execution (`agent.*` rejects with
 `MODEL_UNAVAILABLE`), locate/path caches, the HTML reporter, video artifacts,
-and mobile targets (rejected per the v0 boundary).
+and mobile targets (rejected per the v0 boundary). Parallel workers are not
+implemented either: `workers`/`--workers` and `--no-agent-cache` are accepted
+per spec 06-cli.md but execution is serial and no agent cache exists yet.
 
 ## Usage
 

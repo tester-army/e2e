@@ -38,12 +38,28 @@ import {
   type SemanticNode,
   type TextPattern,
 } from '../driver/index.js';
-import { routePatternMatches } from '../internal/route-pattern.js';
+import { routePatternMatches, routePatternsEqual } from '../internal/route-pattern.js';
 import { matchesText } from '../internal/text.js';
 import { frameSelectors, projectExpression } from './locators.js';
 import { readNodeFunction, type RawNodeData } from './read-node.js';
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
+
+interface ParsedWebTarget {
+  readonly browser: 'chromium' | 'firefox' | 'webkit';
+  readonly viewport: { readonly width: number; readonly height: number } | undefined;
+}
+
+/** Narrows the wire target to the web fields this driver understands. */
+function parseWebTarget(target: DriverContext['target']): ParsedWebTarget {
+  const browser =
+    'browser' in target &&
+    (target.browser === 'chromium' || target.browser === 'firefox' || target.browser === 'webkit')
+      ? target.browser
+      : 'chromium';
+  const viewport = 'viewport' in target ? target.viewport : undefined;
+  return { browser, viewport };
+}
 
 interface StoredRef {
   readonly locator: PwLocator;
@@ -76,16 +92,15 @@ export class PlaywrightSession implements DriverSession {
   private readonly downloads = new Map<string, Promise<Download>>();
   private latchedDialogError: DriverError | null = null;
   private pendingState: DriverState | null = null;
+  private readonly target: ParsedWebTarget;
 
-  constructor(private readonly driverContext: DriverContext) {}
+  constructor(private readonly driverContext: DriverContext) {
+    this.target = parseWebTarget(driverContext.target);
+  }
 
   async launch(): Promise<void> {
-    const target = this.driverContext.target as {
-      browser?: 'chromium' | 'firefox' | 'webkit';
-      viewport?: { width: number; height: number };
-    };
     const browserType =
-      target.browser === 'firefox' ? firefox : target.browser === 'webkit' ? webkit : chromium;
+      this.target.browser === 'firefox' ? firefox : this.target.browser === 'webkit' ? webkit : chromium;
     try {
       this.browser = await browserType.launch({
         headless: !this.driverContext.launchOptions.headed,
@@ -103,9 +118,8 @@ export class PlaywrightSession implements DriverSession {
 
   private async createContext(): Promise<void> {
     if (this.browser === null) throw invalidState('browser is not launched');
-    const target = this.driverContext.target as { viewport?: { width: number; height: number } };
     this.context = await this.browser.newContext({
-      viewport: target.viewport ?? DEFAULT_VIEWPORT,
+      viewport: this.target.viewport ?? DEFAULT_VIEWPORT,
       acceptDownloads: true,
       ...(this.pendingState !== null
         ? { storageState: this.pendingState.data as unknown as string }
@@ -542,7 +556,6 @@ export class PlaywrightSession implements DriverSession {
     unroute: async (pattern, operation) => {
       this.checkOperation(operation);
       const page = this.requirePage();
-      const { routePatternsEqual } = await import('../internal/route-pattern.js');
       for (let i = this.routes.length - 1; i >= 0; i -= 1) {
         const stored = this.routes[i]!;
         if (routePatternsEqual(stored.pattern, pattern)) {
@@ -573,21 +586,18 @@ export class PlaywrightSession implements DriverSession {
     cookies: async (operation) => {
       this.checkOperation(operation);
       const cookies = await this.requireContext().cookies();
-      return cookies.map((cookie): Cookie => {
-        const mapped: Cookie = {
+      return cookies.map(
+        (cookie): Cookie => ({
           name: cookie.name,
           value: cookie.value,
           domain: cookie.domain,
           path: cookie.path,
-        };
-        if (cookie.expires >= 0) (mapped as { expires?: number }).expires = Math.floor(cookie.expires);
-        (mapped as { httpOnly?: boolean }).httpOnly = cookie.httpOnly;
-        (mapped as { secure?: boolean }).secure = cookie.secure;
-        if (cookie.sameSite !== undefined) {
-          (mapped as { sameSite?: 'Strict' | 'Lax' | 'None' }).sameSite = cookie.sameSite;
-        }
-        return mapped;
-      });
+          ...(cookie.expires >= 0 ? { expires: Math.floor(cookie.expires) } : {}),
+          httpOnly: cookie.httpOnly,
+          secure: cookie.secure,
+          ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
+        }),
+      );
     },
     setCookies: async (cookies, operation) => {
       this.checkOperation(operation);
@@ -803,14 +813,10 @@ export class PlaywrightSession implements DriverSession {
   async runtime(operation: OperationContext): Promise<DriverRuntime> {
     this.checkOperation(operation);
     if (this.browser === null) throw invalidState('session is closed');
-    const target = this.driverContext.target as { browser?: 'chromium' | 'firefox' | 'webkit' };
-    const viewport =
-      this.page?.viewportSize() ??
-      (this.driverContext.target as { viewport?: { width: number; height: number } }).viewport ??
-      DEFAULT_VIEWPORT;
+    const viewport = this.page?.viewportSize() ?? this.target.viewport ?? DEFAULT_VIEWPORT;
     return {
       browser: {
-        name: target.browser ?? 'chromium',
+        name: this.target.browser,
         version: this.browser.version(),
       },
       viewport: { width: viewport.width, height: viewport.height, scale: 1 },

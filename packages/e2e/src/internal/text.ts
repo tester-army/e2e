@@ -36,27 +36,25 @@ export function normalizeRegexpFlags(flags: string): string {
  */
 export function matchesText(actual: string, pattern: TextPattern): boolean {
   const normalizedActual = normalizeText(actual);
-  if (pattern.kind === 'string') {
-    const normalizedExpected = normalizeText(pattern.value);
-    if (pattern.exact) return normalizedActual === normalizedExpected;
-    return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
-  }
-  const regexp = new RegExp(pattern.source, pattern.flags);
-  regexp.lastIndex = 0;
-  return regexp.test(normalizedActual);
+  if (pattern.kind === 'regexp') return regexpMatches(normalizedActual, pattern);
+  const normalizedExpected = normalizeText(pattern.value);
+  if (pattern.exact) return normalizedActual === normalizedExpected;
+  return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
 }
 
 /** Substring/regexp containment matching used by toContainText. */
 export function containsText(actual: string, pattern: TextPattern): boolean {
   const normalizedActual = normalizeText(actual);
-  if (pattern.kind === 'string') {
-    const normalizedExpected = normalizeText(pattern.value);
-    if (pattern.exact) return normalizedActual.includes(normalizedExpected);
-    return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
-  }
+  if (pattern.kind === 'regexp') return regexpMatches(normalizedActual, pattern);
+  const normalizedExpected = normalizeText(pattern.value);
+  if (pattern.exact) return normalizedActual.includes(normalizedExpected);
+  return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
+}
+
+function regexpMatches(actual: string, pattern: { source: string; flags: string }): boolean {
   const regexp = new RegExp(pattern.source, pattern.flags);
   regexp.lastIndex = 0;
-  return regexp.test(normalizedActual);
+  return regexp.test(actual);
 }
 
 /** Renders a pattern for diagnostics. */

@@ -1,10 +1,10 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
-import type { DriverSession, DriverWebRoute } from '../driver/index.js';
+import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.js';
 import { registerWebExpectTarget } from '../expect/index.js';
 import { ConfigurationError, TestError } from '../internal/errors.js';
 import { toRoutePattern } from '../internal/route-pattern.js';
-import { resolveNavigationUrl } from '../internal/urls.js';
+import { resolveNavigationUrl, urlMatches } from '../internal/urls.js';
 import { Deadline, sleep, withTimeout } from '../internal/time.js';
 import { LocatorEngine } from '../locator/engine.js';
 import { webSelectorExpression } from '../locator/expression.js';
@@ -50,6 +50,11 @@ export interface AttemptEnvironment {
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
   readonly saveSession?: (name: string) => Promise<void>;
+  /**
+   * Whether the app was opened in the owning driver session. Serial-group
+   * members share one session and therefore one open state.
+   */
+  readonly opened?: { value: boolean };
 }
 
 export interface FixtureGraph {
@@ -59,7 +64,7 @@ export interface FixtureGraph {
 
 /** Builds the lazy fixture graph for one attempt. */
 export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
-  const opened = { value: false };
+  const opened = environment.opened ?? { value: false };
   const engine = new LocatorEngine({
     session: environment.driverSession,
     signal: environment.signal,
@@ -236,7 +241,6 @@ function createWeb(
     async waitForURL(url, options): Promise<void> {
       const label = typeof url === 'string' ? url : String(url);
       await steps.run('web', 'web.waitForURL', label, async () => {
-        const { urlMatches } = await import('../internal/urls.js');
         const deadline = engine.deadline(options?.timeout ?? config.assertionTimeout);
         for (;;) {
           const current = await driverWeb().url(engine.operation());
@@ -368,7 +372,7 @@ function createWeb(
       const wrapped =
         typeof handler === 'string'
           ? handler
-          : async (driverDialog: { message: string; accept(text: string | undefined, operation: unknown): Promise<void>; dismiss(operation: unknown): Promise<void> }) => {
+          : async (driverDialog: DriverDialog) => {
               const publicDialog: Dialog = {
                 message: driverDialog.message,
                 accept: (text?: string) => driverDialog.accept(text, engine.operation()),
@@ -376,10 +380,7 @@ function createWeb(
               };
               await handler(publicDialog);
             };
-      const id = await driverWeb().setDialogHandler(
-        wrapped as Parameters<ReturnType<typeof driverWeb>['setDialogHandler']>[0],
-        engine.operation(),
-      );
+      const id = await driverWeb().setDialogHandler(wrapped, engine.operation());
       let removed = false;
       return async () => {
         if (removed) return;

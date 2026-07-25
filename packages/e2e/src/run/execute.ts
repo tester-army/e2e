@@ -1,10 +1,7 @@
 /** Test-target execution engine (spec 11-lifecycle.md). */
 
-import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { Driver, DriverSession, DriverState } from '../driver/index.js';
-import { importModule } from '../config/load.js';
+import type { Driver, DriverSession, OperationContext } from '../driver/index.js';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
 import {
   classifyError,
@@ -18,100 +15,22 @@ import {
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.js';
 import { Deadline, withTimeout } from '../internal/time.js';
 import type { CollectedFile, CollectedTest } from '../collect/collect.js';
-import {
-  collectModule,
-  type GroupNode,
-  type ModuleRegistration,
-  type RegisteredHook,
-  type RegisteredTest,
-} from '../collect/registry.js';
+import type { RegisteredTest } from '../collect/registry.js';
 import type { SkipInfo, TestTargetPair } from '../collect/select.js';
+import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.js';
 import { createFixtures, type ArtifactSink } from './fixtures.js';
-import { SessionStore, type SessionIdentity } from './sessions.js';
-import { StepRecorder, type StepRecord } from './steps.js';
-import type { SetupFn, SuiteFixtures, TestFn } from '../types.js';
-
-export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attempt' };
-
-export interface ArtifactRecord {
-  id: string;
-  kind: 'screenshot' | 'trace' | 'video' | 'download';
-  mediaType: string;
-  path?: string;
-  size?: number;
-  sha256?: string;
-  redaction: 'none' | 'complete';
-  producer: ArtifactProducer;
-}
-
-export interface AttemptRecord {
-  id: string;
-  index: number;
-  status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
-  startedAt: string;
-  durationMs: number;
-  steps: StepRecord[];
-  artifacts: ArtifactRecord[];
-  error?: SerializedError;
-  secondaryErrors: SerializedError[];
-  cleanup: 'complete' | 'failed' | 'forced';
-}
-
-export interface SerialMemberRecord {
-  id: string;
-  index: number;
-  testId: string;
-  status: 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
-  startedAt: string;
-  durationMs: number;
-  steps: StepRecord[];
-  error?: SerializedError;
-  skip?: SkipInfo;
-  secondaryErrors: SerializedError[];
-}
-
-export interface SerialAttemptRecord {
-  id: string;
-  index: number;
-  status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
-  startedAt: string;
-  durationMs: number;
-  members: SerialMemberRecord[];
-  artifacts: ArtifactRecord[];
-  error?: SerializedError;
-  secondaryErrors: SerializedError[];
-  cleanup: 'complete' | 'failed' | 'forced';
-}
-
-export interface SerialGroupRecord {
-  id: string;
-  serialId: string;
-  declarationIndex: number;
-  file: string;
-  titlePath: string[];
-  targetId: string;
-  platform: string;
-  memberTestIds: string[];
-  status: 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
-  skip?: SkipInfo;
-  attempts: SerialAttemptRecord[];
-}
-
-export type ResultStatus = 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
-
-export interface ResultRecord {
-  test: CollectedTest;
-  target: ResolvedTarget;
-  status: ResultStatus;
-  selected: boolean;
-  skip?: SkipInfo | undefined;
-  attempts: AttemptRecord[];
-  serialGroupId?: string;
-}
-
-export interface RunError {
-  error: SerializedError;
-}
+import { findRegistered, RealmManager, type Realm } from './realm.js';
+import type {
+  AttemptRecord,
+  ResultRecord,
+  ResultStatus,
+  RunError,
+  SerialGroupRecord,
+} from './records.js';
+import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.js';
+import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.js';
+import { StepRecorder } from './steps.js';
+import type { SetupFn, TestFn } from '../types.js';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
@@ -122,14 +41,6 @@ export interface ExecutionOutcome {
   readonly serialGroups: readonly SerialGroupRecord[];
   readonly runErrors: readonly RunError[];
   readonly interrupted: boolean;
-}
-
-interface Realm {
-  registration: ModuleRegistration;
-  /** Scope keys whose beforeAll already ran in this realm. */
-  entered: Map<string, { failed: SerializedError | undefined }>;
-  /** Scopes pending afterAll, innermost last. */
-  pendingAfterAll: string[];
 }
 
 export interface TargetExecutorOptions {
@@ -144,15 +55,25 @@ export interface TargetExecutorOptions {
   readonly events?: ExecutionEvents;
 }
 
+type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
+
 /** Executes every selected pair for one target sequentially. */
 export class TargetExecutor {
   private readonly results: ResultRecord[] = [];
   private readonly serialGroups: SerialGroupRecord[] = [];
   private readonly runErrors: RunError[] = [];
-  private realmCounter = 0;
+  private readonly realms: RealmManager;
   private failedSetupSessions = new Map<string, string>();
 
-  constructor(private readonly options: TargetExecutorOptions) {}
+  constructor(private readonly options: TargetExecutorOptions) {
+    this.realms = new RealmManager({
+      targetName: options.target.name,
+      platform: options.target.platform,
+      timeout: options.config.timeout,
+      cleanupTimeout: options.config.cleanupTimeout,
+      runErrors: this.runErrors,
+    });
+  }
 
   private get config(): ResolvedConfig {
     return this.options.config;
@@ -161,6 +82,15 @@ export class TargetExecutor {
   private emit(result: ResultRecord): void {
     this.results.push(result);
     this.options.events?.onResult?.(result);
+  }
+
+  /** Builds one driver operation context; defaults to a non-aborting signal. */
+  private op(
+    attemptId: string,
+    timeoutMs: number,
+    signal: AbortSignal = new AbortController().signal,
+  ): OperationContext {
+    return { signal, timeoutMs, runId: this.options.runId, attemptId };
   }
 
   private sessionIdentity(): SessionIdentity {
@@ -175,6 +105,22 @@ export class TargetExecutor {
         basePath: this.config.app.base.basePath,
         environment: this.config.app.environment,
       }),
+    };
+  }
+
+  private serialHost(): SerialHost {
+    return {
+      target: this.options.target,
+      artifactsRoot: this.options.artifactsRoot,
+      interruptSignal: this.options.interruptSignal,
+      realms: this.realms,
+      launchSession: (pair, attemptId, artifactsDir, signal) =>
+        this.launchSession(pair, attemptId, artifactsDir, signal),
+      closeSession: (session, attemptId, record, sink, secondaryErrors) =>
+        this.closeSession(session, attemptId, record, sink, secondaryErrors),
+      runAttempt: (pair, registered, realm, attemptIndex, shared) =>
+        this.runAttempt(pair, registered, realm, attemptIndex, undefined, shared),
+      emit: (result) => this.emit(result),
     };
   }
 
@@ -222,7 +168,7 @@ export class TargetExecutor {
             const members = filePairs
               .filter((member) => member.test.serialId === pair.test.serialId)
               .sort((a, b) => a.test.declarationIndex - b.test.declarationIndex);
-            await this.runSerialUnit(members, file);
+            this.serialGroups.push(await runSerialUnit(this.serialHost(), members, file));
             realm = null;
           }
           continue;
@@ -230,7 +176,7 @@ export class TargetExecutor {
         const outcome = await this.runOrdinaryPair(pair, file, realm);
         realm = outcome.realm;
       }
-      if (realm !== null) await this.leaveRealm(realm);
+      if (realm !== null) await this.realms.leave(realm);
     }
 
     return {
@@ -282,111 +228,12 @@ export class TargetExecutor {
     return { cause: 'setup-failed', reason: `setup for session "${session}" failed`, relatedId: failedSetup };
   }
 
-  // --- realms ---
-
-  private async createRealm(file: CollectedFile): Promise<Realm> {
-    this.realmCounter += 1;
-    const registration = await collectModule(() =>
-      importModule(file.absolutePath, `${this.options.target.name}-${this.realmCounter}`),
-    );
-    return { registration, entered: new Map(), pendingAfterAll: [] };
-  }
-
-  private scopeKey(group: GroupNode | undefined): string {
-    const titles: string[] = [];
-    for (let node = group; node !== undefined; node = node.parent) titles.unshift(node.title);
-    return titles.join('::');
-  }
-
-  private scopeChainFor(test: RegisteredTest): (GroupNode | undefined)[] {
-    const chain: (GroupNode | undefined)[] = [undefined];
-    const groups: GroupNode[] = [];
-    for (let node = test.group; node !== undefined; node = node.parent) groups.unshift(node);
-    chain.push(...groups);
-    return chain;
-  }
-
-  private hooksFor(
-    realm: Realm,
-    test: RegisteredTest,
-    kind: 'beforeEach' | 'afterEach' | 'beforeAll' | 'afterAll',
-    scope?: GroupNode | undefined,
-    scopeOnly = false,
-  ): RegisteredHook[] {
-    const chainKeys = this.scopeChainFor(test).map((group) => this.scopeKey(group));
-    return realm.registration.hooks.filter((hook) => {
-      if (hook.kind !== kind) return false;
-      const hookKey = this.scopeKey(hook.group);
-      if (scopeOnly) return hookKey === this.scopeKey(scope);
-      return chainKeys.includes(hookKey);
+  private recordDisappeared(test: CollectedTest, message: string): void {
+    this.runErrors.push({
+      error: serializeError(new ConfigurationError('COLLECTION_ERROR', message), {
+        phase: 'collection',
+      }),
     });
-  }
-
-  private suiteFixtures(): SuiteFixtures {
-    return { platform: this.options.target.platform };
-  }
-
-  /** Enters suite scopes for a test, running pending beforeAll hooks. */
-  private async enterScopes(realm: Realm, test: RegisteredTest): Promise<SerializedError | undefined> {
-    for (const scope of this.scopeChainFor(test)) {
-      const key = this.scopeKey(scope);
-      const entered = realm.entered.get(key);
-      if (entered !== undefined) {
-        if (entered.failed !== undefined) return entered.failed;
-        continue;
-      }
-      const hooks = realm.registration.hooks.filter(
-        (hook) => hook.kind === 'beforeAll' && this.scopeKey(hook.group) === key,
-      );
-      let failed: SerializedError | undefined;
-      for (const hook of hooks) {
-        try {
-          await withTimeout(
-            Promise.resolve(hook.fn(this.suiteFixtures() as never)),
-            this.config.timeout,
-            () => new TestTimeoutError('beforeAll hook timed out'),
-          );
-        } catch (cause) {
-          const error = classifyError(cause);
-          failed = serializeError(
-            new E2EError('test', 'HOOK_FAILED', `beforeAll failed: ${error.message}`, { cause }),
-            { phase: 'beforeAll', scopeId: key === '' ? (test.titlePath[0] ?? 'file') : key },
-          );
-          this.runErrors.push({ error: failed });
-          break;
-        }
-      }
-      realm.entered.set(key, { failed });
-      realm.pendingAfterAll.push(key);
-      if (failed !== undefined) return failed;
-    }
-    return undefined;
-  }
-
-  private async leaveRealm(realm: Realm): Promise<void> {
-    for (const key of [...realm.pendingAfterAll].reverse()) {
-      const hooks = realm.registration.hooks.filter(
-        (hook) => hook.kind === 'afterAll' && this.scopeKey(hook.group) === key,
-      );
-      for (const hook of [...hooks].reverse()) {
-        try {
-          await withTimeout(
-            Promise.resolve(hook.fn(this.suiteFixtures() as never)),
-            this.config.cleanupTimeout,
-            () => new TestTimeoutError('afterAll hook timed out'),
-          );
-        } catch (cause) {
-          const error = classifyError(cause);
-          this.runErrors.push({
-            error: serializeError(
-              new E2EError('test', 'HOOK_FAILED', `afterAll failed: ${error.message}`, { cause }),
-              { phase: 'afterAll', scopeId: key },
-            ),
-          });
-        }
-      }
-    }
-    realm.pendingAfterAll = [];
   }
 
   // --- ordinary tests ---
@@ -403,26 +250,18 @@ export class TargetExecutor {
 
     for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
       if (this.options.interruptSignal.aborted) break;
-      if (realm === null) realm = await this.createRealm(file);
+      if (realm === null) realm = await this.realms.create(file);
 
-      const registered = realm.registration.tests.find(
-        (candidate) => candidate.titlePath.join('\u0000') === pair.test.titlePath.join('\u0000'),
-      );
+      const registered = findRegistered(realm, pair.test);
       if (registered === undefined) {
-        this.runErrors.push({
-          error: serializeError(
-            new ConfigurationError(
-              'COLLECTION_ERROR',
-              `test ${pair.test.id} disappeared on re-import; registration must be deterministic`,
-            ),
-            { phase: 'collection' },
-          ),
-        });
-        finalStatus = 'failed';
+        this.recordDisappeared(
+          pair.test,
+          `test ${pair.test.id} disappeared on re-import; registration must be deterministic`,
+        );
         break;
       }
 
-      const hookFailure = await this.enterScopes(realm, registered);
+      const hookFailure = await this.realms.enterScopes(realm, registered);
       if (hookFailure !== undefined) {
         this.emit({
           test: pair.test,
@@ -439,7 +278,7 @@ export class TargetExecutor {
       attempts.push(attempt);
 
       if (attempt.status === 'passed') {
-        finalStatus = attempts.some((prior) => prior.status !== 'passed') ? 'flaky' : 'passed';
+        finalStatus = passedStatus(attempts);
         break;
       }
       if (attempt.status === 'interrupted') {
@@ -449,10 +288,7 @@ export class TargetExecutor {
       }
       finalStatus = attempt.status;
       realm = null;
-      const retryEligible =
-        attempt.status === 'timed-out' ||
-        (attempt.error !== undefined && attempt.error.category === 'test');
-      if (!retryEligible) break;
+      if (!isRetryEligible(attempt)) break;
     }
 
     this.emit({
@@ -480,46 +316,36 @@ export class TargetExecutor {
 
     for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
       if (this.options.interruptSignal.aborted) break;
-      const realm = await this.createRealm(file);
-      const registered = realm.registration.tests.find(
-        (candidate) => candidate.titlePath.join('\u0000') === pair.test.titlePath.join('\u0000'),
-      );
+      const realm = await this.realms.create(file);
+      const registered = findRegistered(realm, pair.test);
       if (registered === undefined) {
-        this.runErrors.push({
-          error: serializeError(
-            new ConfigurationError('COLLECTION_ERROR', `setup ${pair.test.id} disappeared on re-import`),
-            { phase: 'collection' },
-          ),
-        });
+        this.recordDisappeared(pair.test, `setup ${pair.test.id} disappeared on re-import`);
         break;
       }
-      const staged = new Map<string, DriverState>();
-      const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, staged);
+      const staging = new SessionStaging(pair.test.sessions);
+      const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, staging);
       attempts.push(attempt);
-      await this.leaveRealm(realm);
+      await this.realms.leave(realm);
 
       if (attempt.status === 'passed') {
-        const declared = new Set(pair.test.sessions);
-        const savedNames = [...staged.keys()];
-        const missing = [...declared].filter((name) => !staged.has(name));
-        const undeclared = savedNames.filter((name) => !declared.has(name));
-        if (missing.length > 0 || undeclared.length > 0) {
+        const missing = staging.missing();
+        if (missing.length > 0) {
           attempt.status = 'failed';
           attempt.error = serializeError(
             new E2EError(
               'test',
               'SESSION_CONTRACT',
-              `setup must save each declared session exactly once; missing: [${missing.join(', ')}], undeclared: [${undeclared.join(', ')}]`,
+              `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
             ),
             { phase: 'body' },
           );
           finalStatus = 'failed';
           continue;
         }
-        for (const [name, state] of staged) {
+        for (const [name, state] of staging.entries()) {
           await this.options.sessionStore.save(name, this.sessionIdentity(), state);
         }
-        finalStatus = attempts.some((prior) => prior.status !== 'passed') ? 'flaky' : 'passed';
+        finalStatus = passedStatus(attempts);
         break;
       }
       if (attempt.status === 'interrupted') {
@@ -527,10 +353,7 @@ export class TargetExecutor {
         break;
       }
       finalStatus = attempt.status;
-      const retryEligible =
-        attempt.status === 'timed-out' ||
-        (attempt.error !== undefined && attempt.error.category === 'test');
-      if (!retryEligible) break;
+      if (!isRetryEligible(attempt)) break;
     }
 
     if (finalStatus !== 'passed' && finalStatus !== 'flaky') {
@@ -558,7 +381,7 @@ export class TargetExecutor {
   ): Promise<DriverSession> {
     const driverSession = await withTimeout(
       this.options.driver.launch({
-        target: rawTarget(this.options.target),
+        target: this.options.target.driverTarget,
         targetId: this.options.target.name,
         app: {
           baseUrl: this.config.app.base.href,
@@ -570,12 +393,7 @@ export class TargetExecutor {
         artifactsDir,
         runId: this.options.runId,
         attemptId,
-        operation: {
-          signal,
-          timeoutMs: this.config.launchTimeout,
-          runId: this.options.runId,
-          attemptId,
-        },
+        operation: this.op(attemptId, this.config.launchTimeout, signal),
         launchOptions: { headed: this.options.headed },
       }),
       this.config.launchTimeout,
@@ -587,22 +405,12 @@ export class TargetExecutor {
       if (driverSession.restoreState === undefined) {
         throw new ConfigurationError('UNSUPPORTED_CAPABILITY', 'driver does not support state restore');
       }
-      await driverSession.restoreState(state, {
-        signal,
-        timeoutMs: this.config.launchTimeout,
-        runId: this.options.runId,
-        attemptId,
-      });
+      await driverSession.restoreState(state, this.op(attemptId, this.config.launchTimeout, signal));
     }
 
     if (this.config.artifacts.includes('trace') && driverSession.artifacts.startTrace !== undefined) {
       await driverSession.artifacts
-        .startTrace({
-          signal,
-          timeoutMs: this.config.launchTimeout,
-          runId: this.options.runId,
-          attemptId,
-        })
+        .startTrace(this.op(attemptId, this.config.launchTimeout, signal))
         .catch(() => undefined);
     }
     return driverSession;
@@ -618,12 +426,9 @@ export class TargetExecutor {
   ): Promise<void> {
     if (this.config.artifacts.includes('trace') && driverSession.artifacts.stopTrace !== undefined) {
       try {
-        const tracePath = await driverSession.artifacts.stopTrace({
-          signal: new AbortController().signal,
-          timeoutMs: this.config.cleanupTimeout,
-          runId: this.options.runId,
-          attemptId,
-        });
+        const tracePath = await driverSession.artifacts.stopTrace(
+          this.op(attemptId, this.config.cleanupTimeout),
+        );
         artifactSink.register('trace', tracePath);
       } catch {
         // trace finalization is best-effort
@@ -631,12 +436,7 @@ export class TargetExecutor {
     }
     try {
       await withTimeout(
-        driverSession.close({
-          signal: new AbortController().signal,
-          timeoutMs: this.config.cleanupTimeout,
-          runId: this.options.runId,
-          attemptId,
-        }),
+        driverSession.close(this.op(attemptId, this.config.cleanupTimeout)),
         this.config.cleanupTimeout,
         () => new InfrastructureError('CLEANUP_TIMEOUT', 'driver close timed out'),
       );
@@ -651,26 +451,24 @@ export class TargetExecutor {
     registered: RegisteredTest,
     realm: Realm,
     attemptIndex: number,
-    sessionStaging: Map<string, DriverState> | undefined,
-    sharedSession?: DriverSession,
+    staging: SessionStaging | undefined,
+    shared?: SharedSerialSession,
   ): Promise<AttemptRecord> {
     const attemptId = uuidv7();
     const startedAt = timestamp();
     const startedMs = Date.now();
     const steps = new StepRecorder(attemptId);
-    const artifacts: ArtifactRecord[] = [];
     const secondaryErrors: SerializedError[] = [];
     const attemptAbort = new AbortController();
     const onInterrupt = () => attemptAbort.abort();
     this.options.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
 
-    const artifactsDir = path.join(
-      this.options.artifactsRoot,
-      this.options.target.name,
-      sanitizePathSegment(pair.test.id),
-      `attempt-${attemptIndex}`,
-    );
-    mkdirSync(artifactsDir, { recursive: true });
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: this.options.artifactsRoot,
+      segments: [this.options.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
+      attemptId,
+      currentStepId: () => steps.currentStepId,
+    });
 
     const record: AttemptRecord = {
       id: attemptId,
@@ -679,54 +477,22 @@ export class TargetExecutor {
       startedAt,
       durationMs: 0,
       steps: [],
-      artifacts,
+      artifacts: artifacts.records,
       secondaryErrors,
       cleanup: 'complete',
     };
 
-    const artifactSink: ArtifactSink = {
-      register: (kind, relativePath) => {
-        const id = `${attemptId}:artifact:${artifacts.length}`;
-        const absolute = path.join(artifactsDir, relativePath);
-        let size: number | undefined;
-        let digest: string | undefined;
-        try {
-          size = statSync(absolute).size;
-          digest = createHash('sha256').update(readFileSync(absolute)).digest('hex');
-        } catch {
-          // artifact may not exist yet; recorded without size/digest
-        }
-        const reportPath = path.posix.join(
-          this.options.target.name,
-          sanitizePathSegment(pair.test.id),
-          `attempt-${attemptIndex}`,
-          relativePath,
-        );
-        const stepId = steps.currentStepId;
-        artifacts.push({
-          id,
-          kind,
-          mediaType: mediaTypeFor(relativePath),
-          ...(size !== undefined && digest !== undefined
-            ? { path: reportPath, size, sha256: digest }
-            : {}),
-          redaction: 'complete',
-          producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
-        });
-        return id;
-      },
-    };
-
     let driverSession: DriverSession | null = null;
     let failure: E2EError | undefined;
-    let phase: 'launch' | 'beforeEach' | 'body' | 'afterEach' = 'launch';
+    let failurePhase: AttemptPhase | undefined;
+    let phase: AttemptPhase = 'launch';
     let timedOut = false;
 
     try {
-      if (sharedSession !== undefined) {
-        driverSession = sharedSession;
+      if (shared !== undefined) {
+        driverSession = shared.session;
       } else {
-        driverSession = await this.launchSession(pair, attemptId, artifactsDir, attemptAbort.signal);
+        driverSession = await this.launchSession(pair, attemptId, artifacts.dir, attemptAbort.signal);
       }
 
       const testDeadline = new Deadline(pair.options.timeout);
@@ -739,8 +505,9 @@ export class TargetExecutor {
         runId: this.options.runId,
         attemptId,
         testDeadline,
-        artifacts: artifactSink,
-        ...(sessionStaging !== undefined
+        artifacts: artifacts.sink,
+        ...(shared !== undefined ? { opened: shared.opened } : {}),
+        ...(staging !== undefined
           ? {
               saveSession: async (name: string) => {
                 if (driverSession!.captureState === undefined) {
@@ -749,30 +516,17 @@ export class TargetExecutor {
                     'driver does not support state capture',
                   );
                 }
-                const state = await driverSession!.captureState({
-                  signal: attemptAbort.signal,
-                  timeoutMs: this.config.actionTimeout,
-                  runId: this.options.runId,
-                  attemptId,
-                });
-                if (sessionStaging.has(name)) {
-                  throw new E2EError('test', 'SESSION_CONTRACT', `session "${name}" saved twice`);
-                }
-                if (!registered.sessions.includes(name)) {
-                  throw new E2EError(
-                    'test',
-                    'SESSION_CONTRACT',
-                    `session "${name}" was not declared by this setup test`,
-                  );
-                }
-                sessionStaging.set(name, state);
+                const state = await driverSession!.captureState(
+                  this.op(attemptId, this.config.actionTimeout, attemptAbort.signal),
+                );
+                staging.stage(name, state);
               },
             }
           : {}),
       });
 
-      const beforeEachHooks = this.hooksFor(realm, registered, 'beforeEach');
-      const afterEachHooks = this.hooksFor(realm, registered, 'afterEach').reverse();
+      const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');
+      const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach').reverse();
 
       const mainWork = async (): Promise<void> => {
         phase = 'beforeEach';
@@ -793,9 +547,9 @@ export class TargetExecutor {
         });
       } catch (cause) {
         failure = classifyError(cause);
+        failurePhase = phase;
       }
 
-      const failedPhase = phase;
       phase = 'afterEach';
       for (const hook of afterEachHooks) {
         try {
@@ -808,18 +562,19 @@ export class TargetExecutor {
           const hookError = classifyError(cause);
           if (failure === undefined) {
             failure = hookError;
+            failurePhase = 'afterEach';
           } else {
             secondaryErrors.push(serializeError(hookError, { phase: 'afterEach' }));
           }
         }
       }
-      phase = failure === undefined ? phase : failedPhase;
     } catch (cause) {
       failure = classifyError(cause);
+      failurePhase = phase;
     } finally {
       this.options.interruptSignal.removeEventListener('abort', onInterrupt);
-      if (driverSession !== null && sharedSession === undefined) {
-        await this.closeSession(driverSession, attemptId, record, artifactSink, secondaryErrors);
+      if (driverSession !== null && shared === undefined) {
+        await this.closeSession(driverSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
     }
 
@@ -828,298 +583,30 @@ export class TargetExecutor {
 
     if (failure === undefined) {
       record.status = 'passed';
-    } else if (this.options.interruptSignal.aborted && !timedOut) {
-      record.status = 'interrupted';
-      record.error = serializeError(failure, { phase });
-    } else if (timedOut || failure instanceof TestTimeoutError || failure.code === 'TEST_TIMEOUT') {
-      record.status = 'timed-out';
-      record.error = serializeError(failure, { phase });
     } else {
-      record.status = 'failed';
-      record.error = serializeError(failure, { phase });
-    }
-    return record;
-  }
-
-  // --- serial units ---
-
-  private async runSerialUnit(members: readonly TestTargetPair[], file: CollectedFile): Promise<void> {
-    const first = members[0]!;
-    const groupOptions = first.options;
-    const serialId = first.test.serialId!;
-    const groupTitlePath = serialTitlePath(first.test);
-    const groupRecordId = canonicalDigest({ serialId, targetId: this.options.target.name });
-
-    const group: SerialGroupRecord = {
-      id: groupRecordId,
-      serialId,
-      declarationIndex: first.test.declarationIndex,
-      file: first.test.file,
-      titlePath: groupTitlePath,
-      targetId: this.options.target.name,
-      platform: this.options.target.platform,
-      memberTestIds: members.map((member) => member.test.id),
-      status: 'failed',
-      attempts: [],
-    };
-    this.serialGroups.push(group);
-
-    const maxAttempts = groupOptions.retries + 1;
-    const memberFinalStatus = new Map<string, SerialMemberRecord>();
-
-    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-      if (this.options.interruptSignal.aborted) break;
-      const attempt = await this.runSerialAttempt(members, file, attemptIndex);
-      group.attempts.push(attempt);
-      for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
-      if (attempt.status === 'passed') break;
-      if (attempt.status === 'interrupted') break;
-    }
-
-    const lastAttempt = group.attempts[group.attempts.length - 1];
-    if (lastAttempt === undefined) {
-      group.status = 'skipped';
-      group.skip = { cause: 'infrastructure-unavailable', reason: 'run interrupted before execution' };
-    } else if (lastAttempt.status === 'passed') {
-      group.status = group.attempts.length > 1 ? 'flaky' : 'passed';
-    } else {
-      group.status = lastAttempt.status;
-    }
-
-    for (const member of members) {
-      const memberRecord = memberFinalStatus.get(member.test.id);
-      let status: ResultStatus;
-      let skip: SkipInfo | undefined;
-      if (group.status === 'passed' || group.status === 'flaky') {
-        status = group.status;
-      } else if (memberRecord === undefined) {
-        status = 'skipped';
-        skip = { cause: 'serial-predecessor-failed', reason: 'group attempt did not reach this member' };
-      } else if (memberRecord.status === 'skipped') {
-        status = 'skipped';
-        skip = memberRecord.skip;
+      const reportPhase = failurePhase ?? phase;
+      if (this.options.interruptSignal.aborted && !timedOut) {
+        record.status = 'interrupted';
+      } else if (timedOut || failure instanceof TestTimeoutError || failure.code === 'TEST_TIMEOUT') {
+        record.status = 'timed-out';
       } else {
-        status = memberRecord.status;
+        record.status = 'failed';
       }
-      this.emit({
-        test: member.test,
-        target: member.target,
-        status,
-        selected: true,
-        ...(skip !== undefined ? { skip } : {}),
-        attempts: [],
-        serialGroupId: groupRecordId,
-      });
+      record.error = serializeError(failure, { phase: reportPhase });
     }
-  }
-
-  private async runSerialAttempt(
-    members: readonly TestTargetPair[],
-    file: CollectedFile,
-    attemptIndex: number,
-  ): Promise<SerialAttemptRecord> {
-    const attemptId = uuidv7();
-    const startedAt = timestamp();
-    const startedMs = Date.now();
-    const memberRecords: SerialMemberRecord[] = [];
-    const record: SerialAttemptRecord = {
-      id: attemptId,
-      index: attemptIndex,
-      status: 'passed',
-      startedAt,
-      durationMs: 0,
-      members: memberRecords,
-      artifacts: [],
-      secondaryErrors: [],
-      cleanup: 'complete',
-    };
-
-    let realm: Realm;
-    try {
-      realm = await this.createRealm(file);
-    } catch (cause) {
-      record.status = 'failed';
-      record.error = serializeError(classifyError(cause), { phase: 'collection' });
-      record.durationMs = Date.now() - startedMs;
-      return record;
-    }
-
-    const first = members[0]!;
-    const groupArtifactsDir = path.join(
-      this.options.artifactsRoot,
-      this.options.target.name,
-      sanitizePathSegment(first.test.serialId ?? first.test.id),
-      `attempt-${attemptIndex}`,
-    );
-    mkdirSync(groupArtifactsDir, { recursive: true });
-    const groupArtifactSink: ArtifactSink = {
-      register: (kind, relativePath) => {
-        const id = `${attemptId}:artifact:${record.artifacts.length}`;
-        const absolute = path.join(groupArtifactsDir, relativePath);
-        let size: number | undefined;
-        let digest: string | undefined;
-        try {
-          size = statSync(absolute).size;
-          digest = createHash('sha256').update(readFileSync(absolute)).digest('hex');
-        } catch {
-          // artifact may not exist; recorded without size/digest
-        }
-        record.artifacts.push({
-          id,
-          kind,
-          mediaType: mediaTypeFor(relativePath),
-          ...(size !== undefined && digest !== undefined
-            ? {
-                path: path.posix.join(
-                  this.options.target.name,
-                  sanitizePathSegment(first.test.serialId ?? first.test.id),
-                  `attempt-${attemptIndex}`,
-                  relativePath,
-                ),
-                size,
-                sha256: digest,
-              }
-            : {}),
-          redaction: 'complete',
-          producer: { kind: 'attempt' },
-        });
-        return id;
-      },
-    };
-
-    let sharedSession: DriverSession;
-    try {
-      sharedSession = await this.launchSession(
-        first,
-        attemptId,
-        groupArtifactsDir,
-        this.options.interruptSignal,
-      );
-    } catch (cause) {
-      const error = classifyError(cause);
-      record.status = 'failed';
-      record.error = serializeError(error, { phase: 'launch' });
-      for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
-        memberRecords.push({
-          id: `${attemptId}:member:${memberIndex}`,
-          index: memberIndex,
-          testId: members[memberIndex]!.test.id,
-          status: 'skipped',
-          startedAt: timestamp(),
-          durationMs: 0,
-          steps: [],
-          skip: { cause: 'infrastructure-unavailable', reason: error.message },
-          secondaryErrors: [],
-        });
-      }
-      record.durationMs = Date.now() - startedMs;
-      await this.leaveRealm(realm);
-      return record;
-    }
-
-    let failedIndex = -1;
-    for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
-      const member = members[memberIndex]!;
-      const memberId = `${attemptId}:member:${memberIndex}`;
-      if (failedIndex >= 0 || this.options.interruptSignal.aborted) {
-        memberRecords.push({
-          id: memberId,
-          index: memberIndex,
-          testId: member.test.id,
-          status: 'skipped',
-          startedAt: timestamp(),
-          durationMs: 0,
-          steps: [],
-          skip: {
-            cause: 'serial-predecessor-failed',
-            reason: `member ${failedIndex} failed in this group attempt`,
-          },
-          secondaryErrors: [],
-        });
-        continue;
-      }
-      const registered = realm.registration.tests.find(
-        (candidate) => candidate.titlePath.join('\u0000') === member.test.titlePath.join('\u0000'),
-      );
-      if (registered === undefined) {
-        failedIndex = memberIndex;
-        memberRecords.push({
-          id: memberId,
-          index: memberIndex,
-          testId: member.test.id,
-          status: 'failed',
-          startedAt: timestamp(),
-          durationMs: 0,
-          steps: [],
-          error: serializeError(
-            new ConfigurationError('COLLECTION_ERROR', 'member disappeared on re-import'),
-          ),
-          secondaryErrors: [],
-        });
-        continue;
-      }
-      const memberAttempt = await this.runAttempt(
-        member,
-        registered,
-        realm,
-        attemptIndex,
-        undefined,
-        sharedSession,
-      );
-      memberRecords.push({
-        id: memberId,
-        index: memberIndex,
-        testId: member.test.id,
-        status: memberAttempt.status,
-        startedAt: memberAttempt.startedAt,
-        durationMs: memberAttempt.durationMs,
-        steps: memberAttempt.steps,
-        ...(memberAttempt.error !== undefined ? { error: memberAttempt.error } : {}),
-        secondaryErrors: memberAttempt.secondaryErrors,
-      });
-      record.artifacts.push(...memberAttempt.artifacts);
-      if (memberAttempt.status !== 'passed') failedIndex = memberIndex;
-    }
-    await this.leaveRealm(realm);
-    await this.closeSession(sharedSession, attemptId, record, groupArtifactSink, record.secondaryErrors);
-
-    const failedMember = memberRecords.find((member) => member.status !== 'passed' && member.status !== 'skipped');
-    if (this.options.interruptSignal.aborted) {
-      record.status = 'interrupted';
-    } else if (failedMember === undefined) {
-      record.status = 'passed';
-    } else {
-      record.status = failedMember.status === 'skipped' ? 'failed' : failedMember.status as SerialAttemptRecord['status'];
-      if (failedMember.error !== undefined) record.error = failedMember.error;
-    }
-    record.durationMs = Date.now() - startedMs;
     return record;
   }
 }
 
-function serialTitlePath(test: CollectedTest): string[] {
-  const serialRoot = test.serialRoot;
-  const titles: string[] = [];
-  for (let node = serialRoot; node !== undefined; node = node.parent) titles.unshift(node.title);
-  return titles.length === 0 ? [test.title] : titles;
+/** Final status for a passing retry loop: flaky when any earlier attempt failed. */
+function passedStatus(attempts: readonly AttemptRecord[]): ResultStatus {
+  return attempts.some((prior) => prior.status !== 'passed') ? 'flaky' : 'passed';
 }
 
-function sanitizePathSegment(value: string): string {
-  return value.replaceAll(/[^A-Za-z0-9._\-]/g, '_').slice(0, 120);
-}
-
-function mediaTypeFor(relativePath: string): string {
-  if (relativePath.endsWith('.png')) return 'image/png';
-  if (relativePath.endsWith('.zip')) return 'application/zip';
-  if (relativePath.endsWith('.webm')) return 'video/webm';
-  return 'application/octet-stream';
-}
-
-function rawTarget(target: ResolvedTarget): import('../types.js').Target {
-  return {
-    name: target.name,
-    platform: 'web',
-    browser: target.browser,
-    ...(target.viewport !== undefined ? { viewport: target.viewport } : {}),
-  };
+/** Only test-category failures and timeouts consume retry budget. */
+function isRetryEligible(attempt: AttemptRecord): boolean {
+  return (
+    attempt.status === 'timed-out' ||
+    (attempt.error !== undefined && attempt.error.category === 'test')
+  );
 }

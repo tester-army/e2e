@@ -11,7 +11,7 @@ import type {
   ResultRecord,
   RunError,
   SerialGroupRecord,
-} from '../run/execute.js';
+} from '../run/records.js';
 import type { StepRecord } from '../run/steps.js';
 
 const require = createRequire(import.meta.url);

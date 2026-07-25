@@ -2,7 +2,7 @@
 
 import pc from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.js';
-import type { ResultRecord } from '../run/execute.js';
+import type { ResultRecord } from '../run/records.js';
 
 const MAX_FIELD_BYTES = 8192;
 

@@ -7,7 +7,7 @@ import { ConfigurationError } from '../internal/errors.js';
 import { canonicalDigest, sha256Hex } from '../internal/ids.js';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.js';
 import { isDriverHandle, type Driver } from '../driver/index.js';
-import type { CommandConfig, E2EConfig } from '../types.js';
+import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.js';
 
 export interface ResolvedTarget {
   readonly name: string;
@@ -17,6 +17,8 @@ export interface ResolvedTarget {
   readonly viewport: { readonly width: number; readonly height: number } | undefined;
   /** Bundled driver ID or an imported branded driver handle. */
   readonly driver: 'playwright' | Driver;
+  /** Wire-shaped target passed to the driver at launch. */
+  readonly driverTarget: Target;
 }
 
 export interface ResolvedCredential {
@@ -302,14 +304,16 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
     );
   }
   if (raw.targets === undefined) {
+    const browser = raw.browser ?? 'chromium';
     return [
       {
         name: 'web',
         index: 0,
         platform: 'web',
-        browser: raw.browser ?? 'chromium',
+        browser,
         viewport: undefined,
         driver: 'playwright',
+        driverTarget: { name: 'web', platform: 'web', browser },
       },
     ];
   }
@@ -334,7 +338,7 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
         `target "${target.name}" requests platform "${target.platform}"; this v0 runner executes web targets only`,
       );
     }
-    const webTarget = target as import('../types.js').WebTarget;
+    const webTarget = target as WebTarget;
     let driver: 'playwright' | Driver;
     if (webTarget.driver === undefined || webTarget.driver === 'playwright') {
       driver = 'playwright';
@@ -357,6 +361,12 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       browser,
       viewport: webTarget.viewport,
       driver,
+      driverTarget: {
+        name: target.name,
+        platform: 'web' as const,
+        browser,
+        ...(webTarget.viewport !== undefined ? { viewport: webTarget.viewport } : {}),
+      },
     };
   });
 }

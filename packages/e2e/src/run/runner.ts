@@ -15,6 +15,7 @@ import { select, type Selection, type SelectionFilters } from '../collect/select
 import {
   classifyError,
   combineExitCodes,
+  ConfigurationError,
   exitCodeForCategory,
   serializeError,
   type E2EError,
@@ -25,12 +26,8 @@ import { ListReporter } from '../report/list.js';
 import { writeJsonReport } from '../report/write.js';
 import { playwright } from '../playwright/index.js';
 import { AppProcess } from './app-process.js';
-import {
-  TargetExecutor,
-  type ResultRecord,
-  type RunError,
-  type SerialGroupRecord,
-} from './execute.js';
+import { TargetExecutor } from './execute.js';
+import type { ResultRecord, RunError, SerialGroupRecord } from './records.js';
 import { SessionStore } from './sessions.js';
 import { setCredentialRegistry } from '../credentials.js';
 import type { E2EConfig } from '../types.js';
@@ -205,7 +202,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       for (const target of selectedTargets) {
         const driver = resolveDriver(target);
         if (driver.spiVersion !== 1) {
-          throw new (await import('../internal/errors.js')).ConfigurationError(
+          throw new ConfigurationError(
             'SPI_MISMATCH',
             `driver ${driver.id} uses unsupported SPI version ${String(driver.spiVersion)}`,
           );
@@ -224,7 +221,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         });
         for (const artifact of config.artifacts) {
           if (!driver.capabilities.artifacts.includes(artifact)) {
-            throw new (await import('../internal/errors.js')).ConfigurationError(
+            throw new ConfigurationError(
               'UNSUPPORTED_ARTIFACT',
               `driver ${driver.id} does not support the configured "${artifact}" artifact`,
             );
