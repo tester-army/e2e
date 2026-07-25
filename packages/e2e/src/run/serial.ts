@@ -8,10 +8,12 @@ import {
   type SerializedError,
 } from '../internal/errors.js';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.js';
-import type { CollectedFile, CollectedTest } from '../collect/collect.js';
+import type { CollectedTest } from '../collect/collect.js';
+import { groupTitles, type RegisteredTest } from '../collect/registry.js';
 import type { SkipInfo, TestTargetPair } from '../collect/select.js';
 import type { ResolvedTarget } from '../config/resolve.js';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.js';
+import type { AttemptContext } from './execute.js';
 import type { ArtifactSink } from './fixtures.js';
 import { findRegistered, type Realm, RealmManager } from './realm.js';
 import type {
@@ -22,7 +24,7 @@ import type {
   SerialGroupRecord,
   SerialMemberRecord,
 } from './records.js';
-import type { RegisteredTest } from '../collect/registry.js';
+import { runWithRetries } from './retry.js';
 
 /**
  * One shared driver session plus its app open-state for a serial-group
@@ -58,7 +60,7 @@ export interface SerialHost {
     registered: RegisteredTest,
     realm: Realm,
     attemptIndex: number,
-    shared: SharedSerialSession,
+    context: AttemptContext,
   ): Promise<AttemptRecord>;
   emit(result: ResultRecord): void;
 }
@@ -67,7 +69,7 @@ export interface SerialHost {
 export async function runSerialUnit(
   host: SerialHost,
   members: readonly TestTargetPair[],
-  file: CollectedFile,
+  absolutePath: string,
 ): Promise<SerialGroupRecord> {
   const first = members[0]!;
   const serialId = first.test.serialId!;
@@ -86,26 +88,23 @@ export async function runSerialUnit(
     attempts: [],
   };
 
-  const maxAttempts = first.options.retries + 1;
   const memberFinalStatus = new Map<string, SerialMemberRecord>();
+  const finalStatus = await runWithRetries(
+    first.options.retries + 1,
+    host.interruptSignal,
+    async (attemptIndex) => {
+      const attempt = await runSerialAttempt(host, members, absolutePath, attemptIndex);
+      group.attempts.push(attempt);
+      for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
+      return attempt;
+    },
+  );
 
-  for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-    if (host.interruptSignal.aborted) break;
-    const attempt = await runSerialAttempt(host, members, file, attemptIndex);
-    group.attempts.push(attempt);
-    for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
-    if (attempt.status === 'passed') break;
-    if (attempt.status === 'interrupted') break;
-  }
-
-  const lastAttempt = group.attempts[group.attempts.length - 1];
-  if (lastAttempt === undefined) {
+  if (group.attempts.length === 0) {
     group.status = 'skipped';
     group.skip = { cause: 'infrastructure-unavailable', reason: 'run interrupted before execution' };
-  } else if (lastAttempt.status === 'passed') {
-    group.status = group.attempts.length > 1 ? 'flaky' : 'passed';
   } else {
-    group.status = lastAttempt.status;
+    group.status = finalStatus;
   }
 
   for (const member of members) {
@@ -140,7 +139,7 @@ export async function runSerialUnit(
 async function runSerialAttempt(
   host: SerialHost,
   members: readonly TestTargetPair[],
-  file: CollectedFile,
+  absolutePath: string,
   attemptIndex: number,
 ): Promise<SerialAttemptRecord> {
   const attemptId = uuidv7();
@@ -171,7 +170,7 @@ async function runSerialAttempt(
 
   let realm: Realm;
   try {
-    realm = await host.realms.create(file);
+    realm = await host.realms.create(absolutePath);
   } catch (cause) {
     record.status = 'failed';
     record.error = serializeError(classifyError(cause), { phase: 'collection' });
@@ -202,22 +201,22 @@ async function runSerialAttempt(
     return record;
   }
 
-  let failedIndex = -1;
+  let skipRemaining: SkipInfo | undefined;
   for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
     const member = members[memberIndex]!;
     const memberId = `${attemptId}:member:${memberIndex}`;
-    if (failedIndex >= 0 || host.interruptSignal.aborted) {
-      memberRecords.push(
-        skippedMember(attemptId, memberIndex, member.test.id, {
-          cause: 'serial-predecessor-failed',
-          reason: `member ${failedIndex} failed in this group attempt`,
-        }),
-      );
+    if (skipRemaining === undefined && host.interruptSignal.aborted) {
+      skipRemaining = {
+        cause: 'infrastructure-unavailable',
+        reason: 'run interrupted during this group attempt',
+      };
+    }
+    if (skipRemaining !== undefined) {
+      memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
       continue;
     }
     const registered = findRegistered(realm, member.test);
     if (registered === undefined) {
-      failedIndex = memberIndex;
       memberRecords.push({
         id: memberId,
         index: memberIndex,
@@ -231,9 +230,13 @@ async function runSerialAttempt(
         ),
         secondaryErrors: [],
       });
+      skipRemaining = predecessorFailed(memberIndex);
       continue;
     }
-    const memberAttempt = await host.runAttempt(member, registered, realm, attemptIndex, shared);
+    const memberAttempt = await host.runAttempt(member, registered, realm, attemptIndex, {
+      kind: 'serial',
+      shared,
+    });
     memberRecords.push({
       id: memberId,
       index: memberIndex,
@@ -246,24 +249,37 @@ async function runSerialAttempt(
       secondaryErrors: memberAttempt.secondaryErrors,
     });
     record.artifacts.push(...memberAttempt.artifacts);
-    if (memberAttempt.status !== 'passed') failedIndex = memberIndex;
+    if (memberAttempt.status !== 'passed') skipRemaining = predecessorFailed(memberIndex);
   }
   await host.realms.leave(realm);
   await host.closeSession(shared.session, attemptId, record, artifacts.sink, record.secondaryErrors);
 
-  const failedMember = memberRecords.find(
-    (member) => member.status !== 'passed' && member.status !== 'skipped',
-  );
+  const failedMember = memberRecords.find(isFailedMember);
   if (host.interruptSignal.aborted) {
     record.status = 'interrupted';
   } else if (failedMember === undefined) {
     record.status = 'passed';
   } else {
-    record.status = failedMember.status as SerialAttemptRecord['status'];
+    record.status = failedMember.status;
     if (failedMember.error !== undefined) record.error = failedMember.error;
   }
   record.durationMs = Date.now() - startedMs;
   return record;
+}
+
+type FailedMemberStatus = Exclude<SerialMemberRecord['status'], 'passed' | 'skipped'>;
+
+function isFailedMember(
+  member: SerialMemberRecord,
+): member is SerialMemberRecord & { status: FailedMemberStatus } {
+  return member.status !== 'passed' && member.status !== 'skipped';
+}
+
+function predecessorFailed(memberIndex: number): SkipInfo {
+  return {
+    cause: 'serial-predecessor-failed',
+    reason: `member ${memberIndex} failed in this group attempt`,
+  };
 }
 
 function skippedMember(
@@ -286,7 +302,6 @@ function skippedMember(
 }
 
 function serialTitlePath(test: CollectedTest): string[] {
-  const titles: string[] = [];
-  for (let node = test.serialRoot; node !== undefined; node = node.parent) titles.unshift(node.title);
+  const titles = groupTitles(test.serialRoot);
   return titles.length === 0 ? [test.title] : titles;
 }

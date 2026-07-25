@@ -1,5 +1,6 @@
 /** Route URL pattern grammar per 08-platforms.md. */
 
+import { escapeRegexpChar, testPattern } from './regexp.js';
 import type { TextPattern } from './text.js';
 
 /**
@@ -14,7 +15,7 @@ export function compileRoutePattern(pattern: string): RegExp {
     if (ch === '\\') {
       i += 1;
       const next = pattern[i];
-      if (next !== undefined) source += escapeLiteral(next);
+      if (next !== undefined) source += escapeRegexpChar(next);
       continue;
     }
     if (ch === '*') {
@@ -30,13 +31,9 @@ export function compileRoutePattern(pattern: string): RegExp {
       source += '.';
       continue;
     }
-    source += escapeLiteral(ch);
+    source += escapeRegexpChar(ch);
   }
   return new RegExp(`${source}$`);
-}
-
-function escapeLiteral(ch: string): string {
-  return /[a-zA-Z0-9_\-]/.test(ch) ? ch : `\\${ch}`;
 }
 
 /** Matches a URL against a wire TextPattern (string grammar or ECMAScript regexp). */
@@ -44,9 +41,7 @@ export function routePatternMatches(pattern: TextPattern, url: string): boolean 
   if (pattern.kind === 'string') {
     return compileRoutePattern(pattern.value).test(url);
   }
-  const regexp = new RegExp(pattern.source, pattern.flags);
-  regexp.lastIndex = 0;
-  return regexp.test(url);
+  return testPattern(pattern.source, pattern.flags, url);
 }
 
 /** Converts a public string/RegExp pattern into the wire TextPattern form. */

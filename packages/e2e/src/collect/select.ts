@@ -4,7 +4,7 @@ import { ConfigurationError, CollectionError } from '../internal/errors.js';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
 import type { Capability, Platform } from '../types.js';
 import type { Collection, CollectedTest } from './collect.js';
-import type { GroupNode } from './registry.js';
+import { groupChain } from './registry.js';
 
 export interface ResolvedTestOptions {
   readonly timeout: number;
@@ -39,14 +39,19 @@ export interface TestTargetPair {
   /** run: execute; skip: report skipped; filtered: report as unselected. */
   readonly disposition: 'run' | 'skip' | 'filtered';
   readonly skip: SkipInfo | undefined;
-  /** True when the pair was included only because of serial closure. */
-  readonly serialClosure: boolean;
+}
+
+/** All pairs for one selected target, in report order. */
+export interface TargetSelection {
+  readonly target: ResolvedTarget;
+  readonly pairs: readonly TestTargetPair[];
 }
 
 export interface Selection {
+  /** Every pair across all selected targets, in report order. */
   readonly pairs: readonly TestTargetPair[];
-  /** Session name -> producer setup test, per target name. */
-  readonly sessionProducers: ReadonlyMap<string, ReadonlyMap<string, CollectedTest>>;
+  /** Selected targets with their pairs, in config order. */
+  readonly perTarget: readonly TargetSelection[];
 }
 
 export interface SelectionFilters {
@@ -55,17 +60,9 @@ export interface SelectionFilters {
   readonly targetIds?: readonly string[];
 }
 
-function groupChain(test: CollectedTest): GroupNode[] {
-  const chain: GroupNode[] = [];
-  for (let node = test.group; node !== undefined; node = node.parent) {
-    chain.unshift(node);
-  }
-  return chain;
-}
-
 /** Resolves effective options: test > nearest group > outer groups > config > default. */
 export function resolveOptions(test: CollectedTest, config: ResolvedConfig): ResolvedTestOptions {
-  const chain = groupChain(test);
+  const chain = groupChain(test.group);
   const layers = [...chain.map((group) => group.options), test.options];
 
   let timeout = config.timeout;
@@ -89,7 +86,6 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
       skipReason = typeof layer.skip === 'string' ? layer.skip : 'skipped';
     }
   }
-  if (test.mode === 'skip' && skipReason === undefined) skipReason = 'skipped';
 
   const serialRoot = test.serialRoot;
   if (serialRoot !== undefined) {
@@ -165,39 +161,17 @@ export function select(
     optionsByTest.set(test.id, resolveOptions(test, config));
   }
 
-  const sessionProducers = new Map<string, Map<string, CollectedTest>>();
-  for (const target of targets) {
-    const producers = new Map<string, CollectedTest>();
-    for (const test of collection.tests) {
-      if (test.kind !== 'setup') continue;
-      for (const session of test.sessions) {
-        const existing = producers.get(session);
-        if (existing !== undefined) {
-          throw new CollectionError(
-            `session "${session}" has duplicate producers: ${existing.id} and ${test.id}`,
-          );
-        }
-        producers.set(session, test);
-      }
-    }
-    sessionProducers.set(target.name, producers);
-  }
+  const sessionProducers = collectSessionProducers(collection.tests);
 
   const pairs: TestTargetPair[] = [];
-  const runnableByTarget = new Map<string, Set<string>>();
-
   for (const target of targets) {
-    const runnable = new Set<string>();
-    runnableByTarget.set(target.name, runnable);
     for (const test of collection.tests) {
       const options = optionsByTest.get(test.id)!;
-      const pair = classifyPair(test, target, options, focused, filters, tagMode);
-      pairs.push(pair);
-      if (pair.disposition === 'run' && test.kind === 'test') runnable.add(test.id);
+      pairs.push(classifyPair(test, target, options, focused, filters, tagMode));
     }
   }
 
-  const withClosure = applySerialClosure(pairs, optionsByTest);
+  const withClosure = applySerialClosure(pairs);
   const withSessions = applySessionSelection(withClosure, sessionProducers);
 
   const runnableOrdinary = withSessions.filter(
@@ -210,7 +184,33 @@ export function select(
     );
   }
 
-  return { pairs: withSessions, sessionProducers };
+  return {
+    pairs: withSessions,
+    perTarget: targets.map((target) => ({
+      target,
+      pairs: withSessions.filter((pair) => pair.target.name === target.name),
+    })),
+  };
+}
+
+/** Maps each session name to its unique producer setup test. */
+function collectSessionProducers(
+  tests: readonly CollectedTest[],
+): ReadonlyMap<string, CollectedTest> {
+  const producers = new Map<string, CollectedTest>();
+  for (const test of tests) {
+    if (test.kind !== 'setup') continue;
+    for (const session of test.sessions) {
+      const existing = producers.get(session);
+      if (existing !== undefined) {
+        throw new CollectionError(
+          `session "${session}" has duplicate producers: ${existing.id} and ${test.id}`,
+        );
+      }
+      producers.set(session, test);
+    }
+  }
+  return producers;
 }
 
 function classifyPair(
@@ -221,7 +221,7 @@ function classifyPair(
   filters: SelectionFilters,
   tagMode: 'any' | 'all',
 ): TestTargetPair {
-  const base = { test, target, options, serialClosure: false };
+  const base = { test, target, options };
 
   if (test.kind === 'test') {
     if (focused.length > 0 && test.mode !== 'only') {
@@ -279,10 +279,7 @@ function classifyPair(
   return { ...base, disposition: 'run', skip: undefined };
 }
 
-function applySerialClosure(
-  pairs: readonly TestTargetPair[],
-  optionsByTest: ReadonlyMap<string, ResolvedTestOptions>,
-): TestTargetPair[] {
+function applySerialClosure(pairs: readonly TestTargetPair[]): TestTargetPair[] {
   const selectedSerialUnits = new Set<string>();
   for (const pair of pairs) {
     if (pair.disposition === 'run' && pair.test.serialId !== undefined) {
@@ -295,13 +292,7 @@ function applySerialClosure(
     if (!selectedSerialUnits.has(key)) return pair;
     if (pair.disposition === 'run') return pair;
     if (pair.disposition === 'filtered' && pair.skip?.cause === 'filtered') {
-      return {
-        ...pair,
-        disposition: 'run' as const,
-        skip: undefined,
-        serialClosure: true,
-        options: optionsByTest.get(pair.test.id)!,
-      };
+      return { ...pair, disposition: 'run' as const, skip: undefined };
     }
     return pair;
   });
@@ -309,13 +300,12 @@ function applySerialClosure(
 
 function applySessionSelection(
   pairs: readonly TestTargetPair[],
-  sessionProducers: ReadonlyMap<string, ReadonlyMap<string, CollectedTest>>,
+  sessionProducers: ReadonlyMap<string, CollectedTest>,
 ): TestTargetPair[] {
   const neededSetups = new Set<string>();
   for (const pair of pairs) {
     if (pair.disposition !== 'run' || pair.options.session === undefined) continue;
-    const producers = sessionProducers.get(pair.target.name);
-    const producer = producers?.get(pair.options.session);
+    const producer = sessionProducers.get(pair.options.session);
     if (producer === undefined) {
       throw new CollectionError(
         `test ${pair.test.id} consumes session "${pair.options.session}" but no setup test produces it`,

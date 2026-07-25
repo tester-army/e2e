@@ -104,15 +104,7 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
         fail(`toContain on a string requires a string, got ${format(expected)}`);
       }
       contains = actual.includes(expected);
-    } else if (Array.isArray(actual)) {
-      contains = actual.some((item) => equals(item, expected, [iterableEquality]));
-    } else if (actual instanceof Set) {
-      contains = [...actual].some((item) => equals(item, expected, [iterableEquality]));
-    } else if (
-      typeof actual === 'object' &&
-      actual !== null &&
-      Symbol.iterator in (actual as object)
-    ) {
+    } else if (typeof actual === 'object' && actual !== null && Symbol.iterator in actual) {
       contains = [...(actual as Iterable<unknown>)].some((item) =>
         equals(item, expected, [iterableEquality]),
       );

@@ -24,6 +24,20 @@ describe('defineDriver', () => {
     expect(() => defineDriver({ ...manifest, platforms: [] })).toThrow(/platforms/);
     expect(() => defineDriver({ ...manifest, spiVersion: 2 as never })).toThrow(/SPI/);
   });
+
+  it('passes an optional dispose through and rejects non-function dispose', async () => {
+    let disposed = 0;
+    const driver = defineDriver({
+      ...manifest,
+      dispose: async () => {
+        disposed += 1;
+      },
+    });
+    await driver.dispose?.();
+    expect(disposed).toBe(1);
+    expect(defineDriver(manifest).dispose).toBeUndefined();
+    expect(() => defineDriver({ ...manifest, dispose: 'nope' as never })).toThrow(/dispose/);
+  });
 });
 
 describe('DriverError', () => {

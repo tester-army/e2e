@@ -32,11 +32,21 @@ export class AppProcess {
       detached: process.platform !== 'win32',
       stdio: 'ignore',
     });
-    this.child.on('error', () => undefined);
+    let spawnError: Error | undefined;
+    this.child.on('error', (error) => {
+      spawnError = error;
+    });
 
     const startupTimeout = this.command.startupTimeout ?? 60_000;
     const deadline = Date.now() + startupTimeout;
     for (;;) {
+      if (spawnError !== undefined) {
+        throw new InfrastructureError(
+          'APP_UNREACHABLE',
+          `app command failed to start: ${spawnError.message}`,
+          { cause: spawnError },
+        );
+      }
       if (this.child.exitCode !== null) {
         throw new InfrastructureError(
           'APP_UNREACHABLE',

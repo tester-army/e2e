@@ -412,13 +412,29 @@ export interface DriverSession {
 }
 
 export interface Driver extends DriverHandle {
-  /** Launches one logical test or serial-group attempt. */
+  /**
+   * Launches one logical test or serial-group attempt. Sessions of one
+   * driver instance are strictly serialized: the runner never calls launch
+   * while a previous session of this instance is still open. Parallel
+   * execution uses one driver instance per worker, never concurrent
+   * sessions on a shared instance.
+   */
   launch(context: DriverContext): Promise<DriverSession>;
+  /**
+   * Releases backend resources retained between sessions (for example a
+   * pooled browser process, booted simulator, or device lease). The runner
+   * calls it at most once per driver instance, after every session is
+   * closed. It MUST be idempotent and MUST NOT affect previously captured
+   * artifacts or state.
+   */
+  dispose?(): Promise<void>;
 }
 
 export interface DriverDefinition extends DriverManifest {
   /** Launches one logical test or serial-group attempt. */
   launch(context: DriverContext): Promise<DriverSession>;
+  /** Releases resources retained between sessions. It MUST be idempotent. */
+  dispose?(): Promise<void>;
 }
 
 const DRIVER_ID_PATTERN = /^[a-z0-9\-./]+$/;
@@ -441,6 +457,9 @@ export function defineDriver(driver: DriverDefinition): Driver {
   }
   if (typeof driver.launch !== 'function') {
     throw new TypeError('driver launch must be a function');
+  }
+  if (driver.dispose !== undefined && typeof driver.dispose !== 'function') {
+    throw new TypeError('driver dispose must be a function when present');
   }
   return Object.freeze({
     ...driver,

@@ -20,8 +20,9 @@ import {
   serializeError,
   type E2EError,
 } from '../internal/errors.js';
+import { DebugTrace } from '../internal/debug.js';
 import { timestamp, uuidv7 } from '../internal/ids.js';
-import { buildReport, type TargetProvenance } from '../report/build.js';
+import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.js';
 import { ListReporter } from '../report/list.js';
 import { writeJsonReport } from '../report/write.js';
 import { playwright } from '../playwright/index.js';
@@ -33,29 +34,31 @@ import { setCredentialRegistry } from '../credentials.js';
 import type { E2EConfig } from '../types.js';
 
 export interface RunOptions {
-  cwd?: string;
-  configPath?: string;
-  files?: readonly string[];
-  tags?: readonly string[];
-  tagMode?: 'any' | 'all';
-  targetIds?: readonly string[];
-  headed?: boolean;
-  retries?: number;
-  workers?: number;
-  reporters?: readonly ('list' | 'json' | 'html')[];
-  artifactsDir?: string;
-  passWithNoTests?: boolean;
+  cwd?: string | undefined;
+  configPath?: string | undefined;
+  files?: readonly string[] | undefined;
+  tags?: readonly string[] | undefined;
+  tagMode?: 'any' | 'all' | undefined;
+  targetIds?: readonly string[] | undefined;
+  headed?: boolean | undefined;
+  retries?: number | undefined;
+  workers?: number | undefined;
+  reporters?: readonly ('list' | 'json' | 'html')[] | undefined;
+  artifactsDir?: string | undefined;
+  passWithNoTests?: boolean | undefined;
+  /** Prints aggregated phase timings to stderr after the run. */
+  debug?: boolean | undefined;
   /** Preloaded raw config (bypasses discovery); intended for tests. */
-  rawConfig?: E2EConfig;
-  env?: NodeJS.ProcessEnv;
-  quiet?: boolean;
-  interruptSignal?: AbortSignal;
+  rawConfig?: E2EConfig | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
+  quiet?: boolean | undefined;
+  interruptSignal?: AbortSignal | undefined;
 }
 
 export interface RunOutcome {
   exitCode: 0 | 1 | 2 | 3 | 4 | 130;
   status: 'passed' | 'failed' | 'error' | 'interrupted';
-  report: Record<string, unknown>;
+  report: Report1Document;
   reportPath: string | undefined;
   results: readonly ResultRecord[];
 }
@@ -72,6 +75,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const env = options.env ?? process.env;
   const runId = uuidv7();
   const startedAt = timestamp();
+  const debug = new DebugTrace(options.debug === true);
+  const interruptController = new AbortController();
   const runErrors: RunError[] = [];
   const results: ResultRecord[] = [];
   const serialGroups: SerialGroupRecord[] = [];
@@ -85,7 +90,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   let reportPath: string | undefined;
   let appProcess: AppProcess | undefined;
   let sessionStore: SessionStore | undefined;
-  let interrupted = false;
+  const driversToDispose = new Set<Driver>();
 
   const finish = async (
     exitCode: 0 | 1 | 2 | 3 | 4 | 130,
@@ -118,7 +123,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (options.reporters?.includes('json') === true) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
-    return { exitCode, status, report: report as Record<string, unknown>, reportPath, results };
+    if (debug.enabled) process.stderr.write(debug.summary());
+    return { exitCode, status, report, reportPath, results };
   };
 
   const recordRunError = (error: E2EError, phase?: 'config' | 'collection' | 'launch' | 'report') => {
@@ -131,18 +137,19 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (options.workers !== undefined) cli.workers = options.workers;
     if (options.reporters !== undefined) cli.reporters = options.reporters;
 
-    if (options.rawConfig !== undefined) {
-      config = resolveConfig(options.rawConfig, { projectRoot: cwd, env, cli });
-    } else {
+    config = await debug.time('config.load', async () => {
+      if (options.rawConfig !== undefined) {
+        return resolveConfig(options.rawConfig, { projectRoot: cwd, env, cli });
+      }
       const discovered = discoverConfig(cwd, options.configPath);
       const raw = discovered.configPath === undefined ? {} : await loadConfigModule(discovered.configPath);
-      config = resolveConfig(raw, {
+      return resolveConfig(raw, {
         projectRoot: discovered.projectRoot,
         ...(discovered.configPath !== undefined ? { configPath: discovered.configPath } : {}),
         env,
         cli,
       });
-    }
+    });
   } catch (cause) {
     recordRunError(classifyError(cause), 'config');
     return finish(exitCodeForCategory(classifyError(cause).category));
@@ -158,13 +165,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   try {
     if (config.app.command !== undefined) {
       appProcess = new AppProcess(config.app.command, config.projectRoot, config.app.readyUrl);
-      await appProcess.start();
+      await debug.time('app.start', () => appProcess!.start());
     }
 
     let collection: Collection;
     let selection: Selection;
     try {
-      collection = await collect(config, options.files);
+      collection = await debug.time('collect', () => collect(config!, options.files));
       const filters: SelectionFilters = {
         ...(options.tags !== undefined ? { tags: options.tags } : {}),
         ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
@@ -182,52 +189,25 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
     sessionStore = new SessionStore(runId, path.join(config.projectRoot, '.e2e', 'sessions'));
 
-    const interruptController = new AbortController();
+    // Pre-flight: validate every selected driver before any session launches.
+    const resolvedConfig = config;
+    const targetRuns = selection.perTarget.map(({ target, pairs }) => {
+      const driver = resolveDriver(target);
+      driversToDispose.add(driver);
+      targetProvenance.set(target.name, validateDriver(driver, target, resolvedConfig));
+      return { target, driver, pairs };
+    });
+
     const externalSignal = options.interruptSignal;
     const onExternalAbort = () => interruptController.abort();
+    if (externalSignal?.aborted === true) interruptController.abort();
     externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
-    const onSignal = () => {
-      interrupted = true;
-      interruptController.abort();
-    };
+    const onSignal = () => interruptController.abort();
     process.once('SIGINT', onSignal);
     process.once('SIGTERM', onSignal);
 
     try {
-      const selectedTargets =
-        options.targetIds === undefined || options.targetIds.length === 0
-          ? config.targets
-          : config.targets.filter((target) => options.targetIds!.includes(target.name));
-
-      for (const target of selectedTargets) {
-        const driver = resolveDriver(target);
-        if (driver.spiVersion !== 1) {
-          throw new ConfigurationError(
-            'SPI_MISMATCH',
-            `driver ${driver.id} uses unsupported SPI version ${String(driver.spiVersion)}`,
-          );
-        }
-        targetProvenance.set(target.name, {
-          browserVersion: 'unknown',
-          viewport: {
-            width: target.viewport?.width ?? 1280,
-            height: target.viewport?.height ?? 720,
-            scale: 1,
-          },
-          driver: { id: driver.id, version: driver.version, spiVersion: 1 },
-          capabilities: [...driver.capabilities.fixtures],
-          artifactCapabilities: [...driver.capabilities.artifacts],
-          stateCapability: driver.capabilities.state,
-        });
-        for (const artifact of config.artifacts) {
-          if (!driver.capabilities.artifacts.includes(artifact)) {
-            throw new ConfigurationError(
-              'UNSUPPORTED_ARTIFACT',
-              `driver ${driver.id} does not support the configured "${artifact}" artifact`,
-            );
-          }
-        }
-
+      for (const { target, driver, pairs } of targetRuns) {
         const executor = new TargetExecutor({
           config,
           target,
@@ -237,15 +217,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           sessionStore,
           headed: options.headed ?? false,
           interruptSignal: interruptController.signal,
+          debug,
           events: {
             onResult: (result) => listReporter?.onResult(result),
           },
         });
-        const outcome = await executor.run(selection.pairs, collection.files);
+        const outcome = await debug.time(`target.${target.name}`, () =>
+          executor.run(pairs, collection.files),
+        );
         results.push(...outcome.results);
         serialGroups.push(...outcome.serialGroups);
         runErrors.push(...outcome.runErrors);
-        if (outcome.interrupted) interrupted = true;
       }
     } finally {
       process.removeListener('SIGINT', onSignal);
@@ -258,6 +240,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const exitCodes = [exitCodeForCategory(error.category), ...resultExitCodes(results)];
     return finish(combineExitCodes(exitCodes));
   } finally {
+    await debug.time('driver.dispose', () => disposeDrivers(driversToDispose));
     sessionStore?.cleanup();
     await appProcess?.stop();
   }
@@ -266,8 +249,53 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   for (const runError of runErrors) {
     codes.push(exitCodeForCategory(runError.error.category));
   }
-  if (interrupted || options.interruptSignal?.aborted === true) codes.push(130);
+  if (interruptController.signal.aborted) codes.push(130);
   return finish(combineExitCodes(codes));
+}
+
+/** Disposes driver-level shared resources; failures never affect the run outcome. */
+async function disposeDrivers(drivers: ReadonlySet<Driver>): Promise<void> {
+  for (const driver of drivers) {
+    try {
+      await driver.dispose?.();
+    } catch {
+      // dispose is best-effort cleanup
+    }
+  }
+}
+
+/** Validates one driver against the SPI version and configured artifacts; returns provenance. */
+function validateDriver(
+  driver: Driver,
+  target: ResolvedTarget,
+  config: ResolvedConfig,
+): TargetProvenance {
+  if (driver.spiVersion !== 1) {
+    throw new ConfigurationError(
+      'SPI_MISMATCH',
+      `driver ${driver.id} uses unsupported SPI version ${String(driver.spiVersion)}`,
+    );
+  }
+  for (const artifact of config.artifacts) {
+    if (!driver.capabilities.artifacts.includes(artifact)) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_ARTIFACT',
+        `driver ${driver.id} does not support the configured "${artifact}" artifact`,
+      );
+    }
+  }
+  return {
+    browserVersion: 'unknown',
+    viewport: {
+      width: target.viewport?.width ?? 1280,
+      height: target.viewport?.height ?? 720,
+      scale: 1,
+    },
+    driver: { id: driver.id, version: driver.version, spiVersion: 1 },
+    capabilities: [...driver.capabilities.fixtures],
+    artifactCapabilities: [...driver.capabilities.artifacts],
+    stateCapability: driver.capabilities.state,
+  };
 }
 
 function resultExitCodes(results: readonly ResultRecord[]): number[] {
@@ -277,11 +305,8 @@ function resultExitCodes(results: readonly ResultRecord[]): number[] {
       case 'failed':
       case 'timed-out':
         codes.push(1);
-        if (result.attempts.some((attempt) => attempt.error?.category === 'infrastructure')) {
-          codes.push(3);
-        }
-        if (result.attempts.some((attempt) => attempt.error?.category === 'configuration')) {
-          codes.push(2);
+        for (const attempt of result.attempts) {
+          if (attempt.error !== undefined) codes.push(exitCodeForCategory(attempt.error.category));
         }
         break;
       case 'interrupted':

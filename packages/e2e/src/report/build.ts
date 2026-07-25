@@ -1,20 +1,21 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
-import { createRequire } from 'node:module';
 import os from 'node:os';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
-import type { SerializedError } from '../internal/errors.js';
+import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.js';
 import { resultId, timestamp } from '../internal/ids.js';
+import { packageVersion } from '../internal/package-version.js';
+import type { SkipInfo } from '../collect/select.js';
 import type {
   ArtifactRecord,
   AttemptRecord,
   ResultRecord,
   RunError,
+  SerialAttemptRecord,
   SerialGroupRecord,
+  SerialMemberRecord,
 } from '../run/records.js';
 import type { StepRecord } from '../run/steps.js';
-
-const require = createRequire(import.meta.url);
 
 export interface ReportSource {
   file: string;
@@ -44,19 +45,159 @@ export interface BuildReportOptions {
   trustNoticeShown: boolean;
 }
 
-interface JsonRecord {
-  [key: string]: unknown;
+// --- report-1 wire shapes (spec/schema/report-v1.schema.json) ---
+// Explicit `| undefined` marks fields JSON serialization drops when absent;
+// Ajv treats undefined-valued keys as missing.
+
+/** SerializedError minus the stack, which never enters the report. */
+export interface ReportError {
+  category: ErrorCategory;
+  code: string;
+  message: string;
+  retryable: boolean;
+  phase?: ErrorPhase | undefined;
+  scopeId?: string | undefined;
 }
 
-function runnerVersion(): string {
-  try {
-    return (require('../../package.json') as { version: string }).version;
-  } catch {
-    return '0.0.0';
-  }
+export interface ReportStep {
+  id: string;
+  index: number;
+  kind: StepRecord['kind'];
+  api: string;
+  label: string;
+  source: ReportSource;
+  status: StepRecord['status'];
+  startedAt: string;
+  durationMs: number;
+  events: readonly never[];
+  error?: ReportError | undefined;
+  artifacts: readonly string[];
 }
 
-function relativeSource(config: ResolvedConfig | undefined, source: { file: string; line: number; column: number } | undefined, fallbackFile: string): ReportSource {
+interface ReportAttemptBase {
+  id: string;
+  index: number;
+  status: AttemptRecord['status'];
+  startedAt: string;
+  durationMs: number;
+  artifacts: readonly ArtifactRecord[];
+  error?: ReportError | undefined;
+  secondaryErrors: readonly ReportError[];
+  cleanup: AttemptRecord['cleanup'];
+}
+
+export interface ReportAttempt extends ReportAttemptBase {
+  steps: readonly ReportStep[];
+}
+
+export interface ReportSerialMember {
+  id: string;
+  index: number;
+  testId: string;
+  status: SerialMemberRecord['status'];
+  startedAt: string;
+  durationMs: number;
+  steps: readonly ReportStep[];
+  error?: ReportError | undefined;
+  skip?: SkipInfo | undefined;
+  secondaryErrors: readonly ReportError[];
+}
+
+export interface ReportSerialAttempt extends ReportAttemptBase {
+  members: readonly ReportSerialMember[];
+}
+
+export interface ReportSerialGroup {
+  id: string;
+  serialId: string;
+  declarationIndex: number;
+  file: string;
+  source: ReportSource;
+  titlePath: readonly string[];
+  targetId: string;
+  platform: string;
+  memberTestIds: readonly string[];
+  status: SerialGroupRecord['status'];
+  skip?: SkipInfo | undefined;
+  attempts: readonly ReportSerialAttempt[];
+}
+
+export interface ReportResult {
+  id: string;
+  testId: string;
+  kind: 'test' | 'setup';
+  declarationIndex: number;
+  titlePath: readonly string[];
+  file: string;
+  source: ReportSource;
+  targetId: string;
+  platform: string;
+  serialGroupId?: string | undefined;
+  status: ResultRecord['status'];
+  skip?: SkipInfo | undefined;
+  attempts: readonly ReportAttempt[];
+}
+
+export interface ReportTarget {
+  id: string;
+  index: number;
+  platform: string;
+  browser: string | undefined;
+  browserVersion: string;
+  viewport: { width: number; height: number; scale: number };
+  baseOrigin: string;
+  environment: string;
+  allowProduction: boolean;
+  testIdAttribute: string;
+  driver: { id: string; version: string; spiVersion: 1 };
+  capabilities: readonly string[];
+  artifactCapabilities: readonly string[];
+  stateCapability: boolean;
+}
+
+export interface ReportSummary {
+  discovered: number;
+  selected: number;
+  executed: number;
+  passed: number;
+  failed: number;
+  flaky: number;
+  skipped: number;
+}
+
+export interface Report1Document {
+  schemaVersion: 'report-1';
+  run: {
+    id: string;
+    specVersion: '0.1';
+    runner: { name: 'e2e'; version: string };
+    status: BuildReportOptions['status'];
+    exitCode: BuildReportOptions['exitCode'];
+    startedAt: string;
+    finishedAt: string;
+    project: { id: string; configDigest: string };
+    environment: {
+      ci: boolean;
+      trustNoticeShown: boolean;
+      os: string;
+      arch: string;
+      runtime: string;
+    };
+    targets: readonly ReportTarget[];
+    serialGroups: readonly ReportSerialGroup[];
+    results: readonly ReportResult[];
+    errors: readonly ReportError[];
+    summary: ReportSummary;
+    limits: typeof DEFAULT_LIMITS;
+    usage: Record<string, number>;
+  };
+}
+
+function relativeSource(
+  config: ResolvedConfig | undefined,
+  source: { file: string; line: number; column: number } | undefined,
+  fallbackFile: string,
+): ReportSource {
   if (source === undefined) return { file: fallbackFile, line: 1, column: 1 };
   let file = source.file;
   if (config !== undefined && file.startsWith(config.projectRoot)) {
@@ -68,72 +209,126 @@ function relativeSource(config: ResolvedConfig | undefined, source: { file: stri
   return { file, line: Math.max(1, source.line), column: Math.max(1, source.column) };
 }
 
-function serializeStep(step: StepRecord): JsonRecord {
+/** Step source capture and events are not implemented yet (spec 13-reporting.md). */
+const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
+
+function serializeStep(step: StepRecord): ReportStep {
+  const { error, ...rest } = step;
   return {
-    id: step.id,
-    index: step.index,
-    kind: step.kind,
-    api: step.api,
-    label: step.label,
-    source: { file: 'unknown', line: 1, column: 1 },
-    status: step.status,
-    startedAt: step.startedAt,
-    durationMs: step.durationMs,
+    ...rest,
+    source: UNIMPLEMENTED_STEP_SOURCE,
     events: [],
-    ...(step.error !== undefined ? { error: serializeErrorRecord(step.error) } : {}),
-    artifacts: step.artifacts,
+    error: error === undefined ? undefined : serializeErrorRecord(error),
   };
 }
 
-function serializeErrorRecord(error: SerializedError): JsonRecord {
-  return {
-    category: error.category,
-    code: error.code,
-    message: error.message,
-    retryable: error.retryable,
-    ...(error.phase !== undefined ? { phase: error.phase } : {}),
-    ...(error.scopeId !== undefined ? { scopeId: error.scopeId } : {}),
-  };
+function serializeErrorRecord(error: SerializedError): ReportError {
+  const { stack, ...report } = error;
+  void stack;
+  return report;
 }
 
-function serializeArtifact(artifact: ArtifactRecord): JsonRecord {
-  return {
-    id: artifact.id,
-    kind: artifact.kind,
-    mediaType: artifact.mediaType,
-    ...(artifact.path !== undefined ? { path: artifact.path } : {}),
-    ...(artifact.size !== undefined ? { size: artifact.size } : {}),
-    ...(artifact.sha256 !== undefined ? { sha256: artifact.sha256 } : {}),
-    redaction: artifact.redaction,
-    producer: artifact.producer,
-  };
-}
-
-function serializeAttempt(attempt: AttemptRecord): JsonRecord {
+function serializeAttemptBase(attempt: AttemptRecord | SerialAttemptRecord): ReportAttemptBase {
   return {
     id: attempt.id,
     index: attempt.index,
     status: attempt.status,
     startedAt: attempt.startedAt,
     durationMs: attempt.durationMs,
-    steps: attempt.steps.map(serializeStep),
-    artifacts: attempt.artifacts.map(serializeArtifact),
-    ...(attempt.error !== undefined ? { error: serializeErrorRecord(attempt.error) } : {}),
+    artifacts: attempt.artifacts,
+    error: attempt.error === undefined ? undefined : serializeErrorRecord(attempt.error),
     secondaryErrors: attempt.secondaryErrors.map(serializeErrorRecord),
     cleanup: attempt.cleanup,
   };
 }
 
+function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
+  return { ...serializeAttemptBase(attempt), steps: attempt.steps.map(serializeStep) };
+}
+
+function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
+  return {
+    id: member.id,
+    index: member.index,
+    testId: member.testId,
+    status: member.status,
+    startedAt: member.startedAt,
+    durationMs: member.durationMs,
+    steps: member.status === 'skipped' ? [] : member.steps.map(serializeStep),
+    error: member.error === undefined ? undefined : serializeErrorRecord(member.error),
+    skip: member.skip,
+    secondaryErrors: member.secondaryErrors.map(serializeErrorRecord),
+  };
+}
+
+function serializeSerialAttempt(attempt: SerialAttemptRecord): ReportSerialAttempt {
+  return { ...serializeAttemptBase(attempt), members: attempt.members.map(serializeSerialMember) };
+}
+
+function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
+  return {
+    id: group.id,
+    serialId: group.serialId,
+    declarationIndex: group.declarationIndex,
+    file: group.file,
+    source: { file: group.file, line: 1, column: 1 },
+    titlePath: group.titlePath,
+    targetId: group.targetId,
+    platform: group.platform,
+    memberTestIds: group.memberTestIds,
+    status: group.status,
+    skip: group.skip,
+    attempts: group.attempts.map(serializeSerialAttempt),
+  };
+}
+
+function serializeResult(config: ResolvedConfig | undefined, result: ResultRecord): ReportResult {
+  return {
+    id: resultId(result.test.id, result.target.name),
+    testId: result.test.id,
+    kind: result.test.kind,
+    declarationIndex: result.test.declarationIndex,
+    titlePath: result.test.titlePath,
+    file: result.test.file,
+    source: relativeSource(config, result.test.source, result.test.file),
+    targetId: result.target.name,
+    platform: result.target.platform,
+    serialGroupId: result.serialGroupId,
+    status: result.status,
+    skip: result.status === 'skipped' ? result.skip : undefined,
+    attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
+  };
+}
+
+function serializeTarget(
+  config: ResolvedConfig,
+  target: ResolvedTarget,
+  provenance: TargetProvenance | undefined,
+): ReportTarget {
+  return {
+    id: target.name,
+    index: target.index,
+    platform: target.platform,
+    browser: target.browser,
+    browserVersion: provenance?.browserVersion ?? 'unknown',
+    viewport: provenance?.viewport ?? {
+      width: target.viewport?.width ?? 1280,
+      height: target.viewport?.height ?? 720,
+      scale: 1,
+    },
+    baseOrigin: config.app.base.origin,
+    environment: config.app.environment,
+    allowProduction: config.app.allowProduction,
+    testIdAttribute: config.testIdAttribute,
+    driver: provenance?.driver ?? { id: 'playwright', version: 'unknown', spiVersion: 1 },
+    capabilities: provenance?.capabilities ?? ['web'],
+    artifactCapabilities: provenance?.artifactCapabilities ?? ['screenshot', 'trace'],
+    stateCapability: provenance?.stateCapability ?? true,
+  };
+}
+
 /** Computes report-1 summary counts from results. */
-export function computeSummary(results: readonly ResultRecord[]): {
-  discovered: number;
-  selected: number;
-  executed: number;
-  passed: number;
-  failed: number;
-  flaky: number;
-  skipped: number;
-} {
+export function computeSummary(results: readonly ResultRecord[]): ReportSummary {
   let selected = 0;
   let executed = 0;
   let passed = 0;
@@ -184,96 +379,18 @@ const DEFAULT_LIMITS = {
 };
 
 /** Builds the complete report-1 document. */
-export function buildReport(options: BuildReportOptions): JsonRecord {
+export function buildReport(options: BuildReportOptions): Report1Document {
   const { config } = options;
-  const targets = (config?.targets ?? []).map((target: ResolvedTarget) => {
-    const provenance = options.targetProvenance.get(target.name);
-    return {
-      id: target.name,
-      index: target.index,
-      platform: target.platform,
-      browser: target.browser,
-      browserVersion: provenance?.browserVersion ?? 'unknown',
-      viewport: provenance?.viewport ?? {
-        width: target.viewport?.width ?? 1280,
-        height: target.viewport?.height ?? 720,
-        scale: 1,
-      },
-      baseOrigin: config?.app.base.origin ?? 'http://localhost',
-      environment: config?.app.environment ?? 'test',
-      allowProduction: config?.app.allowProduction ?? false,
-      testIdAttribute: config?.testIdAttribute ?? 'data-testid',
-      driver: provenance?.driver ?? { id: 'playwright', version: 'unknown', spiVersion: 1 as const },
-      capabilities: provenance?.capabilities ?? ['web'],
-      artifactCapabilities: provenance?.artifactCapabilities ?? ['screenshot', 'trace'],
-      stateCapability: provenance?.stateCapability ?? true,
-    };
-  });
+  const targets =
+    config === undefined
+      ? []
+      : config.targets.map((target) =>
+          serializeTarget(config, target, options.targetProvenance.get(target.name)),
+        );
 
-  const sortedResults = [...options.results].sort(compareResults);
-  const results = sortedResults.map((result) => {
-    const source = relativeSource(config, result.test.source, result.test.file);
-    return {
-      id: resultId(result.test.id, result.target.name),
-      testId: result.test.id,
-      kind: result.test.kind,
-      declarationIndex: result.test.declarationIndex,
-      titlePath: result.test.titlePath,
-      file: result.test.file,
-      source,
-      targetId: result.target.name,
-      platform: result.target.platform,
-      ...(result.serialGroupId !== undefined ? { serialGroupId: result.serialGroupId } : {}),
-      status: result.status,
-      ...(result.status === 'skipped' && result.skip !== undefined
-        ? {
-            skip: {
-              cause: result.skip.cause,
-              reason: result.skip.reason,
-              ...(result.skip.relatedId !== undefined ? { relatedId: result.skip.relatedId } : {}),
-            },
-          }
-        : {}),
-      attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
-    };
-  });
-
-  const serialGroups = options.serialGroups.map((group) => ({
-    id: group.id,
-    serialId: group.serialId,
-    declarationIndex: group.declarationIndex,
-    file: group.file,
-    source: { file: group.file, line: 1, column: 1 },
-    titlePath: group.titlePath,
-    targetId: group.targetId,
-    platform: group.platform,
-    memberTestIds: group.memberTestIds,
-    status: group.status,
-    ...(group.skip !== undefined ? { skip: group.skip } : {}),
-    attempts: group.attempts.map((attempt) => ({
-      id: attempt.id,
-      index: attempt.index,
-      status: attempt.status,
-      startedAt: attempt.startedAt,
-      durationMs: attempt.durationMs,
-      members: attempt.members.map((member) => ({
-        id: member.id,
-        index: member.index,
-        testId: member.testId,
-        status: member.status,
-        startedAt: member.startedAt,
-        durationMs: member.durationMs,
-        steps: member.status === 'skipped' ? [] : member.steps.map(serializeStep),
-        ...(member.error !== undefined ? { error: serializeErrorRecord(member.error) } : {}),
-        ...(member.skip !== undefined ? { skip: member.skip } : {}),
-        secondaryErrors: member.secondaryErrors.map(serializeErrorRecord),
-      })),
-      artifacts: attempt.artifacts.map(serializeArtifact),
-      ...(attempt.error !== undefined ? { error: serializeErrorRecord(attempt.error) } : {}),
-      secondaryErrors: attempt.secondaryErrors.map(serializeErrorRecord),
-      cleanup: attempt.cleanup,
-    })),
-  }));
+  const results = [...options.results]
+    .sort(compareResults)
+    .map((result) => serializeResult(config, result));
 
   const summary = computeSummary(options.results);
   const artifactBytes = options.results
@@ -286,7 +403,10 @@ export function buildReport(options: BuildReportOptions): JsonRecord {
     run: {
       id: options.runId,
       specVersion: '0.1',
-      runner: { name: 'e2e', version: runnerVersion() },
+      runner: {
+        name: 'e2e',
+        version: packageVersion(import.meta.url, '../../package.json', '0.0.0'),
+      },
       status: options.status,
       exitCode: options.exitCode,
       startedAt: options.startedAt,
@@ -303,7 +423,7 @@ export function buildReport(options: BuildReportOptions): JsonRecord {
         runtime: `node ${process.version}`,
       },
       targets,
-      serialGroups,
+      serialGroups: options.serialGroups.map(serializeSerialGroup),
       results,
       errors: options.runErrors.map((runError) => serializeErrorRecord(runError.error)),
       summary,

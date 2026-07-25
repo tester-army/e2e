@@ -39,7 +39,7 @@ export function createProject(files: Readonly<Record<string, string>>): FixtureP
 
 export interface RunProjectOptions {
   appUrl: string;
-  config?: Partial<E2EConfig>;
+  config?: E2EConfig;
   runOptions?: Partial<RunOptions>;
 }
 
@@ -51,12 +51,12 @@ export async function runProject(
   const project = createProject(files);
   const outcome = await run({
     cwd: project.dir,
-    rawConfig: { ...options.config } as E2EConfig,
+    rawConfig: { ...options.config },
     env: {
       ...process.env,
       APP_URL: options.appUrl,
       CI: '',
-    } as NodeJS.ProcessEnv,
+    },
     quiet: true,
     ...options.runOptions,
   });

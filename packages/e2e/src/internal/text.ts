@@ -1,5 +1,7 @@
 /** Text normalization and matching rules (spec 03-assertions.md, 08-platforms.md). */
 
+import { testPattern } from './regexp.js';
+
 export type TextPattern =
   | { readonly kind: 'string'; readonly value: string; readonly exact: boolean }
   | { readonly kind: 'regexp'; readonly source: string; readonly flags: string };
@@ -36,7 +38,7 @@ export function normalizeRegexpFlags(flags: string): string {
  */
 export function matchesText(actual: string, pattern: TextPattern): boolean {
   const normalizedActual = normalizeText(actual);
-  if (pattern.kind === 'regexp') return regexpMatches(normalizedActual, pattern);
+  if (pattern.kind === 'regexp') return testPattern(pattern.source, pattern.flags, normalizedActual);
   const normalizedExpected = normalizeText(pattern.value);
   if (pattern.exact) return normalizedActual === normalizedExpected;
   return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
@@ -45,16 +47,10 @@ export function matchesText(actual: string, pattern: TextPattern): boolean {
 /** Substring/regexp containment matching used by toContainText. */
 export function containsText(actual: string, pattern: TextPattern): boolean {
   const normalizedActual = normalizeText(actual);
-  if (pattern.kind === 'regexp') return regexpMatches(normalizedActual, pattern);
+  if (pattern.kind === 'regexp') return testPattern(pattern.source, pattern.flags, normalizedActual);
   const normalizedExpected = normalizeText(pattern.value);
   if (pattern.exact) return normalizedActual.includes(normalizedExpected);
   return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
-}
-
-function regexpMatches(actual: string, pattern: { source: string; flags: string }): boolean {
-  const regexp = new RegExp(pattern.source, pattern.flags);
-  regexp.lastIndex = 0;
-  return regexp.test(actual);
 }
 
 /** Renders a pattern for diagnostics. */

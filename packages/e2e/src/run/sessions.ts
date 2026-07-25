@@ -77,7 +77,6 @@ export class SessionStaging {
 export class SessionStore {
   private readonly key = randomBytes(32);
   private readonly directory: string;
-  private readonly usedIvs = new Set<string>();
 
   constructor(
     private readonly runId: string,
@@ -109,10 +108,6 @@ export class SessionStore {
 
     const iv = randomBytes(12);
     const ivBase64 = iv.toString('base64');
-    if (this.usedIvs.has(ivBase64)) {
-      throw new E2EError('internal', 'IV_REUSE', 'session IV reuse detected');
-    }
-    this.usedIvs.add(ivBase64);
 
     const envelopeWithoutCipher = {
       schemaVersion: 'session-1' as const,
@@ -159,7 +154,7 @@ export class SessionStore {
   }
 
   /** Validates identity and expiry, then decrypts one session state. */
-  async load(name: string, identity: SessionIdentity, expected: { format?: string } = {}): Promise<DriverState> {
+  async load(name: string, identity: SessionIdentity): Promise<DriverState> {
     let rawText: string;
     try {
       rawText = await readFile(this.filePath(identity.targetId, name), 'utf8');
@@ -186,9 +181,6 @@ export class SessionStore {
     }
     if (Date.parse(envelope.expiresAt) <= Date.now()) {
       throw new ConfigurationError('SESSION_EXPIRED', `session "${name}" is expired`);
-    }
-    if (expected.format !== undefined && envelope.state.format !== expected.format) {
-      throw new ConfigurationError('SESSION_MISMATCH', `session "${name}" has unexpected state format`);
     }
 
     const { tag, ciphertext, ...aadState } = envelope.state;

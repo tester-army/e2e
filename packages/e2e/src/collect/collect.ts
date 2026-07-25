@@ -6,7 +6,14 @@ import { CollectionError } from '../internal/errors.js';
 import { setupTestId, testId } from '../internal/ids.js';
 import { importModule } from '../config/load.js';
 import type { ResolvedConfig } from '../config/resolve.js';
-import { collectModule, type GroupNode, type ModuleRegistration, type RegisteredTest } from './registry.js';
+import {
+  collectModule,
+  groupTitles,
+  outermostSerialGroup,
+  type GroupNode,
+  type ModuleRegistration,
+  type RegisteredTest,
+} from './registry.js';
 
 export interface CollectedTest extends RegisteredTest {
   /** Normalized project-root-relative file path with `/` separators. */
@@ -29,26 +36,9 @@ export interface Collection {
   readonly tests: readonly CollectedTest[];
 }
 
-/** Finds the outermost serial group for a test, if any. */
-export function outermostSerialGroup(group: GroupNode | undefined): GroupNode | undefined {
-  let outermost: GroupNode | undefined;
-  for (let node = group; node !== undefined; node = node.parent) {
-    if (node.serial) outermost = node;
-  }
-  return outermost;
-}
-
-function groupTitlePath(group: GroupNode): string[] {
-  const titles: string[] = [];
-  for (let node: GroupNode | undefined = group; node !== undefined; node = node.parent) {
-    titles.unshift(node.title);
-  }
-  return titles;
-}
-
 /** Derives the serial unit source ID per 11-lifecycle.md. */
 export function serialSourceId(file: string, group: GroupNode): string {
-  return `serial::${testId(file, groupTitlePath(group))}`;
+  return `serial::${testId(file, groupTitles(group))}`;
 }
 
 function toCollectedTests(file: string, registration: ModuleRegistration): CollectedTest[] {

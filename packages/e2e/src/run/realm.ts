@@ -8,10 +8,14 @@ import {
   TestTimeoutError,
   type SerializedError,
 } from '../internal/errors.js';
+import { DebugTrace } from '../internal/debug.js';
+import { titlePathKey } from '../internal/ids.js';
 import { withTimeout } from '../internal/time.js';
-import type { CollectedFile, CollectedTest } from '../collect/collect.js';
+import type { CollectedTest } from '../collect/collect.js';
 import {
   collectModule,
+  groupChain,
+  groupTitles,
   type GroupNode,
   type ModuleRegistration,
   type RegisteredHook,
@@ -30,9 +34,9 @@ export interface Realm {
 
 /** Finds a registered test in a re-imported realm by its exact title path. */
 export function findRegistered(realm: Realm, test: CollectedTest): RegisteredTest | undefined {
-  const key = test.titlePath.join('\u0000');
+  const key = titlePathKey(test.titlePath);
   return realm.registration.tests.find(
-    (candidate) => candidate.titlePath.join('\u0000') === key,
+    (candidate) => titlePathKey(candidate.titlePath) === key,
   );
 }
 
@@ -43,19 +47,25 @@ export interface RealmManagerOptions {
   readonly cleanupTimeout: number;
   /** Run-level error sink for hook failures. */
   readonly runErrors: RunError[];
+  readonly debug?: DebugTrace;
 }
 
 /** Creates realms and runs suite-scope hooks with per-realm entry tracking. */
 export class RealmManager {
   private realmCounter = 0;
+  private readonly debug: DebugTrace;
 
-  constructor(private readonly options: RealmManagerOptions) {}
+  constructor(private readonly options: RealmManagerOptions) {
+    this.debug = options.debug ?? new DebugTrace(false);
+  }
 
   /** Re-imports one test module in a fresh realm. */
-  async create(file: CollectedFile): Promise<Realm> {
+  async create(absolutePath: string): Promise<Realm> {
     this.realmCounter += 1;
-    const registration = await collectModule(() =>
-      importModule(file.absolutePath, `${this.options.targetName}-${this.realmCounter}`),
+    const registration = await this.debug.time('realm.import', () =>
+      collectModule(() =>
+        importModule(absolutePath, `${this.options.targetName}-${this.realmCounter}`),
+      ),
     );
     return { registration, entered: new Map(), pendingAfterAll: [] };
   }
@@ -138,15 +148,9 @@ export class RealmManager {
 }
 
 function scopeKey(group: GroupNode | undefined): string {
-  const titles: string[] = [];
-  for (let node = group; node !== undefined; node = node.parent) titles.unshift(node.title);
-  return titles.join('::');
+  return titlePathKey(groupTitles(group));
 }
 
 function scopeChainFor(test: RegisteredTest): (GroupNode | undefined)[] {
-  const chain: (GroupNode | undefined)[] = [undefined];
-  const groups: GroupNode[] = [];
-  for (let node = test.group; node !== undefined; node = node.parent) groups.unshift(node);
-  chain.push(...groups);
-  return chain;
+  return [undefined, ...groupChain(test.group)];
 }

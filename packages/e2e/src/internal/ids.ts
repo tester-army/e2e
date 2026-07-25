@@ -43,6 +43,14 @@ export function testId(relativeFile: string, titlePath: readonly string[]): stri
   return `${relativeFile}::${titlePath.map(encodeTitle).join('::')}`;
 }
 
+/**
+ * Canonical collision-free map key for a title path. Joins with NUL, which
+ * `validateTitle` forbids inside titles, so distinct paths never collide.
+ */
+export function titlePathKey(titlePath: readonly string[]): string {
+  return titlePath.join('\u0000');
+}
+
 /** Builds a setup-test ID: `setup::<test-id>`. */
 export function setupTestId(relativeFile: string, titlePath: readonly string[]): string {
   return `setup::${testId(relativeFile, titlePath)}`;

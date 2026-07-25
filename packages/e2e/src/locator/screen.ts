@@ -3,6 +3,7 @@
 import type { LocatorExpression, SemanticNode } from '../driver/index.js';
 import { locatorBrand, secretBrand } from '../internal/brands.js';
 import { ConfigurationError, TestError } from '../internal/errors.js';
+import { realmSlot } from '../internal/realm-slot.js';
 import { normalizeText } from '../internal/text.js';
 import type {
   ActionOptions,
@@ -17,7 +18,7 @@ import type {
   TextMatchOptions,
 } from '../types.js';
 import type { StepRecorder } from '../run/steps.js';
-import type { LocatorEngine } from './engine.js';
+import { isNodeVisible, type LocatorEngine } from './engine.js';
 import {
   describeExpression,
   filterExpression,
@@ -26,7 +27,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.js';
-import { Deadline, sleep } from '../internal/time.js';
+import { Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.js';
 
 export interface SecretResolver {
   /** Resolves an opaque Secret to its plaintext for a closed input sink. */
@@ -57,12 +58,12 @@ export interface LocatorInternals {
  * Internals hang off the locator object itself under a global symbol so that
  * an expect() imported in an isolated test-module realm can still reach them.
  */
-const internalsKey = Symbol.for('e2e.locatorInternals.v1');
+const internalsSlot = realmSlot<LocatorInternals>('e2e.locatorInternals.v1');
 
 export function locatorInternals(locator: unknown): LocatorInternals | undefined {
   if (typeof locator !== 'object' || locator === null) return undefined;
   if ((locator as Record<PropertyKey, unknown>)[locatorBrand] !== true) return undefined;
-  return (locator as Record<PropertyKey, unknown>)[internalsKey] as LocatorInternals | undefined;
+  return internalsSlot.get(locator);
 }
 
 /** Creates the screen fixture for one attempt. */
@@ -72,11 +73,7 @@ export function createScreen(context: ScreenContext): Screen {
 
 /** Creates a screen scope whose queries are wrapped inside one iframe. */
 export function createFrameScreen(context: ScreenContext, frameSelector: string): Screen {
-  return new ScreenImpl(context, undefined, (expression) => ({
-    kind: 'frame',
-    selector: frameSelector,
-    source: expression,
-  }));
+  return new ScreenImpl(context, undefined, frameSelector);
 }
 
 /** Creates a public locator from a raw expression (web.locator). */
@@ -88,12 +85,13 @@ class ScreenImpl implements Screen {
   constructor(
     protected readonly context: ScreenContext,
     protected readonly scope: LocatorExpression | undefined,
-    protected readonly wrap: ((expression: LocatorExpression) => LocatorExpression) | undefined =
-      undefined,
+    /** When set, every query is wrapped inside this iframe selector. */
+    protected readonly frameSelector: string | undefined = undefined,
   ) {}
 
   private build(expression: LocatorExpression): LocatorExpression {
-    return this.wrap === undefined ? expression : this.wrap(expression);
+    if (this.frameSelector === undefined) return expression;
+    return { kind: 'frame', selector: this.frameSelector, source: expression };
   }
 
   getByRole(role: Role, options?: RoleOptions): Locator {
@@ -151,7 +149,7 @@ class ScreenImpl implements Screen {
         const deadline = engine.deadline(options?.timeout ?? 30_000);
         for (;;) {
           const { node } = await engine.tryRead(internals.expression, deadline);
-          if (node !== null && node.states?.hidden !== true) return;
+          if (isNodeVisible(node)) return;
           if (deadline.expired()) {
             throw new TestError(
               'LOCATOR_NOT_FOUND',
@@ -159,7 +157,7 @@ class ScreenImpl implements Screen {
             );
           }
           await engine.session.screen.swipe(direction, 'slow', engine.operation());
-          await sleep(100, engine.signal);
+          await sleep(POLL_INTERVAL_MS, engine.signal);
         }
       },
     );
@@ -174,10 +172,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
     private readonly expression: LocatorExpression,
   ) {
     super(context, expression);
-    Object.defineProperty(this, internalsKey, {
-      value: { expression, context } satisfies LocatorInternals,
-      enumerable: false,
-    });
+    internalsSlot.set(this, { expression, context });
   }
 
   private get label(): string {
@@ -311,8 +306,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   async isVisible(): Promise<boolean> {
-    const node = await this.readOptional();
-    return node !== null && node.states?.hidden !== true;
+    return isNodeVisible(await this.readOptional());
   }
 
   async isEnabled(): Promise<boolean> {
@@ -340,19 +334,18 @@ class LocatorImpl extends ScreenImpl implements Locator {
     await this.context.steps.run('locator', 'locator.waitFor', `${this.label} → ${state}`, async () => {
       const { engine } = this.context;
       const deadline = engine.deadline(options?.timeout);
-      for (;;) {
-        const { node, count } = await engine.tryRead(this.expression, deadline);
-        const visible = node !== null && node.states?.hidden !== true;
-        if (state === 'visible' && visible) return;
-        if (state === 'hidden' && (count === 0 || !visible)) return;
-        if (deadline.expired()) {
-          throw new TestError(
-            'LOCATOR_NOT_FOUND',
-            `locator did not become ${state}: ${this.label}`,
-          );
-        }
-        await sleep(100, engine.signal);
-      }
+      await pollCondition({
+        deadline,
+        signal: engine.signal,
+        negated: false,
+        evaluate: async () => {
+          const { node } = await engine.tryRead(this.expression, deadline);
+          const visible = isNodeVisible(node);
+          return state === 'visible' ? visible : !visible;
+        },
+        onTimeout: () =>
+          new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`),
+      });
     });
   }
 

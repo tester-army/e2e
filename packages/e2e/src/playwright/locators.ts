@@ -43,7 +43,7 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
       return scope.getByText(patternToPw(query.value), { exact: patternExact(query.value) });
     case 'displayValue':
       // Candidate set; the session filters by current value at resolve time.
-      return (scope as Page | FrameLocator | PwLocator).locator('input, textarea, select');
+      return scope.locator('input, textarea, select');
     case 'testId':
       return scope.getByTestId(patternToPw(query.value));
   }
@@ -56,30 +56,30 @@ export interface ProjectedLocator {
 }
 
 /**
- * Projects a complete immutable expression onto a Playwright locator.
- * Frame cardinality is validated separately by the session.
+ * Projects a complete immutable expression onto a Playwright locator within
+ * one scope. Frame cardinality is validated separately by the session.
  */
-export function projectExpression(page: Page, expression: LocatorExpression): ProjectedLocator {
+function project(scope: PwScope, expression: LocatorExpression): ProjectedLocator {
   switch (expression.kind) {
     case 'query': {
-      const scope =
-        expression.scope === undefined ? page : requireSingle(projectExpression(page, expression.scope));
+      const inner =
+        expression.scope === undefined ? scope : requireSingle(project(scope, expression.scope));
       return {
-        locator: queryToPw(scope, expression.query),
+        locator: queryToPw(inner, expression.query),
         displayValue: expression.query.kind === 'displayValue' ? expression.query.value : null,
       };
     }
     case 'filter': {
-      const source = requireSingle(projectExpression(page, expression.source));
+      const source = requireSingle(project(scope, expression.source));
       const options: Parameters<PwLocator['filter']>[0] = {};
       if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
       if (expression.has !== undefined) {
-        options.has = requireSingle(projectExpression(page, expression.has));
+        options.has = requireSingle(project(scope, expression.has));
       }
       return { locator: source.filter(options), displayValue: null };
     }
     case 'index': {
-      const source = requireSingle(projectExpression(page, expression.source));
+      const source = requireSingle(project(scope, expression.source));
       const locator =
         expression.index === 'first'
           ? source.first()
@@ -89,45 +89,15 @@ export function projectExpression(page: Page, expression: LocatorExpression): Pr
       return { locator, displayValue: null };
     }
     case 'web-selector':
-      return { locator: page.locator(expression.selector), displayValue: null };
-    case 'frame': {
-      const frame = page.frameLocator(expression.selector);
-      return {
-        locator: projectWithin(frame, expression.source),
-        displayValue: null,
-      };
-    }
+      return { locator: scope.locator(expression.selector), displayValue: null };
+    case 'frame':
+      return project(scope.frameLocator(expression.selector), expression.source);
   }
 }
 
-function projectWithin(scope: PwScope, expression: LocatorExpression): PwLocator {
-  switch (expression.kind) {
-    case 'query': {
-      const inner = expression.scope === undefined ? scope : projectWithin(scope, expression.scope);
-      return queryToPw(inner, expression.query);
-    }
-    case 'filter': {
-      const source = projectWithin(scope, expression.source);
-      const options: Parameters<PwLocator['filter']>[0] = {};
-      if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
-      if (expression.has !== undefined) options.has = projectWithin(scope, expression.has);
-      return source.filter(options);
-    }
-    case 'index': {
-      const source = projectWithin(scope, expression.source);
-      return expression.index === 'first'
-        ? source.first()
-        : expression.index === 'last'
-          ? source.last()
-          : source.nth(expression.index);
-    }
-    case 'web-selector':
-      return (scope as FrameLocator | PwLocator).locator(expression.selector);
-    case 'frame': {
-      const frame = (scope as Page | FrameLocator).frameLocator(expression.selector);
-      return projectWithin(frame, expression.source);
-    }
-  }
+/** Projects an expression onto the page. */
+export function projectExpression(page: Page, expression: LocatorExpression): ProjectedLocator {
+  return project(page, expression);
 }
 
 function requireSingle(projected: ProjectedLocator): PwLocator {

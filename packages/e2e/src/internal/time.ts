@@ -47,6 +47,47 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** Canonical polling cadence for locator and assertion loops. */
+export const POLL_INTERVAL_MS = 100;
+
+/** How long a negated assertion must hold before it passes. */
+export const NEGATION_GRACE_MS = 1000;
+
+export interface PollConditionOptions {
+  readonly deadline: Deadline;
+  readonly signal: AbortSignal;
+  readonly negated: boolean;
+  /**
+   * Evaluates the positive condition once. Returns undefined when the
+   * condition cannot be evaluated yet: the positive poll keeps waiting and
+   * the negation grace window resets.
+   */
+  evaluate(): Promise<boolean | undefined>;
+  onTimeout(): Error | Promise<Error>;
+}
+
+/**
+ * Polls a condition until it holds (or, when negated, until its negation has
+ * held continuously for the negation grace window), throwing the caller's
+ * error at the deadline.
+ */
+export async function pollCondition(options: PollConditionOptions): Promise<void> {
+  let negatedTrueSince: number | undefined;
+  for (;;) {
+    const value = await options.evaluate();
+    if (!options.negated) {
+      if (value === true) return;
+    } else if (value === false) {
+      negatedTrueSince ??= Date.now();
+      if (Date.now() - negatedTrueSince >= NEGATION_GRACE_MS) return;
+    } else {
+      negatedTrueSince = undefined;
+    }
+    if (options.deadline.expired()) throw await options.onTimeout();
+    await sleep(POLL_INTERVAL_MS, options.signal);
+  }
+}
+
 /** Races a promise against a timeout; on timeout invokes onTimeout to build the error. */
 export async function withTimeout<T>(
   promise: Promise<T>,

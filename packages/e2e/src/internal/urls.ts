@@ -1,6 +1,7 @@
 /** URL normalization and origin policy helpers (spec 05-config.md). */
 
 import { ConfigurationError } from './errors.js';
+import { testPattern } from './regexp.js';
 
 export interface NormalizedBaseUrl {
   /** Serialized base URL without trailing artifacts beyond the normalized path. */
@@ -103,9 +104,7 @@ export function urlMatches(
     }
     return serializeForComparison(current) === expectedUrl.href;
   }
-  const regexp = new RegExp(expected.source, expected.flags);
-  regexp.lastIndex = 0;
-  return regexp.test(serializeForComparison(current));
+  return testPattern(expected.source, expected.flags, serializeForComparison(current));
 }
 
 function serializeForComparison(url: string): string {

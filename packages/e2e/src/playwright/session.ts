@@ -2,48 +2,45 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type {
-  Browser,
-  BrowserContext,
-  Download,
-  Locator as PwLocator,
-  Page,
-  Route,
-} from 'playwright';
-import { chromium, firefox, webkit } from 'playwright';
+import type { Browser, BrowserContext, Locator as PwLocator, Page } from 'playwright';
 import {
   DriverError,
   type CleanupContext,
-  type Cookie,
   type DriverAgentActions,
   type DriverApp,
   type DriverArtifacts,
   type DriverContext,
-  type DriverDialog,
   type DriverRuntime,
   type DriverScreen,
   type DriverSession,
   type DriverState,
   type DriverWeb,
-  type DriverWebResponse,
-  type DriverWebRoute,
   type JsonValue,
   type LocatorAction,
   type LocatorExpression,
-  type Momentum,
   type NodeRef,
   type Observation,
   type OperationContext,
-  type ScrollDirection,
   type SemanticNode,
-  type TextPattern,
 } from '../driver/index.js';
-import { routePatternMatches, routePatternsEqual } from '../internal/route-pattern.js';
 import { matchesText } from '../internal/text.js';
 import { frameSelectors, projectExpression } from './locators.js';
 import { readNodeFunction, type RawNodeData } from './read-node.js';
+import {
+  DEFAULT_VIEWPORT,
+  invalidState,
+  isPwTimeout,
+  message,
+  performElementSwipe,
+  performViewportSwipe,
+  sanitizeFilename,
+  staleOr,
+  translatePwError,
+} from './support.js';
+import { WebChannel, type WebSessionHost } from './web.js';
 
-const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
+/** Refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
+const MAX_STORED_REFS = 2048;
 
 interface ParsedWebTarget {
   readonly browser: 'chromium' | 'firefox' | 'webkit';
@@ -51,7 +48,7 @@ interface ParsedWebTarget {
 }
 
 /** Narrows the wire target to the web fields this driver understands. */
-function parseWebTarget(target: DriverContext['target']): ParsedWebTarget {
+export function parseWebTarget(target: DriverContext['target']): ParsedWebTarget {
   const browser =
     'browser' in target &&
     (target.browser === 'chromium' || target.browser === 'firefox' || target.browser === 'webkit')
@@ -66,46 +63,35 @@ interface StoredRef {
   readonly revision: string;
 }
 
-interface StoredRoute {
-  readonly pattern: TextPattern;
-  readonly pwHandler: (route: Route) => Promise<void>;
-  readonly predicate: (url: URL) => boolean;
-}
+export class PlaywrightSession implements DriverSession, WebSessionHost {
+  readonly artifactsDir: string;
+  readonly web: DriverWeb;
 
-export class PlaywrightSession implements DriverSession {
-  private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private closed = false;
   private revisionCounter = 0;
   private refCounter = 0;
   private artifactCounter = 0;
-  private downloadCounter = 0;
-  private dialogHandlerCounter = 0;
   private tracing = false;
   private readonly refs = new Map<string, StoredRef>();
-  private readonly routes: StoredRoute[] = [];
-  private readonly dialogHandlers = new Map<
-    string,
-    'accept' | 'dismiss' | ((dialog: DriverDialog) => void | Promise<void>)
-  >();
-  private readonly downloads = new Map<string, Promise<Download>>();
-  private latchedDialogError: DriverError | null = null;
   private pendingState: DriverState | null = null;
   private readonly target: ParsedWebTarget;
+  private readonly webChannel: WebChannel;
 
-  constructor(private readonly driverContext: DriverContext) {
+  /** The browser process is pool-owned and shared; the session owns its context. */
+  constructor(
+    private readonly driverContext: DriverContext,
+    private readonly browser: Browser,
+  ) {
     this.target = parseWebTarget(driverContext.target);
+    this.artifactsDir = driverContext.artifactsDir;
+    this.webChannel = new WebChannel(this);
+    this.web = this.webChannel.web;
   }
 
   async launch(): Promise<void> {
-    const browserType =
-      this.target.browser === 'firefox' ? firefox : this.target.browser === 'webkit' ? webkit : chromium;
     try {
-      this.browser = await browserType.launch({
-        headless: !this.driverContext.launchOptions.headed,
-        timeout: this.driverContext.operation.timeoutMs,
-      });
       await this.createContext();
     } catch (cause) {
       await this.rollback();
@@ -117,7 +103,6 @@ export class PlaywrightSession implements DriverSession {
   }
 
   private async createContext(): Promise<void> {
-    if (this.browser === null) throw invalidState('browser is not launched');
     this.context = await this.browser.newContext({
       viewport: this.target.viewport ?? DEFAULT_VIEWPORT,
       acceptDownloads: true,
@@ -127,7 +112,7 @@ export class PlaywrightSession implements DriverSession {
     });
     this.context.setDefaultTimeout(30_000);
     this.context.on('dialog', (dialog) => {
-      void this.dispatchDialog(dialog);
+      void this.webChannel.dispatchDialog(dialog);
     });
   }
 
@@ -137,35 +122,21 @@ export class PlaywrightSession implements DriverSession {
     } catch {
       // rollback is best-effort
     }
-    try {
-      await this.browser?.close();
-    } catch {
-      // rollback is best-effort
-    }
     this.context = null;
-    this.browser = null;
     this.page = null;
   }
 
-  private requirePage(): Page {
-    this.checkLatchedDialog();
+  requirePage(): Page {
+    this.webChannel.throwPendingDialogError();
     if (this.page === null || this.page.isClosed()) {
       throw invalidState('no app page is open; call app.open() or web.goto() first');
     }
     return this.page;
   }
 
-  private requireContext(): BrowserContext {
+  requireContext(): BrowserContext {
     if (this.context === null) throw invalidState('session is closed');
     return this.context;
-  }
-
-  private checkLatchedDialog(): void {
-    if (this.latchedDialogError !== null) {
-      const error = this.latchedDialogError;
-      this.latchedDialogError = null;
-      throw error;
-    }
   }
 
   private checkOperation(operation: OperationContext): void {
@@ -174,7 +145,17 @@ export class PlaywrightSession implements DriverSession {
     }
   }
 
-  private async ensurePage(): Promise<Page> {
+  /** Checks cancellation, runs fn, and translates raw errors at the SPI boundary. */
+  async guard<T>(operation: OperationContext, label: string, fn: () => Promise<T>): Promise<T> {
+    this.checkOperation(operation);
+    try {
+      return await fn();
+    } catch (cause) {
+      throw translatePwError(cause, label);
+    }
+  }
+
+  async ensurePage(): Promise<Page> {
     const context = this.requireContext();
     if (this.page === null || this.page.isClosed()) {
       this.page = await context.newPage();
@@ -190,74 +171,71 @@ export class PlaywrightSession implements DriverSession {
     return `r${this.revisionCounter}`;
   }
 
+  private storeRef(locator: PwLocator, revision: string): NodeRef {
+    this.refCounter += 1;
+    const id = `n${this.refCounter}`;
+    this.refs.set(id, { locator, revision });
+    for (const oldest of this.refs.keys()) {
+      if (this.refs.size <= MAX_STORED_REFS) break;
+      this.refs.delete(oldest);
+    }
+    return { id, revision };
+  }
+
   // --- DriverApp ---
 
   readonly app: DriverApp = {
-    open: async (openPath, operation) => {
-      this.checkOperation(operation);
-      const url = new URL(openPath ?? '', this.driverContext.app.baseUrl).href;
-      const page = await this.ensurePage();
-      await this.guardNavigation(() =>
-        page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    restart: async (operation) => {
-      this.checkOperation(operation);
-      const context = this.requireContext();
-      for (const page of context.pages()) await page.close();
-      this.page = null;
-      const page = await this.ensurePage();
-      await this.guardNavigation(() =>
-        page.goto(this.driverContext.app.baseUrl, { waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    clearState: async (operation) => {
-      this.checkOperation(operation);
-      const context = this.requireContext();
-      await context.close();
-      this.context = null;
-      this.page = null;
-      this.pendingState = null;
-      await this.createContext();
-      const page = await this.ensurePage();
-      await this.guardNavigation(() =>
-        page.goto(this.driverContext.app.baseUrl, { waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    back: async (operation) => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      await this.guardNavigation(() =>
-        page.goBack({ waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    deepLink: async (url, operation) => {
-      this.checkOperation(operation);
-      const page = await this.ensurePage();
-      await this.guardNavigation(() =>
-        page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
+    open: (openPath, operation) =>
+      this.guard(operation, 'navigation', async () => {
+        const url = new URL(openPath ?? '', this.driverContext.app.baseUrl).href;
+        const page = await this.ensurePage();
+        await page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs });
+      }),
+    restart: (operation) =>
+      this.guard(operation, 'navigation', async () => {
+        const context = this.requireContext();
+        for (const page of context.pages()) await page.close();
+        this.page = null;
+        const page = await this.ensurePage();
+        await page.goto(this.driverContext.app.baseUrl, {
+          waitUntil: 'load',
+          timeout: operation.timeoutMs,
+        });
+      }),
+    clearState: (operation) =>
+      this.guard(operation, 'navigation', async () => {
+        const context = this.requireContext();
+        await context.close();
+        this.context = null;
+        this.page = null;
+        this.pendingState = null;
+        await this.createContext();
+        const page = await this.ensurePage();
+        await page.goto(this.driverContext.app.baseUrl, {
+          waitUntil: 'load',
+          timeout: operation.timeoutMs,
+        });
+      }),
+    back: (operation) =>
+      this.guard(operation, 'navigation', async () => {
+        await this.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
+      }),
+    deepLink: (url, operation) =>
+      this.guard(operation, 'navigation', async () => {
+        const page = await this.ensurePage();
+        await page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs });
+      }),
   };
-
-  private async guardNavigation<T>(navigate: () => Promise<T>): Promise<T> {
-    try {
-      return await navigate();
-    } catch (cause) {
-      throw translatePwError(cause, 'navigation');
-    }
-  }
 
   // --- DriverScreen ---
 
   readonly screen: DriverScreen = {
-    resolve: async (expression, operation) => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      await this.validateFrames(expression, operation);
-      const projected = projectExpression(page, expression);
-      const revision = this.nextRevision();
-      try {
+    resolve: (expression, operation) =>
+      this.guard(operation, 'resolve', async () => {
+        const page = this.requirePage();
+        await this.validateFrames(expression);
+        const projected = projectExpression(page, expression);
+        const revision = this.nextRevision();
         const count = await projected.locator.count();
         const refs: NodeRef[] = [];
         for (let i = 0; i < count; i += 1) {
@@ -268,16 +246,10 @@ export class PlaywrightSession implements DriverSession {
               .catch(() => nth.evaluate((el) => (el as HTMLInputElement).value ?? ''));
             if (!matchesText(value, projected.displayValue)) continue;
           }
-          this.refCounter += 1;
-          const id = `n${this.refCounter}`;
-          this.refs.set(id, { locator: nth, revision });
-          refs.push({ id, revision });
+          refs.push(this.storeRef(nth, revision));
         }
         return refs;
-      } catch (cause) {
-        throw translatePwError(cause, 'resolve');
-      }
-    },
+      }),
 
     read: async (ref, operation) => {
       this.checkOperation(operation);
@@ -312,10 +284,7 @@ export class PlaywrightSession implements DriverSession {
     },
   };
 
-  private async validateFrames(
-    expression: LocatorExpression,
-    operation: OperationContext,
-  ): Promise<void> {
+  private async validateFrames(expression: LocatorExpression): Promise<void> {
     const page = this.requirePage();
     for (const selector of frameSelectors(expression)) {
       let count: number;
@@ -334,7 +303,6 @@ export class PlaywrightSession implements DriverSession {
           retryable: false,
         });
       }
-      void operation;
     }
   }
 
@@ -459,301 +427,38 @@ export class PlaywrightSession implements DriverSession {
     },
   };
 
-  // --- DriverWeb ---
-
-  readonly web: DriverWeb = {
-    goto: async (url, waitUntil, operation) => {
-      this.checkOperation(operation);
-      const page = await this.ensurePage();
-      await this.guardNavigation(() =>
-        page.goto(url, { waitUntil: waitUntil ?? 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    reload: async (operation) => {
-      this.checkOperation(operation);
-      await this.guardNavigation(() =>
-        this.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    back: async (operation) => {
-      this.checkOperation(operation);
-      await this.guardNavigation(() =>
-        this.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    forward: async (operation) => {
-      this.checkOperation(operation);
-      await this.guardNavigation(() =>
-        this.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs }),
-      );
-    },
-    url: async (operation) => {
-      this.checkOperation(operation);
-      return this.requirePage().url();
-    },
-    title: async (operation) => {
-      this.checkOperation(operation);
-      return this.requirePage().title();
-    },
-    evaluate: async <T extends JsonValue>(
-      source: string,
-      argument: JsonValue | undefined,
-      operation: OperationContext,
-    ): Promise<T> => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      try {
-        if (argument === undefined) {
-          return (await page.evaluate(`(${source})()`)) as T;
-        }
-        const wrapped = new Function('arg', `return (${source})(arg);`);
-        const evaluate = page.evaluate.bind(page) as (
-          fn: unknown,
-          arg: unknown,
-        ) => Promise<unknown>;
-        return (await evaluate(wrapped, argument)) as T;
-      } catch (cause) {
-        throw translatePwError(cause, 'evaluate');
-      }
-    },
-    route: async (pattern, handler, operation) => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      const predicate = (url: URL) => routePatternMatches(pattern, url.href);
-      const pwHandler = async (route: Route): Promise<void> => {
-        const wireRoute: DriverWebRoute = {
-          request: {
-            url: route.request().url(),
-            method: route.request().method(),
-            headers: route.request().headers(),
-            ...(route.request().postData() !== null
-              ? { postData: route.request().postData()! }
-              : {}),
-          },
-          fulfill: async (response) => {
-            await route.fulfill({
-              status: response.status ?? 200,
-              headers: response.headers ?? {},
-              ...('json' in response && response.json !== undefined
-                ? { json: response.json }
-                : 'body' in response && response.body !== undefined
-                  ? { body: response.body }
-                  : { body: '' }),
-            });
-          },
-          continue: async () => {
-            await route.fallback();
-          },
-          abort: async () => {
-            await route.abort();
-          },
-        };
-        await handler(wireRoute);
-      };
-      this.routes.push({ pattern, pwHandler, predicate });
-      await page.route(predicate, pwHandler);
-    },
-    unroute: async (pattern, operation) => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      for (let i = this.routes.length - 1; i >= 0; i -= 1) {
-        const stored = this.routes[i]!;
-        if (routePatternsEqual(stored.pattern, pattern)) {
-          await page.unroute(stored.predicate, stored.pwHandler);
-          this.routes.splice(i, 1);
-        }
-      }
-    },
-    waitForResponse: async (pattern, operation): Promise<DriverWebResponse> => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      try {
-        const response = await page.waitForResponse(
-          (candidate) => routePatternMatches(pattern, candidate.url()),
-          { timeout: operation.timeoutMs },
-        );
-        const body = await response.body().catch(() => Buffer.alloc(0));
-        return {
-          url: response.url(),
-          status: response.status(),
-          headers: response.headers(),
-          body: new Uint8Array(body),
-        };
-      } catch (cause) {
-        throw translatePwError(cause, 'waitForResponse');
-      }
-    },
-    cookies: async (operation) => {
-      this.checkOperation(operation);
-      const cookies = await this.requireContext().cookies();
-      return cookies.map(
-        (cookie): Cookie => ({
-          name: cookie.name,
-          value: cookie.value,
-          domain: cookie.domain,
-          path: cookie.path,
-          ...(cookie.expires >= 0 ? { expires: Math.floor(cookie.expires) } : {}),
-          httpOnly: cookie.httpOnly,
-          secure: cookie.secure,
-          ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
-        }),
-      );
-    },
-    setCookies: async (cookies, operation) => {
-      this.checkOperation(operation);
-      await this.requireContext().addCookies(
-        cookies.map((cookie) => ({
-          name: cookie.name,
-          value: cookie.value,
-          ...(cookie.url !== undefined
-            ? { url: cookie.url }
-            : { domain: cookie.domain!, path: cookie.path ?? '/' }),
-          ...(cookie.expires !== undefined ? { expires: cookie.expires } : {}),
-          ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
-          ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
-          ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
-        })),
-      );
-    },
-    setViewport: async (size, operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().setViewportSize(size);
-    },
-    setDialogHandler: async (handler, operation) => {
-      this.checkOperation(operation);
-      this.dialogHandlerCounter += 1;
-      const id = `dialog-${this.dialogHandlerCounter}`;
-      this.dialogHandlers.set(id, handler);
-      return id;
-    },
-    removeDialogHandler: async (id, operation) => {
-      this.checkOperation(operation);
-      this.dialogHandlers.delete(id);
-    },
-    beginDownload: async (operation) => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      this.downloadCounter += 1;
-      const id = `download-${this.downloadCounter}`;
-      this.downloads.set(id, page.waitForEvent('download', { timeout: operation.timeoutMs }));
-      return id;
-    },
-    finishDownload: async (id, operation) => {
-      this.checkOperation(operation);
-      const waiter = this.downloads.get(id);
-      if (waiter === undefined) throw invalidState(`unknown download waiter ${id}`);
-      this.downloads.delete(id);
-      try {
-        const download = await waiter;
-        const suggestedFilename = download.suggestedFilename();
-        const relative = path.posix.join('downloads', `${id}-${sanitizeFilename(suggestedFilename)}`);
-        const absolute = path.join(this.driverContext.artifactsDir, relative);
-        mkdirSync(path.dirname(absolute), { recursive: true });
-        await download.saveAs(absolute);
-        return { path: relative, suggestedFilename };
-      } catch (cause) {
-        throw translatePwError(cause, 'download');
-      }
-    },
-    cancelDownload: async (id, operation) => {
-      this.checkOperation(operation);
-      const waiter = this.downloads.get(id);
-      this.downloads.delete(id);
-      waiter?.catch(() => undefined);
-    },
-    keyboardPress: async (key, operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().keyboard.press(key);
-    },
-    keyboardType: async (text, operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().keyboard.type(text);
-    },
-    mouseMove: async (x, y, operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().mouse.move(x, y);
-    },
-    mouseWheel: async (deltaX, deltaY, operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().mouse.wheel(deltaX, deltaY);
-    },
-    mouseDown: async (operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().mouse.down();
-    },
-    mouseUp: async (operation) => {
-      this.checkOperation(operation);
-      await this.requirePage().mouse.up();
-    },
-  };
-
-  private async dispatchDialog(dialog: import('playwright').Dialog): Promise<void> {
-    const entries = [...this.dialogHandlers.entries()];
-    const newest = entries[entries.length - 1];
-    if (newest === undefined) {
-      this.latchedDialogError = new DriverError(
-        'INVALID_STATE',
-        `unhandled ${dialog.type()} dialog: ${dialog.message()}`,
-        { retryable: false },
-      );
-      await dialog.dismiss().catch(() => undefined);
-      return;
-    }
-    const handler = newest[1];
-    const wireDialog: DriverDialog = {
-      message: dialog.message(),
-      accept: async (text) => {
-        await dialog.accept(text);
-      },
-      dismiss: async () => {
-        await dialog.dismiss();
-      },
-    };
-    try {
-      if (handler === 'accept') await dialog.accept();
-      else if (handler === 'dismiss') await dialog.dismiss();
-      else await handler(wireDialog);
-    } catch (cause) {
-      this.latchedDialogError = new DriverError(
-        'DRIVER_FAILURE',
-        `dialog handler failed: ${message(cause)}`,
-        { retryable: false, cause },
-      );
-    }
-  }
-
   // --- Artifacts ---
 
   readonly artifacts: DriverArtifacts = {
-    screenshot: async (label, operation) => {
-      this.checkOperation(operation);
-      const page = this.requirePage();
-      this.artifactCounter += 1;
-      const name = `${String(this.artifactCounter).padStart(3, '0')}${
-        label === undefined ? '' : `-${sanitizeFilename(label)}`
-      }.png`;
-      const relative = path.posix.join('screenshots', name);
-      const absolute = path.join(this.driverContext.artifactsDir, relative);
-      mkdirSync(path.dirname(absolute), { recursive: true });
-      await page.screenshot({ path: absolute, timeout: operation.timeoutMs });
-      return relative;
-    },
-    startTrace: async (operation) => {
-      this.checkOperation(operation);
-      const context = this.requireContext();
-      await context.tracing.start({ screenshots: true, snapshots: true });
-      this.tracing = true;
-    },
-    stopTrace: async (operation) => {
-      this.checkOperation(operation);
-      const context = this.requireContext();
-      const relative = path.posix.join('trace', 'trace.zip');
-      const absolute = path.join(this.driverContext.artifactsDir, relative);
-      mkdirSync(path.dirname(absolute), { recursive: true });
-      await context.tracing.stop({ path: absolute });
-      this.tracing = false;
-      return relative;
-    },
+    screenshot: (label, operation) =>
+      this.guard(operation, 'screenshot', async () => {
+        const page = this.requirePage();
+        this.artifactCounter += 1;
+        const name = `${String(this.artifactCounter).padStart(3, '0')}${
+          label === undefined ? '' : `-${sanitizeFilename(label)}`
+        }.png`;
+        const relative = path.posix.join('screenshots', name);
+        const absolute = path.join(this.artifactsDir, relative);
+        mkdirSync(path.dirname(absolute), { recursive: true });
+        await page.screenshot({ path: absolute, timeout: operation.timeoutMs });
+        return relative;
+      }),
+    startTrace: (operation) =>
+      this.guard(operation, 'trace', async () => {
+        const context = this.requireContext();
+        await context.tracing.start({ screenshots: true, snapshots: true });
+        this.tracing = true;
+      }),
+    stopTrace: (operation) =>
+      this.guard(operation, 'trace', async () => {
+        const context = this.requireContext();
+        const relative = path.posix.join('trace', 'trace.zip');
+        const absolute = path.join(this.artifactsDir, relative);
+        mkdirSync(path.dirname(absolute), { recursive: true });
+        await context.tracing.stop({ path: absolute });
+        this.tracing = false;
+        return relative;
+      }),
   };
 
   // --- State ---
@@ -812,7 +517,7 @@ export class PlaywrightSession implements DriverSession {
 
   async runtime(operation: OperationContext): Promise<DriverRuntime> {
     this.checkOperation(operation);
-    if (this.browser === null) throw invalidState('session is closed');
+    if (this.closed) throw invalidState('session is closed');
     const viewport = this.page?.viewportSize() ?? this.target.viewport ?? DEFAULT_VIEWPORT;
     return {
       browser: {
@@ -831,9 +536,7 @@ export class PlaywrightSession implements DriverSession {
       await this.context.tracing.stop().catch(() => undefined);
     }
     await this.context?.close().catch(() => undefined);
-    await this.browser?.close().catch(() => undefined);
     this.context = null;
-    this.browser = null;
     this.page = null;
     this.refs.clear();
   }
@@ -859,95 +562,4 @@ function toSemanticNode(ref: NodeRef, raw: RawNodeData): SemanticNode {
     attributes: raw.attributes,
     rect: raw.rect,
   };
-}
-
-function performViewportSwipe(
-  page: Page,
-  direction: ScrollDirection,
-  momentum: Momentum,
-): Promise<void> {
-  const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-  const distance = swipeDistance(
-    direction === 'up' || direction === 'down' ? viewport.height : viewport.width,
-    momentum,
-  );
-  const [deltaX, deltaY] = wheelDelta(direction, distance);
-  return page.mouse.wheel(deltaX, deltaY);
-}
-
-async function performElementSwipe(
-  locator: PwLocator,
-  direction: ScrollDirection,
-  momentum: Momentum,
-  timeout: number,
-): Promise<void> {
-  const box = await locator.boundingBox({ timeout });
-  if (box === null) {
-    throw new DriverError('NOT_ACTIONABLE', 'element has no visible bounding box', {
-      retryable: false,
-    });
-  }
-  const distance = swipeDistance(
-    direction === 'up' || direction === 'down' ? box.height : box.width,
-    momentum,
-  );
-  const [deltaX, deltaY] = wheelDelta(direction, distance);
-  await locator.hover({ timeout });
-  await locator.page().mouse.wheel(deltaX, deltaY);
-}
-
-function swipeDistance(extent: number, momentum: Momentum): number {
-  const ratio = momentum === 'fast' ? 1.5 : momentum === 'slow' ? 0.75 : 0.5;
-  return Math.round(extent * ratio);
-}
-
-function wheelDelta(direction: ScrollDirection, distance: number): [number, number] {
-  switch (direction) {
-    case 'down':
-      return [0, distance];
-    case 'up':
-      return [0, -distance];
-    case 'right':
-      return [distance, 0];
-    case 'left':
-      return [-distance, 0];
-  }
-}
-
-function sanitizeFilename(name: string): string {
-  return name.replaceAll(/[^A-Za-z0-9._\-]/g, '_').slice(0, 64) || 'artifact';
-}
-
-function invalidState(text: string): DriverError {
-  return new DriverError('INVALID_STATE', text, { retryable: false });
-}
-
-function message(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
-function isPwTimeout(cause: unknown): boolean {
-  return cause instanceof Error && cause.name === 'TimeoutError';
-}
-
-function translatePwError(cause: unknown, operation: string): DriverError {
-  if (cause instanceof DriverError) return cause;
-  if (isPwTimeout(cause)) {
-    return new DriverError('OPERATION_TIMEOUT', `${operation} timed out: ${message(cause)}`, {
-      retryable: false,
-      cause,
-    });
-  }
-  return new DriverError('DRIVER_FAILURE', `${operation} failed: ${message(cause)}`, {
-    retryable: false,
-    cause,
-  });
-}
-
-function staleOr(cause: unknown, operation: string): DriverError {
-  const text = message(cause);
-  if (/detached|not attached|resolved to hidden|no element|not found/i.test(text) || isPwTimeout(cause)) {
-    return new DriverError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
-  }
-  return translatePwError(cause, operation);
 }

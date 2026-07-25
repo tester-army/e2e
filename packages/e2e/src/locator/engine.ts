@@ -11,9 +11,12 @@ import {
 } from '../driver/index.js';
 import { E2EError, TestError } from '../internal/errors.js';
 import { describeExpression } from './expression.js';
-import { Deadline, sleep } from '../internal/time.js';
+import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.js';
 
-export const POLL_INTERVAL_MS = 100;
+/** Canonical visibility predicate over a semantic node snapshot. */
+export function isNodeVisible(node: SemanticNode | null): boolean {
+  return node !== null && node.states?.hidden !== true;
+}
 
 export interface EngineOptions {
   readonly session: DriverSession;
@@ -49,14 +52,7 @@ export class LocatorEngine {
 
   /** Builds an operation context capped by the remaining test timeout. */
   operation(timeoutMs?: number): OperationContext {
-    const remainingTest = this.options.testDeadline.remaining();
-    const budget = Math.min(timeoutMs ?? this.options.actionTimeout, remainingTest);
-    return {
-      signal: this.options.signal,
-      timeoutMs: Math.max(1, budget),
-      runId: this.options.runId,
-      attemptId: this.options.attemptId,
-    };
+    return this.operationWithin(this.deadline(timeoutMs));
   }
 
   /** Deadline for one action-family operation, capped by the test deadline. */
@@ -101,14 +97,8 @@ export class LocatorEngine {
    */
   async resolveExactlyOne(expression: LocatorExpression, deadline: Deadline): Promise<NodeRef> {
     for (;;) {
-      const refs = await this.resolveOnce(expression, deadline);
-      if (refs.length === 1) return refs[0]!;
-      if (refs.length > 1) {
-        throw new TestError(
-          'LOCATOR_AMBIGUOUS',
-          `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
-        );
-      }
+      const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
+      if (ref !== null) return ref;
       if (deadline.expired()) {
         throw new TestError(
           'LOCATOR_NOT_FOUND',
@@ -122,20 +112,14 @@ export class LocatorEngine {
   /** Immediate single resolve for direct reads: zero or multiple matches fail immediately. */
   async resolveForRead(expression: LocatorExpression): Promise<NodeRef> {
     const deadline = this.deadline(this.options.actionTimeout);
-    const refs = await this.resolveOnce(expression, deadline);
-    if (refs.length === 0) {
+    const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
+    if (ref === null) {
       throw new TestError(
         'LOCATOR_NOT_FOUND',
         `locator matched no nodes: ${describeExpression(expression)}`,
       );
     }
-    if (refs.length > 1) {
-      throw new TestError(
-        'LOCATOR_AMBIGUOUS',
-        `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
-      );
-    }
-    return refs[0]!;
+    return ref;
   }
 
   /** Resolves all current matches once without waiting. */
@@ -158,16 +142,10 @@ export class LocatorEngine {
     expression: LocatorExpression,
     deadline: Deadline,
   ): Promise<{ node: SemanticNode | null; count: number }> {
-    const refs = await this.resolveOnce(expression, deadline);
-    if (refs.length === 0) return { node: null, count: 0 };
-    if (refs.length > 1) {
-      throw new TestError(
-        'LOCATOR_AMBIGUOUS',
-        `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
-      );
-    }
+    const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
+    if (ref === null) return { node: null, count: 0 };
     try {
-      const node = await this.session.screen.read(refs[0]!, this.operationWithin(deadline));
+      const node = await this.session.screen.read(ref, this.operationWithin(deadline));
       return { node, count: 1 };
     } catch (cause) {
       if (cause instanceof DriverError && cause.code === 'NODE_STALE') {
@@ -206,6 +184,17 @@ export class LocatorEngine {
       }
     }
   }
+}
+
+/** Zero matches -> null; one -> the ref; many -> LOCATOR_AMBIGUOUS. */
+function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): NodeRef | null {
+  if (refs.length > 1) {
+    throw new TestError(
+      'LOCATOR_AMBIGUOUS',
+      `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
+    );
+  }
+  return refs[0] ?? null;
 }
 
 /** Translates a driver error into the runner-owned public taxonomy. */

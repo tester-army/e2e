@@ -49,12 +49,13 @@ export interface AttemptEnvironment {
   readonly attemptId: string;
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
-  readonly saveSession?: (name: string) => Promise<void>;
+  /** Stages one captured session state; only setup attempts provide this. */
+  readonly saveSession: ((name: string) => Promise<void>) | undefined;
   /**
    * Whether the app was opened in the owning driver session. Serial-group
    * members share one session and therefore one open state.
    */
-  readonly opened?: { value: boolean };
+  readonly opened: { value: boolean };
 }
 
 export interface FixtureGraph {
@@ -64,7 +65,7 @@ export interface FixtureGraph {
 
 /** Builds the lazy fixture graph for one attempt. */
 export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
-  const opened = environment.opened ?? { value: false };
+  const opened = environment.opened;
   const engine = new LocatorEngine({
     session: environment.driverSession,
     signal: environment.signal,
@@ -120,15 +121,14 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
     },
     session: {
       save: async (name: string) => {
-        if (environment.saveSession === undefined) {
+        const saveSession = environment.saveSession;
+        if (saveSession === undefined) {
           throw new ConfigurationError(
             'INVALID_CONFIG',
             'session.save() is only available inside setup tests',
           );
         }
-        await environment.steps.run('session', 'session.save', name, () =>
-          environment.saveSession!(name),
-        );
+        await environment.steps.run('session', 'session.save', name, () => saveSession(name));
       },
     },
   };

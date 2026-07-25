@@ -2,25 +2,21 @@
 
 import { credentialBrand, secretBrand } from './internal/brands.js';
 import { ConfigurationError } from './internal/errors.js';
+import { realmSlot } from './internal/realm-slot.js';
 import type { ResolvedCredential } from './config/resolve.js';
 import type { Credential, Credentials, Secret } from './types.js';
 
 /** Global slot so test modules in an isolated realm reach the runner's registry. */
-const CREDENTIALS_SLOT = Symbol.for('e2e.credentials.v1');
-
-type GlobalWithCredentials = typeof globalThis & {
-  [CREDENTIALS_SLOT]?: ReadonlyMap<string, ResolvedCredential>;
-};
+const credentialsSlot = realmSlot<ReadonlyMap<string, ResolvedCredential>>('e2e.credentials.v1');
 
 /** Installed by the runner once config resolution completes. */
 export function setCredentialRegistry(map: ReadonlyMap<string, ResolvedCredential> | undefined): void {
-  const slot = globalThis as GlobalWithCredentials;
-  if (map === undefined) delete slot[CREDENTIALS_SLOT];
-  else slot[CREDENTIALS_SLOT] = map;
+  if (map === undefined) credentialsSlot.delete(globalThis);
+  else credentialsSlot.set(globalThis, map);
 }
 
 function getRegistry(): ReadonlyMap<string, ResolvedCredential> | undefined {
-  return (globalThis as GlobalWithCredentials)[CREDENTIALS_SLOT];
+  return credentialsSlot.get(globalThis);
 }
 
 function makeSecret(name: string): Secret {

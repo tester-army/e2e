@@ -167,7 +167,7 @@ describe('select', () => {
     const selection = select(col, config(), { tags: ['smoke'] });
     const step2 = selection.pairs.find((pair) => pair.test.title === 'step 2')!;
     expect(step2.disposition).toBe('run');
-    expect(step2.serialClosure).toBe(true);
+    expect(step2.skip).toBeUndefined();
   });
 
   it('errors on zero runnable ordinary pairs unless passWithNoTests', async () => {

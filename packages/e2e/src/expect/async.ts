@@ -4,13 +4,11 @@ import type { SemanticNode } from '../driver/index.js';
 import { TestError } from '../internal/errors.js';
 import { normalizeText, containsText, matchesText, toTextPattern, describePattern } from '../internal/text.js';
 import { urlMatches, type NormalizedBaseUrl } from '../internal/urls.js';
-import { Deadline, sleep } from '../internal/time.js';
+import { Deadline, pollCondition } from '../internal/time.js';
+import { isNodeVisible } from '../locator/engine.js';
 import { describeExpression } from '../locator/expression.js';
 import type { LocatorInternals } from '../locator/screen.js';
 import type { AsyncExpectation, TextMatch, WebExpectation } from '../types.js';
-
-const NEGATION_GRACE_MS = 1000;
-const POLL_INTERVAL_MS = 100;
 
 interface Sample {
   readonly count: number;
@@ -19,14 +17,64 @@ interface Sample {
 
 interface MatcherSpec {
   readonly name: string;
-  /** Zero matches satisfy the positive condition (toBeHidden family). */
-  readonly zeroMatchesPass?: boolean;
   /** Evaluates the whole sample instead of requiring one node. */
   readonly wholeSet?: boolean;
+  /** The predicate is meaningful even when zero nodes match. */
+  readonly evaluableWithoutNode?: boolean;
   readonly predicate: (sample: Sample) => boolean;
   readonly describeExpected: string;
   readonly observed: (sample: Sample) => string;
 }
+
+type StateKey = 'disabled' | 'checked' | 'selected' | 'expanded';
+
+interface StateMatcherDef {
+  readonly key: StateKey;
+  readonly expected: boolean;
+  readonly describeExpected: string;
+}
+
+const STATE_MATCHERS = {
+  toBeEnabled: { key: 'disabled', expected: false, describeExpected: 'enabled' },
+  toBeDisabled: { key: 'disabled', expected: true, describeExpected: 'disabled' },
+  toBeChecked: { key: 'checked', expected: true, describeExpected: 'checked' },
+  toBeSelected: { key: 'selected', expected: true, describeExpected: 'selected' },
+  toBeExpanded: { key: 'expanded', expected: true, describeExpected: 'expanded' },
+} as const satisfies Record<string, StateMatcherDef>;
+
+interface TextMatcherDef {
+  readonly field: 'text' | 'value' | 'name';
+  readonly match: (actual: string, pattern: ReturnType<typeof toTextPattern>) => boolean;
+  readonly describeExpected: (pattern: string) => string;
+  readonly normalize: boolean;
+}
+
+const TEXT_MATCHERS = {
+  toHaveText: {
+    field: 'text',
+    match: matchesText,
+    describeExpected: (pattern) => `text ${pattern}`,
+    normalize: true,
+  },
+  toContainText: {
+    field: 'text',
+    match: containsText,
+    describeExpected: (pattern) => `text containing ${pattern}`,
+    normalize: true,
+  },
+  toHaveValue: {
+    field: 'value',
+    match: matchesText,
+    describeExpected: (pattern) => `value ${pattern}`,
+    normalize: false,
+  },
+  toHaveAccessibleName: {
+    field: 'name',
+    match: matchesText,
+    describeExpected: (pattern) => `accessible name ${pattern}`,
+    normalize: false,
+  },
+} as const satisfies Record<string, TextMatcherDef>;
 
 class AsyncExpectationImpl implements AsyncExpectation {
   constructor(
@@ -48,28 +96,18 @@ class AsyncExpectationImpl implements AsyncExpectation {
     await this.internals.context.steps.run('assertion', api, this.label, async () => {
       const deadline = engine.deadline(timeout ?? engine.assertionTimeout);
       let lastSample: Sample = { count: 0, node: null };
-      let negatedTrueSince: number | undefined;
-
-      for (;;) {
-        const sample = await this.sample(spec, deadline);
-        lastSample = sample;
-
-        if (!this.negated) {
-          if (spec.predicate(sample)) return;
-        } else {
-          const negatedCondition = this.negatedConditionEvaluable(spec, sample)
-            ? !spec.predicate(sample)
-            : false;
-          if (negatedCondition) {
-            negatedTrueSince ??= Date.now();
-            if (Date.now() - negatedTrueSince >= NEGATION_GRACE_MS) return;
-          } else {
-            negatedTrueSince = undefined;
-          }
-        }
-
-        if (deadline.expired()) {
-          throw new TestError(
+      await pollCondition({
+        deadline,
+        signal: engine.signal,
+        negated: this.negated,
+        evaluate: async () => {
+          const sample = await this.sample(spec, deadline);
+          lastSample = sample;
+          if (!this.conditionEvaluable(spec, sample)) return undefined;
+          return spec.predicate(sample);
+        },
+        onTimeout: () =>
+          new TestError(
             'ASSERTION_FAILED',
             [
               `${api} failed`,
@@ -77,21 +115,17 @@ class AsyncExpectationImpl implements AsyncExpectation {
               `expected: ${this.negated ? 'not ' : ''}${spec.describeExpected}`,
               `observed: ${spec.observed(lastSample)} (match count ${lastSample.count})`,
             ].join('\n'),
-          );
-        }
-        await sleep(POLL_INTERVAL_MS, engine.signal);
-      }
+          ),
+      });
     });
   }
 
   /**
-   * Negated single-node matchers still require an unambiguous node, except
-   * negated visibility which accepts zero matches.
+   * Single-node matchers require an unambiguous node before their predicate
+   * means anything; visibility matchers also accept zero matches.
    */
-  private negatedConditionEvaluable(spec: MatcherSpec, sample: Sample): boolean {
-    if (spec.wholeSet === true) return true;
-    if (sample.node !== null) return true;
-    return spec.zeroMatchesPass === true || spec.name === 'toBeVisible';
+  private conditionEvaluable(spec: MatcherSpec, sample: Sample): boolean {
+    return spec.wholeSet === true || sample.node !== null || spec.evaluableWithoutNode === true;
   }
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
@@ -104,11 +138,48 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return { count, node };
   }
 
+  private stateMatcher(name: keyof typeof STATE_MATCHERS, timeout: number | undefined): Promise<void> {
+    const def = STATE_MATCHERS[name];
+    return this.poll(
+      {
+        name,
+        predicate: (sample) =>
+          sample.node !== null && (sample.node.states?.[def.key] === true) === def.expected,
+        describeExpected: def.describeExpected,
+        observed: observedState,
+      },
+      timeout,
+    );
+  }
+
+  private textMatcher(
+    name: keyof typeof TEXT_MATCHERS,
+    expected: TextMatch,
+    timeout: number | undefined,
+  ): Promise<void> {
+    const def = TEXT_MATCHERS[name];
+    const pattern = toTextPattern(expected, { exact: true });
+    return this.poll(
+      {
+        name,
+        predicate: (sample) => sample.node !== null && def.match(sample.node[def.field] ?? '', pattern),
+        describeExpected: def.describeExpected(describePattern(pattern)),
+        observed: (sample) => {
+          if (sample.node === null) return 'no node';
+          const raw = sample.node[def.field] ?? '';
+          return `${def.field} ${JSON.stringify(def.normalize ? normalizeText(raw) : raw)}`;
+        },
+      },
+      timeout,
+    );
+  }
+
   toBeVisible(options?: { timeout?: number }): Promise<void> {
     return this.poll(
       {
         name: 'toBeVisible',
-        predicate: (sample) => sample.node !== null && sample.node.states?.hidden !== true,
+        evaluableWithoutNode: true,
+        predicate: (sample) => isNodeVisible(sample.node),
         describeExpected: 'visible',
         observed: observedState,
       },
@@ -120,8 +191,8 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name: 'toBeHidden',
-        zeroMatchesPass: true,
-        predicate: (sample) => sample.node === null || sample.node.states?.hidden === true,
+        evaluableWithoutNode: true,
+        predicate: (sample) => !isNodeVisible(sample.node),
         describeExpected: 'hidden or absent',
         observed: observedState,
       },
@@ -130,105 +201,39 @@ class AsyncExpectationImpl implements AsyncExpectation {
   }
 
   toBeEnabled(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeEnabled',
-        predicate: (sample) => sample.node !== null && sample.node.states?.disabled !== true,
-        describeExpected: 'enabled',
-        observed: observedState,
-      },
-      options?.timeout,
-    );
+    return this.stateMatcher('toBeEnabled', options?.timeout);
   }
 
   toBeDisabled(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeDisabled',
-        predicate: (sample) => sample.node !== null && sample.node.states?.disabled === true,
-        describeExpected: 'disabled',
-        observed: observedState,
-      },
-      options?.timeout,
-    );
+    return this.stateMatcher('toBeDisabled', options?.timeout);
   }
 
   toBeChecked(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeChecked',
-        predicate: (sample) => sample.node !== null && sample.node.states?.checked === true,
-        describeExpected: 'checked',
-        observed: observedState,
-      },
-      options?.timeout,
-    );
+    return this.stateMatcher('toBeChecked', options?.timeout);
   }
 
   toBeSelected(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeSelected',
-        predicate: (sample) => sample.node !== null && sample.node.states?.selected === true,
-        describeExpected: 'selected',
-        observed: observedState,
-      },
-      options?.timeout,
-    );
+    return this.stateMatcher('toBeSelected', options?.timeout);
   }
 
   toBeExpanded(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeExpanded',
-        predicate: (sample) => sample.node !== null && sample.node.states?.expanded === true,
-        describeExpected: 'expanded',
-        observed: observedState,
-      },
-      options?.timeout,
-    );
+    return this.stateMatcher('toBeExpanded', options?.timeout);
   }
 
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    const pattern = toTextPattern(expected, { exact: true });
-    return this.poll(
-      {
-        name: 'toHaveText',
-        predicate: (sample) => sample.node !== null && matchesText(sample.node.text ?? '', pattern),
-        describeExpected: `text ${describePattern(pattern)}`,
-        observed: (sample) =>
-          sample.node === null ? 'no node' : `text ${JSON.stringify(normalizeText(sample.node.text ?? ''))}`,
-      },
-      options?.timeout,
-    );
+    return this.textMatcher('toHaveText', expected, options?.timeout);
   }
 
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    const pattern = toTextPattern(expected, { exact: true });
-    return this.poll(
-      {
-        name: 'toContainText',
-        predicate: (sample) => sample.node !== null && containsText(sample.node.text ?? '', pattern),
-        describeExpected: `text containing ${describePattern(pattern)}`,
-        observed: (sample) =>
-          sample.node === null ? 'no node' : `text ${JSON.stringify(normalizeText(sample.node.text ?? ''))}`,
-      },
-      options?.timeout,
-    );
+    return this.textMatcher('toContainText', expected, options?.timeout);
   }
 
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    const pattern = toTextPattern(expected, { exact: true });
-    return this.poll(
-      {
-        name: 'toHaveValue',
-        predicate: (sample) => sample.node !== null && matchesText(sample.node.value ?? '', pattern),
-        describeExpected: `value ${describePattern(pattern)}`,
-        observed: (sample) =>
-          sample.node === null ? 'no node' : `value ${JSON.stringify(sample.node.value ?? '')}`,
-      },
-      options?.timeout,
-    );
+    return this.textMatcher('toHaveValue', expected, options?.timeout);
+  }
+
+  toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
+    return this.textMatcher('toHaveAccessibleName', expected, options?.timeout);
   }
 
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void> {
@@ -239,20 +244,6 @@ class AsyncExpectationImpl implements AsyncExpectation {
         predicate: (sample) => sample.count === expected,
         describeExpected: `count ${expected}`,
         observed: (sample) => `count ${sample.count}`,
-      },
-      options?.timeout,
-    );
-  }
-
-  toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    const pattern = toTextPattern(expected, { exact: true });
-    return this.poll(
-      {
-        name: 'toHaveAccessibleName',
-        predicate: (sample) => sample.node !== null && matchesText(sample.node.name ?? '', pattern),
-        describeExpected: `accessible name ${describePattern(pattern)}`,
-        observed: (sample) =>
-          sample.node === null ? 'no node' : `name ${JSON.stringify(sample.node.name ?? '')}`,
       },
       options?.timeout,
     );
@@ -300,28 +291,19 @@ class WebExpectationImpl implements WebExpectation {
     timeout: number | undefined,
   ): Promise<void> {
     const fullApi = `expect.${this.negated ? 'not.' : ''}${api}`;
-    await this.target.runStep(fullApi, label, async () => {
-      const deadline = new Deadline(timeout ?? this.target.assertionTimeout);
-      let negatedTrueSince: number | undefined;
-      for (;;) {
-        const value = await condition();
-        if (!this.negated) {
-          if (value) return;
-        } else if (!value) {
-          negatedTrueSince ??= Date.now();
-          if (Date.now() - negatedTrueSince >= NEGATION_GRACE_MS) return;
-        } else {
-          negatedTrueSince = undefined;
-        }
-        if (deadline.expired()) {
-          throw new TestError(
+    await this.target.runStep(fullApi, label, () =>
+      pollCondition({
+        deadline: new Deadline(timeout ?? this.target.assertionTimeout),
+        signal: this.target.signal,
+        negated: this.negated,
+        evaluate: condition,
+        onTimeout: async () =>
+          new TestError(
             'ASSERTION_FAILED',
             `${fullApi} failed\nexpected: ${this.negated ? 'not ' : ''}${label}\nobserved: ${await observed()}`,
-          );
-        }
-        await sleep(POLL_INTERVAL_MS, this.target.signal);
-      }
-    });
+          ),
+      }),
+    );
   }
 
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void> {

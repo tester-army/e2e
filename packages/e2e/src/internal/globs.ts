@@ -3,6 +3,7 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError } from './errors.js';
+import { escapeRegexpChar } from './regexp.js';
 
 interface CompiledGlob {
   readonly segments: readonly GlobSegment[];
@@ -45,13 +46,9 @@ function compileSegment(segment: string): RegExp {
     const ch = segment[i]!;
     if (ch === '*') source += '[^/]*';
     else if (ch === '?') source += '[^/]';
-    else source += escapeRegexp(ch);
+    else source += escapeRegexpChar(ch);
   }
   return new RegExp(`${source}$`);
-}
-
-function escapeRegexp(ch: string): string {
-  return /[a-zA-Z0-9_\-]/.test(ch) ? ch : `\\${ch}`;
 }
 
 /** Matches one already-normalized relative path (with `/` separators). */

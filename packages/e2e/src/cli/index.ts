@@ -19,6 +19,17 @@ function parseList(value: string): string[] {
     .filter((item) => item !== '');
 }
 
+const REPORTERS = ['list', 'json', 'html'] as const;
+type Reporter = (typeof REPORTERS)[number];
+
+function isReporter(value: string): value is Reporter {
+  return (REPORTERS as readonly string[]).includes(value);
+}
+
+function isTagMode(value: string): value is 'any' | 'all' {
+  return value === 'any' || value === 'all';
+}
+
 /** Builds the commander program. */
 export function createProgram(): Command {
   const program = new Command('e2e');
@@ -47,6 +58,7 @@ export function createProgram(): Command {
     .option('--artifacts <dir>', 'artifact root, default .e2e/artifacts')
     .option('--no-agent-cache', 'force agent cache mode off')
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')
+    .option('--debug', 'print aggregated phase timings to stderr after the run')
     .action(
       async (
         files: string[],
@@ -61,36 +73,34 @@ export function createProgram(): Command {
           reporter?: string[];
           artifacts?: string;
           passWithNoTests?: boolean;
+          debug?: boolean;
         },
       ) => {
-        if (options.tagMode !== 'any' && options.tagMode !== 'all') {
-          process.stderr.write(`invalid --tag-mode "${options.tagMode}"; expected any or all\n`);
+        const { tagMode, reporter } = options;
+        if (!isTagMode(tagMode)) {
+          process.stderr.write(`invalid --tag-mode "${tagMode}"; expected any or all\n`);
           process.exitCode = 2;
           return;
         }
-        for (const reporter of options.reporter ?? []) {
-          if (!['list', 'json', 'html'].includes(reporter)) {
-            process.stderr.write(`unknown reporter "${reporter}"\n`);
-            process.exitCode = 2;
-            return;
-          }
+        const invalidReporter = reporter?.find((value) => !isReporter(value));
+        if (invalidReporter !== undefined) {
+          process.stderr.write(`unknown reporter "${invalidReporter}"\n`);
+          process.exitCode = 2;
+          return;
         }
         const outcome = await run({
           files,
-          ...(options.config !== undefined ? { configPath: options.config } : {}),
-          ...(options.target !== undefined ? { targetIds: options.target } : {}),
-          ...(options.tag !== undefined ? { tags: options.tag } : {}),
-          tagMode: options.tagMode as 'any' | 'all',
-          ...(options.headed !== undefined ? { headed: options.headed } : {}),
-          ...(options.retries !== undefined ? { retries: options.retries } : {}),
-          ...(options.workers !== undefined ? { workers: options.workers } : {}),
-          ...(options.reporter !== undefined
-            ? { reporters: options.reporter as ('list' | 'json' | 'html')[] }
-            : {}),
-          ...(options.artifacts !== undefined ? { artifactsDir: options.artifacts } : {}),
-          ...(options.passWithNoTests !== undefined
-            ? { passWithNoTests: options.passWithNoTests }
-            : {}),
+          configPath: options.config,
+          targetIds: options.target,
+          tags: options.tag,
+          tagMode,
+          headed: options.headed,
+          retries: options.retries,
+          workers: options.workers,
+          reporters: reporter?.filter(isReporter),
+          artifactsDir: options.artifacts,
+          passWithNoTests: options.passWithNoTests,
+          debug: options.debug,
         });
         process.exitCode = outcome.exitCode;
       },

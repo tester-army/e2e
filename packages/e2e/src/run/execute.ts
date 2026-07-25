@@ -12,9 +12,10 @@ import {
   TestTimeoutError,
   type SerializedError,
 } from '../internal/errors.js';
+import { DebugTrace } from '../internal/debug.js';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.js';
 import { Deadline, withTimeout } from '../internal/time.js';
-import type { CollectedFile, CollectedTest } from '../collect/collect.js';
+import type { CollectedFile } from '../collect/collect.js';
 import type { RegisteredTest } from '../collect/registry.js';
 import type { SkipInfo, TestTargetPair } from '../collect/select.js';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.js';
@@ -23,10 +24,10 @@ import { findRegistered, RealmManager, type Realm } from './realm.js';
 import type {
   AttemptRecord,
   ResultRecord,
-  ResultStatus,
   RunError,
   SerialGroupRecord,
 } from './records.js';
+import { runWithRetries } from './retry.js';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.js';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.js';
 import { StepRecorder } from './steps.js';
@@ -40,7 +41,6 @@ export interface ExecutionOutcome {
   readonly results: readonly ResultRecord[];
   readonly serialGroups: readonly SerialGroupRecord[];
   readonly runErrors: readonly RunError[];
-  readonly interrupted: boolean;
 }
 
 export interface TargetExecutorOptions {
@@ -52,34 +52,65 @@ export interface TargetExecutorOptions {
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
   readonly interruptSignal: AbortSignal;
+  readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
 }
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
 
+/** How one attempt acquires its driver session and session-staging hooks. */
+export type AttemptContext =
+  | { readonly kind: 'ordinary' }
+  | { readonly kind: 'setup'; readonly staging: SessionStaging }
+  | { readonly kind: 'serial'; readonly shared: SharedSerialSession };
+
 /** Executes every selected pair for one target sequentially. */
-export class TargetExecutor {
+export class TargetExecutor implements SerialHost {
+  readonly target: ResolvedTarget;
+  readonly artifactsRoot: string;
+  readonly interruptSignal: AbortSignal;
+  readonly realms: RealmManager;
+  readonly debug: DebugTrace;
+
   private readonly results: ResultRecord[] = [];
   private readonly serialGroups: SerialGroupRecord[] = [];
   private readonly runErrors: RunError[] = [];
-  private readonly realms: RealmManager;
-  private failedSetupSessions = new Map<string, string>();
+  private readonly sessionIdentity: SessionIdentity;
+  private readonly failedSetupSessions = new Map<string, string>();
 
   constructor(private readonly options: TargetExecutorOptions) {
+    this.target = options.target;
+    this.artifactsRoot = options.artifactsRoot;
+    this.interruptSignal = options.interruptSignal;
+    this.debug = options.debug ?? new DebugTrace(false);
     this.realms = new RealmManager({
       targetName: options.target.name,
       platform: options.target.platform,
       timeout: options.config.timeout,
       cleanupTimeout: options.config.cleanupTimeout,
       runErrors: this.runErrors,
+      debug: this.debug,
     });
+    this.sessionIdentity = {
+      targetId: options.target.name,
+      driverId: options.driver.id,
+      driverVersion: options.driver.version,
+      spiVersion: options.driver.spiVersion,
+      platform: options.target.platform,
+      appIdentity: canonicalDigest({
+        origin: options.config.app.base.origin,
+        basePath: options.config.app.base.basePath,
+        environment: options.config.app.environment,
+      }),
+    };
   }
 
   private get config(): ResolvedConfig {
     return this.options.config;
   }
 
-  private emit(result: ResultRecord): void {
+  /** Emits one final result record (SerialHost). */
+  emit(result: ResultRecord): void {
     this.results.push(result);
     this.options.events?.onResult?.(result);
   }
@@ -93,56 +124,23 @@ export class TargetExecutor {
     return { signal, timeoutMs, runId: this.options.runId, attemptId };
   }
 
-  private sessionIdentity(): SessionIdentity {
-    return {
-      targetId: this.options.target.name,
-      driverId: this.options.driver.id,
-      driverVersion: this.options.driver.version,
-      spiVersion: this.options.driver.spiVersion,
-      platform: this.options.target.platform,
-      appIdentity: canonicalDigest({
-        origin: this.config.app.base.origin,
-        basePath: this.config.app.base.basePath,
-        environment: this.config.app.environment,
-      }),
-    };
-  }
-
-  private serialHost(): SerialHost {
-    return {
-      target: this.options.target,
-      artifactsRoot: this.options.artifactsRoot,
-      interruptSignal: this.options.interruptSignal,
-      realms: this.realms,
-      launchSession: (pair, attemptId, artifactsDir, signal) =>
-        this.launchSession(pair, attemptId, artifactsDir, signal),
-      closeSession: (session, attemptId, record, sink, secondaryErrors) =>
-        this.closeSession(session, attemptId, record, sink, secondaryErrors),
-      runAttempt: (pair, registered, realm, attemptIndex, shared) =>
-        this.runAttempt(pair, registered, realm, attemptIndex, undefined, shared),
-      emit: (result) => this.emit(result),
-    };
-  }
-
   /** Runs all pairs for this target in report order. */
   async run(pairs: readonly TestTargetPair[], files: readonly CollectedFile[]): Promise<ExecutionOutcome> {
-    const byTarget = pairs.filter((pair) => pair.target.name === this.options.target.name);
-
-    const setupPairs = byTarget.filter((pair) => pair.test.kind === 'setup' && pair.disposition === 'run');
+    const setupPairs = pairs.filter((pair) => pair.test.kind === 'setup' && pair.disposition === 'run');
     for (const pair of setupPairs) {
-      if (this.options.interruptSignal.aborted) break;
+      if (this.interruptSignal.aborted) break;
       await this.runSetupPair(pair);
     }
 
     const executedSerialUnits = new Set<string>();
     for (const file of files) {
-      if (this.options.interruptSignal.aborted) break;
-      const filePairs = byTarget.filter(
+      if (this.interruptSignal.aborted) break;
+      const filePairs = pairs.filter(
         (pair) => pair.test.file === file.file && pair.test.kind === 'test',
       );
       let realm: Realm | null = null;
       for (const pair of filePairs.sort((a, b) => a.test.declarationIndex - b.test.declarationIndex)) {
-        if (this.options.interruptSignal.aborted) {
+        if (this.interruptSignal.aborted) {
           this.emitUnstartedInterrupted(pair);
           continue;
         }
@@ -168,13 +166,12 @@ export class TargetExecutor {
             const members = filePairs
               .filter((member) => member.test.serialId === pair.test.serialId)
               .sort((a, b) => a.test.declarationIndex - b.test.declarationIndex);
-            this.serialGroups.push(await runSerialUnit(this.serialHost(), members, file));
+            this.serialGroups.push(await runSerialUnit(this, members, file.absolutePath));
             realm = null;
           }
           continue;
         }
-        const outcome = await this.runOrdinaryPair(pair, file, realm);
-        realm = outcome.realm;
+        realm = await this.runOrdinaryPair(pair, file, realm);
       }
       if (realm !== null) await this.realms.leave(realm);
     }
@@ -183,7 +180,6 @@ export class TargetExecutor {
       results: this.results,
       serialGroups: this.serialGroups,
       runErrors: this.runErrors,
-      interrupted: this.options.interruptSignal.aborted,
     };
   }
 
@@ -228,7 +224,7 @@ export class TargetExecutor {
     return { cause: 'setup-failed', reason: `setup for session "${session}" failed`, relatedId: failedSetup };
   }
 
-  private recordDisappeared(test: CollectedTest, message: string): void {
+  private recordDisappeared(message: string): void {
     this.runErrors.push({
       error: serializeError(new ConfigurationError('COLLECTION_ERROR', message), {
         phase: 'collection',
@@ -242,55 +238,45 @@ export class TargetExecutor {
     pair: TestTargetPair,
     file: CollectedFile,
     incomingRealm: Realm | null,
-  ): Promise<{ realm: Realm | null }> {
+  ): Promise<Realm | null> {
     const attempts: AttemptRecord[] = [];
-    const maxAttempts = pair.options.retries + 1;
     let realm = incomingRealm;
-    let finalStatus: ResultStatus = 'failed';
+    let hookFailure: SerializedError | undefined;
 
-    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-      if (this.options.interruptSignal.aborted) break;
-      if (realm === null) realm = await this.realms.create(file);
-
-      const registered = findRegistered(realm, pair.test);
-      if (registered === undefined) {
-        this.recordDisappeared(
-          pair.test,
-          `test ${pair.test.id} disappeared on re-import; registration must be deterministic`,
-        );
-        break;
-      }
-
-      const hookFailure = await this.realms.enterScopes(realm, registered);
-      if (hookFailure !== undefined) {
-        this.emit({
-          test: pair.test,
-          target: pair.target,
-          status: 'skipped',
-          selected: true,
-          skip: { cause: 'hook-failed', reason: hookFailure.message },
-          attempts: [],
+    const finalStatus = await runWithRetries(
+      pair.options.retries + 1,
+      this.interruptSignal,
+      async (attemptIndex) => {
+        if (realm === null) realm = await this.realms.create(file.absolutePath);
+        const registered = findRegistered(realm, pair.test);
+        if (registered === undefined) {
+          this.recordDisappeared(
+            `test ${pair.test.id} disappeared on re-import; registration must be deterministic`,
+          );
+          return undefined;
+        }
+        hookFailure = await this.realms.enterScopes(realm, registered);
+        if (hookFailure !== undefined) return undefined;
+        const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, {
+          kind: 'ordinary',
         });
-        return { realm };
-      }
+        attempts.push(attempt);
+        if (attempt.status !== 'passed') realm = null;
+        return attempt;
+      },
+    );
 
-      const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, undefined);
-      attempts.push(attempt);
-
-      if (attempt.status === 'passed') {
-        finalStatus = passedStatus(attempts);
-        break;
-      }
-      if (attempt.status === 'interrupted') {
-        finalStatus = 'interrupted';
-        realm = null;
-        break;
-      }
-      finalStatus = attempt.status;
-      realm = null;
-      if (!isRetryEligible(attempt)) break;
+    if (hookFailure !== undefined) {
+      this.emit({
+        test: pair.test,
+        target: pair.target,
+        status: 'skipped',
+        selected: true,
+        skip: { cause: 'hook-failed', reason: hookFailure.message },
+        attempts: [],
+      });
+      return realm;
     }
-
     this.emit({
       test: pair.test,
       target: pair.target,
@@ -298,63 +284,54 @@ export class TargetExecutor {
       selected: true,
       attempts,
     });
-    return { realm };
+    return realm;
   }
 
   // --- setup tests ---
 
   private async runSetupPair(pair: TestTargetPair): Promise<void> {
-    const file: CollectedFile = {
-      file: pair.test.file,
-      absolutePath: path.resolve(this.config.projectRoot, pair.test.file),
-      registration: { tests: [], hooks: [] },
-      tests: [],
-    };
+    const absolutePath = path.resolve(this.config.projectRoot, pair.test.file);
     const attempts: AttemptRecord[] = [];
-    const maxAttempts = pair.options.retries + 1;
-    let finalStatus: ResultStatus = 'failed';
 
-    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-      if (this.options.interruptSignal.aborted) break;
-      const realm = await this.realms.create(file);
-      const registered = findRegistered(realm, pair.test);
-      if (registered === undefined) {
-        this.recordDisappeared(pair.test, `setup ${pair.test.id} disappeared on re-import`);
-        break;
-      }
-      const staging = new SessionStaging(pair.test.sessions);
-      const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, staging);
-      attempts.push(attempt);
-      await this.realms.leave(realm);
+    const finalStatus = await runWithRetries(
+      pair.options.retries + 1,
+      this.interruptSignal,
+      async (attemptIndex) => {
+        const realm = await this.realms.create(absolutePath);
+        const registered = findRegistered(realm, pair.test);
+        if (registered === undefined) {
+          this.recordDisappeared(`setup ${pair.test.id} disappeared on re-import`);
+          return undefined;
+        }
+        const staging = new SessionStaging(pair.test.sessions);
+        const attempt = await this.runAttempt(pair, registered, realm, attemptIndex, {
+          kind: 'setup',
+          staging,
+        });
+        attempts.push(attempt);
+        await this.realms.leave(realm);
 
-      if (attempt.status === 'passed') {
-        const missing = staging.missing();
-        if (missing.length > 0) {
-          attempt.status = 'failed';
-          attempt.error = serializeError(
-            new E2EError(
-              'test',
-              'SESSION_CONTRACT',
-              `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
-            ),
-            { phase: 'body' },
-          );
-          finalStatus = 'failed';
-          continue;
+        if (attempt.status === 'passed') {
+          const missing = staging.missing();
+          if (missing.length > 0) {
+            attempt.status = 'failed';
+            attempt.error = serializeError(
+              new E2EError(
+                'test',
+                'SESSION_CONTRACT',
+                `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
+              ),
+              { phase: 'body' },
+            );
+            return attempt;
+          }
+          for (const [name, state] of staging.entries()) {
+            await this.options.sessionStore.save(name, this.sessionIdentity, state);
+          }
         }
-        for (const [name, state] of staging.entries()) {
-          await this.options.sessionStore.save(name, this.sessionIdentity(), state);
-        }
-        finalStatus = passedStatus(attempts);
-        break;
-      }
-      if (attempt.status === 'interrupted') {
-        finalStatus = 'interrupted';
-        break;
-      }
-      finalStatus = attempt.status;
-      if (!isRetryEligible(attempt)) break;
-    }
+        return attempt;
+      },
+    );
 
     if (finalStatus !== 'passed' && finalStatus !== 'flaky') {
       for (const session of pair.test.sessions) {
@@ -373,35 +350,37 @@ export class TargetExecutor {
   // --- attempt core ---
 
   /** Launches one driver session, restores a configured session, and starts tracing. */
-  private async launchSession(
+  async launchSession(
     pair: TestTargetPair,
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
   ): Promise<DriverSession> {
-    const driverSession = await withTimeout(
-      this.options.driver.launch({
-        target: this.options.target.driverTarget,
-        targetId: this.options.target.name,
-        app: {
-          baseUrl: this.config.app.base.href,
-          allowedOrigins: this.config.app.allowedOrigins,
-          environment: this.config.app.environment,
-          allowProduction: this.config.app.allowProduction,
-          testIdAttribute: this.config.testIdAttribute,
-        },
-        artifactsDir,
-        runId: this.options.runId,
-        attemptId,
-        operation: this.op(attemptId, this.config.launchTimeout, signal),
-        launchOptions: { headed: this.options.headed },
-      }),
-      this.config.launchTimeout,
-      () => new InfrastructureError('LAUNCH_TIMEOUT', 'driver launch timed out'),
+    const driverSession = await this.debug.time('session.launch', () =>
+      withTimeout(
+        this.options.driver.launch({
+          target: this.target.driverTarget,
+          targetId: this.target.name,
+          app: {
+            baseUrl: this.config.app.base.href,
+            allowedOrigins: this.config.app.allowedOrigins,
+            environment: this.config.app.environment,
+            allowProduction: this.config.app.allowProduction,
+            testIdAttribute: this.config.testIdAttribute,
+          },
+          artifactsDir,
+          runId: this.options.runId,
+          attemptId,
+          operation: this.op(attemptId, this.config.launchTimeout, signal),
+          launchOptions: { headed: this.options.headed },
+        }),
+        this.config.launchTimeout,
+        () => new InfrastructureError('LAUNCH_TIMEOUT', 'driver launch timed out'),
+      ),
     );
 
     if (pair.options.session !== undefined) {
-      const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity());
+      const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
       if (driverSession.restoreState === undefined) {
         throw new ConfigurationError('UNSUPPORTED_CAPABILITY', 'driver does not support state restore');
       }
@@ -417,7 +396,7 @@ export class TargetExecutor {
   }
 
   /** Finalizes trace and closes the driver session with a fresh cleanup budget. */
-  private async closeSession(
+  async closeSession(
     driverSession: DriverSession,
     attemptId: string,
     record: { cleanup: 'complete' | 'failed' | 'forced' },
@@ -435,10 +414,12 @@ export class TargetExecutor {
       }
     }
     try {
-      await withTimeout(
-        driverSession.close(this.op(attemptId, this.config.cleanupTimeout)),
-        this.config.cleanupTimeout,
-        () => new InfrastructureError('CLEANUP_TIMEOUT', 'driver close timed out'),
+      await this.debug.time('session.close', () =>
+        withTimeout(
+          driverSession.close(this.op(attemptId, this.config.cleanupTimeout)),
+          this.config.cleanupTimeout,
+          () => new InfrastructureError('CLEANUP_TIMEOUT', 'driver close timed out'),
+        ),
       );
     } catch (cause) {
       record.cleanup = 'failed';
@@ -446,13 +427,13 @@ export class TargetExecutor {
     }
   }
 
-  private async runAttempt(
+  /** Runs one attempt to completion (SerialHost). */
+  async runAttempt(
     pair: TestTargetPair,
     registered: RegisteredTest,
     realm: Realm,
     attemptIndex: number,
-    staging: SessionStaging | undefined,
-    shared?: SharedSerialSession,
+    context: AttemptContext,
   ): Promise<AttemptRecord> {
     const attemptId = uuidv7();
     const startedAt = timestamp();
@@ -461,11 +442,11 @@ export class TargetExecutor {
     const secondaryErrors: SerializedError[] = [];
     const attemptAbort = new AbortController();
     const onInterrupt = () => attemptAbort.abort();
-    this.options.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
+    this.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
 
     const artifacts = createAttemptArtifacts({
-      artifactsRoot: this.options.artifactsRoot,
-      segments: [this.options.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
+      artifactsRoot: this.artifactsRoot,
+      segments: [this.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
       attemptId,
       currentStepId: () => steps.currentStepId,
     });
@@ -489,40 +470,40 @@ export class TargetExecutor {
     let timedOut = false;
 
     try {
-      if (shared !== undefined) {
-        driverSession = shared.session;
-      } else {
-        driverSession = await this.launchSession(pair, attemptId, artifacts.dir, attemptAbort.signal);
-      }
+      const session =
+        context.kind === 'serial'
+          ? context.shared.session
+          : await this.launchSession(pair, attemptId, artifacts.dir, attemptAbort.signal);
+      driverSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);
+      const saveSession =
+        context.kind !== 'setup'
+          ? undefined
+          : async (name: string): Promise<void> => {
+              if (session.captureState === undefined) {
+                throw new ConfigurationError(
+                  'UNSUPPORTED_CAPABILITY',
+                  'driver does not support state capture',
+                );
+              }
+              const state = await session.captureState(
+                this.op(attemptId, this.config.actionTimeout, attemptAbort.signal),
+              );
+              context.staging.stage(name, state);
+            };
       const { fixtures } = createFixtures({
         config: this.config,
-        target: this.options.target,
-        driverSession,
+        target: this.target,
+        driverSession: session,
         steps,
         signal: attemptAbort.signal,
         runId: this.options.runId,
         attemptId,
         testDeadline,
         artifacts: artifacts.sink,
-        ...(shared !== undefined ? { opened: shared.opened } : {}),
-        ...(staging !== undefined
-          ? {
-              saveSession: async (name: string) => {
-                if (driverSession!.captureState === undefined) {
-                  throw new ConfigurationError(
-                    'UNSUPPORTED_CAPABILITY',
-                    'driver does not support state capture',
-                  );
-                }
-                const state = await driverSession!.captureState(
-                  this.op(attemptId, this.config.actionTimeout, attemptAbort.signal),
-                );
-                staging.stage(name, state);
-              },
-            }
-          : {}),
+        opened: context.kind === 'serial' ? context.shared.opened : { value: false },
+        saveSession,
       });
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');
@@ -538,13 +519,15 @@ export class TargetExecutor {
       };
 
       try {
-        await withTimeout(mainWork(), Math.max(1, testDeadline.remaining()), () => {
-          timedOut = true;
-          attemptAbort.abort();
-          return new TestTimeoutError(
-            `test timed out after ${pair.options.timeout} ms in phase ${phase}`,
-          );
-        });
+        await this.debug.time('test.body', () =>
+          withTimeout(mainWork(), Math.max(1, testDeadline.remaining()), () => {
+            timedOut = true;
+            attemptAbort.abort();
+            return new TestTimeoutError(
+              `test timed out after ${pair.options.timeout} ms in phase ${phase}`,
+            );
+          }),
+        );
       } catch (cause) {
         failure = classifyError(cause);
         failurePhase = phase;
@@ -572,8 +555,8 @@ export class TargetExecutor {
       failure = classifyError(cause);
       failurePhase = phase;
     } finally {
-      this.options.interruptSignal.removeEventListener('abort', onInterrupt);
-      if (driverSession !== null && shared === undefined) {
+      this.interruptSignal.removeEventListener('abort', onInterrupt);
+      if (driverSession !== null && context.kind !== 'serial') {
         await this.closeSession(driverSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
     }
@@ -585,7 +568,7 @@ export class TargetExecutor {
       record.status = 'passed';
     } else {
       const reportPhase = failurePhase ?? phase;
-      if (this.options.interruptSignal.aborted && !timedOut) {
+      if (this.interruptSignal.aborted && !timedOut) {
         record.status = 'interrupted';
       } else if (timedOut || failure instanceof TestTimeoutError || failure.code === 'TEST_TIMEOUT') {
         record.status = 'timed-out';
@@ -596,17 +579,4 @@ export class TargetExecutor {
     }
     return record;
   }
-}
-
-/** Final status for a passing retry loop: flaky when any earlier attempt failed. */
-function passedStatus(attempts: readonly AttemptRecord[]): ResultStatus {
-  return attempts.some((prior) => prior.status !== 'passed') ? 'flaky' : 'passed';
-}
-
-/** Only test-category failures and timeouts consume retry budget. */
-function isRetryEligible(attempt: AttemptRecord): boolean {
-  return (
-    attempt.status === 'timed-out' ||
-    (attempt.error !== undefined && attempt.error.category === 'test')
-  );
 }

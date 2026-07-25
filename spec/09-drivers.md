@@ -67,7 +67,25 @@ options. If launch rejects,
 the driver MUST roll back every partial acquisition before rejection because no
 session exists for the runner to close. `close` receives a fresh cleanup signal
 and budget independent of the cancelled attempt. It is idempotent and releases
-every process, page, listener, temporary file, and device lease.
+every session-scoped resource: page, listener, temporary file, and device
+lease.
+
+Sessions of one driver instance are strictly serialized: the runner MUST NOT
+invoke `launch` while a previously launched session of the same instance is
+not yet closed. Drivers MUST NOT be assumed to support concurrent sessions;
+a runner that executes tests in parallel acquires parallelism by creating one
+driver instance per worker (one browser process or one device per worker),
+never by overlapping sessions on a shared instance.
+
+Within that serialized lifecycle a driver MAY keep expensive backend
+resources alive between sessions — one browser process, one booted simulator
+or emulator, one device lease — provided each new session observes a fully
+isolated app state. Such drivers implement the optional `dispose` method. The
+runner calls `dispose` at most once per driver instance, after every session
+is closed, and never between attempts. `dispose` MUST be idempotent, MUST
+release every retained resource, and MUST NOT affect previously captured
+artifacts or state. Drivers without retained resources omit `dispose` and
+release everything in `close`.
 
 The runner calls `close` after pass, failure, timeout, cancellation, and signal.
 A driver operation MUST observe both `AbortSignal` and `timeoutMs`. Aborted work

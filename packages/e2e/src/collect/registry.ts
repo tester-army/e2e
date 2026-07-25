@@ -3,6 +3,7 @@
 import { testCaseBrand } from '../internal/brands.js';
 import { CollectionError } from '../internal/errors.js';
 import { validateTitle } from '../internal/ids.js';
+import { realmSlot } from '../internal/realm-slot.js';
 import type {
   DescribeOptions,
   SetupFn,
@@ -175,12 +176,23 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-function groupTitles(group: GroupNode | undefined): string[] {
-  const titles: string[] = [];
+/** Canonical group-tree walk: the enclosing groups of a node, outermost first. */
+export function groupChain(group: GroupNode | undefined): GroupNode[] {
+  const chain: GroupNode[] = [];
   for (let node = group; node !== undefined; node = node.parent) {
-    titles.unshift(node.title);
+    chain.unshift(node);
   }
-  return titles;
+  return chain;
+}
+
+/** Group titles along the chain, outermost first. */
+export function groupTitles(group: GroupNode | undefined): string[] {
+  return groupChain(group).map((node) => node.title);
+}
+
+/** Finds the outermost serial group enclosing a node, if any. */
+export function outermostSerialGroup(group: GroupNode | undefined): GroupNode | undefined {
+  return groupChain(group).find((node) => node.serial);
 }
 
 function validateCommonOptions(options: TestOptions | DescribeOptions, label: string): void {
@@ -197,10 +209,7 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
 }
 
 function insideSerial(group: GroupNode | undefined): boolean {
-  for (let node = group; node !== undefined; node = node.parent) {
-    if (node.serial) return true;
-  }
-  return false;
+  return outermostSerialGroup(group) !== undefined;
 }
 
 function validateTestOptions(options: TestOptions, group: GroupNode | undefined): void {
@@ -235,28 +244,25 @@ function validateDescribeOptions(options: DescribeOptions, parent: GroupNode | u
  * The active collector lives on globalThis because test modules load in an
  * isolated module realm (tsx) and must reach the runner's collector instance.
  */
-const COLLECTOR_SLOT = Symbol.for('e2e.activeCollector.v1');
-
-type GlobalWithCollector = typeof globalThis & { [COLLECTOR_SLOT]?: Collector };
+const collectorSlot = realmSlot<Collector>('e2e.activeCollector.v1');
 
 /** Runs `load` with a fresh collector active and returns everything it registered. */
 export async function collectModule(load: () => Promise<unknown>): Promise<ModuleRegistration> {
-  const slot = globalThis as GlobalWithCollector;
-  if (slot[COLLECTOR_SLOT] !== undefined) {
+  if (collectorSlot.get(globalThis) !== undefined) {
     throw new CollectionError('collection is already in progress');
   }
   const collector = new Collector();
-  slot[COLLECTOR_SLOT] = collector;
+  collectorSlot.set(globalThis, collector);
   try {
     await load();
   } finally {
-    delete slot[COLLECTOR_SLOT];
+    collectorSlot.delete(globalThis);
   }
   return collector.close();
 }
 
 function requireCollector(api: string): Collector {
-  const collector = (globalThis as GlobalWithCollector)[COLLECTOR_SLOT];
+  const collector = collectorSlot.get(globalThis);
   if (collector === undefined) {
     throw new CollectionError(
       `${api} can only be called while a test module is being collected by the e2e runner`,
