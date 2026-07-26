@@ -3,8 +3,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { ArtifactSink } from './fixtures.js';
-import type { ArtifactRecord } from './records.js';
+import type { ArtifactSink } from './fixtures.ts';
+import type { ArtifactRecord } from './records.ts';
 
 export interface AttemptArtifacts {
   /** Absolute attempt artifact directory, created eagerly. */

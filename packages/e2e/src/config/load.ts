@@ -4,8 +4,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { ConfigurationError } from '../internal/errors.js';
-import type { E2EConfig } from '../types.js';
+import { ConfigurationError } from '../internal/errors.ts';
+import type { E2EConfig } from '../types.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 

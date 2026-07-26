@@ -22,10 +22,10 @@ import {
   type Observation,
   type OperationContext,
   type SemanticNode,
-} from '../driver/index.js';
-import { matchesText } from '../internal/text.js';
-import { frameSelectors, projectExpression } from './locators.js';
-import { readNodeFunction, type RawNodeData } from './read-node.js';
+} from '../driver/index.ts';
+import { matchesText } from '../internal/text.ts';
+import { frameSelectors, projectExpression } from './locators.ts';
+import { readNodeFunction, type RawNodeData } from './read-node.ts';
 import {
   DEFAULT_VIEWPORT,
   invalidState,
@@ -36,8 +36,8 @@ import {
   sanitizeFilename,
   staleOr,
   translatePwError,
-} from './support.js';
-import { WebChannel, type WebSessionHost } from './web.js';
+} from './support.ts';
+import { WebChannel, type WebSessionHost } from './web.ts';
 
 /** Refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_STORED_REFS = 2048;

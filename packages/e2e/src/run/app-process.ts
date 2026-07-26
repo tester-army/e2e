@@ -2,9 +2,9 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
-import { InfrastructureError } from '../internal/errors.js';
-import { sleep } from '../internal/time.js';
-import type { CommandConfig } from '../types.js';
+import { InfrastructureError } from '../internal/errors.ts';
+import { sleep } from '../internal/time.ts';
+import type { CommandConfig } from '../types.ts';
 
 const INHERITED_ENV = ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'COMSPEC'] as const;
 

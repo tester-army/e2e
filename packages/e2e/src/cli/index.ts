@@ -1,8 +1,8 @@
 /** e2e CLI (spec 06-cli.md). */
 
 import { Command, InvalidArgumentError } from 'commander';
-import { run } from '../run/runner.js';
-import { init } from './init.js';
+import { run } from '../run/runner.ts';
+import { init } from './init.ts';
 
 function parsePositiveInt(value: string): number {
   const parsed = Number(value);

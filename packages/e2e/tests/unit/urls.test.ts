@@ -4,7 +4,7 @@ import {
   normalizeBaseUrl,
   resolveNavigationUrl,
   urlMatches,
-} from '../../src/internal/urls.js';
+} from '../../src/internal/urls.ts';
 
 describe('normalizeBaseUrl', () => {
   it('normalizes default ports, dot segments, and IDNA hosts', () => {

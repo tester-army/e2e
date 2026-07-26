@@ -9,7 +9,7 @@ import {
   timestamp,
   uuidv7,
   validateTitle,
-} from '../../src/internal/ids.js';
+} from '../../src/internal/ids.ts';
 
 describe('encodeTitle', () => {
   it('keeps RFC 3986 unreserved characters literal', () => {

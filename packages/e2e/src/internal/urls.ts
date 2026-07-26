@@ -1,7 +1,7 @@
 /** URL normalization and origin policy helpers (spec 05-config.md). */
 
-import { ConfigurationError } from './errors.js';
-import { testPattern } from './regexp.js';
+import { ConfigurationError } from './errors.ts';
+import { testPattern } from './regexp.ts';
 
 export interface NormalizedBaseUrl {
   /** Serialized base URL without trailing artifacts beyond the normalized path. */

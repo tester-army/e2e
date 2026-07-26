@@ -2,8 +2,8 @@
 
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
-import { ConfigurationError } from './errors.js';
-import { escapeRegexpChar } from './regexp.js';
+import { ConfigurationError } from './errors.ts';
+import { escapeRegexpChar } from './regexp.ts';
 
 interface CompiledGlob {
   readonly segments: readonly GlobSegment[];

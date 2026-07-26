@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DebugTrace } from '../../src/internal/debug.js';
+import { DebugTrace } from '../../src/internal/debug.ts';
 
 describe('DebugTrace', () => {
   it('aggregates count, total, and max per label', () => {

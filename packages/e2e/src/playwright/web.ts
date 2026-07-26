@@ -19,9 +19,9 @@ import {
   type JsonValue,
   type OperationContext,
   type TextPattern,
-} from '../driver/index.js';
-import { routePatternMatches, routePatternsEqual } from '../internal/route-pattern.js';
-import { invalidState, message, sanitizeFilename } from './support.js';
+} from '../driver/index.ts';
+import { routePatternMatches, routePatternsEqual } from '../internal/route-pattern.ts';
+import { invalidState, message, sanitizeFilename } from './support.ts';
 
 interface StoredRoute {
   readonly pattern: TextPattern;

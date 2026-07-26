@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.js';
-import { assertValidReport } from '../helpers/report-schema.js';
-import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.js';
-import type { RunOutcome } from '../helpers/run-project.js';
+import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
+import { assertValidReport } from '../helpers/report-schema.ts';
+import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
+import type { RunOutcome } from '../helpers/run-project.ts';
 
 const KITCHEN_SINK = `import { test, expect } from 'e2e';
 

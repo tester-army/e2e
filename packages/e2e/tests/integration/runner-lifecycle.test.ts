@@ -1,9 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.js';
-import { assertValidReport } from '../helpers/report-schema.js';
-import { resultByTitle, runProject } from '../helpers/run-project.js';
+import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
+import { assertValidReport } from '../helpers/report-schema.ts';
+import { resultByTitle, runProject } from '../helpers/run-project.ts';
 
 describe('runner lifecycle', () => {
   let app: FixtureApp;

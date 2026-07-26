@@ -1,10 +1,10 @@
 /** Public sdk-0.1 entrypoint. */
 
-import type { AgentErrorCode, E2EConfig } from './types.js';
+import type { AgentErrorCode, E2EConfig } from './types.ts';
 
-export { test } from './collect/registry.js';
-export { expect } from './expect/index.js';
-export { credentials } from './credentials.js';
+export { test } from './collect/registry.ts';
+export { expect } from './expect/index.ts';
+export { credentials } from './credentials.ts';
 
 /** Runner-classified agent failure (spec api/e2e.d.ts). */
 export class AgentError extends Error {
@@ -30,4 +30,4 @@ export function defineConfig(config: E2EConfig): E2EConfig {
   return config;
 }
 
-export type * from './types.js';
+export type * from './types.ts';

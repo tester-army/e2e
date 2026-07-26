@@ -1,10 +1,10 @@
 /** Public expect() dispatcher (spec api/e2e.d.ts). */
 
-import type { AsyncExpectation, Locator, ValueExpectation, Web, WebExpectation } from '../types.js';
-import { realmSlot } from '../internal/realm-slot.js';
-import { locatorInternals } from '../locator/screen.js';
-import { createAsyncExpectation, createWebExpectation, type WebExpectTarget } from './async.js';
-import { createValueExpectation } from './values.js';
+import type { AsyncExpectation, Locator, ValueExpectation, Web, WebExpectation } from '../types.ts';
+import { realmSlot } from '../internal/realm-slot.ts';
+import { locatorInternals } from '../locator/screen.ts';
+import { createAsyncExpectation, createWebExpectation, type WebExpectTarget } from './async.ts';
+import { createValueExpectation } from './values.ts';
 
 /**
  * The target hangs off the web fixture under a global symbol so that an

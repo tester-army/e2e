@@ -1,8 +1,8 @@
 /** Test-target execution engine (spec 11-lifecycle.md). */
 
 import path from 'node:path';
-import type { Driver, DriverSession, OperationContext } from '../driver/index.js';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
+import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
+import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
   classifyError,
   ConfigurationError,
@@ -11,27 +11,27 @@ import {
   serializeError,
   TestTimeoutError,
   type SerializedError,
-} from '../internal/errors.js';
-import { DebugTrace } from '../internal/debug.js';
-import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.js';
-import { Deadline, withTimeout } from '../internal/time.js';
-import type { CollectedFile } from '../collect/collect.js';
-import type { RegisteredTest } from '../collect/registry.js';
-import type { SkipInfo, TestTargetPair } from '../collect/select.js';
-import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.js';
-import { createFixtures, type ArtifactSink } from './fixtures.js';
-import { findRegistered, RealmManager, type Realm } from './realm.js';
+} from '../internal/errors.ts';
+import { DebugTrace } from '../internal/debug.ts';
+import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
+import { Deadline, withTimeout } from '../internal/time.ts';
+import type { CollectedFile } from '../collect/collect.ts';
+import type { RegisteredTest } from '../collect/registry.ts';
+import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
+import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { createFixtures, type ArtifactSink } from './fixtures.ts';
+import { findRegistered, RealmManager, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
   ResultRecord,
   RunError,
   SerialGroupRecord,
-} from './records.js';
-import { runWithRetries } from './retry.js';
-import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.js';
-import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.js';
-import { StepRecorder } from './steps.js';
-import type { SetupFn, TestFn } from '../types.js';
+} from './records.ts';
+import { runWithRetries } from './retry.ts';
+import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
+import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
+import { StepRecorder } from './steps.ts';
+import type { SetupFn, TestFn } from '../types.ts';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;

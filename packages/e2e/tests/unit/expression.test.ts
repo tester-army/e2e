@@ -6,7 +6,7 @@ import {
   roleQuery,
   testIdQuery,
   textQuery,
-} from '../../src/locator/expression.js';
+} from '../../src/locator/expression.ts';
 
 describe('locator expressions', () => {
   it('builds role queries with name and states', () => {

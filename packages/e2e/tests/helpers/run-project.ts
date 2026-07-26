@@ -4,8 +4,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { RunOptions, RunOutcome } from '../../src/run/runner.js';
-import type { E2EConfig } from '../../src/index.js';
+import type { RunOptions, RunOutcome } from '../../src/run/runner.ts';
+import type { E2EConfig } from '../../src/index.ts';
 
 export type { RunOptions, RunOutcome };
 
@@ -13,7 +13,7 @@ export type { RunOptions, RunOutcome };
 // self-reference share the same registry instance. The specifier is kept
 // non-literal so typechecking does not require a prior build.
 const builtRunnerModule = '../../dist/run/runner.js';
-const { run } = (await import(builtRunnerModule)) as typeof import('../../src/run/runner.js');
+const { run } = (await import(builtRunnerModule)) as typeof import('../../src/run/runner.ts');
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');

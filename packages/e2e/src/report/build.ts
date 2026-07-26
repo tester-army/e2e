@@ -1,11 +1,11 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
 import os from 'node:os';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
-import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.js';
-import { resultId, timestamp } from '../internal/ids.js';
-import { packageVersion } from '../internal/package-version.js';
-import type { SkipInfo } from '../collect/select.js';
+import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
+import { resultId, timestamp } from '../internal/ids.ts';
+import { packageVersion } from '../internal/package-version.ts';
+import type { SkipInfo } from '../collect/select.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -14,8 +14,8 @@ import type {
   SerialAttemptRecord,
   SerialGroupRecord,
   SerialMemberRecord,
-} from '../run/records.js';
-import type { StepRecord } from '../run/steps.js';
+} from '../run/records.ts';
+import type { StepRecord } from '../run/steps.ts';
 
 export interface ReportSource {
   file: string;

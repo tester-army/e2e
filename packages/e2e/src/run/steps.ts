@@ -1,7 +1,7 @@
 /** Attempt-scoped step timeline (spec 10-determinism.md, 13-reporting.md). */
 
-import { classifyError, serializeError, type SerializedError } from '../internal/errors.js';
-import { timestamp } from '../internal/ids.js';
+import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
+import { timestamp } from '../internal/ids.ts';
 
 export type StepKind =
   | 'agent'

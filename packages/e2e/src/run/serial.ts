@@ -1,21 +1,21 @@
 /** Serial-group execution: one shared session per group attempt (spec 11-lifecycle.md). */
 
-import type { DriverSession } from '../driver/index.js';
+import type { DriverSession } from '../driver/index.ts';
 import {
   classifyError,
   ConfigurationError,
   serializeError,
   type SerializedError,
-} from '../internal/errors.js';
-import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.js';
-import type { CollectedTest } from '../collect/collect.js';
-import { groupTitles, type RegisteredTest } from '../collect/registry.js';
-import type { SkipInfo, TestTargetPair } from '../collect/select.js';
-import type { ResolvedTarget } from '../config/resolve.js';
-import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.js';
-import type { AttemptContext } from './execute.js';
-import type { ArtifactSink } from './fixtures.js';
-import { findRegistered, type Realm, RealmManager } from './realm.js';
+} from '../internal/errors.ts';
+import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
+import type { CollectedTest } from '../collect/collect.ts';
+import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
+import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
+import type { ResolvedTarget } from '../config/resolve.ts';
+import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import type { AttemptContext } from './execute.ts';
+import type { ArtifactSink } from './fixtures.ts';
+import { findRegistered, type Realm, RealmManager } from './realm.ts';
 import type {
   AttemptRecord,
   ResultRecord,
@@ -23,8 +23,8 @@ import type {
   SerialAttemptRecord,
   SerialGroupRecord,
   SerialMemberRecord,
-} from './records.js';
-import { runWithRetries } from './retry.js';
+} from './records.ts';
+import { runWithRetries } from './retry.ts';
 
 /**
  * One shared driver session plus its app open-state for a serial-group

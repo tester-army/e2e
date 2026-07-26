@@ -7,7 +7,7 @@ import {
   compileGlob,
   discoverFiles,
   matchesGlob,
-} from '../../src/internal/globs.js';
+} from '../../src/internal/globs.ts';
 
 function matches(pattern: string, candidate: string): boolean {
   return matchesGlob(compileGlob(pattern), candidate);

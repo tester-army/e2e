@@ -1,9 +1,9 @@
 /** Synchronous registration during module evaluation (spec 11-lifecycle.md). */
 
-import { testCaseBrand } from '../internal/brands.js';
-import { CollectionError } from '../internal/errors.js';
-import { validateTitle } from '../internal/ids.js';
-import { realmSlot } from '../internal/realm-slot.js';
+import { testCaseBrand } from '../internal/brands.ts';
+import { CollectionError } from '../internal/errors.ts';
+import { validateTitle } from '../internal/ids.ts';
+import { realmSlot } from '../internal/realm-slot.ts';
 import type {
   DescribeOptions,
   SetupFn,
@@ -14,7 +14,7 @@ import type {
   TestFn,
   TestHookFn,
   TestOptions,
-} from '../types.js';
+} from '../types.ts';
 
 export interface SourceLocation {
   readonly file: string;

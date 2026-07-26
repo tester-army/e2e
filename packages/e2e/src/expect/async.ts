@@ -1,14 +1,14 @@
 /** Runner-owned polling locator and web assertions (spec 03-assertions.md). */
 
-import type { SemanticNode } from '../driver/index.js';
-import { TestError } from '../internal/errors.js';
-import { normalizeText, containsText, matchesText, toTextPattern, describePattern } from '../internal/text.js';
-import { urlMatches, type NormalizedBaseUrl } from '../internal/urls.js';
-import { Deadline, pollCondition } from '../internal/time.js';
-import { isNodeVisible } from '../locator/engine.js';
-import { describeExpression } from '../locator/expression.js';
-import type { LocatorInternals } from '../locator/screen.js';
-import type { AsyncExpectation, TextMatch, WebExpectation } from '../types.js';
+import type { SemanticNode } from '../driver/index.ts';
+import { TestError } from '../internal/errors.ts';
+import { normalizeText, containsText, matchesText, toTextPattern, describePattern } from '../internal/text.ts';
+import { urlMatches, type NormalizedBaseUrl } from '../internal/urls.ts';
+import { Deadline, pollCondition } from '../internal/time.ts';
+import { isNodeVisible } from '../locator/engine.ts';
+import { describeExpression } from '../locator/expression.ts';
+import type { LocatorInternals } from '../locator/screen.ts';
+import type { AsyncExpectation, TextMatch, WebExpectation } from '../types.ts';
 
 interface Sample {
   readonly count: number;

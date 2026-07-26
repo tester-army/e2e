@@ -1,11 +1,11 @@
 /** Collection realm: imports test modules and derives stable identities. */
 
 import path from 'node:path';
-import { discoverFiles } from '../internal/globs.js';
-import { CollectionError } from '../internal/errors.js';
-import { setupTestId, testId } from '../internal/ids.js';
-import { importModule } from '../config/load.js';
-import type { ResolvedConfig } from '../config/resolve.js';
+import { discoverFiles } from '../internal/globs.ts';
+import { CollectionError } from '../internal/errors.ts';
+import { setupTestId, testId } from '../internal/ids.ts';
+import { importModule } from '../config/load.ts';
+import type { ResolvedConfig } from '../config/resolve.ts';
 import {
   collectModule,
   groupTitles,
@@ -13,7 +13,7 @@ import {
   type GroupNode,
   type ModuleRegistration,
   type RegisteredTest,
-} from './registry.js';
+} from './registry.ts';
 
 export interface CollectedTest extends RegisteredTest {
   /** Normalized project-root-relative file path with `/` separators. */

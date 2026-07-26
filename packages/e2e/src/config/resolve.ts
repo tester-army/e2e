@@ -3,11 +3,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ConfigurationError } from '../internal/errors.js';
-import { canonicalDigest, sha256Hex } from '../internal/ids.js';
-import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.js';
-import { isDriverHandle, type Driver } from '../driver/index.js';
-import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.js';
+import { ConfigurationError } from '../internal/errors.ts';
+import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
+import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
+import { isDriverHandle, type Driver } from '../driver/index.ts';
+import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
 
 export interface ResolvedTarget {
   readonly name: string;

@@ -1,10 +1,10 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
-import type { LocatorExpression, SemanticNode } from '../driver/index.js';
-import { locatorBrand, secretBrand } from '../internal/brands.js';
-import { ConfigurationError, TestError } from '../internal/errors.js';
-import { realmSlot } from '../internal/realm-slot.js';
-import { normalizeText } from '../internal/text.js';
+import type { LocatorExpression, SemanticNode } from '../driver/index.ts';
+import { locatorBrand, secretBrand } from '../internal/brands.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { realmSlot } from '../internal/realm-slot.ts';
+import { normalizeText } from '../internal/text.ts';
 import type {
   ActionOptions,
   Locator,
@@ -16,9 +16,9 @@ import type {
   SwipeOptions,
   TextMatch,
   TextMatchOptions,
-} from '../types.js';
-import type { StepRecorder } from '../run/steps.js';
-import { isNodeVisible, type LocatorEngine } from './engine.js';
+} from '../types.ts';
+import type { StepRecorder } from '../run/steps.ts';
+import { isNodeVisible, type LocatorEngine } from './engine.ts';
 import {
   describeExpression,
   filterExpression,
@@ -26,8 +26,8 @@ import {
   roleQuery,
   testIdQuery,
   textQuery,
-} from './expression.js';
-import { Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.js';
+} from './expression.ts';
+import { Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
 
 export interface SecretResolver {
   /** Resolves an opaque Secret to its plaintext for a closed input sink. */

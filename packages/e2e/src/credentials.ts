@@ -1,10 +1,10 @@
 /** Opaque credential handles (spec 02-test-api.md, 14-security.md). */
 
-import { credentialBrand, secretBrand } from './internal/brands.js';
-import { ConfigurationError } from './internal/errors.js';
-import { realmSlot } from './internal/realm-slot.js';
-import type { ResolvedCredential } from './config/resolve.js';
-import type { Credential, Credentials, Secret } from './types.js';
+import { credentialBrand, secretBrand } from './internal/brands.ts';
+import { ConfigurationError } from './internal/errors.ts';
+import { realmSlot } from './internal/realm-slot.ts';
+import type { ResolvedCredential } from './config/resolve.ts';
+import type { Credential, Credentials, Secret } from './types.ts';
 
 /** Global slot so test modules in an isolated realm reach the runner's registry. */
 const credentialsSlot = realmSlot<ReadonlyMap<string, ResolvedCredential>>('e2e.credentials.v1');

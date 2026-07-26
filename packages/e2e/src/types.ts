@@ -8,7 +8,7 @@ import type {
   driverHandleBrand,
   secretBrand,
   testCaseBrand,
-} from './internal/brands.js';
+} from './internal/brands.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =

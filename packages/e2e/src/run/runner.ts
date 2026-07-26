@@ -1,17 +1,17 @@
 /** Run orchestration: config, collection, selection, execution, reporting. */
 
 import path from 'node:path';
-import { discoverConfig, loadConfigModule } from '../config/load.js';
+import { discoverConfig, loadConfigModule } from '../config/load.ts';
 import {
   isCiMode,
   resolveConfig,
   type CliOverrides,
   type ResolvedConfig,
   type ResolvedTarget,
-} from '../config/resolve.js';
-import type { Driver } from '../driver/index.js';
-import { collect, type Collection } from '../collect/collect.js';
-import { select, type Selection, type SelectionFilters } from '../collect/select.js';
+} from '../config/resolve.ts';
+import type { Driver } from '../driver/index.ts';
+import { collect, type Collection } from '../collect/collect.ts';
+import { select, type Selection, type SelectionFilters } from '../collect/select.ts';
 import {
   classifyError,
   combineExitCodes,
@@ -19,19 +19,19 @@ import {
   exitCodeForCategory,
   serializeError,
   type E2EError,
-} from '../internal/errors.js';
-import { DebugTrace } from '../internal/debug.js';
-import { timestamp, uuidv7 } from '../internal/ids.js';
-import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.js';
-import { ListReporter } from '../report/list.js';
-import { writeJsonReport } from '../report/write.js';
-import { playwright } from '../playwright/index.js';
-import { AppProcess } from './app-process.js';
-import { TargetExecutor } from './execute.js';
-import type { ResultRecord, RunError, SerialGroupRecord } from './records.js';
-import { SessionStore } from './sessions.js';
-import { setCredentialRegistry } from '../credentials.js';
-import type { E2EConfig } from '../types.js';
+} from '../internal/errors.ts';
+import { DebugTrace } from '../internal/debug.ts';
+import { timestamp, uuidv7 } from '../internal/ids.ts';
+import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
+import { ListReporter } from '../report/list.ts';
+import { writeJsonReport } from '../report/write.ts';
+import { playwright } from '../playwright/index.ts';
+import { AppProcess } from './app-process.ts';
+import { TargetExecutor } from './execute.ts';
+import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
+import { SessionStore } from './sessions.ts';
+import { setCredentialRegistry } from '../credentials.ts';
+import type { E2EConfig } from '../types.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;

@@ -4,9 +4,9 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
-import type { DriverState } from '../driver/index.js';
-import { ConfigurationError, E2EError } from '../internal/errors.js';
-import { canonicalJson, timestamp } from '../internal/ids.js';
+import type { DriverState } from '../driver/index.ts';
+import { ConfigurationError, E2EError } from '../internal/errors.ts';
+import { canonicalJson, timestamp } from '../internal/ids.ts';
 
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
 

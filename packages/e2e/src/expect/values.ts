@@ -1,8 +1,8 @@
 /** Synchronous plain-value matchers (spec 03-assertions.md). */
 
 import { equals, iterableEquality } from '@vitest/expect';
-import { TestError } from '../internal/errors.js';
-import type { ValueExpectation } from '../types.js';
+import { TestError } from '../internal/errors.ts';
+import type { ValueExpectation } from '../types.ts';
 
 function fail(message: string): never {
   throw new TestError('ASSERTION_FAILED', message);

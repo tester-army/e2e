@@ -1,8 +1,8 @@
 /** Human-readable list reporter (spec 06-cli.md). */
 
 import pc from 'picocolors';
-import { sanitizeText, truncateUtf8 } from '../internal/errors.js';
-import type { ResultRecord } from '../run/records.js';
+import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
+import type { ResultRecord } from '../run/records.ts';
 
 const MAX_FIELD_BYTES = 8192;
 

@@ -1,7 +1,7 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright driver. */
 
 import type { Locator as PwLocator, Page } from 'playwright';
-import { DriverError, type Momentum, type ScrollDirection } from '../driver/index.js';
+import { DriverError, type Momentum, type ScrollDirection } from '../driver/index.ts';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 

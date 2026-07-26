@@ -5,7 +5,7 @@ import {
   normalizeRegexpFlags,
   normalizeText,
   toTextPattern,
-} from '../../src/internal/text.js';
+} from '../../src/internal/text.ts';
 
 describe('normalizeText', () => {
   it('trims and collapses unicode whitespace runs to one ASCII space', () => {

@@ -4,7 +4,7 @@ import {
   routePatternMatches,
   routePatternsEqual,
   toRoutePattern,
-} from '../../src/internal/route-pattern.js';
+} from '../../src/internal/route-pattern.ts';
 
 function matches(pattern: string, url: string): boolean {
   return compileRoutePattern(pattern).test(url);

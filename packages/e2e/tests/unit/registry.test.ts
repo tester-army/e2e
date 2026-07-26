@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { collectFromRegistration } from '../../src/collect/collect.js';
-import { collectModule, test } from '../../src/collect/registry.js';
-import { CollectionError } from '../../src/internal/errors.js';
+import { collectFromRegistration } from '../../src/collect/collect.ts';
+import { collectModule, test } from '../../src/collect/registry.ts';
+import { CollectionError } from '../../src/internal/errors.ts';
 
 const noop = async () => {};
 

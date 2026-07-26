@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DriverContext, DriverSession } from '../../src/driver/index.js';
-import { playwright } from '../../src/playwright/index.js';
-import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.js';
+import type { DriverContext, DriverSession } from '../../src/driver/index.ts';
+import { playwright } from '../../src/playwright/index.ts';
+import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 
 function driverContext(app: FixtureApp, artifactsDir: string, attemptId: string): DriverContext {
   const operation = {

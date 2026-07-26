@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isCiMode, resolveConfig } from '../../src/config/resolve.js';
-import { defineDriver } from '../../src/driver/index.js';
+import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
+import { defineDriver } from '../../src/driver/index.ts';
 
 const ROOT = '/tmp/e2e-config-project';
 const BASE_ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;

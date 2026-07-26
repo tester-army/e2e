@@ -1,10 +1,10 @@
 /** Reference Playwright driver for web-0.1 (spec 09-drivers.md). */
 
-import { DriverError, defineDriver, type Driver, type DriverContext, type DriverSession } from '../driver/index.js';
-import { packageVersion } from '../internal/package-version.js';
-import { BrowserPool } from './browser-pool.js';
-import { PlaywrightSession, parseWebTarget } from './session.js';
-import { message } from './support.js';
+import { DriverError, defineDriver, type Driver, type DriverContext, type DriverSession } from '../driver/index.ts';
+import { packageVersion } from '../internal/package-version.ts';
+import { BrowserPool } from './browser-pool.ts';
+import { PlaywrightSession, parseWebTarget } from './session.ts';
+import { message } from './support.ts';
 
 /** Creates the reference Playwright driver instance with a per-handle browser pool. */
 export function playwright(): Driver {

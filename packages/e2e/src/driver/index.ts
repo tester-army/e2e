@@ -3,7 +3,7 @@
  * divergence.
  */
 
-import { driverHandleBrand } from '../internal/brands.js';
+import { driverHandleBrand } from '../internal/brands.ts';
 import type {
   Capability,
   Cookie,
@@ -16,7 +16,7 @@ import type {
   SelectOption,
   ScrollDirection,
   Target,
-} from '../types.js';
+} from '../types.ts';
 
 export interface OperationContext {
   readonly signal: AbortSignal;
@@ -534,4 +534,4 @@ export type {
   SelectOption,
   ScrollDirection,
   Target,
-} from '../types.js';
+} from '../types.ts';

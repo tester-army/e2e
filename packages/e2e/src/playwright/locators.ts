@@ -1,7 +1,7 @@
 /** LocatorExpression -> Playwright locator projection. */
 
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
-import { DriverError, type LocatorExpression, type SemanticQuery, type TextPattern } from '../driver/index.js';
+import { DriverError, type LocatorExpression, type SemanticQuery, type TextPattern } from '../driver/index.ts';
 
 type PwScope = Page | FrameLocator | PwLocator;
 

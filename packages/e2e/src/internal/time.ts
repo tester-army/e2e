@@ -1,6 +1,6 @@
 /** Deadline and cancellation helpers. */
 
-import { E2EError } from './errors.js';
+import { E2EError } from './errors.ts';
 
 export class Deadline {
   readonly endsAt: number;

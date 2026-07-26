@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { collectFromRegistration, type Collection } from '../../src/collect/collect.js';
-import { collectModule, test } from '../../src/collect/registry.js';
-import { resolveOptions, select } from '../../src/collect/select.js';
-import { resolveConfig } from '../../src/config/resolve.js';
+import { collectFromRegistration, type Collection } from '../../src/collect/collect.ts';
+import { collectModule, test } from '../../src/collect/registry.ts';
+import { resolveOptions, select } from '../../src/collect/select.ts';
+import { resolveConfig } from '../../src/config/resolve.ts';
 
 const noop = async () => {};
 const ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;

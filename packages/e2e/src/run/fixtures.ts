@@ -1,13 +1,13 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
-import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.js';
-import { registerWebExpectTarget } from '../expect/index.js';
-import { ConfigurationError, TestError } from '../internal/errors.js';
-import { toRoutePattern } from '../internal/route-pattern.js';
-import { resolveNavigationUrl, urlMatches } from '../internal/urls.js';
-import { Deadline, sleep, withTimeout } from '../internal/time.js';
-import { LocatorEngine } from '../locator/engine.js';
-import { webSelectorExpression } from '../locator/expression.js';
+import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
+import { registerWebExpectTarget } from '../expect/index.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { toRoutePattern } from '../internal/route-pattern.ts';
+import { resolveNavigationUrl, urlMatches } from '../internal/urls.ts';
+import { Deadline, sleep, withTimeout } from '../internal/time.ts';
+import { LocatorEngine } from '../locator/engine.ts';
+import { webSelectorExpression } from '../locator/expression.ts';
 import {
   createFrameScreen,
   createLocator,
@@ -15,8 +15,8 @@ import {
   isSecret,
   type ScreenContext,
   type SecretResolver,
-} from '../locator/screen.js';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
+} from '../locator/screen.ts';
+import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type {
   Agent,
   App,
@@ -31,8 +31,8 @@ import type {
   Web,
   WebResponse,
   WebRoute,
-} from '../types.js';
-import type { StepRecorder } from './steps.js';
+} from '../types.ts';
+import type { StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
   /** Registers a produced artifact and returns its report artifact ID. */

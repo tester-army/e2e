@@ -1,7 +1,7 @@
 /** Shared retry policy for ordinary tests, setup tests, and serial groups. */
 
-import type { SerializedError } from '../internal/errors.js';
-import type { ResultStatus } from './records.js';
+import type { SerializedError } from '../internal/errors.ts';
+import type { ResultStatus } from './records.ts';
 
 /** The status-and-error slice of an attempt the retry policy inspects. */
 export interface RetryAttempt {

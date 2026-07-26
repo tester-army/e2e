@@ -1,9 +1,9 @@
 /** Immutable locator expression construction (spec 08-platforms.md). */
 
-import type { LocatorExpression, SemanticQuery } from '../driver/index.js';
-import { toTextPattern } from '../internal/text.js';
-import { TestError } from '../internal/errors.js';
-import type { Role, RoleOptions, TextMatch, TextMatchOptions } from '../types.js';
+import type { LocatorExpression, SemanticQuery } from '../driver/index.ts';
+import { toTextPattern } from '../internal/text.ts';
+import { TestError } from '../internal/errors.ts';
+import type { Role, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';
 
 /** Builds a role query expression. */
 export function roleQuery(

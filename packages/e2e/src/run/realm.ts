@@ -1,17 +1,17 @@
 /** Suite realm lifecycle: module re-import, beforeAll/afterAll scope tracking. */
 
-import { importModule } from '../config/load.js';
+import { importModule } from '../config/load.ts';
 import {
   classifyError,
   E2EError,
   serializeError,
   TestTimeoutError,
   type SerializedError,
-} from '../internal/errors.js';
-import { DebugTrace } from '../internal/debug.js';
-import { titlePathKey } from '../internal/ids.js';
-import { withTimeout } from '../internal/time.js';
-import type { CollectedTest } from '../collect/collect.js';
+} from '../internal/errors.ts';
+import { DebugTrace } from '../internal/debug.ts';
+import { titlePathKey } from '../internal/ids.ts';
+import { withTimeout } from '../internal/time.ts';
+import type { CollectedTest } from '../collect/collect.ts';
 import {
   collectModule,
   groupChain,
@@ -20,9 +20,9 @@ import {
   type ModuleRegistration,
   type RegisteredHook,
   type RegisteredTest,
-} from '../collect/registry.js';
-import type { Platform, SuiteFixtures } from '../types.js';
-import type { RunError } from './records.js';
+} from '../collect/registry.ts';
+import type { Platform, SuiteFixtures } from '../types.ts';
+import type { RunError } from './records.ts';
 
 export interface Realm {
   registration: ModuleRegistration;

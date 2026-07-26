@@ -1,10 +1,10 @@
 /** Option resolution and test-target selection (spec 11-lifecycle.md). */
 
-import { ConfigurationError, CollectionError } from '../internal/errors.js';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.js';
-import type { Capability, Platform } from '../types.js';
-import type { Collection, CollectedTest } from './collect.js';
-import { groupChain } from './registry.js';
+import { ConfigurationError, CollectionError } from '../internal/errors.ts';
+import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import type { Capability, Platform } from '../types.ts';
+import type { Collection, CollectedTest } from './collect.ts';
+import { groupChain } from './registry.ts';
 
 export interface ResolvedTestOptions {
   readonly timeout: number;

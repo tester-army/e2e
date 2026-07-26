@@ -1,6 +1,6 @@
 /** Text normalization and matching rules (spec 03-assertions.md, 08-platforms.md). */
 
-import { testPattern } from './regexp.js';
+import { testPattern } from './regexp.ts';
 
 export type TextPattern =
   | { readonly kind: 'string'; readonly value: string; readonly exact: boolean }

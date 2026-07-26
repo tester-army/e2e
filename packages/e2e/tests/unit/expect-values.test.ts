@@ -1,6 +1,6 @@
 import { describe, expect as vexpect, it } from 'vitest';
-import { expect as e2eExpect } from '../../src/expect/index.js';
-import { TestError } from '../../src/internal/errors.js';
+import { expect as e2eExpect } from '../../src/expect/index.ts';
+import { TestError } from '../../src/internal/errors.ts';
 
 function failsWith(fn: () => void, pattern: RegExp): void {
   try {
