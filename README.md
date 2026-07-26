@@ -72,10 +72,11 @@ Phase 1 implementation is in progress in this repository, a pnpm monorepo:
   surface (`test`, `expect`, `screen`, `app`, `web`, sessions), the runner and
   CLI, the `e2e/driver` SPI, and the `e2e/playwright` reference driver.
 
-Agentic execution (`agent.*`), caching, parallel workers, and the HTML
-reporter are not implemented yet; acquiring the `agent` fixture fails with
-`MODEL_UNAVAILABLE` as specified, and the `workers` setting is accepted but
-execution is serial. Mobile targets are rejected per the v0 boundary.
+Agentic execution (`agent.*`), caching, and the HTML reporter are not
+implemented yet; acquiring the `agent` fixture fails with `MODEL_UNAVAILABLE`
+as specified. Parallel execution schedules file-target units across worker
+processes per the `workers` setting. Mobile targets are rejected per the v0
+boundary.
 
 Deferred mobile, resource, PR, service, and hosted-runner designs live under
 [`spec/roadmap/`](./spec/roadmap) and are nonnormative.

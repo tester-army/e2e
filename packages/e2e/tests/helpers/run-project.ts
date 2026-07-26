@@ -63,6 +63,42 @@ export async function runProject(
   return { outcome, project };
 }
 
+/** Default file-backed config used by worker-path integration tests. */
+export function workerConfigSource(workers: number, extra = ''): string {
+  return `import { defineConfig } from 'e2e';
+
+export default defineConfig({
+  app: { url: process.env.APP_URL! },
+  workers: ${workers},${extra}
+});
+`;
+}
+
+/**
+ * Runs a fixture project through the parallel worker path: the config is a
+ * real file, so the runner schedules units across worker processes.
+ */
+export async function runProjectWithConfigFile(
+  files: Readonly<Record<string, string>>,
+  options: RunProjectOptions & { configSource: string },
+): Promise<{ outcome: RunOutcome; project: FixtureProject }> {
+  const project = createProject({ ...files, 'e2e.config.ts': options.configSource });
+  const previousAppUrl = process.env['APP_URL'];
+  process.env['APP_URL'] = options.appUrl;
+  try {
+    const outcome = await run({
+      cwd: project.dir,
+      env: { ...process.env, APP_URL: options.appUrl, CI: '' },
+      quiet: true,
+      ...options.runOptions,
+    });
+    return { outcome, project };
+  } finally {
+    if (previousAppUrl === undefined) delete process.env['APP_URL'];
+    else process.env['APP_URL'] = previousAppUrl;
+  }
+}
+
 /** Finds one result by test title suffix. */
 export function resultByTitle(outcome: RunOutcome, title: string) {
   const result = outcome.results.find((candidate) => candidate.test.title === title);

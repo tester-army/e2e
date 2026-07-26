@@ -19,9 +19,20 @@ implements the deterministic subset of specification 0.1:
 
 Not implemented yet: agentic execution (`agent.*` rejects with
 `MODEL_UNAVAILABLE`), locate/path caches, the HTML reporter, video artifacts,
-and mobile targets (rejected per the v0 boundary). Parallel workers are not
-implemented either: `workers`/`--workers` and `--no-agent-cache` are accepted
-per spec 06-cli.md but execution is serial and no agent cache exists yet.
+and mobile targets (rejected per the v0 boundary). `--no-agent-cache` is
+accepted per spec 06-cli.md but no agent cache exists yet.
+
+## Parallel execution
+
+`workers`/`--workers` schedules file-target units across worker processes
+(spec 11-lifecycle.md). Each worker re-loads the config module, owns one
+driver instance (one browser), and executes one unit at a time; per-target
+setup tests complete before ordinary units dispatch, serial groups stay
+atomic on one worker, and a worker is discarded after any failing unit or
+infrastructure fault. Results stream back over IPC and the report orders them
+independently of completion time. In-memory configs (the programmatic
+`rawConfig` option) cannot cross process boundaries and fall back to
+sequential in-process execution.
 
 ## Usage
 

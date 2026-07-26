@@ -392,6 +392,12 @@ export function buildReport(options: BuildReportOptions): Report1Document {
     .toSorted(compareResults)
     .map((result) => serializeResult(config, result));
 
+  const targetIndex = new Map<string, number>();
+  for (const target of config?.targets ?? []) targetIndex.set(target.name, target.index);
+  const serialGroups = options.serialGroups
+    .toSorted((a, b) => compareSerialGroups(a, b, targetIndex))
+    .map(serializeSerialGroup);
+
   const summary = computeSummary(options.results);
   const artifactBytes = options.results
     .flatMap((result) => result.attempts)
@@ -423,7 +429,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         runtime: `node ${process.version}`,
       },
       targets,
-      serialGroups: options.serialGroups.map(serializeSerialGroup),
+      serialGroups,
       results,
       errors: options.runErrors.map((runError) => serializeErrorRecord(runError.error)),
       summary,
@@ -453,4 +459,15 @@ function compareResults(a: ResultRecord, b: ResultRecord): number {
     return a.test.declarationIndex - b.test.declarationIndex;
   }
   return a.target.index - b.target.index;
+}
+
+/** Report order is completion-time independent (spec 13-reporting.md). */
+function compareSerialGroups(
+  a: SerialGroupRecord,
+  b: SerialGroupRecord,
+  targetIndex: ReadonlyMap<string, number>,
+): number {
+  if (a.file !== b.file) return a.file < b.file ? -1 : 1;
+  if (a.declarationIndex !== b.declarationIndex) return a.declarationIndex - b.declarationIndex;
+  return (targetIndex.get(a.targetId) ?? 0) - (targetIndex.get(b.targetId) ?? 0);
 }

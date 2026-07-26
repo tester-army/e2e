@@ -75,14 +75,24 @@ export class SessionStaging {
 
 /** Holds the per-run AES-256-GCM key in memory and owns the session directory. */
 export class SessionStore {
-  private readonly key = randomBytes(32);
+  private readonly key: Buffer;
   private readonly directory: string;
 
   constructor(
     private readonly runId: string,
     sessionsRoot: string,
+    key?: Buffer,
   ) {
+    if (key !== undefined && key.length !== 32) {
+      throw new E2EError('infrastructure', 'SESSION_KEY_INVALID', 'session key must be 32 bytes');
+    }
+    this.key = key ?? randomBytes(32);
     this.directory = path.join(sessionsRoot, runId);
+  }
+
+  /** Base64 key for transfer to worker processes over IPC (never disk/env). */
+  get keyBase64(): string {
+    return this.key.toString('base64');
   }
 
   private ensureDirectory(): void {

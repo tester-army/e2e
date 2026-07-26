@@ -25,11 +25,12 @@ import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
-import { playwright } from '../playwright/index.ts';
 import { ensureBrowsersInstalled } from '../playwright/install.ts';
 import { AppProcess } from './app-process.ts';
 import { TargetExecutor } from './execute.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
+import { resolveDriver } from './resolve-driver.ts';
+import { runParallel } from './scheduler.ts';
 import { SessionStore } from './sessions.ts';
 import { setCredentialRegistry } from '../credentials.ts';
 import type { E2EConfig } from '../types.ts';
@@ -62,12 +63,6 @@ export interface RunOutcome {
   report: Report1Document;
   reportPath: string | undefined;
   results: readonly ResultRecord[];
-}
-
-/** Resolves the driver implementation for one target. */
-function resolveDriver(target: ResolvedTarget): Driver {
-  if (target.driver === 'playwright') return playwright();
-  return target.driver;
 }
 
 /** Executes one complete run and returns the outcome without exiting. */
@@ -191,7 +186,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
 
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
-    sessionStore = new SessionStore(runId, path.join(config.projectRoot, '.e2e', 'sessions'));
+    const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
+    const store = new SessionStore(runId, sessionsRoot);
+    sessionStore = store;
 
     // Pre-flight: validate every selected driver before any session launches.
     const resolvedConfig = config;
@@ -220,27 +217,60 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     process.once('SIGTERM', onSignal);
 
     try {
-      for (const { target, driver, pairs } of targetRuns) {
-        const executor = new TargetExecutor({
-          config,
-          target,
-          driver,
-          runId,
-          artifactsRoot,
-          sessionStore,
-          headed: options.headed ?? false,
-          interruptSignal: interruptController.signal,
-          debug,
-          events: {
-            onResult: (result) => listReporter?.onResult(result),
-          },
-        });
-        const outcome = await debug.time(`target.${target.name}`, () =>
-          executor.run(pairs, collection.files),
+      if (config.configPath !== undefined) {
+        // Parallel path: workers re-load the config module themselves, so it
+        // must be file-backed. Applies to every worker count, including 1.
+        const configPath = config.configPath;
+        const resolvedSelection = selection;
+        const resolvedCollection = collection;
+        await debug.time('scheduler', () =>
+          runParallel({
+            config: resolvedConfig,
+            configPath,
+            selection: resolvedSelection,
+            collection: resolvedCollection,
+            runId,
+            artifactsRoot,
+            sessionsRoot,
+            sessionKeyBase64: store.keyBase64,
+            headed: options.headed ?? false,
+            env,
+            interruptSignal: interruptController.signal,
+            events: {
+              onResult: (result) => {
+                results.push(result);
+                listReporter?.onResult(result);
+              },
+              onSerialGroup: (group) => serialGroups.push(group),
+              onRunError: (error) => runErrors.push(error),
+            },
+          }),
         );
-        results.push(...outcome.results);
-        serialGroups.push(...outcome.serialGroups);
-        runErrors.push(...outcome.runErrors);
+      } else {
+        // In-process fallback: in-memory configs (tests) cannot cross to
+        // worker processes; execution stays sequential in this process.
+        for (const { target, driver, pairs } of targetRuns) {
+          const executor = new TargetExecutor({
+            config,
+            target,
+            driver,
+            runId,
+            artifactsRoot,
+            sessionStore: store,
+            headed: options.headed ?? false,
+            interruptSignal: interruptController.signal,
+            debug,
+            events: {
+              onResult: (result) => listReporter?.onResult(result),
+            },
+          });
+          const outcome = await debug.time(`target.${target.name}`, () =>
+            executor.run(pairs, collection.files),
+          );
+          results.push(...outcome.results);
+          serialGroups.push(...outcome.serialGroups);
+          runErrors.push(...outcome.runErrors);
+        }
       }
     } finally {
       process.removeListener('SIGINT', onSignal);

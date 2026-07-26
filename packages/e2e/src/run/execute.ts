@@ -35,6 +35,9 @@ import type { SetupFn, TestFn } from '../types.ts';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
+  onSerialGroup?(group: SerialGroupRecord): void;
+  /** Fires before a runnable pair (or serial unit via its first member) starts. */
+  onPairStart?(pair: TestTargetPair): void;
 }
 
 export interface ExecutionOutcome {
@@ -57,6 +60,9 @@ export interface TargetExecutorOptions {
 }
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
+
+/** The file-path slice of a collected file that unit execution needs. */
+export type FileRef = Pick<CollectedFile, 'file' | 'absolutePath'>;
 
 /** How one attempt acquires its driver session and session-staging hooks. */
 export type AttemptContext =
@@ -129,58 +135,74 @@ export class TargetExecutor implements SerialHost {
     const setupPairs = pairs.filter((pair) => pair.test.kind === 'setup' && pair.disposition === 'run');
     for (const pair of setupPairs) {
       if (this.interruptSignal.aborted) break;
-      await this.runSetupPair(pair);
+      await this.runSetupUnit(pair);
     }
 
-    const executedSerialUnits = new Set<string>();
     for (const file of files) {
       if (this.interruptSignal.aborted) break;
       const filePairs = pairs.filter(
         (pair) => pair.test.file === file.file && pair.test.kind === 'test',
       );
-      let realm: Realm | null = null;
-      for (const pair of filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex)) {
-        if (this.interruptSignal.aborted) {
-          this.emitUnstartedInterrupted(pair);
-          continue;
-        }
-        if (pair.disposition !== 'run') {
-          this.emitNonRun(pair);
-          continue;
-        }
-        const dependencyFailure = this.dependencySkip(pair);
-        if (dependencyFailure !== undefined) {
-          this.emit({
-            test: pair.test,
-            target: pair.target,
-            status: 'skipped',
-            selected: true,
-            skip: dependencyFailure,
-            attempts: [],
-          });
-          continue;
-        }
-        if (pair.test.serialId !== undefined) {
-          if (!executedSerialUnits.has(pair.test.serialId)) {
-            executedSerialUnits.add(pair.test.serialId);
-            const members = filePairs
-              .filter((member) => member.test.serialId === pair.test.serialId)
-              .toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
-            this.serialGroups.push(await runSerialUnit(this, members, file.absolutePath));
-            realm = null;
-          }
-          continue;
-        }
-        realm = await this.runOrdinaryPair(pair, file, realm);
-      }
-      if (realm !== null) await this.realms.leave(realm);
+      await this.runFileUnit(file, filePairs);
     }
 
+    return this.outcome();
+  }
+
+  /** Everything this executor produced so far. */
+  outcome(): ExecutionOutcome {
     return {
       results: this.results,
       serialGroups: this.serialGroups,
       runErrors: this.runErrors,
     };
+  }
+
+  /**
+   * Runs one file-target unit: pairs of a single file, in declaration order,
+   * sharing a realm between passing non-serial tests (spec 11-lifecycle.md).
+   */
+  async runFileUnit(file: FileRef, filePairs: readonly TestTargetPair[]): Promise<void> {
+    const executedSerialUnits = new Set<string>();
+    const ordered = filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
+    let realm: Realm | null = null;
+    for (const pair of ordered) {
+      if (this.interruptSignal.aborted) {
+        this.emitUnstartedInterrupted(pair);
+        continue;
+      }
+      if (pair.disposition !== 'run') {
+        this.emitNonRun(pair);
+        continue;
+      }
+      const dependencyFailure = this.dependencySkip(pair);
+      if (dependencyFailure !== undefined) {
+        this.emit({
+          test: pair.test,
+          target: pair.target,
+          status: 'skipped',
+          selected: true,
+          skip: dependencyFailure,
+          attempts: [],
+        });
+        continue;
+      }
+      if (pair.test.serialId !== undefined) {
+        if (!executedSerialUnits.has(pair.test.serialId)) {
+          executedSerialUnits.add(pair.test.serialId);
+          const members = ordered.filter((member) => member.test.serialId === pair.test.serialId);
+          this.options.events?.onPairStart?.(pair);
+          const group = await runSerialUnit(this, members, file.absolutePath);
+          this.serialGroups.push(group);
+          this.options.events?.onSerialGroup?.(group);
+          realm = null;
+        }
+        continue;
+      }
+      this.options.events?.onPairStart?.(pair);
+      realm = await this.runOrdinaryPair(pair, file, realm);
+    }
+    if (realm !== null) await this.realms.leave(realm);
   }
 
   private emitNonRun(pair: TestTargetPair): void {
@@ -224,7 +246,8 @@ export class TargetExecutor implements SerialHost {
     return { cause: 'setup-failed', reason: `setup for session "${session}" failed`, relatedId: failedSetup };
   }
 
-  private recordDisappeared(message: string): void {
+  /** Records a deterministic-registration violation as a run-level error. */
+  recordDisappeared(message: string): void {
     this.runErrors.push({
       error: serializeError(new ConfigurationError('COLLECTION_ERROR', message), {
         phase: 'collection',
@@ -236,7 +259,7 @@ export class TargetExecutor implements SerialHost {
 
   private async runOrdinaryPair(
     pair: TestTargetPair,
-    file: CollectedFile,
+    file: FileRef,
     incomingRealm: Realm | null,
   ): Promise<Realm | null> {
     const attempts: AttemptRecord[] = [];
@@ -289,7 +312,9 @@ export class TargetExecutor implements SerialHost {
 
   // --- setup tests ---
 
-  private async runSetupPair(pair: TestTargetPair): Promise<void> {
+  /** Runs one setup pair to completion, persisting staged sessions on success. */
+  async runSetupUnit(pair: TestTargetPair): Promise<void> {
+    this.options.events?.onPairStart?.(pair);
     const absolutePath = path.resolve(this.config.projectRoot, pair.test.file);
     const attempts: AttemptRecord[] = [];
 
