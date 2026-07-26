@@ -30,6 +30,10 @@ e2e init
 APP_URL=http://localhost:3000 e2e run
 ```
 
+Missing Playwright browsers are downloaded automatically on first run. To
+provision them ahead of time (for example in a CI image), run
+`npx playwright install chromium`.
+
 ```ts
 import { test, expect } from 'e2e';
 

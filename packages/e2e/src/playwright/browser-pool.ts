@@ -49,7 +49,8 @@ export class BrowserPool {
   }
 }
 
-function browserType(name: BrowserName): typeof chromium {
+/** Maps a browser name to its Playwright BrowserType. */
+export function browserType(name: BrowserName): typeof chromium {
   if (name === 'firefox') return firefox;
   if (name === 'webkit') return webkit;
   return chromium;

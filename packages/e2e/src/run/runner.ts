@@ -26,6 +26,7 @@ import { buildReport, type Report1Document, type TargetProvenance } from '../rep
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { playwright } from '../playwright/index.ts';
+import { ensureBrowsersInstalled } from '../playwright/install.ts';
 import { AppProcess } from './app-process.ts';
 import { TargetExecutor } from './execute.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
@@ -197,6 +198,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       targetProvenance.set(target.name, validateDriver(driver, target, resolvedConfig));
       return { target, driver, pairs };
     });
+
+    // Pre-flight: provision browsers for the bundled driver before any
+    // session launches, so first-run downloads never eat launch timeouts.
+    const bundledBrowsers = targetRuns
+      .filter(({ target }) => target.driver === 'playwright')
+      .map(({ target }) => target.browser);
+    if (bundledBrowsers.length > 0) {
+      await debug.time('browsers.install', () => ensureBrowsersInstalled(bundledBrowsers));
+    }
 
     const externalSignal = options.interruptSignal;
     const onExternalAbort = () => interruptController.abort();
