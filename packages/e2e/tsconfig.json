@@ -6,5 +6,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["dist", "node_modules", "tests/fixtures/**", "tests/tmp-projects/**"]
+  "exclude": ["dist", "node_modules", "tests/fixtures/**", "tests/tmp-projects/**", "tests/contract/**"]
 }

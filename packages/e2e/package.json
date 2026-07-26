@@ -26,7 +26,8 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm run check:driver-drift",
+    "check:driver-drift": "tsc --project tsconfig.driver-drift.json",
     "test": "pnpm run build && vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit"

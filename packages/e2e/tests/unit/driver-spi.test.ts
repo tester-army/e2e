@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineDriver, DriverError, isDriverHandle } from '../../src/driver/index.js';
+import { defineDriver, DriverError, isDriverHandle, verifyDriver } from '../../src/driver/index.ts';
 
 const manifest = {
   id: 'test-driver',
@@ -37,6 +37,29 @@ describe('defineDriver', () => {
     expect(disposed).toBe(1);
     expect(defineDriver(manifest).dispose).toBeUndefined();
     expect(() => defineDriver({ ...manifest, dispose: 'nope' as never })).toThrow(/dispose/);
+  });
+});
+
+describe('isDriverHandle', () => {
+  it('rejects primitives, null, and unbranded objects', () => {
+    expect(isDriverHandle(undefined)).toBe(false);
+    expect(isDriverHandle(null)).toBe(false);
+    expect(isDriverHandle('playwright')).toBe(false);
+    expect(isDriverHandle(42)).toBe(false);
+    expect(isDriverHandle({})).toBe(false);
+  });
+});
+
+describe('verifyDriver', () => {
+  it('rejects with a clear not-implemented error until the harness lands', async () => {
+    await expect(
+      verifyDriver({
+        driver: defineDriver(manifest),
+        profiles: ['driver-1'],
+        artifactSha256: '0'.repeat(64),
+        createTarget: () => ({ name: 'web', platform: 'web', browser: 'chromium' }),
+      }),
+    ).rejects.toThrow(/not implemented yet/);
   });
 });
 

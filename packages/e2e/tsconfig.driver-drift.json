@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "paths": {
+      "e2e": ["../../spec/api/e2e.d.ts"]
+    }
+  },
+  "include": ["tests/contract/driver-spec-drift.ts"]
+}
