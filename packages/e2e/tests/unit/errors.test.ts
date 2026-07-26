@@ -10,7 +10,8 @@ import {
   serializeError,
   TestError,
   truncateUtf8,
-} from '../../src/internal/errors.js';
+} from '../../src/internal/errors.ts';
+import { DriverError } from '../../src/driver/index.ts';
 
 describe('exit code mapping', () => {
   it('maps categories per 06-cli.md', () => {
@@ -39,6 +40,30 @@ describe('classifyError', () => {
   it('wraps unknown errors as test failures', () => {
     expect(classifyError(new Error('nope')).category).toBe('test');
     expect(classifyError('string failure').category).toBe('test');
+  });
+
+  it('applies the canonical driver mapping to DriverErrors from any surface', () => {
+    const failure = classifyError(
+      new DriverError('DRIVER_FAILURE', 'backend died', { retryable: false }),
+    );
+    expect(failure.category).toBe('infrastructure');
+    expect(failure.code).toBe('DRIVER_FAILURE');
+
+    const unsupported = classifyError(
+      new DriverError('UNSUPPORTED_CAPABILITY', 'no video', { retryable: false }),
+    );
+    expect(unsupported.category).toBe('configuration');
+    expect(unsupported.code).toBe('UNSUPPORTED_CAPABILITY');
+
+    const cancelled = classifyError(new DriverError('CANCELLED', 'stop', { retryable: false }));
+    expect(cancelled.category).toBe('infrastructure');
+    expect(cancelled.code).toBe('CANCELLED');
+
+    const invalidState = classifyError(
+      new DriverError('INVALID_STATE', 'nothing open', { retryable: false }),
+    );
+    expect(invalidState.category).toBe('test');
+    expect(invalidState.code).toBe('APP_NOT_OPEN');
   });
 });
 

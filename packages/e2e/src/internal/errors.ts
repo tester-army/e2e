@@ -1,5 +1,7 @@
 /** Runner-owned error taxonomy and exit-code mapping (spec 06-cli.md). */
 
+import { DriverError } from '../driver/index.ts';
+
 export type ErrorCategory =
   | 'test'
   | 'configuration'
@@ -149,6 +151,46 @@ export function combineExitCodes(codes: readonly number[]): 0 | 1 | 2 | 3 | 4 | 
   return 0;
 }
 
+/**
+ * Canonical DriverError -> runner taxonomy mapping (spec 09-drivers.md).
+ * Applies to every driver surface: launch, app, screen, web, artifacts,
+ * state capture/restore, and close. Non-DriverError causes become
+ * non-retryable infrastructure DRIVER_FAILURE.
+ */
+export function translateDriverError(cause: unknown, suffix = ''): E2EError {
+  if (cause instanceof E2EError) return cause;
+  if (cause instanceof DriverError) {
+    switch (cause.code) {
+      case 'NODE_STALE':
+        return new TestError('LOCATOR_NOT_FOUND', `node became stale${suffix}`, { cause });
+      case 'FRAME_NOT_FOUND':
+        return new TestError('LOCATOR_NOT_FOUND', `${cause.message}${suffix}`, { cause });
+      case 'FRAME_AMBIGUOUS':
+        return new TestError('LOCATOR_AMBIGUOUS', `${cause.message}${suffix}`, { cause });
+      case 'NOT_ACTIONABLE':
+        return new TestError('ACTION_FAILED', `${cause.message}${suffix}`, { cause });
+      case 'ACTION_MAY_HAVE_COMMITTED':
+        return new TestError('ACTION_FAILED', `${cause.message}${suffix}`, { cause });
+      case 'OPERATION_TIMEOUT':
+        return new TestError('ACTION_FAILED', `operation timed out${suffix}`, { cause });
+      case 'CANCELLED':
+        return new E2EError('infrastructure', 'CANCELLED', 'operation cancelled', { cause });
+      case 'UNSUPPORTED_CAPABILITY':
+        return new E2EError('configuration', 'UNSUPPORTED_CAPABILITY', cause.message, { cause });
+      case 'INVALID_STATE':
+        return new TestError('APP_NOT_OPEN', cause.message, { cause });
+      case 'DRIVER_FAILURE':
+        return new E2EError('infrastructure', 'DRIVER_FAILURE', cause.message, { cause });
+    }
+  }
+  return new E2EError(
+    'infrastructure',
+    'DRIVER_FAILURE',
+    cause instanceof Error ? cause.message : String(cause),
+    { cause },
+  );
+}
+
 /** Classifies an arbitrary thrown value into an E2EError; unknown values become test failures. */
 export function classifyError(value: unknown): E2EError {
   if (value instanceof E2EError) return value;
@@ -157,6 +199,9 @@ export function classifyError(value: unknown): E2EError {
       retryable: value.retryable,
       cause: value,
     });
+  }
+  if (value instanceof DriverError) {
+    return translateDriverError(value);
   }
   if (value instanceof Error) {
     return new TestError('ERROR', value.message, { cause: value });

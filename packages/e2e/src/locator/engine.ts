@@ -8,10 +8,14 @@ import {
   type NodeRef,
   type OperationContext,
   type SemanticNode,
-} from '../driver/index.js';
-import { E2EError, TestError } from '../internal/errors.js';
-import { describeExpression } from './expression.js';
-import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.js';
+} from '../driver/index.ts';
+import {
+  E2EError,
+  TestError,
+  translateDriverError as translateDriverErrorCore,
+} from '../internal/errors.ts';
+import { describeExpression } from './expression.ts';
+import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 
 /** Canonical visibility predicate over a semantic node snapshot. */
 export function isNodeVisible(node: SemanticNode | null): boolean {
@@ -199,36 +203,6 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
 
 /** Translates a driver error into the runner-owned public taxonomy. */
 export function translateDriverError(cause: unknown, expression?: LocatorExpression): E2EError {
-  if (cause instanceof E2EError) return cause;
   const suffix = expression === undefined ? '' : `: ${describeExpression(expression)}`;
-  if (cause instanceof DriverError) {
-    switch (cause.code) {
-      case 'NODE_STALE':
-        return new TestError('LOCATOR_NOT_FOUND', `node became stale${suffix}`, { cause });
-      case 'FRAME_NOT_FOUND':
-        return new TestError('LOCATOR_NOT_FOUND', `${cause.message}${suffix}`, { cause });
-      case 'FRAME_AMBIGUOUS':
-        return new TestError('LOCATOR_AMBIGUOUS', `${cause.message}${suffix}`, { cause });
-      case 'NOT_ACTIONABLE':
-        return new TestError('ACTION_FAILED', `${cause.message}${suffix}`, { cause });
-      case 'ACTION_MAY_HAVE_COMMITTED':
-        return new TestError('ACTION_FAILED', `${cause.message}${suffix}`, { cause });
-      case 'OPERATION_TIMEOUT':
-        return new TestError('ACTION_FAILED', `operation timed out${suffix}`, { cause });
-      case 'CANCELLED':
-        return new E2EError('infrastructure', 'CANCELLED', 'operation cancelled', { cause });
-      case 'UNSUPPORTED_CAPABILITY':
-        return new E2EError('configuration', 'UNSUPPORTED_CAPABILITY', cause.message, { cause });
-      case 'INVALID_STATE':
-        return new TestError('APP_NOT_OPEN', cause.message, { cause });
-      case 'DRIVER_FAILURE':
-        return new E2EError('infrastructure', 'DRIVER_FAILURE', cause.message, { cause });
-    }
-  }
-  return new E2EError(
-    'infrastructure',
-    'DRIVER_FAILURE',
-    cause instanceof Error ? cause.message : String(cause),
-    { cause },
-  );
+  return translateDriverErrorCore(cause, suffix);
 }
