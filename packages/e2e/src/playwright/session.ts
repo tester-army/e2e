@@ -2,7 +2,7 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, Locator as PwLocator, Page } from 'playwright';
+import type { Browser, BrowserContext, ElementHandle, JSHandle, Page } from 'playwright';
 import {
   DriverError,
   type CleanupContext,
@@ -25,8 +25,13 @@ import {
 } from '../driver/index.ts';
 import { matchesText } from '../internal/text.ts';
 import { frameSelectors, projectExpression } from './locators.ts';
-import { readNodeFunction, type RawNodeData } from './read-node.ts';
 import {
+  readSemanticsFunction,
+  type RawNodeData,
+  type RawObservedNode,
+} from './read-node.ts';
+import {
+  asActionable,
   DEFAULT_VIEWPORT,
   invalidState,
   isPwTimeout,
@@ -36,11 +41,23 @@ import {
   sanitizeFilename,
   staleOr,
   translatePwError,
+  type ActionTarget,
 } from './support.ts';
 import { WebChannel, type WebSessionHost } from './web.ts';
 
 /** Refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_STORED_REFS = 2048;
+
+/**
+ * Safety valve on nodes in one observation. driver-1 has no way to report a
+ * truncated tree, so this must stay well above real pages and let the runner's
+ * observation byte budget — which is visible in the prompt and the report — be
+ * the effective limit.
+ */
+const MAX_OBSERVED_NODES = 3_000;
+
+/** Bounded settle before an observation so a committing navigation is not raced. */
+const SETTLE_TIMEOUT_MS = 5_000;
 
 interface ParsedWebTarget {
   readonly browser: 'chromium' | 'firefox' | 'webkit';
@@ -59,7 +76,7 @@ export function parseWebTarget(target: DriverContext['target']): ParsedWebTarget
 }
 
 interface StoredRef {
-  readonly locator: PwLocator;
+  readonly target: ActionTarget;
   readonly revision: string;
 }
 
@@ -171,15 +188,31 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     return `r${this.revisionCounter}`;
   }
 
-  private storeRef(locator: PwLocator, revision: string): NodeRef {
+  private storeRef(target: ActionTarget, revision: string): NodeRef {
     this.refCounter += 1;
     const id = `n${this.refCounter}`;
-    this.refs.set(id, { locator, revision });
+    this.refs.set(id, { target, revision });
     for (const oldest of this.refs.keys()) {
       if (this.refs.size <= MAX_STORED_REFS) break;
-      this.refs.delete(oldest);
+      this.dropRef(oldest);
     }
     return { id, revision };
+  }
+
+  /** Removes one stored ref and releases any element handle it owned. */
+  private dropRef(id: string): void {
+    const stored = this.refs.get(id);
+    this.refs.delete(id);
+    if (stored?.target.kind === 'element') void stored.target.element.dispose().catch(() => undefined);
+  }
+
+  /** Releases handle-backed refs from superseded observation revisions. */
+  private dropStaleElementRefs(currentRevision: string): void {
+    const stale: string[] = [];
+    for (const [id, stored] of this.refs) {
+      if (stored.target.kind === 'element' && stored.revision !== currentRevision) stale.push(id);
+    }
+    for (const id of stale) this.dropRef(id);
   }
 
   // --- DriverApp ---
@@ -246,7 +279,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
               .catch(() => nth.evaluate((el) => (el as HTMLInputElement).value ?? ''));
             if (!matchesText(value, projected.displayValue)) continue;
           }
-          refs.push(this.storeRef(nth, revision));
+          refs.push(this.storeRef({ kind: 'locator', locator: nth }, revision));
         }
         return refs;
       }),
@@ -256,9 +289,14 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       this.requirePage();
       const stored = this.lookupRef(ref);
       try {
-        const raw = (await stored.locator.evaluate(readNodeFunction, this.driverContext.app.testIdAttribute, {
-          timeout: Math.min(operation.timeoutMs, 5000),
-        })) as RawNodeData;
+        const raw = (await asActionable(stored.target).evaluate(
+          readSemanticsFunction,
+          {
+            testIdAttribute: this.driverContext.app.testIdAttribute,
+            mode: { kind: 'node' as const },
+          },
+          { timeout: Math.min(operation.timeoutMs, 5000) },
+        )) as RawNodeData;
         return toSemanticNode(ref, raw);
       } catch (cause) {
         throw staleOr(cause, 'read');
@@ -271,7 +309,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       const stored = this.lookupRef(ref);
       const timeout = operation.timeoutMs;
       try {
-        await this.dispatchAction(stored.locator, action, timeout);
+        await this.dispatchAction(stored.target, action, timeout);
       } catch (cause) {
         throw this.classifyActionError(cause, action);
       }
@@ -315,10 +353,11 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
   }
 
   private async dispatchAction(
-    locator: PwLocator,
+    target: ActionTarget,
     action: LocatorAction,
     timeout: number,
   ): Promise<void> {
+    const locator = asActionable(target);
     switch (action.kind) {
       case 'tap':
         await locator.click({ timeout });
@@ -333,7 +372,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         await locator.fill(action.value, { timeout });
         return;
       case 'clear':
-        await locator.clear({ timeout });
+        await locator.fill('', { timeout });
         return;
       case 'press':
         await locator.press(action.key, { timeout });
@@ -362,12 +401,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         return;
       }
       case 'dragTo': {
-        const target = this.lookupRef(action.target);
-        await locator.dragTo(target.locator, { timeout });
+        const other = this.lookupRef(action.target);
+        await locator.dragTo(other.target, { timeout });
         return;
       }
       case 'swipe': {
-        await performElementSwipe(locator, action.direction, action.momentum ?? 'none', timeout);
+        await performElementSwipe(target, action.direction, action.momentum ?? 'none', timeout);
         return;
       }
     }
@@ -415,7 +454,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       this.checkOperation(operation);
       if (options.target !== undefined) {
         const stored = this.lookupRef(options.target);
-        await performElementSwipe(stored.locator, direction, options.momentum ?? 'none', operation.timeoutMs);
+        await performElementSwipe(
+          stored.target,
+          direction,
+          options.momentum ?? 'none',
+          operation.timeoutMs,
+        );
         return;
       }
       const page = this.requirePage();
@@ -492,27 +536,59 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
 
   // --- Observation ---
 
+  /**
+   * Captures one atomic semantic observation. Secure fields are masked in the
+   * page before the tree leaves the backend, and every node keeps a live
+   * element handle valid only for the returned revision.
+   */
   async observe(operation: OperationContext): Promise<Observation> {
-    this.checkOperation(operation);
-    const page = this.requirePage();
-    const revision = this.nextRevision();
-    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-    const secureCount = await page.locator('input[type="password"]').count();
-    const root: SemanticNode = {
-      ref: { id: 'root', revision },
-      role: 'document',
-    };
-    return {
-      revision,
-      capturedAt: new Date().toISOString(),
-      tree: root,
-      viewport: { width: viewport.width, height: viewport.height, scale: 1 },
-      redaction: {
-        secureNodeCount: secureCount,
-        maskedRegionCount: 0,
-        complete: secureCount === 0,
-      },
-    };
+    return this.guard(operation, 'observe', async () => {
+      const page = this.requirePage();
+      // A preceding action may still be committing a navigation. Settling is
+      // bounded and best-effort: a slow document never fails the observation.
+      await page
+        .waitForLoadState('domcontentloaded', {
+          timeout: Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS),
+        })
+        .catch(() => undefined);
+      const revision = this.nextRevision();
+      const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+      const captured = await page
+        .locator(':root')
+        .evaluateHandle(readSemanticsFunction, {
+          testIdAttribute: this.driverContext.app.testIdAttribute,
+          mode: { kind: 'tree' as const, maxNodes: MAX_OBSERVED_NODES },
+        });
+      let elementsHandle: JSHandle | undefined;
+      try {
+        const nodes = (await captured
+          .getProperty('nodes')
+          .then((handle) => handle.jsonValue())) as RawObservedNode[];
+        elementsHandle = await captured.getProperty('elements');
+        const secureNodeCount = (await captured
+          .getProperty('secureNodeCount')
+          .then((handle) => handle.jsonValue())) as number;
+        const elements = await collectElementHandles(elementsHandle, nodes.length);
+        const refs = elements.map((element) =>
+          this.storeRef({ kind: 'element', element }, revision),
+        );
+        this.dropStaleElementRefs(revision);
+        return {
+          revision,
+          capturedAt: new Date().toISOString(),
+          tree: assembleTree(nodes, refs),
+          viewport: { width: viewport.width, height: viewport.height, scale: 1 },
+          redaction: {
+            secureNodeCount,
+            maskedRegionCount: 0,
+            complete: true,
+          },
+        };
+      } finally {
+        await elementsHandle?.dispose().catch(() => undefined);
+        await captured.dispose().catch(() => undefined);
+      }
+    });
   }
 
   async runtime(operation: OperationContext): Promise<DriverRuntime> {
@@ -538,11 +614,62 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     await this.context?.close().catch(() => undefined);
     this.context = null;
     this.page = null;
+    for (const stored of this.refs.values()) {
+      if (stored.target.kind === 'element') {
+        void stored.target.element.dispose().catch(() => undefined);
+      }
+    }
     this.refs.clear();
   }
 }
 
-function toSemanticNode(ref: NodeRef, raw: RawNodeData): SemanticNode {
+/** Reads one element handle per observed node from the in-page element array. */
+async function collectElementHandles(
+  elementsHandle: JSHandle,
+  count: number,
+): Promise<ElementHandle<Node>[]> {
+  const properties = await elementsHandle.getProperties();
+  const elements: ElementHandle<Node>[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const property = properties.get(String(index));
+    const element = property?.asElement() ?? null;
+    if (element === null) {
+      throw new DriverError('DRIVER_FAILURE', `observation node ${index} lost its element`, {
+        retryable: false,
+      });
+    }
+    elements.push(element);
+  }
+  for (const [key, handle] of properties) {
+    if (Number(key) >= count) void handle.dispose().catch(() => undefined);
+  }
+  return elements;
+}
+
+/**
+ * Rebuilds the observation tree from the depth-first node list. Descendants
+ * always follow their parent, so children are complete before a parent is built.
+ */
+function assembleTree(nodes: readonly RawObservedNode[], refs: readonly NodeRef[]): SemanticNode {
+  if (nodes.length === 0 || refs.length === 0) {
+    throw new DriverError('DRIVER_FAILURE', 'observation produced no nodes', { retryable: false });
+  }
+  const childLists: SemanticNode[][] = nodes.map(() => []);
+  const built: SemanticNode[] = [];
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const raw = nodes[index]!;
+    const node = toSemanticNode(refs[index]!, raw, childLists[index]!);
+    built[index] = node;
+    if (raw.parent >= 0) childLists[raw.parent]!.unshift(node);
+  }
+  return built[0]!;
+}
+
+function toSemanticNode(
+  ref: NodeRef,
+  raw: RawNodeData,
+  children: readonly SemanticNode[] = [],
+): SemanticNode {
   const states: Record<string, boolean> = {};
   if (raw.states.checked !== null) states['checked'] = raw.states.checked;
   if (raw.states.disabled) states['disabled'] = true;
@@ -561,5 +688,6 @@ function toSemanticNode(ref: NodeRef, raw: RawNodeData): SemanticNode {
     states,
     attributes: raw.attributes,
     rect: raw.rect,
+    ...(children.length > 0 ? { children } : {}),
   };
 }

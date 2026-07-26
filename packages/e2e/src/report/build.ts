@@ -15,7 +15,13 @@ import type {
   SerialGroupRecord,
   SerialMemberRecord,
 } from '../run/records.ts';
-import type { StepRecord } from '../run/steps.ts';
+import type {
+  StepCacheInfo,
+  StepEvent,
+  StepMetrics,
+  StepModelInfo,
+  StepRecord,
+} from '../run/steps.ts';
 
 export interface ReportSource {
   file: string;
@@ -69,7 +75,13 @@ export interface ReportStep {
   status: StepRecord['status'];
   startedAt: string;
   durationMs: number;
-  events: readonly never[];
+  observationRevision?: string | undefined;
+  explanation?: string | undefined;
+  viewport?: { width: number; height: number; scale: number } | undefined;
+  metrics?: StepMetrics | undefined;
+  events: readonly StepEvent[];
+  model?: StepModelInfo | undefined;
+  cache?: StepCacheInfo | undefined;
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }
@@ -155,6 +167,42 @@ export interface ReportTarget {
   stateCapability: boolean;
 }
 
+export interface ReportLimits {
+  maxDiscoveredResults: number;
+  maxCacheBytes: number;
+  maxTerminalFieldBytes: number;
+  maxAgentContextBytes: number;
+  maxLedgerBytes: number;
+  maxObservationBytes: number;
+  maxArtifactBytes: number;
+  maxArtifactTotalBytes: number;
+  maxDownloadBytes: number;
+  maxDownloads: number;
+  maxReportBytes: number;
+  maxEventsPerStep: number;
+  maxModelTokensPerCall: number;
+  maxModelCallsPerStep: number;
+  maxActionStepsPerStep: number;
+  maxEstimatedCostUsd?: number;
+}
+
+export interface ReportUsage {
+  discoveredResults: number;
+  maxCacheEntryBytes: number;
+  maxTerminalFieldBytes: number;
+  maxAgentContextBytes: number;
+  maxLedgerBytes: number;
+  maxObservationBytes: number;
+  artifactBytes: number;
+  downloads: number;
+  reportBytes: number;
+  events: number;
+  modelTokens: number;
+  maxModelCallsInStep: number;
+  maxActionStepsInStep: number;
+  estimatedCostUsd?: number;
+}
+
 export interface ReportSummary {
   discovered: number;
   selected: number;
@@ -188,8 +236,8 @@ export interface Report1Document {
     results: readonly ReportResult[];
     errors: readonly ReportError[];
     summary: ReportSummary;
-    limits: typeof DEFAULT_LIMITS;
-    usage: Record<string, number>;
+    limits: ReportLimits;
+    usage: ReportUsage;
   };
 }
 
@@ -209,7 +257,7 @@ function relativeSource(
   return { file, line: Math.max(1, source.line), column: Math.max(1, source.column) };
 }
 
-/** Step source capture and events are not implemented yet (spec 13-reporting.md). */
+/** Step source capture is not implemented yet (spec 13-reporting.md). */
 const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
 
 function serializeStep(step: StepRecord): ReportStep {
@@ -217,7 +265,6 @@ function serializeStep(step: StepRecord): ReportStep {
   return {
     ...rest,
     source: UNIMPLEMENTED_STEP_SOURCE,
-    events: [],
     error: error === undefined ? undefined : serializeErrorRecord(error),
   };
 }
@@ -360,7 +407,8 @@ export function computeSummary(results: readonly ResultRecord[]): ReportSummary 
   return { discovered: results.length, selected, executed, passed, failed, flaky, skipped };
 }
 
-const DEFAULT_LIMITS = {
+/** Fallback limits used when the run failed before config resolution. */
+const DEFAULT_LIMITS: ReportLimits = {
   maxDiscoveredResults: 100_000,
   maxCacheBytes: 262_144,
   maxTerminalFieldBytes: 8_192,
@@ -377,6 +425,103 @@ const DEFAULT_LIMITS = {
   maxModelCallsPerStep: 25,
   maxActionStepsPerStep: 25,
 };
+
+function reportLimits(config: ResolvedConfig | undefined): ReportLimits {
+  if (config === undefined) return DEFAULT_LIMITS;
+  const limits = config.limits;
+  return {
+    maxDiscoveredResults: limits.maxDiscoveredResults,
+    maxCacheBytes: limits.maxCacheBytes,
+    maxTerminalFieldBytes: limits.maxTerminalFieldBytes,
+    maxAgentContextBytes: limits.maxAgentContextBytes,
+    maxLedgerBytes: limits.maxLedgerBytes,
+    maxObservationBytes: limits.maxObservationBytes,
+    maxArtifactBytes: limits.maxArtifactBytes,
+    maxArtifactTotalBytes: limits.maxArtifactTotalBytes,
+    maxDownloadBytes: limits.maxDownloadBytes,
+    maxDownloads: limits.maxDownloads,
+    maxReportBytes: limits.maxReportBytes,
+    maxEventsPerStep: limits.maxEventsPerStep,
+    maxModelTokensPerCall: limits.maxModelTokensPerCall,
+    maxModelCallsPerStep: limits.maxModelCallsPerStep,
+    maxActionStepsPerStep: limits.maxActionStepsPerStep,
+    ...(limits.maxEstimatedCostUsd !== undefined
+      ? { maxEstimatedCostUsd: limits.maxEstimatedCostUsd }
+      : {}),
+  };
+}
+
+/** Aggregates observed usage against the resolved limits (13-reporting.md). */
+function computeUsage(options: {
+  results: readonly ResultRecord[];
+  serialGroups: readonly SerialGroupRecord[];
+  discovered: number;
+}): ReportUsage {
+  const usage: ReportUsage = {
+    discoveredResults: options.discovered,
+    maxCacheEntryBytes: 0,
+    maxTerminalFieldBytes: 0,
+    maxAgentContextBytes: 0,
+    maxLedgerBytes: 0,
+    maxObservationBytes: 0,
+    artifactBytes: 0,
+    downloads: 0,
+    reportBytes: 0,
+    events: 0,
+    modelTokens: 0,
+    maxModelCallsInStep: 0,
+    maxActionStepsInStep: 0,
+  };
+  let cost = 0;
+  let costSeen = false;
+
+  const countStep = (step: StepRecord): void => {
+    usage.events += step.events.length;
+    const metrics = step.metrics;
+    if (metrics !== undefined) {
+      usage.maxAgentContextBytes = Math.max(usage.maxAgentContextBytes, metrics.contextBytes);
+      usage.maxLedgerBytes = Math.max(usage.maxLedgerBytes, metrics.ledgerBytes);
+      usage.maxObservationBytes = Math.max(usage.maxObservationBytes, metrics.observationBytes);
+      usage.maxModelCallsInStep = Math.max(usage.maxModelCallsInStep, metrics.modelCalls);
+      usage.maxActionStepsInStep = Math.max(usage.maxActionStepsInStep, metrics.actionSteps);
+    }
+    const model = step.model;
+    if (model !== undefined) {
+      usage.modelTokens += model.inputTokens + model.outputTokens;
+      if (model.estimatedCostUsd !== undefined) {
+        cost += model.estimatedCostUsd;
+        costSeen = true;
+      }
+    }
+    if (step.cache?.bytes !== undefined) {
+      usage.maxCacheEntryBytes = Math.max(usage.maxCacheEntryBytes, step.cache.bytes);
+    }
+  };
+
+  const countArtifacts = (artifacts: readonly ArtifactRecord[]): void => {
+    for (const artifact of artifacts) {
+      usage.artifactBytes += artifact.size ?? 0;
+      if (artifact.kind === 'download') usage.downloads += 1;
+    }
+  };
+
+  for (const result of options.results) {
+    for (const attempt of result.attempts) {
+      countArtifacts(attempt.artifacts);
+      for (const step of attempt.steps) countStep(step);
+    }
+  }
+  for (const group of options.serialGroups) {
+    for (const attempt of group.attempts) {
+      countArtifacts(attempt.artifacts);
+      for (const member of attempt.members) {
+        for (const step of member.steps) countStep(step);
+      }
+    }
+  }
+
+  return costSeen ? { ...usage, estimatedCostUsd: cost } : usage;
+}
 
 /** Builds the complete report-1 document. */
 export function buildReport(options: BuildReportOptions): Report1Document {
@@ -399,10 +544,6 @@ export function buildReport(options: BuildReportOptions): Report1Document {
     .map(serializeSerialGroup);
 
   const summary = computeSummary(options.results);
-  const artifactBytes = options.results
-    .flatMap((result) => result.attempts)
-    .flatMap((attempt) => attempt.artifacts)
-    .reduce((total, artifact) => total + (artifact.size ?? 0), 0);
 
   return {
     schemaVersion: 'report-1',
@@ -433,22 +574,12 @@ export function buildReport(options: BuildReportOptions): Report1Document {
       results,
       errors: options.runErrors.map((runError) => serializeErrorRecord(runError.error)),
       summary,
-      limits: DEFAULT_LIMITS,
-      usage: {
-        discoveredResults: summary.discovered,
-        maxCacheEntryBytes: 0,
-        maxTerminalFieldBytes: 0,
-        maxAgentContextBytes: 0,
-        maxLedgerBytes: 0,
-        maxObservationBytes: 0,
-        artifactBytes,
-        downloads: 0,
-        reportBytes: 0,
-        events: 0,
-        modelTokens: 0,
-        maxModelCallsInStep: 0,
-        maxActionStepsInStep: 0,
-      },
+      limits: reportLimits(config),
+      usage: computeUsage({
+        results: options.results,
+        serialGroups: options.serialGroups,
+        discovered: summary.discovered,
+      }),
     },
   };
 }

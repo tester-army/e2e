@@ -18,6 +18,7 @@ import { Deadline, withTimeout } from '../internal/time.ts';
 import type { CollectedFile } from '../collect/collect.ts';
 import type { RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
+import { Ledger } from '../agent/ledger.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { findRegistered, RealmManager, type Realm } from './realm.ts';
@@ -49,6 +50,7 @@ export interface TargetExecutorOptions {
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
+  readonly env: NodeJS.ProcessEnv;
   readonly interruptSignal: AbortSignal;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
@@ -72,6 +74,7 @@ export class TargetExecutor implements SerialHost {
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
   readonly debug: DebugTrace;
+  readonly maxLedgerBytes: number;
 
   private readonly runErrors: RunError[] = [];
   private readonly sessionIdentity: SessionIdentity;
@@ -81,6 +84,7 @@ export class TargetExecutor implements SerialHost {
     this.artifactsRoot = options.artifactsRoot;
     this.interruptSignal = options.interruptSignal;
     this.debug = options.debug ?? new DebugTrace(false);
+    this.maxLedgerBytes = options.config.limits.maxLedgerBytes;
     this.realms = new RealmManager({
       targetName: options.target.name,
       platform: options.target.platform,
@@ -359,7 +363,14 @@ export class TargetExecutor implements SerialHost {
     const attemptId = uuidv7();
     const startedAt = timestamp();
     const startedMs = Date.now();
-    const steps = new StepRecorder(attemptId);
+    const ledger =
+      context.kind === 'serial'
+        ? context.shared.ledger
+        : new Ledger(this.config.limits.maxLedgerBytes);
+    const steps = new StepRecorder(attemptId, {
+      ledger,
+      maxEventsPerStep: this.config.limits.maxEventsPerStep,
+    });
     const secondaryErrors: SerializedError[] = [];
     const attemptAbort = new AbortController();
     const onInterrupt = () => attemptAbort.abort();
@@ -367,7 +378,12 @@ export class TargetExecutor implements SerialHost {
 
     const artifacts = createAttemptArtifacts({
       artifactsRoot: this.artifactsRoot,
-      segments: [this.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
+      // Serial members share the group's session, and therefore its artifact
+      // directory; registering under their own would not resolve on disk.
+      segments:
+        context.kind === 'serial'
+          ? context.shared.artifactSegments
+          : [this.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
       attemptId,
       currentStepId: () => steps.currentStepId,
     });
@@ -423,6 +439,9 @@ export class TargetExecutor implements SerialHost {
         attemptId,
         testDeadline,
         artifacts: artifacts.sink,
+        ledger,
+        agentContext: pair.options.agentContext,
+        env: this.options.env,
         opened: context.kind === 'serial' ? context.shared.opened : { value: false },
         saveSession,
       });

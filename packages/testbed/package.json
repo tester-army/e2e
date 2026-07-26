@@ -9,13 +9,15 @@
     "test": "tsc --noEmit && node node_modules/e2e/dist/cli/bin.js run",
     "test:headed": "node node_modules/e2e/dist/cli/bin.js run --headed",
     "test:public": "node node_modules/e2e/dist/cli/bin.js run --config e2e.public.config.ts",
-    "app": "node app/server.mjs"
+    "app": "node app/server.mjs",
+    "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
   },
   "dependencies": {
     "e2e": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.1.1",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "zod": "4.4.3"
   }
 }

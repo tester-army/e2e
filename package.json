@@ -17,7 +17,8 @@
     "typecheck": "pnpm run build && pnpm -r run typecheck",
     "test": "pnpm --filter e2e test",
     "test:testbed": "pnpm run build && pnpm --filter @e2e/testbed test",
-    "test:public": "pnpm run build && pnpm --filter @e2e/testbed test:public"
+    "test:public": "pnpm run build && pnpm --filter @e2e/testbed test:public",
+    "test:agent": "pnpm run build && pnpm --filter @e2e/testbed test:agent"
   },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",

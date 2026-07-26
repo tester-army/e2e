@@ -1,9 +1,107 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright driver. */
 
-import type { Locator as PwLocator, Page } from 'playwright';
+import type { ElementHandle, Locator as PwLocator, Page } from 'playwright';
 import { DriverError, type Momentum, type ScrollDirection } from '../driver/index.ts';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
+
+/**
+ * A resolved node is addressed either by a deterministic locator expression or
+ * by a live element handle captured during one agent observation.
+ */
+export type ActionTarget =
+  | { readonly kind: 'locator'; readonly locator: PwLocator }
+  | { readonly kind: 'element'; readonly element: ElementHandle<Node> };
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface TimeoutOptions {
+  timeout: number;
+}
+
+/** Uniform action surface over locator-backed and handle-backed targets. */
+export interface Actionable {
+  click(options: TimeoutOptions & { delay?: number }): Promise<void>;
+  dblclick(options: TimeoutOptions): Promise<void>;
+  fill(value: string, options: TimeoutOptions): Promise<void>;
+  press(key: string, options: TimeoutOptions): Promise<void>;
+  check(options: TimeoutOptions): Promise<void>;
+  uncheck(options: TimeoutOptions): Promise<void>;
+  focus(options: TimeoutOptions): Promise<void>;
+  scrollIntoViewIfNeeded(options: TimeoutOptions): Promise<void>;
+  selectOption(
+    value: { label?: string; index?: number },
+    options: TimeoutOptions,
+  ): Promise<unknown>;
+  hover(options: TimeoutOptions): Promise<void>;
+  boundingBox(options: TimeoutOptions): Promise<Rect | null>;
+  dragTo(target: ActionTarget, options: TimeoutOptions): Promise<void>;
+  evaluate<Result, Arg>(
+    fn: (element: never, arg: Arg) => Result,
+    arg: Arg,
+    options: TimeoutOptions,
+  ): Promise<Result>;
+  page(): Promise<Page>;
+}
+
+/** Adapts one action target to the uniform surface used by action dispatch. */
+export function asActionable(target: ActionTarget): Actionable {
+  if (target.kind === 'locator') {
+    const locator = target.locator;
+    return {
+      click: (options) => locator.click(options),
+      dblclick: (options) => locator.dblclick(options),
+      fill: (value, options) => locator.fill(value, options),
+      press: (key, options) => locator.press(key, options),
+      check: (options) => locator.check(options),
+      uncheck: (options) => locator.uncheck(options),
+      focus: (options) => locator.focus(options),
+      scrollIntoViewIfNeeded: (options) => locator.scrollIntoViewIfNeeded(options),
+      selectOption: (value, options) => locator.selectOption(value, options),
+      hover: (options) => locator.hover(options),
+      boundingBox: (options) => locator.boundingBox(options),
+      dragTo: (other, options) => {
+        if (other.kind !== 'locator') throw unsupportedDrag();
+        return locator.dragTo(other.locator, options);
+      },
+      evaluate: (fn, arg, options) =>
+        locator.evaluate(fn as never, arg, options) as never,
+      page: () => Promise.resolve(locator.page()),
+    };
+  }
+  const element = target.element;
+  return {
+    click: (options) => element.click(options),
+    dblclick: (options) => element.dblclick(options),
+    fill: (value, options) => element.fill(value, options),
+    press: (key, options) => element.press(key, options),
+    check: (options) => element.check(options),
+    uncheck: (options) => element.uncheck(options),
+    focus: () => element.focus(),
+    scrollIntoViewIfNeeded: (options) => element.scrollIntoViewIfNeeded(options),
+    selectOption: (value, options) => element.selectOption(value, options),
+    hover: (options) => element.hover(options),
+    boundingBox: () => element.boundingBox(),
+    dragTo: () => Promise.reject(unsupportedDrag()),
+    evaluate: (fn, arg) => element.evaluate(fn as never, arg) as never,
+    page: async () => {
+      const frame = await element.ownerFrame();
+      if (frame === null) throw invalidState('element is detached from every frame');
+      return frame.page();
+    },
+  };
+}
+
+function unsupportedDrag(): DriverError {
+  return new DriverError('UNSUPPORTED_CAPABILITY', 'dragTo requires a locator-backed target', {
+    retryable: false,
+  });
+}
 
 export function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -60,12 +158,13 @@ export function performViewportSwipe(
 }
 
 export async function performElementSwipe(
-  locator: PwLocator,
+  target: ActionTarget,
   direction: ScrollDirection,
   momentum: Momentum,
   timeout: number,
 ): Promise<void> {
-  const box = await locator.boundingBox({ timeout });
+  const actionable = asActionable(target);
+  const box = await actionable.boundingBox({ timeout });
   if (box === null) {
     throw new DriverError('NOT_ACTIONABLE', 'element has no visible bounding box', {
       retryable: false,
@@ -76,8 +175,9 @@ export async function performElementSwipe(
     momentum,
   );
   const [deltaX, deltaY] = wheelDelta(direction, distance);
-  await locator.hover({ timeout });
-  await locator.page().mouse.wheel(deltaX, deltaY);
+  const page = await actionable.page();
+  await actionable.hover({ timeout });
+  await page.mouse.wheel(deltaX, deltaY);
 }
 
 function swipeDistance(extent: number, momentum: Momentum): number {

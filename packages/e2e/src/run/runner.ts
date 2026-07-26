@@ -48,6 +48,8 @@ export interface RunOptions {
   workers?: number | undefined;
   reporters?: readonly ('list' | 'json' | 'html')[] | undefined;
   artifactsDir?: string | undefined;
+  /** `--no-agent-cache`: false forces agent cache mode off. */
+  agentCache?: boolean | undefined;
   passWithNoTests?: boolean | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
@@ -133,6 +135,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (options.retries !== undefined) cli.retries = options.retries;
     if (options.workers !== undefined) cli.workers = options.workers;
     if (options.reporters !== undefined) cli.reporters = options.reporters;
+    if (options.agentCache === false) cli.agentCache = 'off';
 
     config = await debug.time('config.load', async () => {
       if (options.rawConfig !== undefined) {
@@ -240,6 +243,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
               artifactsRoot,
               sessionStore: store,
               headed: options.headed ?? false,
+              env,
               debug,
               drivers: preflightDrivers,
             }),

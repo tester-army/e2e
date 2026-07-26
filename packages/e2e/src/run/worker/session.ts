@@ -38,6 +38,11 @@ export interface TargetWorkerDeps {
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly headed: boolean;
+  /**
+   * Environment the agent model adapter reads its credential from. Spawned
+   * workers inherit it from the runner process; it never crosses IPC.
+   */
+  readonly env: NodeJS.ProcessEnv;
   readonly resolvePairs: ResolveUnitPairs;
   readonly debug?: DebugTrace;
   /**
@@ -83,6 +88,7 @@ export class TargetWorker {
         artifactsRoot: deps.artifactsRoot,
         sessionStore: deps.sessionStore,
         headed: deps.headed,
+        env: deps.env,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         events: {

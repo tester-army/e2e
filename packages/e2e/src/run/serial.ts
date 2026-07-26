@@ -1,5 +1,6 @@
 /** Serial-group execution: one shared session per group attempt (spec 11-lifecycle.md). */
 
+import { Ledger } from '../agent/ledger.ts';
 import type { DriverSession } from '../driver/index.ts';
 import {
   classifyError,
@@ -34,7 +35,15 @@ import { pairResult } from './units.ts';
  */
 export interface SharedSerialSession {
   readonly session: DriverSession;
+  /**
+   * Report segments of the group attempt directory. The shared session writes
+   * every artifact there, so members resolve artifact paths against it rather
+   * than against their own attempt directory.
+   */
+  readonly artifactSegments: readonly string[];
   readonly opened: { value: boolean };
+  /** One ledger is shared so members see each other's prior steps. */
+  readonly ledger: Ledger;
 }
 
 /** Executor capabilities the serial runner borrows. */
@@ -43,6 +52,7 @@ export interface SerialHost {
   readonly artifactsRoot: string;
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
+  readonly maxLedgerBytes: number;
   launchSession(
     pair: TestTargetPair,
     attemptId: string,
@@ -148,13 +158,14 @@ async function runSerialAttempt(
   const startedMs = Date.now();
   const memberRecords: SerialMemberRecord[] = [];
   const first = members[0]!;
+  const artifactSegments = [
+    host.target.name,
+    sanitizePathSegment(first.test.serialId ?? first.test.id),
+    `attempt-${attemptIndex}`,
+  ];
   const artifacts = createAttemptArtifacts({
     artifactsRoot: host.artifactsRoot,
-    segments: [
-      host.target.name,
-      sanitizePathSegment(first.test.serialId ?? first.test.id),
-      `attempt-${attemptIndex}`,
-    ],
+    segments: artifactSegments,
     attemptId,
   });
   const record: SerialAttemptRecord = {
@@ -183,7 +194,9 @@ async function runSerialAttempt(
   try {
     shared = {
       session: await host.launchSession(first, attemptId, artifacts.dir, host.interruptSignal),
+      artifactSegments,
       opened: { value: false },
+      ledger: new Ledger(host.maxLedgerBytes),
     };
   } catch (cause) {
     const error = classifyError(cause);

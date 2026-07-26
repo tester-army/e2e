@@ -1,5 +1,8 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
+import { createAgent } from '../agent/index.ts';
+import type { Ledger } from '../agent/ledger.ts';
+import { createModelAdapter } from '../agent/model/registry.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
@@ -49,6 +52,11 @@ export interface AttemptEnvironment {
   readonly attemptId: string;
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
+  /** Attempt-scoped prior-step context; serial-group members share one ledger. */
+  readonly ledger: Ledger;
+  /** Trusted test/group agent context appended after config.agent.context. */
+  readonly agentContext: string | undefined;
+  readonly env: NodeJS.ProcessEnv;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
   /**
@@ -84,6 +92,12 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
     },
   });
 
+  /**
+   * Any resolved secret leaves the viewport pixel-tainted for the rest of the
+   * attempt: an untrusted app may mirror the value anywhere on screen.
+   */
+  const taint = { value: false };
+
   const secrets: SecretResolver = {
     resolve(secret) {
       const credential = environment.config.credentials.get(secret.name);
@@ -93,6 +107,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
           `credential "${secret.name}" is not configured`,
         );
       }
+      taint.value = true;
       return credential.password;
     },
   };
@@ -102,12 +117,27 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
   const app = createApp(environment, engine, opened);
   const web = createWeb(environment, engine, screenContext, opened);
 
+  let agent: Agent | undefined;
+
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
-      throw new ConfigurationError(
-        'MODEL_UNAVAILABLE',
-        'the agent fixture requires model configuration (agent.model or E2E_MODEL); agentic execution is not implemented yet',
-      );
+      agent ??= createAgent({
+        engine,
+        steps: environment.steps,
+        adapter: createModelAdapter(environment.config.agent.model, environment.env),
+        config: environment.config,
+        ledger: environment.ledger,
+        agentContext: joinAgentContext(
+          environment.config.agent.context,
+          environment.agentContext,
+        ),
+        secrets,
+        secretValues: secretValues(environment),
+        taint,
+        artifacts: environment.artifacts,
+        signal: environment.signal,
+      });
+      return agent;
     },
     app,
     screen,
@@ -134,6 +164,26 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
   };
 
   return { fixtures, engine };
+}
+
+/** Trusted config context first, then test/group context. */
+function joinAgentContext(
+  configContext: string | undefined,
+  testContext: string | undefined,
+): string | undefined {
+  const parts = [configContext, testContext].filter(
+    (part): part is string => part !== undefined && part.trim() !== '',
+  );
+  return parts.length === 0 ? undefined : parts.join('\n');
+}
+
+/** Registered secret values, used only for runner-side observation redaction. */
+function secretValues(environment: AttemptEnvironment): ReadonlyMap<string, string> {
+  const values = new Map<string, string>();
+  for (const [name, credential] of environment.config.credentials) {
+    values.set(name, credential.password);
+  }
+  return values;
 }
 
 function createApp(
@@ -364,9 +414,11 @@ function createWeb(
       });
     },
     async setViewport(size): Promise<void> {
-      await steps.run('web', 'web.setViewport', `${size.width}x${size.height}`, () =>
-        driverWeb().setViewport(size, engine.operation()),
-      );
+      await steps.run('web', 'web.setViewport', `${size.width}x${size.height}`, async () => {
+        await driverWeb().setViewport(size, engine.operation());
+        const runtime = await engine.session.runtime(engine.operation());
+        steps.attachViewport(runtime.viewport);
+      });
     },
     async onDialog(handler): Promise<() => Promise<void>> {
       const wrapped =

@@ -8,6 +8,14 @@ import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
 import { isDriverHandle, type Driver } from '../driver/index.ts';
 import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
+import {
+  resolveAgentConfig,
+  resolveLimits,
+  type ResolvedAgentConfig,
+  type ResolvedLimits,
+} from './agent.ts';
+
+export type { ResolvedAgentConfig, ResolvedLimits, ResolvedModel } from './agent.ts';
 
 export interface ResolvedTarget {
   readonly name: string;
@@ -54,6 +62,8 @@ export interface ResolvedConfig {
   readonly artifacts: readonly ('trace' | 'screenshot' | 'video')[];
   readonly reporters: readonly ('list' | 'json' | 'html')[];
   readonly testIdAttribute: string;
+  readonly agent: ResolvedAgentConfig;
+  readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   readonly configDigest: string;
 }
@@ -64,6 +74,8 @@ export interface CliOverrides {
   reporters?: readonly ('list' | 'json' | 'html')[];
   headed?: boolean;
   artifactsDir?: string;
+  /** `--no-agent-cache` forces cache mode off. */
+  agentCache?: 'off';
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -174,6 +186,8 @@ export function resolveConfig(
   const testIdAttribute = raw.screen?.testIdAttribute ?? 'data-testid';
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
   const credentials = resolveCredentials(raw, env);
+  const agent = resolveAgentConfig(raw, env, ci, cli.agentCache);
+  const limits = resolveLimits(raw, agent.maxObservationBytes);
 
   const resolved: ResolvedConfig = {
     specVersion: '0.1',
@@ -194,6 +208,8 @@ export function resolveConfig(
     artifacts,
     reporters,
     testIdAttribute,
+    agent,
+    limits,
     credentials,
     configDigest: computeConfigDigest(raw, projectId),
   };

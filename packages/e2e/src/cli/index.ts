@@ -72,6 +72,7 @@ export function createProgram(): Command {
           workers?: number;
           reporter?: string[];
           artifacts?: string;
+          agentCache?: boolean;
           passWithNoTests?: boolean;
           debug?: boolean;
         },
@@ -99,6 +100,7 @@ export function createProgram(): Command {
           workers: options.workers,
           reporters: reporter?.filter(isReporter),
           artifactsDir: options.artifacts,
+          agentCache: options.agentCache,
           passWithNoTests: options.passWithNoTests,
           debug: options.debug,
         });

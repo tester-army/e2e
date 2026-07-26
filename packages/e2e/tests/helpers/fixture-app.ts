@@ -10,6 +10,7 @@ const PAGES: Record<string, string> = {
 <body>
   <h1>Home</h1>
   <a href="/about">About</a>
+  <a href="/about?token=super-secret-token#frag">About with token</a>
   <button id="increment" onclick="document.getElementById('count').textContent = String(Number(document.getElementById('count').textContent) + 1)">Increment</button>
   <output id="count" role="status" aria-label="Counter">0</output>
 
