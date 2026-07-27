@@ -58,7 +58,7 @@ export interface ModuleRegistration {
   readonly hooks: readonly RegisteredHook[];
 }
 
-const SESSION_NAME_PATTERN = /^[A-Za-z0-9_.\-]{1,128}$/;
+const SESSION_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 
 class Collector {
   readonly tests: RegisteredTest[] = [];

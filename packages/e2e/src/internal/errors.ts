@@ -55,13 +55,13 @@ export class E2EError extends Error {
   }
 }
 
-const CATEGORIES: readonly ErrorCategory[] = [
+const CATEGORIES: ReadonlySet<ErrorCategory> = new Set([
   'test',
   'configuration',
   'infrastructure',
   'internal',
   'interrupted',
-];
+]);
 
 /** Detects an E2EError created by another copy of this module. */
 function isForeignE2EError(value: unknown): value is Error & {
@@ -72,7 +72,7 @@ function isForeignE2EError(value: unknown): value is Error & {
   return (
     value instanceof Error &&
     (value as unknown as Record<PropertyKey, unknown>)[E2E_ERROR_MARKER] === true &&
-    CATEGORIES.includes((value as { category?: ErrorCategory }).category as ErrorCategory) &&
+    CATEGORIES.has((value as { category?: ErrorCategory }).category as ErrorCategory) &&
     typeof (value as { code?: unknown }).code === 'string'
   );
 }

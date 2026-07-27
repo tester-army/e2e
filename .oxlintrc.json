@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "off",
+    "style": "off"
+  },
+  "env": {
+    "es2023": true,
+    "node": true
+  },
+  "ignorePatterns": ["**/dist/**", "packages/e2e/tests/fixtures/**", "packages/e2e/tests/tmp-projects/**"],
+  "rules": {
+    // Sequential execution is the contract of a test runner, not a perf bug.
+    "eslint/no-await-in-loop": "off",
+    // Helpers inside page.evaluate callbacks must stay inline to serialize.
+    "unicorn/consistent-function-scoping": "off",
+    // Conflicts with the conditional-spread idiom exactOptionalPropertyTypes forces.
+    "oxc/no-map-spread": "off"
+  },
+  "overrides": [
+    {
+      "files": ["spec/**/*.ts"],
+      "rules": {
+        "eslint/no-unused-expressions": "off"
+      }
+    }
+  ]
+}

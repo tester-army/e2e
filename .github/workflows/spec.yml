@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -19,7 +23,15 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm --filter e2e exec playwright install chromium --with-deps
-      - run: pnpm test
-      - run: pnpm --filter @e2e/testbed test
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck spec
+        run: pnpm check:spec
+      - name: Typecheck packages
+        run: pnpm typecheck
+      - name: Install browsers
+        run: pnpm --filter e2e exec playwright install chromium --with-deps
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Testbed
+        run: pnpm --filter @e2e/testbed test

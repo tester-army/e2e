@@ -43,7 +43,7 @@ export class DebugTrace {
   /** Formats aggregated timings as an aligned table, sorted by total time. */
   summary(): string {
     const rows = [...this.entries.entries()]
-      .sort((left, right) => right[1].totalMs - left[1].totalMs)
+      .toSorted((left, right) => right[1].totalMs - left[1].totalMs)
       .map(([label, entry]) => ({
         label,
         count: String(entry.count),

@@ -93,7 +93,7 @@ export function discoverFiles(root: string, patterns: readonly string[]): string
   walk(root, '', (relative) => {
     if (compiled.some((glob) => matchesGlob(glob, relative))) matched.add(relative);
   });
-  return [...matched].sort(compareCodePoints);
+  return [...matched].toSorted(compareCodePoints);
 }
 
 function walk(absoluteDir: string, relativeDir: string, onFile: (relative: string) => void): void {

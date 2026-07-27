@@ -11,7 +11,6 @@ import type {
   DriverManifest,
   JsonValue,
   Momentum,
-  Platform,
   RouteFulfillResponse,
   SelectOption,
   ScrollDirection,

@@ -42,7 +42,7 @@ export function staleOr(cause: unknown, operation: string): DriverError {
 }
 
 export function sanitizeFilename(name: string): string {
-  return name.replaceAll(/[^A-Za-z0-9._\-]/g, '_').slice(0, 64) || 'artifact';
+  return name.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 64) || 'artifact';
 }
 
 export function performViewportSwipe(

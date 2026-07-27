@@ -72,9 +72,9 @@ export class RealmManager {
 
   /** Returns a test's hooks of one kind across its enclosing scope chain. */
   hooksFor(realm: Realm, test: RegisteredTest, kind: 'beforeEach' | 'afterEach'): RegisteredHook[] {
-    const chainKeys = scopeChainFor(test).map(scopeKey);
+    const chainKeys = new Set(scopeChainFor(test).map(scopeKey));
     return realm.registration.hooks.filter(
-      (hook) => hook.kind === kind && chainKeys.includes(scopeKey(hook.group)),
+      (hook) => hook.kind === kind && chainKeys.has(scopeKey(hook.group)),
     );
   }
 
@@ -117,11 +117,11 @@ export class RealmManager {
 
   /** Runs pending afterAll hooks, innermost scope first. */
   async leave(realm: Realm): Promise<void> {
-    for (const key of [...realm.pendingAfterAll].reverse()) {
+    for (const key of [...realm.pendingAfterAll].toReversed()) {
       const hooks = realm.registration.hooks.filter(
         (hook) => hook.kind === 'afterAll' && scopeKey(hook.group) === key,
       );
-      for (const hook of [...hooks].reverse()) {
+      for (const hook of [...hooks].toReversed()) {
         try {
           await withTimeout(
             Promise.resolve(hook.fn(this.suiteFixtures() as never)),

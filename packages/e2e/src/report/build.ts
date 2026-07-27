@@ -389,7 +389,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         );
 
   const results = [...options.results]
-    .sort(compareResults)
+    .toSorted(compareResults)
     .map((result) => serializeResult(config, result));
 
   const summary = computeSummary(options.results);

@@ -82,7 +82,7 @@ export function canonicalJson(value: unknown): string {
       }
       const entries = Object.entries(value as Record<string, unknown>)
         .filter(([, v]) => v !== undefined)
-        .sort(([a], [b]) => compareUtf16(a, b));
+        .toSorted(([a], [b]) => compareUtf16(a, b));
       return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
     }
     default:

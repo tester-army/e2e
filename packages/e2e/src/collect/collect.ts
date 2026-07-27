@@ -97,8 +97,8 @@ export async function collect(
 ): Promise<Collection> {
   let matched = discoverFiles(config.projectRoot, config.tests);
   if (fileFilter !== undefined && fileFilter.length > 0) {
-    const normalizedFilters = fileFilter.map((file) => normalizeRelativePath(config.projectRoot, file));
-    matched = matched.filter((file) => normalizedFilters.includes(file));
+    const normalizedFilters = new Set(fileFilter.map((file) => normalizeRelativePath(config.projectRoot, file)));
+    matched = matched.filter((file) => normalizedFilters.has(file));
   }
   const files: CollectedFile[] = [];
   for (const file of matched) {

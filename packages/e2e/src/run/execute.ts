@@ -139,7 +139,7 @@ export class TargetExecutor implements SerialHost {
         (pair) => pair.test.file === file.file && pair.test.kind === 'test',
       );
       let realm: Realm | null = null;
-      for (const pair of filePairs.sort((a, b) => a.test.declarationIndex - b.test.declarationIndex)) {
+      for (const pair of filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex)) {
         if (this.interruptSignal.aborted) {
           this.emitUnstartedInterrupted(pair);
           continue;
@@ -165,7 +165,7 @@ export class TargetExecutor implements SerialHost {
             executedSerialUnits.add(pair.test.serialId);
             const members = filePairs
               .filter((member) => member.test.serialId === pair.test.serialId)
-              .sort((a, b) => a.test.declarationIndex - b.test.declarationIndex);
+              .toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
             this.serialGroups.push(await runSerialUnit(this, members, file.absolutePath));
             realm = null;
           }
@@ -507,7 +507,7 @@ export class TargetExecutor implements SerialHost {
       });
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');
-      const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach').reverse();
+      const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach').toReversed();
 
       const mainWork = async (): Promise<void> => {
         phase = 'beforeEach';

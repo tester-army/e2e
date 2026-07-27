@@ -62,7 +62,7 @@ export function createAttemptArtifacts(options: {
 
 /** Restricts a report path segment to a safe filename alphabet. */
 export function sanitizePathSegment(value: string): string {
-  return value.replaceAll(/[^A-Za-z0-9._\-]/g, '_').slice(0, 120);
+  return value.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
 }
 
 function mediaTypeFor(relativePath: string): string {

@@ -66,7 +66,7 @@ export interface CliOverrides {
   artifactsDir?: string;
 }
 
-const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.\-]+$/;
+const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
 const TOP_LEVEL_KEYS = new Set([
   'specVersion',

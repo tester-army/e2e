@@ -202,9 +202,12 @@ export const readNodeFunction = (element: Element, testIdAttribute: string): Raw
   } else if (autocomplete === 'one-time-code') inputPurpose = 'one-time-code';
 
   const attributes: Record<string, string> = {};
-  const allowedExact = [testIdAttribute, 'type', 'autocomplete', 'href', 'role', 'id', 'name', 'placeholder', 'title', 'alt', 'value'];
+  const allowedExact = new Set([
+    testIdAttribute, 'type', 'autocomplete', 'href', 'role', 'id',
+    'name', 'placeholder', 'title', 'alt', 'value',
+  ]);
   for (const attribute of Array.from(el.attributes)) {
-    if (allowedExact.includes(attribute.name) || attribute.name.startsWith('aria-')) {
+    if (allowedExact.has(attribute.name) || attribute.name.startsWith('aria-')) {
       if (secure && attribute.name === 'value') continue;
       attributes[attribute.name] = attribute.value;
     }

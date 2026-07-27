@@ -10,19 +10,22 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter e2e build",
-    "check": "pnpm run check:spec && pnpm run typecheck",
+    "check": "pnpm run lint && pnpm run check:spec && pnpm run typecheck",
     "check:spec": "tsc --project tsconfig.spec.json",
-    "typecheck": "pnpm --filter e2e typecheck",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "typecheck": "pnpm run build && pnpm -r run typecheck",
     "test": "pnpm --filter e2e test",
-    "test:testbed": "pnpm --filter e2e build && pnpm --filter @e2e/testbed test",
-    "test:public": "pnpm --filter e2e build && pnpm --filter @e2e/testbed test:public"
+    "test:testbed": "pnpm run build && pnpm --filter @e2e/testbed test",
+    "test:public": "pnpm run build && pnpm --filter @e2e/testbed test:public"
   },
   "contributors": [
-    "Oskar Kwa\u015bniewski <oskar@tester.army>",
+    "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "devDependencies": {
     "@types/node": "26.1.1",
+    "oxlint": "1.75.0",
     "typescript": "7.0.2",
     "zod": "4.4.3"
   },

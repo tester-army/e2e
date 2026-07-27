@@ -74,6 +74,6 @@ describe('discoverFiles', () => {
 describe('compareCodePoints', () => {
   it('sorts by unicode code point, not UTF-16 units', () => {
     const items = ['b', 'a', '\u{1F600}', 'z'];
-    expect([...items].sort(compareCodePoints)).toEqual(['a', 'b', 'z', '\u{1F600}']);
+    expect([...items].toSorted(compareCodePoints)).toEqual(['a', 'b', 'z', '\u{1F600}']);
   });
 });

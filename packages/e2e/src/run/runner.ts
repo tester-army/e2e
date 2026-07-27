@@ -178,9 +178,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
         ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
       };
-      selection = select(collection, config, filters, {
-        ...(options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {}),
-      });
+      selection = select(
+        collection,
+        config,
+        filters,
+        options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
+      );
     } catch (cause) {
       const error = classifyError(cause);
       recordRunError(error, 'collection');
