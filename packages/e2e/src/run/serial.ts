@@ -25,6 +25,7 @@ import type {
   SerialMemberRecord,
 } from './records.ts';
 import { runWithRetries } from './retry.ts';
+import { pairResult } from './units.ts';
 
 /**
  * One shared driver session plus its app open-state for a serial-group
@@ -122,15 +123,15 @@ export async function runSerialUnit(
     } else {
       status = memberRecord.status;
     }
-    host.emit({
-      test: member.test,
-      target: member.target,
-      status,
-      selected: true,
-      ...(skip !== undefined ? { skip } : {}),
-      attempts: [],
-      serialGroupId: groupRecordId,
-    });
+    host.emit(
+      pairResult(member, {
+        status,
+        selected: true,
+        ...(skip !== undefined ? { skip } : {}),
+        attempts: [],
+        serialGroupId: groupRecordId,
+      }),
+    );
   }
 
   return group;

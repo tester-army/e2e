@@ -78,20 +78,30 @@ export class SessionStore {
   private readonly key: Buffer;
   private readonly directory: string;
 
-  constructor(
+  private constructor(
     private readonly runId: string,
     sessionsRoot: string,
-    key?: Buffer,
+    key: Buffer,
   ) {
-    if (key !== undefined && key.length !== 32) {
-      throw new E2EError('infrastructure', 'SESSION_KEY_INVALID', 'session key must be 32 bytes');
-    }
-    this.key = key ?? randomBytes(32);
+    this.key = key;
     this.directory = path.join(sessionsRoot, runId);
   }
 
+  /** Opens the store for a new run, generating its key. */
+  static create(runId: string, sessionsRoot: string): SessionStore {
+    return new SessionStore(runId, sessionsRoot, randomBytes(32));
+  }
+
+  /** Opens the store in a worker, reusing the key the runner generated. */
+  static forWorker(runId: string, sessionsRoot: string, key: Buffer): SessionStore {
+    if (key.length !== 32) {
+      throw new E2EError('infrastructure', 'SESSION_KEY_INVALID', 'session key must be 32 bytes');
+    }
+    return new SessionStore(runId, sessionsRoot, key);
+  }
+
   /** Base64 key for transfer to worker processes over IPC (never disk/env). */
-  get keyBase64(): string {
+  exportKeyForWorker(): string {
     return this.key.toString('base64');
   }
 

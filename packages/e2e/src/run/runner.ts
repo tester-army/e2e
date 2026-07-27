@@ -27,11 +27,12 @@ import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { ensureBrowsersInstalled } from '../playwright/install.ts';
 import { AppProcess } from './app-process.ts';
-import { TargetExecutor } from './execute.ts';
+import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { resolveDriver } from './resolve-driver.ts';
-import { runParallel } from './scheduler.ts';
+import { runUnits } from './scheduler.ts';
 import { SessionStore } from './sessions.ts';
+import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
 import type { E2EConfig } from '../types.ts';
 
@@ -164,44 +165,52 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       await debug.time('app.start', () => appProcess!.start());
     }
 
-    let collection: Collection;
-    let selection: Selection;
+    const resolvedConfig = config;
+    let planned: { collection: Collection; selection: Selection };
     try {
-      collection = await debug.time('collect', () => collect(config!, options.files));
-      const filters: SelectionFilters = {
-        ...(options.tags !== undefined ? { tags: options.tags } : {}),
-        ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
-        ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
-      };
-      selection = select(
-        collection,
-        config,
-        filters,
-        options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
-      );
+      planned = await debug.time('collect', async () => {
+        const collection = await collect(resolvedConfig, options.files);
+        const filters: SelectionFilters = {
+          ...(options.tags !== undefined ? { tags: options.tags } : {}),
+          ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
+          ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
+        };
+        const selection = select(
+          collection,
+          resolvedConfig,
+          filters,
+          options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
+        );
+        return { collection, selection };
+      });
     } catch (cause) {
       const error = classifyError(cause);
       recordRunError(error, 'collection');
       return finish(exitCodeForCategory(error.category));
     }
+    const { collection, selection } = planned;
 
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
     const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
-    const store = new SessionStore(runId, sessionsRoot);
+    const store = SessionStore.create(runId, sessionsRoot);
     sessionStore = store;
 
     // Pre-flight: validate every selected driver before any session launches.
-    const resolvedConfig = config;
-    const targetRuns = selection.perTarget.map(({ target, pairs }) => {
+    // Child-process workers build their own driver instances; these are used
+    // for validation, for report provenance, and (in-process only) execution.
+    const preflightDrivers = new Map<string, Driver>();
+    for (const { target } of selection.perTarget) {
       const driver = resolveDriver(target);
       driversToDispose.add(driver);
+      preflightDrivers.set(target.name, driver);
       targetProvenance.set(target.name, validateDriver(driver, target, resolvedConfig));
-      return { target, driver, pairs };
-    });
+    }
 
     // Pre-flight: provision browsers for the bundled driver before any
     // session launches, so first-run downloads never eat launch timeouts.
-    const bundledBrowsers = targetRuns
+    // Worker processes launch their own browsers, so this must happen here,
+    // once, before any worker starts.
+    const bundledBrowsers = selection.perTarget
       .filter(({ target }) => target.driver === 'playwright')
       .map(({ target }) => target.browser);
     if (bundledBrowsers.length > 0) {
@@ -216,62 +225,60 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     process.once('SIGINT', onSignal);
     process.once('SIGTERM', onSignal);
 
+    // Workers re-load the config module themselves, so a file-backed config
+    // runs across processes. A programmatic `rawConfig` cannot cross a process
+    // boundary (it may hold live driver instances), so it runs in-process
+    // against one worker. Either way the scheduler is the only engine.
+    const transport =
+      config.configPath === undefined
+        ? {
+            workers: 1,
+            spawn: inProcessSpawner({
+              config: resolvedConfig,
+              selection,
+              runId,
+              artifactsRoot,
+              sessionStore: store,
+              headed: options.headed ?? false,
+              debug,
+              drivers: preflightDrivers,
+            }),
+          }
+        : {
+            workers: config.workers,
+            spawn: childProcessSpawner({
+              configPath: config.configPath,
+              projectRoot: config.projectRoot,
+              configDigest: config.configDigest,
+              runId,
+              artifactsRoot,
+              headed: options.headed ?? false,
+              sessionsRoot,
+              sessionKeyBase64: store.exportKeyForWorker(),
+              env,
+            }),
+          };
+
     try {
-      if (config.configPath !== undefined) {
-        // Parallel path: workers re-load the config module themselves, so it
-        // must be file-backed. Applies to every worker count, including 1.
-        const configPath = config.configPath;
-        const resolvedSelection = selection;
-        const resolvedCollection = collection;
-        await debug.time('scheduler', () =>
-          runParallel({
-            config: resolvedConfig,
-            configPath,
-            selection: resolvedSelection,
-            collection: resolvedCollection,
-            runId,
-            artifactsRoot,
-            sessionsRoot,
-            sessionKeyBase64: store.keyBase64,
-            headed: options.headed ?? false,
-            env,
-            interruptSignal: interruptController.signal,
-            events: {
-              onResult: (result) => {
-                results.push(result);
-                listReporter?.onResult(result);
-              },
-              onSerialGroup: (group) => serialGroups.push(group),
-              onRunError: (error) => runErrors.push(error),
+      await debug.time('scheduler', () =>
+        runUnits({
+          selection,
+          collection,
+          projectRoot: resolvedConfig.projectRoot,
+          workers: transport.workers,
+          spawn: transport.spawn,
+          interruptGraceMs: resolvedConfig.timeout + resolvedConfig.cleanupTimeout,
+          interruptSignal: interruptController.signal,
+          events: {
+            onResult: (result) => {
+              results.push(result);
+              listReporter?.onResult(result);
             },
-          }),
-        );
-      } else {
-        // In-process fallback: in-memory configs (tests) cannot cross to
-        // worker processes; execution stays sequential in this process.
-        for (const { target, driver, pairs } of targetRuns) {
-          const executor = new TargetExecutor({
-            config,
-            target,
-            driver,
-            runId,
-            artifactsRoot,
-            sessionStore: store,
-            headed: options.headed ?? false,
-            interruptSignal: interruptController.signal,
-            debug,
-            events: {
-              onResult: (result) => listReporter?.onResult(result),
-            },
-          });
-          const outcome = await debug.time(`target.${target.name}`, () =>
-            executor.run(pairs, collection.files),
-          );
-          results.push(...outcome.results);
-          serialGroups.push(...outcome.serialGroups);
-          runErrors.push(...outcome.runErrors);
-        }
-      }
+            onSerialGroup: (group) => serialGroups.push(group),
+            onRunError: (error) => runErrors.push(error),
+          },
+        }),
+      );
     } finally {
       process.removeListener('SIGINT', onSignal);
       process.removeListener('SIGTERM', onSignal);

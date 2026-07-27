@@ -168,11 +168,22 @@ describe('wire protocol', () => {
       attempts: [],
     };
     const wire = JSON.parse(JSON.stringify(encodeResult(record)));
-    expect(wire.targetName).toBe('web');
     expect(wire.target).toBeUndefined();
     const decoded = decodeResult(wire, target);
     expect(decoded.target).toBe(target);
     expect(decoded.test.id).toBe(test.id);
     expect(decoded.status).toBe('passed');
+  });
+
+  it('carries no test function across the wire', () => {
+    const record = nonRunResult({
+      test: makeTest('tests/a.e2e.ts', 'x', 0),
+      target,
+      options: defaultOptions,
+      disposition: 'skip',
+      skip: { cause: 'explicit', reason: 'skipped' },
+    });
+    expect('fn' in record.test).toBe(false);
+    expect(JSON.parse(JSON.stringify(encodeResult(record))).test.id).toBe(record.test.id);
   });
 });

@@ -13,15 +13,45 @@ import {
   type GroupNode,
   type ModuleRegistration,
   type RegisteredTest,
+  type SourceLocation,
 } from './registry.ts';
 
-export interface CollectedTest extends RegisteredTest {
+/**
+ * Everything needed to name and report a test, with no executable or realm
+ * state attached. Fully JSON-serializable, so it is what result records carry
+ * and what crosses the runner<->worker IPC channel.
+ */
+export interface TestIdentity {
+  readonly kind: 'test' | 'setup';
+  readonly title: string;
+  readonly titlePath: readonly string[];
+  readonly declarationIndex: number;
+  readonly sessions: readonly string[];
+  readonly source: SourceLocation | undefined;
   /** Normalized project-root-relative file path with `/` separators. */
   readonly file: string;
   readonly id: string;
+  readonly serialId: string | undefined;
+}
+
+export interface CollectedTest extends RegisteredTest, TestIdentity {
   /** Outermost serial group, when the test is a serial-group member. */
   readonly serialRoot: GroupNode | undefined;
-  readonly serialId: string | undefined;
+}
+
+/** Narrows a collected test to its reportable, serializable identity. */
+export function testIdentity(test: CollectedTest): TestIdentity {
+  return {
+    kind: test.kind,
+    title: test.title,
+    titlePath: test.titlePath,
+    declarationIndex: test.declarationIndex,
+    sessions: test.sessions,
+    source: test.source,
+    file: test.file,
+    id: test.id,
+    serialId: test.serialId,
+  };
 }
 
 export interface CollectedFile {

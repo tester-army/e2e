@@ -1,7 +1,7 @@
 /** Execution result data model shared by the executor and reporters. */
 
 import type { SerializedError } from '../internal/errors.ts';
-import type { CollectedTest } from '../collect/collect.ts';
+import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { StepRecord } from './steps.ts';
@@ -75,7 +75,7 @@ export interface SerialGroupRecord {
 export type ResultStatus = 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
 
 export interface ResultRecord {
-  test: CollectedTest;
+  test: TestIdentity;
   target: ResolvedTarget;
   status: ResultStatus;
   selected: boolean;

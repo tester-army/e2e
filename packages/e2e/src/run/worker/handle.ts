@@ -1,17 +1,17 @@
-/** Runner-side worker process lifecycle: spawn, messaging, exit tracking. */
+/** Child-process `UnitRunner`: spawn, messaging, exit tracking. */
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { InfrastructureError } from '../../internal/errors.ts';
-import type { InitMessage, MainToWorker, WorkerToMain } from './protocol.ts';
-
-export interface WorkerEvents {
-  onMessage(message: WorkerToMain): void;
-  /** Fires once when the process exits for any reason. */
-  onExit(code: number | null, signal: NodeJS.Signals | null): void;
-}
+import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../unit-runner.ts';
+import type {
+  ChildProcessInbound,
+  MainToWorker,
+  WorkerBootstrap,
+  WorkerToMain,
+} from './protocol.ts';
 
 /** Resolves the worker entry for both src (vitest, .ts) and dist (.js) layouts. */
 function resolveEntry(): { path: string; execArgv: string[] } {
@@ -25,20 +25,33 @@ function resolveEntry(): { path: string; execArgv: string[] } {
   throw new InfrastructureError('WORKER_ENTRY_MISSING', 'e2e worker entry module not found');
 }
 
+/** Run-wide settings every child-process worker boots with. */
+export type ChildProcessSpawnOptions = Omit<WorkerBootstrap, 'targetName'> & {
+  readonly env: NodeJS.ProcessEnv;
+};
+
+/** Creates the spawn factory the scheduler uses for child-process execution. */
+export function childProcessSpawner(options: ChildProcessSpawnOptions): SpawnUnitRunner {
+  const { env, ...bootstrap } = options;
+  return (targetName, events) =>
+    new ChildProcessRunner(
+      { ...bootstrap, targetName },
+      { projectRoot: bootstrap.projectRoot, env },
+      events,
+    );
+}
+
 /** One live worker process bound to a single target. */
-export class WorkerHandle {
-  readonly targetName: string;
-  /** Resolves when the process exits for any reason. */
+export class ChildProcessRunner implements UnitRunner {
   readonly exit: Promise<void>;
   private readonly child: ChildProcess;
   private exited = false;
 
   constructor(
-    init: Omit<InitMessage, 'type'>,
+    bootstrap: WorkerBootstrap,
     spawn: { projectRoot: string; env: NodeJS.ProcessEnv },
-    events: WorkerEvents,
+    events: UnitRunnerEvents,
   ) {
-    this.targetName = init.targetName;
     const entry = resolveEntry();
     this.child = fork(entry.path, [], {
       cwd: spawn.projectRoot,
@@ -50,14 +63,14 @@ export class WorkerHandle {
     this.exit = new Promise<void>((resolve) => {
       this.child.once('exit', (code, signal) => {
         this.exited = true;
-        events.onExit(code, signal);
+        events.onExit(`code ${String(code)}, signal ${String(signal)}`);
         resolve();
       });
     });
     this.child.once('error', () => {
       // spawn failures surface through the exit event
     });
-    this.send({ type: 'init', ...init });
+    this.post({ type: 'bootstrap', bootstrap });
   }
 
   get alive(): boolean {
@@ -65,17 +78,16 @@ export class WorkerHandle {
   }
 
   send(message: MainToWorker): void {
+    this.post(message);
+  }
+
+  private post(message: ChildProcessInbound): void {
     if (this.exited) return;
     try {
       this.child.send(message);
     } catch {
       // channel already closed; the exit event handles cleanup
     }
-  }
-
-  /** Graceful shutdown request; the worker disposes its driver and exits. */
-  shutdown(): void {
-    this.send({ type: 'shutdown' });
   }
 
   kill(): void {
