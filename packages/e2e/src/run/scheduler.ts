@@ -369,6 +369,12 @@ class Scheduler {
   private retire(worker: SchedulerWorker): void {
     if (worker.state === 'retired') return;
     worker.state = 'retired';
+    // Dropping rather than requeueing is only safe because the sole caller
+    // that can retire a worker still holding a unit is the interrupt
+    // broadcast, which clears the queues anyway. Requeueing here would strand
+    // the loop instead: `dispatch` stops once interrupted, so the unit would
+    // sit in a queue that `isDone` waits on forever. The other callers only
+    // ever retire idle workers, which never hold a queued unit.
     worker.queued = undefined;
     worker.shutdown(SHUTDOWN_GRACE_MS);
   }

@@ -88,8 +88,10 @@ interface FakeBehaviour {
   readonly status?: Record<string, ResultRecord['status']>;
   /** Unit ids whose worker exits mid-unit instead of finishing. */
   readonly crashOn?: readonly string[];
-  /** Targets whose workers never become ready. */
+  /** Targets whose workers exit instead of becoming ready. */
   readonly failInit?: readonly string[];
+  /** Targets whose workers hang in startup, never becoming ready or exiting. */
+  readonly neverReady?: readonly string[];
 }
 
 class FakeFleet {
@@ -131,6 +133,7 @@ class FakeRunner implements UnitRunner {
     });
     setTimeout(() => {
       if (this.exited) return;
+      if (behaviour.neverReady?.includes(targetName) === true) return;
       if (behaviour.failInit?.includes(targetName) === true) this.end('init failed');
       else this.events.onMessage({ type: 'ready' });
     }, 0);
@@ -386,6 +389,70 @@ describe('scheduler fault handling', () => {
     for (const result of collected.results) expect(result.status).toBe('skipped');
     // Boot failures stop after the retry budget rather than spawning forever.
     expect(fleet.spawned.length).toBeLessThanOrEqual(3);
+  });
+
+  it('fails a target whose worker dies holding a setup unit, without deadlocking', async () => {
+    // Regression: the setup unit is already off its queue and owned by a
+    // worker that never becomes ready. If it is not requeued before the
+    // target is failed, setup gating never clears, no file unit can dispatch,
+    // and the run loop waits for a wake that can never come.
+    const target = makeTarget('web', 0);
+    const setup = makePair(
+      makeTest('tests/setup.e2e.ts', 'login', {
+        kind: 'setup',
+        sessions: ['user'],
+        id: 'setup::user',
+      }),
+      target,
+    );
+    const gated = ['a', 'b'].map((name) =>
+      makePair(makeTest(`tests/${name}.e2e.ts`, name), target, {
+        options: { ...defaultOptions, session: 'user' },
+      }),
+    );
+    const pairs = [setup, ...gated];
+    const fleet = new FakeFleet({ failInit: ['web'] });
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(
+        pairs.map((pair) => pair.test.file),
+        pairs,
+      ),
+      fleet,
+      { workers: 2 },
+    );
+
+    // Every selected pair is accounted for, including the setup itself.
+    expect(collected.results).toHaveLength(3);
+    for (const result of collected.results) expect(result.status).toBe('skipped');
+    expect(collected.results.map((result) => result.test.id)).toContain('setup::user');
+    expect(collected.runErrors.some((error) => error.error.code === 'WORKER_INIT_FAILED')).toBe(true);
+  });
+
+  it('terminates when interrupted while a worker is still starting', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b'].map((name) =>
+      makePair(makeTest(`tests/${name}.e2e.ts`, name), target),
+    );
+    const fleet = new FakeFleet({ neverReady: ['web'] });
+    const controller = new AbortController();
+    // Abort once the scheduler has spawned a worker and handed it a unit.
+    const timer = setTimeout(() => controller.abort(), 20);
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(
+        pairs.map((pair) => pair.test.file),
+        pairs,
+      ),
+      fleet,
+      { workers: 2, interruptSignal: controller.signal },
+    );
+    clearTimeout(timer);
+
+    expect(fleet.spawned.length).toBeGreaterThan(0);
+    expect(collected.results.every((result) => result.status === 'skipped')).toBe(true);
   });
 
   it('terminates without dispatching when interrupted before it starts', async () => {
