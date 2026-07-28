@@ -38,7 +38,8 @@ jobs:
         run: |
           set -o pipefail
           pnpm exec fern generate --docs --preview --id "$HEAD_REF" --force 2>&1 | tee output.txt
-          url=$(grep -oE 'https://[a-zA-Z0-9._/-]*docs\.buildwithfern\.com[a-zA-Z0-9._/-]*' output.txt | head -1)
+          # fern logs the production instance first, so match the publish line only.
+          url=$(grep -oE 'Published docs to https://[^ ]+' output.txt | head -1 | awk '{print $NF}')
           if [ -z "$url" ]; then
             echo "could not determine preview URL from fern output" >&2
             exit 1
