@@ -17,6 +17,7 @@ import {
   textQuery,
 } from '../locator/expression.ts';
 import { POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
+import { agentTrace } from '../internal/trace.ts';
 import type { Role } from '../types.ts';
 import { AgentError } from './error.ts';
 import { Invocation, toAgentError } from './invocation.ts';
@@ -66,10 +67,16 @@ export async function observeAndSelect(
   });
   const explanation = response.explanation;
   if (response.target === null) {
+    agentTrace(`locate ${JSON.stringify(target)}: model declined — ${explanation}`);
     return { observation, selected: null, explanation, declined: true };
   }
   const selected = observation.nodes.get(response.target.id) ?? null;
   if (selected === null) invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
+  agentTrace(
+    `locate ${JSON.stringify(target)}: model selected #${response.target.id} (${
+      selected === null ? 'not in observation' : describe(selected)
+    }) — ${explanation}`,
+  );
   return { observation, selected, explanation, declined: false };
 }
 
@@ -95,7 +102,7 @@ function validateAgainstObservation(
   if (!observation.nodes.has(id)) {
     return {
       ok: false,
-      issue: `target.id "${id}" is not in the current observation; use only node ids it contains`,
+      issue: `target.id "${id}" is not in the current observation; use a node id exactly as printed after "#", e.g. "n42"`,
     };
   }
   return validation;
@@ -147,12 +154,13 @@ export async function resolveSelected(
     );
   }
   const engine = invocation.engine;
-  let ambiguous: LocatorExpression | undefined;
+  let outcomes: string[] = [];
 
   for (;;) {
-    // Ambiguity is judged per sweep: a query that stopped matching several
+    // Outcomes are judged per sweep: a query that stopped matching several
     // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
-    ambiguous = undefined;
+    outcomes = [];
+    let ambiguous = false;
     for (const expression of candidates) {
       let refs: readonly NodeRef[];
       try {
@@ -162,9 +170,13 @@ export async function resolveSelected(
       } catch (cause) {
         throw toAgentError(cause);
       }
-      if (refs.length === 0) continue;
+      if (refs.length === 0) {
+        outcomes.push(`${describeExpression(expression)} -> no matches`);
+        continue;
+      }
       if (refs.length > 1) {
-        ambiguous = expression;
+        ambiguous = true;
+        outcomes.push(`${describeExpression(expression)} -> ${refs.length} matches`);
         continue;
       }
       const ref = refs[0]!;
@@ -172,10 +184,17 @@ export async function resolveSelected(
       try {
         node = await engine.session.screen.read(ref, invocation.operation());
       } catch {
+        outcomes.push(`${describeExpression(expression)} -> matched node became unreadable`);
         continue;
       }
-      if (!matchesSignature(selection.selected, node)) continue;
+      if (!matchesSignature(selection.selected, node)) {
+        outcomes.push(
+          `${describeExpression(expression)} -> resolved a different node (${describe(node)})`,
+        );
+        continue;
+      }
       invocation.recordPolicy('locate.identity', 'allowed');
+      agentTrace(`locate: resolved via ${describeExpression(expression)}`);
       return {
         ref,
         expression,
@@ -185,21 +204,19 @@ export async function resolveSelected(
       };
     }
 
-    if (invocation.deadline.expired()) break;
+    agentTrace(`locate: sweep failed\n  ${outcomes.join('\n  ')}`);
+    if (invocation.deadline.expired()) {
+      invocation.recordPolicy('locate.identity', 'denied');
+      // Each candidate's outcome names the exact query and why it was
+      // rejected, so a locate failure explains itself.
+      const detail = outcomes.map((outcome) => `\n  ${outcome}`).join('');
+      throw new AgentError(
+        ambiguous ? 'LOCATOR_AMBIGUOUS' : 'LOCATOR_NOT_FOUND',
+        `no derived query uniquely resolved the selected node (${describe(selection.selected)}):${detail}`,
+      );
+    }
     await sleep(POLL_INTERVAL_MS, engine.signal);
   }
-
-  invocation.recordPolicy('locate.identity', 'denied');
-  if (ambiguous !== undefined) {
-    throw new AgentError(
-      'LOCATOR_AMBIGUOUS',
-      `no derived query uniquely identifies the selected node; ${describeExpression(ambiguous)} matched several`,
-    );
-  }
-  throw new AgentError(
-    'LOCATOR_NOT_FOUND',
-    `no derived query resolved the selected node (${describe(selection.selected)})`,
-  );
 }
 
 /**
@@ -212,6 +229,42 @@ function scopeToFrames(
 ): LocatorExpression {
   if (framePath === undefined || framePath.length === 0) return query;
   return framePath.reduceRight((source, selector) => frameExpression(selector, source), query);
+}
+
+/**
+ * Observed names and texts at or beyond this length may have been truncated by
+ * the driver's observation bound, which driver-1 does not signal. Such values
+ * are matched as substrings and compared as prefixes: for a complete value the
+ * relaxed match still holds, so the fallback is safe in both cases.
+ */
+const POSSIBLY_TRUNCATED_LENGTH = 200;
+
+/**
+ * Bounded prefix used to re-find nodes whose names aggregate a whole card of
+ * text. Long names diverge between accessible-name computation and rendered
+ * text (image alts, badges), so a role-scoped text-content prefix filter is
+ * the reliable signal; the identity signature still checks the full name.
+ */
+const NAME_PREFIX_LENGTH = 64;
+
+function possiblyTruncated(value: string): boolean {
+  return value.length >= POSSIBLY_TRUNCATED_LENGTH;
+}
+
+/**
+ * Matches an observed-text prefix regardless of whitespace differences. The
+ * observed name comes from rendered text, which inserts spaces at element
+ * boundaries that raw text content does not have (and vice versa), so every
+ * space matches any amount of whitespace including none. Case-insensitive
+ * because rendering may also apply text transforms.
+ */
+function prefixPattern(value: string): RegExp {
+  const escaped = value
+    .slice(0, NAME_PREFIX_LENGTH)
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/ /g, '\\s*');
+  return new RegExp(escaped, 'i');
 }
 
 /**
@@ -230,7 +283,16 @@ export function deriveQueries(
   const placeholder = node.attributes?.['placeholder'];
 
   if (role !== undefined && role !== '' && name !== '') {
-    candidates.push(roleQuery(role as Role, { name, exact: true }, undefined));
+    candidates.push(
+      roleQuery(role as Role, { name, exact: !possiblyTruncated(name) }, undefined),
+    );
+    if (possiblyTruncated(name)) {
+      candidates.push(
+        filterExpression(roleQuery(role as Role, undefined, undefined), {
+          hasText: prefixPattern(name),
+        }),
+      );
+    }
   }
   if (testId !== undefined && testId !== '') {
     const byTestId = testIdQuery(testId, undefined);
@@ -244,11 +306,11 @@ export function deriveQueries(
     candidates.push(textQuery('placeholder', placeholder, { exact: true }, undefined));
   }
   if (name !== '') {
-    candidates.push(textQuery('label', name, { exact: true }, undefined));
-    candidates.push(textQuery('text', name, { exact: true }, undefined));
+    candidates.push(textQuery('label', name, { exact: !possiblyTruncated(name) }, undefined));
+    candidates.push(textQuery('text', name, { exact: !possiblyTruncated(name) }, undefined));
   }
   if (text !== '' && text !== name) {
-    candidates.push(textQuery('text', text, { exact: true }, undefined));
+    candidates.push(textQuery('text', text, { exact: !possiblyTruncated(text) }, undefined));
   }
   if (role !== undefined && role !== '' && text !== '') {
     candidates.push(
@@ -279,7 +341,14 @@ export function matchesSignature(observed: SemanticNode, resolved: SemanticNode)
     return false;
   }
   const observedName = normalize(observed.name);
-  if (observedName !== '') return normalize(resolved.name) === observedName;
+  if (observedName !== '') {
+    const resolvedName = normalize(resolved.name);
+    // A possibly-truncated observed name identifies its node by prefix; the
+    // re-read node carries the full name.
+    return possiblyTruncated(observedName)
+      ? resolvedName.startsWith(observedName)
+      : resolvedName === observedName;
+  }
   const observedText = normalize(observed.text);
   if (observedText === '') return true;
   return normalize(resolved.text).includes(observedText);

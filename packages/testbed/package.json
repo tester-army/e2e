@@ -10,7 +10,8 @@
     "test:headed": "node node_modules/e2e/dist/cli/bin.js run --headed",
     "test:public": "node node_modules/e2e/dist/cli/bin.js run --config e2e.public.config.ts",
     "app": "node app/server.mjs",
-    "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
+    "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
+    "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts"
   },
   "dependencies": {
     "e2e": "workspace:*"

@@ -93,7 +93,7 @@ export function buildPrompt(input: PromptInput): string {
 /** Request text for node selection. */
 export const LOCATE_REQUEST = [
   'Select exactly one node from the observation that the instruction refers to.',
-  'Respond with { "protocolVersion": "agent-locate-1", "target": { "id": <node id without #>, "revision": <observation revision> }, "explanation": <one short sentence: why this node matches> }.',
+  'Respond with { "protocolVersion": "agent-locate-1", "target": { "id": <the node id exactly as printed after "#", e.g. "n42">, "revision": <observation revision> }, "explanation": <one short sentence: why this node matches> }.',
   'If no node in the observation matches the instruction, do not guess a close',
   'substitute: respond with "target": null and set "explanation" to a short',
   'reason grounded in what the observation actually shows.',

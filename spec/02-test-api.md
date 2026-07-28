@@ -199,9 +199,9 @@ timeouts, cancellations, and product assertions remain distinguishable.
 | `tap/click/type/longPress/press/select/hover/check/uncheck/upload` | action timeout | up to 2 on miss (one repair) | exactly 1 | inherited mode |
 | `dragTo` | action timeout | up to 4 (one repair per locate) | exactly 1 | inherited mode |
 | `scroll` | action timeout | 0, or up to 2 with `within` | exactly 1 | locate only |
-| `scrollTo`, `waitFor` | 30 s | config limit | bounded by calls | locate only/off |
-| `extract` | 30 s | 2 | 0 | off |
-| `assert` | 30 s | exactly 1 | 0 | off |
+| `scrollTo`, `waitFor` | action timeout, at least 30 s | config limit | bounded by calls | locate only/off |
+| `extract` | action timeout, at least 30 s | 2 | 0 | off |
+| `assert` | action timeout, at least 30 s | exactly 1 | 0 | off |
 
 Every timeout is capped by the remaining test timeout. `cache: false` disables
 cache for that call; `cache: true` uses the resolved run mode and cannot upgrade

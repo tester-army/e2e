@@ -28,15 +28,20 @@ import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 import { authorizeSecretFill } from './secrets.ts';
 
-const POLLING_TIMEOUT_MS = 30_000;
-const JUDGMENT_TIMEOUT_MS = 30_000;
-const EXTRACT_TIMEOUT_MS = 30_000;
+const MIN_STEP_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
 const EXTRACT_MODEL_CALLS = 2;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgent(runtime: AgentContext): Agent {
   const testIdAttribute = runtime.config.testIdAttribute;
+  /**
+   * Default budget for polling, judgment, and extraction steps: the action
+   * timeout expresses the suite's model-latency headroom in one place, with a
+   * 30 s floor (spec 02-test-api.md). Tests then rarely need per-call
+   * timeouts.
+   */
+  const stepTimeout = Math.max(MIN_STEP_TIMEOUT_MS, runtime.config.actionTimeout);
 
   /** Runs one agent method as a top-level step carrying agent metrics. */
   const step = async <Value>(
@@ -281,7 +286,7 @@ export function createAgent(runtime: AgentContext): Agent {
         {
           api: 'agent.scrollTo',
           task: 'select one node while scrolling toward it',
-          timeoutMs: resolveTimeout(options?.timeout, POLLING_TIMEOUT_MS),
+          timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: runtime.config.agent.maxModelCalls,
           maxActionSteps: runtime.config.agent.maxSteps,
           cache: options?.cache ?? true,
@@ -335,7 +340,7 @@ export function createAgent(runtime: AgentContext): Agent {
         {
           api: 'agent.waitFor',
           task: 'judge whether a condition holds',
-          timeoutMs: resolveTimeout(options?.timeout, POLLING_TIMEOUT_MS),
+          timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: resolveModelCalls(
             options?.maxModelCalls,
             runtime.config.agent.maxModelCalls,
@@ -386,7 +391,7 @@ export function createAgent(runtime: AgentContext): Agent {
         {
           api: 'agent.extract',
           task: 'extract structured data from the observation',
-          timeoutMs: resolveTimeout(options.timeout, EXTRACT_TIMEOUT_MS),
+          timeoutMs: resolveTimeout(options.timeout, stepTimeout),
           maxModelCalls: resolveModelCalls(options.maxModelCalls, EXTRACT_MODEL_CALLS),
           maxActionSteps: 0,
           cache: false,
@@ -435,7 +440,7 @@ export function createAgent(runtime: AgentContext): Agent {
         {
           api: 'agent.assert',
           task: 'judge whether an assertion holds',
-          timeoutMs: resolveTimeout(options?.timeout, JUDGMENT_TIMEOUT_MS),
+          timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: 1,
           maxActionSteps: 0,
           cache: false,

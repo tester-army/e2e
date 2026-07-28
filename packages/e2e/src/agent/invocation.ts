@@ -12,6 +12,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError, classifyError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline } from '../internal/time.ts';
+import { agentTrace, observationTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
@@ -106,6 +107,10 @@ export class Invocation {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
     this.system = buildSystem(options.task, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
+    agentTrace(
+      `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
+        `(timeout ${options.timeoutMs}ms, budget ${options.maxModelCalls} calls, ledger ${this.ledger.bytes}B)`,
+    );
   }
 
   get engine(): LocatorEngine {
@@ -129,16 +134,23 @@ export class Invocation {
   ): Promise<Value> {
     const startedAt = timestamp();
     const startedMs = Date.now();
+    const label = spec.name === undefined ? spec.kind : `${spec.kind}:${spec.name}`;
     try {
       const value = await body();
+      const eventDetail = detail?.(value);
       this.runtime.steps.recordEvent({
         kind: spec.kind,
         startedAt,
         durationMs: Date.now() - startedMs,
         status: 'passed',
         ...(spec.name === undefined ? {} : { name: spec.name }),
-        ...detail?.(value),
+        ...eventDetail,
       });
+      agentTrace(
+        `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
+          `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
+          `${eventDetail?.bytes !== undefined ? ` bytes=${eventDetail.bytes}` : ''}`,
+      );
       return value;
     } catch (cause) {
       this.runtime.steps.recordEvent({
@@ -149,6 +161,10 @@ export class Invocation {
         ...(spec.name === undefined ? {} : { name: spec.name }),
         code: errorCode(cause),
       });
+      agentTrace(
+        `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
+          `${errorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
       throw toAgentError(cause);
     } finally {
       this.runtime.debug?.record(spec.phase, Date.now() - startedMs);
@@ -172,6 +188,12 @@ export class Invocation {
     );
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     this.observationRevision = observation.revision;
+    observationTrace(
+      `${this.options.api} ${observation.revision} (${observation.nodes.size} nodes, ${observation.bytes}B${
+        observation.truncated ? ', truncated' : ''
+      })`,
+      observation.text,
+    );
     return observation;
   }
 
@@ -241,6 +263,7 @@ export class Invocation {
           !this.deadline.expired()
         ) {
           this.recordSchemaRejection(request.schemaName);
+          agentTrace(`${this.options.api} repair round: ${cause.explanation}`);
           repair = {
             issue: cause.explanation,
             rawText: cause.rawText,

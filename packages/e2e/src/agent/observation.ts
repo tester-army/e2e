@@ -78,14 +78,22 @@ export function prepareObservation(
   };
 }
 
-/** Renders one node as `#id role "name" text="..." [states]`. */
+/** Depth beyond this renders flat; deep chrome must not buy tokens with spaces. */
+const MAX_INDENT_DEPTH = 10;
+
+/**
+ * Renders one node as `#id role "name" text="..." [states]`. Role-less text
+ * holders omit the role token entirely: on a large page they are half the
+ * lines, and the model needs their text, not a filler word.
+ */
 function formatNode(
   node: SemanticNode,
   depth: number,
   redact: (text: string) => string,
   testIdAttribute: string,
 ): string {
-  const parts: string[] = [`#${node.ref.id}`, node.role ?? 'generic'];
+  const parts: string[] = [`#${node.ref.id}`];
+  if (node.role !== undefined && node.role !== '') parts.push(node.role);
   if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(redact(node.name)));
   const text = node.text === undefined ? '' : collapse(node.text);
   if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
@@ -111,7 +119,7 @@ function formatNode(
     .filter(([, value]) => value === true)
     .map(([key]) => key);
   if (states.length > 0) parts.push(`[${states.join(' ')}]`);
-  return `${'  '.repeat(depth)}${parts.join(' ')}`;
+  return `${' '.repeat(Math.min(depth, MAX_INDENT_DEPTH))}${parts.join(' ')}`;
 }
 
 function collapse(text: string): string {

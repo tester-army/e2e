@@ -269,13 +269,18 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return el.getClientRects().length === 0;
   };
 
-  /** Reduces a URL to origin and path, dropping userinfo, query, and fragment. */
+  /**
+   * Reduces a URL to origin and path, dropping userinfo, query, and fragment.
+   * Bounded: hrefs are shown to the model as link hints, not resolved, so a
+   * long path only buys tokens.
+   */
+  const HREF_LIMIT = 80;
   const originAndPath = (value: string, base: string): string => {
     try {
       const url = new URL(value, base);
-      return `${url.origin}${url.pathname}`;
+      return `${url.origin}${url.pathname}`.slice(0, HREF_LIMIT);
     } catch {
-      return value.split('?')[0]?.split('#')[0] ?? '';
+      return (value.split('?')[0]?.split('#')[0] ?? '').slice(0, HREF_LIMIT);
     }
   };
 

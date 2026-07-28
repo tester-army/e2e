@@ -46,8 +46,8 @@ describe('prepareObservation', () => {
     });
     expect(prepared.text.split('\n')).toEqual([
       '#n1 document "Home"',
-      '  #n2 heading "Welcome"',
-      '  #n3 button "Buy" [disabled]',
+      ' #n2 heading "Welcome"',
+      ' #n3 button "Buy" [disabled]',
     ]);
     expect(prepared.revision).toBe('r1');
     expect([...prepared.nodes.keys()]).toEqual(['n1', 'n2', 'n3']);
@@ -140,10 +140,10 @@ describe('disambiguating attributes', () => {
       testIdAttribute: TEST_ID,
     }).text.split('\n');
 
-    expect(lines[1]).toBe('  #n2 link "About" href="https://app.test/about"');
-    expect(lines[2]).toBe('  #n3 listitem text="Alpha" testid="item"');
-    expect(lines[3]).toBe('  #n4 textbox placeholder="you@example.test"');
-    expect(lines[4]).toBe('  #n5 textbox "Email"');
+    expect(lines[1]).toBe(' #n2 link "About" href="https://app.test/about"');
+    expect(lines[2]).toBe(' #n3 listitem text="Alpha" testid="item"');
+    expect(lines[3]).toBe(' #n4 textbox placeholder="you@example.test"');
+    expect(lines[4]).toBe(' #n5 textbox "Email"');
   });
 });
 
