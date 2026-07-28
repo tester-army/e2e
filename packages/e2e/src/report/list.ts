@@ -1,7 +1,7 @@
 /** Human-readable list reporter (spec 06-cli.md). */
 
 import path from 'node:path';
-import pc from 'picocolors';
+import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultRecord } from '../run/records.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
@@ -31,6 +31,8 @@ export class ListReporter {
   private skipped = 0;
   private projectRoot: string | undefined;
   private readonly status: LiveStatus;
+  /** Colors follow live rendering: non-interactive sinks get plain text. */
+  private readonly pc: ReturnType<typeof picocolors.createColors>;
 
   constructor(
     private readonly output: ListReporterOutput = DEFAULT_OUTPUT,
@@ -38,6 +40,7 @@ export class ListReporter {
   ) {
     const live = (options.live ?? process.stdout.isTTY === true) && output.raw !== undefined;
     this.status = new LiveStatus(live ? output.raw?.bind(output) : undefined);
+    this.pc = picocolors.createColors(live);
   }
 
   onRunStart(info: {
@@ -48,7 +51,7 @@ export class ListReporter {
   }): void {
     this.projectRoot = info.projectRoot;
     this.output.write(
-      pc.dim(
+      this.pc.dim(
         `e2e run ${info.runId} (targets: ${info.targets.join(', ')})${info.ci ? ' [CI]' : ''}`,
       ),
     );
@@ -63,7 +66,7 @@ export class ListReporter {
   onTestStart(info: { id: string; title: string; target: string }): void {
     this.status.start(
       `${info.id}@${info.target}`,
-      `${bounded(info.title)} ${pc.dim(`[${info.target}]`)}`,
+      `${bounded(info.title)} ${this.pc.dim(`[${info.target}]`)}`,
     );
   }
 
@@ -80,29 +83,29 @@ export class ListReporter {
     switch (result.status) {
       case 'passed':
         this.passed += 1;
-        this.output.write(`${pc.green('\u2713')} ${title} ${pc.dim(`[${target}] ${duration}ms`)}`);
+        this.output.write(`${this.pc.green('\u2713')} ${title} ${this.pc.dim(`[${target}] ${duration}ms`)}`);
         break;
       case 'flaky':
         this.flaky += 1;
         this.output.write(
-          `${pc.yellow('\u2713')} ${title} ${pc.yellow('(flaky)')} ${pc.dim(`[${target}] ${duration}ms`)}`,
+          `${this.pc.yellow('\u2713')} ${title} ${this.pc.yellow('(flaky)')} ${this.pc.dim(`[${target}] ${duration}ms`)}`,
         );
         break;
       case 'skipped':
         this.skipped += 1;
         this.output.write(
-          `${pc.cyan('-')} ${title} ${pc.dim(`[${target}] skipped: ${bounded(result.skip?.reason ?? '')}`)}`,
+          `${this.pc.cyan('-')} ${title} ${this.pc.dim(`[${target}] skipped: ${bounded(result.skip?.reason ?? '')}`)}`,
         );
         break;
       default: {
         this.failed += 1;
         this.output.write(
-          `${pc.red('\u2717')} ${title} ${pc.dim(`[${target}] ${result.status} ${duration}ms`)}`,
+          `${this.pc.red('\u2717')} ${title} ${this.pc.dim(`[${target}] ${result.status} ${duration}ms`)}`,
         );
         const error = result.attempts[result.attempts.length - 1]?.error;
         if (error !== undefined) {
           for (const line of bounded(error.message).split('\n')) {
-            this.output.write(`    ${pc.red(line)}`);
+            this.output.write(`    ${this.pc.red(line)}`);
           }
           this.writeFailureLocation(error.stack);
         }
@@ -119,7 +122,7 @@ export class ListReporter {
     const relative = path.relative(this.projectRoot, frame.file);
     this.output.write('');
     this.output.write(
-      `    ${pc.dim('at')} ${pc.cyan(`${bounded(relative)}:${frame.line}:${frame.column}`)}`,
+      `    ${this.pc.dim('at')} ${this.pc.cyan(`${bounded(relative)}:${frame.line}:${frame.column}`)}`,
     );
     for (const line of codeFrame(frame)) this.output.write(`    ${line}`);
   }
@@ -127,13 +130,13 @@ export class ListReporter {
   onRunEnd(info: { status: string; exitCode: number; reportPath: string }): void {
     this.status.erase();
     const parts = [
-      this.passed > 0 ? pc.green(`${this.passed} passed`) : undefined,
-      this.failed > 0 ? pc.red(`${this.failed} failed`) : undefined,
-      this.flaky > 0 ? pc.yellow(`${this.flaky} flaky`) : undefined,
-      this.skipped > 0 ? pc.cyan(`${this.skipped} skipped`) : undefined,
+      this.passed > 0 ? this.pc.green(`${this.passed} passed`) : undefined,
+      this.failed > 0 ? this.pc.red(`${this.failed} failed`) : undefined,
+      this.flaky > 0 ? this.pc.yellow(`${this.flaky} flaky`) : undefined,
+      this.skipped > 0 ? this.pc.cyan(`${this.skipped} skipped`) : undefined,
     ].filter((part) => part !== undefined);
     this.output.write('');
-    this.output.write(parts.length > 0 ? parts.join(pc.dim(' \u00b7 ')) : pc.dim('no tests executed'));
-    this.output.write(pc.dim(`report: ${info.reportPath}`));
+    this.output.write(parts.length > 0 ? parts.join(this.pc.dim(' \u00b7 ')) : this.pc.dim('no tests executed'));
+    this.output.write(this.pc.dim(`report: ${info.reportPath}`));
   }
 }
