@@ -85,7 +85,8 @@ tools and the security policy in [14-security.md](./14-security.md).
 |---|---|---|
 | `act` | `agent-tool-1` sequence | tap, plain/secret type, scroll, press, long-press, allowed navigation, observe, conclude |
 | `login` | `agent-tool-1` sequence | tap, pinned username/password type, scroll, press, allowed navigation, observe, conclude |
-| `tap`, `click`, `type`, `longPress` | one `agent-locate-1` response | none; runner performs the predetermined action |
+| `tap`, `click`, `type`, `longPress`, `press`, `select`, `hover`, `check`, `uncheck`, `upload` | one `agent-locate-1` response | none; runner performs the predetermined action |
+| `dragTo` | two `agent-locate-1` responses (source, then destination) | none; runner performs the predetermined drag |
 | `scroll` without `within` | no model response | none |
 | `scroll` with `within` | one `agent-locate-1` response | none; runner scrolls deterministically |
 | `scrollTo` | repeated bounded `agent-locate-1` responses | none; runner scrolls deterministically |
@@ -93,6 +94,10 @@ tools and the security policy in [14-security.md](./14-security.md).
 | `extract` | user-supplied Standard Schema output | none |
 
 Any other response kind or tool is `POLICY_DENIED` before driver dispatch.
+
+`upload` file paths and `press` keys come from trusted test code, resolve on
+the runner host (paths from the project root), and never appear in any model
+prompt: the model only ever selects the target node.
 
 ## `agent.act`
 
@@ -191,8 +196,9 @@ timeouts, cancellations, and product assertions remain distinguishable.
 |---|---:|---:|---:|---|
 | `act` | 60 s | config limit | config `maxSteps` | inherited mode |
 | `login` | 60 s | config limit | config `maxSteps` | off |
-| `tap/click/type/longPress` | action timeout | 1 on miss | exactly 1 | inherited mode |
-| `scroll` | action timeout | 0 or 1 with `within` | exactly 1 | locate only |
+| `tap/click/type/longPress/press/select/hover/check/uncheck/upload` | action timeout | up to 2 on miss (one repair) | exactly 1 | inherited mode |
+| `dragTo` | action timeout | up to 4 (one repair per locate) | exactly 1 | inherited mode |
+| `scroll` | action timeout | 0, or up to 2 with `within` | exactly 1 | locate only |
 | `scrollTo`, `waitFor` | 30 s | config limit | bounded by calls | locate only/off |
 | `extract` | 30 s | 2 | 0 | off |
 | `assert` | 30 s | exactly 1 | 0 | off |
@@ -208,6 +214,11 @@ The closed model response grammars are
 [`schema/agent-judgment-v1.schema.json`](./schema/agent-judgment-v1.schema.json),
 and [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json).
 Unknown or method-incompatible responses are policy errors.
+
+A locate response naming a node id or observation revision outside the current
+observation is invalid model output: the runner rejects it before any driver
+dispatch and spends remaining model-call budget on one repair round instead of
+failing the step outright.
 
 A locate response always carries a short `explanation`: why the selected node
 matches, or, with `target: null`, why nothing in the observation does. An

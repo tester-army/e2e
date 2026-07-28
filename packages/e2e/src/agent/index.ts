@@ -6,12 +6,13 @@
  * planning tier (`act`, `login`) is not part of this milestone.
  */
 
+import path from 'node:path';
 import type { SemanticNode } from '../driver/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
 import { describeExpression } from '../locator/expression.ts';
 import { isSecret, validateLongPress } from '../locator/screen.ts';
-import type { Agent, Momentum, ScrollDirection, StandardSchemaV1 } from '../types.ts';
+import type { Agent, Momentum, ScrollDirection, SelectOption, StandardSchemaV1 } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   Invocation,
@@ -65,7 +66,9 @@ export function createAgent(runtime: AgentContext): Agent {
         api,
         task: `select one node for ${api}`,
         timeoutMs: resolveTimeout(options?.timeout, runtime.config.actionTimeout),
-        maxModelCalls: 1,
+        // One locate plus room for exactly one repair round: a hallucinated
+        // node id or stale revision is invalid output, not a lost test.
+        maxModelCalls: 2,
         maxActionSteps: 1,
         cache: options?.cache ?? true,
       },
@@ -141,6 +144,98 @@ export function createAgent(runtime: AgentContext): Agent {
       );
     },
 
+    press(target, key, options) {
+      if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
+        throw new TestError('INVALID_ARGUMENT', 'agent.press key must be a short non-empty string');
+      }
+      return instant('agent.press', target, options, (invocation, located) =>
+        invocation.commit('press', () =>
+          invocation.session.screen.perform(located.ref, { kind: 'press', key }, invocation.operation()),
+        ),
+      );
+    },
+
+    select(target, value, options) {
+      validateSelectOption(value);
+      return instant('agent.select', target, options, (invocation, located) =>
+        invocation.commit('selectOption', () =>
+          invocation.session.screen.perform(
+            located.ref,
+            { kind: 'selectOption', value },
+            invocation.operation(),
+          ),
+        ),
+      );
+    },
+
+    hover(target, options) {
+      return instant('agent.hover', target, options, (invocation, located) =>
+        invocation.commit('hover', () =>
+          invocation.session.screen.perform(located.ref, { kind: 'hover' }, invocation.operation()),
+        ),
+      );
+    },
+
+    check(target, options) {
+      return instant('agent.check', target, options, (invocation, located) =>
+        invocation.commit('check', () =>
+          invocation.session.screen.perform(located.ref, { kind: 'check' }, invocation.operation()),
+        ),
+      );
+    },
+
+    uncheck(target, options) {
+      return instant('agent.uncheck', target, options, (invocation, located) =>
+        invocation.commit('uncheck', () =>
+          invocation.session.screen.perform(located.ref, { kind: 'uncheck' }, invocation.operation()),
+        ),
+      );
+    },
+
+    upload(target, paths, options) {
+      const resolved = validateUploadPaths(paths, runtime.config.projectRoot);
+      return instant('agent.upload', target, options, (invocation, located) =>
+        invocation.commit('setInputFiles', () =>
+          invocation.session.screen.perform(
+            located.ref,
+            { kind: 'setInputFiles', paths: resolved },
+            invocation.operation(),
+          ),
+        ),
+      );
+    },
+
+    dragTo(source, destination, options) {
+      return step(
+        {
+          api: 'agent.dragTo',
+          task: 'select one drag source and one drop destination',
+          timeoutMs: resolveTimeout(options?.timeout, runtime.config.actionTimeout),
+          // Two locates, each with room for one repair round.
+          maxModelCalls: 4,
+          maxActionSteps: 1,
+          cache: options?.cache ?? true,
+        },
+        `${source} \u2192 ${destination}`,
+        async (invocation) => {
+          const from = await locateOne(invocation, source, { testIdAttribute });
+          const to = await locateOne(invocation, destination, { testIdAttribute });
+          invocation.note({ observationRevision: to.observation.revision });
+          try {
+            await invocation.commit('dragTo', () =>
+              invocation.session.screen.perform(
+                from.ref,
+                { kind: 'dragTo', target: to.ref },
+                invocation.operation(),
+              ),
+            );
+          } catch (cause) {
+            throw explainActionFailure(invocation, 'agent.dragTo', source, from, cause);
+          }
+        },
+      );
+    },
+
     scroll(options) {
       const direction = validateDirection(options.direction);
       const momentum = validateMomentum(options.momentum);
@@ -150,7 +245,7 @@ export function createAgent(runtime: AgentContext): Agent {
           api: 'agent.scroll',
           task: 'select one scrollable container',
           timeoutMs: resolveTimeout(options.timeout, runtime.config.actionTimeout),
-          maxModelCalls: within === undefined ? 0 : 1,
+          maxModelCalls: within === undefined ? 0 : 2,
           maxActionSteps: 1,
           cache: options.cache ?? true,
         },
@@ -432,6 +527,38 @@ function validateDirection(direction: ScrollDirection): ScrollDirection {
     throw new TestError('INVALID_ARGUMENT', `invalid scroll direction "${direction}"`);
   }
   return direction;
+}
+
+function validateSelectOption(value: SelectOption): void {
+  if (typeof value === 'string') {
+    if (value !== '') return;
+    throw new TestError('INVALID_ARGUMENT', 'agent.select value must not be empty');
+  }
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.label === 'string' && value.label !== '') return;
+    if (typeof value.index === 'number' && Number.isInteger(value.index) && value.index >= 0) {
+      return;
+    }
+  }
+  throw new TestError(
+    'INVALID_ARGUMENT',
+    'agent.select value must be an option label or { label } or { index }',
+  );
+}
+
+/**
+ * Upload paths come from trusted test code and resolve from the project root.
+ * They never transit the model: the instruction carries only the target text.
+ */
+function validateUploadPaths(paths: string | readonly string[], projectRoot: string): string[] {
+  const list = typeof paths === 'string' ? [paths] : [...paths];
+  if (list.length === 0 || list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      'agent.upload requires one or more non-empty file paths',
+    );
+  }
+  return list.map((entry) => path.resolve(projectRoot, entry));
 }
 
 function validateMomentum(momentum: Momentum | undefined): Momentum | undefined {

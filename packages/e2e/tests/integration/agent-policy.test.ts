@@ -12,7 +12,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test, credentials } from 'e2e';
+const SUITE = `import { test, expect, credentials } from 'e2e';
 
 test('fills a secret into a password field', async ({ app, agent, screen }) => {
   await app.open();
@@ -35,9 +35,10 @@ test('rejects a node reference absent from the observation', async ({ app, agent
   await agent.tap('a node that does not exist');
 });
 
-test('rejects a stale observation revision', async ({ app, agent }) => {
+test('repairs a stale observation revision', async ({ app, agent, screen }) => {
   await app.open();
   await agent.tap('the stale increment button');
+  await expect(screen.getByRole('status')).toHaveText('1');
 });
 
 test('rejects a response outside the closed grammar', async ({ app, agent }) => {
@@ -88,6 +89,9 @@ function respond(call: FakeCall): unknown {
         explanation: 'invented node',
       };
     case 'the stale increment button':
+      // First response cites a stale revision; the repair round corrects it,
+      // simulating a model that self-corrects a hallucinated reference.
+      if (call.prompt.includes('<previous-attempt-rejected>')) return locateBestMatch(call);
       return {
         protocolVersion: 'agent-locate-1',
         target: { id: bestMatch(call).id, revision: 'r0' },
@@ -181,16 +185,26 @@ describe('agent policy and error classification', () => {
 
   it('rejects a node reference that is not in the current observation', () => {
     const result = resultByTitle(outcome, 'rejects a node reference absent from the observation');
-    expect(result.attempts.at(-1)!.error!.code).toBe('LOCATOR_NOT_FOUND');
+    const error = result.attempts.at(-1)!.error!;
+    // One repair round is allowed; a model that keeps inventing ids exhausts
+    // the budget as invalid output, never as a guessed action.
+    expect(error.code).toBe('MODEL_OUTPUT_INVALID');
+    expect(error.category).toBe('test');
+    expect(error.message).toContain('not in the current observation');
     const step = result.attempts.at(-1)!.steps.at(-1)!;
+    expect(step.metrics!.modelCalls).toBe(2);
     expect(
-      step.events.some((event) => event.kind === 'policy' && event.decision === 'denied'),
+      step.events.some((event) => event.kind === 'schema' && event.status === 'failed'),
     ).toBe(true);
   });
 
-  it('rejects a stale observation revision', () => {
-    const result = resultByTitle(outcome, 'rejects a stale observation revision');
-    expect(result.attempts.at(-1)!.error!.code).toBe('LOCATOR_NOT_FOUND');
+  it('repairs a stale observation revision with one extra model call', () => {
+    const result = resultByTitle(outcome, 'repairs a stale observation revision');
+    expect(result.status).toBe('passed');
+    const step = result.attempts
+      .at(-1)!
+      .steps.find((candidate) => candidate.api === 'agent.tap')!;
+    expect(step.metrics!.modelCalls).toBe(2);
   });
 
   it('rejects a response with fields outside the closed grammar', () => {

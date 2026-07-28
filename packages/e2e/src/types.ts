@@ -184,6 +184,27 @@ export interface Agent {
     target: string,
     options?: InstantActionOptions & { durationMs?: number },
   ): Promise<void>;
+  /** Locates one target and sends it one key, e.g. `Enter`. */
+  press(target: string, key: string, options?: InstantActionOptions): Promise<void>;
+  /** Locates one select-like control and picks one option. */
+  select(target: string, value: SelectOption, options?: InstantActionOptions): Promise<void>;
+  /** Locates one target and hovers over it. */
+  hover(target: string, options?: InstantActionOptions): Promise<void>;
+  /** Locates one checkable target and checks it. */
+  check(target: string, options?: InstantActionOptions): Promise<void>;
+  /** Locates one checkable target and unchecks it. */
+  uncheck(target: string, options?: InstantActionOptions): Promise<void>;
+  /** Locates a source and a destination, then drags source onto destination. */
+  dragTo(source: string, destination: string, options?: InstantActionOptions): Promise<void>;
+  /**
+   * Locates one file input and sets its files. Paths come from test code and
+   * resolve from the project root; the model never chooses a path.
+   */
+  upload(
+    target: string,
+    paths: string | readonly string[],
+    options?: InstantActionOptions,
+  ): Promise<void>;
   /** Polls a natural-language condition until true or timed out. */
   waitFor(
     condition: string,
@@ -295,6 +316,10 @@ export interface Locator extends Screen {
   selectOption(value: SelectOption, options?: ActionOptions): Promise<void>;
   /** Focuses exactly one node. */
   focus(options?: ActionOptions): Promise<void>;
+  /** Hovers over exactly one matching actionable node. */
+  hover(options?: ActionOptions): Promise<void>;
+  /** Sets the files of exactly one file input; paths resolve from the project root. */
+  setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;
   /** Scrolls exactly one node into view. */

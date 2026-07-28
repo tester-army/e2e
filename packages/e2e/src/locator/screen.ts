@@ -1,5 +1,6 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
+import nodePath from 'node:path';
 import type { LocatorExpression, SemanticNode } from '../driver/index.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
@@ -38,6 +39,8 @@ export interface ScreenContext {
   readonly engine: LocatorEngine;
   readonly steps: StepRecorder;
   readonly secrets: SecretResolver;
+  /** Base directory for resolving relative file paths, e.g. uploads. */
+  readonly projectRoot?: string;
 }
 
 export function isSecret(value: unknown): value is Secret {
@@ -253,6 +256,28 @@ class LocatorImpl extends ScreenImpl implements Locator {
   focus(options?: ActionOptions): Promise<void> {
     return this.action('locator.focus', () =>
       this.context.engine.perform(this.expression, { kind: 'focus' }, options?.timeout),
+    );
+  }
+
+  hover(options?: ActionOptions): Promise<void> {
+    return this.action('locator.hover', () =>
+      this.context.engine.perform(this.expression, { kind: 'hover' }, options?.timeout),
+    );
+  }
+
+  setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void> {
+    const list = typeof paths === 'string' ? [paths] : [...paths];
+    if (list.length === 0 || list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
+      throw new TestError('INVALID_ARGUMENT', 'setInputFiles requires one or more non-empty paths');
+    }
+    const base = this.context.projectRoot;
+    const resolved = list.map((entry) => (base === undefined ? entry : nodePath.resolve(base, entry)));
+    return this.action('locator.setInputFiles', () =>
+      this.context.engine.perform(
+        this.expression,
+        { kind: 'setInputFiles', paths: resolved },
+        options?.timeout,
+      ),
     );
   }
 

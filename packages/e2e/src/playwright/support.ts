@@ -39,6 +39,7 @@ export interface Actionable {
     options: TimeoutOptions,
   ): Promise<unknown>;
   hover(options: TimeoutOptions): Promise<void>;
+  setInputFiles(paths: readonly string[], options: TimeoutOptions): Promise<void>;
   boundingBox(options: TimeoutOptions): Promise<Rect | null>;
   dragTo(target: ActionTarget, options: TimeoutOptions): Promise<void>;
   evaluate<Result, Arg>(
@@ -64,6 +65,7 @@ export function asActionable(target: ActionTarget): Actionable {
       scrollIntoViewIfNeeded: (options) => locator.scrollIntoViewIfNeeded(options),
       selectOption: (value, options) => locator.selectOption(value, options),
       hover: (options) => locator.hover(options),
+      setInputFiles: (paths, options) => locator.setInputFiles([...paths], options),
       boundingBox: (options) => locator.boundingBox(options),
       dragTo: (other, options) => {
         if (other.kind !== 'locator') throw unsupportedDrag();
@@ -86,6 +88,7 @@ export function asActionable(target: ActionTarget): Actionable {
     scrollIntoViewIfNeeded: (options) => element.scrollIntoViewIfNeeded(options),
     selectOption: (value, options) => element.selectOption(value, options),
     hover: (options) => element.hover(options),
+    setInputFiles: (paths, options) => element.setInputFiles([...paths], options),
     boundingBox: () => element.boundingBox(),
     dragTo: () => Promise.reject(unsupportedDrag()),
     evaluate: (fn, arg) => element.evaluate(fn as never, arg) as never,

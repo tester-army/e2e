@@ -66,6 +66,39 @@ test('a false judgment fails the assertion', async ({ app, agent }) => {
   await agent.assert('the checkout page is visible');
 });
 
+test('located verbs drive the verbs playground', async ({ app, agent, screen }) => {
+  await app.open('/verbs');
+
+  await agent.type('the Search field', 'quarterly report');
+  await agent.press('the Search field', 'Enter');
+  await expect(screen.getByLabel('Submitted')).toHaveText('submitted:quarterly report');
+
+  await agent.hover('the Hover zone');
+  await expect(screen.getByRole('button', { name: 'Revealed action' })).toBeVisible();
+
+  await agent.dragTo('the Card One item', 'the Drop zone');
+  await expect(screen.getByLabel('Drop state')).toHaveText('dropped');
+
+  await agent.upload('the Avatar upload field', 'avatar.txt');
+  await expect(screen.getByLabel('File name')).toHaveText('avatar.txt');
+});
+
+test('select and check drive native form controls', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.select('the Plan dropdown', 'Pro');
+  await expect(screen.getByLabel('Plan')).toHaveValue('pro');
+  await agent.check('the Notifications checkbox');
+  await expect(screen.getByLabel('Notifications')).toBeChecked();
+  await agent.uncheck('the Notifications checkbox');
+  await expect(screen.getByLabel('Notifications')).not.toBeChecked();
+});
+
+test('located actions reach nodes inside iframes', async ({ app, agent, web }) => {
+  await app.open('/frame');
+  await agent.tap('the Frame button');
+  await expect(web.frameLocator('#child').getByRole('button')).toHaveText('Frame clicked');
+});
+
 test('an explicit no-match fails with the model explanation', async ({ app, agent }) => {
   await app.open();
   await agent.tap('the shopping cart icon');
@@ -113,7 +146,7 @@ describe('agent fixture', () => {
     app = await startFixtureApp();
     installFakeModel(respond);
     const result = await runProject(
-      { 'tests/agent.e2e.ts': AGENT_SUITE },
+      { 'tests/agent.e2e.ts': AGENT_SUITE, 'avatar.txt': 'fixture upload payload' },
       {
         appUrl: app.url,
         config: {
@@ -141,6 +174,24 @@ describe('agent fixture', () => {
 
   it('validates extracted data with Standard Schema v1', () => {
     expect(resultByTitle(outcome, 'structured extraction').status).toBe('passed');
+  });
+
+  it('drives press, hover, dragTo, and upload through located verbs', () => {
+    expect(resultByTitle(outcome, 'located verbs drive the verbs playground').status).toBe(
+      'passed',
+    );
+  });
+
+  it('drives native select and checkbox controls', () => {
+    expect(resultByTitle(outcome, 'select and check drive native form controls').status).toBe(
+      'passed',
+    );
+  });
+
+  it('locates and acts on nodes inside iframes', () => {
+    expect(resultByTitle(outcome, 'located actions reach nodes inside iframes').status).toBe(
+      'passed',
+    );
   });
 
   it('fails the test with ASSERTION_FAILED on a false judgment', () => {

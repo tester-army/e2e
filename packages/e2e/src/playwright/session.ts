@@ -56,6 +56,9 @@ const MAX_STORED_REFS = 2048;
  */
 const MAX_OBSERVED_NODES = 3_000;
 
+/** Nested iframe capture depth; deeper frames stay boundary nodes. */
+const MAX_FRAME_DEPTH = 4;
+
 /** Bounded settle before an observation so a committing navigation is not raced. */
 const SETTLE_TIMEOUT_MS = 5_000;
 
@@ -386,6 +389,9 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       case 'focus':
         await locator.focus({ timeout });
         return;
+      case 'hover':
+        await locator.hover({ timeout });
+        return;
       case 'scrollIntoView':
         await locator.scrollIntoViewIfNeeded({ timeout });
         return;
@@ -400,6 +406,9 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         }
         return;
       }
+      case 'setInputFiles':
+        await locator.setInputFiles(action.paths, { timeout });
+        return;
       case 'dragTo': {
         const other = this.lookupRef(action.target);
         await locator.dragTo(other.target, { timeout });
@@ -553,42 +562,88 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         .catch(() => undefined);
       const revision = this.nextRevision();
       const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-      const captured = await page
-        .locator(':root')
-        .evaluateHandle(readSemanticsFunction, {
-          testIdAttribute: this.driverContext.app.testIdAttribute,
-          mode: { kind: 'tree' as const, maxNodes: MAX_OBSERVED_NODES },
-        });
-      let elementsHandle: JSHandle | undefined;
-      try {
-        const nodes = (await captured
-          .getProperty('nodes')
-          .then((handle) => handle.jsonValue())) as RawObservedNode[];
-        elementsHandle = await captured.getProperty('elements');
-        const secureNodeCount = (await captured
-          .getProperty('secureNodeCount')
-          .then((handle) => handle.jsonValue())) as number;
-        const elements = await collectElementHandles(elementsHandle, nodes.length);
-        const refs = elements.map((element) =>
-          this.storeRef({ kind: 'element', element }, revision),
-        );
-        this.dropStaleElementRefs(revision);
-        return {
-          revision,
-          capturedAt: new Date().toISOString(),
-          tree: assembleTree(nodes, refs),
-          viewport: { width: viewport.width, height: viewport.height, scale: 1 },
-          redaction: {
-            secureNodeCount,
-            maskedRegionCount: 0,
-            complete: true,
-          },
-        };
-      } finally {
-        await elementsHandle?.dispose().catch(() => undefined);
-        await captured.dispose().catch(() => undefined);
-      }
+      const captured = await this.captureDocument(
+        page.locator(':root'),
+        revision,
+        [],
+        MAX_OBSERVED_NODES,
+      );
+      this.dropStaleElementRefs(revision);
+      return {
+        revision,
+        capturedAt: new Date().toISOString(),
+        tree: captured.tree,
+        viewport: { width: viewport.width, height: viewport.height, scale: 1 },
+        redaction: {
+          secureNodeCount: captured.secureNodeCount,
+          maskedRegionCount: 0,
+          complete: true,
+        },
+      };
     });
+  }
+
+  /**
+   * Captures one document's semantic tree, then descends into each observed
+   * iframe boundary node via its content frame and stitches the child
+   * document under it. Frame capture is best-effort: a detached or unloaded
+   * frame leaves its boundary node childless rather than failing the
+   * observation. The node budget is shared across all documents.
+   */
+  private async captureDocument(
+    root: ReturnType<Page['locator']>,
+    revision: string,
+    framePath: readonly string[],
+    budget: number,
+  ): Promise<{ tree: SemanticNode; nodeCount: number; secureNodeCount: number }> {
+    const captured = await root.evaluateHandle(readSemanticsFunction, {
+      testIdAttribute: this.driverContext.app.testIdAttribute,
+      mode: { kind: 'tree' as const, maxNodes: budget },
+    });
+    let elementsHandle: JSHandle | undefined;
+    try {
+      const nodes = (await captured
+        .getProperty('nodes')
+        .then((handle) => handle.jsonValue())) as RawObservedNode[];
+      elementsHandle = await captured.getProperty('elements');
+      let secureNodeCount = (await captured
+        .getProperty('secureNodeCount')
+        .then((handle) => handle.jsonValue())) as number;
+      const elements = await collectElementHandles(elementsHandle, nodes.length);
+      const refs = elements.map((element) =>
+        this.storeRef({ kind: 'element', element }, revision),
+      );
+      let nodeCount = nodes.length;
+      const frameChildren = new Map<number, SemanticNode>();
+      if (framePath.length < MAX_FRAME_DEPTH) {
+        for (let index = 0; index < nodes.length; index += 1) {
+          const selector = nodes[index]!.frameSelector;
+          if (selector === undefined) continue;
+          const remaining = budget - nodeCount;
+          if (remaining <= 0) break;
+          const frame = await elements[index]!.contentFrame().catch(() => null);
+          if (frame === null) continue;
+          const child = await this.captureDocument(
+            frame.locator(':root'),
+            revision,
+            [...framePath, selector],
+            remaining,
+          ).catch(() => undefined);
+          if (child === undefined) continue;
+          frameChildren.set(index, child.tree);
+          nodeCount += child.nodeCount;
+          secureNodeCount += child.secureNodeCount;
+        }
+      }
+      return {
+        tree: assembleTree(nodes, refs, framePath, frameChildren),
+        nodeCount,
+        secureNodeCount,
+      };
+    } finally {
+      await elementsHandle?.dispose().catch(() => undefined);
+      await captured.dispose().catch(() => undefined);
+    }
   }
 
   async runtime(operation: OperationContext): Promise<DriverRuntime> {
@@ -648,9 +703,15 @@ async function collectElementHandles(
 
 /**
  * Rebuilds the observation tree from the depth-first node list. Descendants
- * always follow their parent, so children are complete before a parent is built.
+ * always follow their parent, so children are complete before a parent is
+ * built. Captured child documents attach under their iframe boundary nodes.
  */
-function assembleTree(nodes: readonly RawObservedNode[], refs: readonly NodeRef[]): SemanticNode {
+function assembleTree(
+  nodes: readonly RawObservedNode[],
+  refs: readonly NodeRef[],
+  framePath: readonly string[] = [],
+  frameChildren: ReadonlyMap<number, SemanticNode> = new Map(),
+): SemanticNode {
   if (nodes.length === 0 || refs.length === 0) {
     throw new DriverError('DRIVER_FAILURE', 'observation produced no nodes', { retryable: false });
   }
@@ -658,7 +719,9 @@ function assembleTree(nodes: readonly RawObservedNode[], refs: readonly NodeRef[
   const built: SemanticNode[] = [];
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
     const raw = nodes[index]!;
-    const node = toSemanticNode(refs[index]!, raw, childLists[index]!);
+    const embedded = frameChildren.get(index);
+    if (embedded !== undefined) childLists[index]!.unshift(embedded);
+    const node = toSemanticNode(refs[index]!, raw, childLists[index]!, framePath);
     built[index] = node;
     if (raw.parent >= 0) childLists[raw.parent]!.unshift(node);
   }
@@ -669,6 +732,7 @@ function toSemanticNode(
   ref: NodeRef,
   raw: RawNodeData,
   children: readonly SemanticNode[] = [],
+  framePath: readonly string[] = [],
 ): SemanticNode {
   const states: Record<string, boolean> = {};
   if (raw.states.checked !== null) states['checked'] = raw.states.checked;
@@ -688,6 +752,7 @@ function toSemanticNode(
     states,
     attributes: raw.attributes,
     rect: raw.rect,
+    ...(framePath.length > 0 ? { framePath } : {}),
     ...(children.length > 0 ? { children } : {}),
   };
 }

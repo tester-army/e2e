@@ -27,6 +27,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/network">Network</a>
     <a href="/dialogs">Dialogs</a>
     <a href="/frames">Frames</a>
+    <a href="/board">Board</a>
     <a href="/downloads">Downloads</a>
   </nav>
   ${body}
@@ -272,6 +273,54 @@ const pages = {
          document.getElementById('confirm').addEventListener('click', () => {
            const accepted = confirm('Really delete everything?');
            document.querySelector('output').textContent = accepted ? 'deleted' : 'kept';
+         });
+       </script>`,
+    ),
+
+  '/board': () =>
+    layout(
+      'Board',
+      `<h1>Board</h1>
+
+       <label for="board-search">Search cards</label>
+       <input id="board-search" type="search" />
+       <output aria-label="Search state">idle</output>
+
+       <div id="card-menu">Card actions</div>
+       <button id="archive" hidden>Archive card</button>
+
+       <ul aria-label="Todo column">
+         <li id="card" draggable="true">Design review</li>
+       </ul>
+       <section id="done" aria-label="Done column">Done column</section>
+       <output aria-label="Board state">Design review is in todo</output>
+
+       <label for="attachment">Attachment</label>
+       <input id="attachment" type="file" />
+       <output aria-label="Attachment state">none</output>
+
+       <script>
+         const boardState = document.querySelector('output[aria-label="Board state"]');
+         document.getElementById('board-search').addEventListener('keydown', (event) => {
+           if (event.key !== 'Enter') return;
+           document.querySelector('output[aria-label="Search state"]').textContent =
+             'searched: ' + event.target.value;
+         });
+         document.getElementById('card-menu').addEventListener('mouseenter', () => {
+           document.getElementById('archive').hidden = false;
+         });
+         document.getElementById('archive').addEventListener('click', () => {
+           boardState.textContent = 'Design review is archived';
+         });
+         const done = document.getElementById('done');
+         done.addEventListener('dragover', (event) => event.preventDefault());
+         done.addEventListener('drop', (event) => {
+           event.preventDefault();
+           boardState.textContent = 'Design review is done';
+         });
+         document.getElementById('attachment').addEventListener('change', (event) => {
+           document.querySelector('output[aria-label="Attachment state"]').textContent =
+             event.target.files[0] ? event.target.files[0].name : 'none';
          });
        </script>`,
     ),

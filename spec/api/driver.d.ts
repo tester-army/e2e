@@ -110,6 +110,11 @@ export interface SemanticNode {
     readonly width: number;
     readonly height: number;
   };
+  /**
+   * Enclosing frame chain as CSS selectors of each `<iframe>` element,
+   * outermost first. Absent for nodes in the main document.
+   */
+  readonly framePath?: readonly string[];
   readonly children?: readonly SemanticNode[];
 }
 
@@ -131,7 +136,7 @@ export interface Observation {
 }
 
 export type LocatorAction =
-  | { readonly kind: 'tap' | 'doubleTap' | 'check' | 'uncheck' | 'clear' | 'focus' | 'scrollIntoView' }
+  | { readonly kind: 'tap' | 'doubleTap' | 'check' | 'uncheck' | 'clear' | 'focus' | 'hover' | 'scrollIntoView' }
   | { readonly kind: 'longPress'; readonly durationMs?: number }
   | { readonly kind: 'fill'; readonly value: string; readonly sensitive: boolean }
   | { readonly kind: 'press'; readonly key: string }
@@ -139,6 +144,7 @@ export type LocatorAction =
       readonly kind: 'selectOption';
       readonly value: SelectOption;
     }
+  | { readonly kind: 'setInputFiles'; readonly paths: readonly string[] }
   | { readonly kind: 'dragTo'; readonly target: NodeRef }
   | {
       readonly kind: 'swipe';

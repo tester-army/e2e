@@ -115,7 +115,12 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
     },
   };
 
-  const screenContext: ScreenContext = { engine, steps: environment.steps, secrets };
+  const screenContext: ScreenContext = {
+    engine,
+    steps: environment.steps,
+    secrets,
+    projectRoot: environment.config.projectRoot,
+  };
   const screen = createScreen(screenContext);
   const app = createApp(environment, engine, opened);
   const web = createWeb(environment, engine, screenContext, opened);

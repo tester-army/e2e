@@ -11,6 +11,7 @@ import type { LocatorExpression, NodeRef, SemanticNode } from '../driver/index.t
 import {
   describeExpression,
   filterExpression,
+  frameExpression,
   roleQuery,
   testIdQuery,
   textQuery,
@@ -20,7 +21,12 @@ import type { Role } from '../types.ts';
 import { AgentError } from './error.ts';
 import { Invocation, toAgentError } from './invocation.ts';
 import type { AgentObservation } from './observation.ts';
-import { LOCATE_SCHEMA, validateLocateResponse } from './protocol.ts';
+import {
+  LOCATE_SCHEMA,
+  validateLocateResponse,
+  type LocateResponse,
+  type ProtocolValidation,
+} from './protocol.ts';
 import { LOCATE_REQUEST } from './prompts.ts';
 
 export interface LocatedNode {
@@ -55,20 +61,44 @@ export async function observeAndSelect(
   const response = await invocation.ask({
     schemaName: 'agent-locate-1',
     schema: LOCATE_SCHEMA,
-    validate: validateLocateResponse,
+    validate: (value) => validateAgainstObservation(value, observation),
     prompt: { request: LOCATE_REQUEST, instruction: target, observation },
   });
   const explanation = response.explanation;
   if (response.target === null) {
     return { observation, selected: null, explanation, declined: true };
   }
-  if (response.target.revision !== observation.revision) {
-    invocation.recordPolicy('locate.revision', 'denied', 'POLICY_DENIED');
-    return { observation, selected: null, explanation, declined: false };
-  }
   const selected = observation.nodes.get(response.target.id) ?? null;
   if (selected === null) invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
   return { observation, selected, explanation, declined: false };
+}
+
+/**
+ * Protocol validation plus observation grounding. A response naming a node id
+ * or revision outside the current observation violates "never invent node
+ * identifiers" and is invalid output, so the ask() repair loop can correct one
+ * hallucinated identifier while the model-call budget allows.
+ */
+function validateAgainstObservation(
+  value: unknown,
+  observation: AgentObservation,
+): ProtocolValidation<LocateResponse> {
+  const validation = validateLocateResponse(value);
+  if (!validation.ok || validation.value.target === null) return validation;
+  const { id, revision } = validation.value.target;
+  if (revision !== observation.revision) {
+    return {
+      ok: false,
+      issue: `target.revision "${revision}" is stale; answer for the current observation revision "${observation.revision}"`,
+    };
+  }
+  if (!observation.nodes.has(id)) {
+    return {
+      ok: false,
+      issue: `target.id "${id}" is not in the current observation; use only node ids it contains`,
+    };
+  }
+  return validation;
 }
 
 /** Selects one node and resolves it to a deterministic, unique locator. */
@@ -107,7 +137,9 @@ export async function resolveSelected(
   selection: { observation: AgentObservation; selected: SemanticNode; explanation?: string },
   options: { testIdAttribute: string },
 ): Promise<LocatedNode> {
-  const candidates = deriveQueries(selection.selected, options.testIdAttribute);
+  const candidates = deriveQueries(selection.selected, options.testIdAttribute).map((query) =>
+    scopeToFrames(query, selection.selected.framePath),
+  );
   if (candidates.length === 0) {
     throw new AgentError(
       'LOCATOR_NOT_FOUND',
@@ -163,6 +195,18 @@ export async function resolveSelected(
     'LOCATOR_NOT_FOUND',
     `no derived query resolved the selected node (${describe(selection.selected)})`,
   );
+}
+
+/**
+ * Scopes one derived query to the observed node's enclosing frame chain, so a
+ * node inside an iframe re-resolves through the same frames deterministically.
+ */
+function scopeToFrames(
+  query: LocatorExpression,
+  framePath: readonly string[] | undefined,
+): LocatorExpression {
+  if (framePath === undefined || framePath.length === 0) return query;
+  return framePath.reduceRight((source, selector) => frameExpression(selector, source), query);
 }
 
 /**

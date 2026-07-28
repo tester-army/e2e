@@ -134,8 +134,8 @@ throw `ACTION_MAY_HAVE_COMMITTED` with `retryable: false`; the runner will not
 repeat it in that attempt.
 
 The complete public action set maps to `LocatorAction`. Options such as
-long-press duration, sensitive fill, swipe momentum, select index, and drag
-target MUST survive normalization unchanged. The runner resolves omitted
+long-press duration, sensitive fill, swipe momentum, select index, drag
+target, and input file paths MUST survive normalization unchanged. The runner resolves omitted
 long-press duration to 500 ms before calling the driver.
 
 The stale/commit contract applies to every mutator: locator actions, agent
@@ -165,6 +165,14 @@ observation without sending it to a model or persisting it.
 Attributes are allowlisted by each execution profile. A web driver MUST omit
 authorization data, cookies, inline script content, hidden form values, and
 event-handler source.
+
+Observations include iframe content. Each `<iframe>` appears as a boundary
+node and its captured document nests beneath it; every node in an embedded
+document carries `framePath`, the chain of runner-computed CSS selectors of
+its enclosing iframe elements, outermost first. The runner uses `framePath`
+to scope derived locators, so the model still only ever selects a node.
+Frame capture is best-effort per frame and shares the observation node budget;
+an unreadable frame leaves its boundary node childless.
 
 ## State capture
 

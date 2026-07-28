@@ -23,6 +23,8 @@ export interface RawNodeData {
 export interface RawObservedNode extends RawNodeData {
   /** Index of the nearest included ancestor, or -1 for the root. */
   parent: number;
+  /** Unique CSS selector of this `<iframe>` element; set only for iframes. */
+  frameSelector?: string;
 }
 
 export interface RawObservation {
@@ -70,7 +72,6 @@ export const readSemanticsFunction = (
     'track',
     'col',
     'colgroup',
-    'iframe',
     'frame',
     'frameset',
     'object',
@@ -359,11 +360,48 @@ export const readSemanticsFunction = (
     return directTextOf(el) !== '';
   };
 
+  /** Unique CSS selector for one iframe element in its own document. */
+  const frameSelectorOf = (el: Element): string => {
+    const id = el.getAttribute('id');
+    if (id !== null && id !== '' && el.ownerDocument.querySelectorAll(`#${CSS.escape(id)}`).length === 1) {
+      return `#${CSS.escape(id)}`;
+    }
+    const parts: string[] = [];
+    let current: Element | null = el;
+    while (current !== null && current.tagName.toLowerCase() !== 'html') {
+      const parent: Element | null = current.parentElement;
+      if (parent === null) break;
+      const index = Array.prototype.indexOf.call(parent.children, current) + 1;
+      parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
+      current = parent;
+    }
+    return parts.join(' > ');
+  };
+
   const walk = (el: Element, parent: number): void => {
     if (truncated) return;
     const tag = el.tagName.toLowerCase();
     if (SKIP_TAGS.indexOf(tag) !== -1) return;
     if (isHidden(el)) return;
+
+    // Iframes are emitted as boundary nodes and never entered: their content
+    // lives in another document, which the driver captures per frame and
+    // stitches under this node.
+    if (tag === 'iframe') {
+      if (nodes.length >= maxNodes) {
+        truncated = true;
+        return;
+      }
+      const index = include(el, parent);
+      const node = nodes[index]!;
+      node.frameSelector = frameSelectorOf(el);
+      node.role = 'iframe';
+      if (node.name === null) {
+        const title = el.getAttribute('title');
+        if (title !== null && title.trim() !== '') node.name = title.trim();
+      }
+      return;
+    }
 
     let nextParent = parent;
     if (isInteresting(el)) {
