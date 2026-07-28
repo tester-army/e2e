@@ -107,6 +107,61 @@ variable so you can see which model a run used. `E2E_MODEL_API_KEY` is the
 credential. Its value never enters logs, reports, or child-process arguments, and
 your app process cannot read it.
 
+## Sharing the locate cache
+
+The cache is one JSON file per key under `.e2e/cache/`, so merging two caches is
+a union of files. Committing the directory is the simplest way to share it, and
+`e2e init` keeps it out of `.gitignore` for that reason.
+
+To also keep entries produced in CI, restore and save the directory. CI defaults
+`agent.cache` to `read-only`, so a job that should contribute entries has to opt
+in explicitly:
+
+```yaml
+      - name: Restore locate cache
+        uses: actions/cache@v4
+        with:
+          path: .e2e/cache
+          # Each matrix leg writes a disjoint set of keys, so give each its own
+          # key and let restore-keys pull the newest available cache.
+          key: e2e-cache-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: |
+            e2e-cache-${{ matrix.target }}-
+
+      - name: Run e2e
+        run: npx --no-install e2e run
+        env:
+          # Only a trusted push contributes entries. Pull requests stay
+          # read-only, so a fork cannot publish guidance a later run trusts.
+          E2E_CACHE_WRITE: ${{ github.event_name == 'push' }}
+```
+
+Cache mode has no environment variable of its own, because the recognized
+variables are a closed set. Config is TypeScript, so read your own:
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  agent: {
+    cache: process.env.E2E_CACHE_WRITE === 'true' ? 'read-write' : 'read-only',
+  },
+});
+```
+
+<Callout intent="warning" title="Two settings decide whether a cache travels">
+`projectId` defaults to a hash of the absolute project path when your
+`package.json` has no name, and the app's base URL contributes its origin and
+path to every key. A different checkout location or a random preview port
+therefore produces a completely cold cache. Pin both before relying on a shared
+cache.
+</Callout>
+
+<Callout intent="note">
+Never let an untrusted pull-request job publish cache changes to a trusted branch
+or a shared store. A committed cache is repository input: entries are validated
+against their own key digest and identity before replay, and a rejected entry
+falls back to the model, but write access is still write access.
+</Callout>
+
 ## Keep model-backed tests opt-in
 
 Deterministic tests are reproducible. Agentic tests are comparable in structure

@@ -1,6 +1,7 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
 import { createAgent } from '../agent/index.ts';
+import type { AgentCacheContext } from '../agent/invocation.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
@@ -50,6 +51,8 @@ export interface AttemptEnvironment {
   readonly signal: AbortSignal;
   readonly runId: string;
   readonly attemptId: string;
+  /** Cache identity and storage for this attempt; absent disables the cache. */
+  readonly cache?: AgentCacheContext;
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
@@ -142,6 +145,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         taint,
         artifacts: environment.artifacts,
         signal: environment.signal,
+        ...(environment.cache === undefined ? {} : { cache: environment.cache }),
         ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
       });
       return agent;

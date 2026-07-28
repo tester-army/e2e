@@ -249,7 +249,13 @@ describe('agent fixture', () => {
     expect(agentSteps.length).toBeGreaterThan(8);
     for (const step of agentSteps) {
       expect(step.metrics).toBeDefined();
-      expect(step.cache).toEqual({ status: 'bypassed' });
+      // Every cacheable status carries the key hash; only a bypass may omit it.
+      expect(step.cache).toBeDefined();
+      if (step.cache!.status === 'bypassed') {
+        expect(step.cache!.keyHash).toBeUndefined();
+      } else {
+        expect(step.cache!.keyHash).toMatch(/^[a-f0-9]{64}$/);
+      }
     }
 
     const tap = agentSteps.find((step) => step.api === 'agent.tap')!;

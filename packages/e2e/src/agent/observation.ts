@@ -13,6 +13,12 @@ export interface AgentObservation {
   readonly text: string;
   readonly bytes: number;
   readonly nodes: ReadonlyMap<string, SemanticNode>;
+  /**
+   * Root of the captured tree. The node index already retains every node, so
+   * exposing the root costs nothing and lets the cache fingerprint the exact
+   * structure the model was shown.
+   */
+  readonly tree: SemanticNode;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
 }
@@ -73,6 +79,7 @@ export function prepareObservation(
     text,
     bytes: encoder.encode(text).byteLength,
     nodes,
+    tree: observation.tree,
     viewport: observation.viewport,
     truncated,
   };
@@ -127,7 +134,7 @@ function collapse(text: string): string {
 }
 
 /** Replaces every exact registered secret value with its stable secret name. */
-function createRedactor(secrets: ReadonlyMap<string, string>): (text: string) => string {
+export function createRedactor(secrets: ReadonlyMap<string, string>): (text: string) => string {
   const entries = [...secrets]
     .filter(([, value]) => value.length > 0)
     .toSorted((a, b) => b[1].length - a[1].length);

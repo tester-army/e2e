@@ -7,6 +7,7 @@
  * action. The model never supplies a selector, coordinate, or action.
  */
 
+import { cacheMethodForApi } from '../cache/index.ts';
 import type { LocatorExpression, NodeRef, SemanticNode } from '../driver/index.ts';
 import {
   describeExpression,
@@ -21,6 +22,7 @@ import { agentTrace } from '../internal/trace.ts';
 import type { Role } from '../types.ts';
 import { AgentError } from './error.ts';
 import { Invocation, toAgentError } from './invocation.ts';
+import { openLocateCache, type OpenLocateCache } from './locate-cache.ts';
 import type { AgentObservation } from './observation.ts';
 import {
   LOCATE_SCHEMA,
@@ -38,6 +40,17 @@ export interface LocatedNode {
   readonly observation: AgentObservation;
   /** Model-reported reason for the selection. Untrusted prose. */
   readonly explanation: string;
+  /** Whether a model chose this node or a cache entry replayed it. */
+  readonly origin: 'model' | 'cache';
+}
+
+export interface LocateOptions {
+  readonly testIdAttribute: string;
+  /**
+   * Non-secret parameters of the calling method, digested into the cache key.
+   * A secret contributes only its stable name and purpose, never its value.
+   */
+  readonly input?: Readonly<Record<string, unknown>>;
 }
 
 export interface Selection {
@@ -58,7 +71,19 @@ export async function observeAndSelect(
   invocation: Invocation,
   target: string,
 ): Promise<Selection> {
-  const observation = await invocation.observe();
+  return selectFrom(invocation, target, await invocation.observe());
+}
+
+/**
+ * Asks the model to select one node from an observation the caller already
+ * captured. Split out so the cache can consult an observation before deciding
+ * whether a model call is needed at all.
+ */
+export async function selectFrom(
+  invocation: Invocation,
+  target: string,
+  observation: AgentObservation,
+): Promise<Selection> {
   const response = await invocation.ask({
     schemaName: 'agent-locate-1',
     schema: LOCATE_SCHEMA,
@@ -108,13 +133,24 @@ function validateAgainstObservation(
   return validation;
 }
 
-/** Selects one node and resolves it to a deterministic, unique locator. */
+/**
+ * Selects one node and resolves it to a deterministic, unique locator.
+ *
+ * A valid cache entry short-circuits the model call entirely. Any mismatch
+ * falls through to the normal path, whose result replaces the entry, so a stale
+ * entry costs one resolve and self-heals.
+ */
 export async function locateOne(
   invocation: Invocation,
   target: string,
-  options: { testIdAttribute: string },
+  options: LocateOptions,
 ): Promise<LocatedNode> {
-  const selection = await observeAndSelect(invocation, target);
+  const observation = await invocation.observe();
+  const cache = await openCacheFor(invocation, observation, target, options);
+  const replayed = await cache?.replay();
+  if (replayed !== undefined) return replayed;
+
+  const selection = await selectFrom(invocation, target, observation);
   if (selection.declined) {
     invocation.note({ explanation: selection.explanation });
     throw new AgentError(
@@ -128,11 +164,34 @@ export async function locateOne(
       `the observation contains no node matching ${JSON.stringify(target)}`,
     );
   }
-  return resolveSelected(
+  const located = await resolveSelected(
     invocation,
     { observation: selection.observation, selected: selection.selected, explanation: selection.explanation },
     options,
   );
+  await cache?.record(located);
+  return located;
+}
+
+/**
+ * Opens the cache for this call, or returns undefined when the method is not
+ * cacheable. `cache-1` admits a closed set of methods, so a located action
+ * outside it reports a bypass rather than inventing a key.
+ */
+export function openCacheFor(
+  invocation: Invocation,
+  observation: AgentObservation,
+  target: string,
+  options: LocateOptions,
+): Promise<OpenLocateCache | undefined> {
+  const method = cacheMethodForApi(invocation.api);
+  if (method === undefined) return Promise.resolve(undefined);
+  return openLocateCache(invocation, observation, {
+    method,
+    instruction: target,
+    input: options.input ?? {},
+    testIdAttribute: options.testIdAttribute,
+  });
 }
 
 /**
@@ -201,6 +260,7 @@ export async function resolveSelected(
         node,
         observation: selection.observation,
         explanation: selection.explanation ?? '',
+        origin: 'model',
       };
     }
 

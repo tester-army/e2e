@@ -22,7 +22,13 @@ import {
   type InvocationOptions,
 } from './invocation.ts';
 import type { PromptInput } from './prompts.ts';
-import { locateOne, observeAndSelect, resolveSelected, type LocatedNode } from './locate.ts';
+import {
+  locateOne,
+  openCacheFor,
+  resolveSelected,
+  selectFrom,
+  type LocatedNode,
+} from './locate.ts';
 import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
@@ -66,6 +72,8 @@ export function createAgent(runtime: AgentContext): Agent {
     target: string,
     options: { timeout?: number; cache?: boolean } | undefined,
     action: (invocation: Invocation, located: LocatedNode) => Promise<void>,
+    /** Non-secret call parameters that belong in the cache key. */
+    input?: Readonly<Record<string, unknown>>,
   ): Promise<void> =>
     step(
       {
@@ -80,7 +88,10 @@ export function createAgent(runtime: AgentContext): Agent {
       },
       target,
       async (invocation) => {
-        const located = await locateOne(invocation, target, { testIdAttribute });
+        const located = await locateOne(invocation, target, {
+          testIdAttribute,
+          ...(input === undefined ? {} : { input }),
+        });
         try {
           await action(invocation, located);
         } catch (cause) {
@@ -127,31 +138,46 @@ export function createAgent(runtime: AgentContext): Agent {
       if (!sensitive && typeof value !== 'string') {
         throw new TestError('INVALID_ARGUMENT', 'agent.type value must be a string or a Secret');
       }
-      return instant('agent.type', target, options, async (invocation, located) => {
-        const plaintext = sensitive
-          ? await authorizeSecretFill(invocation, runtime, value, located.node)
-          : value;
-        await invocation.commit('type', () =>
-          invocation.session.actions.type(
-            { ref: located.ref },
-            plaintext,
-            sensitive,
-            invocation.operation(),
-          ),
-        );
-      });
+      return instant(
+        'agent.type',
+        target,
+        options,
+        async (invocation, located) => {
+          const plaintext = sensitive
+            ? await authorizeSecretFill(invocation, runtime, value, located.node)
+            : value;
+          await invocation.commit('type', () =>
+            invocation.session.actions.type(
+              { ref: located.ref },
+              plaintext,
+              sensitive,
+              invocation.operation(),
+            ),
+          );
+        },
+        // A secret contributes only its stable name and purpose: its value must
+        // never reach a cache key, not even through a digest.
+        sensitive
+          ? { sensitiveName: value.name, purpose: value.purpose }
+          : { value, sensitive: false },
+      );
     },
 
     longPress(target, options) {
       const durationMs = validateLongPress(options?.durationMs);
-      return instant('agent.longPress', target, options, (invocation, located) =>
-        invocation.commit('longPress', () =>
-          invocation.session.actions.longPress(
-            { ref: located.ref },
-            durationMs,
-            invocation.operation(),
+      return instant(
+        'agent.longPress',
+        target,
+        options,
+        (invocation, located) =>
+          invocation.commit('longPress', () =>
+            invocation.session.actions.longPress(
+              { ref: located.ref },
+              durationMs,
+              invocation.operation(),
+            ),
           ),
-        ),
+        { durationMs },
       );
     },
 
@@ -268,7 +294,10 @@ export function createAgent(runtime: AgentContext): Agent {
             );
             return;
           }
-          const located = await locateOne(invocation, within, { testIdAttribute });
+          const located = await locateOne(invocation, within, {
+            testIdAttribute,
+            input: { direction, ...(momentum === undefined ? {} : { momentum }) },
+          });
           await invocation.commit('scroll', () =>
             invocation.session.actions.scroll(
               direction,
@@ -294,9 +323,32 @@ export function createAgent(runtime: AgentContext): Agent {
         target,
         async (invocation) => {
           let lastExplanation = '';
+          const scrollIntoView = (located: LocatedNode): Promise<void> =>
+            invocation.commit('scrollIntoView', () =>
+              invocation.session.screen.perform(
+                located.ref,
+                { kind: 'scrollIntoView' },
+                invocation.operation(),
+              ),
+            );
+
+          // The starting screen is the one before any scrolling, so the cache
+          // is keyed on it and round one reuses that same observation.
+          const starting = await invocation.observe();
+          const locateOptions = { testIdAttribute, input: { direction } };
+          const cache = await openCacheFor(invocation, starting, target, locateOptions);
+          const replayed = await cache?.replay();
+          if (replayed !== undefined) {
+            await scrollIntoView(replayed);
+            return;
+          }
+
+          let pending: AgentObservation | undefined = starting;
           for (let round = 1; ; round += 1) {
             invocation.recordPoll('scrollTo', round);
-            const selection = await observeAndSelect(invocation, target);
+            const observation = pending ?? (await invocation.observe());
+            pending = undefined;
+            const selection = await selectFrom(invocation, target, observation);
             if (selection.declined) lastExplanation = selection.explanation;
             if (selection.selected !== null) {
               const located = await resolveSelected(
@@ -306,15 +358,10 @@ export function createAgent(runtime: AgentContext): Agent {
                   selected: selection.selected,
                   explanation: selection.explanation,
                 },
-                { testIdAttribute },
+                locateOptions,
               );
-              await invocation.commit('scrollIntoView', () =>
-                invocation.session.screen.perform(
-                  located.ref,
-                  { kind: 'scrollIntoView' },
-                  invocation.operation(),
-                ),
-              );
+              await cache?.record(located);
+              await scrollIntoView(located);
               return;
             }
             if (invocation.deadline.expired() || !invocation.canAsk()) {
@@ -623,8 +670,12 @@ function explainActionFailure(
   if (error.code !== 'ACTION_FAILED') return error;
   const reasoning =
     located.explanation === '' ? '' : ` The model explained: ${located.explanation}`;
+  // A cached locator was not chosen by a model on this run, and saying it was
+  // sends the reader looking at the wrong thing.
+  const selector =
+    located.origin === 'cache' ? 'a cached locator resolved' : 'the model selected';
   const explanation =
-    `the model selected ${describeNode(located.node)} (${describeExpression(located.expression)}) ` +
+    `${selector} ${describeNode(located.node)} (${describeExpression(located.expression)}) ` +
     `as ${JSON.stringify(target)}, but that node rejected the action: ${driverReason(error.message)}.` +
     `${reasoning} Check that the current screen actually shows ${JSON.stringify(target)}.`;
   invocation.note({ explanation });

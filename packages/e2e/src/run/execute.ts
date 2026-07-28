@@ -1,6 +1,9 @@
 /** Test-target execution engine (spec 11-lifecycle.md). */
 
 import path from 'node:path';
+import type { AgentCacheContext } from '../agent/invocation.ts';
+import { POLICY_VERSION } from '../agent/prompts.ts';
+import { createCacheStore, projectIdentity, type CacheStore } from '../cache/index.ts';
 import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
@@ -75,6 +78,13 @@ export class TargetExecutor implements SerialHost {
 
   private readonly runErrors: RunError[] = [];
   private readonly sessionIdentity: SessionIdentity;
+  /**
+   * One store per target. Entries are content-addressed by key, so concurrent
+   * targets and workers write disjoint files and need no coordination beyond
+   * the store's own per-key lock.
+   */
+  private readonly cacheStore: CacheStore;
+  private readonly cacheProject: string;
 
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
@@ -100,6 +110,33 @@ export class TargetExecutor implements SerialHost {
         basePath: options.config.app.base.basePath,
         environment: options.config.app.environment,
       }),
+    };
+    this.cacheStore = createCacheStore({
+      mode: options.config.agent.cache,
+      projectRoot: options.config.projectRoot,
+      maxBytes: options.config.limits.maxCacheBytes,
+    });
+    this.cacheProject = projectIdentity(options.config.projectId);
+  }
+
+  /**
+   * Cache context for one attempt.
+   *
+   * Mode `off` and every retry are true bypasses: no key is built and no
+   * fingerprint is computed, so the cache cannot cost anything when it is not
+   * in use. A retry starts from clean state, so a cached locator can never be
+   * blamed for a flake the retry was supposed to clear.
+   */
+  private cacheContext(testId: string, attemptIndex: number): AgentCacheContext {
+    let callIndex = 0;
+    return {
+      store: this.cacheStore,
+      project: this.cacheProject,
+      testId,
+      target: this.sessionIdentity,
+      policyVersion: POLICY_VERSION,
+      enabled: attemptIndex === 0 && this.config.agent.cache !== 'off',
+      nextCallIndex: () => callIndex++,
     };
   }
 
@@ -438,6 +475,7 @@ export class TargetExecutor implements SerialHost {
         testDeadline,
         artifacts: artifacts.sink,
         priorSteps,
+        cache: this.cacheContext(pair.test.id, attemptIndex),
         agentContext: pair.options.agentContext,
         opened: shared?.opened ?? { value: false },
         saveSession,

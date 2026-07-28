@@ -172,7 +172,7 @@ agent?: {
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
 | `maxObservationBytes` | `number` | `1048576` | integer 1024-16777216 | Observation payload ceiling. Not a `limits` key. |
-| `cache` | `'off' \| 'read-only' \| 'read-write'` | `'read-only'` in CI, else `'read-write'` | those three | Not implemented yet: no effect |
+| `cache` | `'off' \| 'read-only' \| 'read-write'` | `'read-only'` in CI, else `'read-write'` | those three | Locate-cache mode |
 | `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
 
 ### agent.model

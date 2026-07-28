@@ -8,9 +8,13 @@ deadline, a model-call budget, and no shared transcript between calls. Acquiring
 the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 
 <Callout intent="warning" title="Not implemented yet">
-`act` and `login` reject with `UNSUPPORTED_CAPABILITY`. The `cache` option is
-accepted but has no effect, since caching is not wired up yet.
+`act` and `login` reject with `UNSUPPORTED_CAPABILITY`.
 </Callout>
+
+The `cache` option applies to the located actions `tap`, `click`, `type`,
+`scroll`, `scrollTo`, and `longPress`. Other located verbs are not part of the
+`cache-1` method set and always report `bypassed`. `cache: false` disables the
+cache for one call; it cannot upgrade the resolved run mode.
 
 ```ts
 export interface Agent {

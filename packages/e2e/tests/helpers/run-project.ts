@@ -49,7 +49,18 @@ export async function runProject(
   options: RunProjectOptions,
 ): Promise<{ outcome: RunOutcome; project: FixtureProject }> {
   const project = createProject(files);
-  const outcome = await run({
+  return { outcome: await runExisting(project, options), project };
+}
+
+/**
+ * Runs an existing project directory. Repeated runs share on-disk state, which
+ * is what cache tests need: the second run must see what the first wrote.
+ */
+export async function runExisting(
+  project: FixtureProject,
+  options: RunProjectOptions,
+): Promise<RunOutcome> {
+  return run({
     cwd: project.dir,
     rawConfig: { ...options.config },
     env: {
@@ -60,7 +71,6 @@ export async function runProject(
     quiet: true,
     ...options.runOptions,
   });
-  return { outcome, project };
 }
 
 /** Default file-backed config used by worker-path integration tests. */

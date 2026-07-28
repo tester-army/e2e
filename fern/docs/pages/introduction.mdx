@@ -79,10 +79,9 @@ recorded click at coordinates. Planned flows keep the model in the loop on
 replay, because repeating a step that may already have charged a credit card is
 not a cache hit.
 
-<Callout intent="warning" title="Not implemented yet">
-Caching is not wired up in the current release. Every agentic step calls the
-model, `--no-agent-cache` and the `agent.cache` setting have no effect, and every
-step reports its cache status as bypassed.
+<Callout intent="info" title="Scope in this release">
+Located actions are cached today. Planned flows (`agent.act`) arrive with the
+planning tier and bring their own entry kind.
 </Callout>
 
 ## Cross-platform by design
