@@ -13,6 +13,7 @@ import {
   installFakeModel,
   judgment,
   locateBestMatch,
+  locateNotFound,
   type FakeCall,
 } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -64,15 +65,23 @@ test('a false judgment fails the assertion', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the checkout page is visible');
 });
+
+test('an explicit no-match fails with the model explanation', async ({ app, agent }) => {
+  await app.open();
+  await agent.tap('the shopping cart icon');
+});
 `;
 
 const FALSE_ASSERTION = 'the checkout page is visible';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
+const NO_MATCH_TARGET = 'the shopping cart icon';
+const NO_MATCH_EXPLANATION = 'the observation shows a counter demo without any cart icon';
 
 /** Scripted responder: locate by best line match, judge from the observation. */
 function respond(call: FakeCall): unknown {
   switch (call.schemaName) {
     case 'agent-locate-1':
+      if (call.instruction === NO_MATCH_TARGET) return locateNotFound(NO_MATCH_EXPLANATION);
       return locateBestMatch(call);
     case 'agent-judgment-1': {
       if (call.instruction === FALSE_ASSERTION) {
@@ -141,6 +150,16 @@ describe('agent fixture', () => {
     expect(attempt.error?.code).toBe('ASSERTION_FAILED');
     expect(attempt.error?.category).toBe('test');
     expect(attempt.error?.message).toContain('not checkout');
+  });
+
+  it('surfaces the model explanation when it reports an explicit no-match', () => {
+    const result = resultByTitle(outcome, 'an explicit no-match fails with the model explanation');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts.at(-1)!;
+    expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
+    expect(attempt.error?.category).toBe('test');
+    expect(attempt.error?.message).toContain(NO_MATCH_TARGET);
+    expect(attempt.error?.message).toContain(NO_MATCH_EXPLANATION);
   });
 
   it('never exposes application-authored instructions as policy', () => {

@@ -209,6 +209,13 @@ The closed model response grammars are
 and [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json).
 Unknown or method-incompatible responses are policy errors.
 
+A locate response always carries a short `explanation`: why the selected node
+matches, or, with `target: null`, why nothing in the observation does. An
+explicit `target: null` is a valid response, not a policy error: the runner
+raises `LOCATOR_NOT_FOUND` carrying the model's explanation (`scrollTo` keeps
+scrolling and reports the last explanation on budget exhaustion). The model
+never selects an error code; explanations are bounded untrusted prose.
+
 ## Steps
 
 The exact step-producing calls and report fields are defined in

@@ -444,6 +444,7 @@ export class TargetExecutor implements SerialHost {
         env: this.options.env,
         opened: context.kind === 'serial' ? context.shared.opened : { value: false },
         saveSession,
+        debug: this.debug,
       });
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');

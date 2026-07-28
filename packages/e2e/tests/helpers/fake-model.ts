@@ -108,10 +108,17 @@ export function bestMatch(call: FakeCall): { id: string; line: string } {
 
 /** Builds a valid agent-locate-1 response for the best-matching node. */
 export function locateBestMatch(call: FakeCall): unknown {
+  const match = bestMatch(call);
   return {
     protocolVersion: 'agent-locate-1',
-    target: { id: bestMatch(call).id, revision: call.revision },
+    target: { id: match.id, revision: call.revision },
+    explanation: `best line match: ${match.line.trim()}`,
   };
+}
+
+/** Builds a valid agent-locate-1 explicit no-match response. */
+export function locateNotFound(explanation: string): unknown {
+  return { protocolVersion: 'agent-locate-1', target: null, explanation };
 }
 
 /** Builds a valid agent-judgment-1 response. */

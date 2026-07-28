@@ -428,7 +428,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         { retryable: false, cause },
       );
     }
-    if (/not an? (input|checkbox|radio|select)|not editable|not checkable/i.test(text)) {
+    if (/not an? <?(input|checkbox|radio|select)|not editable|not checkable/i.test(text)) {
       return new DriverError('NOT_ACTIONABLE', text, { retryable: false, cause });
     }
     return new DriverError('DRIVER_FAILURE', text, { retryable: false, cause });

@@ -11,6 +11,7 @@ import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
 import { resolveConfig } from '../../config/resolve.ts';
 import { setCredentialRegistry } from '../../credentials.ts';
+import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
 import { resolveDriver } from '../resolve-driver.ts';
 import { SessionStore } from '../sessions.ts';
@@ -30,7 +31,7 @@ function fatal(cause: unknown): never {
  * Loads the config in this process and verifies it matches the runner's, then
  * assembles everything the worker core needs.
  */
-async function bootstrap(message: WorkerBootstrap): Promise<TargetWorkerDeps> {
+async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<TargetWorkerDeps> {
   const raw = await loadConfigModule(message.configPath);
   const config = resolveConfig(raw, {
     projectRoot: message.projectRoot,
@@ -83,6 +84,7 @@ async function bootstrap(message: WorkerBootstrap): Promise<TargetWorkerDeps> {
     headed: message.headed,
     env: process.env,
     resolvePairs,
+    debug,
     disposeDriver: true,
   };
 }
@@ -101,9 +103,19 @@ function main(): void {
   let worker: TargetWorker | undefined;
   process.on('message', (message: ChildProcessInbound) => {
     if (message.type === 'bootstrap') {
+      // This worker owns its trace outright, so each unit-done drains the
+      // entries accumulated since the previous unit and ships them along.
+      const debug = new DebugTrace(message.bootstrap.debug);
+      const emit = (outbound: WorkerToMain): void => {
+        if (outbound.type === 'unit-done' && debug.enabled) {
+          send({ ...outbound, debug: debug.drain() });
+          return;
+        }
+        send(outbound);
+      };
       worker = new TargetWorker(
-        { emit: send, fatal, finished: () => process.exit(0) },
-        () => bootstrap(message.bootstrap),
+        { emit, fatal, finished: () => process.exit(0) },
+        () => bootstrap(message.bootstrap, debug),
       );
       worker.start();
       return;

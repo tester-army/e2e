@@ -10,16 +10,63 @@ describe('agent-locate-1', () => {
     const result = validateLocateResponse({
       protocolVersion: 'agent-locate-1',
       target: { id: 'n7', revision: 'r3' },
+      explanation: 'the only email input',
     });
     expect(result).toEqual({
       ok: true,
-      value: { protocolVersion: 'agent-locate-1', target: { id: 'n7', revision: 'r3' } },
+      value: {
+        protocolVersion: 'agent-locate-1',
+        target: { id: 'n7', revision: 'r3' },
+        explanation: 'the only email input',
+      },
     });
+  });
+
+  it('accepts an explicit no-match with a null target', () => {
+    const result = validateLocateResponse({
+      protocolVersion: 'agent-locate-1',
+      target: null,
+      explanation: 'the observation shows a login page without a search box',
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        protocolVersion: 'agent-locate-1',
+        target: null,
+        explanation: 'the observation shows a login page without a search box',
+      },
+    });
+  });
+
+  it('rejects a response without an explanation', () => {
+    expect(
+      validateLocateResponse({
+        protocolVersion: 'agent-locate-1',
+        target: { id: 'n7', revision: 'r3' },
+      }),
+    ).toMatchObject({ ok: false });
+    expect(
+      validateLocateResponse({ protocolVersion: 'agent-locate-1', target: null }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('rejects explanations over 8192 characters', () => {
+    expect(
+      validateLocateResponse({
+        protocolVersion: 'agent-locate-1',
+        target: null,
+        explanation: 'x'.repeat(8193),
+      }),
+    ).toMatchObject({ ok: false });
   });
 
   it('rejects unknown protocol versions', () => {
     expect(
-      validateLocateResponse({ protocolVersion: 'agent-locate-2', target: { id: 'a', revision: 'b' } }),
+      validateLocateResponse({
+        protocolVersion: 'agent-locate-2',
+        target: { id: 'a', revision: 'b' },
+        explanation: '',
+      }),
     ).toMatchObject({ ok: false });
   });
 
@@ -28,6 +75,7 @@ describe('agent-locate-1', () => {
       validateLocateResponse({
         protocolVersion: 'agent-locate-1',
         target: { id: 'a', revision: 'b' },
+        explanation: '',
         action: 'tap',
       }),
     ).toMatchObject({ ok: false });
@@ -35,6 +83,7 @@ describe('agent-locate-1', () => {
       validateLocateResponse({
         protocolVersion: 'agent-locate-1',
         target: { id: 'a', revision: 'b', selector: '#a' },
+        explanation: '',
       }),
     ).toMatchObject({ ok: false });
   });
@@ -44,12 +93,17 @@ describe('agent-locate-1', () => {
       ok: false,
     });
     expect(
-      validateLocateResponse({ protocolVersion: 'agent-locate-1', target: { id: '', revision: 'r1' } }),
+      validateLocateResponse({
+        protocolVersion: 'agent-locate-1',
+        target: { id: '', revision: 'r1' },
+        explanation: '',
+      }),
     ).toMatchObject({ ok: false });
     expect(
       validateLocateResponse({
         protocolVersion: 'agent-locate-1',
         target: { id: 'x'.repeat(257), revision: 'r1' },
+        explanation: '',
       }),
     ).toMatchObject({ ok: false });
   });

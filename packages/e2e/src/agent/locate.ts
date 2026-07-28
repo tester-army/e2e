@@ -29,12 +29,18 @@ export interface LocatedNode {
   /** Freshly read node behind the derived query. */
   readonly node: SemanticNode;
   readonly observation: AgentObservation;
+  /** Model-reported reason for the selection. Untrusted prose. */
+  readonly explanation: string;
 }
 
 export interface Selection {
   readonly observation: AgentObservation;
-  /** Null when the response named a node absent from this observation. */
+  /** Null when the model declined or named a node absent from this observation. */
   readonly selected: SemanticNode | null;
+  /** Why the node was selected, or why no node matches. Untrusted prose. */
+  readonly explanation: string;
+  /** True when the model explicitly reported that no node matches. */
+  readonly declined: boolean;
 }
 
 /**
@@ -52,13 +58,17 @@ export async function observeAndSelect(
     validate: validateLocateResponse,
     prompt: { request: LOCATE_REQUEST, instruction: target, observation },
   });
+  const explanation = response.explanation;
+  if (response.target === null) {
+    return { observation, selected: null, explanation, declined: true };
+  }
   if (response.target.revision !== observation.revision) {
     invocation.recordPolicy('locate.revision', 'denied', 'POLICY_DENIED');
-    return { observation, selected: null };
+    return { observation, selected: null, explanation, declined: false };
   }
   const selected = observation.nodes.get(response.target.id) ?? null;
   if (selected === null) invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
-  return { observation, selected };
+  return { observation, selected, explanation, declined: false };
 }
 
 /** Selects one node and resolves it to a deterministic, unique locator. */
@@ -67,14 +77,25 @@ export async function locateOne(
   target: string,
   options: { testIdAttribute: string },
 ): Promise<LocatedNode> {
-  const { observation, selected } = await observeAndSelect(invocation, target);
-  if (selected === null) {
+  const selection = await observeAndSelect(invocation, target);
+  if (selection.declined) {
+    invocation.note({ explanation: selection.explanation });
+    throw new AgentError(
+      'LOCATOR_NOT_FOUND',
+      `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
+    );
+  }
+  if (selection.selected === null) {
     throw new AgentError(
       'LOCATOR_NOT_FOUND',
       `the observation contains no node matching ${JSON.stringify(target)}`,
     );
   }
-  return resolveSelected(invocation, { observation, selected }, options);
+  return resolveSelected(
+    invocation,
+    { observation: selection.observation, selected: selection.selected, explanation: selection.explanation },
+    options,
+  );
 }
 
 /**
@@ -83,7 +104,7 @@ export async function locateOne(
  */
 export async function resolveSelected(
   invocation: Invocation,
-  selection: { observation: AgentObservation; selected: SemanticNode },
+  selection: { observation: AgentObservation; selected: SemanticNode; explanation?: string },
   options: { testIdAttribute: string },
 ): Promise<LocatedNode> {
   const candidates = deriveQueries(selection.selected, options.testIdAttribute);
@@ -118,7 +139,13 @@ export async function resolveSelected(
       }
       if (!matchesSignature(selection.selected, node)) continue;
       invocation.recordPolicy('locate.identity', 'allowed');
-      return { ref, expression, node, observation: selection.observation };
+      return {
+        ref,
+        expression,
+        node,
+        observation: selection.observation,
+        explanation: selection.explanation ?? '',
+      };
     }
 
     if (invocation.deadline.expired()) break;

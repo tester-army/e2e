@@ -6,11 +6,13 @@
  * planning tier (`act`, `login`) is not part of this milestone.
  */
 
+import type { SemanticNode } from '../driver/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
+import { describeExpression } from '../locator/expression.ts';
 import { isSecret, validateLongPress } from '../locator/screen.ts';
 import type { Agent, Momentum, ScrollDirection, StandardSchemaV1 } from '../types.ts';
-import { AgentError } from './error.ts';
+import { AgentError, isAgentError } from './error.ts';
 import {
   Invocation,
   toAgentError,
@@ -41,7 +43,7 @@ export function createAgent(runtime: AgentContext): Agent {
     body: (invocation: Invocation) => Promise<Value>,
   ): Promise<Value> =>
     runtime.steps.run('agent', options.api, label, async () => {
-      const invocation = new Invocation(runtime, options);
+      const invocation = new Invocation(runtime, { ...options, label });
       try {
         return await body(invocation);
       } catch (cause) {
@@ -71,7 +73,11 @@ export function createAgent(runtime: AgentContext): Agent {
       async (invocation) => {
         const located = await locateOne(invocation, target, { testIdAttribute });
         invocation.note({ observationRevision: located.observation.revision });
-        await action(invocation, located);
+        try {
+          await action(invocation, located);
+        } catch (cause) {
+          throw explainActionFailure(invocation, api, target, located, cause);
+        }
       },
     );
 
@@ -183,14 +189,20 @@ export function createAgent(runtime: AgentContext): Agent {
         },
         target,
         async (invocation) => {
+          let lastExplanation = '';
           for (let round = 1; ; round += 1) {
             invocation.recordPoll('scrollTo', round);
             const selection = await observeAndSelect(invocation, target);
             invocation.note({ observationRevision: selection.observation.revision });
+            if (selection.declined) lastExplanation = selection.explanation;
             if (selection.selected !== null) {
               const located = await resolveSelected(
                 invocation,
-                { observation: selection.observation, selected: selection.selected },
+                {
+                  observation: selection.observation,
+                  selected: selection.selected,
+                  explanation: selection.explanation,
+                },
                 { testIdAttribute },
               );
               await invocation.commit('scrollIntoView', () =>
@@ -203,9 +215,12 @@ export function createAgent(runtime: AgentContext): Agent {
               return;
             }
             if (invocation.deadline.expired() || !invocation.canAsk()) {
+              if (lastExplanation !== '') invocation.note({ explanation: lastExplanation });
               throw new AgentError(
                 'LOCATOR_NOT_FOUND',
-                `scrollTo did not reach ${JSON.stringify(target)} within its budget`,
+                `scrollTo did not reach ${JSON.stringify(target)} within its budget${
+                  lastExplanation === '' ? '' : `; the model reported: ${lastExplanation}`
+                }`,
               );
             }
             await invocation.commit('scroll', () =>
@@ -464,4 +479,40 @@ function describeIssue(issue: StandardSchemaV1.Issue): string {
     .map((segment) => (typeof segment === 'object' ? String(segment.key) : String(segment)))
     .join('.');
   return path === '' ? issue.message : `${path}: ${issue.message}`;
+}
+
+/**
+ * An action that fails on the node the model selected usually means the
+ * instruction matched nothing on screen and the model picked the closest
+ * candidate. Naming that node makes the failure explain itself instead of
+ * surfacing a bare driver error.
+ */
+function explainActionFailure(
+  invocation: Invocation,
+  api: string,
+  target: string,
+  located: LocatedNode,
+  cause: unknown,
+): Error {
+  const error = toAgentError(cause);
+  if (!isAgentError(error) || error.code !== 'ACTION_FAILED') return error;
+  const reasoning =
+    located.explanation === '' ? '' : ` The model explained: ${located.explanation}`;
+  const explanation =
+    `the model selected ${describeNode(located.node)} (${describeExpression(located.expression)}) ` +
+    `as ${JSON.stringify(target)}, but that node rejected the action: ${driverReason(error.message)}.` +
+    `${reasoning} Check that the current screen actually shows ${JSON.stringify(target)}.`;
+  invocation.note({ explanation });
+  return new AgentError('ACTION_FAILED', `${api} failed: ${explanation}`, { cause: error });
+}
+
+function describeNode(node: SemanticNode): string {
+  const name = (node.name ?? node.text ?? '').replace(/\s+/g, ' ').trim();
+  const role = node.role ?? 'node';
+  return name === '' ? `a ${role}` : `the ${role} "${name}"`;
+}
+
+/** Keeps the driver's one-line reason and drops the multi-line call log. */
+function driverReason(text: string): string {
+  return (text.split(/\n\s*Call log:/i)[0] ?? text).trim();
 }

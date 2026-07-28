@@ -4,6 +4,7 @@ import { createAgent } from '../agent/index.ts';
 import type { Ledger } from '../agent/ledger.ts';
 import { createModelAdapter } from '../agent/model/registry.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
+import type { DebugTrace } from '../internal/debug.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { toRoutePattern } from '../internal/route-pattern.ts';
@@ -64,6 +65,8 @@ export interface AttemptEnvironment {
    * members share one session and therefore one open state.
    */
   readonly opened: { value: boolean };
+  /** `--debug` phase timings; absent when the caller collects none. */
+  readonly debug?: DebugTrace;
 }
 
 export interface FixtureGraph {
@@ -136,6 +139,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         taint,
         artifacts: environment.artifacts,
         signal: environment.signal,
+        ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
       });
       return agent;
     },

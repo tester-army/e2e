@@ -4,17 +4,23 @@
   "title": "e2e agent-locate-1 response",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protocolVersion", "target"],
+  "required": ["protocolVersion", "target", "explanation"],
   "properties": {
     "protocolVersion": { "const": "agent-locate-1" },
     "target": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "revision"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
-        "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
-      }
-    }
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "revision"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "explanation": { "type": "string", "maxLength": 8192 }
   }
 }

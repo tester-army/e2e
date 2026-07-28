@@ -10,6 +10,7 @@
 import type { TestIdentity } from '../../collect/collect.ts';
 import type { ResolvedTestOptions } from '../../collect/select.ts';
 import type { ResolvedTarget } from '../../config/resolve.ts';
+import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../records.ts';
 
@@ -43,6 +44,8 @@ export interface WorkerBootstrap {
   readonly sessionsRoot: string;
   /** Per-run AES key; transferred only over this channel, never disk or env. */
   readonly sessionKeyBase64: string;
+  /** Whether the worker should collect `--debug` phase timings. */
+  readonly debug: boolean;
 }
 
 export interface RunUnitMessage {
@@ -93,6 +96,8 @@ export interface UnitDoneMessage {
   readonly type: 'unit-done';
   readonly unitId: string;
   readonly runErrors: readonly RunError[];
+  /** Phase timings drained from this worker since the previous unit. */
+  readonly debug?: DebugSnapshot;
 }
 
 export interface FatalMessage {

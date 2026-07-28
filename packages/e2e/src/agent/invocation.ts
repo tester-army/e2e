@@ -8,6 +8,7 @@
 import type { JSONSchema7 } from 'ai';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { DriverSession } from '../driver/index.ts';
+import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError, classifyError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline } from '../internal/time.ts';
@@ -39,11 +40,15 @@ export interface AgentContext {
   readonly taint: { value: boolean };
   readonly artifacts: ArtifactSink;
   readonly signal: AbortSignal;
+  /** `--debug` phase timings; absent when the caller collects none. */
+  readonly debug?: DebugTrace;
 }
 
 export interface InvocationOptions {
   /** Public API name, e.g. `agent.tap`. */
   readonly api: string;
+  /** Caller's instruction, e.g. the target phrase, used for debug step labels. */
+  readonly label?: string;
   /** Short task description placed in the system message. */
   readonly task: string;
   readonly timeoutMs: number;
@@ -70,6 +75,10 @@ export class Invocation {
     ledgerBytes: 0,
   };
 
+  private readonly createdMs = Date.now();
+  private modelMs = 0;
+  private observeMs = 0;
+  private actionMs = 0;
   private inputTokens = 0;
   private outputTokens = 0;
   private peakTokensPerCall = 0;
@@ -124,6 +133,10 @@ export class Invocation {
         code: errorCode(cause),
       });
       throw toAgentError(cause);
+    } finally {
+      const durationMs = Date.now() - startedMs;
+      this.observeMs += durationMs;
+      this.runtime.debug?.record('agent.observe', durationMs);
     }
   }
 
@@ -221,6 +234,10 @@ export class Invocation {
           continue;
         }
         throw toAgentError(cause);
+      } finally {
+        const durationMs = Date.now() - startedMs;
+        this.modelMs += durationMs;
+        this.runtime.debug?.record('agent.model', durationMs);
       }
     }
   }
@@ -257,6 +274,10 @@ export class Invocation {
         code: errorCode(cause),
       });
       throw toAgentError(cause);
+    } finally {
+      const durationMs = Date.now() - startedMs;
+      this.actionMs += durationMs;
+      this.runtime.debug?.record('agent.action', durationMs);
     }
   }
 
@@ -331,6 +352,25 @@ export class Invocation {
         ? { observationRevision: this.observationRevision }
         : {}),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
+    });
+    this.runtime.debug?.recordStep({
+      label:
+        this.options.label === undefined
+          ? this.options.api
+          : `${this.options.api} "${this.options.label}"`,
+      totalMs: Date.now() - this.createdMs,
+      modelMs: this.modelMs,
+      observeMs: this.observeMs,
+      actionMs: this.actionMs,
+      modelCalls: this.metrics.modelCalls,
+      inputTokens: this.inputTokens,
+      outputTokens: this.outputTokens,
+      ...(this.estimatedCostUsd !== undefined ? { costUsd: this.estimatedCostUsd } : {}),
+      ...(this.metrics.modelCalls > 0
+        ? {
+            model: `${this.runtime.adapter.provenance.provider}/${this.runtime.adapter.provenance.model}`,
+          }
+        : {}),
     });
   }
 

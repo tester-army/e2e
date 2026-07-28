@@ -167,11 +167,21 @@ function parseJsonObject(text: string): unknown {
   }
 }
 
-/** AI Gateway reports per-request cost in provider metadata when available. */
+/**
+ * AI Gateway reports per-request cost in provider metadata when available.
+ * `cost` is what the gateway bills; BYOK routes bill the provider key directly
+ * and report `cost: "0"`, so fall back to `marketCost`, the list-price
+ * estimate of the same request.
+ */
 function readCost(
   metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
 ): number | undefined {
-  const raw = metadata?.['gateway']?.['cost'];
+  const billed = parseCost(metadata?.['gateway']?.['cost']);
+  if (billed !== undefined && billed > 0) return billed;
+  return parseCost(metadata?.['gateway']?.['marketCost']) ?? billed;
+}
+
+function parseCost(raw: unknown): number | undefined {
   const cost = typeof raw === 'string' ? Number(raw) : raw;
   return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : undefined;
 }

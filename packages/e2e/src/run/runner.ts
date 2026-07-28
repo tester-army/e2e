@@ -106,7 +106,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       serialGroups,
       runErrors,
       targetProvenance,
-      trustNoticeShown: listReporter !== undefined,
+      // The trust model is documented and report-recorded, never printed.
+      trustNoticeShown: false,
     });
     if (config !== undefined) {
       const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
@@ -160,6 +161,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     runId,
     targets: config.targets.map((target) => target.name),
     ci: isCiMode(env),
+    projectRoot: config.projectRoot,
   });
 
   try {
@@ -192,6 +194,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       return finish(exitCodeForCategory(error.category));
     }
     const { collection, selection } = planned;
+
+    const testTitles = new Map<string, string>();
+    for (const { pairs } of selection.perTarget) {
+      for (const pair of pairs) {
+        testTitles.set(pair.test.id, pair.test.titlePath.join(' \u203a '));
+      }
+    }
+    listReporter?.onPlan({ total: selection.pairs.length });
 
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
     const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
@@ -259,6 +269,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
               headed: options.headed ?? false,
               sessionsRoot,
               sessionKeyBase64: store.exportKeyForWorker(),
+              debug: debug.enabled,
               env,
             }),
           };
@@ -280,6 +291,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             },
             onSerialGroup: (group) => serialGroups.push(group),
             onRunError: (error) => runErrors.push(error),
+            onTestStart: (testId, targetName) =>
+              listReporter?.onTestStart({
+                id: testId,
+                title: testTitles.get(testId) ?? testId,
+                target: targetName,
+              }),
+            onDebug: (snapshot) => debug.merge(snapshot),
           },
         }),
       );

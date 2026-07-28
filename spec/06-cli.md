@@ -92,9 +92,11 @@ A setup assertion is a test failure and skips its dependents. Missing setup
 infrastructure retains its configuration/infrastructure class. The model does
 not choose any classification.
 
-At startup, the CLI states that config, tests, model adapters, and in-process
-drivers are trusted executable code with the runner's OS authority. In CI this
-notice is one bounded line and is also recorded in report provenance.
+Config, tests, model adapters, and in-process drivers are trusted executable
+code with the runner's OS authority. This trust model is documented in
+[14-security.md](./14-security.md) and recorded in report provenance
+(`environment.trustNoticeShown` states whether a runner printed a startup
+notice); printing a startup notice is optional.
 
 v0 does not sandbox untrusted test/config/driver code. Such code requires an
 external ephemeral OS/container boundary with no secrets or privileged tokens;

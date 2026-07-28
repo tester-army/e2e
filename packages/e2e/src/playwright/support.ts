@@ -103,8 +103,12 @@ function unsupportedDrag(): DriverError {
   });
 }
 
+/** Playwright colorizes call logs; escape codes are noise in reports. */
+const ANSI_PATTERN = /\u001b\[\d+(?:;\d+)*m/g;
+
 export function message(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+  const text = cause instanceof Error ? cause.message : String(cause);
+  return text.replace(ANSI_PATTERN, '');
 }
 
 export function isPwTimeout(cause: unknown): boolean {

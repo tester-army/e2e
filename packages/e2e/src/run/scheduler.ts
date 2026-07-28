@@ -12,6 +12,7 @@
 import type { Collection } from '../collect/collect.ts';
 import type { Selection, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
+import type { DebugSnapshot } from '../internal/debug.ts';
 import { InfrastructureError, serializeError } from '../internal/errors.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
@@ -31,6 +32,10 @@ export interface SchedulerEvents {
   onResult(result: ResultRecord): void;
   onSerialGroup(group: SerialGroupRecord): void;
   onRunError(error: RunError): void;
+  /** A worker began executing one test-target pair. */
+  onTestStart?(testId: string, targetName: string): void;
+  /** Phase timings a child-process worker drained after one unit. */
+  onDebug?(snapshot: DebugSnapshot): void;
 }
 
 export interface RunUnitsOptions {
@@ -406,6 +411,7 @@ class Scheduler {
       }
       case 'pair-start': {
         worker.inFlightTestId = message.testId;
+        this.options.events.onTestStart?.(message.testId, worker.targetName);
         break;
       }
       case 'result': {
@@ -425,6 +431,7 @@ class Scheduler {
       }
       case 'unit-done': {
         for (const runError of message.runErrors) this.options.events.onRunError(runError);
+        if (message.debug !== undefined) this.options.events.onDebug?.(message.debug);
         const unit = worker.unit;
         worker.unit = undefined;
         worker.inFlightTestId = undefined;

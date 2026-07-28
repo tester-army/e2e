@@ -11,7 +11,10 @@ import type { JSONSchema7 } from 'ai';
 
 export interface LocateResponse {
   readonly protocolVersion: 'agent-locate-1';
-  readonly target: { readonly id: string; readonly revision: string };
+  /** Null is an explicit, valid "nothing in the observation matches". */
+  readonly target: { readonly id: string; readonly revision: string } | null;
+  /** Why the node was selected, or why no node matches. Untrusted prose. */
+  readonly explanation: string;
 }
 
 export interface JudgmentResponse {
@@ -30,20 +33,26 @@ const EXPLANATION_MAX_LENGTH = 8192;
 export const LOCATE_SCHEMA: JSONSchema7 = {
   type: 'object',
   additionalProperties: false,
-  required: ['protocolVersion', 'target'],
+  required: ['protocolVersion', 'target', 'explanation'],
   properties: {
     // Single-value enum rather than const: strict structured-output modes
     // across providers accept enum but not const.
     protocolVersion: { type: 'string', enum: ['agent-locate-1'] },
     target: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['id', 'revision'],
-      properties: {
-        id: { type: 'string', minLength: 1, maxLength: REF_MAX_LENGTH },
-        revision: { type: 'string', minLength: 1, maxLength: REF_MAX_LENGTH },
-      },
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'revision'],
+          properties: {
+            id: { type: 'string', minLength: 1, maxLength: REF_MAX_LENGTH },
+            revision: { type: 'string', minLength: 1, maxLength: REF_MAX_LENGTH },
+          },
+        },
+        { type: 'null' },
+      ],
     },
+    explanation: { type: 'string', maxLength: EXPLANATION_MAX_LENGTH },
   },
 };
 
@@ -59,15 +68,26 @@ export const JUDGMENT_SCHEMA: JSONSchema7 = {
 };
 
 export function validateLocateResponse(value: unknown): ProtocolValidation<LocateResponse> {
-  const record = asClosedRecord(value, ['protocolVersion', 'target']);
+  const record = asClosedRecord(value, ['protocolVersion', 'target', 'explanation']);
   if (record === null) return fail('response is not an agent-locate-1 object');
   if (record['protocolVersion'] !== 'agent-locate-1') return fail('unknown protocolVersion');
+  const explanation = asBoundedString(record['explanation'], 0, EXPLANATION_MAX_LENGTH);
+  if (explanation === null) return fail('explanation must be a bounded string');
+  if (record['target'] === null) {
+    return {
+      ok: true,
+      value: { protocolVersion: 'agent-locate-1', target: null, explanation },
+    };
+  }
   const target = asClosedRecord(record['target'], ['id', 'revision']);
-  if (target === null) return fail('target is not a node reference');
+  if (target === null) return fail('target is not a node reference or null');
   const id = asBoundedString(target['id'], 1, REF_MAX_LENGTH);
   const revision = asBoundedString(target['revision'], 1, REF_MAX_LENGTH);
   if (id === null || revision === null) return fail('target id/revision are invalid');
-  return { ok: true, value: { protocolVersion: 'agent-locate-1', target: { id, revision } } };
+  return {
+    ok: true,
+    value: { protocolVersion: 'agent-locate-1', target: { id, revision }, explanation },
+  };
 }
 
 export function validateJudgmentResponse(value: unknown): ProtocolValidation<JudgmentResponse> {

@@ -82,9 +82,17 @@ function respond(call: FakeCall): unknown {
   }
   switch (call.instruction) {
     case 'a node that does not exist':
-      return { protocolVersion: 'agent-locate-1', target: { id: 'n99999', revision: call.revision } };
+      return {
+        protocolVersion: 'agent-locate-1',
+        target: { id: 'n99999', revision: call.revision },
+        explanation: 'invented node',
+      };
     case 'the stale increment button':
-      return { protocolVersion: 'agent-locate-1', target: { id: bestMatch(call).id, revision: 'r0' } };
+      return {
+        protocolVersion: 'agent-locate-1',
+        target: { id: bestMatch(call).id, revision: 'r0' },
+        explanation: 'stale revision',
+      };
     case 'the malformed increment button':
       return {
         protocolVersion: 'agent-locate-1',
