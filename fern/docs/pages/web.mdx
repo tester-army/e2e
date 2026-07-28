@@ -1,0 +1,230 @@
+---
+title: Web capabilities
+subtitle: The browser-only half of the API, kept behind one fixture.
+---
+
+`screen` and `app` are portable. Everything that only makes sense in a browser -
+URLs, network routes, cookies, dialogs, frames, downloads, raw input - lives on
+`web`. That split is deliberate: you can see at a glance which parts of a test
+could ever run on another platform.
+
+```ts
+test('billing loads', { requires: ['web'] }, async ({ app, screen, web }) => {
+  await app.open('/settings');
+  await screen.getByRole('link', { name: 'Billing' }).tap();
+  await expect(web).toHaveURL('/settings/billing');
+});
+```
+
+## Navigation
+
+Portable lifecycle on `app`:
+
+```ts
+await app.open('/todos');        // resolves against app.url, waits for load
+await app.back();                // one history step; no history is a no-op
+await app.deepLink('https://auth.example.com/sso');
+```
+
+Browser history and reads on `web`:
+
+```ts
+await web.goto('/settings', { waitUntil: 'domcontentloaded', timeout: 10_000 });
+await web.reload();
+await web.back();
+await web.forward();
+
+const current = await web.url();
+const heading = await web.title();
+
+await web.waitForURL(/\/orders\/\d+/);
+```
+
+`waitUntil` accepts `'load'` (default), `'domcontentloaded'`, or `'networkidle'`.
+
+<Callout intent="note">
+A session launches with no page open. A query, action, or read before
+`app.open()` or `web.goto()` fails with `APP_NOT_OPEN`, so a test can never
+assert against a blank tab and pass by accident.
+</Callout>
+
+## Allowed origins
+
+An agentic step is given a goal, not a route. Without a boundary, a described
+target that happens to be an outbound link takes the run somewhere you never
+meant to automate. `app.allowedOrigins` is the allowlist, and nothing
+lower-trust can extend it.
+
+```ts title="e2e.config.ts"
+app: {
+  url: 'https://app.staging.example.com',
+  environment: 'staging',
+  allowedOrigins: [
+    'https://app.staging.example.com',
+    'https://auth.staging.example.com',
+  ],
+},
+```
+
+With no `allowedOrigins`, the list is exactly the origin of `app.url`. Entries
+must be serialized origins - scheme, host, optional port, no path. Navigation,
+deep links, and `web.setCookies` are all checked against it, and a denial is
+`POLICY_DENIED`. `file:`, `data:`, and `javascript:` URLs are always denied.
+
+`app.environment` is `'test'`, `'staging'`, or `'production'`. It defaults to
+`'test'` only for unambiguously local hosts, so any real hostname must declare
+one. Production additionally requires `allowProduction: true`, which fails with
+`PRODUCTION_NOT_ALLOWED` before a browser starts if you forget it - so running
+against production is a reviewable diff rather than an inherited default.
+
+<Tip title="Keep the list short">
+Stub third-party origins with `web.route` instead of allowlisting them. Add an
+entry only when a denial proves you need one.
+</Tip>
+
+## Network
+
+```ts
+const [response] = await Promise.all([
+  web.waitForResponse('**/api/users'),
+  screen.getByRole('button', { name: 'Load users' }).tap(),
+]);
+
+expect(response.status).toBe(200);
+expect(await response.json<{ name: string }[]>()).toEqual([{ name: 'Ada' }]);
+```
+
+That order is the point. `Promise.all` registers the waiter before the tap
+resolves, so a fast response cannot land in the gap between two statements.
+Awaiting the tap first and then waiting for the response is the classic race.
+
+Mock a request instead of waiting for it:
+
+```ts
+await web.route('**/api/users', (route) =>
+  route.fulfill({ json: [{ name: 'Stubbed' }] }),
+);
+
+await screen.getByRole('button', { name: 'Load users' }).tap();
+await expect(screen.getByText('Stubbed')).toBeVisible();
+
+await web.unroute('**/api/users');
+```
+
+A handler must call exactly one of `route.fulfill()`, `route.continue()`, or
+`route.abort()`. Returning without a decision, or deciding twice, fails the
+attempt with `ACTION_FAILED` - a route that silently hangs is the worst kind of
+flake. Read `route.request` for `url`, `method`, `headers`, and `postData` when
+the decision depends on the request.
+
+Patterns are glob strings matched against the complete URL (`*` within a
+segment, `**` across `/`, `?` for one character) or a `RegExp`. Routes are
+attempt-scoped, matched newest-first, and removed for you.
+
+### Cookies
+
+```ts
+await web.setCookies([
+  { name: 'flags', value: 'beta', url: 'http://localhost:3000' },
+]);
+
+const existing = await web.cookies();
+```
+
+A cookie carries `url` or `domain`/`path`, never both. `expires` is a Unix
+timestamp in whole seconds; omit it for a session cookie. Each cookie's origin
+must be allowed, or the call is `POLICY_DENIED`. For authenticated state do not
+hand-assemble cookies - use [Authentication](/authentication).
+
+## Dialogs
+
+```ts
+const dispose = await web.onDialog('accept');
+await screen.getByRole('button', { name: 'Delete everything' }).tap();
+await expect(screen.getByRole('status', { name: 'Decision' })).toHaveText('deleted');
+await dispose();
+```
+
+`onDialog` takes `'accept'`, `'dismiss'`, or a handler that receives a `Dialog`
+with `message`, `accept(text?)`, and `dismiss()`. It returns an async
+unsubscribe function. Handlers are attempt-scoped, so calling the disposer is
+optional - do it when a later dialog in the same test needs different handling.
+
+<Callout intent="warning" title="Register the handler before the trigger">
+A native dialog blocks the page. With no handler registered, the dialog is
+dismissed and an `INVALID_STATE` error surfaces on the next page operation - so
+the failure points at an innocent-looking line after the dialog instead of the
+tap that opened it. Registering first is the only way to keep it legible.
+</Callout>
+
+## Frames
+
+`web.frameLocator(selector)` returns a `Screen` scoped to exactly one iframe.
+Everything you know about `screen` applies inside it.
+
+```ts
+const editor = web.frameLocator('#editor');
+
+await editor.getByLabel('Note').fill('hello from outside');
+await editor.getByRole('button', { name: 'Save note' }).tap();
+await expect(editor.getByRole('status', { name: 'Note state' })).toHaveText(
+  'saved: hello from outside',
+);
+```
+
+Scoping is strict in both directions: a frame query never leaks into the host
+page, and a host query never sees frame content. The selector must resolve to
+exactly one frame - zero is a retryable `FRAME_NOT_FOUND`, two is
+`FRAME_AMBIGUOUS`.
+
+## Downloads
+
+```ts
+const download = await web.waitForDownload(() =>
+  screen.getByRole('link', { name: 'Download report' }).tap(),
+);
+
+expect(download.suggestedFilename).toBe('report.csv');
+expect(download.path).toContain('downloads/');
+```
+
+The trigger is a callback so the waiter is registered before it runs. `path` is
+relative to the attempt's artifact directory, and each download is recorded in
+the report.
+
+## Viewport and raw input
+
+```ts
+await web.setViewport({ width: 390, height: 844 });
+
+await web.keyboard.press('Escape');
+await web.keyboard.type('hello');
+
+await web.mouse.move(120, 240);
+await web.mouse.wheel(0, 400);
+```
+
+Coordinates come from your test code only. A model can never propose raw
+coordinates, which is exactly why this lives on `web` and not on `agent`.
+
+## evaluate
+
+```ts
+const names = await web.evaluate(() =>
+  Array.from(document.querySelectorAll('#users li')).map((item) => item.textContent),
+);
+expect(names).toEqual(['Ada', 'Grace', 'Margaret']);
+```
+
+`evaluate` runs trusted test source, never model output. Its optional argument
+and its result must be JSON-safe, so a `Secret`, a function, a `Date`, a DOM
+node, or a cycle is rejected before it crosses the boundary.
+
+<CardGroup cols={2}>
+  <Card title="Running tests" icon="terminal" href="/running-tests">
+    The CLI, parallelism, artifacts, and the report.
+  </Card>
+  <Card title="app and web reference" icon="code" href="/reference/app-web">
+    Every method, option, and type.
+  </Card>
+</CardGroup>

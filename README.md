@@ -46,6 +46,19 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 - Reports, caches, and sessions use versioned schemas.
 - Local execution requires no e2e account or hosted runner.
 
+## Documentation
+
+User-facing documentation lives in [`fern/`](./fern) and is published to
+[e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
+
+```bash
+pnpm docs:dev     # local preview
+pnpm docs:check   # validate configuration and pages
+```
+
+Docs are part of the change, not a follow-up: a behavior change updates its guide
+page in the same review, including the "not implemented yet" callouts.
+
 ## Standard
 
 The frozen specification is under [`spec/`](./spec):
@@ -68,15 +81,16 @@ normative release gate is in [`spec/07-scope.md`](./spec/07-scope.md);
 
 Phase 1 implementation is in progress in this repository, a pnpm monorepo:
 
-- [`packages/e2e`](./packages/e2e) — the `e2e` package: sdk-0.1 deterministic
+- [`packages/e2e`](./packages/e2e) - the `e2e` package: sdk-0.1 deterministic
   surface (`test`, `expect`, `screen`, `app`, `web`, sessions), the runner and
   CLI, the `e2e/driver` SPI, and the `e2e/playwright` reference driver.
 
-Agentic execution (`agent.*`), caching, and the HTML reporter are not
-implemented yet; acquiring the `agent` fixture fails with `MODEL_UNAVAILABLE`
-as specified. Parallel execution schedules file-target units across worker
-processes per the `workers` setting. Mobile targets are rejected per the v0
-boundary.
+The located-action and judgment tiers (`agent.tap`, `assert`, `extract`, and the
+rest) are implemented; the planning tier (`agent.act`, `agent.login`), caching,
+and the HTML reporter are not, and acquiring the `agent` fixture without model
+configuration fails with `MODEL_UNAVAILABLE` as specified. Parallel execution
+schedules file-target units across worker processes per the `workers` setting.
+Mobile targets are rejected per the v0 boundary.
 
 Deferred mobile, resource, PR, service, and hosted-runner designs live under
 [`spec/roadmap/`](./spec/roadmap) and are nonnormative.

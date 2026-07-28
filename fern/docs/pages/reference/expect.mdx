@@ -1,0 +1,147 @@
+---
+title: expect
+subtitle: "Locator assertions, web assertions, and plain value matchers."
+---
+
+`expect` dispatches on its argument.
+
+```ts
+export function expect(actual: Locator): AsyncExpectation;
+export function expect(actual: Web): WebExpectation;
+export function expect<T>(actual: T): ValueExpectation<T>;
+```
+
+Anything that is not a runner locator or the `web` fixture falls through to
+`ValueExpectation<T>`, including a promise. Await the value first.
+
+| Property | Value |
+| --- | --- |
+| Default timeout | `config.assertionTimeout`, 5000 ms |
+| Override | `{ timeout }` in milliseconds, on every locator and `web` matcher |
+| Negation grace window | 1000 ms of continuous truth before a negated matcher passes, so `{ timeout: 500 }` with `.not` can never pass |
+| Failure code | `ASSERTION_FAILED`, exit code 1 |
+
+`.not` is a getter that returns a new expectation with inverted polarity, on all
+three kinds.
+
+Locator strictness: except for `toHaveCount`, a positive matcher requires
+exactly one match; zero matches keep polling until the timeout, and multiple
+matches fail immediately with `LOCATOR_AMBIGUOUS`. `toBeHidden` and negated
+visibility accept zero matches.
+
+Text comparison is normalized: leading and trailing whitespace is trimmed and
+each run of whitespace collapses to one space. A `TextMatch` string matches
+exactly; a `RegExp` uses its own source and flags.
+
+## Locator matchers
+
+```ts
+export interface AsyncExpectation {
+  readonly not: AsyncExpectation;
+  toBeVisible(options?: { timeout?: number }): Promise<void>;
+  toBeHidden(options?: { timeout?: number }): Promise<void>;
+  toBeEnabled(options?: { timeout?: number }): Promise<void>;
+  toBeDisabled(options?: { timeout?: number }): Promise<void>;
+  toBeChecked(options?: { timeout?: number }): Promise<void>;
+  toBeSelected(options?: { timeout?: number }): Promise<void>;
+  toBeExpanded(options?: { timeout?: number }): Promise<void>;
+  toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
+  toHaveAccessibleName(
+    expected: TextMatch,
+    options?: { timeout?: number },
+  ): Promise<void>;
+}
+```
+
+| Matcher | Waits for | Notes |
+| --- | --- | --- |
+| `toBeVisible()` | One node, visible | Zero matches keep polling |
+| `toBeHidden()` | Hidden or absent | Zero matches satisfy it |
+| `toBeEnabled()` | Enabled | Enabled unless the node reports disabled |
+| `toBeDisabled()` | Disabled | - |
+| `toBeChecked()` | Checked | Missing state is `false` |
+| `toBeSelected()` | Selected | Missing state is `false` |
+| `toBeExpanded()` | Expanded | Missing state is `false` |
+| `toHaveText(expected)` | Full normalized text equals `expected` | - |
+| `toContainText(expected)` | Normalized text contains `expected` | Substring or regexp |
+| `toHaveValue(expected)` | Exposed input value | - |
+| `toHaveCount(expected)` | Exact match count | The only matcher that tolerates zero or many matches |
+| `toHaveAccessibleName(expected)` | Accessible name | - |
+
+```ts
+await expect(screen.getByRole('status')).toHaveText('Saved');
+await expect(screen.getByTestId('todo')).toHaveCount(3);
+await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
+```
+
+## web matchers
+
+```ts
+export interface WebExpectation {
+  readonly not: WebExpectation;
+  toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+}
+```
+
+| Matcher | Waits for | Notes |
+| --- | --- | --- |
+| `toHaveURL(expected)` | Current URL matches | A relative string resolves against the base URL and matches exactly after normalization. A `RegExp` tests the full URL. |
+| `toHaveTitle(expected)` | Document title matches | Normalized text comparison |
+
+```ts
+await expect(web).toHaveURL('/dashboard');
+await expect(web).toHaveTitle(/Dashboard/);
+```
+
+## Value matchers
+
+```ts
+export interface ValueExpectation<T> {
+  readonly not: ValueExpectation<T>;
+  toBe(expected: T): void;
+  toEqual(expected: unknown): void;
+  toBeTruthy(): void;
+  toBeFalsy(): void;
+  toBeNull(): void;
+  toBeUndefined(): void;
+  toBeDefined(): void;
+  toContain(expected: unknown): void;
+  toMatch(expected: string | RegExp): void;
+  toBeGreaterThan(expected: number): void;
+  toBeLessThan(expected: number): void;
+}
+```
+
+Synchronous, no options, no timeout.
+
+| Matcher | Requires |
+| --- | --- |
+| `toBe(expected)` | `Object.is(actual, expected)` |
+| `toEqual(expected)` | Recursive structural equality |
+| `toBeTruthy()` | Truthy value |
+| `toBeFalsy()` | Falsy value |
+| `toBeNull()` | Exactly `null` |
+| `toBeUndefined()` | Exactly `undefined` |
+| `toBeDefined()` | Non-nullish value |
+| `toContain(expected)` | String or collection containment |
+| `toMatch(expected)` | String or regexp match |
+| `toBeGreaterThan(expected)` | Numeric lower bound, exclusive |
+| `toBeLessThan(expected)` | Numeric upper bound, exclusive |
+
+```ts
+const total = await screen.getByTestId('total').textContent();
+expect(total).toContain('$');
+expect(items.length).toBeGreaterThan(0);
+expect(payload).toEqual({ ok: true });
+```
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen" href="/writing-tests" />
+  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
+  <Card title="app and web" icon="globe" href="/reference/app-web" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+</CardGroup>

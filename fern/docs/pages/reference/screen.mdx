@@ -1,0 +1,258 @@
+---
+title: screen and Locator
+subtitle: Queries, refinement, actions, and reads.
+---
+
+`screen` builds lazy queries. A `Locator` is a query expression, not a node:
+nothing resolves until an action, read, or assertion runs. `Locator extends
+Screen`, so every query method is also available on a locator and is scoped to
+its subtree.
+
+```ts
+export interface Screen {
+  getByRole(role: Role, options?: RoleOptions): Locator;
+  getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
+  getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator;
+  getByText(text: TextMatch, options?: TextMatchOptions): Locator;
+  getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
+  getByTestId(id: string): Locator;
+  swipe(options: SwipeOptions): Promise<void>;
+  scrollUntilVisible(
+    target: Locator,
+    options?: { direction?: ScrollDirection; timeout?: number },
+  ): Promise<void>;
+}
+```
+
+An action, read, or assertion requires exactly one match; two matches fail
+immediately with `LOCATOR_AMBIGUOUS`. Reads do not retry for a value: they
+resolve once and read once, so use [`expect`](/reference/expect) when you need
+to wait for a value to change.
+
+| Operation | Zero matches | Multiple matches |
+| --- | --- | --- |
+| Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| Reads | `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| `count()` | `0` | The count |
+| `isVisible()` | `false` | `LOCATOR_AMBIGUOUS` |
+| Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
+
+## Queries
+
+Every query returns a `Locator` synchronously and performs no work.
+
+| Method | Matches |
+| --- | --- |
+| `getByRole(role, options?)` | Nodes with that semantic role, optionally filtered by name and state |
+| `getByLabel(text, options?)` | Nodes by accessible label |
+| `getByPlaceholder(text, options?)` | Inputs by placeholder |
+| `getByText(text, options?)` | Nodes by visible text |
+| `getByDisplayValue(value, options?)` | Inputs by currently displayed value |
+| `getByTestId(id)` | Nodes carrying `config.screen.testIdAttribute`, default `data-testid` |
+
+```ts
+screen.getByRole('button', { name: 'Save' });
+screen.getByLabel('Email');
+screen.getByText('Welcome back', { exact: false });
+screen.getByTestId('todo-3');
+```
+
+## Refinement
+
+Synchronous, returns a new locator, performs no work.
+
+| Method | Signature | Behavior |
+| --- | --- | --- |
+| `filter` | `filter(options: { hasText?: TextMatch; has?: Locator }): Locator` | Narrows to matches containing text and/or a descendant match |
+| `first` | `first(): Locator` | The first current match |
+| `last` | `last(): Locator` | The last current match |
+| `nth` | `nth(index: number): Locator` | One zero-based current match |
+
+Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
+`has` is not a runner locator, or when `nth` gets a negative or non-integer
+index.
+
+```ts
+const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
+await row.getByRole('button', { name: 'Void' }).tap();
+```
+
+## screen.swipe
+
+```ts
+swipe(options: SwipeOptions): Promise<void>;
+```
+
+Viewport-level gesture. `direction` is required, `momentum` optional. Uses
+`config.actionTimeout`. Throws `ACTION_FAILED` when the gesture is rejected.
+
+## screen.scrollUntilVisible
+
+```ts
+scrollUntilVisible(
+  target: Locator,
+  options?: { direction?: ScrollDirection; timeout?: number },
+): Promise<void>;
+```
+
+| Name | Type | Default |
+| --- | --- | --- |
+| `target` | `Locator` | - |
+| `options.direction` | `ScrollDirection` | `'down'` |
+| `options.timeout` | `number` | `30000`, its own default, not `config.actionTimeout` |
+
+Throws `INVALID_LOCATOR` for a non-runner locator, `LOCATOR_NOT_FOUND` when the
+deadline expires first.
+
+```ts
+await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
+```
+
+## Locator actions
+
+Each action resolves exactly one node, waits for actionability inside its
+deadline, and performs one operation. Default timeout `config.actionTimeout`,
+30000 ms, overridable with `{ timeout }`.
+
+| Method | Signature |
+| --- | --- |
+| `tap` | `tap(options?: ActionOptions): Promise<void>` |
+| `click` | `click(options?: ActionOptions): Promise<void>` |
+| `doubleTap` | `doubleTap(options?: ActionOptions): Promise<void>` |
+| `longPress` | `longPress(options?: ActionOptions & { durationMs?: number }): Promise<void>` |
+| `fill` | `fill(value: string \| Secret, options?: ActionOptions): Promise<void>` |
+| `clear` | `clear(options?: ActionOptions): Promise<void>` |
+| `press` | `press(key: string, options?: ActionOptions): Promise<void>` |
+| `check` | `check(options?: ActionOptions): Promise<void>` |
+| `uncheck` | `uncheck(options?: ActionOptions): Promise<void>` |
+| `selectOption` | `selectOption(value: SelectOption, options?: ActionOptions): Promise<void>` |
+| `focus` | `focus(options?: ActionOptions): Promise<void>` |
+| `hover` | `hover(options?: ActionOptions): Promise<void>` |
+| `setInputFiles` | `setInputFiles(paths: string \| readonly string[], options?: ActionOptions): Promise<void>` |
+| `dragTo` | `dragTo(target: Locator, options?: ActionOptions): Promise<void>` |
+| `scrollIntoView` | `scrollIntoView(options?: ActionOptions): Promise<void>` |
+| `swipe` | `swipe(options: SwipeOptions & ActionOptions): Promise<void>` |
+
+- `click` is an alias of `tap`.
+- `longPress` `durationMs` defaults to 500, integer 100 through 10000. Out of
+  range throws `INVALID_ARGUMENT`.
+- `fill` replaces the current content. A `Secret` is resolved on the host
+  immediately before the call and never logged, reported, or sent to a model.
+- `setInputFiles` needs one or more non-empty paths, resolved from the project
+  root. An empty list or blank entry throws `INVALID_ARGUMENT`.
+- `dragTo` resolves the target first. A non-runner target throws
+  `INVALID_LOCATOR`.
+- An action that may already have committed surfaces as `ACTION_FAILED` rather
+  than being repeated.
+
+```ts
+await screen.getByLabel('Email').fill('ada@example.test');
+await screen.getByRole('checkbox', { name: 'Remember me' }).check();
+await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
+await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
+```
+
+## Locator reads
+
+| Method | Signature | Returns |
+| --- | --- | --- |
+| `textContent` | `textContent(): Promise<string \| null>` | Normalized text, or `null` |
+| `inputValue` | `inputValue(): Promise<string>` | Current input value, `''` when unset |
+| `getAttribute` | `getAttribute(name: string): Promise<string \| null>` | One exposed attribute, or `null` |
+| `isVisible` | `isVisible(): Promise<boolean>` | Current visibility, `false` when nothing matches |
+| `isEnabled` | `isEnabled(): Promise<boolean>` | `true` unless the node reports disabled |
+| `isChecked` | `isChecked(): Promise<boolean>` | `true` only when the node reports checked |
+| `boundingBox` | `boundingBox(): Promise<{ x: number; y: number; width: number; height: number } \| null>` | Viewport-relative rectangle, or `null` |
+| `count` | `count(): Promise<number>` | Current match count, no auto-wait |
+| `waitFor` | `waitFor(options?: { state?: 'visible' \| 'hidden'; timeout?: number }): Promise<void>` | Resolves when the state holds |
+
+`waitFor` defaults `state` to `'visible'` and `timeout` to
+`config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
+
+`textContent`, `inputValue`, and `getAttribute` throw `POLICY_DENIED` on a node
+the platform reports as a secure field. `isEnabled`, `isChecked`, and
+`boundingBox` are allowed there because they expose no value.
+
+```ts
+if (await screen.getByRole('alert').isVisible()) {
+  const message = await screen.getByRole('alert').textContent();
+}
+await screen.getByTestId('spinner').waitFor({ state: 'hidden' });
+```
+
+## Types
+
+```ts
+export type Role =
+  | 'button'
+  | 'link'
+  | 'textbox'
+  | 'checkbox'
+  | 'switch'
+  | 'slider'
+  | 'image'
+  | 'heading'
+  | 'tab'
+  | 'menuitem'
+  | 'listitem'
+  | 'status'
+  | 'dialog'
+  | 'alert';
+
+export type TextMatch = string | RegExp;
+
+export interface TextMatchOptions {
+  exact?: boolean;
+}
+
+export interface RoleOptions extends TextMatchOptions {
+  name?: TextMatch;
+  checked?: boolean;
+  disabled?: boolean;
+  selected?: boolean;
+  expanded?: boolean;
+  hidden?: boolean;
+}
+
+export interface ActionOptions {
+  timeout?: number;
+}
+
+export interface SwipeOptions {
+  direction: ScrollDirection;
+  momentum?: Momentum;
+}
+
+export type SelectOption =
+  | string
+  | { label: string; index?: never }
+  | { label?: never; index: number };
+
+export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+export type Momentum = 'none' | 'slow' | 'fast';
+```
+
+`Role` is closed; an unsupported role is a type error.
+
+| `RoleOptions` key | Meaning |
+| --- | --- |
+| `name` | Accessible name filter |
+| `checked` | Require the checked state |
+| `disabled` | Require the disabled state |
+| `selected` | Require the selected state |
+| `expanded` | Require the expanded state |
+| `hidden` | Include nodes hidden from the accessibility tree |
+| `exact` | Inherited; applies to `name` |
+
+String matching is exact by default. `exact: false` is case-insensitive
+substring matching. A `RegExp` ignores `exact`.
+
+`SelectOption`: a bare string is the option label. The object form is mutually
+exclusive, `label` or `index`, never both.
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen" href="/writing-tests" />
+  <Card title="expect" icon="check" href="/reference/expect" />
+  <Card title="app and web" icon="globe" href="/reference/app-web" />
+  <Card title="agent" icon="robot" href="/reference/agent" />
+</CardGroup>

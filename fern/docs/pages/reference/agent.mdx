@@ -1,0 +1,293 @@
+---
+title: agent
+subtitle: Planned flows, located actions, judgments, extraction, and their budgets.
+---
+
+Every `agent` call is one bounded invocation: a fresh observation, an explicit
+deadline, a model-call budget, and no shared transcript between calls. Acquiring
+the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
+
+<Callout intent="warning" title="Not implemented yet">
+`act` and `login` reject with `UNSUPPORTED_CAPABILITY`. The `cache` option is
+accepted but has no effect, since caching is not wired up yet.
+</Callout>
+
+```ts
+export interface Agent {
+  act<Schema extends StandardSchemaV1>(
+    instruction: string,
+    params: AgentParams | undefined,
+    options: AgentSchemaOptions<Schema>,
+  ): Promise<AgentResultWithData<StandardSchemaV1.InferOutput<Schema>>>;
+  act(
+    instruction: string,
+    params?: AgentParams,
+    options?: AgentOptions,
+  ): Promise<AgentResult>;
+  tap(target: string, options?: InstantActionOptions): Promise<void>;
+  click(target: string, options?: InstantActionOptions): Promise<void>;
+  type(
+    target: string,
+    value: string | Secret,
+    options?: InstantActionOptions,
+  ): Promise<void>;
+  scroll(
+    options: InstantActionOptions & {
+      direction: ScrollDirection;
+      momentum?: Momentum;
+      within?: string;
+    },
+  ): Promise<void>;
+  scrollTo(
+    target: string,
+    options?: InstantActionOptions & { direction?: ScrollDirection },
+  ): Promise<void>;
+  longPress(
+    target: string,
+    options?: InstantActionOptions & { durationMs?: number },
+  ): Promise<void>;
+  press(target: string, key: string, options?: InstantActionOptions): Promise<void>;
+  select(target: string, value: SelectOption, options?: InstantActionOptions): Promise<void>;
+  hover(target: string, options?: InstantActionOptions): Promise<void>;
+  check(target: string, options?: InstantActionOptions): Promise<void>;
+  uncheck(target: string, options?: InstantActionOptions): Promise<void>;
+  dragTo(source: string, destination: string, options?: InstantActionOptions): Promise<void>;
+  upload(
+    target: string,
+    paths: string | readonly string[],
+    options?: InstantActionOptions,
+  ): Promise<void>;
+  waitFor(
+    condition: string,
+    options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+  ): Promise<void>;
+  login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
+  extract<Schema extends StandardSchemaV1>(
+    instruction: string,
+    options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+  ): Promise<StandardSchemaV1.InferOutput<Schema>>;
+  assert(
+    assertion: string,
+    options?: {
+      timeout?: number;
+      screenshot?: boolean;
+    },
+  ): Promise<void>;
+}
+```
+
+## Budgets
+
+Model calls count every model request including repair rounds. Action steps count
+committed driver actions. Every timeout is additionally capped by the remaining
+test timeout.
+
+| Method | Model calls | Action steps | Default timeout |
+| --- | ---: | ---: | --- |
+| `tap`, `click` | 2 | 1 | `config.actionTimeout`, 30000 ms |
+| `type` | 2 | 1 | `config.actionTimeout` |
+| `longPress` | 2 | 1 | `config.actionTimeout` |
+| `press` | 2 | 1 | `config.actionTimeout` |
+| `select` | 2 | 1 | `config.actionTimeout` |
+| `hover` | 2 | 1 | `config.actionTimeout` |
+| `check`, `uncheck` | 2 | 1 | `config.actionTimeout` |
+| `upload` | 2 | 1 | `config.actionTimeout` |
+| `dragTo` | 4 | 1 | `config.actionTimeout` |
+| `scroll` without `within` | 0 | 1 | `config.actionTimeout` |
+| `scroll` with `within` | 2 | 1 | `config.actionTimeout` |
+| `scrollTo` | `config.agent.maxModelCalls`, 25 | `config.agent.maxSteps`, 25 | 30000 ms |
+| `waitFor` | `config.agent.maxModelCalls`, 25 | 0 | 30000 ms |
+| `extract` | 2 | 0 | 30000 ms |
+| `assert` | 1 | 0 | 30000 ms |
+
+A budget of 2 on a single-locate method is one locate plus one repair round.
+`dragTo` locates twice, hence 4.
+
+## Located actions
+
+The model names one node in one observation. The runner derives the query,
+verifies both identify the same unique node, checks policy, and performs one
+predetermined action.
+
+| Method | Behavior | Throws |
+| --- | --- | --- |
+| `tap(target, options?)` | Locates one node and taps it | `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, `MODEL_OUTPUT_INVALID`, `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED`, `MODEL_PROVIDER_FAILED` |
+| `click(target, options?)` | Alias of `tap` | as `tap` |
+| `type(target, value, options?)` | Replaces the target's content. Never submits. | `INVALID_ARGUMENT` when `value` is neither a string nor a `Secret`, `AUTH_CREDENTIAL_UNAVAILABLE`, `POLICY_DENIED` |
+| `press(target, key, options?)` | Sends one key. The key comes from test code and never appears in a prompt. | `INVALID_ARGUMENT` when `key` is empty, whitespace only, or longer than 64 characters |
+| `select(target, value, options?)` | Picks one option on a select-like control | `INVALID_ARGUMENT` for an empty string, or an object with neither a non-empty `label` nor a non-negative integer `index` |
+| `longPress(target, options?)` | `durationMs` defaults to 500, integer 100 through 10000 | `INVALID_ARGUMENT` out of range |
+| `hover(target, options?)` | Hovers one node | as `tap` |
+| `check(target, options?)` | Checks one node | as `tap` |
+| `uncheck(target, options?)` | Unchecks one node | as `tap` |
+| `dragTo(source, destination, options?)` | Two locate rounds, source first, then one committed drag | as `tap` |
+| `upload(target, paths, options?)` | Sets files on one file input. Paths come from test code, resolve from the project root, and never appear in a prompt. | `INVALID_ARGUMENT` for an empty list or a blank entry |
+| `scroll(options)` | One deterministic scroll. `options` is required because `direction` is. Without `within` it spends no model calls. | `INVALID_ARGUMENT` for an invalid `direction` or `momentum` |
+| `scrollTo(target, options?)` | Alternates one scroll and one fresh locate until found, then scrolls into view. `direction` defaults to `'down'`. | `LOCATOR_NOT_FOUND` when the deadline or budget runs out, carrying the last explanation |
+
+A `Secret` passed to `type` is authorized on the host first: the credential must
+be registered, the current origin must be allowed by both `app.allowedOrigins`
+and the credential's own `allowedOrigins`, the node must be an enabled `textbox`,
+`searchbox`, or `combobox`, and the node's input purpose must equal the secret's
+purpose.
+
+```ts
+await agent.tap('the Pro plan card');
+await agent.type('the Password field', credentials.user('admin').password);
+await agent.scroll({ direction: 'down', within: 'the results list' });
+```
+
+## Judgments and extraction
+
+### agent.assert
+
+```ts
+assert(
+  assertion: string,
+  options?: { timeout?: number; screenshot?: boolean },
+): Promise<void>;
+```
+
+One fresh observation, exactly one judgment. It does not poll.
+
+| Name | Type | Default |
+| --- | --- | --- |
+| `assertion` | `string` | - |
+| `options.timeout` | `number` | `30000` |
+| `options.screenshot` | `boolean` | `true` |
+
+Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and, when
+permitted, a screenshot path. Evidence is skipped with `screenshot: false` and
+once any secret has been filled in the attempt.
+
+```ts
+await agent.assert('the dashboard shows a trial badge');
+```
+
+### agent.waitFor
+
+```ts
+waitFor(
+  condition: string,
+  options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+): Promise<void>;
+```
+
+One observation and one judgment per interval. Succeeds on the first true
+judgment.
+
+| Name | Type | Default | Valid |
+| --- | --- | --- | --- |
+| `condition` | `string` | - | - |
+| `options.timeout` | `number` | `30000` | positive safe integer |
+| `options.intervalMs` | `number` | `3000` | integer 100-60000 |
+| `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
+
+Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on budget
+exhaustion, each carrying the last judgment, and `INVALID_ARGUMENT` for an
+out-of-range option.
+
+```ts
+await agent.waitFor('the upload progress reports completion', { intervalMs: 500 });
+```
+
+### agent.extract
+
+```ts
+extract<Schema extends StandardSchemaV1>(
+  instruction: string,
+  options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+): Promise<StandardSchemaV1.InferOutput<Schema>>;
+```
+
+Takes one fresh observation, requests structured output, validates it, and
+returns the validated value. It performs no app actions.
+
+| Name | Type | Default | Valid |
+| --- | --- | --- | --- |
+| `instruction` | `string` | - | - |
+| `options.schema` | `Schema` | - | any Standard Schema v1 validator |
+| `options.timeout` | `number` | `30000` | positive safe integer |
+| `options.maxModelCalls` | `number` | `2` | positive integer, at most 2 |
+
+Invalid output is repaired while budget remains. Throws `INVALID_ARGUMENT` for a
+schema that is not Standard Schema v1 or `maxModelCalls` above 2, and
+`MODEL_OUTPUT_INVALID` when validation still fails.
+
+```ts
+const summary = await agent.extract('the workspace name and plan', {
+  schema: z.object({ name: z.string(), plan: z.string() }),
+});
+```
+
+## Types
+
+```ts
+export interface InstantActionOptions {
+  timeout?: number;
+  cache?: boolean;
+}
+
+export interface AgentOptions {
+  timeout?: number;
+  maxSteps?: number;
+  maxModelCalls?: number;
+  cache?: boolean;
+}
+
+export interface AgentSchemaOptions<Schema extends StandardSchemaV1>
+  extends AgentOptions {
+  schema: Schema;
+}
+
+export type LoginOptions = Omit<AgentOptions, 'cache'>;
+
+export type AgentParam =
+  | JsonPrimitive
+  | Secret
+  | readonly AgentParam[]
+  | { readonly [key: string]: AgentParam };
+export type AgentParams = Readonly<Record<string, AgentParam>>;
+
+export interface AgentResult {
+  readonly ok: true;
+}
+
+export interface AgentResultWithData<Output> extends AgentResult {
+  readonly data: Output;
+}
+```
+
+Per-call budgets must be positive integers and can only lower the resolved
+configuration limits.
+
+`AgentOptions`, `AgentSchemaOptions`, `LoginOptions`, `AgentParams`,
+`AgentResult`, and `AgentResultWithData` are consumed by `act` and `login`.
+Located actions and judgments return `void`; `extract` returns the validated
+value directly.
+
+## AgentError
+
+```ts
+export class AgentError extends Error {
+  readonly code: AgentErrorCode;
+  readonly explanation: string;
+  readonly screenshot?: string;
+}
+```
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `code` | `AgentErrorCode` | Closed union, assigned by the runner, never taken from model text |
+| `explanation` | `string` | Sanitized, bounded prose. Same value as `message`. |
+| `screenshot` | `string \| undefined` | Artifact path, present only when evidence was captured and permitted |
+
+Check `code` rather than using `instanceof`. Every code, its class, and its exit
+code are in [Errors](/reference/errors).
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/agents" />
+  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
+  <Card title="defineConfig" icon="gear" href="/reference/config" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+</CardGroup>

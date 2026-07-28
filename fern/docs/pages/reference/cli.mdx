@@ -1,0 +1,114 @@
+---
+title: CLI
+subtitle: e2e init and e2e run, flag by flag.
+---
+
+```bash
+npx --no-install e2e init
+npx --no-install e2e run [files...] [options]
+```
+
+## e2e init
+
+Scaffolds a project. Non-destructive: it creates only missing files and never
+overwrites. Existing files are reported and skipped. `init` exits 0 on every
+path, including cancellation.
+
+| Flag | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `-y`, `--yes` | boolean | `false` | Skips the confirmation prompt |
+
+| Creates | Content |
+| --- | --- |
+| `e2e.config.ts` | Minimal config with `app.url` from `process.env.APP_URL` or `http://localhost:3000`, and one chromium web target |
+| `tests/example.e2e.ts` | Deterministic app-open smoke test asserting `toHaveURL('/')` |
+| `.gitignore` | Appends `.e2e/artifacts/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/report.html` when missing |
+
+```bash
+npx --no-install e2e init --yes
+```
+
+## e2e run
+
+### Positional arguments
+
+```bash
+e2e run [files...]
+```
+
+Test files relative to the project root. Positional paths intersect with the
+config globs and with tag, platform, and capability filters: they narrow the
+selection, they do not bypass it. A path outside the project root is
+`COLLECTION_ERROR`.
+
+### Flags
+
+| Flag | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`. |
+| `--target <ids>` | comma-separated list | every configured target | Selects targets by name. An unknown ID is `UNKNOWN_TARGET`. Empty entries are dropped. |
+| `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
+| `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
+| `--headed` | boolean | `false` | Requests visible UI when the driver supports it |
+| `--retries <n>` | nonnegative integer | resolved config value | Replaces the retry count |
+| `--workers <n>` | nonnegative integer | resolved config value | Replaces the worker count |
+| `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`. |
+| `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree |
+| `--no-agent-cache` | boolean | cache enabled | Forces `agent.cache` to `off`. No effect yet: caching is not implemented. |
+| `--pass-with-no-tests` | boolean | `false` | Allows zero runnable ordinary test-target pairs instead of failing with `NO_TESTS` |
+| `--debug` | boolean | `false` | Prints aggregated phase timings and an agent step table to stderr after the run |
+
+<Callout intent="warning">
+`--retries` and `--workers` replace the resolved value directly and bypass the
+config range checks. `retries` is validated 0-10 and `workers` 1-1024 only when
+the value comes from the config file.
+</Callout>
+
+```bash
+npx --no-install e2e run
+npx --no-install e2e run tests/signup.e2e.ts --tag smoke
+npx --no-install e2e run --target web,webkit --tag smoke --tag billing --tag-mode all
+npx --no-install e2e run --reporter json --workers 4 --retries 2
+```
+
+### Output
+
+| Reporter | Writes |
+| --- | --- |
+| `list` | Human-readable progress to the terminal. Control characters are stripped and each untrusted field is capped at `limits.maxTerminalFieldBytes`, default 8 KiB. |
+| `json` | The report document to stdout. Cannot be combined with `list`. |
+| `html` | `.e2e/report.html`. Not implemented yet: nothing is written. |
+
+Every run atomically writes `.e2e/report.json` under the artifact parent
+regardless of the selected reporters. A reporter can never change run status.
+
+### Signals
+
+On the first interrupt signal the runner aborts active model and driver work,
+runs bounded teardown, writes a partial report with `status: interrupted`, and
+exits 130. A second signal may force immediate exit.
+
+## Exit codes
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | All selected tests passed, were flaky, or were explicitly skipped |
+| 1 | Final test or setup failure, or test timeout |
+| 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
+| 3 | Driver, browser, app process, model provider, artifact, or cleanup infrastructure failure |
+| 4 | Internal runner invariant or unhandled runner error |
+| 130 | Interrupted by a user or CI signal |
+
+Precedence for a mixed run is `130 > 4 > 3 > 2 > 1 > 0`. The report keeps every
+individual result; precedence affects only the process exit code.
+
+Argument parsing failures - an unknown flag, a non-integer `--retries`, an
+invalid `--tag-mode`, an unknown `--reporter` - exit 2 with a one-line message on
+stderr.
+
+<CardGroup cols={2}>
+  <Card title="Running tests" icon="play" href="/running-tests" />
+  <Card title="Continuous integration" icon="infinity" href="/ci" />
+  <Card title="defineConfig" icon="gear" href="/reference/config" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+</CardGroup>

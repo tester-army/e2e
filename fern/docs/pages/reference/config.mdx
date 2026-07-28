@@ -1,0 +1,342 @@
+---
+title: defineConfig
+subtitle: Every configuration key, its default, its valid range, and the environment variables.
+---
+
+`defineConfig` is an identity function for type checking and editor completion.
+Every rule below is enforced when the runner resolves the config, not when
+`defineConfig` is called.
+
+```ts
+export function defineConfig(config: E2EConfig): E2EConfig;
+```
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+
+export default defineConfig({
+  app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
+  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+});
+```
+
+Unknown keys are rejected with `INVALID_CONFIG` at every level: top level, `app`,
+`agent`, `agent.model`, and `limits`.
+
+## Loading
+
+`--config <path>` selects an explicit file. Otherwise the runner searches the
+working directory and each parent for `e2e.config.ts` or `e2e.config.mts`,
+stopping at the repository root. Both names in one directory is
+`CONFIG_AMBIGUOUS`. The selected file's directory is the project root; with no
+config file, the working directory is.
+
+No config file is required for a single web target:
+
+```bash
+APP_URL=http://localhost:3000 npx --no-install e2e run
+```
+
+## Top level
+
+| Key | Type | Default | Valid range |
+| --- | --- | --- | --- |
+| `projectId` | `string` | nearest `package.json` name, else a generated ID | 1-256 characters |
+| `app` | `AppConfig` | see [app](#app) | - |
+| `targets` | `readonly Target[]` | one implicit web target | non-empty; mutually exclusive with `browser` |
+| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | applies to the implicit target only |
+| `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
+| `timeout` | `number` | `120000` | positive safe integer |
+| `launchTimeout` | `number` | `60000` | positive safe integer |
+| `actionTimeout` | `number` | `30000` | positive safe integer |
+| `assertionTimeout` | `number` | `5000` | positive safe integer |
+| `cleanupTimeout` | `number` | `30000` | positive safe integer |
+| `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
+| `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024 |
+| `artifacts` | `readonly ('trace' \| 'screenshot' \| 'video')[]` | `['screenshot', 'trace']` | those three kinds |
+| `reporters` | `readonly ('list' \| 'json' \| 'html')[]` | `['list', 'html']` | those three IDs; `json` cannot be combined with `list` |
+| `screen` | object | see [screen](#screen) | - |
+| `agent` | object | see [agent](#agent) | - |
+| `limits` | object | see [limits](#limits) | - |
+| `credentials` | record | `{}` | see [credentials](#credentials) |
+
+Every numeric value except `limits.maxEstimatedCostUsd` must be a safe integer.
+
+`video` is not a supported artifact: requesting it fails before collection with
+`UNSUPPORTED_ARTIFACT`. There is no HTML reporter, so `html` writes nothing.
+Every run writes `.e2e/report.json` regardless of the selected reporters.
+
+## app
+
+```ts
+export interface AppConfig {
+  url?: string;
+  command?: CommandConfig;
+  readyUrl?: string;
+  allowedOrigins?: readonly string[];
+  environment?: 'test' | 'staging' | 'production';
+  allowProduction?: boolean;
+}
+```
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `url` | `string` | `APP_URL` | One of the two is required, else `APP_URL_REQUIRED`. No userinfo, query, or fragment; HTTP only for loopback. |
+| `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted |
+| `readyUrl` | `string` | the resolved base URL | Readiness probe; a status of 200-499 counts as ready |
+| `allowedOrigins` | `readonly string[]` | the origin of `url` | Each entry must be a serialized origin |
+| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts, otherwise required | Any other host without an explicit value is `ENVIRONMENT_REQUIRED` |
+| `allowProduction` | `boolean` | `false` | `environment: 'production'` without it is `PRODUCTION_NOT_ALLOWED` |
+
+### app.command
+
+```ts
+export interface CommandConfig {
+  executable: string;
+  args?: readonly string[];
+  cwd?: string;
+  env?: Readonly<Record<string, string>>;
+  startupTimeout?: number;
+  shutdownTimeout?: number;
+}
+```
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `executable` | `string` | - | Required, non-empty, resolved with the process `PATH` |
+| `args` | `readonly string[]` | `[]` | Passed verbatim |
+| `cwd` | `string` | project root | Resolved from the project root |
+| `env` | `Record<string, string>` | `{}` | Adds to the inherited set |
+| `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE` |
+| `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
+
+The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`,
+and `COMSPEC` when present, plus `app.command.env`. Model credentials,
+`E2E_USER_*` values, and CI tokens are never inherited. The runner never
+terminates a process it did not start.
+
+## targets
+
+Target names are required, unique, and limited to ASCII letters, digits, `_`,
+`-`, and `.`. An empty `targets` array is an error.
+
+```ts
+export interface WebTarget {
+  name: string;
+  platform: 'web';
+  driver?: 'playwright' | DriverHandle;
+  browser?: 'chromium' | 'firefox' | 'webkit';
+  viewport?: { width: number; height: number };
+}
+```
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
+| `platform` | `'web'` | - | Required literal |
+| `driver` | `'playwright' \| DriverHandle` | `'playwright'` | Any other value is `INVALID_CONFIG` |
+| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Per-target |
+| `viewport` | `{ width: number; height: number }` | driver default | Initial viewport |
+
+Mobile platforms are rejected: any target whose `platform` is not `'web'` fails
+config resolution with `PLATFORM_UNSUPPORTED` and exit code 2.
+
+## screen
+
+```ts
+screen?: {
+  testIdAttribute?: string;
+};
+```
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `testIdAttribute` | `string` | `'data-testid'` | Attribute read by `screen.getByTestId` |
+
+## agent
+
+```ts
+agent?: {
+  model?: string | ModelConfig | ModelInstance;
+  maxSteps?: number;
+  maxModelCalls?: number;
+  maxObservationBytes?: number;
+  cache?: 'off' | 'read-only' | 'read-write';
+  context?: string;
+};
+```
+
+| Key | Type | Default | Valid range | Notes |
+| --- | --- | --- | --- | --- |
+| `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. |
+| `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
+| `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
+| `maxObservationBytes` | `number` | `1048576` | integer 1024-16777216 | Observation payload ceiling. Not a `limits` key. |
+| `cache` | `'off' \| 'read-only' \| 'read-write'` | `'read-only'` in CI, else `'read-write'` | those three | Not implemented yet: no effect |
+| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
+
+### agent.model
+
+```ts
+export interface ModelConfig {
+  provider: string;
+  id: string;
+  endpoint?: string;
+  /** Environment variable containing the provider credential. */
+  apiKeyEnv?: string;
+}
+
+export interface ModelInstance {
+  readonly specificationVersion: string;
+  readonly provider: string;
+  readonly modelId: string;
+}
+```
+
+| Form | Example | Behavior |
+| --- | --- | --- |
+| String | `'openai/gpt-4o'` | Split at the first `/` and routed through the AI Gateway. A leading or trailing `/` is `INVALID_CONFIG`. |
+| `ModelConfig` | `{ provider: 'openai', id: 'gpt-4o' }` | `provider` and `id` are required and non-empty |
+| `ModelInstance` | `openai('gpt-4o')` | Any AI SDK model instance. Detected structurally; owns its own transport and credentials. |
+
+| `ModelConfig` key | Default | Rules |
+| --- | --- | --- |
+| `endpoint` | gateway default | Must be HTTPS unless the host is loopback |
+| `apiKeyEnv` | `'E2E_MODEL_API_KEY'` | Must match `/^[A-Za-z_][A-Za-z0-9_]*$/` |
+
+Each worker re-resolves the config module and constructs its own model instance,
+so an instance never crosses a process boundary. A config whose digest differs
+between the runner and a worker fails with `CONFIG_NOT_DETERMINISTIC`.
+
+## credentials
+
+```ts
+credentials?: Readonly<
+  Record<
+    string,
+    {
+      username: string;
+      password: string;
+      allowedOrigins?: readonly string[];
+    }
+  >
+>;
+```
+
+| Key | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `username` | `string` | yes | Default username |
+| `password` | `string` | yes | Default password. Recorded in the config digest by name only. |
+| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to `app.allowedOrigins`. It can only narrow. |
+
+`credentials.user(name)` resolves a configured entry into a `Credential`. The
+username is a plain string; the password is an opaque `Secret` that test code
+cannot read, accepted only by `locator.fill` and `agent.type`.
+
+```ts
+export interface Secret {
+  readonly name: string;
+  readonly purpose: 'password' | 'one-time-code' | 'generic-secret';
+  readonly [secretBrand]: true;
+}
+
+export interface Credential {
+  readonly name: string;
+  readonly username: string;
+  readonly password: Secret;
+  readonly [credentialBrand]: true;
+}
+```
+
+An unconfigured name, or a call outside an active runner, throws
+`AUTH_CREDENTIAL_UNAVAILABLE` with exit code 2.
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  app: { url: 'http://localhost:3000' },
+  credentials: {
+    member: { username: 'member@example.test', password: 'local-dev-only' },
+    admin: {
+      username: 'admin@example.test',
+      password: 'local-dev-only',
+      allowedOrigins: ['http://localhost:3000'],
+    },
+  },
+});
+```
+
+## limits
+
+Resolved limits are immutable for a run. Per-call options may only lower them.
+
+| Key | Type | Default | Range | Description |
+| --- | --- | ---: | --- | --- |
+| `maxDiscoveredResults` | `number` | `100000` | 1-1000000 | Discovered test-target pairs |
+| `maxCacheBytes` | `number` | `262144` | 1024-1048576 | Bytes per cache entry |
+| `maxTerminalFieldBytes` | `number` | `8192` | 1024-65536 | Untrusted text per terminal field |
+| `maxAgentContextBytes` | `number` | `16384` | 1024-65536 | Trusted agent context |
+| `maxLedgerBytes` | `number` | `8192` | 1024-65536 | Prior-step ledger |
+| `maxArtifactBytes` | `number` | `104857600` | 1-1073741824 | Bytes per artifact |
+| `maxArtifactTotalBytes` | `number` | `1073741824` | 1-10737418240 | Total artifact bytes |
+| `maxDownloadBytes` | `number` | `104857600` | 1-1073741824 | Bytes per download |
+| `maxDownloads` | `number` | `10` | 0-100 | Downloads per attempt |
+| `maxReportBytes` | `number` | `52428800` | 1-104857600 | Report document bytes |
+| `maxEventsPerStep` | `number` | `1000` | 1-10000 | Events recorded per step |
+| `maxModelTokensPerCall` | `number` | `64000` | 1-1000000 | Tokens per model request |
+| `maxModelCallsPerStep` | `number` | `25` | 1-100 | Ceiling on model calls per step |
+| `maxActionStepsPerStep` | `number` | `25` | 1-100 | Ceiling on committed actions per agent call |
+| `maxEstimatedCostUsd` | `number` | unset | finite, greater than 0 | Estimated run cost ceiling. The only non-integer numeric value. |
+
+## Environment variables
+
+The runner reads a closed set. There are no verbosity variables; diagnostics are
+`e2e run --debug`.
+
+| Variable | Effect |
+| --- | --- |
+| `APP_URL` | Base URL fallback when `app.url` is unset |
+| `E2E_MODEL` | `provider/model-id` fallback when `agent.model` is unset |
+| `E2E_MODEL_API_KEY` | Default provider credential |
+| `AI_GATEWAY_API_KEY` | Gateway credential, used when the named key variable holds no value |
+| `E2E_USER_<NAME>_USERNAME` | Overrides `credentials.<name>.username` |
+| `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
+| `CI` | Switches CI defaults and rejects focused tests |
+
+### Resolution order
+
+| Setting | Order |
+| --- | --- |
+| Base URL | `app.url`, then `APP_URL`, then `APP_URL_REQUIRED` |
+| Model | `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
+| Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
+| Credential username and password | the `E2E_USER_*` variable, then the config value |
+
+"First non-empty" ignores values that are undefined or whitespace only. Naming
+`apiKeyEnv` replaces the default variable name rather than adding to it. A
+missing model credential is not a config error; it surfaces as
+`MODEL_UNAVAILABLE` when the `agent` fixture is acquired.
+
+An `E2E_USER_*` pair for a name that is not in the `credentials` block is
+ignored. The variable name is the credential name uppercased with every character
+outside `A-Z0-9` replaced by `_`, so `power-user` becomes
+`E2E_USER_POWER_USER_USERNAME` and `E2E_USER_POWER_USER_PASSWORD`.
+
+### CI
+
+CI mode is on unless `CI` is unset, empty, whitespace only, `0`, or `false`. The
+value is trimmed and lowercased first, so `FALSE` is also falsy. Every other
+value, including `no` and `off`, turns CI mode on.
+
+| Setting | Local | CI |
+| --- | --- | --- |
+| `retries` | `0` | `1` |
+| `workers` | `max(1, floor(availableParallelism() / 2))` | `1` |
+| `agent.cache` | `read-write` | `read-only` |
+| `test.only` | allowed | `ONLY_IN_CI`, exit code 2 |
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration" />
+  <Card title="Continuous integration" icon="infinity" href="/ci" />
+  <Card title="CLI" icon="rectangle-terminal" href="/reference/cli" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+</CardGroup>

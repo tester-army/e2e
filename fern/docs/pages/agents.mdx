@@ -1,0 +1,259 @@
+---
+title: Agents
+subtitle: Plan flows, describe targets, judge screens, and extract data.
+---
+
+The `agent` fixture is how you dial model authority up and down. Each call is one
+bounded operation with its own deadline and model-call budget, and your code
+always decides the order.
+
+```ts
+await agent.act('complete checkout with the test card');  // plan and execute
+await agent.tap('the Pro plan card');                     // pick one node
+await agent.assert('the dashboard shows a trial badge');   // answer one question
+const data = await agent.extract('the invoice total', { schema }); // return data
+```
+
+## Configure a model
+
+There is no default model. Set one in config:
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  agent: { model: 'anthropic/claude-sonnet-4.5' },
+});
+```
+
+Or per run:
+
+```bash
+E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... npx e2e run
+```
+
+A `provider/model-id` string is routed through the
+[Vercel AI Gateway](https://vercel.com/docs/ai-gateway), so one key reaches any
+provider. The key is read from `E2E_MODEL_API_KEY`, falling back to
+`AI_GATEWAY_API_KEY`, and never appears in logs or reports.
+
+To use a provider directly, pass a live AI SDK model instance. It brings its own
+transport and credentials, so any provider package works - including a local one:
+
+```ts title="e2e.config.ts"
+import { openai } from '@ai-sdk/openai';
+
+export default defineConfig({
+  agent: { model: openai('gpt-5.4-mini') },
+});
+```
+
+Give the model a little project context when your UI has domain language:
+
+```ts
+export default defineConfig({
+  agent: {
+    model: 'anthropic/claude-sonnet-4.5',
+    context: 'A billing dashboard. Plans are Free, Pro, and Enterprise.',
+  },
+});
+```
+
+## Planned flows
+
+`agent.act` hands one goal to the model and lets it plan and execute the steps to
+reach it. Use it for flows that are tedious to spell out or still changing shape.
+
+```ts
+await agent.act('complete checkout with the test card');
+await agent.act('invite {email} as an editor', { email: 'ada@example.test' });
+```
+
+Values come from your code through `params`, never from the model's imagination.
+The call is still bounded by a deadline, a step budget, and a model-call budget,
+and it is still one step in your test: it returns, and your next line runs.
+
+You can also ask a planned flow to hand data back:
+
+```ts
+const result = await agent.act('read the receipt', undefined, {
+  schema: z.object({ total: z.number() }),
+});
+```
+
+<Callout intent="warning" title="Not implemented yet">
+`agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY` in the current
+release. Described targets and judgments, below, are complete and cover the same
+ground one step at a time.
+</Callout>
+
+## Described targets
+
+Located actions are the workhorse. The model sees one snapshot of the screen and
+returns one node; the runner turns that into a readable query and performs one
+action.
+
+```ts
+await agent.tap('the Add button');
+await agent.type('the new todo input', 'Buy milk');
+await agent.press('the search field', 'Enter');
+await agent.select('the Team dropdown', 'Mobile');
+await agent.check('the Email notifications checkbox');
+await agent.hover('the card actions area');
+await agent.longPress('the Design review card');
+await agent.dragTo('the Design review card', 'the Done column');
+await agent.upload('the Attachment file input', 'fixtures/attachment.txt');
+await agent.scroll({ direction: 'down', momentum: 'fast' });
+await agent.scrollTo('the Acknowledge release notes button');
+```
+
+Two rules make these predictable:
+
+- The model chooses the target. You choose the verb and the value.
+- File paths come from your code, never from the model.
+
+<Tip title="Write targets like you would describe them out loud">
+Name the visible affordance, and prefer the exact wording on screen: `'the Sign
+in button'` beats `'the submit control at the bottom of the form'`. Describe one
+target, not a flow - if you catch yourself writing "and then", split the call.
+</Tip>
+
+## Judgments
+
+Ask a yes/no question about the screen. One observation, one answer, one
+explanation.
+
+```ts
+await agent.assert('the todo list contains exactly one item called "Buy milk"');
+```
+
+A false answer raises `ASSERTION_FAILED` with the model's explanation, and a
+screenshot is attached to the report as evidence. It is an ordinary test failure:
+
+```ts
+try {
+  await agent.assert('the page shows a completed checkout receipt');
+} catch (cause) {
+  const error = cause as { code?: string; explanation?: string };
+  expect(error.code).toBe('ASSERTION_FAILED');
+}
+```
+
+`assert` looks once. To wait for something to become true, use `waitFor`:
+
+```ts
+await agent.waitFor('the network status reports that users finished loading', {
+  intervalMs: 500,
+  timeout: 120_000,
+});
+```
+
+## Extracting data
+
+Pull structured values off the screen, validate them, then branch in TypeScript.
+
+```ts
+import { z } from 'zod';
+
+const data = await agent.extract('every todo title and how many remain', {
+  schema: z.object({
+    titles: z.array(z.string()),
+    remaining: z.number().int(),
+  }),
+});
+
+expect(data.titles).toContain('Ship runner');
+expect(data.remaining).toBe(2);
+```
+
+Any [Standard Schema](https://standardschema.dev) validator works, zod included.
+Invalid output gets one repair attempt and then fails with
+`MODEL_OUTPUT_INVALID`. A guess never passes as a success.
+
+<Callout intent="warning" title="Assert on meaning, not on wording">
+Different models phrase things differently. Check containment and shape rather
+than an exact sentence:
+
+```ts
+expect(summary.plan).toContain('Pro');   // good
+expect(summary.plan).toBe('Pro plan');   // brittle
+```
+</Callout>
+
+## What the model sees
+
+Only three things reach the model:
+
+- a redacted snapshot of the screen: roles, accessible names, text, test IDs, and
+  states
+- a short summary of previous steps in the same test
+- your `agent.context` string
+
+It never receives screenshots, raw HTML, cookies, headers, network bodies, or
+environment values. Password fields arrive masked, and any configured credential
+value found on screen is replaced with a placeholder before the snapshot leaves
+the runner. Screenshots exist for your report, not for the model.
+
+## Cost and limits
+
+Every call is bounded, so a bad prompt cannot spend your budget in a loop.
+
+| Call | Model calls | Default timeout |
+| --- | --- | --- |
+| Located actions (`tap`, `type`, `select`, …) | 2 | `actionTimeout`, 30 s |
+| `dragTo` | 4 | `actionTimeout`, 30 s |
+| `scroll` without `within` | 0 | `actionTimeout`, 30 s |
+| `assert` | 1 | 30 s |
+| `extract` | 2 | 30 s |
+| `waitFor` | up to `agent.maxModelCalls`, default 25 | 30 s |
+
+Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time raises
+`STEP_TIMEOUT`. Both are test failures you can see in the report.
+
+Keeping an agentic suite cheap:
+
+- Assert with `expect` when the check is mechanical. It is free.
+- Use a described target for the step that breaks, not for the whole test.
+- Give `actionTimeout` room when a provider is slow. Latency is not a defect.
+- Keep `waitFor` intervals coarse; each poll is a model call.
+
+## Caching
+
+Repeat runs should not pay for work already done. e2e caches how a described
+target resolved, so a later run replays a readable query instead of asking the
+model again.
+
+```ts
+await agent.tap('the Pro plan card');
+// first run:  one model call, then getByRole('button', { name: 'Pro' })
+// later runs: cache hit, same query, no model call
+```
+
+Keys include the test, the target, the instruction, the screen, and your
+configuration, so a UI change invalidates the entry rather than replaying
+something stale. Set the policy with `agent.cache`, or per call:
+
+```ts
+await agent.tap('the Pro plan card', { cache: false });
+```
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  agent: { cache: 'read-only' },  // 'off' | 'read-only' | 'read-write'
+});
+```
+
+<Callout intent="warning" title="Not implemented yet">
+Caching is not wired up in the current release. Every agentic step calls the
+model, `agent.cache`, the per-call `cache` option, and `--no-agent-cache` have no
+effect, and every step reports its cache status as bypassed.
+</Callout>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Sign in with a secret the model never sees.
+  </Card>
+  <Card title="agent reference" icon="code" href="/reference/agent">
+    Every method, option, and budget.
+  </Card>
+</CardGroup>

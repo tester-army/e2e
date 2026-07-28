@@ -1,0 +1,107 @@
+instances:
+  - url: https://e2e.docs.buildwithfern.com
+
+title: e2e - the cross-platform agentic test runner
+
+tabs:
+  docs:
+    display-name: Documentation
+    icon: book
+    skip-slug: true
+  reference:
+    display-name: Reference
+    icon: code
+    skip-slug: true
+
+navigation:
+  - tab: docs
+    layout:
+      - section: Get started
+        skip-slug: true
+        contents:
+          - page: Introduction
+            path: docs/pages/introduction.mdx
+            slug: introduction
+          - page: Quickstart
+            path: docs/pages/quickstart.mdx
+            slug: quickstart
+          - page: Writing tests
+            path: docs/pages/writing-tests.mdx
+            slug: writing-tests
+          - page: Agents
+            path: docs/pages/agents.mdx
+            slug: agents
+      - section: Guides
+        skip-slug: true
+        contents:
+          - page: Authentication
+            path: docs/pages/authentication.mdx
+            slug: authentication
+          - page: Web capabilities
+            path: docs/pages/web.mdx
+            slug: web
+          - page: Running tests
+            path: docs/pages/running-tests.mdx
+            slug: running-tests
+          - page: Configuration
+            path: docs/pages/configuration.mdx
+            slug: configuration
+          - page: Continuous integration
+            path: docs/pages/ci.mdx
+            slug: ci
+          - page: Coming from Playwright
+            path: docs/pages/from-playwright.mdx
+            slug: from-playwright
+          - page: Troubleshooting
+            path: docs/pages/troubleshooting.mdx
+            slug: troubleshooting
+  - tab: reference
+    layout:
+      - section: API
+        skip-slug: true
+        contents:
+          - page: test
+            path: docs/pages/reference/test.mdx
+            slug: reference/test
+          - page: expect
+            path: docs/pages/reference/expect.mdx
+            slug: reference/expect
+          - page: screen and Locator
+            path: docs/pages/reference/screen.mdx
+            slug: reference/screen
+          - page: app and web
+            path: docs/pages/reference/app-web.mdx
+            slug: reference/app-web
+          - page: agent
+            path: docs/pages/reference/agent.mdx
+            slug: reference/agent
+          - page: defineConfig
+            path: docs/pages/reference/config.mdx
+            slug: reference/config
+          - page: CLI
+            path: docs/pages/reference/cli.mdx
+            slug: reference/cli
+          - page: Errors
+            path: docs/pages/reference/errors.mdx
+            slug: reference/errors
+
+navbar-links:
+  - type: minimal
+    text: GitHub
+    url: https://github.com/testerarmy/e2e
+  - type: filled
+    text: Quickstart
+    url: https://e2e.docs.buildwithfern.com/quickstart
+
+colors:
+  accent-primary:
+    light: '#000000'
+    dark: '#ffffff'
+  background:
+    light: '#ffffff'
+    dark: '#0a0a0a'
+
+layout:
+  page-width: full
+  tabs-placement: header
+  searchbar-placement: header

@@ -1,0 +1,185 @@
+---
+title: Running tests
+subtitle: The CLI, and what happens while a run is in flight.
+---
+
+```bash
+npx e2e run
+```
+
+That is the whole thing. No account, no hosted service, and the same code path
+locally and in CI.
+
+| Flag | Default | Behavior |
+| --- | --- | --- |
+| `--config <path>` | discovered | Explicit config path; its directory becomes the project root |
+| `--target <ids>` | all targets | Comma-separated target names |
+| `--tag <tag>` | none | Tag filter. Repeat the flag to pass several |
+| `--tag-mode <any\|all>` | `any` | How repeated `--tag` values compose |
+| `--headed` | off | Show the browser window |
+| `--retries <n>` | `1` in CI, else `0` | Additional attempts, 0 to 10 |
+| `--workers <n>` | `1` in CI, else half your cores | Worker processes, 1 to 1024 |
+| `--reporter <ids>` | `list` | `list` or `json`; they cannot be combined |
+| `--artifacts <dir>` | `.e2e/artifacts` | Relocate the report and artifact tree |
+| `--pass-with-no-tests` | off | Allow a run that selects nothing |
+| `--debug` | off | Print phase timings and an agent step table to stderr |
+
+An invalid flag value fails before any browser launches, with exit code 2.
+
+## Selecting what runs
+
+```bash
+npx e2e run tests/login.e2e.ts tests/billing.e2e.ts
+npx e2e run --tag smoke
+npx e2e run --tag smoke --tag critical --tag-mode all
+npx e2e run --headed --retries 0
+```
+
+Positional paths resolve from the project root, not your shell's directory, and
+they intersect everything else: the `tests` globs and `--tag` still apply. A path
+that matches no configured glob selects nothing rather than adding a file.
+
+Dependencies survive a filter. Naming one member of a serial group selects the
+whole group, and a test with `session: 'admin'` pulls in the setup that produces
+it even if that file was not named.
+
+## Parallelism
+
+`workers` is the maximum number of worker processes alive at once. It defaults to
+`1` in CI and half your logical CPUs locally, because a shared CI runner is the
+noisiest place to add timing variance.
+
+Each worker owns one browser and is bound to one target for its whole life. The
+unit of scheduling is a file, not a test, so tests inside one file always run in
+order no matter how many workers you allocate. Files are the parallelism knob: two
+hundred tests in one file run one after another; twenty files across four workers
+do not. A serial group is one unit and stays on one worker.
+
+<Callout intent="note">
+The runner isolates client state, never your database. If tests collide, the fix
+is unique data or `serial: true`. Lowering `workers` hides the race instead of
+removing it.
+</Callout>
+
+## Retries
+
+`retries` is the number of additional attempts, so `retries: 2` means up to three
+attempts. Only test failures and test timeouts consume that budget. A
+configuration, policy, or infrastructure error fails immediately, because the
+second attempt would fail identically.
+
+Every attempt starts from a fresh browser session, a fresh fixture graph, and its
+own artifact directory. Nothing survives a failed attempt.
+
+A test that passes on attempt 2 or later is reported `flaky` and exits 0, since
+the final outcome is a pass. Every earlier attempt keeps its errors, steps, and
+artifacts in the report - that is where the interesting evidence is. If your
+policy is stricter, gate on `run.summary.flaky` rather than the exit code.
+
+## Timeouts
+
+| Key | Default | Covers |
+| --- | ---: | --- |
+| `timeout` | 120000 ms | `beforeEach` hooks and the test body |
+| `actionTimeout` | 30000 ms | One locator action or read, or one agent call |
+| `assertionTimeout` | 5000 ms | One `expect` polling loop |
+| `launchTimeout` | 60000 ms | Browser launch and session restore |
+| `cleanupTimeout` | 30000 ms | Each teardown hook and finalizer |
+
+Launch and restore run before the test deadline starts, so a cold browser start
+never eats your test budget. A per-call `{ timeout }` replaces the default for
+that call but cannot extend the test deadline.
+
+## Artifacts
+
+Screenshots and traces land under `.e2e/artifacts`, in a per-attempt directory,
+so a retry never overwrites the previous attempt's evidence.
+
+```ts
+const path = await app.screenshot('after-payment');
+expect(path).toContain('screenshots/');
+```
+
+Each screenshot is attached to the step that produced it in the report.
+`agent.assert` attaches its own evidence the same way.
+
+Traces are on by default. Open one with the Playwright trace viewer:
+
+```bash
+npx playwright show-trace .e2e/artifacts/web/tests_login.e2e.ts__signs_in/attempt-0/trace/trace.zip
+```
+
+Traces exclude request and response bodies, authorization and cookie headers, and
+secure input values.
+
+<Callout intent="warning" title="Video is not implemented yet">
+`artifacts: ['screenshot', 'trace', 'video']` is the full set, but video
+recording is not available. Requesting it fails with `UNSUPPORTED_ARTIFACT`
+before any browser launches, rather than leaving you an empty directory to
+discover later. A trace already carries screenshots, network activity, and a DOM
+timeline.
+</Callout>
+
+## The report
+
+Every run writes `.e2e/report.json` - passed, failed, or interrupted. The write
+is atomic, so a reader never sees a truncated document. It holds every result,
+attempt, step, artifact, and model usage figure, ordered by file then declaration
+then target, so two runs of the same commit with different worker counts produce
+documents you can diff.
+
+The terminal output is a convenience on top of that:
+
+```text
+  ✓ tests/login.e2e.ts › a member can sign in (1.4s)
+  ✗ tests/billing.e2e.ts › upgrading to Pro (5.2s)
+
+    LOCATOR_NOT_FOUND: getByRole('button', { name: 'Confirm' }) resolved 0 nodes
+
+  1 passed, 1 failed
+  report: .e2e/report.json
+```
+
+For a machine-readable stream, print the same document to stdout:
+
+```bash
+npx e2e run --reporter json > report.json
+```
+
+<Callout intent="warning" title="The HTML report is not implemented yet">
+`--reporter html` is accepted and `html` is part of the default `reporters`
+value, but nothing is written to `.e2e/report.html` yet. Until it lands,
+`.e2e/report.json` and `--reporter json` are the two ways to consume results.
+Reporter selection also only takes effect through `--reporter`, not through
+`reporters` in config.
+</Callout>
+
+A report never contains environment values, authorization headers, cookies,
+session payloads, or provider requests and responses.
+
+## Exit codes
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | Every selected test passed, was flaky, or was skipped |
+| 1 | A test or setup failure, or a test timeout |
+| 2 | CLI, config, collection, credential, model-config, or policy error |
+| 3 | Browser, app process, model provider, or artifact failure |
+| 4 | Internal runner error |
+| 130 | Interrupted by a signal |
+
+For mixed outcomes the precedence is `130 > 4 > 3 > 2 > 1 > 0`, so a run with one
+failed test and one crashed browser exits 3. Precedence affects the process exit
+code only - the report keeps every individual result.
+
+An interrupt aborts in-flight work, runs bounded teardown, writes a partial
+report with `status: interrupted`, and exits 130.
+
+<CardGroup cols={2}>
+  <Card title="Continuous integration" icon="gear" href="/ci">
+    A complete workflow and what CI changes for you.
+  </Card>
+  <Card title="Troubleshooting" icon="stethoscope" href="/troubleshooting">
+    Symptom, cause, fix for the common failures.
+  </Card>
+</CardGroup>

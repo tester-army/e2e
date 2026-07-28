@@ -1,0 +1,150 @@
+---
+title: e2e
+subtitle: The cross-platform agentic test runner.
+---
+
+e2e runs one end-to-end suite against web, iOS, and Android. You decide, step by
+step, how much of the test the agent drives and how much is pinned down in code.
+
+```ts title="tests/checkout.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('a member upgrades to Pro', async ({ app, agent, screen }) => {
+  await app.open('/settings/billing');
+
+  await agent.act('start an upgrade to the Pro plan');          // agent drives
+  await agent.tap('the annual billing toggle');                 // agent finds, you act
+  await screen.getByRole('button', { name: 'Confirm' }).tap();  // you do both
+
+  await expect(screen.getByRole('status')).toContainText('Pro');
+  await agent.assert('the invoice preview shows a prorated amount');
+});
+```
+
+That is the whole idea. Three lines, three different amounts of model authority,
+one ordinary TypeScript function deciding the order.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Install, scaffold, and run your first test in two minutes.
+  </Card>
+  <Card title="Agents" icon="robot" href="/agents">
+    Plan flows, describe targets, judge screens, extract data.
+  </Card>
+  <Card title="Writing tests" icon="pen" href="/writing-tests">
+    Locators, actions, assertions, and test options.
+  </Card>
+  <Card title="Reference" icon="code" href="/reference/test">
+    Every function, option, and error code.
+  </Card>
+</CardGroup>
+
+## Turn the dial
+
+Most tools make you choose once, for the whole suite: fully scripted and brittle,
+or fully autonomous and unreviewable. e2e makes it a per-step decision.
+
+| Level | Example | The model | Cost |
+| --- | --- | --- | --- |
+| Planned | `agent.act('complete checkout with the test card')` | plans and executes the flow | highest |
+| Located | `agent.tap('the Pro plan card')` | picks one node, you choose the verb | one call |
+| Deterministic | `screen.getByRole('button', { name: 'Save' }).tap()` | nothing | free |
+
+The useful part is moving between them. Draft a flow with `agent.act` while the
+feature is still changing shape. Pin the steps that matter to `agent.tap`. Pin
+the assertions you care about to `expect`. The test keeps working the whole time,
+and you always know exactly which steps still depend on a model.
+
+<Callout intent="warning" title="Planned flows are not implemented yet">
+`agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY` in the current
+release. The located and deterministic levels are complete, and they cover the
+same ground one step at a time.
+</Callout>
+
+## Built-in caching
+
+Agentic steps are slow and cost money on every run. e2e caches the outcome of
+resolution work, so a second run replays a readable, semantic query instead of
+asking the model again.
+
+```text
+first run   agent.tap('the Pro plan card')  ->  model call  ->  getByRole('button', { name: 'Pro' })
+later runs  agent.tap('the Pro plan card')  ->  cache hit   ->  getByRole('button', { name: 'Pro' })
+```
+
+Caches are keyed on the test, the target, the instruction, the screen, and your
+configuration, so a UI change invalidates them instead of replaying something
+stale. What lands in the cache is a query you can read in a diff, never a
+recorded click at coordinates. Planned flows keep the model in the loop on
+replay, because repeating a step that may already have charged a credit card is
+not a cache hit.
+
+<Callout intent="warning" title="Not implemented yet">
+Caching is not wired up in the current release. Every agentic step calls the
+model, `--no-agent-cache` and the `agent.cache` setting have no effect, and every
+step reports its cache status as bypassed.
+</Callout>
+
+## Cross-platform by design
+
+The portable surface has no CSS and no DOM in it. Queries are semantic, actions
+are gestures, and lifecycle is app-shaped:
+
+```ts
+await app.open('/settings');
+await screen.getByRole('link', { name: 'Billing' }).tap();
+await screen.swipe({ direction: 'up', momentum: 'fast' });
+await screen.getByTestId('card').longPress({ durationMs: 800 });
+```
+
+Platform-specific power is quarantined behind a named fixture. `web` gives you
+URLs, routes, cookies, and frames; `device` gives you permissions, location, and
+push. A glance at a test tells you whether it can run on more than one platform.
+
+<Callout intent="warning" title="Native platforms are not implemented yet">
+This release executes web targets. An iOS or Android target is rejected rather
+than approximated, and the `device` fixture rejects with
+`UNSUPPORTED_CAPABILITY`. The portable API, the gesture model, and the runner are
+built for both, so tests written against the portable surface today are the tests
+that will run on device.
+</Callout>
+
+## The runner owns the boring parts
+
+<AccordionGroup>
+  <Accordion title="Waiting, so you never write a sleep">
+    Queries poll, actions wait for actionability, assertions retry. There is no
+    `waitForSelector` and no arbitrary delay.
+  </Accordion>
+  <Accordion title="Strictness, so tests fail loudly instead of silently">
+    A query matching two nodes is an error, not a first-match guess. Narrow it
+    with `.filter()`, `.first()`, or `.nth()`.
+  </Accordion>
+  <Accordion title="Budgets, so an agentic suite stays affordable">
+    Every `agent.*` call is one bounded operation with a deadline and a model-call
+    budget. A located action costs at most two calls. Nothing loops forever.
+  </Accordion>
+  <Accordion title="Secrets that stay secret">
+    A password is an opaque handle, accepted only by input fields and authorized
+    per credential and origin before it is resolved. It never reaches a model, a
+    log, a report, or a trace.
+  </Accordion>
+  <Accordion title="Sessions, retries, and parallelism">
+    Sign in once in a setup test and reuse the state. Retries start from clean
+    state. Files run across worker processes, each with its own browser.
+  </Accordion>
+  <Accordion title="Results you can build on">
+    Every run writes `.e2e/report.json` with results, attempts, steps, artifacts,
+    and model usage, whether it passed, failed, or was interrupted.
+  </Accordion>
+</AccordionGroup>
+
+## Local first
+
+No account, no hosted service, no vendor in the request path. `npx e2e run` on
+your laptop and in CI is the same code path, and a suite with no `agent.*` calls
+needs no model at all.
+
+<Card title="Get started" icon="bolt" href="/quickstart">
+  Install e2e and run your first test.
+</Card>

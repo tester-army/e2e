@@ -1,0 +1,213 @@
+---
+title: Troubleshooting
+subtitle: Symptom, cause, and fix for the failures you are most likely to hit.
+---
+
+Every failure below appears in `.e2e/report.json` with a code, so start there
+rather than with the terminal output.
+
+<AccordionGroup>
+  <Accordion title="MODEL_UNAVAILABLE">
+    **Symptom.** A test using `agent` fails immediately with exit code 2.
+
+    **Cause.** No model configured, an unknown provider in a `provider/model-id`
+    reference, or no credential in `E2E_MODEL_API_KEY`. There is no implicit
+    default model.
+
+    **Fix.** Set `agent.model` or `E2E_MODEL`, plus the key. This fires when the
+    `agent` fixture is acquired, so a deterministic suite runs fine with no model
+    at all.
+  </Accordion>
+
+  <Accordion title="UNSUPPORTED_CAPABILITY on agent.act or agent.login">
+    **Symptom.** The call throws the moment it runs.
+
+    **Cause.** Planned flows are not implemented yet.
+
+    **Fix.** Compose described targets and judgments, which are one bounded step
+    each:
+
+    ```ts
+    await agent.type('the username field', 'admin');
+    await agent.type('the password field', credentials.user('admin').password);
+    await agent.tap('the sign in button');
+    await agent.assert('the dashboard is visible');
+    ```
+  </Accordion>
+
+  <Accordion title="UNSUPPORTED_CAPABILITY on the device fixture">
+    **Symptom.** Touching `device` throws, though destructuring it is fine.
+
+    **Cause.** `device` is the reserved mobile surface. Nothing implements it yet.
+
+    **Fix.** Remove the usage. To keep a mobile-only test in the file, mark it
+    `requires: ['device']` so it is reported skipped instead of failed.
+  </Accordion>
+
+  <Accordion title="LOCATOR_NOT_FOUND">
+    **Symptom.** A query resolved zero nodes before the deadline.
+
+    **Cause.** Queries poll, so this means the node never appeared - not that you
+    forgot to wait.
+
+    **Fix.** Check the role and accessible name in the trace artifact. Confirm the
+    node is not inside an iframe, in which case you need `web.frameLocator`, and
+    that `screen.testIdAttribute` matches your app.
+  </Accordion>
+
+  <Accordion title="LOCATOR_AMBIGUOUS">
+    **Symptom.** A query matched two or more nodes and failed.
+
+    **Cause.** Every action and read requires exactly one match. A silent
+    first-match is how a test starts passing for the wrong reason.
+
+    **Fix.** Narrow it by meaning rather than position:
+
+    ```ts
+    screen.getByRole('listitem').filter({ hasText: 'Rocketry' })
+      .getByRole('button', { name: 'Delete' });
+    ```
+
+    `.first()` and `.nth(i)` exist, but they break the moment the list reorders.
+  </Accordion>
+
+  <Accordion title="An assertion times out on something you already read">
+    **Symptom.** `expect(await locator.textContent()).toBe('loaded 3')` fails
+    intermittently.
+
+    **Cause.** Reads take one reading of the current state. Only the matchers
+    poll.
+
+    **Fix.** Assert through the matcher instead:
+
+    ```ts
+    await expect(screen.getByRole('status')).toHaveText('loaded 3');
+    ```
+  </Accordion>
+
+  <Accordion title="NO_TESTS">
+    **Symptom.** The run exits 2 without executing anything.
+
+    **Cause.** Zero runnable ordinary tests. Setup tests alone do not count.
+
+    **Fix.** Walk the funnel: does any file match `tests`; did positional file
+    arguments intersect to nothing, since they filter rather than add; did `--tag`
+    exclude everything; are the tests skipped or filtered by `platforms` or
+    `requires`. Pass `--pass-with-no-tests` only where an empty suite is genuinely
+    expected.
+  </Accordion>
+
+  <Accordion title="ONLY_IN_CI">
+    **Symptom.** The suite is green locally and exits 2 in CI.
+
+    **Cause.** A `test.only` reached CI, which would have silently disabled every
+    other test.
+
+    **Fix.** Remove the `.only` - the message lists the offending tests.
+    Reproduce with `CI=1 npx e2e run`.
+  </Accordion>
+
+  <Accordion title="CONFIG_NOT_FOUND or CONFIG_AMBIGUOUS">
+    **Symptom.** The run stops before collection.
+
+    **Cause.** `--config` names a path that does not exist, or both
+    `e2e.config.ts` and `e2e.config.mts` sit in one directory and the runner
+    refuses to pick.
+
+    **Fix.** Check the path, or delete one of the two files. If you need a second
+    suite, give it a distinct name and select it with `--config`.
+  </Accordion>
+
+  <Accordion title="UNSUPPORTED_ARTIFACT: video">
+    **Symptom.** The run fails before any browser launches.
+
+    **Cause.** `artifacts` includes `video`. Only `screenshot` and `trace` are
+    supported.
+
+    **Fix.** Drop `video`. A trace already carries screenshots, network activity,
+    and a DOM timeline, and it fails up front rather than leaving you an empty
+    directory to find later.
+  </Accordion>
+
+  <Accordion title="PLATFORM_UNSUPPORTED on a mobile target">
+    **Symptom.** A target with `platform: 'ios'` or `'android'` is rejected.
+
+    **Cause.** This release executes web targets. A mobile target fails loudly
+    instead of being silently approximated.
+
+    **Fix.** Remove the target for now. To gate individual tests, use
+    `platforms: ['web']`, which filters rather than fails.
+  </Accordion>
+
+  <Accordion title="POLICY_DENIED">
+    **Symptom.** A navigation, cookie write, or secret fill is refused.
+
+    **Cause.** One of three things. An origin outside `app.allowedOrigins`, and
+    `file:`, `data:`, and `javascript:` URLs are always denied. Or
+    `environment: 'production'` without `allowProduction: true`. Or a `Secret` sent
+    somewhere its purpose does not authorize - a non-password field, a disabled
+    field, or a plain-string parameter.
+
+    **Fix.** Add the legitimate origin as a serialized origin with no path, opt
+    into production explicitly, or fill the secret into the field it is for. See
+    [Web capabilities](/web) and [Authentication](/authentication).
+  </Accordion>
+
+  <Accordion title="BROWSER_INSTALL_FAILED">
+    **Symptom.** The run dies while provisioning a browser.
+
+    **Cause.** No network, a proxy, or missing system libraries on a slim Linux
+    image.
+
+    **Fix.** Provision ahead of time so it is not a surprise inside the run:
+
+    ```bash
+    npx playwright install chromium --with-deps
+    ```
+
+    `--with-deps` is what installs the shared libraries a bare container lacks.
+  </Accordion>
+
+  <Accordion title="APP_UNREACHABLE">
+    **Symptom.** `app.command` never becomes ready.
+
+    **Cause.** The executable failed to spawn, the child exited early, or
+    `readyUrl` never answered within `startupTimeout`.
+
+    **Fix.** `executable` is resolved through `PATH` and never a shell, so
+    `executable: 'pnpm dev'` does not work - use
+    `{ executable: 'pnpm', args: ['dev'] }`. The child inherits a minimal
+    environment, so anything your server needs must be listed in
+    `app.command.env`. For a slow first compile, point `readyUrl` at a cheap
+    health endpoint and raise `startupTimeout`.
+  </Accordion>
+
+  <Accordion title="A test only fails when other tests run">
+    **Symptom.** Green alone, red in the full suite.
+
+    **Cause.** Shared backend state. The runner isolates cookies, local storage,
+    and IndexedDB, and nothing else.
+
+    **Fix.** Provision unique data per test, use isolated tenants, or opt into
+    `serial: true`. Lowering `--workers` hides the race and it will come back on a
+    faster machine.
+  </Accordion>
+
+  <Accordion title="The suite is slow and you cannot tell why">
+    **Symptom.** Wall time does not match what the tests do.
+
+    **Fix.** Run with `--debug`. Aggregated phase timings for config load, app
+    start, collection, browser install, scheduling, and teardown go to stderr,
+    along with a per-step agent table showing model, observe, and action time.
+    Both go to stderr, so they never contaminate `--reporter json`.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="Errors reference" icon="triangle-exclamation" href="/reference/errors">
+    Every code, its category, and its exit class.
+  </Card>
+  <Card title="Running tests" icon="terminal" href="/running-tests">
+    Flags, retries, artifacts, and the report.
+  </Card>
+</CardGroup>

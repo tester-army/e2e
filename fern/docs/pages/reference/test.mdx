@@ -1,0 +1,206 @@
+---
+title: test
+subtitle: Tests, setup tests, groups, hooks, options, and fixtures.
+---
+
+`test` is the only registration surface. Every member registers synchronously
+while the test file is imported.
+
+```ts
+export interface TestAPI {
+  (title: string, fn: TestFn): TestCase;
+  (title: string, options: TestOptions, fn: TestFn): TestCase;
+  skip(title: string, fn: TestFn): TestCase;
+  only(title: string, fn: TestFn): TestCase;
+  setup(title: string, options: SetupOptions, fn: SetupFn): TestCase;
+  describe<Result>(title: string, body: SynchronousBody<Result>): void;
+  describe<Result>(
+    title: string,
+    options: DescribeOptions,
+    body: SynchronousBody<Result>,
+  ): void;
+  beforeEach(fn: TestHookFn): void;
+  afterEach(fn: TestHookFn): void;
+  beforeAll(fn: SuiteHookFn): void;
+  afterAll(fn: SuiteHookFn): void;
+}
+
+export const test: TestAPI;
+```
+
+Calling any member outside collection, or after module evaluation finished,
+throws `COLLECTION_ERROR`.
+
+## Members
+
+| Member | Signature | Notes |
+| --- | --- | --- |
+| `test` | `test(title: string, fn: TestFn): TestCase` | Returns an opaque handle. Discovery follows registration order; exporting the handle changes nothing. |
+| `test` | `test(title: string, options: TestOptions, fn: TestFn): TestCase` | See [TestOptions](#testoptions). |
+| `test.skip` | `skip(title: string, fn: TestFn): TestCase` | Body never runs. Reported as skipped, does not affect the exit code. For a reason, use `test(title, { skip: 'reason' }, fn)`. |
+| `test.only` | `only(title: string, fn: TestFn): TestCase` | Other ordinary tests are reported as `filtered`. In CI the run fails with `ONLY_IN_CI`, exit code 2. |
+| `test.setup` | `setup(title: string, options: SetupOptions, fn: SetupFn): TestCase` | `options.sessions` is required. Must be top-level, not inside `test.describe`. |
+| `test.describe` | `describe(title, body)` / `describe(title, options, body)` | Group body must be synchronous. An `async` body is a type error and a `COLLECTION_ERROR`. |
+
+```ts
+import { test, expect } from 'e2e';
+
+test('app opens', async ({ app, web }) => {
+  await app.open();
+  await expect(web).toHaveURL('/');
+});
+
+test('checks out', { tags: ['billing'], retries: 2, timeout: 60_000 }, async ({ app }) => {
+  await app.open('/checkout');
+});
+
+test.describe('checkout', { tags: ['smoke'], serial: true }, () => {
+  test('adds an item', async ({ screen }) => {});
+  test('pays', async ({ screen }) => {});
+});
+```
+
+`test.setup` declares the sessions it saves, and must save each exactly once:
+
+```ts
+test.setup('authenticate', { sessions: ['member'] }, async ({ app, screen, session }) => {
+  await app.open('/login');
+  await screen.getByLabel('Email').fill(credentials.user('member').username);
+  await screen.getByLabel('Password').fill(credentials.user('member').password);
+  await screen.getByRole('button', { name: 'Sign in' }).tap();
+  await session.save('member');
+});
+```
+
+Session names must match `/^[A-Za-z0-9_.-]{1,128}$/` and be unique.
+Not saving a declared session, or saving one twice, throws `SESSION_CONTRACT`
+at runtime.
+
+```ts
+export interface SetupSession {
+  save(name: string): Promise<void>;
+}
+```
+
+## Hooks
+
+| Member | Signature | Fixtures | Runs |
+| --- | --- | --- | --- |
+| `test.beforeEach` | `beforeEach(fn: TestHookFn): void` | `TestFixtures` | Before each test attempt, outermost group first |
+| `test.afterEach` | `afterEach(fn: TestHookFn): void` | `TestFixtures` | After each test attempt, innermost group first, including after a failure |
+| `test.beforeAll` | `beforeAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance |
+| `test.afterAll` | `afterAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance |
+
+A throw inside `beforeAll` or `afterAll` is reported as `HOOK_FAILED` and skips
+the suite's tests with cause `hook-failed`.
+
+## Options
+
+```ts
+export interface TestOptions {
+  timeout?: number;
+  retries?: number;
+  tags?: readonly string[];
+  skip?: boolean | string;
+  only?: boolean;
+  platforms?: readonly Platform[];
+  requires?: readonly Capability[];
+  session?: string;
+  agentContext?: string;
+}
+
+export interface DescribeOptions extends Omit<TestOptions, 'only'> {
+  serial?: boolean;
+}
+
+export interface SetupOptions
+  extends Omit<TestOptions, 'session' | 'only' | 'skip'> {
+  sessions: readonly string[];
+}
+```
+
+| Key | Type | Default | Valid | Merge across layers |
+| --- | --- | --- | --- | --- |
+| `timeout` | `number` | `config.timeout`, 120000 | positive safe integer | Innermost wins |
+| `retries` | `number` | `config.retries` | integer 0-10 | Innermost wins; in a serial group the value comes from the group, not the member |
+| `tags` | `readonly string[]` | `[]` | - | Union of every layer, deduplicated |
+| `skip` | `boolean \| string` | unset | - | Any truthy layer skips; a string becomes the reason, otherwise `'skipped'` |
+| `only` | `boolean` | unset | rejected in CI | Test level only, not on `DescribeOptions` |
+| `platforms` | `readonly Platform[]` | unset | - | Innermost wins, replace |
+| `requires` | `readonly Capability[]` | `[]` | - | Innermost wins, replace |
+| `session` | `string` | unset | - | Innermost wins |
+| `agentContext` | `string` | unset | - | Concatenated outermost first, joined with a newline |
+| `serial` | `boolean` | `false` | groups only | Nesting inside a serial group is a `COLLECTION_ERROR` |
+| `sessions` | `readonly string[]` | - | required on `test.setup`, static non-empty array of unique names | - |
+
+Resolution order: test, nearest group, outer groups, config, built-in default.
+
+`serial: true` makes the group one ordered retry unit with shared app state.
+Inside it, `retries`, `session`, `platforms`, `requires`, `skip`, `only`, and a
+nested `serial` on a member are collection errors. Set them on the group.
+
+## Fixtures
+
+```ts
+export interface TestFixtures {
+  readonly agent: Agent;
+  readonly app: App;
+  readonly screen: Screen;
+  readonly platform: Platform;
+  readonly web: Web;
+  readonly device: Device;
+}
+
+export interface SetupFixtures extends TestFixtures {
+  readonly session: SetupSession;
+}
+
+export interface SuiteFixtures {
+  readonly platform: Platform;
+}
+```
+
+| Callback | Fixture object |
+| --- | --- |
+| `test`, `test.skip`, `test.only` | `TestFixtures` |
+| `test.setup` | `SetupFixtures` |
+| `test.beforeEach`, `test.afterEach` | `TestFixtures` |
+| `test.beforeAll`, `test.afterAll` | `SuiteFixtures` |
+
+| Fixture | Type | Notes |
+| --- | --- | --- |
+| `agent` | [`Agent`](/reference/agent) | Acquiring it without a configured model fails with `MODEL_UNAVAILABLE`. |
+| `app` | [`App`](/reference/app-web) | Always available. |
+| `screen` | [`Screen`](/reference/screen) | Always available. |
+| `platform` | `Platform` | `'web' \| 'ios' \| 'android' \| (string & {})`. |
+| `web` | [`Web`](/reference/app-web) | Capability fixture. Declare `requires: ['web']` in portable suites. |
+| `device` | `Device` | Native device control. Not implemented yet: rejects with `UNSUPPORTED_CAPABILITY`. |
+
+Fixtures are lazy. Destructuring in the callback parameter list acquires them
+before the first statement of the body.
+
+## Function types
+
+```ts
+export type TestFn = (fixtures: TestFixtures) => void | Promise<void>;
+export type SetupFn = (fixtures: SetupFixtures) => void | Promise<void>;
+export type TestHookFn = (fixtures: TestFixtures) => void | Promise<void>;
+export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
+export type SynchronousBody<Result> = Extract<
+  Result,
+  PromiseLike<unknown>
+> extends never
+  ? () => Result
+  : never;
+
+export interface TestCase {
+  readonly [testCaseBrand]: true;
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen" href="/writing-tests" />
+  <Card title="expect" icon="check" href="/reference/expect" />
+  <Card title="Authentication" icon="key" href="/authentication" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+</CardGroup>

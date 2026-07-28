@@ -1,0 +1,179 @@
+---
+title: Configuration
+subtitle: One TypeScript file that default-exports your settings.
+---
+
+Configuration lives in `e2e.config.ts` (or `e2e.config.mts`) and is ordinary
+project code, which is why it can read `process.env` or hold a live model
+instance. Wrap it in `defineConfig` so a typo is a compile error instead of a
+run-time one.
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+
+export default defineConfig({
+  app: {
+    // Loopback, so `environment` defaults to 'test' and plain HTTP is allowed.
+    url: 'http://127.0.0.1:3000',
+    // The runner starts this before the suite and tears it down after.
+    command: {
+      executable: 'pnpm',
+      args: ['dev'],
+      env: { PORT: '3000', NODE_ENV: 'test' },
+      startupTimeout: 90_000,
+    },
+    // Cheap endpoint to poll instead of a heavy page render.
+    readyUrl: 'http://127.0.0.1:3000/healthz',
+    // Your app plus the one third party you legitimately redirect to.
+    allowedOrigins: ['http://127.0.0.1:3000', 'https://auth.example.com'],
+  },
+
+  // The same tests, run against two browsers.
+  targets: [
+    { name: 'chromium', platform: 'web', browser: 'chromium' },
+    { name: 'webkit', platform: 'web', browser: 'webkit' },
+  ],
+
+  tests: 'tests/**/*.e2e.ts',
+
+  retries: 1,
+  workers: 4,
+
+  screen: { testIdAttribute: 'data-qa' },
+
+  agent: {
+    model: 'anthropic/claude-sonnet-4.5',
+    context: 'A storefront: catalog, cart, checkout.',
+  },
+
+  credentials: {
+    admin: { username: 'admin@example.test', password: process.env.ADMIN_PASSWORD ?? '' },
+  },
+});
+```
+
+The runner looks for the file in the current directory and each parent, stopping
+after one that contains `.git`. `--config <path>` wins outright, and the selected
+file's directory becomes the project root - every path in the config resolves
+from there.
+
+## app
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `app.url` | `string` | `APP_URL` | Base URL. Required from one of the two. No userinfo, query, or fragment |
+| `app.command` | `CommandConfig` | unset | Process the runner starts before the suite |
+| `app.readyUrl` | `string` | `app.url` | Polled until it answers 200 to 499 |
+| `app.allowedOrigins` | `string[]` | origin of `app.url` | Serialized origins the run may reach |
+| `app.environment` | `'test' \| 'staging' \| 'production'` | `test` for local hosts | Any other host must state it |
+| `app.allowProduction` | `boolean` | `false` | Required opt-in for `environment: 'production'` |
+
+### app.command
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `executable` | `string` | required | Resolved through `PATH`, never through a shell |
+| `args` | `string[]` | `[]` | Passed verbatim |
+| `cwd` | `string` | project root | |
+| `env` | `Record<string, string>` | `{}` | Explicit additions to a minimal environment |
+| `startupTimeout` | `number` (ms) | `60000` | `APP_UNREACHABLE` if `readyUrl` never answers |
+| `shutdownTimeout` | `number` (ms) | `10000` | Graceful signal, then a force kill |
+
+<Callout intent="warning">
+The child process does not inherit your environment wholesale. Only `PATH`,
+`HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, and `COMSPEC` pass through, plus
+whatever you list in `command.env`. So a model key or a CI token can never be
+read by the app under test, and a server that silently depended on an ambient
+variable fails loudly here instead of behaving differently on another machine.
+</Callout>
+
+## targets
+
+`targets` is how you run the same tests against several browsers. Each target is
+scheduled independently and appears separately in the report.
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `targets` | `Target[]` | one implicit `web` target | Must be non-empty when present |
+| `targets[].name` | `string` | required | The stable ID used by `--target`, reports, and artifact paths |
+| `targets[].platform` | `'web'` | required | |
+| `targets[].browser` | `'chromium' \| 'firefox' \| 'webkit'` | `chromium` | |
+| `targets[].viewport` | `{ width, height }` | `1280x720` | |
+| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `chromium` | Applies to the implicit target only; declaring it alongside `targets` is an error |
+
+<Callout intent="info" title="Web today, iOS and Android next">
+Mobile platforms are rejected with `PLATFORM_UNSUPPORTED` rather than silently
+approximated. Native targets are the next platform to land, not a rewrite.
+</Callout>
+
+## Discovery and timeouts
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `tests` | `string \| string[]` | `tests/**/*.e2e.ts` | Arrays form a union. `**` must be a whole segment; no negation or braces |
+| `timeout` | `number` (ms) | `120000` | `beforeEach` hooks and the test body |
+| `launchTimeout` | `number` (ms) | `60000` | Browser launch and session restore |
+| `actionTimeout` | `number` (ms) | `30000` | One action, read, or agent call |
+| `assertionTimeout` | `number` (ms) | `5000` | One `expect` polling loop |
+| `cleanupTimeout` | `number` (ms) | `30000` | Each teardown hook and finalizer |
+
+## Execution
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `retries` | `number` | `1` in CI, else `0` | Additional attempts, 0 to 10 |
+| `workers` | `number` | `1` in CI, else half your cores | 1 to 1024 |
+
+CI mode is decided from the `CI` environment variable alone: active when it is
+set and is not empty, `0`, or `false`. So `CI=1 npx e2e run` reproduces CI
+behavior locally.
+
+## Artifacts and reporters
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `artifacts` | `('screenshot' \| 'trace')[]` | `['screenshot', 'trace']` | Validated before collection; `video` is `UNSUPPORTED_ARTIFACT` |
+| `reporters` | `('list' \| 'json')[]` | `['list']` | Select with `--reporter`; `.e2e/report.json` is written either way |
+
+## screen
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `screen.testIdAttribute` | `string` | `data-testid` | Attribute backing `screen.getByTestId` |
+
+## agent
+
+| Key | Type | Default | Note |
+| --- | --- | --- | --- |
+| `agent.model` | `string \| ModelConfig \| ModelInstance` | `E2E_MODEL` | No implicit default; acquiring `agent` without one fails |
+| `agent.context` | `string` | unset | Suite-wide grounding prose for described targets |
+| `agent.maxSteps` | `number` | `25` | Action steps per agent call, 1 to 100 |
+| `agent.maxModelCalls` | `number` | `25` | Model calls per agent call, 1 to 100 |
+| `agent.maxObservationBytes` | `number` | `1048576` | 1 KiB to 16 MiB |
+
+## credentials
+
+| Key | Type | Note |
+| --- | --- | --- |
+| `credentials.<name>.username` | `string` | Overridden by `E2E_USER_<NAME>_USERNAME` |
+| `credentials.<name>.password` | `string` | Overridden by `E2E_USER_<NAME>_PASSWORD` |
+| `credentials.<name>.allowedOrigins` | `string[]` | Narrows the app policy for this credential; it can never broaden it |
+
+Passwords reach your test as an opaque handle, never a string. See
+[Authentication](/authentication).
+
+## Advanced limits
+
+A `limits` block exists for byte and cost ceilings - artifact sizes, download
+counts, observation bytes, and `maxEstimatedCostUsd`. You will not need it until
+you do; the defaults are listed in the
+[defineConfig reference](/reference/config).
+
+<CardGroup cols={2}>
+  <Card title="Running tests" icon="terminal" href="/running-tests">
+    The flags that override these values per run.
+  </Card>
+  <Card title="defineConfig reference" icon="code" href="/reference/config">
+    The canonical declaration and every limit.
+  </Card>
+</CardGroup>

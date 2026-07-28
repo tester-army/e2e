@@ -1,0 +1,144 @@
+---
+title: Quickstart
+subtitle: From install to a passing test.
+---
+
+<Callout intent="note">
+Requires Node.js 20.19 or newer. No model or API key is needed for deterministic
+tests.
+</Callout>
+
+<Steps>
+  <Step title="Install">
+    <CodeBlocks>
+      ```bash title="npm"
+      npm install --save-dev e2e
+      ```
+      ```bash title="pnpm"
+      pnpm add -D e2e
+      ```
+      ```bash title="yarn"
+      yarn add -D e2e
+      ```
+    </CodeBlocks>
+  </Step>
+
+  <Step title="Scaffold">
+    ```bash
+    npx e2e init
+    ```
+
+    This creates `e2e.config.ts`, `tests/example.e2e.ts`, and `.gitignore`
+    entries. It never overwrites an existing file.
+  </Step>
+
+  <Step title="Point at your app">
+    ```ts title="e2e.config.ts"
+    import { defineConfig } from 'e2e';
+
+    export default defineConfig({
+      app: {
+        url: process.env.APP_URL ?? 'http://localhost:3000',
+      },
+    });
+    ```
+
+    Prefer the runner to start and stop your dev server for you?
+
+    ```ts title="e2e.config.ts"
+    export default defineConfig({
+      app: {
+        url: 'http://127.0.0.1:3000',
+        command: {
+          executable: 'npm',
+          args: ['run', 'dev'],
+          env: { PORT: '3000' },
+        },
+      },
+    });
+    ```
+  </Step>
+
+  <Step title="Write a test">
+    Test files match `tests/**/*.e2e.ts`.
+
+    ```ts title="tests/login.e2e.ts"
+    import { test, expect } from 'e2e';
+
+    test('a member can sign in', async ({ app, screen, web }) => {
+      await app.open('/login');
+
+      await screen.getByLabel('Email').fill('ada@example.test');
+      await screen.getByLabel('Password').fill('correct-horse');
+      await screen.getByRole('button', { name: 'Sign in' }).tap();
+
+      await expect(web).toHaveURL('/dashboard');
+      await expect(screen.getByRole('status')).toContainText('Welcome back');
+    });
+    ```
+
+    No waits, no sleeps. Queries poll, actions wait for actionability, and
+    assertions retry.
+  </Step>
+
+  <Step title="Run">
+    ```bash
+    npx e2e run
+    ```
+
+    Missing browsers download automatically on the first run.
+
+    ```bash
+    npx e2e run tests/login.e2e.ts   # one file
+    npx e2e run --tag smoke          # by tag
+    npx e2e run --headed             # watch it happen
+    npx e2e run --workers 4          # more browsers in parallel
+    ```
+  </Step>
+</Steps>
+
+## Reading the output
+
+```text
+  ✓ tests/login.e2e.ts › a member can sign in (1.4s)
+  ✗ tests/billing.e2e.ts › upgrading to Pro (5.2s)
+
+    LOCATOR_NOT_FOUND: getByRole('button', { name: 'Confirm' }) resolved 0 nodes
+
+      12 |   await screen.getByRole('button', { name: 'Confirm' }).tap();
+         |                                                        ^
+
+  1 passed, 1 failed
+  report: .e2e/report.json
+```
+
+Every run also writes `.e2e/report.json` with the full result set. See
+[Running tests](/running-tests).
+
+## Add an agent
+
+Describe a target instead of selecting it:
+
+```bash
+E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx e2e run
+```
+
+```ts
+await agent.tap('the Pro plan card');
+await agent.assert('the invoice preview shows a prorated amount');
+```
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen" href="/writing-tests">
+    Locators, actions, assertions, hooks, and options.
+  </Card>
+  <Card title="Agents" icon="robot" href="/agents">
+    Model setup, described targets, judgments, extraction.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Sign in once, reuse the session everywhere.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    Every config key with its default.
+  </Card>
+</CardGroup>

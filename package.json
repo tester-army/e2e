@@ -10,8 +10,11 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter e2e build",
-    "check": "pnpm run lint && pnpm run check:spec && pnpm run typecheck",
+    "check": "pnpm run lint && pnpm run check:spec && pnpm run typecheck && pnpm run docs:check",
     "check:spec": "tsc --project tsconfig.spec.json",
+    "docs:check": "fern check",
+    "docs:dev": "fern docs dev",
+    "docs:publish": "fern generate --docs",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
@@ -26,6 +29,7 @@
   ],
   "devDependencies": {
     "@types/node": "26.1.1",
+    "fern-api": "5.80.4",
     "oxlint": "1.75.0",
     "typescript": "7.0.2",
     "zod": "4.4.3"

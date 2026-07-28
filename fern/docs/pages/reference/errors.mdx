@@ -1,0 +1,120 @@
+---
+title: Errors
+subtitle: Every code you can see, its class, and its exit code.
+---
+
+Every error carries a class. The class determines the exit code; the code
+identifies the cause. A model never selects either.
+
+| Class | Exit code |
+| --- | ---: |
+| test | 1 |
+| configuration | 2 |
+| infrastructure | 3 |
+| internal | 4 |
+| interrupted | 130 |
+
+## AgentError
+
+```ts
+export class AgentError extends Error {
+  readonly code: AgentErrorCode;
+  readonly explanation: string;
+  readonly screenshot?: string;
+}
+```
+
+Check `code` rather than using `instanceof`.
+
+| Code | When it happens | Class | Exit |
+| --- | --- | --- | ---: |
+| `AUTH_CREDENTIAL_UNAVAILABLE` | A `Secret` or `credentials.user()` names a credential absent from `config.credentials`, or the call happened outside an active runner | configuration | 2 |
+| `MODEL_UNAVAILABLE` | No model configured, an unknown provider, or a missing provider credential. Raised when the `agent` fixture is acquired. | configuration | 2 |
+| `POLICY_DENIED` | Origin, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
+| `APP_UNREACHABLE` | The app process or URL did not respond | infrastructure | 3 |
+| `MODEL_PROVIDER_FAILED` | Provider transport failure: network error, 5xx, rate limit | infrastructure | 3 |
+| `CANCELLED` | The runner cancelled the operation, without a process signal | infrastructure | 3 |
+| `MODEL_OUTPUT_INVALID` | Structured output still failed validation after the repair budget was spent | test | 1 |
+| `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the driver reported invalid state | test | 1 |
+| `LOCATOR_NOT_FOUND` | Zero matches within the deadline, or the model declined to name a node | test | 1 |
+| `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails immediately, no polling. | test | 1 |
+| `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
+| `STEP_BUDGET_EXHAUSTED` | The model-call or action-step budget ran out before a conclusion | test | 1 |
+| `STEP_TIMEOUT` | The invocation deadline expired. Carries the last judgment where one exists. | test | 1 |
+| `ASSERTION_FAILED` | `agent.assert` judged false, or a locator, `web`, or value matcher failed | test | 1 |
+
+## Runner codes
+
+These appear in terminal output and in the report as plain string codes.
+
+| Code | When it happens | Class | Exit |
+| --- | --- | --- | ---: |
+| `CONFIG_NOT_FOUND` | `--config <path>` names a file that does not exist | configuration | 2 |
+| `CONFIG_AMBIGUOUS` | Both `e2e.config.ts` and `e2e.config.mts` in one directory | configuration | 2 |
+| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, `browser` together with `targets`, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
+| `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
+| `APP_URL_REQUIRED` | Neither `app.url` nor `APP_URL` is set | configuration | 2 |
+| `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, or unparseable | configuration | 2 |
+| `ENVIRONMENT_REQUIRED` | A non-loopback host without an explicit `app.environment` | configuration | 2 |
+| `PRODUCTION_NOT_ALLOWED` | `environment: 'production'` without `allowProduction: true` | configuration | 2 |
+| `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
+| `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
+| `PLATFORM_UNSUPPORTED` | A target requested a platform other than `web`. Mobile platforms are rejected. | configuration | 2 |
+| `UNSUPPORTED_ARTIFACT` | A configured artifact kind the driver cannot produce. `video` is not implemented yet. | configuration | 2 |
+| `UNSUPPORTED_CAPABILITY` | The `web` fixture on a target without the `web` capability, the `device` fixture, state restore without state capability, or `agent.act` and `agent.login` | configuration | 2 |
+| `NO_TESTS` | Zero runnable ordinary test-target pairs. Suppress with `--pass-with-no-tests`. | configuration | 2 |
+| `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
+| `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, or a positional path outside the project root | configuration | 2 |
+| `POLICY_DENIED` | Origin, cookie, scheme, secret-sink, or route policy denial | configuration | 2 |
+| `SESSION_MISMATCH` | A stored session does not match the current run, target, driver, platform, or app identity | configuration | 2 |
+| `SESSION_EXPIRED` | A stored session is past its expiry at restore time | configuration | 2 |
+| `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |
+| `SESSION_UNAVAILABLE` | A test requires a session no selected setup test produced | configuration | 2 |
+| `SESSION_CONTRACT` | A setup test saved a session twice, saved an undeclared name, or finished without saving a declared one | test | 1 |
+| `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout` | test | 1 |
+| `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
+| `LAUNCH_TIMEOUT` | Driver launch exceeded `config.launchTimeout` | infrastructure | 3 |
+| `CLEANUP_TIMEOUT` | Driver close exceeded `config.cleanupTimeout` | infrastructure | 3 |
+| `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
+| `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
+| `WORKER_EXIT` | A worker exited unexpectedly between tests | infrastructure | 3 |
+| `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
+| `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
+| `DRIVER_FAILURE` | Any driver fault with no more specific mapping | infrastructure | 3 |
+| `INTERNAL_ERROR` | A runner invariant was violated. Report it. | internal | 4 |
+| `INTERRUPTED` | A user or CI signal aborted the run | interrupted | 130 |
+
+Errors raised by argument validation in test code use `INVALID_ARGUMENT` and
+`INVALID_LOCATOR`, both test failures with exit code 1. An unclassified thrown
+value from test code is reported as `ERROR`.
+
+## Exit codes
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | All selected tests passed, were flaky, or were explicitly skipped |
+| 1 | Final test or setup failure, or test timeout |
+| 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
+| 3 | Driver, browser, app process, model provider, artifact, or cleanup infrastructure failure |
+| 4 | Internal runner invariant or unhandled runner error |
+| 130 | Interrupted by a user or CI signal |
+
+Precedence:
+
+```
+130 > 4 > 3 > 2 > 1 > 0
+```
+
+For a mixed run the highest-precedence code present wins. The report keeps every
+individual result; precedence affects only the process exit code. A run with one
+infrastructure failure and forty test failures exits 3.
+
+A setup assertion failure is a test failure and skips its dependents. Missing
+setup infrastructure keeps its own configuration or infrastructure class.
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting" />
+  <Card title="CLI" icon="rectangle-terminal" href="/reference/cli" />
+  <Card title="agent" icon="robot" href="/reference/agent" />
+  <Card title="defineConfig" icon="gear" href="/reference/config" />
+</CardGroup>

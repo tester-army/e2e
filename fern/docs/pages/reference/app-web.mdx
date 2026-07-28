@@ -1,0 +1,294 @@
+---
+title: app and web
+subtitle: Portable app lifecycle, plus the web capability fixture.
+---
+
+`app` is the portable surface: every method exists on every platform. `web` is a
+capability fixture for web-only work. Declare `requires: ['web']` in portable
+suites; acquiring it on a target without the `web` capability fails with
+`UNSUPPORTED_CAPABILITY`.
+
+## App
+
+```ts
+export interface App {
+  open(path?: string): Promise<void>;
+  restart(): Promise<void>;
+  clearState(): Promise<void>;
+  back(): Promise<void>;
+  deepLink(url: string): Promise<void>;
+  screenshot(label?: string): Promise<string>;
+}
+```
+
+No `App` method takes a `timeout` option. Each budget is additionally capped by
+the remaining test timeout.
+
+| Method | Timeout | Behavior | Throws |
+| --- | --- | --- | --- |
+| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or route relative to it. Marks the attempt as opened. | `POLICY_DENIED` outside `app.allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
+| `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. Marks the attempt as opened. | `ACTION_FAILED`, `DRIVER_FAILURE` |
+| `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `DRIVER_FAILURE` |
+| `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED` |
+| `deepLink(url)` | `config.timeout`, 120000 ms | Resolves the URL against the base URL and validates the origin. | `POLICY_DENIED` for a disallowed origin or a `file:`, `data:`, or `javascript:` scheme |
+| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures evidence, registers it as an attempt artifact, and returns its path relative to the artifact root. `label` defaults to `''`. | `UNSUPPORTED_ARTIFACT`, `DRIVER_FAILURE` |
+
+```ts
+await app.open('/settings/billing');
+const shot = await app.screenshot('after-checkout');
+```
+
+<Callout intent="warning">
+`clearState` inside a serial group destroys the shared state the group depends
+on. Use it in `beforeEach` of an ordinary group instead.
+</Callout>
+
+Pixel evidence is suppressed for the rest of an attempt once any `Secret` has
+been filled.
+
+## Web
+
+```ts
+export interface Web {
+  goto(
+    url: string,
+    options?: {
+      waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+      timeout?: number;
+    },
+  ): Promise<void>;
+  reload(options?: ActionOptions): Promise<void>;
+  back(options?: ActionOptions): Promise<void>;
+  forward(options?: ActionOptions): Promise<void>;
+  url(): Promise<string>;
+  title(): Promise<string>;
+  waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  locator(selector: string): Locator;
+  frameLocator(selector: string): Screen;
+  evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
+  evaluate<T extends JsonValue, Arg extends JsonValue>(
+    fn: string | ((arg: Arg) => T | Promise<T>),
+    arg: Arg,
+  ): Promise<T>;
+  route(
+    pattern: string | RegExp,
+    handler: (route: WebRoute) => void | Promise<void>,
+  ): Promise<void>;
+  unroute(pattern: string | RegExp): Promise<void>;
+  waitForResponse(
+    pattern: string | RegExp,
+    options?: { timeout?: number },
+  ): Promise<WebResponse>;
+  cookies(): Promise<Cookie[]>;
+  setCookies(cookies: readonly Cookie[]): Promise<void>;
+  setViewport(size: { width: number; height: number }): Promise<void>;
+  onDialog(
+    handler: 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>),
+  ): Promise<() => Promise<void>>;
+  waitForDownload(
+    trigger: () => Promise<void>,
+    options?: { timeout?: number },
+  ): Promise<{ path: string; suggestedFilename: string }>;
+  readonly keyboard: {
+    press(key: string): Promise<void>;
+    type(text: string): Promise<void>;
+  };
+  readonly mouse: {
+    move(x: number, y: number): Promise<void>;
+    wheel(deltaX: number, deltaY: number): Promise<void>;
+    down(): Promise<void>;
+    up(): Promise<void>;
+  };
+}
+```
+
+| Member | Default timeout |
+| --- | --- |
+| `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms |
+| `waitForURL` | `config.assertionTimeout`, 5000 ms |
+| `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms |
+| `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
+
+### Navigation
+
+| Method | Behavior | Throws |
+| --- | --- | --- |
+| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` selects the readiness condition and defaults to the driver default. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
+| `reload(options?)` | One history reload | `ACTION_FAILED` |
+| `back(options?)` | One history entry back | `ACTION_FAILED` |
+| `forward(options?)` | One history entry forward | `ACTION_FAILED` |
+| `url()` | Current serialized URL, immediate read | - |
+| `title()` | Current document title, immediate read | - |
+| `waitForURL(url, options?)` | Polls every 100 ms. A relative string resolves against the base URL and matches exactly after normalization; a `RegExp` tests the full URL. | `ASSERTION_FAILED` on timeout |
+
+```ts
+await web.goto('/dashboard', { waitUntil: 'networkidle' });
+await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
+```
+
+### Locators and frames
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `locator(selector)` | `Locator` | Web-only CSS or XPath locator, synchronous. Prefer semantic `screen` queries; a raw selector is not portable. Throws `INVALID_LOCATOR` for an empty selector. |
+| `frameLocator(selector)` | `Screen` | Query scope inside one iframe. You query inside it, you do not act on it. At resolve time it throws `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several. |
+
+```ts
+const payment = web.frameLocator('#payment-frame');
+await payment.getByLabel('Card number').fill('4242424242424242');
+```
+
+### evaluate
+
+Both overloads serialize the function and run it in the page, so it cannot close
+over test-scope variables. Pass data through `arg`. Both `arg` and the return
+value must be `JsonValue`; anything else, including a non-finite number, throws
+`INVALID_ARGUMENT`.
+
+```ts
+const count = await web.evaluate(() => document.querySelectorAll('li').length);
+const flag = await web.evaluate(
+  (name: string) => window.localStorage.getItem(name),
+  'featureFlags',
+);
+```
+
+### Routing
+
+| Method | Behavior | Throws |
+| --- | --- | --- |
+| `route(pattern, handler)` | Registers an attempt-scoped route. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice, or returns without deciding |
+| `unroute(pattern)` | Removes every attempt-scoped route registered with a matching pattern | - |
+| `waitForResponse(pattern, options?)` | Resolves with a `WebResponse` whose `json()` and `text()` decode the buffered body | `ACTION_FAILED` when nothing matches inside the deadline |
+
+```ts
+await web.route('**/api/quote', async (route) => {
+  await route.fulfill({ json: { cents: 4200 } });
+});
+
+const response = await web.waitForResponse('**/api/orders');
+expect(response.status).toBe(201);
+```
+
+```ts
+export type RouteFulfillResponse = {
+  status?: number;
+  headers?: Record<string, string>;
+} & (
+  | { json: JsonValue; body?: never }
+  | { body: string; json?: never }
+  | { body?: never; json?: never }
+);
+
+export interface WebRoute {
+  readonly request: {
+    readonly url: string;
+    readonly method: string;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly postData?: string;
+  };
+  fulfill(response: RouteFulfillResponse): Promise<void>;
+  continue(): Promise<void>;
+  abort(): Promise<void>;
+}
+
+export interface WebResponse {
+  readonly url: string;
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+}
+```
+
+`json` and `body` are mutually exclusive. Omitting both fulfills with an empty
+body.
+
+### Cookies and viewport
+
+| Method | Behavior | Throws |
+| --- | --- | --- |
+| `cookies()` | Returns a mutable array copy of the cookies visible to the current context | - |
+| `setCookies(cookies)` | Validates every cookie's target origin before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a disallowed origin; nothing is set when any entry is rejected |
+| `setViewport(size)` | Resizes the viewport and records the new size on the report | - |
+
+```ts
+export interface CookieFields {
+  name: string;
+  value: string;
+  /** Unix timestamp in whole seconds. */
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+export type Cookie = CookieFields &
+  (
+    | { url: string; domain?: never; path?: never }
+    | { url?: never; domain: string; path?: string }
+  );
+```
+
+Supply `url`, or `domain` with an optional `path`. Never both.
+
+```ts
+await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
+```
+
+### Dialogs and downloads
+
+| Method | Behavior | Throws |
+| --- | --- | --- |
+| `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. | - |
+| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. The watch is cancelled on every failure path. | `ACTION_FAILED` when the download does not complete in time |
+
+```ts
+export interface Dialog {
+  readonly message: string;
+  accept(text?: string): Promise<void>;
+  dismiss(): Promise<void>;
+}
+```
+
+```ts
+const off = await web.onDialog('accept');
+await screen.getByRole('button', { name: 'Delete' }).tap();
+await off();
+
+const file = await web.waitForDownload(() =>
+  screen.getByRole('link', { name: 'Export CSV' }).tap(),
+);
+```
+
+### keyboard and mouse
+
+| Method | Behavior |
+| --- | --- |
+| `keyboard.press(key)` | Sends one key to whatever has focus |
+| `keyboard.type(text)` | Types plain text into whatever has focus |
+| `mouse.move(x, y)` | Moves the pointer |
+| `mouse.wheel(deltaX, deltaY)` | Scrolls the pointer wheel |
+| `mouse.down()` | Presses the primary button |
+| `mouse.up()` | Releases the primary button |
+
+Both namespaces are viewport-level and unfocused. Prefer `locator.press` and
+`locator.fill` when a target exists. `keyboard.type` takes plain text only;
+use `locator.fill` with a `Secret` for secret material.
+
+### JsonValue
+
+```ts
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue =
+  | JsonPrimitive
+  | { readonly [key: string]: JsonValue }
+  | readonly JsonValue[];
+```
+
+<CardGroup cols={2}>
+  <Card title="Web capabilities" icon="globe" href="/web" />
+  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
+  <Card title="defineConfig" icon="gear" href="/reference/config" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+</CardGroup>

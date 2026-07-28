@@ -1,0 +1,156 @@
+---
+title: Continuous integration
+subtitle: One workflow, plus the defaults the runner changes on its own.
+---
+
+```yaml title=".github/workflows/e2e.yml"
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Provision the browser up front so a first-run download is never
+      # charged against a launch timeout.
+      - name: Install browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run e2e
+        run: npx --no-install e2e run
+        env:
+          APP_URL: http://127.0.0.1:3000
+          E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
+          E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
+
+      # The report exists on every outcome, so upload it whenever the job ran.
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report
+          path: .e2e/report.json
+          if-no-files-found: warn
+
+      # Screenshots and traces are only interesting when something broke.
+      - name: Upload artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-artifacts
+          path: .e2e/artifacts
+          if-no-files-found: warn
+          retention-days: 7
+```
+
+<Callout intent="note">
+Actions are pinned to commit SHAs, not tags. A tag is mutable, and a workflow
+with repository secrets is the wrong place to run code that can change under you.
+</Callout>
+
+`--no-install` makes `npx` fail rather than silently fetch a mutable version from
+the registry. With `--frozen-lockfile`, the runner, the driver, and the browser
+all come from your lockfile.
+
+## What CI changes automatically
+
+CI mode is active when the `CI` environment variable is set and is not empty,
+`0`, or `false`. That is the only signal, so `CI=1 npx e2e run` reproduces CI
+behavior locally.
+
+| Setting | Local | CI | Why |
+| --- | --- | --- | --- |
+| `retries` | `0` | `1` | Locally a retry hides the bug you were about to inspect |
+| `workers` | half your cores | `1` | A shared runner is the noisiest place to add timing variance |
+| `.only` | allowed | rejected with `ONLY_IN_CI` | A focused test that reaches CI silently disables the rest of the suite |
+
+Override any of them when you mean it:
+
+```bash
+npx --no-install e2e run --workers 4 --retries 0
+```
+
+## Model credentials
+
+Deterministic tests need no model. For a suite that uses `agent`, pass the model
+and its key through the environment:
+
+```yaml
+      - name: Run agentic suite
+        run: npx --no-install e2e run --config e2e.agent.config.ts
+        env:
+          E2E_MODEL: ${{ vars.E2E_MODEL }}
+          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+```
+
+`E2E_MODEL` is a `provider/model-id` reference and is not secret - keep it in a
+variable so you can see which model a run used. `E2E_MODEL_API_KEY` is the
+credential. Its value never enters logs, reports, or child-process arguments, and
+your app process cannot read it.
+
+## Keep model-backed tests opt-in
+
+Deterministic tests are reproducible. Agentic tests are comparable in structure
+but not identical - the same instruction can take a different, equally valid path.
+Gating merges on that makes the model a shared dependency of every pull request.
+
+<Steps>
+  <Step title="Split the config">
+    A separate `e2e.agent.config.ts` with its own `tests` glob and a larger
+    `actionTimeout`, since every described target includes a model round trip.
+  </Step>
+  <Step title="Split the workflow">
+    Run it on `workflow_dispatch` or `schedule`, never on `pull_request`.
+  </Step>
+  <Step title="Keep it out of required checks">
+    Branch protection requires the deterministic job only.
+  </Step>
+</Steps>
+
+```yaml title="Nightly agentic run"
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+```
+
+## Reacting to the exit code
+
+A non-zero exit fails the step, which is usually all you want. When you care
+about the class of failure, remember what each code means: 1 is a real test
+failure, 2 is configuration or policy, 3 is infrastructure, 130 is a
+cancellation.
+
+<Callout intent="warning">
+Do not retry the whole job on exit code 2. Configuration and collection errors
+are deterministic, so a re-run burns minutes and produces the same red. Exit 3 is
+the only code where a job-level retry is a reasonable reflex.
+</Callout>
+
+<CardGroup cols={2}>
+  <Card title="Running tests" icon="terminal" href="/running-tests">
+    Flags, artifacts, the report, and every exit code.
+  </Card>
+  <Card title="Troubleshooting" icon="stethoscope" href="/troubleshooting">
+    Including the failures that only happen in CI.
+  </Card>
+</CardGroup>

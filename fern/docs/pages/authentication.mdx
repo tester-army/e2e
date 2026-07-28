@@ -1,0 +1,179 @@
+---
+title: Authentication
+subtitle: Sign in once, then reuse that state everywhere else.
+---
+
+Signing in through the UI in every test is slow, and it is usually the flakiest
+code in a suite. e2e splits it in two: a setup test produces named state, and
+ordinary tests declare which state they want.
+
+<CodeBlocks>
+```ts title="tests/auth.setup.e2e.ts"
+import { test, expect, credentials } from 'e2e';
+
+test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
+  const admin = credentials.user('admin');
+
+  await app.open('/login');
+  await screen.getByLabel('Username').fill(admin.username);
+  await screen.getByLabel('Password').fill(admin.password);
+  await screen.getByRole('button', { name: 'Sign in' }).tap();
+
+  await expect(web).toHaveURL('/dashboard');
+  await expect(screen.getByRole('status', { name: 'Greeting' })).toContainText('admin');
+
+  await session.save('admin');
+});
+```
+```ts title="tests/dashboard.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, web }) => {
+  await app.open('/dashboard');
+
+  await expect(web).toHaveURL('/dashboard');
+  await expect(screen.getByRole('status', { name: 'Greeting' })).toHaveText(
+    'Welcome back, admin!',
+  );
+});
+```
+</CodeBlocks>
+
+The consumer never mentions a file, an import, or an order. It names a session
+and the runner wires it up. Selecting `tests/dashboard.e2e.ts` on its own still
+runs the setup that produces `admin`.
+
+## The rules that matter
+
+| Rule | If you break it |
+| --- | --- |
+| Setup tests are top-level, never inside `describe` | collection error |
+| Exactly one setup declares a given session name | collection error |
+| Every name in `sessions` is saved by the body | `SESSION_CONTRACT` failure |
+| Only declared names are saved | `SESSION_CONTRACT` failure |
+
+Setup tests run before any ordinary test for the same target. If a setup fails,
+its dependents are skipped with cause `setup-failed` and unrelated tests keep
+going.
+
+<Callout intent="note" title="Assert that you are actually signed in">
+`session.save()` captures whatever state exists. If the sign-in silently failed,
+you would persist an anonymous session and every dependent test would fail
+somewhere confusing. Assert the post-login URL and a greeting first, as above.
+</Callout>
+
+A session holds cookies, local storage, and IndexedDB. It does not hold server
+or database state. Restoring replaces client state rather than merging it, and
+you start with no page open, so a consuming test calls `app.open()` first.
+
+Sessions last for one run. They are encrypted on disk with a key that lives only
+in runner memory, and the whole directory is deleted during cleanup. They are
+deliberately not reused across runs: a session file is a bearer credential, and a
+long-lived one is a credential with no expiry story.
+
+## Credentials
+
+Never hardcode a password in a test. Declare it in config and source the value
+from the environment.
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+
+export default defineConfig({
+  app: { url: 'http://127.0.0.1:3000' },
+  credentials: {
+    admin: {
+      username: 'admin@example.test',
+      password: process.env.ADMIN_PASSWORD ?? '',
+    },
+  },
+});
+```
+
+Config is trusted project code, so reading `process.env` there is expected. You
+can also override either field per run without touching the file:
+
+```bash
+E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx e2e run
+```
+
+The variable name is the credential name uppercased, with every
+non-alphanumeric character replaced by `_`.
+
+## The password is a handle, not a string
+
+```ts
+import { credentials } from 'e2e';
+
+const admin = credentials.user('admin');
+
+admin.name;     // 'admin'
+admin.username; // a plain string
+admin.password; // Secret - opaque, with no plaintext accessor
+```
+
+A `Secret` has no `.value` and no way to widen it back to a string. Exactly two
+sinks accept one:
+
+<CodeBlocks>
+```ts title="Deterministic"
+await screen.getByLabel('Password').fill(admin.password);
+```
+```ts title="Agentic"
+await agent.type('the Password field', admin.password);
+```
+</CodeBlocks>
+
+Anywhere else is a type error or a `POLICY_DENIED` failure. That is what makes
+the blast radius knowable: there is no generic "give me the string" path to
+audit.
+
+The value never reaches a model, a log, a report, or a trace. Password fields
+arrive at the model masked, and any configured credential value found on screen
+is replaced with a placeholder before the observation leaves the runner. Reading
+a secure field back out is denied too, so assert the outcome - that the form
+submitted, that the dashboard rendered - rather than the secret.
+
+### Narrow where a credential may be used
+
+```ts title="e2e.config.ts"
+credentials: {
+  admin: {
+    username: 'admin@example.test',
+    password: process.env.ADMIN_PASSWORD ?? '',
+    allowedOrigins: ['https://auth.staging.example.com'],
+  },
+},
+```
+
+A per-credential `allowedOrigins` narrows the app policy for that credential and
+can never widen it. Use it when a credential belongs to exactly one of several
+allowed origins, so a page that steers the flow elsewhere cannot collect the
+password when it arrives.
+
+`agent.login(user)` hands the whole sign-in to the model, with the credential
+pinned so the password is still resolved host-side:
+
+```ts
+await agent.login(credentials.user('admin'));
+```
+
+<Callout intent="warning" title="Not implemented yet">
+`agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Fill the form
+deterministically for now, as in the setup test above. A login form is the most
+addressable screen in your app, so this costs no model calls and cannot vary.
+</Callout>
+
+One more consequence worth knowing: once a secret is filled, `agent.assert`
+stops attaching screenshot evidence for the rest of that attempt, because a page
+is free to mirror a typed value anywhere on screen. Fill secrets in a setup test
+and consume the session elsewhere to keep full evidence in the tests that matter.
+
+<CardGroup cols={2}>
+  <Card title="Web capabilities" icon="globe" href="/web">
+    Cookies, routes, dialogs, frames, and downloads.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    The `credentials` block and every other key.
+  </Card>
+</CardGroup>
