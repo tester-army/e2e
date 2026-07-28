@@ -20,7 +20,12 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
   } catch (error) {
     if (!(error instanceof AgentError) || error.code !== "STEP_TIMEOUT") throw error;
   }
-  await agent.waitFor("the vacation search form asking where to go is visible and not covered");
+  // "not covered" is a property no accessibility tree encodes: a consent sheet
+  // or sticky promo that overlays the form leaves it present and named in the
+  // tree while hiding it on screen. This judgment needs the pixels.
+  await agent.waitFor("the vacation search form asking where to go is visible and not covered", {
+    vision: true,
+  });
 
   await agent.tap("the destination search field asking where you want to go");
   await agent.type("the destination search input", "Grecja");
@@ -43,15 +48,26 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
   expect(offer.hotel.length).toBeGreaterThan(2);
   expect(offer.price).toMatch(/zł|PLN|\d/);
 
-  await agent.tap(
-    "the link or button that opens the first vacation offer details",
-  );
+  // An offer card is one link whose accessible name aggregates the whole card:
+  // hotel, dates, airports, board, rating, review count, price, CTA. Nothing can
+  // re-find that name, so picking it strands the locate sweep — which is what
+  // the tree-only model does here.
+  //
+  // Vision fixes it by improving the choice, not by bypassing it: seeing the
+  // card, the model picks the small inner control it would actually click, and
+  // the runner still re-resolves that node through a derived query. Pointing is
+  // the fallback underneath, for when no node is re-findable at all.
+  await agent.tap("the first vacation offer card in the results list", { vision: true });
   await agent.waitFor(
     "a hotel offer page is visible with a price and a way to continue booking or check availability",
   );
 
   // Funnel boundary: verify the booking entry point exists, never enter it.
+  // Judged on pixels because the check is about what the page actually presents
+  // — a price rendered into a promo image, a button under a cookie banner — not
+  // about which nodes exist.
   await agent.assert(
     "the offer page shows a booking or availability button and a total price, and no reservation form has been submitted",
+    { vision: true },
   );
 });
