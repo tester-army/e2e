@@ -40,7 +40,16 @@ export interface RawObservation {
   secureNodeCount: number;
 }
 
-export type SemanticMode = { kind: 'node' } | { kind: 'tree'; maxNodes: number };
+export type SemanticMode =
+  | { kind: 'node' }
+  | {
+      kind: 'tree';
+      maxNodes: number;
+      /** Cuts each node's name at this length; the caller owns the contract value. */
+      nameLimit: number;
+      /** Cuts each node's text at this length; the caller owns the contract value. */
+      textLimit: number;
+    };
 
 export interface SemanticOptions {
   testIdAttribute: string;
@@ -98,8 +107,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     options.mode.kind === 'tree'
       ? {
           attributes: [options.testIdAttribute, 'type', 'autocomplete', 'href', 'role'],
-          textLimit: 512,
-          nameLimit: 256,
+          textLimit: options.mode.textLimit,
+          nameLimit: options.mode.nameLimit,
           redactHref: true,
           directTextOnly: true,
           documentRoot: true,

@@ -122,6 +122,16 @@ function formatNode(
   return `${' '.repeat(Math.min(depth, MAX_INDENT_DEPTH))}${parts.join(' ')}`;
 }
 
+/**
+ * True when a rendered observation line carries a role token: a bare
+ * lowercase word right after the node id. Role-less text holders jump
+ * straight to a quoted name or `key="value"` attribute. Lives next to
+ * `formatNode` so the line grammar has exactly one owner.
+ */
+export function observedLineHasRole(line: string): boolean {
+  return /^\s*#\S+ [a-z][a-z-]*(\s|$)/.test(line);
+}
+
 function collapse(text: string): string {
   return sanitizeText(text).replace(/\s+/g, ' ').trim();
 }

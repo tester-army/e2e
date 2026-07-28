@@ -108,7 +108,8 @@ export class Invocation {
     this.system = buildSystem(options.task, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
-      `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
+      () =>
+        `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
         `(timeout ${options.timeoutMs}ms, budget ${options.maxModelCalls} calls, ledger ${this.ledger.bytes}B)`,
     );
   }
@@ -147,7 +148,8 @@ export class Invocation {
         ...eventDetail,
       });
       agentTrace(
-        `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
+        () =>
+          `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
           `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
           `${eventDetail?.bytes !== undefined ? ` bytes=${eventDetail.bytes}` : ''}`,
       );
@@ -162,7 +164,8 @@ export class Invocation {
         code: errorCode(cause),
       });
       agentTrace(
-        `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
+        () =>
+          `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
           `${errorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
       );
       throw toAgentError(cause);
@@ -189,9 +192,10 @@ export class Invocation {
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     this.observationRevision = observation.revision;
     observationTrace(
-      `${this.options.api} ${observation.revision} (${observation.nodes.size} nodes, ${observation.bytes}B${
-        observation.truncated ? ', truncated' : ''
-      })`,
+      () =>
+        `${this.options.api} ${observation.revision} (${observation.nodes.size} nodes, ${observation.bytes}B${
+          observation.truncated ? ', truncated' : ''
+        })`,
       observation.text,
     );
     return observation;
@@ -263,7 +267,7 @@ export class Invocation {
           !this.deadline.expired()
         ) {
           this.recordSchemaRejection(request.schemaName);
-          agentTrace(`${this.options.api} repair round: ${cause.explanation}`);
+          agentTrace(() => `${this.options.api} repair round: ${cause.explanation}`);
           repair = {
             issue: cause.explanation,
             rawText: cause.rawText,

@@ -7,7 +7,13 @@
  * action. The model never supplies a selector, coordinate, or action.
  */
 
-import type { LocatorExpression, NodeRef, SemanticNode } from '../driver/index.ts';
+import {
+  OBSERVED_NAME_LIMIT,
+  OBSERVED_TEXT_LIMIT,
+  type LocatorExpression,
+  type NodeRef,
+  type SemanticNode,
+} from '../driver/index.ts';
 import {
   describeExpression,
   filterExpression,
@@ -67,15 +73,17 @@ export async function observeAndSelect(
   });
   const explanation = response.explanation;
   if (response.target === null) {
-    agentTrace(`locate ${JSON.stringify(target)}: model declined — ${explanation}`);
+    agentTrace(() => `locate ${JSON.stringify(target)}: model declined — ${explanation}`);
     return { observation, selected: null, explanation, declined: true };
   }
-  const selected = observation.nodes.get(response.target.id) ?? null;
+  const targetId = response.target.id;
+  const selected = observation.nodes.get(targetId) ?? null;
   if (selected === null) invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
   agentTrace(
-    `locate ${JSON.stringify(target)}: model selected #${response.target.id} (${
-      selected === null ? 'not in observation' : describe(selected)
-    }) — ${explanation}`,
+    () =>
+      `locate ${JSON.stringify(target)}: model selected #${targetId} (${
+        selected === null ? 'not in observation' : describe(selected)
+      }) — ${explanation}`,
   );
   return { observation, selected, explanation, declined: false };
 }
@@ -154,12 +162,11 @@ export async function resolveSelected(
     );
   }
   const engine = invocation.engine;
-  let outcomes: string[] = [];
 
   for (;;) {
-    // Outcomes are judged per sweep: a query that stopped matching several
+    // Outcomes are collected per sweep: a query that stopped matching several
     // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
-    outcomes = [];
+    const outcomes: string[] = [];
     let ambiguous = false;
     for (const expression of candidates) {
       let refs: readonly NodeRef[];
@@ -194,7 +201,7 @@ export async function resolveSelected(
         continue;
       }
       invocation.recordPolicy('locate.identity', 'allowed');
-      agentTrace(`locate: resolved via ${describeExpression(expression)}`);
+      agentTrace(() => `locate: resolved via ${describeExpression(expression)}`);
       return {
         ref,
         expression,
@@ -204,7 +211,7 @@ export async function resolveSelected(
       };
     }
 
-    agentTrace(`locate: sweep failed\n  ${outcomes.join('\n  ')}`);
+    agentTrace(() => `locate: sweep failed\n  ${outcomes.join('\n  ')}`);
     if (invocation.deadline.expired()) {
       invocation.recordPolicy('locate.identity', 'denied');
       // Each candidate's outcome names the exact query and why it was
@@ -232,14 +239,6 @@ function scopeToFrames(
 }
 
 /**
- * Observed names and texts at or beyond this length may have been truncated by
- * the driver's observation bound, which driver-1 does not signal. Such values
- * are matched as substrings and compared as prefixes: for a complete value the
- * relaxed match still holds, so the fallback is safe in both cases.
- */
-const POSSIBLY_TRUNCATED_LENGTH = 200;
-
-/**
  * Bounded prefix used to re-find nodes whose names aggregate a whole card of
  * text. Long names diverge between accessible-name computation and rendered
  * text (image alts, badges), so a role-scoped text-content prefix filter is
@@ -247,8 +246,15 @@ const POSSIBLY_TRUNCATED_LENGTH = 200;
  */
 const NAME_PREFIX_LENGTH = 64;
 
-function possiblyTruncated(value: string): boolean {
-  return value.length >= POSSIBLY_TRUNCATED_LENGTH;
+/**
+ * True when an observed field was cut at the driver contract's observation
+ * bound (`OBSERVED_NAME_LIMIT` / `OBSERVED_TEXT_LIMIT`). Checked on the raw
+ * value — normalization only shrinks — so every value below the limit is
+ * provably complete. Truncated values are matched as substrings and compared
+ * as prefixes.
+ */
+function truncatedAt(value: string | undefined, limit: number): boolean {
+  return (value ?? '').length >= limit;
 }
 
 /**
@@ -279,14 +285,14 @@ export function deriveQueries(
   const role = node.role;
   const name = normalize(node.name);
   const text = normalize(node.text);
+  const nameTruncated = truncatedAt(node.name, OBSERVED_NAME_LIMIT);
+  const textTruncated = truncatedAt(node.text, OBSERVED_TEXT_LIMIT);
   const testId = node.attributes?.[testIdAttribute];
   const placeholder = node.attributes?.['placeholder'];
 
   if (role !== undefined && role !== '' && name !== '') {
-    candidates.push(
-      roleQuery(role as Role, { name, exact: !possiblyTruncated(name) }, undefined),
-    );
-    if (possiblyTruncated(name)) {
+    candidates.push(roleQuery(role as Role, { name, exact: !nameTruncated }, undefined));
+    if (nameTruncated) {
       candidates.push(
         filterExpression(roleQuery(role as Role, undefined, undefined), {
           hasText: prefixPattern(name),
@@ -306,11 +312,11 @@ export function deriveQueries(
     candidates.push(textQuery('placeholder', placeholder, { exact: true }, undefined));
   }
   if (name !== '') {
-    candidates.push(textQuery('label', name, { exact: !possiblyTruncated(name) }, undefined));
-    candidates.push(textQuery('text', name, { exact: !possiblyTruncated(name) }, undefined));
+    candidates.push(textQuery('label', name, { exact: !nameTruncated }, undefined));
+    candidates.push(textQuery('text', name, { exact: !nameTruncated }, undefined));
   }
   if (text !== '' && text !== name) {
-    candidates.push(textQuery('text', text, { exact: !possiblyTruncated(text) }, undefined));
+    candidates.push(textQuery('text', text, { exact: !textTruncated }, undefined));
   }
   if (role !== undefined && role !== '' && text !== '') {
     candidates.push(
@@ -343,9 +349,9 @@ export function matchesSignature(observed: SemanticNode, resolved: SemanticNode)
   const observedName = normalize(observed.name);
   if (observedName !== '') {
     const resolvedName = normalize(resolved.name);
-    // A possibly-truncated observed name identifies its node by prefix; the
-    // re-read node carries the full name.
-    return possiblyTruncated(observedName)
+    // A truncated observed name identifies its node by prefix; the re-read
+    // node comes from an unbounded single-node read and carries the full name.
+    return truncatedAt(observed.name, OBSERVED_NAME_LIMIT)
       ? resolvedName.startsWith(observedName)
       : resolvedName === observedName;
   }

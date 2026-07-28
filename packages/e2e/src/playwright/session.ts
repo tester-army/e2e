@@ -22,6 +22,8 @@ import {
   type Observation,
   type OperationContext,
   type SemanticNode,
+  OBSERVED_NAME_LIMIT,
+  OBSERVED_TEXT_LIMIT,
 } from '../driver/index.ts';
 import { matchesText } from '../internal/text.ts';
 import { withTimeout } from '../internal/time.ts';
@@ -66,6 +68,9 @@ const MAX_FRAME_DEPTH = 4;
  * must cost an observation a moment, not the context default timeout.
  */
 const FRAME_CAPTURE_TIMEOUT_MS = 3_000;
+
+/** Budget for capturing the main document, still capped by the operation timeout. */
+const DOCUMENT_CAPTURE_TIMEOUT_MS = 15_000;
 
 /** Bounded settle before an observation so a committing navigation is not raced. */
 const SETTLE_TIMEOUT_MS = 5_000;
@@ -603,7 +608,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
           [],
           MAX_OBSERVED_NODES,
           generation,
-          Math.max(1, Math.min(operation.timeoutMs, 15_000)),
+          Math.max(1, Math.min(operation.timeoutMs, DOCUMENT_CAPTURE_TIMEOUT_MS)),
         );
       } catch (cause) {
         PlaywrightSession.disposeGeneration(generation);
@@ -642,7 +647,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
   ): Promise<{ tree: SemanticNode; nodeCount: number; secureNodeCount: number }> {
     const evaluation = root.evaluateHandle(readSemanticsFunction, {
       testIdAttribute: this.driverContext.app.testIdAttribute,
-      mode: { kind: 'tree' as const, maxNodes: budget },
+      mode: {
+        kind: 'tree' as const,
+        maxNodes: budget,
+        nameLimit: OBSERVED_NAME_LIMIT,
+        textLimit: OBSERVED_TEXT_LIMIT,
+      },
     });
     const captured = await withTimeout(evaluation, timeoutMs, () => {
       // The losing evaluation may still settle later; a late handle must be
@@ -734,8 +744,14 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
   }
 }
 
-/** True when a frame document's origin is inside the app's allowed origins. */
+/**
+ * True when a frame document's origin is inside the app's allowed origins.
+ * `about:blank` and `srcdoc` documents inherit their parent's origin, so they
+ * are the app's own content (consent managers, editors) and always allowed;
+ * the parent frame was already admitted to be captured at all.
+ */
 function isAllowedFrameOrigin(url: string, allowedOrigins: readonly string[]): boolean {
+  if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;
   try {
     return allowedOrigins.includes(new URL(url).origin);
   } catch {

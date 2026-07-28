@@ -1,4 +1,4 @@
-import { expect, test } from "e2e";
+import { AgentError, expect, test } from "e2e";
 import { z } from "zod";
 
 /**
@@ -10,14 +10,15 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
   await app.open("/");
 
   // The consent dialog loads asynchronously and is session-dependent: accept
-  // it when it shows up, move on quickly when it never does.
+  // it when it shows up, move on quickly when it never does. Only a waitFor
+  // timeout means "no dialog"; anything else is a real failure.
   try {
     await agent.waitFor("a cookie consent dialog with an accept button is visible", {
       timeout: 15_000,
     });
     await agent.tap("the button that accepts cookies and closes the consent dialog");
-  } catch {
-    // No consent dialog this session.
+  } catch (error) {
+    if (!(error instanceof AgentError) || error.code !== "STEP_TIMEOUT") throw error;
   }
   await agent.waitFor("the vacation search form asking where to go is visible and not covered");
 

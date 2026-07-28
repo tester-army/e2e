@@ -72,6 +72,16 @@ export interface NodeRef {
   readonly revision: string;
 }
 
+/**
+ * Per-field bounds a driver applies to observation-tree nodes. A `name` or
+ * `text` whose length reaches its limit was cut at exactly that limit, so
+ * "length >= limit" is a precise truncation signal; every shorter value is
+ * complete. Single-node reads (`screen.read`) are unbounded and always carry
+ * the full value.
+ */
+export const OBSERVED_NAME_LIMIT = 256;
+export const OBSERVED_TEXT_LIMIT = 512;
+
 export interface SemanticNode {
   readonly ref: NodeRef;
   readonly role?: string;
