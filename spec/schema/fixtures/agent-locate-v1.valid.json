@@ -3,5 +3,6 @@
   "target": {
     "id": "node-1",
     "revision": "revision-1"
-  }
+  },
+  "explanation": "the only button labelled Continue"
 }

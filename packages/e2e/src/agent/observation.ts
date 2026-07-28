@@ -1,11 +1,20 @@
 /** Observation capture, redaction, and model serialization (spec 09-drivers.md, 14-security.md). */
 
-import type { Observation, SemanticNode } from '../driver/index.ts';
+import type { Observation, ObservationPixels, SemanticNode } from '../driver/index.ts';
 import { sanitizeText } from '../internal/errors.ts';
 import { AgentError } from './error.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
+
+/** Why pixels the caller asked for are not part of this observation. */
+export type PixelsWithheld = 'MASKING_UNPROVEN';
+
+/** Masked pixel evidence cleared for model input. */
+export interface AgentPixels extends ObservationPixels {
+  readonly maskedRegionCount: number;
+  readonly bytes: number;
+}
 
 export interface AgentObservation {
   readonly revision: string;
@@ -15,6 +24,10 @@ export interface AgentObservation {
   readonly nodes: ReadonlyMap<string, SemanticNode>;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
+  /** Present only when the driver captured pixels and masking checks out. */
+  readonly pixels?: AgentPixels | undefined;
+  /** Set when captured pixels were dropped instead of being sent. */
+  readonly pixelsWithheld?: PixelsWithheld | undefined;
 }
 
 /**
@@ -68,6 +81,7 @@ export function prepareObservation(
   if (truncated) lines.push(TRUNCATION_MARKER);
 
   const text = lines.join('\n');
+  const pixels = clearPixels(observation);
   return {
     revision: observation.revision,
     text,
@@ -75,7 +89,28 @@ export function prepareObservation(
     nodes,
     viewport: observation.viewport,
     truncated,
+    ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
+    ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };
+}
+
+/**
+ * Clears captured pixels for model input, or withholds them.
+ *
+ * Every secure node the driver observed must be covered by a masked region.
+ * When it is not, the driver masked less than it saw and the image cannot be
+ * proven redacted, so it is dropped exactly like an incompletely redacted
+ * artifact (14-security.md) — the semantic tree still goes out.
+ */
+function clearPixels(observation: Observation): {
+  cleared?: AgentPixels;
+  withheld?: PixelsWithheld;
+} {
+  const pixels = observation.pixels;
+  if (pixels === undefined) return {};
+  const { secureNodeCount, maskedRegionCount } = observation.redaction;
+  if (maskedRegionCount < secureNodeCount) return { withheld: 'MASKING_UNPROVEN' };
+  return { cleared: { ...pixels, maskedRegionCount, bytes: pixels.data.byteLength } };
 }
 
 /** Depth beyond this renders flat; deep chrome must not buy tokens with spaces. */

@@ -183,6 +183,62 @@ timeout limits that operation; it does not poll. A false judgment rejects with
 `ASSERTION_FAILED` and includes the runner-sanitized explanation and evidence.
 Use `agent.waitFor` for eventually true natural-language conditions.
 
+## Vision
+
+Every model-backed agent method accepts `vision`, default `false`, with the
+project-wide default in `agent.vision`. A per-call value always wins.
+
+`vision: true` adds a masked screenshot of the current observation to the model
+input. It is additive, never a replacement: the semantic tree is always sent,
+because the tree is byte-budgeted, cheap, and carries the node references that
+keep an action auditable. There is no pixels-only mode.
+
+```ts
+agent.assert('the chart trends upward', { vision: true });
+agent.tap('the red pin on the map', { vision: true });
+```
+
+The screenshot and the tree MUST describe the same observation revision. The
+reported image dimensions MUST be the true dimensions of the image bytes, and
+the image MUST record its scale relative to CSS pixels, because every
+coordinate the model reads off it is relative to those dimensions.
+
+`vision` requires a model that accepts image input. A model that does not fails
+the call with `MODEL_PROVIDER_FAILED`. Vision calls use `agent.visionModel` when
+one is configured and `agent.model` otherwise (05-config.md); visual grounding
+is a materially higher bar than accepting an image, and a model may judge pixels
+well while pointing at them badly. Pixel evidence degrades rather than
+failing the call: when it is withheld the tree is still sent and the step
+records why (13-reporting.md). Pixel policy is defined in
+[14-security.md](./14-security.md).
+
+Vision is also the only tier that may send pixel evidence *to* the model.
+`assert.screenshot` is unrelated: it controls failure evidence attached to the
+report after the judgment.
+
+### Visual pointing
+
+Under `vision`, and only under it, a locate response may answer with a point in
+the attached screenshot instead of a node id. It exists for surfaces the tree
+cannot describe, such as canvas, WebGL, and custom-drawn widgets.
+
+The runner owns everything about that point:
+
+- it is bounded to the reported image dimensions; an out-of-bounds point is
+  invalid model output and spends one repair round rather than being clamped;
+- it is converted to CSS pixels, rounded, and clamped once before dispatch;
+- it is hit-tested against the same observation, and the innermost node found —
+  role and name, or the absence of any node — is recorded on the step;
+- the action itself remains predetermined by the API call. The model still
+  never names an action or an error code.
+
+Dispatch happens at the point, not at the center of the hit-tested node:
+retargeting would leave the pixels the model chose, which on a canvas is the
+whole surface. Only `tap` and `click` accept a point, because every other
+method needs a semantic node to act on; a point elsewhere is
+`LOCATOR_NOT_FOUND` carrying the model's explanation. A driver without
+coordinate input cannot serve pointing at all.
+
 ## Errors
 
 `AgentError.code` is assigned by runner logic, never accepted from model text.
@@ -206,8 +262,9 @@ timeouts, cancellations, and product assertions remain distinguishable.
 Every timeout is capped by the remaining test timeout. `cache: false` disables
 cache for that call; `cache: true` uses the resolved run mode and cannot upgrade
 read-only to read-write. `assert.screenshot` defaults to true unless pixel
-evidence is security-tainted. Per-call budgets MUST be positive integers and
-cannot exceed config or hard security limits.
+evidence is security-tainted. `vision` defaults to `agent.vision`, itself
+`false`, and does not change any budget in the table above. Per-call budgets
+MUST be positive integers and cannot exceed config or hard security limits.
 
 The closed model response grammars are
 [`schema/agent-locate-v1.schema.json`](./schema/agent-locate-v1.schema.json),
@@ -215,10 +272,12 @@ The closed model response grammars are
 and [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json).
 Unknown or method-incompatible responses are policy errors.
 
-A locate response naming a node id or observation revision outside the current
-observation is invalid model output: the runner rejects it before any driver
-dispatch and spends remaining model-call budget on one repair round instead of
-failing the step outright.
+A locate response naming a node id, observation revision, or screenshot point
+outside the current observation is invalid model output: the runner rejects it
+before any driver dispatch and spends remaining model-call budget on one repair
+round instead of failing the step outright. A point is offered only by the
+vision variant of the locate grammar; a point answered to a tree-only call is
+invalid output, never an accepted coordinate.
 
 A locate response always carries a short `explanation`: why the selected node
 matches, or, with `target: null`, why nothing in the observation does. An

@@ -2,7 +2,15 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, JSHandle, Page } from 'playwright';
+import type {
+  Browser,
+  BrowserContext,
+  ElementHandle,
+  FrameLocator,
+  JSHandle,
+  Locator as PwLocator,
+  Page,
+} from 'playwright';
 import {
   DriverError,
   type CleanupContext,
@@ -20,6 +28,8 @@ import {
   type LocatorExpression,
   type NodeRef,
   type Observation,
+  type ObservationPixels,
+  type ObserveOptions,
   type OperationContext,
   type SemanticNode,
   OBSERVED_NAME_LIMIT,
@@ -40,6 +50,7 @@ import {
   isPwTimeout,
   message,
   performElementSwipe,
+  readPngSize,
   performViewportSwipe,
   sanitizeFilename,
   staleOr,
@@ -72,8 +83,26 @@ const FRAME_CAPTURE_TIMEOUT_MS = 3_000;
 /** Budget for capturing the main document, still capped by the operation timeout. */
 const DOCUMENT_CAPTURE_TIMEOUT_MS = 15_000;
 
+/**
+ * Budget for one masked screenshot, still capped by the operation timeout. A
+ * heavy page that cannot produce a frame promptly must cost the observation a
+ * moment, not the whole step: the tree is already captured by then, and vision
+ * degrades to tree-only input rather than failing.
+ */
+const PIXEL_CAPTURE_TIMEOUT_MS = 10_000;
+
 /** Bounded settle before an observation so a committing navigation is not raced. */
 const SETTLE_TIMEOUT_MS = 5_000;
+
+/**
+ * Secure fields painted over before pixels leave the backend. It must stay
+ * equivalent to the secure rule the in-page reader applies (`read-node.ts`):
+ * both select an `input` whose type is `password`.
+ */
+const SECURE_FIELD_SELECTOR = 'input[type="password" i]';
+
+/** Opaque fill covering every masked region. */
+const MASK_COLOR = '#000000';
 
 interface ParsedWebTarget {
   readonly browser: 'chromium' | 'firefox' | 'webkit';
@@ -515,6 +544,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       this.checkOperation(operation);
       await this.requirePage().keyboard.press(key);
     },
+    tapPoint: (point, operation) =>
+      this.guard(operation, 'tapPoint', async () => {
+        // The runner validated the point against the observation viewport, so
+        // there is no node to check for actionability: the click is the action.
+        await this.requirePage().mouse.click(point.x, point.y);
+      }),
   };
 
   // --- Artifacts ---
@@ -586,8 +621,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
    * Captures one atomic semantic observation. Secure fields are masked in the
    * page before the tree leaves the backend, and every node keeps a live
    * element handle valid only for the returned revision.
+   *
+   * With `options.pixels`, masked viewport pixels are captured for the same
+   * revision, so a point read off the image and a node read off the tree
+   * describe the same moment.
    */
-  async observe(operation: OperationContext): Promise<Observation> {
+  async observe(operation: OperationContext, options?: ObserveOptions): Promise<Observation> {
     return this.guard(operation, 'observe', async () => {
       const page = this.requirePage();
       // A preceding action may still be committing a navigation. Settling is
@@ -601,6 +640,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
       const generation = new Map<string, StoredRef>();
       let captured: Awaited<ReturnType<PlaywrightSession['captureDocument']>>;
+      let capturedPixels: Awaited<ReturnType<PlaywrightSession['capturePixels']>> | undefined;
       try {
         captured = await this.captureDocument(
           page.locator(':root'),
@@ -610,6 +650,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
           generation,
           Math.max(1, Math.min(operation.timeoutMs, DOCUMENT_CAPTURE_TIMEOUT_MS)),
         );
+        // Both halves are captured before the generation swap, so a failed
+        // observation leaves the session on its previous generation instead of
+        // publishing handles for a revision no caller ever received.
+        if (options?.pixels === true) {
+          capturedPixels = await this.capturePixels(page, operation, captured.secureFramePaths);
+        }
       } catch (cause) {
         PlaywrightSession.disposeGeneration(generation);
         throw cause;
@@ -619,15 +665,60 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       return {
         revision,
         capturedAt: new Date().toISOString(),
+        ...(capturedPixels === undefined ? {} : { pixels: capturedPixels.pixels }),
         tree: captured.tree,
         viewport: { width: viewport.width, height: viewport.height, scale: 1 },
         redaction: {
           secureNodeCount: captured.secureNodeCount,
-          maskedRegionCount: 0,
+          maskedRegionCount: capturedPixels?.maskedRegionCount ?? 0,
           complete: true,
         },
       };
     });
+  }
+
+  /**
+   * Captures masked viewport pixels for the observation being assembled.
+   *
+   * Secure fields are covered before the image leaves the backend and the
+   * covered regions are counted, so the runner can report exactly what was
+   * redacted. `scale: 'css'` keeps the image in the CSS pixel space every
+   * observed node rect already uses, which is what lets the runner hit-test a
+   * point against the same tree.
+   */
+  private async capturePixels(
+    page: Page,
+    operation: OperationContext,
+    secureFramePaths: readonly (readonly string[])[],
+  ): Promise<{ pixels: ObservationPixels; maskedRegionCount: number }> {
+    const masks = secureFramePaths.map((framePath) => secureFieldLocator(page, framePath));
+    const counts = await Promise.all(masks.map((mask) => mask.count().catch(() => 0)));
+    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+    const image = await page.screenshot({
+      type: 'png',
+      scale: 'css',
+      animations: 'disabled',
+      caret: 'hide',
+      timeout: Math.max(1, Math.min(operation.timeoutMs, PIXEL_CAPTURE_TIMEOUT_MS)),
+      ...(masks.length === 0 ? {} : { mask: masks, maskColor: MASK_COLOR }),
+    });
+    const data = new Uint8Array(image);
+    // The bytes are the authority on their own size. `scale: 'css'` is asked
+    // for precisely so one image pixel is one CSS pixel, but the ratio is
+    // measured rather than assumed: if a capture ever comes back at device
+    // scale, reporting the viewport instead would displace every coordinate
+    // the model reads off it.
+    const size = readPngSize(data) ?? { width: viewport.width, height: viewport.height };
+    return {
+      pixels: {
+        data,
+        mediaType: 'image/png',
+        width: size.width,
+        height: size.height,
+        scale: viewport.width > 0 ? size.width / viewport.width : 1,
+      },
+      maskedRegionCount: counts.reduce((total, count) => total + count, 0),
+    };
   }
 
   /**
@@ -644,7 +735,13 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     budget: number,
     generation: Map<string, StoredRef>,
     timeoutMs: number,
-  ): Promise<{ tree: SemanticNode; nodeCount: number; secureNodeCount: number }> {
+  ): Promise<{
+    tree: SemanticNode;
+    nodeCount: number;
+    secureNodeCount: number;
+    /** Frame chains of documents holding at least one secure field, for masking. */
+    secureFramePaths: readonly (readonly string[])[];
+  }> {
     const evaluation = root.evaluateHandle(readSemanticsFunction, {
       testIdAttribute: this.driverContext.app.testIdAttribute,
       mode: {
@@ -671,6 +768,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       ]);
       elementsHandle = elementsProperty;
       let secureNodeCount = initialSecureCount;
+      const secureFramePaths: (readonly string[])[] = initialSecureCount > 0 ? [framePath] : [];
       const elements = await collectElementHandles(elementsHandle, nodes.length);
       const refs = elements.map((element) =>
         this.storeObservationRef(generation, element, revision),
@@ -702,12 +800,14 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
           frameChildren.set(index, child.tree);
           nodeCount += child.nodeCount;
           secureNodeCount += child.secureNodeCount;
+          secureFramePaths.push(...child.secureFramePaths);
         }
       }
       return {
         tree: assembleTree(nodes, refs, framePath, frameChildren),
         nodeCount,
         secureNodeCount,
+        secureFramePaths,
       };
     } finally {
       await elementsHandle?.dispose().catch(() => undefined);
@@ -742,6 +842,15 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     this.observationRefs.clear();
     this.refs.clear();
   }
+}
+
+/** Locates every secure field of one observed document, main frame or nested. */
+function secureFieldLocator(page: Page, framePath: readonly string[]): PwLocator {
+  const scope = framePath.reduce<Page | FrameLocator>(
+    (current, selector) => current.frameLocator(selector),
+    page,
+  );
+  return scope.locator(SECURE_FIELD_SELECTOR);
 }
 
 /**

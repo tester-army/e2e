@@ -37,7 +37,15 @@ export interface StepMetrics {
   observationBytes: number;
   contextBytes: number;
   ledgerBytes: number;
+  /** Largest masked image sent to the model in this step, in bytes. */
+  pixelBytes?: number;
 }
+
+/**
+ * Why a vision step fell back to tree-only input. Pixel evidence degrades
+ * rather than failing the step (spec 14-security.md).
+ */
+export type VisionDegradation = 'PIXEL_TAINTED' | 'MASKING_UNPROVEN' | 'UNSUPPORTED_CAPABILITY';
 
 /** Model provenance and usage for one model-backed step. */
 export interface StepModelInfo {
@@ -67,6 +75,9 @@ export interface StepAgentDetails {
   cache?: StepCacheInfo;
   observationRevision?: string;
   explanation?: string;
+  /** True when masked pixel evidence was model input, not just an artifact. */
+  visionInput?: boolean;
+  visionDegraded?: VisionDegradation;
 }
 
 export interface StepRecord {
@@ -80,6 +91,8 @@ export interface StepRecord {
   durationMs: number;
   observationRevision?: string;
   explanation?: string;
+  visionInput?: boolean;
+  visionDegraded?: VisionDegradation;
   viewport?: { width: number; height: number; scale: number };
   metrics?: StepMetrics;
   events: StepEvent[];
@@ -175,6 +188,8 @@ export class StepRecorder {
       current.observationRevision = details.observationRevision;
     }
     if (details.explanation !== undefined) current.explanation = details.explanation;
+    if (details.visionInput !== undefined) current.visionInput = details.visionInput;
+    if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
   }
 
   /** Records the viewport a step established (required for web.setViewport). */

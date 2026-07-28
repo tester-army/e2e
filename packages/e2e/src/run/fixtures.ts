@@ -131,6 +131,12 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         engine,
         steps: environment.steps,
         adapter: createModelAdapter(environment.config.agent.model),
+        // Built on first vision call, not here: a project that pins a vision
+        // model must not fail a run that never asks for pixels, for example
+        // because that model's credential is absent.
+        ...(environment.config.agent.visionModel === undefined
+          ? {}
+          : { visionAdapter: memoize(() => createModelAdapter(environment.config.agent.visionModel)) }),
         config: environment.config,
         priorSteps: environment.priorSteps,
         agentContext: joinAgentContext(
@@ -543,3 +549,8 @@ function validateJsonValue(value: unknown, label: string): void {
 }
 
 
+/** Defers one construction to first use and reuses the result after that. */
+function memoize<Value>(build: () => Value): () => Value {
+  let value: Value | undefined;
+  return () => (value ??= build());
+}

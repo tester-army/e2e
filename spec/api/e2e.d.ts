@@ -94,7 +94,17 @@ export type AgentParam =
   | { readonly [key: string]: AgentParam };
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
-export interface AgentOptions {
+/**
+ * Sends a masked screenshot of the current observation to the model in
+ * addition to the semantic tree. It requires a vision-capable model, and it is
+ * additive: the tree is always sent, and pixel evidence degrades away rather
+ * than failing the call when it cannot be proven redacted.
+ */
+export interface VisionOption {
+  vision?: boolean;
+}
+
+export interface AgentOptions extends VisionOption {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
@@ -141,7 +151,7 @@ export class AgentError extends Error {
   readonly screenshot?: string;
 }
 
-export interface InstantActionOptions {
+export interface InstantActionOptions extends VisionOption {
   timeout?: number;
   cache?: boolean;
 }
@@ -211,19 +221,19 @@ export interface Agent {
   /** Polls a natural-language condition until true or timed out. */
   waitFor(
     condition: string,
-    options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
   ): Promise<void>;
   /** Authenticates with a pinned credential. */
   login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
   /** Extracts and validates structured screen data. */
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
   /** Judges a natural-language assertion against fresh observations. */
   assert(
     assertion: string,
-    options?: {
+    options?: VisionOption & {
       timeout?: number;
       screenshot?: boolean;
     },
@@ -800,11 +810,15 @@ export interface E2EConfig {
   };
   agent?: {
     model?: string | ModelConfig | ModelInstance;
+    /** Model used by calls with `vision`; falls back to `model`. */
+    visionModel?: string | ModelConfig | ModelInstance;
     maxSteps?: number;
     maxModelCalls?: number;
     maxObservationBytes?: number;
     cache?: 'off' | 'read-only' | 'read-write';
     context?: string;
+    /** Project-wide default for the per-call `vision` option. */
+    vision?: boolean;
   };
   limits?: {
     maxDiscoveredResults?: number;

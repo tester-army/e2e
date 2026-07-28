@@ -11,6 +11,8 @@ import { observedLineHasRole } from '../../src/agent/observation.ts';
 import type { ModelInstance } from '../../src/types.ts';
 
 export interface FakeCall {
+  /** Model instance that received the call. */
+  readonly modelId: string;
   readonly schemaName: string;
   readonly system: string;
   readonly prompt: string;
@@ -22,6 +24,14 @@ export interface FakeCall {
   readonly revision: string;
   /** Serialized observation lines, one per node. */
   readonly lines: readonly string[];
+  /** Image parts attached to the user message, in order. */
+  readonly images: readonly FakeImage[];
+}
+
+/** One attached image, as the adapter handed it to the provider. */
+export interface FakeImage {
+  readonly mediaType: string | undefined;
+  readonly bytes: number;
 }
 
 export type FakeResponder = (call: FakeCall) => unknown;
@@ -30,22 +40,44 @@ export type FakeResponder = (call: FakeCall) => unknown;
 export const fakeCalls: FakeCall[] = [];
 
 /** The structural surface the AI SDK reads from a V2 prompt message list. */
+type FakePart = {
+  readonly type: string;
+  readonly text?: string;
+  readonly data?: unknown;
+  readonly mediaType?: string;
+};
+
 type FakePrompt = readonly {
   readonly role: string;
-  readonly content: string | readonly { readonly type: string; readonly text?: string }[];
+  readonly content: string | readonly FakePart[];
 }[];
 
 /**
- * Builds the scripted model. Configure tests with `agent: { model }`; the
- * instance never crosses a process boundary because agent integration tests
- * run through the in-process transport.
+ * Builds the scripted model and clears the call log. Configure tests with
+ * `agent: { model }`; the instance never crosses a process boundary because
+ * agent integration tests run through the in-process transport.
  */
-export function installFakeModel(responder: FakeResponder): ModelInstance {
+export function installFakeModel(
+  responder: FakeResponder,
+  options: { modelId?: string } = {},
+): ModelInstance {
   fakeCalls.length = 0;
+  return createFakeModel(responder, options);
+}
+
+/**
+ * Builds one more scripted model sharing the same call log, for tests that pin
+ * a second model such as `agent.visionModel`.
+ */
+export function createFakeModel(
+  responder: FakeResponder,
+  instance: { modelId?: string } = {},
+): ModelInstance {
+  const modelId = instance.modelId ?? 'scripted';
   return {
     specificationVersion: 'v4',
     provider: 'fake',
-    modelId: 'scripted',
+    modelId,
     supportedUrls: {},
     async doGenerate(options: {
       prompt: FakePrompt;
@@ -55,6 +87,7 @@ export function installFakeModel(responder: FakeResponder): ModelInstance {
       const prompt = promptText(options.prompt, 'user');
       const observation = section(prompt, 'observation');
       const parsed: FakeCall = {
+        modelId,
         schemaName: options.responseFormat?.name ?? inferSchemaName(prompt),
         system,
         prompt,
@@ -62,6 +95,7 @@ export function installFakeModel(responder: FakeResponder): ModelInstance {
         observation,
         revision: /<observation revision="([^"]+)"/.exec(prompt)?.[1] ?? '',
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
+        images: promptImages(options.prompt),
       };
       fakeCalls.push(parsed);
       const raw = responder(parsed);
@@ -98,6 +132,32 @@ function promptText(prompt: FakePrompt, role: string): string {
     }
   }
   return parts.join('\n');
+}
+
+/**
+ * Collects every image part of the user message. The AI SDK normalizes an
+ * `image` part into a `file` part carrying bytes, so both spellings count.
+ */
+function promptImages(prompt: FakePrompt): FakeImage[] {
+  const images: FakeImage[] = [];
+  for (const message of prompt) {
+    if (message.role !== 'user' || typeof message.content === 'string') continue;
+    for (const part of message.content) {
+      if (part.type !== 'image' && part.type !== 'file') continue;
+      images.push({ mediaType: part.mediaType, bytes: byteLength(part.data) });
+    }
+  }
+  return images;
+}
+
+/** Unwraps the AI SDK's normalized `{ type: 'data', data }` file payload. */
+function byteLength(data: unknown): number {
+  if (data instanceof Uint8Array) return data.byteLength;
+  if (typeof data === 'string') return data.length;
+  if (typeof data === 'object' && data !== null && 'data' in data) {
+    return byteLength((data as { data: unknown }).data);
+  }
+  return 0;
 }
 
 /**
@@ -142,6 +202,19 @@ export function locateBestMatch(call: FakeCall): unknown {
     protocolVersion: 'agent-locate-1',
     target: { id: match.id, revision: call.revision },
     explanation: `best line match: ${match.line.trim()}`,
+  };
+}
+
+/** Builds a valid agent-locate-1 point response in the attached image space. */
+export function locatePoint(
+  call: FakeCall,
+  point: { x: number; y: number },
+  explanation = 'drawn there in the screenshot',
+): unknown {
+  return {
+    protocolVersion: 'agent-locate-1',
+    target: { point, revision: call.revision },
+    explanation,
   };
 }
 

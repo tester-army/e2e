@@ -12,7 +12,14 @@ import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
 import { describeExpression } from '../locator/expression.ts';
 import { isSecret, validateLongPress } from '../locator/screen.ts';
-import type { Agent, Momentum, ScrollDirection, SelectOption, StandardSchemaV1 } from '../types.ts';
+import type {
+  Agent,
+  InstantActionOptions,
+  Momentum,
+  ScrollDirection,
+  SelectOption,
+  StandardSchemaV1,
+} from '../types.ts';
 import { AgentError } from './error.ts';
 import type { AgentObservation } from './observation.ts';
 import {
@@ -22,7 +29,14 @@ import {
   type InvocationOptions,
 } from './invocation.ts';
 import type { PromptInput } from './prompts.ts';
-import { locateOne, observeAndSelect, resolveSelected, type LocatedNode } from './locate.ts';
+import {
+  locateOne,
+  observeAndSelect,
+  resolveSelected,
+  type Located,
+  type LocatedNode,
+  type LocatedPoint,
+} from './locate.ts';
 import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
@@ -43,6 +57,15 @@ export function createAgent(runtime: AgentContext): Agent {
    */
   const stepTimeout = Math.max(MIN_STEP_TIMEOUT_MS, runtime.config.actionTimeout);
 
+  /** A per-call `vision` value always wins over the project default. */
+  const resolveVision = (requested: boolean | undefined): boolean => {
+    if (requested === undefined) return runtime.config.agent.vision;
+    if (typeof requested !== 'boolean') {
+      throw new TestError('INVALID_ARGUMENT', 'vision must be a boolean');
+    }
+    return requested;
+  };
+
   /** Runs one agent method as a top-level step carrying agent metrics. */
   const step = async <Value>(
     options: InvocationOptions,
@@ -60,12 +83,19 @@ export function createAgent(runtime: AgentContext): Agent {
       }
     });
 
-  /** Locates one node and performs exactly one predetermined driver action. */
+  /**
+   * Locates one node and performs exactly one predetermined driver action.
+   *
+   * `pointAction` opts the method into the vision pointing tier. Only a method
+   * with a coordinate equivalent can supply one; without it a pointed response
+   * is a miss, because there is no node reference to hand the driver.
+   */
   const instant = (
     api: string,
     target: string,
-    options: { timeout?: number; cache?: boolean } | undefined,
+    options: InstantActionOptions | undefined,
     action: (invocation: Invocation, located: LocatedNode) => Promise<void>,
+    pointAction?: (invocation: Invocation, located: LocatedPoint) => Promise<void>,
   ): Promise<void> =>
     step(
       {
@@ -77,12 +107,17 @@ export function createAgent(runtime: AgentContext): Agent {
         maxModelCalls: 2,
         maxActionSteps: 1,
         cache: options?.cache ?? true,
+        vision: resolveVision(options?.vision),
       },
       target,
       async (invocation) => {
-        const located = await locateOne(invocation, target, { testIdAttribute });
+        const located = await locateOne(invocation, target, {
+          testIdAttribute,
+          allowPoint: pointAction !== undefined,
+        });
         try {
-          await action(invocation, located);
+          if (located.kind === 'point') await pointAction!(invocation, located);
+          else await action(invocation, located);
         } catch (cause) {
           throw explainActionFailure(invocation, api, target, located, cause);
         }
@@ -101,12 +136,38 @@ export function createAgent(runtime: AgentContext): Agent {
   /** `tap` and `click` are the same located action under two spec names. */
   const tapVerb =
     (api: string) =>
-    (target: string, options?: { timeout?: number; cache?: boolean }): Promise<void> =>
-      instant(api, target, options, (invocation, located) =>
-        invocation.commit('tap', () =>
-          invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
-        ),
+    (target: string, options?: InstantActionOptions): Promise<void> =>
+      instant(
+        api,
+        target,
+        options,
+        (invocation, located) =>
+          invocation.commit('tap', () =>
+            invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
+          ),
+        (invocation, located) => tapAtPoint(invocation, api, located),
       );
+
+  /**
+   * Taps a validated screenshot point. The dispatch is at the point itself:
+   * moving to the center of the hit-tested node would leave the pixels the
+   * model chose, which on a canvas is the whole surface.
+   */
+  const tapAtPoint = (
+    invocation: Invocation,
+    api: string,
+    located: LocatedPoint,
+  ): Promise<void> => {
+    const tapPoint = invocation.session.actions.tapPoint;
+    if (tapPoint === undefined) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `${api} received a screenshot point, but the driver has no coordinate input; ` +
+          'vision pointing requires a driver implementing tapPoint',
+      );
+    }
+    return invocation.commit('tapPoint', () => tapPoint(located.point, invocation.operation()));
+  };
 
   const planningTierUnavailable = (api: string): never => {
     throw new ConfigurationError(
@@ -226,6 +287,7 @@ export function createAgent(runtime: AgentContext): Agent {
           maxModelCalls: 4,
           maxActionSteps: 1,
           cache: options?.cache ?? true,
+          vision: resolveVision(options?.vision),
         },
         `${source} \u2192 ${destination}`,
         async (invocation) => {
@@ -258,6 +320,7 @@ export function createAgent(runtime: AgentContext): Agent {
           maxModelCalls: within === undefined ? 0 : 2,
           maxActionSteps: 1,
           cache: options.cache ?? true,
+          vision: resolveVision(options.vision),
         },
         within === undefined ? direction : `${direction} within ${within}`,
         async (invocation) => {
@@ -290,6 +353,7 @@ export function createAgent(runtime: AgentContext): Agent {
           maxModelCalls: runtime.config.agent.maxModelCalls,
           maxActionSteps: runtime.config.agent.maxSteps,
           cache: options?.cache ?? true,
+          vision: resolveVision(options?.vision),
         },
         target,
         async (invocation) => {
@@ -347,6 +411,7 @@ export function createAgent(runtime: AgentContext): Agent {
           ),
           maxActionSteps: 0,
           cache: false,
+          vision: resolveVision(options?.vision),
         },
         condition,
         async (invocation) => {
@@ -395,6 +460,7 @@ export function createAgent(runtime: AgentContext): Agent {
           maxModelCalls: resolveModelCalls(options.maxModelCalls, EXTRACT_MODEL_CALLS),
           maxActionSteps: 0,
           cache: false,
+          vision: resolveVision(options.vision),
         },
         instruction,
         async (invocation) => {
@@ -444,6 +510,7 @@ export function createAgent(runtime: AgentContext): Agent {
           maxModelCalls: 1,
           maxActionSteps: 0,
           cache: false,
+          vision: resolveVision(options?.vision),
         },
         assertion,
         async (invocation) => {
@@ -616,11 +683,18 @@ function explainActionFailure(
   invocation: Invocation,
   api: string,
   target: string,
-  located: LocatedNode,
+  located: Located,
   cause: unknown,
 ): AgentError {
   const error = toAgentError(cause);
   if (error.code !== 'ACTION_FAILED') return error;
+  if (located.kind === 'point') {
+    const explanation =
+      `the model pointed at (${located.point.x}, ${located.point.y}) as ${JSON.stringify(target)}, ` +
+      `but dispatching there failed: ${driverReason(error.message)}.`;
+    invocation.note({ explanation });
+    return new AgentError('ACTION_FAILED', `${api} failed: ${explanation}`, { cause: error });
+  }
   const reasoning =
     located.explanation === '' ? '' : ` The model explained: ${located.explanation}`;
   const explanation =

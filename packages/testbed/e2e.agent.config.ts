@@ -30,6 +30,11 @@ export default defineConfig({
   actionTimeout: 90_000,
   agent: {
     model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+    // Visual grounding is a much higher bar than accepting an image: the flash
+    // model above judges a drawn chart correctly and still points at a map pin
+    // ~1.6x off in y. The vision tier gets its own model rather than making
+    // every other call pay for the stronger one.
+    visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.4',
     context: [
       'This is the e2e playground app: a small multi-page site with todos,',
       'forms, a sign-in flow, a workspace wizard, and release notes.',

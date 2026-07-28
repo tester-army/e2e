@@ -59,16 +59,16 @@ export interface Agent {
   ): Promise<void>;
   waitFor(
     condition: string,
-    options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
   ): Promise<void>;
   login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
   assert(
     assertion: string,
-    options?: {
+    options?: VisionOption & {
       timeout?: number;
       screenshot?: boolean;
     },
@@ -137,6 +137,67 @@ await agent.type('the Password field', credentials.user('admin').password);
 await agent.scroll({ direction: 'down', within: 'the results list' });
 ```
 
+## Vision
+
+Every model-backed method accepts `vision`. It adds a masked screenshot of the
+current observation to the model input, on top of the semantic tree, and needs a
+model that accepts images.
+
+```ts
+await agent.assert('the chart trends upward', { vision: true });
+await agent.tap('the red pin on the map', { vision: true });
+```
+
+| Name | Type | Default |
+| --- | --- | --- |
+| `options.vision` | `boolean` | `config.agent.vision`, `false` |
+
+Set `agent.vision: true` in config to make it the project default; a per-call
+value always wins. Vision changes no budget, but images are billed as input
+tokens, so a vision call costs more than the same call without it.
+
+Vision calls use `agent.visionModel` when it is set, and `agent.model` otherwise.
+An invocation keeps that model for its whole lifetime, including polling rounds
+whose pixels were withheld, so one step reports one model.
+
+<Callout intent="info" title="Additive, never pixels-only">
+The tree is always sent. It is byte-budgeted and cheap, and its node references
+are what keep an action auditable, so there is no pixels-only mode.
+</Callout>
+
+Pixel evidence degrades instead of failing the call. It is withheld, and the tree
+sent alone, when the viewport is pixel-tainted by a secret fill
+(`visionDegraded: "PIXEL_TAINTED"` on the step), when the driver masked fewer
+regions than the secure fields it observed (`MASKING_UNPROVEN`), or when the
+driver cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
+pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
+
+`options.vision` and `assert`'s `options.screenshot` are unrelated: `screenshot`
+controls failure evidence attached to the report after the judgment, `vision`
+controls what the model is shown before it.
+
+### Visual pointing
+
+Under `vision`, `tap` and `click` can reach targets the tree cannot describe,
+such as canvas, WebGL, and custom-drawn widgets: the model may answer with a
+point in the screenshot instead of a node.
+
+The runner keeps ownership of it. The point is bounded to the image it was read
+off (an out-of-bounds answer is invalid output, worth one repair round, never
+clamped), converted to CSS pixels, hit-tested against the same observation, and
+recorded on the step together with whatever node was found under it. The action
+stays predetermined by the method you called.
+
+```ts
+// Reachable only through pixels: nothing in the tree names the pin.
+await agent.tap('the red pin on the map', { vision: true });
+```
+
+Dispatch happens at the point, not at the center of the node under it, so a tap
+on a canvas lands where the model looked. Every other method needs a semantic
+node: a point answered to `type`, `select`, `upload`, and friends is
+`LOCATOR_NOT_FOUND` carrying the model's explanation.
+
 ## Judgments and extraction
 
 ### agent.assert
@@ -144,7 +205,7 @@ await agent.scroll({ direction: 'down', within: 'the results list' });
 ```ts
 assert(
   assertion: string,
-  options?: { timeout?: number; screenshot?: boolean },
+  options?: { timeout?: number; screenshot?: boolean; vision?: boolean },
 ): Promise<void>;
 ```
 
@@ -155,6 +216,7 @@ One fresh observation, exactly one judgment. It does not poll.
 | `assertion` | `string` | - |
 | `options.timeout` | `number` | `30000` |
 | `options.screenshot` | `boolean` | `true` |
+| `options.vision` | `boolean` | `config.agent.vision`, `false` |
 
 Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and, when
 permitted, a screenshot path. Evidence is skipped with `screenshot: false` and
@@ -223,12 +285,16 @@ const summary = await agent.extract('the workspace name and plan', {
 ## Types
 
 ```ts
-export interface InstantActionOptions {
+export interface VisionOption {
+  vision?: boolean;
+}
+
+export interface InstantActionOptions extends VisionOption {
   timeout?: number;
   cache?: boolean;
 }
 
-export interface AgentOptions {
+export interface AgentOptions extends VisionOption {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;

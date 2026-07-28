@@ -116,6 +116,13 @@ validation are child events. Events record metadata and counts, not sensitive
 payloads. Core event metadata is limited to bounded name, count, byte, decision,
 and code fields defined by the schema.
 
+A step whose model input included pixel evidence records that pixels were model
+input, not merely an artifact, plus the largest image sent in bytes. A step that
+asked for pixels and did not send them records why they were withheld:
+`PIXEL_TAINTED`, `MASKING_UNPROVEN`, or `UNSUPPORTED_CAPABILITY`. A step that
+dispatched at a model-supplied point records the point and the node hit-tested
+under it, or the absence of one.
+
 Every model-backed step identifies provider, model ID, resolved endpoint (`local`
 or URL),
 adapter version, agent-policy version, call count, and token/cost usage when

@@ -21,6 +21,7 @@ import type {
   StepMetrics,
   StepModelInfo,
   StepRecord,
+  VisionDegradation,
 } from '../run/steps.ts';
 
 export interface ReportSource {
@@ -76,6 +77,8 @@ export interface ReportStep {
   durationMs: number;
   observationRevision?: string | undefined;
   explanation?: string | undefined;
+  visionInput?: boolean | undefined;
+  visionDegraded?: VisionDegradation | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
   events: readonly StepEvent[];

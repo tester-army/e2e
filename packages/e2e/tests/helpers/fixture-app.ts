@@ -124,6 +124,41 @@ const PAGES: Record<string, string> = {
   <output id="answer" aria-label="Answer"></output>
 </body>
 </html>`,
+  // A surface with no accessibility semantics at all: the pins exist only as
+  // pixels, so the semantic tree cannot name either one and pointing is the
+  // only way to reach them.
+  '/canvas': `<!doctype html>
+<html>
+<head><title>Canvas map</title></head>
+<body style="margin:0">
+  <canvas id="map" width="400" height="200" style="position:fixed;left:0;top:0"></canvas>
+  <output id="hit" role="status" aria-label="Hit" style="position:fixed;left:0;top:220px">none</output>
+  <script>
+    const canvas = document.getElementById('map');
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#dddddd';
+    context.fillRect(0, 0, 400, 200);
+    const pins = [
+      { name: 'red', x: 300, y: 60, color: '#ff0000' },
+      { name: 'blue', x: 80, y: 140, color: '#0000ff' },
+    ];
+    for (const pin of pins) {
+      context.fillStyle = pin.color;
+      context.beginPath();
+      context.arc(pin.x, pin.y, 14, 0, Math.PI * 2);
+      context.fill();
+    }
+    canvas.addEventListener('click', (event) => {
+      const box = canvas.getBoundingClientRect();
+      const x = event.clientX - box.left;
+      const y = event.clientY - box.top;
+      const pin = pins.find((candidate) => Math.hypot(candidate.x - x, candidate.y - y) <= 18);
+      document.getElementById('hit').textContent =
+        pin ? pin.name : 'miss at ' + Math.round(x) + ',' + Math.round(y);
+    });
+  </script>
+</body>
+</html>`,
   '/flags': `<!doctype html>
 <html>
 <head><title>Flags</title></head>

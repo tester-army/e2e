@@ -103,7 +103,11 @@ Re-evaluate, specify, and version only what dogfood justifies:
 - sharding and custom reporters;
 - `test.each`, conditional modifiers, custom fixtures;
 - email first, then file/webhook resources;
-- visual and clock profiles.
+- clock profile.
+
+The vision tier (masked pixels as model input and visual pointing) landed early
+because low-accessibility surfaces are unreachable without it; its caching
+semantics land with `cache-1`.
 
 Each addition starts as a specification change with declarations, wire impact,
 security review, and conformance vectors.

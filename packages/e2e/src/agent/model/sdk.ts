@@ -14,6 +14,7 @@ import {
   jsonSchema,
   NoObjectGeneratedError,
   Output,
+  type ModelMessage,
 } from 'ai';
 import {
   GATEWAY_API_KEY_ENV,
@@ -23,10 +24,12 @@ import {
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
 import {
+  imageTokenUpperBound,
   ModelOutputInvalidError,
   tokenUpperBound,
   type ModelAdapter,
   type ModelCall,
+  type ModelImage,
   type ModelResult,
   type ModelUsage,
 } from './adapter.ts';
@@ -58,7 +61,11 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       adapterVersion: `${flavor}/${adapterVersion}`,
     },
     async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
-      const inputBound = tokenUpperBound(call.system) + tokenUpperBound(call.prompt);
+      const images = call.images ?? [];
+      const inputBound =
+        tokenUpperBound(call.system) +
+        tokenUpperBound(call.prompt) +
+        images.reduce((total, image) => total + imageTokenUpperBound(image), 0);
       if (inputBound > call.maxInputTokens) {
         throw new AgentError(
           'STEP_BUDGET_EXHAUSTED',
@@ -70,7 +77,12 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       const settings = {
         model: languageModel,
         system: call.system,
-        prompt: call.prompt,
+        // Text-only calls keep the plain prompt form; images require the
+        // multi-part message form, and both must carry the same instruction
+        // text in the same position relative to the system policy.
+        ...(images.length === 0
+          ? { prompt: call.prompt }
+          : { messages: [userMessage(call.prompt, images)] }),
         maxOutputTokens: call.maxOutputTokens,
         temperature: 0,
         maxRetries: TRANSPORT_RETRIES,
@@ -110,6 +122,26 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
         throw translateModelError(cause, issue, call.signal);
       }
     },
+  };
+}
+
+/**
+ * Builds the one user message of a vision call: instruction text first, then
+ * the image parts it refers to, so the text framing the pixels as data is read
+ * before them.
+ */
+function userMessage(prompt: string, images: readonly ModelImage[]): ModelMessage {
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text: prompt },
+      // A file part with an image media type, not the deprecated `image` part.
+      ...images.map((image) => ({
+        type: 'file' as const,
+        data: image.data,
+        mediaType: image.mediaType,
+      })),
+    ],
   };
 }
 
