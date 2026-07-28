@@ -144,7 +144,7 @@ describe('agent fixture', () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    installFakeModel(respond);
+    const model = installFakeModel(respond);
     const result = await runProject(
       { 'tests/agent.e2e.ts': AGENT_SUITE, 'avatar.txt': 'fixture upload payload' },
       {
@@ -152,7 +152,7 @@ describe('agent fixture', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model: 'fake/scripted', context: 'This is the e2e fixture application.' },
+          agent: { model, context: 'This is the e2e fixture application.' },
         },
       },
     );
@@ -258,7 +258,7 @@ describe('agent fixture', () => {
     expect(tap.model).toMatchObject({
       provider: 'fake',
       model: 'scripted',
-      endpoint: 'local',
+      endpoint: 'provider-default',
       policyVersion: 'policy-0.1',
       calls: 1,
       tokenAccounting: 'provider',

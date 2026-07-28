@@ -65,11 +65,33 @@ describe('model resolution', () => {
   it('splits "provider/model-id" at the first slash', () => {
     const config = resolve({ agent: { model: 'anthropic/claude-sonnet-4.5' } });
     expect(config.agent.model).toEqual({
+      kind: 'gateway',
       provider: 'anthropic',
       id: 'claude-sonnet-4.5',
       endpoint: undefined,
       apiKeyEnv: 'E2E_MODEL_API_KEY',
+      apiKey: undefined,
     });
+  });
+
+  it('accepts a live AI SDK model instance and records its identity', () => {
+    const instance = {
+      specificationVersion: 'v2',
+      provider: 'openai',
+      modelId: 'gpt-5.4-mini',
+      supportedUrls: {},
+      doGenerate: () => Promise.reject(new Error('not called')),
+      doStream: () => Promise.reject(new Error('not called')),
+    };
+    const config = resolve({ agent: { model: instance } });
+    expect(config.agent.model).toMatchObject({
+      kind: 'instance',
+      provider: 'openai',
+      id: 'gpt-5.4-mini',
+    });
+    // The live object never enters the digest, and the digest stays stable.
+    const again = resolve({ agent: { model: instance } });
+    expect(again.configDigest).toBe(config.configDigest);
   });
 
   it('keeps later slashes in the model ID', () => {
@@ -106,12 +128,24 @@ describe('model resolution', () => {
     expect(config.agent.model).toMatchObject({ apiKeyEnv: 'MY_KEY' });
   });
 
-  it('never copies the credential value into resolved config', () => {
+  it('resolves the credential for the adapter without leaking it into the digest', () => {
     const config = resolve({ agent: { model: 'openai/gpt-5.4-mini' } }, {
       ...BASE_ENV,
       E2E_MODEL_API_KEY: 'secret-value',
     });
-    expect(JSON.stringify(config.agent)).not.toContain('secret-value');
+    expect(config.agent.model).toMatchObject({ apiKey: 'secret-value' });
+    const withoutKey = resolve({ agent: { model: 'openai/gpt-5.4-mini' } });
+    expect(withoutKey.agent.model).toMatchObject({ apiKey: undefined });
+    // Environment values never affect the digest (13-reporting.md).
+    expect(withoutKey.configDigest).toBe(config.configDigest);
+  });
+
+  it('falls back to the gateway credential variable', () => {
+    const config = resolve({ agent: { model: 'openai/gpt-5.4-mini' } }, {
+      ...BASE_ENV,
+      AI_GATEWAY_API_KEY: 'gateway-key',
+    });
+    expect(config.agent.model).toMatchObject({ apiKey: 'gateway-key' });
   });
 
   it('requires HTTPS for nonlocal model endpoints', () => {
@@ -120,12 +154,12 @@ describe('model resolution', () => {
     ).toThrow(/HTTPS/);
     expect(
       resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'http://127.0.0.1:11434/v1' } } })
-        .agent.model?.endpoint,
-    ).toBe('http://127.0.0.1:11434/v1');
+        .agent.model,
+    ).toMatchObject({ endpoint: 'http://127.0.0.1:11434/v1' });
     expect(
       resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'https://gw.example/v1' } } })
-        .agent.model?.endpoint,
-    ).toBe('https://gw.example/v1');
+        .agent.model,
+    ).toMatchObject({ endpoint: 'https://gw.example/v1' });
   });
 
   it('rejects malformed keys and endpoints', () => {
@@ -177,14 +211,15 @@ describe('model error classification', () => {
   it('separates an aborted attempt from an elapsed step budget', async () => {
     // A slow provider is a test timeout (exit 1); only an aborted attempt is a
     // runner cancellation (exit 3). Verified through the public adapter.
-    const { createGatewayAdapter } = await import('../../src/agent/model/gateway.ts');
-    const model = {
+    const { createModelAdapter } = await import('../../src/agent/model/sdk.ts');
+    const adapter = createModelAdapter({
+      kind: 'gateway',
       provider: 'openai',
       id: 'unreachable',
       endpoint: 'https://127.0.0.1:1/v1',
       apiKeyEnv: 'FAKE_KEY',
-    } as const;
-    const adapter = createGatewayAdapter(model, { FAKE_KEY: 'x' } as NodeJS.ProcessEnv);
+      apiKey: 'x',
+    });
 
     const aborted = new AbortController();
     aborted.abort();

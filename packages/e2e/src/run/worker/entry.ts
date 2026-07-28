@@ -82,7 +82,6 @@ async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<T
     runId: message.runId,
     artifactsRoot: message.artifactsRoot,
     headed: message.headed,
-    env: process.env,
     resolvePairs,
     debug,
     disposeDriver: true,

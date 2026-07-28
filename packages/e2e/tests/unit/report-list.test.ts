@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { ListReporter, userFrame } from '../../src/report/list.ts';
+import { ListReporter } from '../../src/report/list.ts';
+import { userFrame } from '../../src/report/code-frame.ts';
 import type { ResultRecord, ResultStatus, AttemptRecord } from '../../src/run/records.ts';
 
 // eslint-disable-next-line no-control-regex

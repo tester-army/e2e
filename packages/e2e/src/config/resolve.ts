@@ -9,6 +9,7 @@ import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '..
 import { isDriverHandle, type Driver } from '../driver/index.ts';
 import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
 import {
+  isModelInstance,
   resolveAgentConfig,
   resolveLimits,
   type ResolvedAgentConfig,
@@ -186,8 +187,11 @@ export function resolveConfig(
   const testIdAttribute = raw.screen?.testIdAttribute ?? 'data-testid';
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
   const credentials = resolveCredentials(raw, env);
-  const agent = resolveAgentConfig(raw, env, ci, cli.agentCache);
-  const limits = resolveLimits(raw, agent.maxObservationBytes);
+  // Limits first: the agent context budget is a limits key, and the resolved
+  // observation budget is agent-owned, so the dependency runs one way.
+  const baseLimits = resolveLimits(raw);
+  const agent = resolveAgentConfig(raw, env, ci, cli.agentCache, baseLimits);
+  const limits: ResolvedLimits = { ...baseLimits, maxObservationBytes: agent.maxObservationBytes };
 
   const resolved: ResolvedConfig = {
     specVersion: '0.1',
@@ -436,10 +440,27 @@ function resolveCredentials(
 /**
  * SHA-256/JCS digest of resolved config after replacing credential material
  * with `{ secretName }` and env values with `{ envName }` (13-reporting.md).
+ * Live objects (driver handles, model instances) are replaced by their stable
+ * identity before the JSON clone, so they never enter the digest and cannot
+ * make it nondeterministic across processes.
  */
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
+  const rawModel = raw.agent?.model;
+  const forClone = isModelInstance(rawModel)
+    ? {
+        ...raw,
+        agent: {
+          ...raw.agent,
+          model: {
+            provider: rawModel.provider,
+            modelId: rawModel.modelId,
+            specificationVersion: rawModel.specificationVersion,
+          },
+        },
+      }
+    : raw;
   const sanitized: Record<string, unknown> = {
-    ...(structuredCloneJsonSafe(raw) as Record<string, unknown>),
+    ...(structuredCloneJsonSafe(forClone) as Record<string, unknown>),
     projectId,
   };
   if (raw.credentials !== undefined) {

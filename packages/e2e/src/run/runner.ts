@@ -23,6 +23,7 @@ import {
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
+import { agentStepTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { ensureBrowsersInstalled } from '../playwright/install.ts';
@@ -106,8 +107,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       serialGroups,
       runErrors,
       targetProvenance,
-      // The trust model is documented and report-recorded, never printed.
-      trustNoticeShown: false,
     });
     if (config !== undefined) {
       const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
@@ -123,7 +122,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (options.reporters?.includes('json') === true) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
-    if (debug.enabled) process.stderr.write(debug.summary());
+    if (debug.enabled) {
+      process.stderr.write(debug.summary());
+      process.stderr.write(agentStepTable(results, serialGroups));
+    }
     return { exitCode, status, report, reportPath, results };
   };
 
@@ -195,12 +197,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     const { collection, selection } = planned;
 
-    const testTitles = new Map<string, string>();
-    for (const { pairs } of selection.perTarget) {
-      for (const pair of pairs) {
-        testTitles.set(pair.test.id, pair.test.titlePath.join(' \u203a '));
-      }
-    }
     listReporter?.onPlan({ total: selection.pairs.length });
 
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
@@ -253,7 +249,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
               artifactsRoot,
               sessionStore: store,
               headed: options.headed ?? false,
-              env,
               debug,
               drivers: preflightDrivers,
             }),
@@ -291,12 +286,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             },
             onSerialGroup: (group) => serialGroups.push(group),
             onRunError: (error) => runErrors.push(error),
-            onTestStart: (testId, targetName) =>
-              listReporter?.onTestStart({
-                id: testId,
-                title: testTitles.get(testId) ?? testId,
-                target: targetName,
-              }),
+            onTestStart: (testId, title, targetName) =>
+              listReporter?.onTestStart({ id: testId, title, target: targetName }),
             onDebug: (snapshot) => debug.merge(snapshot),
           },
         }),

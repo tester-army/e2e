@@ -38,11 +38,6 @@ export interface TargetWorkerDeps {
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly headed: boolean;
-  /**
-   * Environment the agent model adapter reads its credential from. Spawned
-   * workers inherit it from the runner process; it never crosses IPC.
-   */
-  readonly env: NodeJS.ProcessEnv;
   readonly resolvePairs: ResolveUnitPairs;
   readonly debug?: DebugTrace;
   /**
@@ -88,13 +83,17 @@ export class TargetWorker {
         artifactsRoot: deps.artifactsRoot,
         sessionStore: deps.sessionStore,
         headed: deps.headed,
-        env: deps.env,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         events: {
           onResult: (result) => this.host.emit({ type: 'result', result: encodeResult(result) }),
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
-          onPairStart: (pair) => this.host.emit({ type: 'pair-start', testId: pair.test.id }),
+          onPairStart: (pair) =>
+            this.host.emit({
+              type: 'pair-start',
+              testId: pair.test.id,
+              title: pair.test.titlePath.join(' \u203a '),
+            }),
         },
       });
       this.host.emit({ type: 'ready' });

@@ -30,8 +30,11 @@ export default defineConfig({
           pool: 'forks',
           // Bounded rather than serial: these files own real browsers, app
           // processes, and worker processes, and starving them of CPU produces
-          // timeouts indistinguishable from product failures.
-          poolOptions: { forks: { maxForks: 3, minForks: 1 } },
+          // timeouts indistinguishable from product failures. Vitest 4 requires
+          // projects with different maxWorkers to run in separate groups.
+          maxWorkers: 3,
+          minWorkers: 1,
+          sequence: { groupOrder: 1 },
         },
       },
     ],

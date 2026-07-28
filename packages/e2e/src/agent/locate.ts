@@ -150,10 +150,15 @@ export async function resolveSelected(
   let ambiguous: LocatorExpression | undefined;
 
   for (;;) {
+    // Ambiguity is judged per sweep: a query that stopped matching several
+    // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
+    ambiguous = undefined;
     for (const expression of candidates) {
       let refs: readonly NodeRef[];
       try {
-        refs = await engine.resolveAll(expression);
+        // The invocation deadline bounds the sweep, so a caller-supplied
+        // timeout is honored even while a driver error stays retryable.
+        refs = await engine.resolveAll(expression, invocation.deadline);
       } catch (cause) {
         throw toAgentError(cause);
       }

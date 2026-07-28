@@ -1,23 +1,47 @@
 /** Agent, model, and resource-limit resolution (spec 05-config.md, 14-security.md). */
 
+import type { LanguageModel } from 'ai';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { E2EConfig, ModelConfig } from '../types.ts';
+import type { E2EConfig, ModelConfig, ModelInstance } from '../types.ts';
 
 /** Default environment variable holding the provider credential. */
 export const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
 
+/** Gateway-native credential variable, used when apiKeyEnv holds no value. */
+export const GATEWAY_API_KEY_ENV = 'AI_GATEWAY_API_KEY';
+
+/** A live AI SDK language model, as accepted by `generateText`. */
+export type SdkLanguageModel = Exclude<LanguageModel, string>;
+
 /**
- * Resolved model identity. The credential itself is never resolved here; only
- * the name of the variable that holds it (14-security.md).
+ * Resolved model identity. Two shapes cover every provider:
+ *
+ * - `gateway`: a `provider/model-id` reference routed through the AI Gateway.
+ *   The credential is resolved from the environment here so nothing downstream
+ *   needs the process environment; it never enters digests, logs, or reports.
+ * - `instance`: a caller-supplied AI SDK provider model (`openai('gpt-4o')`,
+ *   `anthropic(...)`, any `LanguageModelV2+`). The instance owns its own
+ *   transport and credentials. Instances never cross a process boundary:
+ *   workers re-resolve the config module and construct their own.
  */
-export interface ResolvedModel {
-  readonly provider: string;
-  readonly id: string;
-  /** Absolute endpoint override, or undefined for the adapter default. */
-  readonly endpoint: string | undefined;
-  readonly apiKeyEnv: string;
-}
+export type ResolvedModel =
+  | {
+      readonly kind: 'gateway';
+      readonly provider: string;
+      readonly id: string;
+      /** Absolute endpoint override, or undefined for the gateway default. */
+      readonly endpoint: string | undefined;
+      readonly apiKeyEnv: string;
+      /** Resolved credential; absence fails at fixture acquisition, not here. */
+      readonly apiKey: string | undefined;
+    }
+  | {
+      readonly kind: 'instance';
+      readonly provider: string;
+      readonly id: string;
+      readonly model: SdkLanguageModel;
+    };
 
 export interface ResolvedAgentConfig {
   /** Undefined until a model is configured; acquiring `agent` then fails. */
@@ -47,6 +71,9 @@ export interface ResolvedLimits {
   readonly maxActionStepsPerStep: number;
   readonly maxEstimatedCostUsd: number | undefined;
 }
+
+/** `ResolvedLimits` before the agent-owned observation budget is attached. */
+export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 
 const AGENT_KEYS = new Set([
   'model',
@@ -83,12 +110,17 @@ const LIMIT_BOUNDS = {
 
 type LimitKey = keyof typeof LIMIT_BOUNDS;
 
-/** Resolves `config.agent` plus model environment fallbacks. */
+/**
+ * Resolves `config.agent` plus model environment fallbacks. `limits` must be
+ * resolved first: the context budget is a limits key, and the dependency runs
+ * in exactly one direction.
+ */
 export function resolveAgentConfig(
   raw: E2EConfig,
   env: NodeJS.ProcessEnv,
   ci: boolean,
   cacheOverride: 'off' | undefined,
+  limits: ResolvedBaseLimits,
 ): ResolvedAgentConfig {
   const agent = raw.agent;
   if (agent !== undefined) {
@@ -114,7 +146,7 @@ export function resolveAgentConfig(
   }
   if (cacheOverride === 'off') cache = 'off';
 
-  const context = resolveContext(agent?.context, raw.limits?.maxAgentContextBytes ?? 16_384);
+  const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
 
   return {
     model: resolveModel(agent?.model, env),
@@ -126,8 +158,8 @@ export function resolveAgentConfig(
   };
 }
 
-/** Resolves the `limits` block; observation bytes come from `agent`. */
-export function resolveLimits(raw: E2EConfig, maxObservationBytes: number): ResolvedLimits {
+/** Resolves the `limits` block. The observation budget is attached by the caller. */
+export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
   const limits = raw.limits;
   if (limits !== undefined) {
     if (typeof limits !== 'object' || limits === null || Array.isArray(limits)) {
@@ -155,10 +187,25 @@ export function resolveLimits(raw: E2EConfig, maxObservationBytes: number): Reso
   }
 
   return {
-    ...(resolved as unknown as Omit<ResolvedLimits, 'maxObservationBytes' | 'maxEstimatedCostUsd'>),
-    maxObservationBytes,
+    ...(resolved as unknown as Omit<ResolvedBaseLimits, 'maxEstimatedCostUsd'>),
     maxEstimatedCostUsd: cost,
   };
+}
+
+/**
+ * True when a config value is a live AI SDK language model instance. The check
+ * is structural, exactly like the AI SDK's own model handling, so instances
+ * from any realm or provider package are accepted.
+ */
+export function isModelInstance(value: unknown): value is ModelInstance {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['specificationVersion'] === 'string' &&
+    typeof candidate['provider'] === 'string' &&
+    typeof candidate['modelId'] === 'string' &&
+    typeof candidate['doGenerate'] === 'function'
+  );
 }
 
 /**
@@ -166,22 +213,31 @@ export function resolveLimits(raw: E2EConfig, maxObservationBytes: number): Reso
  * model; an unconfigured agent fails at fixture acquisition.
  */
 function resolveModel(
-  model: string | ModelConfig | undefined,
+  model: string | ModelConfig | ModelInstance | undefined,
   env: NodeJS.ProcessEnv,
 ): ResolvedModel | undefined {
   if (model === undefined) {
     const fromEnv = env['E2E_MODEL'];
     if (fromEnv === undefined || fromEnv.trim() === '') return undefined;
-    return parseModelReference(fromEnv.trim(), 'E2E_MODEL', undefined, undefined);
+    return parseModelReference(fromEnv.trim(), 'E2E_MODEL', env);
   }
   if (typeof model === 'string') {
-    return parseModelReference(model, 'agent.model', undefined, undefined);
+    return parseModelReference(model, 'agent.model', env);
   }
   if (typeof model !== 'object' || model === null || Array.isArray(model)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'agent.model must be "provider/model-id" or a model object',
+      'agent.model must be "provider/model-id", a model object, or an AI SDK model instance',
     );
+  }
+  if (isModelInstance(model)) {
+    return {
+      kind: 'instance',
+      provider: model.provider,
+      id: model.modelId,
+      // Structurally verified above; the AI SDK duck-types models the same way.
+      model: model as SdkLanguageModel,
+    };
   }
   for (const key of Object.keys(model)) {
     if (!MODEL_KEYS.has(key)) {
@@ -190,20 +246,14 @@ function resolveModel(
   }
   const provider = requireNonEmpty(model.provider, 'agent.model.provider');
   const id = requireNonEmpty(model.id, 'agent.model.id');
-  return {
-    provider,
-    id,
-    endpoint: validateEndpoint(model.endpoint),
-    apiKeyEnv: validateApiKeyEnv(model.apiKeyEnv),
-  };
+  return gatewayModel(provider, id, model.endpoint, model.apiKeyEnv, env);
 }
 
 /** Splits `provider/model-id` at the first slash. */
 function parseModelReference(
   reference: string,
   label: string,
-  endpoint: string | undefined,
-  apiKeyEnv: string | undefined,
+  env: NodeJS.ProcessEnv,
 ): ResolvedModel {
   const separator = reference.indexOf('/');
   if (separator <= 0 || separator === reference.length - 1) {
@@ -212,12 +262,36 @@ function parseModelReference(
       `${label} must be "provider/model-id", got ${JSON.stringify(reference)}`,
     );
   }
+  return gatewayModel(
+    reference.slice(0, separator),
+    reference.slice(separator + 1),
+    undefined,
+    undefined,
+    env,
+  );
+}
+
+function gatewayModel(
+  provider: string,
+  id: string,
+  endpoint: string | undefined,
+  apiKeyEnv: string | undefined,
+  env: NodeJS.ProcessEnv,
+): ResolvedModel {
+  const keyEnv = validateApiKeyEnv(apiKeyEnv);
+  const apiKey = firstNonEmpty(env[keyEnv], env[GATEWAY_API_KEY_ENV]);
   return {
-    provider: reference.slice(0, separator),
-    id: reference.slice(separator + 1),
+    kind: 'gateway',
+    provider,
+    id,
     endpoint: validateEndpoint(endpoint),
-    apiKeyEnv: validateApiKeyEnv(apiKeyEnv),
+    apiKeyEnv: keyEnv,
+    apiKey,
   };
+}
+
+function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
+  return values.find((value) => value !== undefined && value.trim() !== '');
 }
 
 function validateEndpoint(endpoint: string | undefined): string | undefined {

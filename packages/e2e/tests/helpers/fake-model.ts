@@ -1,21 +1,13 @@
 /**
- * Registers a scripted model adapter so agent tests exercise the real
- * observation, protocol, locate, and driver path without a provider.
- *
- * The built registry is used because integration tests drive the built runner.
+ * Scripted AI SDK model for agent tests. `installFakeModel` returns a real
+ * `LanguageModelV2` instance that tests pass as `agent: { model }`, so every
+ * test exercises the production adapter path — prompt assembly, structured
+ * output, closed-grammar validation, repair, and budget accounting — without a
+ * provider. Detection in config resolution is structural, so the instance
+ * works across the src/dist realm boundary.
  */
 
-import type { ModelCall, ModelResult } from '../../src/agent/model/adapter.ts';
-
-const builtRegistryModule = '../../dist/agent/model/registry.js';
-const { registerModelAdapter } = (await import(
-  builtRegistryModule
-)) as typeof import('../../src/agent/model/registry.ts');
-
-const builtAdapterModule = '../../dist/agent/model/adapter.js';
-const { ModelOutputInvalidError } = (await import(
-  builtAdapterModule
-)) as typeof import('../../src/agent/model/adapter.ts');
+import type { ModelInstance } from '../../src/types.ts';
 
 export interface FakeCall {
   readonly schemaName: string;
@@ -36,48 +28,84 @@ export type FakeResponder = (call: FakeCall) => unknown;
 /** Recorded calls, newest last. Cleared by every installFakeModel call. */
 export const fakeCalls: FakeCall[] = [];
 
+/** The structural surface the AI SDK reads from a V2 prompt message list. */
+type FakePrompt = readonly {
+  readonly role: string;
+  readonly content: string | readonly { readonly type: string; readonly text?: string }[];
+}[];
+
 /**
- * Installs the responder behind provider `fake`. Configure tests with
- * `agent: { model: 'fake/scripted' }`.
+ * Builds the scripted model. Configure tests with `agent: { model }`; the
+ * instance never crosses a process boundary because agent integration tests
+ * run through the in-process transport.
  */
-export function installFakeModel(responder: FakeResponder): void {
+export function installFakeModel(responder: FakeResponder): ModelInstance {
   fakeCalls.length = 0;
-  registerModelAdapter('fake', () => ({
-    provenance: {
-      provider: 'fake',
-      model: 'scripted',
-      endpoint: 'local',
-      adapterVersion: 'fake/1.0.0',
-    },
-    async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
-      const observation = section(call.prompt, 'observation');
+  return {
+    specificationVersion: 'v4',
+    provider: 'fake',
+    modelId: 'scripted',
+    supportedUrls: {},
+    async doGenerate(options: {
+      prompt: FakePrompt;
+      responseFormat?: { type: string; name?: string } | undefined;
+    }) {
+      const system = promptText(options.prompt, 'system');
+      const prompt = promptText(options.prompt, 'user');
+      const observation = section(prompt, 'observation');
       const parsed: FakeCall = {
-        schemaName: call.schemaName,
-        system: call.system,
-        prompt: call.prompt,
-        instruction: section(call.prompt, 'instruction').trim(),
+        schemaName: options.responseFormat?.name ?? inferSchemaName(prompt),
+        system,
+        prompt,
+        instruction: section(prompt, 'instruction').trim(),
         observation,
-        revision: /<observation revision="([^"]+)"/.exec(call.prompt)?.[1] ?? '',
+        revision: /<observation revision="([^"]+)"/.exec(prompt)?.[1] ?? '',
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
       };
       fakeCalls.push(parsed);
       const raw = responder(parsed);
-      const validation = call.validate(raw);
-      if (!validation.ok) {
-        // Mirrors the real adapter so repair and budget semantics are exercised.
-        throw new ModelOutputInvalidError(validation.issue, { rawText: JSON.stringify(raw) });
-      }
       return {
-        value: validation.value,
+        content: [{ type: 'text' as const, text: JSON.stringify(raw) }],
+        finishReason: { unified: 'stop' as const, raw: 'stop' },
         usage: {
-          inputTokens: 100,
-          outputTokens: 20,
-          accounting: 'provider',
-          estimatedCostUsd: undefined,
+          inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 20, text: 20, reasoning: 0 },
+          totalTokens: 120,
         },
+        warnings: [],
       };
     },
-  }));
+    async doStream(): Promise<never> {
+      throw new Error('the scripted fake model does not stream');
+    },
+    // The runner duck-types model instances exactly like the AI SDK does; the
+    // structural fields above are the whole contract this fake relies on.
+  } as ModelInstance;
+}
+
+/** Concatenates the text of every prompt message with the given role. */
+function promptText(prompt: FakePrompt, role: string): string {
+  const parts: string[] = [];
+  for (const message of prompt) {
+    if (message.role !== role) continue;
+    if (typeof message.content === 'string') {
+      parts.push(message.content);
+      continue;
+    }
+    for (const part of message.content) {
+      if (part.type === 'text' && part.text !== undefined) parts.push(part.text);
+    }
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Text-mode requests (extraction against a caller schema with no JSON Schema
+ * projection) carry no provider schema name; the runner's request line is the
+ * stable signal that identifies them.
+ */
+function inferSchemaName(prompt: string): string {
+  return prompt.startsWith('Extract the requested data') ? 'agent-extract-1' : '';
 }
 
 /** Extracts one fenced prompt section. */

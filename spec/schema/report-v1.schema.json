@@ -132,6 +132,7 @@
         "endpoint": {
           "oneOf": [
             { "const": "local" },
+            { "const": "provider-default" },
             { "type": "string", "format": "uri" }
           ]
         },

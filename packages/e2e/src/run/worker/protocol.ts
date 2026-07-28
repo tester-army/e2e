@@ -80,6 +80,8 @@ export interface ReadyMessage {
 export interface PairStartMessage {
   readonly type: 'pair-start';
   readonly testId: string;
+  /** Joined title path, so reporters need no side lookup by test ID. */
+  readonly title: string;
 }
 
 export interface ResultMessage {

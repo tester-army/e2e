@@ -126,9 +126,16 @@ export class LocatorEngine {
     return ref;
   }
 
-  /** Resolves all current matches once without waiting. */
-  async resolveAll(expression: LocatorExpression): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, this.deadline(this.options.actionTimeout));
+  /**
+   * Resolves all current matches once without waiting. The caller's deadline,
+   * when given, bounds internal retries of retryable driver errors; it
+   * defaults to the action timeout.
+   */
+  async resolveAll(
+    expression: LocatorExpression,
+    deadline: Deadline = this.deadline(this.options.actionTimeout),
+  ): Promise<readonly NodeRef[]> {
+    return this.resolveOnce(expression, deadline);
   }
 
   /** Reads one node snapshot. */

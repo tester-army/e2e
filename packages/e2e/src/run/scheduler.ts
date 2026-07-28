@@ -33,7 +33,7 @@ export interface SchedulerEvents {
   onSerialGroup(group: SerialGroupRecord): void;
   onRunError(error: RunError): void;
   /** A worker began executing one test-target pair. */
-  onTestStart?(testId: string, targetName: string): void;
+  onTestStart?(testId: string, title: string, targetName: string): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
 }
@@ -411,7 +411,7 @@ class Scheduler {
       }
       case 'pair-start': {
         worker.inFlightTestId = message.testId;
-        this.options.events.onTestStart?.(message.testId, worker.targetName);
+        this.options.events.onTestStart?.(message.testId, message.title, worker.targetName);
         break;
       }
       case 'result': {

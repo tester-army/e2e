@@ -41,18 +41,19 @@ import {
   sanitizeFilename,
   staleOr,
   translatePwError,
+  unsupportedDrag,
   type ActionTarget,
 } from './support.ts';
 import { WebChannel, type WebSessionHost } from './web.ts';
 
-/** Refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
+/** Locator refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_STORED_REFS = 2048;
 
 /**
  * Safety valve on nodes in one observation. driver-1 has no way to report a
  * truncated tree, so this must stay well above real pages and let the runner's
- * observation byte budget — which is visible in the prompt and the report — be
- * the effective limit.
+ * observation byte budget — which is visible in the prompt and the report —
+ * be the effective limit.
  */
 const MAX_OBSERVED_NODES = 3_000;
 
@@ -94,7 +95,16 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
   private refCounter = 0;
   private artifactCounter = 0;
   private tracing = false;
+  /** Locator-backed refs from `screen.resolve`; they hold no live handles. */
   private readonly refs = new Map<string, StoredRef>();
+  /**
+   * Handle-backed refs of the newest observation. One observation is one
+   * handle generation: the whole map is swapped atomically per `observe()`,
+   * and the superseded generation is disposed in one sweep. Keeping these out
+   * of `refs` means locator-ref eviction can never destroy a handle an
+   * in-flight observation still references.
+   */
+  private observationRefs = new Map<string, StoredRef>();
   private pendingState: DriverState | null = null;
   private readonly target: ParsedWebTarget;
   private readonly webChannel: WebChannel;
@@ -197,25 +207,30 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     this.refs.set(id, { target, revision });
     for (const oldest of this.refs.keys()) {
       if (this.refs.size <= MAX_STORED_REFS) break;
-      this.dropRef(oldest);
+      this.refs.delete(oldest);
     }
     return { id, revision };
   }
 
-  /** Removes one stored ref and releases any element handle it owned. */
-  private dropRef(id: string): void {
-    const stored = this.refs.get(id);
-    this.refs.delete(id);
-    if (stored?.target.kind === 'element') void stored.target.element.dispose().catch(() => undefined);
+  /** Stores one element-backed ref in the observation generation being built. */
+  private storeObservationRef(
+    generation: Map<string, StoredRef>,
+    element: ElementHandle<Element>,
+    revision: string,
+  ): NodeRef {
+    this.refCounter += 1;
+    const id = `n${this.refCounter}`;
+    generation.set(id, { target: { kind: 'element', element }, revision });
+    return { id, revision };
   }
 
-  /** Releases handle-backed refs from superseded observation revisions. */
-  private dropStaleElementRefs(currentRevision: string): void {
-    const stale: string[] = [];
-    for (const [id, stored] of this.refs) {
-      if (stored.target.kind === 'element' && stored.revision !== currentRevision) stale.push(id);
+  /** Disposes every element handle in one observation generation. */
+  private static disposeGeneration(generation: ReadonlyMap<string, StoredRef>): void {
+    for (const stored of generation.values()) {
+      if (stored.target.kind === 'element') {
+        void stored.target.element.dispose().catch(() => undefined);
+      }
     }
-    for (const id of stale) this.dropRef(id);
   }
 
   // --- DriverApp ---
@@ -291,15 +306,20 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       this.checkOperation(operation);
       this.requirePage();
       const stored = this.lookupRef(ref);
+      const args = {
+        testIdAttribute: this.driverContext.app.testIdAttribute,
+        mode: { kind: 'node' as const },
+      };
       try {
-        const raw = (await asActionable(stored.target).evaluate(
-          readSemanticsFunction,
-          {
-            testIdAttribute: this.driverContext.app.testIdAttribute,
-            mode: { kind: 'node' as const },
-          },
-          { timeout: Math.min(operation.timeoutMs, 5000) },
-        )) as RawNodeData;
+        // A locator waits for its element to resolve; a handle-backed target
+        // is already resolved, so it evaluates immediately.
+        const read = readSemanticsFunction<{ kind: 'node' }>;
+        const raw =
+          stored.target.kind === 'locator'
+            ? await stored.target.locator.evaluate(read, args, {
+                timeout: Math.min(operation.timeoutMs, 5000),
+              })
+            : await stored.target.element.evaluate(read, args);
         return toSemanticNode(ref, raw);
       } catch (cause) {
         throw staleOr(cause, 'read');
@@ -348,7 +368,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
   }
 
   private lookupRef(ref: NodeRef): StoredRef {
-    const stored = this.refs.get(ref.id);
+    const stored = this.refs.get(ref.id) ?? this.observationRefs.get(ref.id);
     if (stored === undefined || stored.revision !== ref.revision) {
       throw new DriverError('NODE_STALE', `node reference ${ref.id} is stale`, { retryable: true });
     }
@@ -387,7 +407,9 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         await locator.uncheck({ timeout });
         return;
       case 'focus':
-        await locator.focus({ timeout });
+        // ElementHandle.focus takes no timeout: the element is already resolved.
+        if (target.kind === 'locator') await target.locator.focus({ timeout });
+        else await target.element.focus();
         return;
       case 'hover':
         await locator.hover({ timeout });
@@ -407,11 +429,14 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         return;
       }
       case 'setInputFiles':
-        await locator.setInputFiles(action.paths, { timeout });
+        await locator.setInputFiles([...action.paths], { timeout });
         return;
       case 'dragTo': {
         const other = this.lookupRef(action.target);
-        await locator.dragTo(other.target, { timeout });
+        if (target.kind !== 'locator' || other.target.kind !== 'locator') {
+          throw unsupportedDrag();
+        }
+        await target.locator.dragTo(other.target.locator, { timeout });
         return;
       }
       case 'swipe': {
@@ -562,13 +587,22 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         .catch(() => undefined);
       const revision = this.nextRevision();
       const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-      const captured = await this.captureDocument(
-        page.locator(':root'),
-        revision,
-        [],
-        MAX_OBSERVED_NODES,
-      );
-      this.dropStaleElementRefs(revision);
+      const generation = new Map<string, StoredRef>();
+      let captured: Awaited<ReturnType<PlaywrightSession['captureDocument']>>;
+      try {
+        captured = await this.captureDocument(
+          page.locator(':root'),
+          revision,
+          [],
+          MAX_OBSERVED_NODES,
+          generation,
+        );
+      } catch (cause) {
+        PlaywrightSession.disposeGeneration(generation);
+        throw cause;
+      }
+      PlaywrightSession.disposeGeneration(this.observationRefs);
+      this.observationRefs = generation;
       return {
         revision,
         capturedAt: new Date().toISOString(),
@@ -595,6 +629,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     revision: string,
     framePath: readonly string[],
     budget: number,
+    generation: Map<string, StoredRef>,
   ): Promise<{ tree: SemanticNode; nodeCount: number; secureNodeCount: number }> {
     const captured = await root.evaluateHandle(readSemanticsFunction, {
       testIdAttribute: this.driverContext.app.testIdAttribute,
@@ -602,16 +637,16 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     });
     let elementsHandle: JSHandle | undefined;
     try {
-      const nodes = (await captured
-        .getProperty('nodes')
-        .then((handle) => handle.jsonValue())) as RawObservedNode[];
-      elementsHandle = await captured.getProperty('elements');
-      let secureNodeCount = (await captured
-        .getProperty('secureNodeCount')
-        .then((handle) => handle.jsonValue())) as number;
+      const [nodes, elementsProperty, initialSecureCount] = await Promise.all([
+        captured.getProperty('nodes').then((handle) => handle.jsonValue()),
+        captured.getProperty('elements'),
+        captured.getProperty('secureNodeCount').then((handle) => handle.jsonValue()),
+      ]);
+      elementsHandle = elementsProperty;
+      let secureNodeCount = initialSecureCount;
       const elements = await collectElementHandles(elementsHandle, nodes.length);
       const refs = elements.map((element) =>
-        this.storeRef({ kind: 'element', element }, revision),
+        this.storeObservationRef(generation, element, revision),
       );
       let nodeCount = nodes.length;
       const frameChildren = new Map<number, SemanticNode>();
@@ -628,6 +663,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
             revision,
             [...framePath, selector],
             remaining,
+            generation,
           ).catch(() => undefined);
           if (child === undefined) continue;
           frameChildren.set(index, child.tree);
@@ -669,25 +705,26 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     await this.context?.close().catch(() => undefined);
     this.context = null;
     this.page = null;
-    for (const stored of this.refs.values()) {
-      if (stored.target.kind === 'element') {
-        void stored.target.element.dispose().catch(() => undefined);
-      }
-    }
+    PlaywrightSession.disposeGeneration(this.observationRefs);
+    this.observationRefs.clear();
     this.refs.clear();
   }
 }
 
-/** Reads one element handle per observed node from the in-page element array. */
+/**
+ * Reads one element handle per observed node from the in-page element array.
+ * `asElement` types handles as `ElementHandle<Node>`, but the observation walk
+ * records `Element` nodes only, so the narrowing is safe by construction.
+ */
 async function collectElementHandles(
   elementsHandle: JSHandle,
   count: number,
-): Promise<ElementHandle<Node>[]> {
+): Promise<ElementHandle<Element>[]> {
   const properties = await elementsHandle.getProperties();
-  const elements: ElementHandle<Node>[] = [];
+  const elements: ElementHandle<Element>[] = [];
   for (let index = 0; index < count; index += 1) {
     const property = properties.get(String(index));
-    const element = property?.asElement() ?? null;
+    const element = (property?.asElement() ?? null) as ElementHandle<Element> | null;
     if (element === null) {
       throw new DriverError('DRIVER_FAILURE', `observation node ${index} lost its element`, {
         retryable: false,

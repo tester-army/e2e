@@ -170,27 +170,39 @@ requires one of:
 
 - `agent.model: 'provider/model-id'`;
 - `agent.model: { provider, id, endpoint?, apiKeyEnv? }`;
+- `agent.model: <model instance>` — a live language-model object from any
+  AI SDK provider package (structural detection: `specificationVersion`,
+  `provider`, `modelId`, `doGenerate`);
 - environment `E2E_MODEL=provider/model-id`.
 
-The first `/` separates provider from model ID. `E2E_MODEL_API_KEY` is the
-default provider credential variable; `apiKeyEnv` may name another variable.
-The value is never copied into resolved config, logs, reports, or child-process
-arguments. Local adapters without credentials MAY omit it.
+The first `/` separates provider from model ID in a string reference.
+`E2E_MODEL_API_KEY` is the default provider credential variable; `apiKeyEnv`
+may name another variable. The credential value never enters config digests,
+logs, reports, or child-process arguments. Local adapters without credentials
+MAY omit it.
+
+A model instance owns its own transport and credentials; the runner passes it
+to its adapter as-is. Live instances never cross a process boundary: workers
+re-resolve the config module and construct their own. The config digest
+replaces an instance with its stable identity (provider, model ID,
+specification version), so digests stay deterministic across processes.
 
 Nonlocal model endpoints require HTTPS. Provider transport authorization is
 sent only to the configured provider; the prohibition on authorization data in
 model input concerns captured application data, not the provider's own request
 credential.
 
-Provider names resolve through the runner's documented adapter registry;
-unknown providers are `MODEL_UNAVAILABLE`. A v0 runner MUST ship at least one
-adapter and report its exact version, but specification 0.1 does not require a
-particular commercial provider. This affects config portability, not test-source
-portability. Adapters consume the closed locate, judgment, and tool message
-families of `agent-protocol-1`, honor cancellation/usage reporting, and cannot
-expand policy.
+String references resolve through the runner's documented default routing
+(this runner routes them through the AI Gateway); unknown providers are
+`MODEL_UNAVAILABLE`. A v0 runner MUST ship at least one adapter and report its
+exact version, but specification 0.1 does not require a particular commercial
+provider. This affects config portability, not test-source portability.
+Adapters consume the closed locate, judgment, and tool message families of
+`agent-protocol-1`, honor cancellation/usage reporting, and cannot expand
+policy.
 
-The report records provider, model ID, resolved endpoint, and adapter/policy
+The report records provider, model ID, resolved endpoint (`provider-default`
+when a caller-supplied instance owns the transport), and adapter/policy
 versions. It never records provider credentials. Model input disclosure and
 offline behavior are specified in 14-security.md.
 

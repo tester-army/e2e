@@ -5,9 +5,10 @@ import type { AgentErrorCode } from '../types.ts';
 
 /**
  * Exit/result class per the representative mappings in 06-cli.md. The model
- * never selects a code and never selects a category.
+ * never selects a code and never selects a category. This table is the single
+ * source of truth for the closed agent code set.
  */
-const CATEGORY_BY_CODE: Readonly<Record<AgentErrorCode, ErrorCategory>> = {
+export const CATEGORY_BY_CODE: Readonly<Record<AgentErrorCode, ErrorCategory>> = {
   AUTH_CREDENTIAL_UNAVAILABLE: 'configuration',
   MODEL_UNAVAILABLE: 'configuration',
   POLICY_DENIED: 'configuration',
@@ -27,6 +28,9 @@ const CATEGORY_BY_CODE: Readonly<Record<AgentErrorCode, ErrorCategory>> = {
   ASSERTION_FAILED: 'test',
 };
 
+/** Cross-realm identity marker, mirroring `internal/errors.ts`. */
+const AGENT_ERROR_MARKER = Symbol.for('e2e.agent-error.v1');
+
 /**
  * Runner-classified agent failure (spec api/e2e.d.ts). It extends the internal
  * error base so category, exit code, retry eligibility, and report
@@ -43,18 +47,23 @@ export class AgentError extends E2EError {
     options: { screenshot?: string; cause?: unknown } = {},
   ) {
     super(CATEGORY_BY_CODE[code], code, explanation, options);
-    this.name = 'AgentError';
+    this.name = new.target.name;
+    Object.defineProperty(this, AGENT_ERROR_MARKER, { value: true });
     this.code = code;
     this.explanation = explanation;
     if (options.screenshot !== undefined) this.screenshot = options.screenshot;
   }
 }
 
-/** True when a thrown value is an agent error from this or another realm. */
+/**
+ * True when a thrown value is an agent error from this or another realm.
+ * Identity rides on a global symbol marker, not the class name, so subclasses
+ * keep honest names and `instanceof` never spans realms.
+ */
 export function isAgentError(value: unknown): value is AgentError {
   return (
     value instanceof Error &&
-    value.name === 'AgentError' &&
+    AGENT_ERROR_MARKER in value &&
     typeof (value as unknown as { code?: unknown }).code === 'string' &&
     (value as unknown as { code: string }).code in CATEGORY_BY_CODE
   );

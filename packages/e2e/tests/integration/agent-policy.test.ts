@@ -117,7 +117,7 @@ describe('agent policy and error classification', () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    installFakeModel(respond);
+    const model = installFakeModel(respond);
     const main = await runProject(
       { 'tests/policy.e2e.ts': SUITE },
       {
@@ -125,7 +125,7 @@ describe('agent policy and error classification', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model: 'fake/scripted' },
+          agent: { model },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },
       },
@@ -248,7 +248,7 @@ test.describe('group', { serial: true }, () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    installFakeModel((call) =>
+    const model = installFakeModel((call) =>
       call.schemaName === 'agent-judgment-1'
         ? judgment(true, 'the heading is present')
         : locateBestMatch(call),
@@ -260,7 +260,7 @@ test.describe('group', { serial: true }, () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model: 'fake/scripted' },
+          agent: { model },
         },
       },
     );

@@ -15,7 +15,6 @@ export interface AgentObservation {
   readonly nodes: ReadonlyMap<string, SemanticNode>;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
-  readonly secureNodeCount: number;
 }
 
 /**
@@ -76,7 +75,6 @@ export function prepareObservation(
     nodes,
     viewport: observation.viewport,
     truncated,
-    secureNodeCount: observation.redaction.secureNodeCount,
   };
 }
 

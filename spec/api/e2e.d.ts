@@ -766,6 +766,19 @@ export interface ModelConfig {
   apiKeyEnv?: string;
 }
 
+/**
+ * A live AI SDK language model instance, e.g. `openai('gpt-4o')` from
+ * `@ai-sdk/openai` or any other provider implementing the AI SDK
+ * `LanguageModelV2+` specification. The instance owns its own transport and
+ * credentials. Detection is structural, so any provider package works without
+ * the runner depending on it.
+ */
+export interface ModelInstance {
+  readonly specificationVersion: string;
+  readonly provider: string;
+  readonly modelId: string;
+}
+
 export interface E2EConfig {
   specVersion?: '0.1';
   projectId?: string;
@@ -786,7 +799,7 @@ export interface E2EConfig {
     testIdAttribute?: string;
   };
   agent?: {
-    model?: string | ModelConfig;
+    model?: string | ModelConfig | ModelInstance;
     maxSteps?: number;
     maxModelCalls?: number;
     maxObservationBytes?: number;

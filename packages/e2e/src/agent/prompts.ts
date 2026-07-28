@@ -40,7 +40,6 @@ export interface PromptInput {
   readonly request: string;
   /** Untrusted test-author instruction or condition. */
   readonly instruction: string;
-  readonly params?: string | undefined;
   readonly observation?: AgentObservation | undefined;
   readonly ledger?: string | undefined;
   readonly repair?:
@@ -56,9 +55,6 @@ export interface PromptInput {
 /** Builds the user message: request first, then clearly fenced untrusted evidence. */
 export function buildPrompt(input: PromptInput): string {
   const sections: string[] = [input.request, '', '<instruction>', input.instruction, '</instruction>'];
-  if (input.params !== undefined) {
-    sections.push('', '<parameters>', input.params, '</parameters>');
-  }
   if (input.observation !== undefined) {
     sections.push(
       '',

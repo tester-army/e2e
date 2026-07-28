@@ -13,7 +13,8 @@ import { sleep } from '../internal/time.ts';
 import { describeExpression } from '../locator/expression.ts';
 import { isSecret, validateLongPress } from '../locator/screen.ts';
 import type { Agent, Momentum, ScrollDirection, SelectOption, StandardSchemaV1 } from '../types.ts';
-import { AgentError, isAgentError } from './error.ts';
+import { AgentError } from './error.ts';
+import type { AgentObservation } from './observation.ts';
 import {
   Invocation,
   toAgentError,
@@ -75,7 +76,6 @@ export function createAgent(runtime: AgentContext): Agent {
       target,
       async (invocation) => {
         const located = await locateOne(invocation, target, { testIdAttribute });
-        invocation.note({ observationRevision: located.observation.revision });
         try {
           await action(invocation, located);
         } catch (cause) {
@@ -83,6 +83,25 @@ export function createAgent(runtime: AgentContext): Agent {
         }
       },
     );
+
+  /** One judgment call against a fresh observation. */
+  const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
+    invocation.ask({
+      schemaName: 'agent-judgment-1',
+      schema: JUDGMENT_SCHEMA,
+      validate: validateJudgmentResponse,
+      prompt: { request: JUDGMENT_REQUEST, instruction, observation },
+    });
+
+  /** `tap` and `click` are the same located action under two spec names. */
+  const tapVerb =
+    (api: string) =>
+    (target: string, options?: { timeout?: number; cache?: boolean }): Promise<void> =>
+      instant(api, target, options, (invocation, located) =>
+        invocation.commit('tap', () =>
+          invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
+        ),
+      );
 
   const planningTierUnavailable = (api: string): never => {
     throw new ConfigurationError(
@@ -95,21 +114,8 @@ export function createAgent(runtime: AgentContext): Agent {
     act: ((): never => planningTierUnavailable('agent.act')) as Agent['act'],
     login: ((): never => planningTierUnavailable('agent.login')) as Agent['login'],
 
-    tap(target, options) {
-      return instant('agent.tap', target, options, (invocation, located) =>
-        invocation.commit('tap', () =>
-          invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
-        ),
-      );
-    },
-
-    click(target, options) {
-      return instant('agent.click', target, options, (invocation, located) =>
-        invocation.commit('tap', () =>
-          invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
-        ),
-      );
-    },
+    tap: tapVerb('agent.tap'),
+    click: tapVerb('agent.click'),
 
     type(target, value, options) {
       const sensitive = isSecret(value);
@@ -220,7 +226,6 @@ export function createAgent(runtime: AgentContext): Agent {
         async (invocation) => {
           const from = await locateOne(invocation, source, { testIdAttribute });
           const to = await locateOne(invocation, destination, { testIdAttribute });
-          invocation.note({ observationRevision: to.observation.revision });
           try {
             await invocation.commit('dragTo', () =>
               invocation.session.screen.perform(
@@ -259,7 +264,6 @@ export function createAgent(runtime: AgentContext): Agent {
             return;
           }
           const located = await locateOne(invocation, within, { testIdAttribute });
-          invocation.note({ observationRevision: located.observation.revision });
           await invocation.commit('scroll', () =>
             invocation.session.actions.scroll(
               direction,
@@ -288,7 +292,6 @@ export function createAgent(runtime: AgentContext): Agent {
           for (let round = 1; ; round += 1) {
             invocation.recordPoll('scrollTo', round);
             const selection = await observeAndSelect(invocation, target);
-            invocation.note({ observationRevision: selection.observation.revision });
             if (selection.declined) lastExplanation = selection.explanation;
             if (selection.selected !== null) {
               const located = await resolveSelected(
@@ -342,34 +345,31 @@ export function createAgent(runtime: AgentContext): Agent {
         },
         condition,
         async (invocation) => {
+          // The exhaustion checks live at the top of the loop — the only exit
+          // — so a timeout after a sleep still reports the last judgment
+          // instead of a bare deadline error.
           let lastExplanation = 'no judgment was produced';
           for (let round = 1; ; round += 1) {
+            if (round > 1) {
+              if (invocation.deadline.expired()) {
+                throw new AgentError(
+                  'STEP_TIMEOUT',
+                  `waitFor timed out; last judgment: ${lastExplanation}`,
+                );
+              }
+              if (!invocation.canAsk()) {
+                throw new AgentError(
+                  'STEP_BUDGET_EXHAUSTED',
+                  `waitFor exhausted its model-call budget; last judgment: ${lastExplanation}`,
+                );
+              }
+            }
             invocation.recordPoll('waitFor', round);
             const observation = await invocation.observe();
-            const judgment = await invocation.ask({
-              schemaName: 'agent-judgment-1',
-              schema: JUDGMENT_SCHEMA,
-              validate: validateJudgmentResponse,
-              prompt: { request: JUDGMENT_REQUEST, instruction: condition, observation },
-            });
+            const judgment = await askJudgment(invocation, condition, observation);
             lastExplanation = judgment.explanation;
-            invocation.note({
-              observationRevision: observation.revision,
-              explanation: judgment.explanation,
-            });
+            invocation.note({ explanation: judgment.explanation });
             if (judgment.result) return;
-            if (invocation.deadline.expired()) {
-              throw new AgentError(
-                'STEP_TIMEOUT',
-                `waitFor timed out; last judgment: ${lastExplanation}`,
-              );
-            }
-            if (!invocation.canAsk()) {
-              throw new AgentError(
-                'STEP_BUDGET_EXHAUSTED',
-                `waitFor exhausted its model-call budget; last judgment: ${lastExplanation}`,
-              );
-            }
             await sleep(
               Math.min(intervalMs, Math.max(1, invocation.deadline.remaining())),
               runtime.signal,
@@ -397,7 +397,6 @@ export function createAgent(runtime: AgentContext): Agent {
           // shape; without one the repair loop is the only shape signal.
           const projected = await deriveJsonSchema(schema);
           const observation = await invocation.observe();
-          invocation.note({ observationRevision: observation.revision });
           let repair: PromptInput['repair'];
           for (;;) {
             const candidate = await invocation.ask({
@@ -414,7 +413,7 @@ export function createAgent(runtime: AgentContext): Agent {
             const validation = await schema['~standard'].validate(candidate);
             if (validation.issues === undefined) return validation.value;
             const issue = validation.issues.map(describeIssue).join('; ');
-            invocation.recordPolicy('extract.schema', 'denied', 'MODEL_OUTPUT_INVALID');
+            invocation.recordSchemaRejection('agent-extract-1');
             if (!invocation.canAsk()) {
               throw new AgentError(
                 'MODEL_OUTPUT_INVALID',
@@ -444,13 +443,7 @@ export function createAgent(runtime: AgentContext): Agent {
         assertion,
         async (invocation) => {
           const observation = await invocation.observe();
-          invocation.note({ observationRevision: observation.revision });
-          const judgment = await invocation.ask({
-            schemaName: 'agent-judgment-1',
-            schema: JUDGMENT_SCHEMA,
-            validate: validateJudgmentResponse,
-            prompt: { request: JUDGMENT_REQUEST, instruction: assertion, observation },
-          });
+          const judgment = await askJudgment(invocation, assertion, observation);
           invocation.note({ explanation: judgment.explanation });
           const screenshot = await captureEvidence(invocation, options?.screenshot);
           if (judgment.result) return;
@@ -602,10 +595,10 @@ function safeJson(value: unknown): string | undefined {
 }
 
 function describeIssue(issue: StandardSchemaV1.Issue): string {
-  const path = (issue.path ?? [])
+  const fieldPath = (issue.path ?? [])
     .map((segment) => (typeof segment === 'object' ? String(segment.key) : String(segment)))
     .join('.');
-  return path === '' ? issue.message : `${path}: ${issue.message}`;
+  return fieldPath === '' ? issue.message : `${fieldPath}: ${issue.message}`;
 }
 
 /**
@@ -620,9 +613,9 @@ function explainActionFailure(
   target: string,
   located: LocatedNode,
   cause: unknown,
-): Error {
+): AgentError {
   const error = toAgentError(cause);
-  if (!isAgentError(error) || error.code !== 'ACTION_FAILED') return error;
+  if (error.code !== 'ACTION_FAILED') return error;
   const reasoning =
     located.explanation === '' ? '' : ` The model explained: ${located.explanation}`;
   const explanation =

@@ -1,6 +1,5 @@
 /** Attempt-scoped step timeline (spec 10-determinism.md, 13-reporting.md). */
 
-import type { Ledger } from '../agent/ledger.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 
@@ -14,9 +13,13 @@ export type StepKind =
   | 'session'
   | 'resource';
 
-/** Child event of one public step: polls, model calls, policy decisions. */
+/**
+ * Child event of one public step: polls, model calls, policy decisions.
+ * `tool-proposal` (report-1) belongs to the planning tier and is not emitted
+ * by this milestone.
+ */
 export interface StepEvent {
-  kind: 'poll' | 'observation' | 'model' | 'tool-proposal' | 'policy' | 'driver' | 'schema';
+  kind: 'poll' | 'observation' | 'model' | 'policy' | 'driver' | 'schema';
   startedAt: string;
   durationMs: number;
   status: 'passed' | 'failed' | 'cancelled';
@@ -87,29 +90,27 @@ export interface StepRecord {
 }
 
 export interface StepRecorderOptions {
-  /** Appends completed steps as prior-step context for agent invocations. */
-  readonly ledger?: Ledger;
   /** Caps events retained per step (resolved limits.maxEventsPerStep). */
   readonly maxEventsPerStep?: number;
 }
 
 export class StepRecorder {
   private readonly steps: StepRecord[] = [];
-  private activeStepId: string | undefined;
-  private readonly ledger: Ledger | undefined;
+  private activeStep: StepRecord | undefined;
+  /** IDs of steps whose bodies are still executing. */
+  private readonly running = new Set<string>();
   private readonly maxEventsPerStep: number;
 
   constructor(
     private readonly attemptId: string,
     options: StepRecorderOptions = {},
   ) {
-    this.ledger = options.ledger;
     this.maxEventsPerStep = options.maxEventsPerStep ?? 1_000;
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
   get currentStepId(): string | undefined {
-    return this.activeStepId;
+    return this.activeStep?.id;
   }
 
   /** Runs one public API call as a recorded top-level step. */
@@ -130,8 +131,9 @@ export class StepRecorder {
       artifacts: [],
     };
     this.steps.push(record);
-    const previousActive = this.activeStepId;
-    this.activeStepId = record.id;
+    this.running.add(record.id);
+    const previousActive = this.activeStep;
+    this.activeStep = record;
     try {
       const result = await body();
       record.durationMs = Date.now() - startedMs;
@@ -143,13 +145,8 @@ export class StepRecorder {
       record.error = serializeError(error);
       throw cause;
     } finally {
-      this.activeStepId = previousActive;
-      this.ledger?.append({
-        method: record.api,
-        label: record.label,
-        status: record.status,
-        ...(record.explanation !== undefined ? { handoff: record.explanation } : {}),
-      });
+      this.activeStep = previousActive;
+      this.running.delete(record.id);
     }
   }
 
@@ -190,8 +187,12 @@ export class StepRecorder {
     return this.steps;
   }
 
+  /** Steps whose execution has finished, e.g. as prior-step prompt context. */
+  completed(): readonly StepRecord[] {
+    return this.steps.filter((step) => !this.running.has(step.id));
+  }
+
   private current(): StepRecord | undefined {
-    if (this.activeStepId === undefined) return undefined;
-    return this.steps.find((step) => step.id === this.activeStepId);
+    return this.activeStep;
   }
 }

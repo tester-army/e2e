@@ -15,11 +15,11 @@ import { Deadline } from '../internal/time.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
-import type { StepMetrics, StepModelInfo, StepRecorder } from '../run/steps.ts';
+import type { StepEvent, StepMetrics, StepModelInfo, StepRecord, StepRecorder } from '../run/steps.ts';
 import type { AgentErrorCode } from '../types.ts';
-import { AgentError, isAgentError } from './error.ts';
-import { Ledger } from './ledger.ts';
-import { ModelOutputInvalidError, type ModelAdapter } from './model/adapter.ts';
+import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
+import { serializeLedger, type LedgerContext } from './ledger.ts';
+import { ModelOutputInvalidError, tokenUpperBound, type ModelAdapter } from './model/adapter.ts';
 import { prepareObservation, type AgentObservation } from './observation.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
@@ -30,7 +30,8 @@ export interface AgentContext {
   readonly steps: StepRecorder;
   readonly adapter: ModelAdapter;
   readonly config: ResolvedConfig;
-  readonly ledger: Ledger;
+  /** Completed steps quoted as prior context; serial members see the whole group. */
+  readonly priorSteps: () => readonly StepRecord[];
   /** Trusted project context: config.agent.context then test/group agentContext. */
   readonly agentContext: string | undefined;
   readonly secrets: SecretResolver;
@@ -63,6 +64,13 @@ const MAX_OUTPUT_TOKENS = 2048;
 /** Headroom reserved for the method instruction and parameters. */
 const INSTRUCTION_RESERVE_BYTES = 4_096;
 
+/** One instrumented phase: the event kind it records and the debug bucket it feeds. */
+interface PhaseSpec {
+  readonly kind: StepEvent['kind'];
+  readonly phase: 'agent.observe' | 'agent.model' | 'agent.action';
+  readonly name?: string;
+}
+
 /** Model-call accounting plus observation/ledger metrics for one invocation. */
 export class Invocation {
   readonly deadline: Deadline;
@@ -75,10 +83,14 @@ export class Invocation {
     ledgerBytes: 0,
   };
 
-  private readonly createdMs = Date.now();
-  private modelMs = 0;
-  private observeMs = 0;
-  private actionMs = 0;
+  /**
+   * Trusted system message and serialized prior-step ledger. Both are
+   * invariant for the invocation's lifetime — steps complete only between
+   * invocations — so they are computed exactly once.
+   */
+  private readonly system: string;
+  private readonly ledger: LedgerContext;
+
   private inputTokens = 0;
   private outputTokens = 0;
   private peakTokensPerCall = 0;
@@ -92,6 +104,8 @@ export class Invocation {
     private readonly options: InvocationOptions,
   ) {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
+    this.system = buildSystem(options.task, runtime.agentContext);
+    this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
   }
 
   get engine(): LocatorEngine {
@@ -102,42 +116,63 @@ export class Invocation {
     return this.runtime.engine.session;
   }
 
-  /** Captures and redacts one fresh observation. */
-  async observe(): Promise<AgentObservation> {
-    this.checkDeadline();
+  /**
+   * Runs one phase with uniform accounting: a child event on success and
+   * failure, one debug bucket, and translation onto the closed agent error
+   * set. Every observe/model/action phase goes through here so the records
+   * cannot drift apart.
+   */
+  private async instrument<Value>(
+    spec: PhaseSpec,
+    body: () => Promise<Value>,
+    detail?: (value: Value) => Partial<StepEvent>,
+  ): Promise<Value> {
     const startedAt = timestamp();
     const startedMs = Date.now();
     try {
-      const raw = await this.session.observe(this.operation());
-      const observation = prepareObservation(raw, {
-        secrets: this.runtime.secretValues,
-        maxBytes: this.observationByteBudget(),
-        testIdAttribute: this.runtime.config.testIdAttribute,
-      });
-      this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+      const value = await body();
       this.runtime.steps.recordEvent({
-        kind: 'observation',
+        kind: spec.kind,
         startedAt,
         durationMs: Date.now() - startedMs,
         status: 'passed',
-        count: observation.nodes.size,
-        bytes: observation.bytes,
+        ...(spec.name === undefined ? {} : { name: spec.name }),
+        ...detail?.(value),
       });
-      return observation;
+      return value;
     } catch (cause) {
       this.runtime.steps.recordEvent({
-        kind: 'observation',
+        kind: spec.kind,
         startedAt,
         durationMs: Date.now() - startedMs,
-        status: 'failed',
+        status: cause instanceof AgentError && cause.code === 'CANCELLED' ? 'cancelled' : 'failed',
+        ...(spec.name === undefined ? {} : { name: spec.name }),
         code: errorCode(cause),
       });
       throw toAgentError(cause);
     } finally {
-      const durationMs = Date.now() - startedMs;
-      this.observeMs += durationMs;
-      this.runtime.debug?.record('agent.observe', durationMs);
+      this.runtime.debug?.record(spec.phase, Date.now() - startedMs);
     }
+  }
+
+  /** Captures and redacts one fresh observation. */
+  async observe(): Promise<AgentObservation> {
+    this.checkDeadline();
+    const observation = await this.instrument(
+      { kind: 'observation', phase: 'agent.observe' },
+      async () => {
+        const raw = await this.session.observe(this.operation());
+        return prepareObservation(raw, {
+          secrets: this.runtime.secretValues,
+          maxBytes: this.observationByteBudget(),
+          testIdAttribute: this.runtime.config.testIdAttribute,
+        });
+      },
+      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
+    );
+    this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+    this.observationRevision = observation.revision;
+    return observation;
   }
 
   /**
@@ -151,9 +186,7 @@ export class Invocation {
   private observationByteBudget(): number {
     const { config } = this.runtime;
     const overhead =
-      byteLength(buildSystem(this.options.task, this.runtime.agentContext)) +
-      this.runtime.ledger.serialize().bytes +
-      INSTRUCTION_RESERVE_BYTES;
+      tokenUpperBound(this.system) + this.ledger.bytes + INSTRUCTION_RESERVE_BYTES;
     const withinTokenCeiling = Math.max(1_024, config.limits.maxModelTokensPerCall - overhead);
     return Math.min(config.agent.maxObservationBytes, withinTokenCeiling);
   }
@@ -164,80 +197,57 @@ export class Invocation {
    */
   async ask<Value>(request: {
     schemaName: string;
-    schema: JSONSchema7;
+    /** Closed response grammar, or undefined for runner-validated text mode. */
+    schema: JSONSchema7 | undefined;
     validate: (value: unknown) => ProtocolValidation<Value>;
     prompt: PromptInput;
   }): Promise<Value> {
     let repair: PromptInput['repair'] = request.prompt.repair;
+    this.metrics.contextBytes = tokenUpperBound(this.runtime.agentContext ?? '');
+    this.metrics.ledgerBytes = this.ledger.bytes;
     for (;;) {
       this.checkDeadline();
       this.consumeModelCall();
-      const ledger = this.runtime.ledger.serialize();
-      const system = buildSystem(this.options.task, this.runtime.agentContext);
-      this.metrics.contextBytes = byteLength(this.runtime.agentContext ?? '');
-      this.metrics.ledgerBytes = ledger.bytes;
       const prompt = buildPrompt({
         ...request.prompt,
-        ledger: ledger.text,
+        ledger: this.ledger.text,
         ...(repair === undefined ? {} : { repair }),
       });
-      const startedAt = timestamp();
-      const startedMs = Date.now();
       try {
-        const result = await this.runtime.adapter.generate({
-          system,
-          prompt,
-          schemaName: request.schemaName,
-          schema: request.schema,
-          validate: request.validate,
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
-          maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
-          signal: this.runtime.signal,
-          timeoutMs: Math.max(1, this.deadline.remaining()),
-        });
+        const result = await this.instrument(
+          { kind: 'model', phase: 'agent.model', name: request.schemaName },
+          () =>
+            this.runtime.adapter.generate({
+              system: this.system,
+              prompt,
+              schemaName: request.schemaName,
+              schema: request.schema,
+              validate: request.validate,
+              maxOutputTokens: MAX_OUTPUT_TOKENS,
+              maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
+              signal: this.runtime.signal,
+              timeoutMs: Math.max(1, this.deadline.remaining()),
+            }),
+          (generated) => ({
+            count: generated.usage.inputTokens + generated.usage.outputTokens,
+          }),
+        );
         this.recordUsage(result.usage);
-        this.runtime.steps.recordEvent({
-          kind: 'model',
-          startedAt,
-          durationMs: Date.now() - startedMs,
-          status: 'passed',
-          name: request.schemaName,
-          count: result.usage.inputTokens + result.usage.outputTokens,
-        });
         return result.value;
       } catch (cause) {
-        this.runtime.steps.recordEvent({
-          kind: 'model',
-          startedAt,
-          durationMs: Date.now() - startedMs,
-          status: cause instanceof AgentError && cause.code === 'CANCELLED' ? 'cancelled' : 'failed',
-          name: request.schemaName,
-          code: errorCode(cause),
-        });
         if (
           cause instanceof ModelOutputInvalidError &&
           this.metrics.modelCalls < this.options.maxModelCalls &&
           !this.deadline.expired()
         ) {
-          this.runtime.steps.recordEvent({
-            kind: 'schema',
-            startedAt: timestamp(),
-            durationMs: 0,
-            status: 'failed',
-            name: request.schemaName,
-            code: 'MODEL_OUTPUT_INVALID',
-          });
+          this.recordSchemaRejection(request.schemaName);
           repair = {
             issue: cause.explanation,
             rawText: cause.rawText,
           };
           continue;
         }
-        throw toAgentError(cause);
-      } finally {
-        const durationMs = Date.now() - startedMs;
-        this.modelMs += durationMs;
-        this.runtime.debug?.record('agent.model', durationMs);
+        throw cause;
       }
     }
   }
@@ -252,33 +262,19 @@ export class Invocation {
       );
     }
     this.metrics.actionSteps += 1;
-    const startedAt = timestamp();
-    const startedMs = Date.now();
-    try {
-      const result = await body();
-      this.runtime.steps.recordEvent({
-        kind: 'driver',
-        startedAt,
-        durationMs: Date.now() - startedMs,
-        status: 'passed',
-        name,
-      });
-      return result;
-    } catch (cause) {
-      this.runtime.steps.recordEvent({
-        kind: 'driver',
-        startedAt,
-        durationMs: Date.now() - startedMs,
-        status: 'failed',
-        name,
-        code: errorCode(cause),
-      });
-      throw toAgentError(cause);
-    } finally {
-      const durationMs = Date.now() - startedMs;
-      this.actionMs += durationMs;
-      this.runtime.debug?.record('agent.action', durationMs);
-    }
+    return this.instrument({ kind: 'driver', phase: 'agent.action', name }, body);
+  }
+
+  /** Records one rejected response payload as a child event. */
+  recordSchemaRejection(name: string): void {
+    this.runtime.steps.recordEvent({
+      kind: 'schema',
+      startedAt: timestamp(),
+      durationMs: 0,
+      status: 'failed',
+      name,
+      code: 'MODEL_OUTPUT_INVALID',
+    });
   }
 
   /** Records one policy decision as a child event. */
@@ -330,13 +326,11 @@ export class Invocation {
   }
 
   /**
-   * Records report detail that must survive a later failure, such as the
-   * observation revision and judgment explanation `agent.assert` requires.
+   * Records the judgment explanation that must survive a later failure, such
+   * as the one `agent.assert` reports. The observation revision is recorded by
+   * `observe()` itself.
    */
-  note(details: { observationRevision?: string; explanation?: string }): void {
-    if (details.observationRevision !== undefined) {
-      this.observationRevision = details.observationRevision;
-    }
+  note(details: { explanation?: string }): void {
     if (details.explanation !== undefined) this.explanation = details.explanation;
   }
 
@@ -352,25 +346,6 @@ export class Invocation {
         ? { observationRevision: this.observationRevision }
         : {}),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
-    });
-    this.runtime.debug?.recordStep({
-      label:
-        this.options.label === undefined
-          ? this.options.api
-          : `${this.options.api} "${this.options.label}"`,
-      totalMs: Date.now() - this.createdMs,
-      modelMs: this.modelMs,
-      observeMs: this.observeMs,
-      actionMs: this.actionMs,
-      modelCalls: this.metrics.modelCalls,
-      inputTokens: this.inputTokens,
-      outputTokens: this.outputTokens,
-      ...(this.estimatedCostUsd !== undefined ? { costUsd: this.estimatedCostUsd } : {}),
-      ...(this.metrics.modelCalls > 0
-        ? {
-            model: `${this.runtime.adapter.provenance.provider}/${this.runtime.adapter.provenance.model}`,
-          }
-        : {}),
     });
   }
 
@@ -420,31 +395,14 @@ export class Invocation {
   }
 }
 
-const AGENT_CODES = new Set<string>([
-  'AUTH_CREDENTIAL_UNAVAILABLE',
-  'AUTHENTICATION_FAILED',
-  'MODEL_UNAVAILABLE',
-  'MODEL_PROVIDER_FAILED',
-  'MODEL_OUTPUT_INVALID',
-  'APP_UNREACHABLE',
-  'APP_NOT_OPEN',
-  'LOCATOR_NOT_FOUND',
-  'LOCATOR_AMBIGUOUS',
-  'ACTION_FAILED',
-  'CACHE_REPLAY_DIVERGED',
-  'POLICY_DENIED',
-  'STEP_BUDGET_EXHAUSTED',
-  'STEP_TIMEOUT',
-  'STEP_NO_CONCLUSION',
-  'ASSERTION_FAILED',
-  'CANCELLED',
-]);
+/** The closed agent code set, derived from the one classification table. */
+const AGENT_CODES = new Set<string>(Object.keys(CATEGORY_BY_CODE));
 
 /**
  * Maps any runner error raised inside an invocation onto the closed agent code
  * set. Model prose can never select a code.
  */
-export function toAgentError(cause: unknown): Error {
+export function toAgentError(cause: unknown): AgentError {
   if (isAgentError(cause)) return cause;
   const classified = cause instanceof E2EError ? cause : classifyError(cause);
   if (AGENT_CODES.has(classified.code)) {
@@ -462,8 +420,4 @@ export function toAgentError(cause: unknown): Error {
 function errorCode(cause: unknown): string {
   if (cause instanceof E2EError) return cause.code;
   return cause instanceof Error ? cause.name : 'ERROR';
-}
-
-function byteLength(text: string): number {
-  return new TextEncoder().encode(text).byteLength;
 }

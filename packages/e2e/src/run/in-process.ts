@@ -24,7 +24,6 @@ export interface InProcessRunnerOptions {
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
-  readonly env: NodeJS.ProcessEnv;
   readonly debug: DebugTrace;
   /** Pre-flight driver instances by target name; owned and disposed by the runner. */
   readonly drivers: ReadonlyMap<string, Driver>;
@@ -124,7 +123,6 @@ class InProcessRunner implements UnitRunner {
       runId: this.options.runId,
       artifactsRoot: this.options.artifactsRoot,
       headed: this.options.headed,
-      env: this.options.env,
       debug: this.options.debug,
       resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit),
       // The runner owns these drivers for the whole run and disposes them once

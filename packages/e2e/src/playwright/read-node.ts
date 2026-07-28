@@ -27,12 +27,16 @@ export interface RawObservedNode extends RawNodeData {
   frameSelector?: string;
 }
 
+/**
+ * One walked document. driver-1 has no way to report a truncated tree, so the
+ * node budget is a safety valve, not a signal: when it stops the walk early
+ * the result simply ends, and the runner's visible observation byte budget is
+ * the effective limit.
+ */
 export interface RawObservation {
   nodes: RawObservedNode[];
   /** Live element handles positionally aligned with `nodes`. */
   elements: Element[];
-  /** True when the node budget stopped the walk before the document ended. */
-  truncated: boolean;
   secureNodeCount: number;
 }
 
@@ -43,20 +47,25 @@ export interface SemanticOptions {
   mode: SemanticMode;
 }
 
+/** Result of one read, selected by the mode discriminant. */
+export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'node' }
+  ? RawNodeData
+  : RawObservation;
+
 /**
  * Serialized into the page by Playwright. Must stay self-contained: no outer
  * captures beyond its two arguments.
  *
  * `mode.kind === 'node'` reads exactly one element for locator reads.
  * `mode.kind === 'tree'` walks the subtree for one agent observation and
- * returns live element handles aligned with the flattened node list.
+ * returns live element handles aligned with the flattened node list. The two
+ * modes also project nodes differently; those differences are data (see
+ * `projection` below), not scattered branches.
  */
-export const readSemanticsFunction = (
+export const readSemanticsFunction = <Mode extends SemanticMode>(
   element: Element,
-  options: SemanticOptions,
-): RawNodeData | RawObservation => {
-  const TREE_TEXT_LIMIT = 512;
-  const NAME_LIMIT = 256;
+  options: { testIdAttribute: string; mode: Mode },
+): SemanticResult<Mode> => {
   const SKIP_TAGS = [
     'script',
     'style',
@@ -78,20 +87,43 @@ export const readSemanticsFunction = (
     'embed',
   ];
   const OPAQUE_TAGS = ['svg', 'math', 'canvas', 'video', 'audio'];
-  const TREE_ATTRIBUTES = [options.testIdAttribute, 'type', 'autocomplete', 'href', 'role'];
-  const NODE_ATTRIBUTES = [
-    options.testIdAttribute,
-    'type',
-    'autocomplete',
-    'href',
-    'role',
-    'id',
-    'name',
-    'placeholder',
-    'title',
-    'alt',
-    'value',
-  ];
+
+  /**
+   * How the active mode projects one node, expressed as data so `describe`
+   * stays branch-free. Tree mode is the model-bound projection: bounded text,
+   * a lean attribute allowlist, hrefs reduced to origin+path, and the root
+   * document named by its title. Node mode is the full locator-read surface.
+   */
+  const projection =
+    options.mode.kind === 'tree'
+      ? {
+          attributes: [options.testIdAttribute, 'type', 'autocomplete', 'href', 'role'],
+          textLimit: 512,
+          nameLimit: 256,
+          redactHref: true,
+          directTextOnly: true,
+          documentRoot: true,
+        }
+      : {
+          attributes: [
+            options.testIdAttribute,
+            'type',
+            'autocomplete',
+            'href',
+            'role',
+            'id',
+            'name',
+            'placeholder',
+            'title',
+            'alt',
+            'value',
+          ],
+          textLimit: null,
+          nameLimit: null,
+          redactHref: false,
+          directTextOnly: false,
+          documentRoot: false,
+        };
 
   const implicitRole = (el: Element): string | null => {
     const explicit = el.getAttribute('role');
@@ -247,7 +279,7 @@ export const readSemanticsFunction = (
     }
   };
 
-  const describe = (el: Element, tree: boolean): RawNodeData => {
+  const describe = (el: Element): RawNodeData => {
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute('type') ?? '').toLowerCase();
     const autocomplete = (el.getAttribute('autocomplete') ?? '').toLowerCase();
@@ -290,13 +322,12 @@ export const readSemanticsFunction = (
     } else if (autocomplete === 'one-time-code') inputPurpose = 'one-time-code';
 
     const attributes: Record<string, string> = {};
-    const allowed = tree ? TREE_ATTRIBUTES : NODE_ATTRIBUTES;
     for (const attribute of Array.from(el.attributes)) {
-      if (allowed.indexOf(attribute.name) !== -1 || attribute.name.startsWith('aria-')) {
+      if (projection.attributes.indexOf(attribute.name) !== -1 || attribute.name.startsWith('aria-')) {
         if (secure && attribute.name === 'value') continue;
         // Observations expose href origin and path only: query strings and
         // fragments routinely carry tokens (spec 10-determinism.md).
-        if (tree && attribute.name === 'href') {
+        if (projection.redactHref && attribute.name === 'href') {
           attributes[attribute.name] = originAndPath(attribute.value, el.ownerDocument.baseURI);
           continue;
         }
@@ -306,17 +337,19 @@ export const readSemanticsFunction = (
 
     let text: string;
     if (secure) text = '';
-    else if (tree) text = directTextOf(el).slice(0, TREE_TEXT_LIMIT);
+    else if (projection.directTextOnly) text = directTextOf(el);
     else text = textOf(el);
+    if (projection.textLimit !== null) text = text.slice(0, projection.textLimit);
 
     let name = accessibleName(el);
-    if (tree && name !== null) name = name.slice(0, NAME_LIMIT);
-    if (tree && tag === 'html') name = el.ownerDocument.title;
+    if (projection.nameLimit !== null && name !== null) name = name.slice(0, projection.nameLimit);
+    const isDocumentRoot = projection.documentRoot && tag === 'html';
+    if (isDocumentRoot) name = el.ownerDocument.title;
 
     const rect = el.getBoundingClientRect();
 
     return {
-      role: tree && tag === 'html' ? 'document' : implicitRole(el),
+      role: isDocumentRoot ? 'document' : implicitRole(el),
       name,
       text,
       value: secure ? null : value,
@@ -335,7 +368,9 @@ export const readSemanticsFunction = (
     };
   };
 
-  if (options.mode.kind === 'node') return describe(element, false);
+  // The conditional return type resolves per call site; inside the body the
+  // discriminant narrows the value but not the generic, hence the two casts.
+  if (options.mode.kind === 'node') return describe(element) as SemanticResult<Mode>;
 
   const maxNodes = options.mode.maxNodes;
   const nodes: RawObservedNode[] = [];
@@ -344,7 +379,7 @@ export const readSemanticsFunction = (
   let secureNodeCount = 0;
 
   const include = (el: Element, parent: number): number => {
-    const data = describe(el, true);
+    const data = describe(el);
     if (data.states.secure) secureNodeCount += 1;
     nodes.push({ ...data, parent });
     elements.push(el);
@@ -418,5 +453,5 @@ export const readSemanticsFunction = (
   include(element, -1);
   for (const child of Array.from(element.children)) walk(child, 0);
 
-  return { nodes, elements, truncated, secureNodeCount };
+  return { nodes, elements, secureNodeCount } as SemanticResult<Mode>;
 };

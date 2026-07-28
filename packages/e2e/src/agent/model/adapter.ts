@@ -16,7 +16,10 @@ export interface ModelUsage {
 export interface ModelProvenance {
   readonly provider: string;
   readonly model: string;
-  /** `local` for in-process adapters, otherwise an absolute endpoint URI. */
+  /**
+   * `local` for in-process adapters, `provider-default` when a caller-supplied
+   * model instance owns its own transport, otherwise an absolute endpoint URI.
+   */
   readonly endpoint: string;
   readonly adapterVersion: string;
 }
@@ -62,7 +65,6 @@ export class ModelOutputInvalidError extends AgentError {
 
   constructor(issue: string, options: { rawText?: string; cause?: unknown } = {}) {
     super('MODEL_OUTPUT_INVALID', issue, options.cause === undefined ? {} : { cause: options.cause });
-    this.name = 'AgentError';
     this.rawText = options.rawText;
   }
 }

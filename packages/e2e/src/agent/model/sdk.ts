@@ -1,8 +1,10 @@
 /**
- * Vercel AI SDK adapter. Every provider is reached through the AI Gateway, so
- * switching provider is a model-string change (`agent.model: 'anthropic/...'`).
- * `agent.model.endpoint` overrides the gateway base URL for self-hosted or
- * proxied deployments.
+ * AI SDK adapter (spec 05-config.md). One implementation serves every
+ * provider: a `provider/model-id` reference resolves through the AI Gateway,
+ * and a caller-supplied AI SDK model instance (`openai('gpt-4o')`, a local
+ * provider, a scripted test model) is used directly. Everything after model
+ * construction — bounded requests, closed-grammar validation, usage and error
+ * translation — is provider-independent.
  */
 
 import {
@@ -13,7 +15,11 @@ import {
   NoObjectGeneratedError,
   Output,
 } from 'ai';
-import type { ResolvedModel } from '../../config/agent.ts';
+import {
+  GATEWAY_API_KEY_ENV,
+  type ResolvedModel,
+  type SdkLanguageModel,
+} from '../../config/agent.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
 import {
@@ -28,39 +34,20 @@ import {
 /** Default AI Gateway base URL used when no endpoint override is configured. */
 const DEFAULT_GATEWAY_ENDPOINT = 'https://ai-gateway.vercel.sh/v4/ai';
 
-/** Gateway-native credential variable, used when apiKeyEnv is unset. */
-const GATEWAY_API_KEY_ENV = 'AI_GATEWAY_API_KEY';
-
 const PROVIDER_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
 /** Provider transport retries; distinct from runner-owned model-call budget. */
 const TRANSPORT_RETRIES = 2;
 
-/** Creates the AI Gateway adapter for one resolved model. */
-export function createGatewayAdapter(
-  model: ResolvedModel,
-  env: NodeJS.ProcessEnv,
-): ModelAdapter {
-  if (!PROVIDER_PATTERN.test(model.provider)) {
+/** Creates the adapter for one resolved model, or fails with MODEL_UNAVAILABLE. */
+export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapter {
+  if (model === undefined) {
     throw new AgentError(
       'MODEL_UNAVAILABLE',
-      `unknown model provider "${model.provider}"; expected a gateway provider ID`,
+      'the agent fixture requires model configuration: set agent.model or E2E_MODEL',
     );
   }
-  const apiKey = env[model.apiKeyEnv] ?? env[GATEWAY_API_KEY_ENV];
-  if (apiKey === undefined || apiKey.trim() === '') {
-    throw new AgentError(
-      'MODEL_UNAVAILABLE',
-      `no model credential: set ${model.apiKeyEnv} or ${GATEWAY_API_KEY_ENV}`,
-    );
-  }
-  const endpoint = model.endpoint ?? DEFAULT_GATEWAY_ENDPOINT;
-  const gateway = createGateway({
-    apiKey,
-    ...(model.endpoint !== undefined ? { baseURL: model.endpoint } : {}),
-  });
-  const modelId = `${model.provider}/${model.id}`;
-  const languageModel = gateway.languageModel(modelId);
+  const { languageModel, endpoint, flavor } = instantiate(model);
   const adapterVersion = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
 
   return {
@@ -68,7 +55,7 @@ export function createGatewayAdapter(
       provider: model.provider,
       model: model.id,
       endpoint,
-      adapterVersion: `ai-gateway/${adapterVersion}`,
+      adapterVersion: `${flavor}/${adapterVersion}`,
     },
     async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
       const inputBound = tokenUpperBound(call.system) + tokenUpperBound(call.prompt);
@@ -126,6 +113,38 @@ export function createGatewayAdapter(
   };
 }
 
+/** Builds the AI SDK language model plus report provenance for one resolved model. */
+function instantiate(model: ResolvedModel): {
+  languageModel: SdkLanguageModel;
+  endpoint: string;
+  flavor: string;
+} {
+  if (model.kind === 'instance') {
+    // The instance owns its transport; the report records that the endpoint is
+    // whatever the provider package defaults to.
+    return { languageModel: model.model, endpoint: 'provider-default', flavor: 'ai-sdk' };
+  }
+  if (!PROVIDER_PATTERN.test(model.provider)) {
+    throw new AgentError(
+      'MODEL_UNAVAILABLE',
+      `unknown model provider "${model.provider}"; expected a gateway provider ID or an AI SDK model instance`,
+    );
+  }
+  if (model.apiKey === undefined) {
+    throw new AgentError(
+      'MODEL_UNAVAILABLE',
+      `no model credential: set ${model.apiKeyEnv} or ${GATEWAY_API_KEY_ENV}`,
+    );
+  }
+  const endpoint = model.endpoint ?? DEFAULT_GATEWAY_ENDPOINT;
+  const gateway = createGateway({ apiKey: model.apiKey, baseURL: endpoint });
+  return {
+    languageModel: gateway.languageModel(`${model.provider}/${model.id}`),
+    endpoint,
+    flavor: 'ai-gateway',
+  };
+}
+
 interface UsageCarrier {
   readonly usage?: { readonly inputTokens?: number | undefined; readonly outputTokens?: number | undefined } | undefined;
   readonly text?: string | undefined;
@@ -168,10 +187,10 @@ function parseJsonObject(text: string): unknown {
 }
 
 /**
- * AI Gateway reports per-request cost in provider metadata when available.
- * `cost` is what the gateway bills; BYOK routes bill the provider key directly
- * and report `cost: "0"`, so fall back to `marketCost`, the list-price
- * estimate of the same request.
+ * The AI Gateway reports per-request cost in provider metadata when available;
+ * other providers simply lack the key. `cost` is what the gateway bills; BYOK
+ * routes bill the provider key directly and report `cost: "0"`, so fall back
+ * to `marketCost`, the list-price estimate of the same request.
  */
 function readCost(
   metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,

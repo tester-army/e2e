@@ -7,11 +7,12 @@ export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 
 /**
  * A resolved node is addressed either by a deterministic locator expression or
- * by a live element handle captured during one agent observation.
+ * by a live element handle captured during one agent observation. Handles are
+ * always elements: the in-page observation walk records `Element` nodes only.
  */
 export type ActionTarget =
   | { readonly kind: 'locator'; readonly locator: PwLocator }
-  | { readonly kind: 'element'; readonly element: ElementHandle<Node> };
+  | { readonly kind: 'element'; readonly element: ElementHandle<Element> };
 
 export interface Rect {
   x: number;
@@ -20,93 +21,58 @@ export interface Rect {
   height: number;
 }
 
-interface TimeoutOptions {
-  timeout: number;
-}
+/**
+ * Action surface Locator and ElementHandle share with identical signatures.
+ * Operations whose behavior diverges between the two kinds (bounding box,
+ * evaluate, page ownership, drag) have explicit helpers below so every fork is
+ * visible at its call site instead of hidden behind a uniform interface.
+ */
+export type Actionable = Pick<
+  PwLocator,
+  | 'click'
+  | 'dblclick'
+  | 'fill'
+  | 'press'
+  | 'check'
+  | 'uncheck'
+  | 'hover'
+  | 'scrollIntoViewIfNeeded'
+  | 'selectOption'
+  | 'setInputFiles'
+>;
 
-/** Uniform action surface over locator-backed and handle-backed targets. */
-export interface Actionable {
-  click(options: TimeoutOptions & { delay?: number }): Promise<void>;
-  dblclick(options: TimeoutOptions): Promise<void>;
-  fill(value: string, options: TimeoutOptions): Promise<void>;
-  press(key: string, options: TimeoutOptions): Promise<void>;
-  check(options: TimeoutOptions): Promise<void>;
-  uncheck(options: TimeoutOptions): Promise<void>;
-  focus(options: TimeoutOptions): Promise<void>;
-  scrollIntoViewIfNeeded(options: TimeoutOptions): Promise<void>;
-  selectOption(
-    value: { label?: string; index?: number },
-    options: TimeoutOptions,
-  ): Promise<unknown>;
-  hover(options: TimeoutOptions): Promise<void>;
-  setInputFiles(paths: readonly string[], options: TimeoutOptions): Promise<void>;
-  boundingBox(options: TimeoutOptions): Promise<Rect | null>;
-  dragTo(target: ActionTarget, options: TimeoutOptions): Promise<void>;
-  evaluate<Result, Arg>(
-    fn: (element: never, arg: Arg) => Result,
-    arg: Arg,
-    options: TimeoutOptions,
-  ): Promise<Result>;
-  page(): Promise<Page>;
-}
-
-/** Adapts one action target to the uniform surface used by action dispatch. */
+/** Narrows one action target to the shared Playwright action surface. */
 export function asActionable(target: ActionTarget): Actionable {
-  if (target.kind === 'locator') {
-    const locator = target.locator;
-    return {
-      click: (options) => locator.click(options),
-      dblclick: (options) => locator.dblclick(options),
-      fill: (value, options) => locator.fill(value, options),
-      press: (key, options) => locator.press(key, options),
-      check: (options) => locator.check(options),
-      uncheck: (options) => locator.uncheck(options),
-      focus: (options) => locator.focus(options),
-      scrollIntoViewIfNeeded: (options) => locator.scrollIntoViewIfNeeded(options),
-      selectOption: (value, options) => locator.selectOption(value, options),
-      hover: (options) => locator.hover(options),
-      setInputFiles: (paths, options) => locator.setInputFiles([...paths], options),
-      boundingBox: (options) => locator.boundingBox(options),
-      dragTo: (other, options) => {
-        if (other.kind !== 'locator') throw unsupportedDrag();
-        return locator.dragTo(other.locator, options);
-      },
-      evaluate: (fn, arg, options) =>
-        locator.evaluate(fn as never, arg, options) as never,
-      page: () => Promise.resolve(locator.page()),
-    };
-  }
-  const element = target.element;
-  return {
-    click: (options) => element.click(options),
-    dblclick: (options) => element.dblclick(options),
-    fill: (value, options) => element.fill(value, options),
-    press: (key, options) => element.press(key, options),
-    check: (options) => element.check(options),
-    uncheck: (options) => element.uncheck(options),
-    focus: () => element.focus(),
-    scrollIntoViewIfNeeded: (options) => element.scrollIntoViewIfNeeded(options),
-    selectOption: (value, options) => element.selectOption(value, options),
-    hover: (options) => element.hover(options),
-    setInputFiles: (paths, options) => element.setInputFiles([...paths], options),
-    boundingBox: () => element.boundingBox(),
-    dragTo: () => Promise.reject(unsupportedDrag()),
-    evaluate: (fn, arg) => element.evaluate(fn as never, arg) as never,
-    page: async () => {
-      const frame = await element.ownerFrame();
-      if (frame === null) throw invalidState('element is detached from every frame');
-      return frame.page();
-    },
-  };
+  return target.kind === 'locator' ? target.locator : target.element;
 }
 
-function unsupportedDrag(): DriverError {
-  return new DriverError('UNSUPPORTED_CAPABILITY', 'dragTo requires a locator-backed target', {
+/** Owning page of one action target. */
+export async function targetPage(target: ActionTarget): Promise<Page> {
+  if (target.kind === 'locator') return target.locator.page();
+  const frame = await target.element.ownerFrame();
+  if (frame === null) throw invalidState('element is detached from every frame');
+  return frame.page();
+}
+
+/**
+ * Bounding box of one action target. A locator waits up to `timeout` for its
+ * element to resolve; an element handle is already resolved, so its box is
+ * read immediately.
+ */
+export function targetBoundingBox(target: ActionTarget, timeout: number): Promise<Rect | null> {
+  return target.kind === 'locator'
+    ? target.locator.boundingBox({ timeout })
+    : target.element.boundingBox();
+}
+
+export function unsupportedDrag(): DriverError {
+  return new DriverError('UNSUPPORTED_CAPABILITY', 'dragTo requires locator-backed targets', {
     retryable: false,
   });
 }
 
 /** Playwright colorizes call logs; escape codes are noise in reports. */
+// oxlint-disable-next-line no-control-regex -- intentionally matches the ESC control character
 const ANSI_PATTERN = /\u001b\[\d+(?:;\d+)*m/g;
 
 export function message(cause: unknown): string {
@@ -170,8 +136,10 @@ export async function performElementSwipe(
   momentum: Momentum,
   timeout: number,
 ): Promise<void> {
-  const actionable = asActionable(target);
-  const box = await actionable.boundingBox({ timeout });
+  // Hover first: it auto-waits for visibility on both target kinds, so the
+  // immediate box read below observes a settled element.
+  await asActionable(target).hover({ timeout });
+  const box = await targetBoundingBox(target, timeout);
   if (box === null) {
     throw new DriverError('NOT_ACTIONABLE', 'element has no visible bounding box', {
       retryable: false,
@@ -182,8 +150,7 @@ export async function performElementSwipe(
     momentum,
   );
   const [deltaX, deltaY] = wheelDelta(direction, distance);
-  const page = await actionable.page();
-  await actionable.hover({ timeout });
+  const page = await targetPage(target);
   await page.mouse.wheel(deltaX, deltaY);
 }
 

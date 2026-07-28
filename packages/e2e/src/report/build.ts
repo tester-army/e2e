@@ -1,7 +1,7 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
 import os from 'node:os';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
 import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -48,7 +48,6 @@ export interface BuildReportOptions {
   serialGroups: readonly SerialGroupRecord[];
   runErrors: readonly RunError[];
   targetProvenance: ReadonlyMap<string, TargetProvenance>;
-  trustNoticeShown: boolean;
 }
 
 // --- report-1 wire shapes (spec/schema/report-v1.schema.json) ---
@@ -167,24 +166,11 @@ export interface ReportTarget {
   stateCapability: boolean;
 }
 
-export interface ReportLimits {
-  maxDiscoveredResults: number;
-  maxCacheBytes: number;
-  maxTerminalFieldBytes: number;
-  maxAgentContextBytes: number;
-  maxLedgerBytes: number;
-  maxObservationBytes: number;
-  maxArtifactBytes: number;
-  maxArtifactTotalBytes: number;
-  maxDownloadBytes: number;
-  maxDownloads: number;
-  maxReportBytes: number;
-  maxEventsPerStep: number;
-  maxModelTokensPerCall: number;
-  maxModelCallsPerStep: number;
-  maxActionStepsPerStep: number;
-  maxEstimatedCostUsd?: number;
-}
+/**
+ * The report's `limits` block is the resolved limits verbatim; JSON
+ * serialization drops the absent cost ceiling.
+ */
+export type ReportLimits = ResolvedLimits;
 
 export interface ReportUsage {
   discoveredResults: number;
@@ -424,32 +410,8 @@ const DEFAULT_LIMITS: ReportLimits = {
   maxModelTokensPerCall: 64_000,
   maxModelCallsPerStep: 25,
   maxActionStepsPerStep: 25,
+  maxEstimatedCostUsd: undefined,
 };
-
-function reportLimits(config: ResolvedConfig | undefined): ReportLimits {
-  if (config === undefined) return DEFAULT_LIMITS;
-  const limits = config.limits;
-  return {
-    maxDiscoveredResults: limits.maxDiscoveredResults,
-    maxCacheBytes: limits.maxCacheBytes,
-    maxTerminalFieldBytes: limits.maxTerminalFieldBytes,
-    maxAgentContextBytes: limits.maxAgentContextBytes,
-    maxLedgerBytes: limits.maxLedgerBytes,
-    maxObservationBytes: limits.maxObservationBytes,
-    maxArtifactBytes: limits.maxArtifactBytes,
-    maxArtifactTotalBytes: limits.maxArtifactTotalBytes,
-    maxDownloadBytes: limits.maxDownloadBytes,
-    maxDownloads: limits.maxDownloads,
-    maxReportBytes: limits.maxReportBytes,
-    maxEventsPerStep: limits.maxEventsPerStep,
-    maxModelTokensPerCall: limits.maxModelTokensPerCall,
-    maxModelCallsPerStep: limits.maxModelCallsPerStep,
-    maxActionStepsPerStep: limits.maxActionStepsPerStep,
-    ...(limits.maxEstimatedCostUsd !== undefined
-      ? { maxEstimatedCostUsd: limits.maxEstimatedCostUsd }
-      : {}),
-  };
-}
 
 /** Aggregates observed usage against the resolved limits (13-reporting.md). */
 function computeUsage(options: {
@@ -564,7 +526,8 @@ export function buildReport(options: BuildReportOptions): Report1Document {
       },
       environment: {
         ci: config?.ci ?? false,
-        trustNoticeShown: options.trustNoticeShown,
+        // The trust model is documented and report-recorded, never printed.
+        trustNoticeShown: false,
         os: `${os.platform()} ${os.release()}`,
         arch: os.arch(),
         runtime: `node ${process.version}`,
@@ -574,7 +537,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
       results,
       errors: options.runErrors.map((runError) => serializeErrorRecord(runError.error)),
       summary,
-      limits: reportLimits(config),
+      limits: config?.limits ?? DEFAULT_LIMITS,
       usage: computeUsage({
         results: options.results,
         serialGroups: options.serialGroups,

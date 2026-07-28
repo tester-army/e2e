@@ -57,17 +57,31 @@ export default defineConfig({
 E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... e2e run
 ```
 
-Models are reached through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway),
-so the provider is chosen by the model string. The credential is read from
+```ts
+// Any AI SDK provider instance works: install the provider package and pass
+// the model directly. The instance owns its own transport and credentials.
+import { openai } from '@ai-sdk/openai';
+
+export default defineConfig({
+  agent: { model: openai('gpt-5.4-mini') },
+});
+```
+
+A `provider/model-id` string is reached through the
+[Vercel AI Gateway](https://vercel.com/docs/ai-gateway), so the provider is
+chosen by the model string. The gateway credential is read from
 `E2E_MODEL_API_KEY` (or `agent.model.apiKeyEnv`, falling back to
-`AI_GATEWAY_API_KEY`) at call time and never enters resolved config, logs, or
-reports. `agent.model.endpoint` overrides the gateway base URL and must use
-HTTPS unless it is a loopback host, which is how a local or self-hosted
+`AI_GATEWAY_API_KEY`) and never enters config digests, logs, or reports.
+`agent.model.endpoint` overrides the gateway base URL and must use HTTPS
+unless it is a loopback host, which is how a local or self-hosted
 OpenAI-compatible endpoint is reached.
 
-Provider choice is the model string; v0 exposes no public API for registering a
-bespoke adapter. The internal registry behind `agent.model` is an extension seam
-for the runner, not a supported surface.
+A model instance bypasses the gateway entirely: `openai(...)`,
+`anthropic(...)`, `ollama(...)`, or any other package implementing the AI SDK
+language-model specification is used as-is, with whatever credentials and
+endpoint the provider package resolves itself. Because workers re-load the
+config module, each process constructs its own instance; the report records
+the instance's provider and model ID.
 
 Model input is the redacted semantic tree, the bounded prior-step ledger, and
 trusted project context — never screenshots, raw HTML, cookies, headers, or

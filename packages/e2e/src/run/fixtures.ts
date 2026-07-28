@@ -1,8 +1,7 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
 import { createAgent } from '../agent/index.ts';
-import type { Ledger } from '../agent/ledger.ts';
-import { createModelAdapter } from '../agent/model/registry.ts';
+import { createModelAdapter } from '../agent/model/sdk.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
@@ -36,7 +35,7 @@ import type {
   WebResponse,
   WebRoute,
 } from '../types.ts';
-import type { StepRecorder } from './steps.ts';
+import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
   /** Registers a produced artifact and returns its report artifact ID. */
@@ -53,11 +52,10 @@ export interface AttemptEnvironment {
   readonly attemptId: string;
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
-  /** Attempt-scoped prior-step context; serial-group members share one ledger. */
-  readonly ledger: Ledger;
+  /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
+  readonly priorSteps: () => readonly StepRecord[];
   /** Trusted test/group agent context appended after config.agent.context. */
   readonly agentContext: string | undefined;
-  readonly env: NodeJS.ProcessEnv;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
   /**
@@ -132,9 +130,9 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
       agent ??= createAgent({
         engine,
         steps: environment.steps,
-        adapter: createModelAdapter(environment.config.agent.model, environment.env),
+        adapter: createModelAdapter(environment.config.agent.model),
         config: environment.config,
-        ledger: environment.ledger,
+        priorSteps: environment.priorSteps,
         agentContext: joinAgentContext(
           environment.config.agent.context,
           environment.agentContext,
