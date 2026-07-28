@@ -132,8 +132,8 @@ behavior locally.
 
 | Key | Type | Default | Note |
 | --- | --- | --- | --- |
-| `artifacts` | `('screenshot' \| 'trace')[]` | `['screenshot', 'trace']` | Validated before collection; `video` is `UNSUPPORTED_ARTIFACT` |
-| `reporters` | `('list' \| 'json')[]` | `['list']` | Select with `--reporter`; `.e2e/report.json` is written either way |
+| `artifacts` | `('screenshot' \| 'trace' \| 'video')[]` | `['screenshot', 'trace']` | Validated before collection; `video` is not implemented yet and fails with `UNSUPPORTED_ARTIFACT` |
+| `reporters` | `('list' \| 'json' \| 'html')[]` | `['list', 'html']` | Select with `--reporter`; `.e2e/report.json` is written either way. `html` is not implemented yet, and `json` cannot be combined with `list`. |
 
 ## screen
 
