@@ -197,16 +197,33 @@ Cardinality, ordering, scope, filters, and index behavior are exactly as
 the scope node. The runner owns polling and strictness; `resolve` and `read` are
 immediate.
 
-## Actionability
+## Visibility and actionability
 
-The driver owns actionability for one already resolved node. For mobile, an
-actionable node is present in the current revision, visible to the user, hit
-testable at its action point, and enabled when its role supports the state.
-`fill` additionally requires an editable control.
+Mobile accessibility backends do not reliably expose a visibility or
+hit-testability flag. On iOS, XCUITest omits a visibility flag entirely, and its
+`isHittable` is false for plainly tappable controls whenever the simulator
+window is not frontmost. A profile that gated on those flags would be unusable,
+so visibility and actionability are computed from geometry and from explicit
+occlusion, and any backend hittability flag is advisory only.
 
-The driver MUST NOT retarget. If a resolved node is not itself hit testable, the
+A node is **visible** when the backend has not reported it hidden and it has
+geometry with positive area. Scroll position does not affect visibility, which
+matches `web-0.1`, where an element below the fold is still visible.
+
+A node is **actionable** when it is visible, enabled if its role supports the
+state, not reported as occluded by another element, and its action point — the
+center of its rect — lies within the device viewport. `fill` additionally
+requires an editable control.
+
+The driver MUST NOT retarget. If a resolved node is not itself actionable, the
 action fails `NOT_ACTIONABLE`; substituting an ancestor or a nearby node would
 silently violate the node the test selected.
+
+A node scrolled outside the viewport is visible but not actionable, because
+`mobile-0.1` does not scroll implicitly before dispatching. Tests reach such a
+node with `scrollIntoView` or `screen.scrollUntilVisible`. This is a deliberate
+difference from `web-0.1`, where the backend scrolls into view as part of
+actionability.
 
 The stale/commit contract of 09-drivers.md applies unchanged: stale before
 dispatch is retryable `NODE_STALE`, and once input may have reached the
@@ -228,7 +245,12 @@ at 75% and end at 25% of the relevant axis.
 - `restart()` terminates and relaunches the application, preserving its data
   container.
 - `clearState()` clears the application data container, then relaunches. It MUST
-  NOT clear another application's data or any system setting.
+  NOT clear another application's data or any system setting. An application
+  with no data container, such as a built-in system application, cannot be
+  reset; the driver MUST report that rather than reporting a successful reset
+  that did nothing. A target whose application cannot be reset does not get
+  per-attempt state isolation, and a driver MUST require that to be configured
+  explicitly rather than degrading silently.
 - `back()` performs one application-owned back navigation: visible in-app back
   affordance on iOS, the platform back event on Android. No back target is a
   successful no-op.

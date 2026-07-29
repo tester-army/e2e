@@ -31,10 +31,19 @@ export interface ProjectedNode {
   readonly label: string | undefined;
   readonly value: string | undefined;
   readonly identifier: string | undefined;
+  /**
+   * The node is the innermost carrier of its label. iOS repeats an
+   * accessibility label on every ancestor wrapper, so only the innermost owns
+   * it for text and label queries.
+   */
+  readonly ownsLabel: boolean;
   readonly rect: NodeRect | undefined;
   readonly enabled: boolean;
   readonly visible: boolean;
-  readonly hittable: boolean;
+  /** The action point lies inside the device viewport. */
+  readonly withinViewport: boolean;
+  /** The backend reported another element covering this one. */
+  readonly covered: boolean;
   readonly focused: boolean | undefined;
   readonly selected: boolean | undefined;
   readonly checked: boolean | undefined;
@@ -54,6 +63,19 @@ export interface ProjectedSnapshot {
   readonly ordered: readonly ProjectedNode[];
   readonly byRef: ReadonlyMap<string, ProjectedNode>;
   readonly secureVisible: boolean;
+  /** Device viewport in points, taken from the root geometry. */
+  readonly viewport: { readonly width: number; readonly height: number } | undefined;
+}
+
+/**
+ * Normalizes a backend ref to the form its commands accept.
+ *
+ * The snapshot JSON carries a bare `e12` while every interaction expects
+ * `@e12`; a bare ref is parsed as a selector and rejected. Normalizing once at
+ * projection keeps one spelling everywhere downstream.
+ */
+export function normalizeRef(ref: string): string {
+  return ref.startsWith('@') ? ref : `@${ref}`;
 }
 
 /** iOS secure text entry, and the Android password input-type markers. */
@@ -120,22 +142,32 @@ export function projectSnapshot(
   const ordered: ProjectedNode[] = [];
   const byRef = new Map<string, ProjectedNode>();
   let secureVisible = false;
+  // The screen is the root's geometry, and it is the only reliable source of
+  // viewport bounds: no mobile target configures a viewport.
+  const viewport = rootBounds(nodes, children.get(undefined) ?? []);
 
   const build = (
     node: SnapshotNode,
     parent: ProjectedNode | undefined,
+    /** Labels carried anywhere below this node, filled by the recursion. */
+    subtreeLabels: Set<string>,
   ): ProjectedNode => {
     const secure = isSecure(node);
     const role = normalizeRole(node, platform, {
       ...(node.selected !== undefined ? { checkable: true } : {}),
       ...(parent !== undefined ? { parentRole: parent.role } : {}),
     });
-    const visible = node.visibleToUser !== false;
+    // Geometry decides visibility. iOS omits a visibility flag entirely and its
+    // hittability flag is false for plainly tappable controls, so a flag-based
+    // gate would hide the whole UI. Scroll position does not affect visibility,
+    // matching web, where an element below the fold is still visible.
+    const area = node.rect === undefined ? 0 : node.rect.width * node.rect.height;
+    const visible = node.visibleToUser !== false && area > 0;
     // A secure field's value never leaves the driver, per spec/16-mobile.md.
     const value = secure ? undefined : node.value;
     const editable = EDITABLE_ROLES.has(role) && node.enabled !== false;
     const projected: ProjectedNode = {
-      ref: node.ref,
+      ref: normalizeRef(node.ref),
       role,
       label: node.label,
       value,
@@ -143,7 +175,8 @@ export function projectSnapshot(
       rect: node.rect,
       enabled: node.enabled !== false,
       visible,
-      hittable: node.hittable !== false,
+      withinViewport: isWithinViewport(node.rect, viewport),
+      covered: node.interactionBlocked === 'covered',
       focused: node.focused,
       selected: node.selected,
       checked: deriveChecked(role, value, node.selected),
@@ -151,26 +184,84 @@ export function projectSnapshot(
       inputPurpose: deriveInputPurpose(node, secure, editable),
       editable,
       scrollContainer: isScrollContainer(node),
+      // Filled after the children are built, which is when duplication is known.
+      ownsLabel: true,
       children: [],
       parent,
     };
     if (secure && visible) secureVisible = true;
     ordered.push(projected);
-    byRef.set(node.ref, projected);
-    const kids = (children.get(node.index) ?? []).map((child) => build(child, projected));
+    byRef.set(projected.ref, projected);
+    const childLabels = new Set<string>();
+    const kids = (children.get(node.index) ?? []).map((child) =>
+      build(child, projected, childLabels),
+    );
+    // A label repeated on an ancestor belongs to the innermost carrier, which
+    // is what web `getByText` resolves to.
+    const own = queryText(projected);
+    (projected as { ownsLabel: boolean }).ownsLabel =
+      own !== undefined && !childLabels.has(own);
+    for (const label of childLabels) subtreeLabels.add(label);
+    if (own !== undefined) subtreeLabels.add(own);
     // `children` is readonly to consumers; it is filled here because a node
     // must exist before its children can reference it as their parent.
     (projected as { children: readonly ProjectedNode[] }).children = kids;
     return projected;
   };
 
-  const roots = (children.get(undefined) ?? []).map((node) => build(node, undefined));
-  return { revision, roots, ordered, byRef, secureVisible };
+  const roots = (children.get(undefined) ?? []).map((node) =>
+    build(node, undefined, new Set<string>()),
+  );
+  return { revision, roots, ordered, byRef, secureVisible, viewport };
 }
 
-/** The text a `text` query matches: the label, else the value. */
+/** Screen bounds, taken from the largest root rect the snapshot exposes. */
+function rootBounds(
+  nodes: readonly SnapshotNode[],
+  roots: readonly SnapshotNode[],
+): { readonly width: number; readonly height: number } | undefined {
+  let width = 0;
+  let height = 0;
+  for (const root of roots.length > 0 ? roots : nodes) {
+    const rect = root.rect;
+    if (rect === undefined) continue;
+    width = Math.max(width, Math.round(rect.x + rect.width));
+    height = Math.max(height, Math.round(rect.y + rect.height));
+  }
+  return width > 0 && height > 0 ? { width, height } : undefined;
+}
+
+/** Reports whether a rect's center lies inside the viewport. */
+function isWithinViewport(
+  rect: NodeRect | undefined,
+  viewport: { readonly width: number; readonly height: number } | undefined,
+): boolean {
+  if (rect === undefined) return false;
+  // Without known bounds the driver cannot prove the point is off-screen, and
+  // refusing every action would be worse than trusting the backend.
+  if (viewport === undefined) return true;
+  const x = rect.x + rect.width / 2;
+  const y = rect.y + rect.height / 2;
+  return x >= 0 && y >= 0 && x <= viewport.width && y <= viewport.height;
+}
+
+/** The text a node carries: its label, else its value. */
 export function queryText(node: ProjectedNode): string | undefined {
   return node.label ?? node.value;
+}
+
+/**
+ * The text a `text` query matches. Only the innermost carrier of a repeated
+ * label matches, mirroring web, where an ancestor that contains text only
+ * through its descendants is not a `getByText` match.
+ */
+export function ownedText(node: ProjectedNode): string | undefined {
+  return node.ownsLabel ? queryText(node) : undefined;
+}
+
+/** The label a `label` query matches, under the same ownership rule. */
+export function ownedLabel(node: ProjectedNode): string | undefined {
+  return node.ownsLabel ? node.label : undefined;
 }
 
 /**
@@ -236,40 +327,6 @@ export function toObservationTree(snapshot: ProjectedSnapshot): SemanticNode {
     role: 'application',
     children,
   };
-}
-
-/**
- * Derives the viewport in points from the snapshot's root geometry, which is
- * the device screen the app is rendered into. A mobile target has no configured
- * viewport, so this is the only truthful source before pixels are captured.
- */
-export function deriveViewportSize(
-  snapshot: ProjectedSnapshot,
-): { readonly width: number; readonly height: number } | undefined {
-  let width = 0;
-  let height = 0;
-  for (const root of snapshot.roots) {
-    const rect = root.rect ?? largestDescendantRect(root);
-    if (rect === undefined) continue;
-    width = Math.max(width, Math.round(rect.x + rect.width));
-    height = Math.max(height, Math.round(rect.y + rect.height));
-  }
-  return width > 0 && height > 0 ? { width, height } : undefined;
-}
-
-/** Largest-area rect at or below a node, for a root that has no geometry. */
-function largestDescendantRect(node: ProjectedNode): NodeRect | undefined {
-  let best: NodeRect | undefined;
-  const walk = (current: ProjectedNode) => {
-    const rect = current.rect;
-    if (rect !== undefined) {
-      const area = rect.width * rect.height;
-      if (best === undefined || area > best.width * best.height) best = rect;
-    }
-    for (const child of current.children) walk(child);
-  };
-  walk(node);
-  return best;
 }
 
 /**

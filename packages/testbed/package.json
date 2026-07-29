@@ -11,7 +11,8 @@
     "test:public": "node node_modules/e2e/dist/cli/bin.js run --config e2e.public.config.ts",
     "app": "node app/server.mjs",
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
-    "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts"
+    "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts",
+    "test:mobile": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile.config.ts"
   },
   "dependencies": {
     "@e2edev/playwright": "workspace:*",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/node": "26.1.1",
+    "agent-device": "0.20.2",
     "typescript": "7.0.2",
     "zod": "4.4.3"
   }

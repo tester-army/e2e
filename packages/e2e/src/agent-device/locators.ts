@@ -10,7 +10,14 @@
  */
 
 import { DriverError, type LocatorExpression, type SemanticQuery, type TextPattern } from '../driver/index.ts';
-import { queryPlaceholder, queryText, type ProjectedNode, type ProjectedSnapshot } from './snapshot.ts';
+import {
+  ownedLabel,
+  ownedText,
+  queryPlaceholder,
+  queryText,
+  type ProjectedNode,
+  type ProjectedSnapshot,
+} from './snapshot.ts';
 import { unsupported } from './support.ts';
 
 /**
@@ -47,9 +54,9 @@ function querySource(node: ProjectedNode, kind: SemanticQuery['kind']): string |
     case 'role':
       return node.role;
     case 'label':
-      return node.label;
+      return ownedLabel(node);
     case 'text':
-      return queryText(node);
+      return ownedText(node);
     case 'displayValue':
       return node.value;
     case 'testId':

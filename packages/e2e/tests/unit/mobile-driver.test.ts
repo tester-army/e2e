@@ -74,9 +74,17 @@ function context(overrides: Partial<DriverContext> = {}): DriverContext {
 
 const cleanup = { signal: new AbortController().signal, timeoutMs: 5_000, runId: 'run-1', attemptId: 'attempt-1' };
 
-async function launch(daemon: FakeDaemon): Promise<{ session: DriverSession; dispose: () => Promise<void> }> {
+/**
+ * Launches a session and opens the app, which is what a test body does first.
+ * Launch itself leaves the app not yet foreground.
+ */
+async function launch(
+  daemon: FakeDaemon,
+  options: { readonly open?: boolean } = {},
+): Promise<{ session: DriverSession; dispose: () => Promise<void> }> {
   const driver = agentDevice({ transport: daemon.transport });
   const session = await driver.launch(context());
+  if (options.open !== false) await session.app.open(undefined, context().operation);
   return { session, dispose: async () => driver.dispose?.() ?? undefined };
 }
 
@@ -102,12 +110,39 @@ describe('agentDevice manifest', () => {
 });
 
 describe('launch', () => {
-  it('boots a device, clears app state, and relaunches for isolation', async () => {
+  it('boots a device and clears app state without launching the app', async () => {
     const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
-    const { session, dispose } = await launch(daemon);
-    expect(daemon.commands()).toEqual(['devices', 'boot', 'settings', 'open']);
+    const { session, dispose } = await launch(daemon, { open: false });
+    // Launch leaves the app not yet foreground, so the attempt's own app.open
+    // is the single launch. Resetting here and launching there costs one app
+    // start per attempt instead of two.
+    expect(daemon.commands()).toEqual(['devices', 'boot', 'settings']);
     const settings = daemon.calls.find((call) => call.command === 'settings');
     expect(settings?.positionals).toEqual(['clear-app-state', 'com.example.app']);
+
+    await session.app.open(undefined, context().operation);
+    expect(daemon.commands()).toEqual(['devices', 'boot', 'settings', 'open']);
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('skips the state reset when the app cannot be cleared', async () => {
+    // A built-in system app has no data container to clear; app.open replaces
+    // the running instance, so the attempt still starts against a fresh app.
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const driver = agentDevice({ transport: daemon.transport, reset: 'relaunch' });
+    const session = await driver.launch(context());
+    expect(daemon.commands()).toEqual(['devices', 'boot']);
+    await session.close(cleanup);
+    await driver.dispose?.();
+  });
+
+  it('rejects UI operations before the app is open', async () => {
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon, { open: false });
+    await expect(session.observe(context().operation)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
     await session.close(cleanup);
     await dispose();
   });
@@ -123,6 +158,7 @@ describe('launch', () => {
     const install = daemon.calls.find((call) => call.command === 'install');
     expect(install?.positionals[0]).toMatch(/build\/MyApp\.app$/);
     // Later commands use the identity the artifact reported, not the filename.
+    await session.app.open(undefined, context().operation);
     const open = daemon.calls.find((call) => call.command === 'open');
     expect(open?.positionals[0]).toBe('com.example.app');
     await session.close(cleanup);
@@ -206,6 +242,63 @@ describe('screen', () => {
     const error = await session.screen.read(refs[0]!, op).catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(DriverError);
     expect(error).toMatchObject({ code: 'NODE_STALE', retryable: true });
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('acts on a node the backend flags as not hittable', async () => {
+    // Real iOS reports hittable: false for tappable controls whenever the
+    // simulator window is not frontmost; gating on it would break every tap.
+    const daemon = createFakeDaemon({
+      screen: () => [
+        {
+          type: 'XCUIElementTypeButton',
+          label: 'Continue',
+          hittable: false,
+          rect: { x: 20, y: 220, width: 280, height: 48 },
+        },
+      ],
+    });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(
+      { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } } },
+      op,
+    );
+    await session.screen.perform(refs[0]!, { kind: 'tap' }, op);
+    expect(daemon.commands()).toContain('click');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('refuses to act on a node scrolled outside the viewport', async () => {
+    const daemon = createFakeDaemon({
+      screen: () => [
+        {
+          type: 'XCUIElementTypeApplication',
+          rect: { x: 0, y: 0, width: 402, height: 874 },
+          children: [
+            {
+              type: 'XCUIElementTypeButton',
+              label: 'Below fold',
+              rect: { x: 0, y: 2000, width: 402, height: 44 },
+            },
+          ],
+        },
+      ],
+    });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(
+      { kind: 'query', query: { kind: 'label', value: { kind: 'string', value: 'Below fold', exact: true } } },
+      op,
+    );
+    const error = await session.screen
+      .perform(refs[0]!, { kind: 'tap' }, op)
+      .catch((cause: unknown) => cause);
+    expect(error).toMatchObject({ code: 'NOT_ACTIONABLE', retryable: false });
+    expect(String((error as Error).message)).toContain('scroll it into view');
+    expect(daemon.commands()).not.toContain('click');
     await session.close(cleanup);
     await dispose();
   });

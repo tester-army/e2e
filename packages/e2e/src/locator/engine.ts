@@ -68,9 +68,21 @@ export class LocatorEngine {
   }
 
   private operationWithin(deadline: Deadline): OperationContext {
+    const remaining = deadline.remaining();
+    // An expired deadline means "do not wait for a value" — the direct-read
+    // surfaces express immediacy that way. It does not mean the driver must
+    // answer in zero time: one immediate resolve or read still costs whatever
+    // the backend costs, which a device backend makes obvious where an
+    // in-process browser query does not. Such a call gets a real budget,
+    // still capped by the remaining test timeout, and polling loops stop on
+    // their own deadline rather than on this budget.
+    const budget =
+      remaining > 0
+        ? remaining
+        : Math.min(this.options.actionTimeout, this.options.testDeadline.remaining());
     return {
       signal: this.options.signal,
-      timeoutMs: Math.max(1, deadline.remaining()),
+      timeoutMs: Math.max(1, budget),
       runId: this.options.runId,
       attemptId: this.options.attemptId,
     };

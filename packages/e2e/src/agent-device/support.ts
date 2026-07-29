@@ -22,6 +22,14 @@ const INVALID_STATE_CODES: ReadonlySet<string> = new Set([
   'SESSION_NOT_FOUND',
 ]);
 
+/**
+ * Parallelism is one device per worker. A locked device almost always means
+ * more workers than configured devices, so the failure says that instead of
+ * surfacing the backend's bare lock message.
+ */
+const DEVICE_IN_USE_HINT =
+  'a mobile target runs one worker per device: configure one device per worker, or set workers: 1';
+
 function isAbort(cause: unknown): boolean {
   return cause instanceof Error && (cause.name === 'AbortError' || cause.name === 'TimeoutError');
 }
@@ -53,6 +61,13 @@ export function translateAgentDeviceError(
     });
   }
   if (isAgentDeviceError(cause)) {
+    if (cause.code === 'DEVICE_IN_USE') {
+      return new DriverError(
+        'INVALID_STATE',
+        `${operation}: ${message(cause)} (${DEVICE_IN_USE_HINT})`,
+        { retryable: false, cause },
+      );
+    }
     if (UNSUPPORTED_CODES.has(cause.code)) {
       return new DriverError('UNSUPPORTED_CAPABILITY', `${operation}: ${message(cause)}`, {
         retryable: false,

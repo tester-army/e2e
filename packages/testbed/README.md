@@ -20,6 +20,9 @@ tests.
   playground: located actions, assisted polling, judgments, schema-validated
   extraction with zod, host-side secret fills, and mixed agentic/deterministic
   flows in a serial group.
+- `e2e.mobile.config.ts` + `tests-mobile/` — opt-in `mobile-0.1` suite driving
+  the built-in iOS Settings app through `e2e/agent-device`, so it needs no app
+  build of its own.
 
 ## Commands
 
@@ -28,6 +31,7 @@ pnpm --filter e2e build            # the testbed runs the built runner
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
 pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
+pnpm --filter @e2edev/testbed test:mobile   # iOS simulator, not in CI
 E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, not in CI
 pnpm --filter @e2edev/testbed app     # run the playground manually
 ```
@@ -49,3 +53,31 @@ E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbe
 Agentic assertions are structurally comparable across models, not textually
 identical, so these tests assert on meaning (`toContain`) and pair every
 agentic step with a deterministic locator check.
+
+## Mobile suite
+
+`test:mobile` drives the built-in iOS **Settings** app, so there is nothing to
+build first. It is opt-in and never runs in CI: it needs macOS, Xcode, and a
+simulator, and the first run builds the XCTest runner that `agent-device` uses
+for snapshots.
+
+```bash
+pnpm --filter e2e build
+pnpm --filter @e2e/testbed test:mobile
+E2E_IOS_DEVICE="iPhone 17 Pro" pnpm --filter @e2e/testbed test:mobile
+```
+
+Three things about the config are load-bearing, and they are the shape any
+mobile project ends up with:
+
+- **No `app` URL.** `mobile-0.1` has no base URL; app identity is the target's
+  `app`, a bundle id here and a `.app`/`.ipa`/`.apk`/`.aab` path for a real build.
+- **`workers: 1`.** Parallelism is one device per worker. A second worker would
+  only contend for the single configured simulator and be rejected.
+- **`reset: 'relaunch'`.** Settings is a built-in app with no data container, so
+  it cannot be state-cleared between attempts. Relaunching still returns it to
+  the root list, which is what makes each test start from a known screen. A
+  normal app keeps the default `clear-state` isolation.
+
+Expect roughly 3-8 s per test: every locator resolve is an XCTest accessibility
+snapshot, which is orders of magnitude slower than a browser query.

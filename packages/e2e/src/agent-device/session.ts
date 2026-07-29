@@ -33,7 +33,6 @@ import type { AgentDeviceClient, SnapshotResult } from './client.ts';
 import { createDriverDevice } from './device.ts';
 import { resolveExpression } from './locators.ts';
 import {
-  deriveViewportSize,
   nearestScrollContainer,
   projectSnapshot,
   toObservationTree,
@@ -106,6 +105,35 @@ export class MobileSession implements DriverSession {
   }
 
   /**
+   * Prepares isolated app state for one attempt without launching the app.
+   *
+   * Launch leaves the app not yet foreground, so the attempt's own `app.open`
+   * performs the single launch. Clearing here and launching there costs one
+   * app start per attempt instead of two.
+   */
+  async resetState(mode: 'clear-state' | 'relaunch', operation: OperationContext): Promise<void> {
+    this.assertUsable(operation);
+    this.invalidate();
+    // `relaunch` needs no work: `app.open` replaces any running instance, so
+    // the attempt already starts against a freshly started app.
+    if (mode === 'relaunch') return;
+    try {
+      await withDeadline(
+        this.client.settings.update({
+          platform: this.platform,
+          setting: 'clear-app-state',
+          state: 'clear',
+          app: this.appId,
+        }),
+        operation,
+        'reset app state',
+      );
+    } catch (cause) {
+      throw translateAgentDeviceError(cause, 'reset app state');
+    }
+  }
+
+  /**
    * Opens a deep link.
    *
    * The app identity is always sent alongside the URL: agent-device 0.20.2
@@ -164,7 +192,7 @@ export class MobileSession implements DriverSession {
     const projected = projectSnapshot(result, this.platform, revision);
     this.snapshot = projected;
     if (this.viewport === null) {
-      const size = deriveViewportSize(projected);
+      const size = projected.viewport;
       // Scale stays 1 until a pixel capture measures the real density: rect
       // coordinates are points, and points are the space actions dispatch in.
       if (size !== undefined) this.viewport = { ...size, scale: 1 };

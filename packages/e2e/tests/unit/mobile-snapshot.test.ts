@@ -7,7 +7,7 @@ import {
   toObservationTree,
   toSemanticNode,
 } from '../../src/agent-device/snapshot.ts';
-import { buildSnapshot, loginSnapshot } from '../helpers/mobile-snapshot.ts';
+import { buildSnapshot, loginSnapshot, SCREEN } from '../helpers/mobile-snapshot.ts';
 
 describe('projectSnapshot', () => {
   it('rebuilds the tree from the flat parentIndex wire shape', () => {
@@ -79,6 +79,56 @@ describe('projectSnapshot', () => {
     ]);
     const node = projectSnapshot(snapshot, 'ios', 'r1').byRef.get('@e1')!;
     expect(node.inputPurpose).toBe('one-time-code');
+  });
+
+  it('derives visibility from geometry, because iOS omits a visibility flag', () => {
+    // Real iOS snapshots carry no visibleToUser and report hittable: false for
+    // plainly tappable controls, so neither flag can gate visibility.
+    const snapshot = buildSnapshot([
+      { type: 'XCUIElementTypeButton', label: 'Tappable', hittable: false },
+      { type: 'XCUIElementTypeButton', label: 'No geometry', rect: { x: 0, y: 0, width: 0, height: 0 } },
+    ]);
+    const projected = projectSnapshot(snapshot, 'ios', 'r1');
+    expect(projected.byRef.get('@e1')?.visible).toBe(true);
+    expect(projected.byRef.get('@e2')?.visible).toBe(false);
+  });
+
+  it('reports the viewport and whether a node sits inside it', () => {
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeApplication',
+        rect: { ...SCREEN },
+        children: [
+          { type: 'XCUIElementTypeButton', label: 'On screen', rect: { x: 0, y: 100, width: 402, height: 44 } },
+          { type: 'XCUIElementTypeButton', label: 'Below fold', rect: { x: 0, y: 2000, width: 402, height: 44 } },
+        ],
+      },
+    ]);
+    const projected = projectSnapshot(snapshot, 'ios', 'r1');
+    expect(projected.viewport).toEqual({ width: 402, height: 874 });
+    const onScreen = projected.byRef.get('@e2')!;
+    const belowFold = projected.byRef.get('@e3')!;
+    // Scroll position does not affect visibility, matching web semantics.
+    expect(belowFold.visible).toBe(true);
+    expect(onScreen.withinViewport).toBe(true);
+    expect(belowFold.withinViewport).toBe(false);
+  });
+
+  it('normalizes the daemon bare ref to the form its commands accept', () => {
+    // Snapshot JSON carries `e12`; every interaction requires `@e12`, and a
+    // bare ref is parsed as a selector and rejected.
+    const snapshot = buildSnapshot([{ type: 'XCUIElementTypeButton', label: 'Go' }]);
+    const bare = { ...snapshot.nodes[0]!, ref: 'e1' };
+    const projected = projectSnapshot({ ...snapshot, nodes: [bare] }, 'ios', 'r1');
+    expect(projected.ordered[0]?.ref).toBe('@e1');
+    expect(projected.byRef.has('@e1')).toBe(true);
+  });
+
+  it('marks a node the backend reports as covered', () => {
+    const snapshot = buildSnapshot([{ type: 'XCUIElementTypeButton', label: 'Behind sheet' }]);
+    const covered = { ...snapshot.nodes[0]!, interactionBlocked: 'covered' as const };
+    const projected = projectSnapshot({ ...snapshot, nodes: [covered] }, 'ios', 'r1');
+    expect(projected.byRef.get('@e1')?.covered).toBe(true);
   });
 
   it('treats an unresolvable parent reference as a root', () => {

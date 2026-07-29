@@ -65,6 +65,74 @@ describe('resolveExpression', () => {
     ).toEqual(['@e5']);
   });
 
+  it('matches only the innermost carrier of a label repeated up the chain', () => {
+    // Real iOS repeats a row's accessibility label on every ancestor wrapper:
+    // Cell > Other > Button > StaticText all read "General".
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeCell',
+        label: 'General',
+        children: [
+          {
+            type: 'XCUIElementTypeOther',
+            label: 'General',
+            children: [
+              {
+                type: 'XCUIElementTypeButton',
+                label: 'General',
+                children: [{ type: 'XCUIElementTypeStaticText', label: 'General' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(refs(snapshot, { kind: 'query', query: { kind: 'text', value: exact('General') } })).toEqual(
+      ['@e4'],
+    );
+    expect(refs(snapshot, { kind: 'query', query: { kind: 'label', value: exact('General') } })).toEqual(
+      ['@e4'],
+    );
+    // A role query still reaches the control, because the role disambiguates it.
+    expect(
+      refs(snapshot, {
+        kind: 'query',
+        query: { kind: 'role', value: exact('button'), name: exact('General') },
+      }),
+    ).toEqual(['@e3']);
+    // hasText still sees the whole subtree, so row filtering keeps working.
+    // The public API always builds hasText as a substring pattern.
+    expect(
+      refs(snapshot, {
+        kind: 'filter',
+        source: { kind: 'query', query: { kind: 'role', value: exact('listitem') } },
+        hasText: loose('General'),
+      }),
+    ).toEqual(['@e1']);
+  });
+
+  it('keeps a composite label that no descendant repeats', () => {
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeCell',
+        label: 'Apple Account, Sign in to access your data',
+        children: [
+          { type: 'XCUIElementTypeStaticText', label: 'Apple Account' },
+          { type: 'XCUIElementTypeStaticText', label: 'Sign in to access your data' },
+        ],
+      },
+    ]);
+    expect(
+      refs(snapshot, {
+        kind: 'query',
+        query: { kind: 'text', value: exact('Apple Account, Sign in to access your data') },
+      }),
+    ).toEqual(['@e1']);
+    expect(refs(snapshot, { kind: 'query', query: { kind: 'text', value: exact('Apple Account') } })).toEqual(
+      ['@e2'],
+    );
+  });
+
   it('matches a role query name against the label', () => {
     const snapshot = loginSnapshot();
     expect(

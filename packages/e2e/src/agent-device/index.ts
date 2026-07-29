@@ -28,7 +28,19 @@ import { invalidState, translateAgentDeviceError, withDeadline } from './support
 /** Build-artifact extensions `MobileTarget.app` may point at. */
 const ARTIFACT_EXTENSIONS: ReadonlySet<string> = new Set(['.app', '.ipa', '.apk', '.aab']);
 
+/**
+ * How each session isolates app state.
+ *
+ * `clear-state` wipes the app data container before relaunching, which is what
+ * `mobile-0.1` expects of an attempt. `relaunch` only restarts the app, and is
+ * required for an app that has no data container to clear, such as a built-in
+ * system app: it does NOT isolate state between attempts.
+ */
+export type AgentDeviceReset = 'clear-state' | 'relaunch';
+
 export interface AgentDeviceOptions {
+  /** Per-attempt state reset. Defaults to `clear-state`. */
+  readonly reset?: AgentDeviceReset;
   /**
    * Session name prefix. Sessions are named per driver instance so parallel
    * workers never share one device; override only to join a session you own.
@@ -259,8 +271,10 @@ export function agentDevice(options: AgentDeviceOptions = {}): Driver {
           device: { name: device.name, os: target.os ?? 'unknown' },
         });
         // Each session observes isolated app state, which is what allows the
-        // device itself to be retained between sessions.
-        await session.app.clearState(context.operation);
+        // device itself to be retained between sessions. This does not launch
+        // the app: launch leaves it not yet foreground, and the attempt's own
+        // `app.open` is the single launch.
+        await session.resetState(options.reset ?? 'clear-state', context.operation);
         return session;
       } catch (cause) {
         // Launch must roll back every partial acquisition, because no session

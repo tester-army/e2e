@@ -37,12 +37,19 @@ export function assertActionable(
       retryable: false,
     });
   }
-  // `scrollIntoView` is what a test calls to make an off-screen node hittable,
-  // so it is the one action that does not require hit testability up front.
-  if (!node.hittable && action !== 'scrollIntoView') {
-    throw new DriverError('NOT_ACTIONABLE', `node ${node.ref} is not hit testable`, {
+  if (node.covered) {
+    throw new DriverError('NOT_ACTIONABLE', `node ${node.ref} is covered by another element`, {
       retryable: false,
     });
+  }
+  // `scrollIntoView` is how a test brings an off-screen node into the viewport,
+  // so it is the one action that may target a node outside it.
+  if (!node.withinViewport && action !== 'scrollIntoView') {
+    throw new DriverError(
+      'NOT_ACTIONABLE',
+      `node ${node.ref} is outside the viewport; scroll it into view first`,
+      { retryable: false },
+    );
   }
   if (!node.enabled) {
     throw new DriverError('NOT_ACTIONABLE', `node ${node.ref} is disabled`, { retryable: false });

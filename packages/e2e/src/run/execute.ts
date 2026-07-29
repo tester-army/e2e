@@ -373,8 +373,6 @@ export class TargetExecutor implements SerialHost {
       ),
     );
 
-    await this.reportRuntimeProvenance(driverSession, attemptId, signal);
-
     if (pair.options.session !== undefined) {
       const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
       if (driverSession.restoreState === undefined) {
@@ -393,20 +391,21 @@ export class TargetExecutor implements SerialHost {
 
   /**
    * Reads resolved backend provenance from the first session of this target.
-   * It is best-effort: a driver that cannot report runtime state must not fail
-   * the attempt over report metadata.
+   *
+   * It runs as the session closes rather than at launch, because backend state
+   * a report wants — a browser version, a device's screen geometry — is only
+   * known once the session has actually driven the app. It is best-effort: a
+   * driver that cannot report runtime state must not fail the attempt over
+   * report metadata.
    */
   private async reportRuntimeProvenance(
     driverSession: DriverSession,
     attemptId: string,
-    signal: AbortSignal,
   ): Promise<void> {
     if (this.runtimeReported || this.options.events?.onRuntime === undefined) return;
     this.runtimeReported = true;
     try {
-      const runtime = await driverSession.runtime(
-        this.op(attemptId, this.config.launchTimeout, signal),
-      );
+      const runtime = await driverSession.runtime(this.op(attemptId, this.config.launchTimeout));
       // A non-positive viewport means the backend could not resolve device
       // geometry. It is omitted rather than published as zeros.
       const resolvedViewport = runtime.viewport.width > 0 && runtime.viewport.height > 0;
@@ -430,6 +429,7 @@ export class TargetExecutor implements SerialHost {
     artifactSink: ArtifactSink,
     secondaryErrors: SerializedError[],
   ): Promise<void> {
+    await this.reportRuntimeProvenance(driverSession, attemptId);
     if (this.config.artifacts.includes('trace') && driverSession.artifacts.stopTrace !== undefined) {
       try {
         const tracePath = await driverSession.artifacts.stopTrace(

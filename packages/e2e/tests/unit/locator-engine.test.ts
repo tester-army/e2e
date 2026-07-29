@@ -29,7 +29,14 @@ interface ScreenScript {
   perform?: Array<(() => void) | 'stale' | 'committed' | 'not-actionable'>;
 }
 
-function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = {}) {
+function makeEngine(
+  script: ScreenScript,
+  options: {
+    actionTimeout?: number;
+    testTimeout?: number;
+    onResolveBudget?: (timeoutMs: number) => void;
+  } = {},
+) {
   const calls = { resolve: 0, read: 0, perform: 0 };
   const next = <T>(steps: T[] | undefined, kind: keyof typeof calls): T | undefined => {
     const step = steps?.[calls[kind]];
@@ -38,7 +45,8 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
   };
   const session = {
     screen: {
-      async resolve() {
+      async resolve(_expression: LocatorExpression, operation: { timeoutMs: number }) {
+        options.onResolveBudget?.(operation.timeoutMs);
         const step = next(script.resolve, 'resolve');
         if (step === undefined || typeof step === 'function') return step?.() ?? [REF];
         if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: true });
@@ -72,11 +80,38 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
     attemptId: 'attempt-1',
     actionTimeout: options.actionTimeout ?? 1_000,
     assertionTimeout: 1_000,
-    testDeadline: new Deadline(30_000),
+    testDeadline: new Deadline(options.testTimeout ?? 30_000),
     requireOpen: () => {},
   });
   return { engine, calls };
 }
+
+describe('LocatorEngine operation budget', () => {
+  it('gives an immediate read a real budget instead of an expired one', async () => {
+    // The direct-read surfaces express "do not wait for a value" as an expired
+    // deadline. That must not become a zero-time budget for the driver: one
+    // immediate resolve still costs whatever the backend costs, which a device
+    // backend makes obvious where an in-process browser query does not.
+    const budgets: number[] = [];
+    const { engine } = makeEngine(
+      { resolve: [() => [REF]] },
+      { actionTimeout: 30_000, onResolveBudget: (ms) => budgets.push(ms) },
+    );
+    await engine.tryRead(EXPRESSION, new Deadline(0));
+    expect(budgets[0]).toBeGreaterThan(1);
+    expect(budgets[0]).toBeLessThanOrEqual(30_000);
+  });
+
+  it('caps that budget by the remaining test timeout', async () => {
+    const budgets: number[] = [];
+    const { engine } = makeEngine(
+      { resolve: [() => [REF]] },
+      { actionTimeout: 30_000, testTimeout: 500, onResolveBudget: (ms) => budgets.push(ms) },
+    );
+    await engine.tryRead(EXPRESSION, new Deadline(0));
+    expect(budgets[0]).toBeLessThanOrEqual(500);
+  });
+});
 
 describe('LocatorEngine resolve retry contract', () => {
   it('retries retryable frame misses until the driver recovers', async () => {
