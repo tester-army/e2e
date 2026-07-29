@@ -4,7 +4,7 @@ import { prepareObservation, type AgentObservation } from '../../src/agent/obser
 import { imageTokenUpperBound } from '../../src/agent/model/adapter.ts';
 import { buildPrompt } from '../../src/agent/prompts.ts';
 import type { Observation, ObservationPixels, SemanticNode } from '../../src/driver/index.ts';
-import { readPngSize } from '../../src/playwright/support.ts';
+import { readPngSize } from '../../src/playwright/observe.ts';
 
 const NO_SECRETS = new Map<string, string>();
 const TEST_ID = 'data-testid';

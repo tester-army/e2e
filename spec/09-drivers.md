@@ -153,8 +153,8 @@ revision. The root and every actionable node have stable geometry for the
 captured viewport.
 
 Pixel evidence is captured only when the runner asks for it. When it does, the
-driver captures it within the same observation, so the image and the tree
-describe one moment under one revision, and it MUST report:
+driver captures it within the same observation and under the same revision, as
+close in time to the tree as its backend allows, and it MUST report:
 
 - the true pixel dimensions of the image bytes it returns, measured rather than
   assumed. They are the coordinate space of everything read off the image, so a

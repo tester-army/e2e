@@ -53,11 +53,13 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
   // re-find that name, so picking it strands the locate sweep — which is what
   // the tree-only model does here.
   //
-  // Vision fixes it by improving the choice, not by bypassing it: seeing the
-  // card, the model picks the small inner control it would actually click, and
-  // the runner still re-resolves that node through a derived query. Pointing is
-  // the fallback underneath, for when no node is re-findable at all.
-  await agent.tap("the first vacation offer card in the results list", { vision: true });
+  // That stranded sweep is precisely the signal `'fallback'` escalates on, so
+  // this step costs no pixels on a layout whose tree is addressable and one
+  // screenshot on this one. Vision then fixes it by improving the choice, not by
+  // bypassing it: seeing the card, the model picks the small inner control it
+  // would actually click, and the runner still re-resolves that node through a
+  // derived query. Pointing is the last resort underneath.
+  await agent.tap("the first vacation offer card in the results list", { vision: "fallback" });
   await agent.waitFor(
     "a hotel offer page is visible with a price and a way to continue booking or check availability",
   );

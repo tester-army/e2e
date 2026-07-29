@@ -34,7 +34,7 @@ export default defineConfig({
     // model above judges a drawn chart correctly and still points at a map pin
     // ~1.6x off in y. The vision tier gets its own model rather than making
     // every other call pay for the stronger one.
-    visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.4',
+    visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna',
     context: [
       'This is the e2e playground app: a small multi-page site with todos,',
       'forms, a sign-in flow, a workspace wizard, and release notes.',

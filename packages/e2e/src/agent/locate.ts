@@ -40,7 +40,6 @@ import {
   LOCATE_SCHEMA,
   LOCATE_VISION_SCHEMA,
   validateLocateResponse,
-  type LocateResponse,
   type ProtocolValidation,
 } from './protocol.ts';
 import { LOCATE_REQUEST, LOCATE_VISION_REQUEST } from './prompts.ts';
@@ -74,54 +73,80 @@ export interface LocatedPoint {
 
 export type Located = LocatedNode | LocatedPoint;
 
-export interface Selection {
-  readonly observation: AgentObservation;
-  /** Null when the model declined, pointed, or named an absent node. */
-  readonly selected: SemanticNode | null;
-  /** Set when the model answered with a screenshot point instead of a node. */
-  readonly point: ViewportPoint | null;
-  /** Innermost observed node under `point`, for the audit record. */
-  readonly hit: SemanticNode | null;
-  /** Why the node was selected, or why no node matches. Untrusted prose. */
-  readonly explanation: string;
-  /** True when the model explicitly reported that no node matches. */
-  readonly declined: boolean;
-}
+/**
+ * What one locate call got back, as the four outcomes it actually has.
+ *
+ * A union rather than a bag of correlated nulls: every consumer has to say
+ * what it does with a point and with a miss, so a polling caller cannot
+ * mistake a pointed answer for "not on screen yet".
+ */
+export type Selection =
+  | {
+      readonly kind: 'node';
+      readonly observation: AgentObservation;
+      readonly selected: SemanticNode;
+      /** Why the node was selected. Untrusted prose. */
+      readonly explanation: string;
+    }
+  | {
+      readonly kind: 'point';
+      readonly observation: AgentObservation;
+      readonly point: ViewportPoint;
+      /** Innermost observed node under `point`, for the audit record. */
+      readonly hit: SemanticNode | null;
+      readonly explanation: string;
+    }
+  /** The model named a node id the current observation does not contain. */
+  | {
+      readonly kind: 'absent';
+      readonly observation: AgentObservation;
+      readonly explanation: string;
+    }
+  /** The model explicitly reported that nothing matches. */
+  | {
+      readonly kind: 'none';
+      readonly observation: AgentObservation;
+      readonly explanation: string;
+    };
 
 /**
  * Takes one fresh observation and asks the model to select one node, or, when
- * pixels reached the request, one point. Uses exactly one model call.
+ * the caller can act on a coordinate and pixels reached the request, one
+ * point. Uses exactly one model call.
+ *
+ * `allowPoint` is the caller's answer to "can I act on a bare coordinate?",
+ * and it gates the grammar, not the result. A caller that needs a node
+ * reference is never shown the pointing schema or the pointing instructions,
+ * so it can never spend a model call on an answer it would have to reject.
  */
 export async function observeAndSelect(
   invocation: Invocation,
   target: string,
+  options: { allowPoint: boolean } = { allowPoint: false },
 ): Promise<Selection> {
   const observation = await invocation.observe();
-  // Pointing is offered only when pixels actually became model input. A vision
-  // call degraded to tree-only input (taint, unprovable masking, a driver
-  // without pixels) falls back to the semantic grammar, so the model is never
-  // invited to point at an image it cannot see.
-  const grounded = observation.pixels !== undefined;
-  const response = await invocation.ask({
+  // Pointing additionally requires pixels that actually became model input. A
+  // vision call degraded to tree-only input (taint, unprovable masking, a
+  // driver without pixels) falls back to the semantic grammar, so the model is
+  // never invited to point at an image it cannot see.
+  const pixels = options.allowPoint ? observation.pixels : undefined;
+  const answer = await invocation.ask({
     schemaName: 'agent-locate-1',
-    schema: grounded ? LOCATE_VISION_SCHEMA : LOCATE_SCHEMA,
-    validate: (value) => validateAgainstObservation(value, observation, grounded),
+    schema: pixels === undefined ? LOCATE_SCHEMA : LOCATE_VISION_SCHEMA,
+    validate: (value) => validateAgainstObservation(value, observation, pixels),
     prompt: {
-      request: grounded ? LOCATE_VISION_REQUEST : LOCATE_REQUEST,
+      request: pixels === undefined ? LOCATE_REQUEST : LOCATE_VISION_REQUEST,
       instruction: target,
       observation,
     },
   });
-  const explanation = response.explanation;
-  const base = { observation, explanation };
-  if (response.target === null) {
+  const explanation = answer.explanation;
+  if (answer.kind === 'none') {
     agentTrace(() => `locate ${JSON.stringify(target)}: model declined — ${explanation}`);
-    return { ...base, selected: null, point: null, hit: null, declined: true };
+    return { kind: 'none', observation, explanation };
   }
-  if (!isNodeTarget(response.target)) {
-    // Validation bounded the answer in image space; actions and node rects live
-    // in CSS pixels, so the conversion happens exactly once, here.
-    const point = toViewportPoint(observation.pixels!, response.target.point);
+  if (answer.kind === 'point') {
+    const { point } = answer;
     const hit = hitTest(observation, point);
     invocation.recordPolicy('locate.point', 'allowed');
     agentTrace(
@@ -130,68 +155,90 @@ export async function observeAndSelect(
           hit === null ? 'no semantic node there' : describe(hit)
         }) — ${explanation}`,
     );
-    return { ...base, selected: null, point, hit, declined: false };
+    return { kind: 'point', observation, point, hit, explanation };
   }
-  const targetId = response.target.id;
-  const selected = observation.nodes.get(targetId) ?? null;
-  if (selected === null) invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
+  const selected = observation.nodes.get(answer.id);
   agentTrace(
     () =>
-      `locate ${JSON.stringify(target)}: model selected #${targetId} (${
-        selected === null ? 'not in observation' : describe(selected)
+      `locate ${JSON.stringify(target)}: model selected #${answer.id} (${
+        selected === undefined ? 'not in observation' : describe(selected)
       }) — ${explanation}`,
   );
-  return { ...base, selected, point: null, hit: null, declined: false };
+  if (selected === undefined) {
+    invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
+    return { kind: 'absent', observation, explanation };
+  }
+  return { kind: 'node', observation, selected, explanation };
 }
+
+/**
+ * One locate answer, already grounded in the observation it was asked about
+ * and already expressed in runner space.
+ *
+ * Validation is where the answer meets the observation, so it is also where a
+ * screenshot coordinate becomes a viewport coordinate: the image is in scope
+ * exactly once, and no later stage has to re-derive which space a number is in
+ * or assert that a screenshot was attached.
+ */
+type LocateAnswer =
+  | { readonly kind: 'node'; readonly id: string; readonly explanation: string }
+  | { readonly kind: 'point'; readonly point: ViewportPoint; readonly explanation: string }
+  | { readonly kind: 'none'; readonly explanation: string };
 
 /**
  * Protocol validation plus observation grounding. A response naming a node id,
  * a revision, or a point outside the current observation violates "never
  * invent identifiers" and is invalid output, so the ask() repair loop can
  * correct one bad reference while the model-call budget allows.
+ *
+ * `pixels` is the image the model was shown, or undefined for a tree-only
+ * call. Undefined makes a point target invalid rather than merely unusable.
  */
 function validateAgainstObservation(
   value: unknown,
   observation: AgentObservation,
-  allowPoint: boolean,
-): ProtocolValidation<LocateResponse> {
-  const validation = validateLocateResponse(value, { allowPoint });
-  if (!validation.ok || validation.value.target === null) return validation;
-  const target = validation.value.target;
+  pixels: AgentPixels | undefined,
+): ProtocolValidation<LocateAnswer> {
+  const validation = validateLocateResponse(value, { allowPoint: pixels !== undefined });
+  if (!validation.ok) return validation;
+  const { target, explanation } = validation.value;
+  if (target === null) return { ok: true, value: { kind: 'none', explanation } };
   if (target.revision !== observation.revision) {
     return {
       ok: false,
       issue: `target.revision "${target.revision}" is stale; answer for the current observation revision "${observation.revision}"`,
     };
   }
-  if (!isNodeTarget(target)) {
-    const pixels = observation.pixels;
-    if (pixels === undefined) {
-      return { ok: false, issue: 'no screenshot was attached; select a node from the observation' };
-    }
-    // Bounds are checked in the image space the model was shown, not the CSS
-    // viewport. Out of bounds means the coordinate space was misread — a
-    // normalized or percentage answer — and clamping it would dispatch into a
-    // corner instead of surfacing the mistake for one repair round.
-    const { x, y } = target.point;
-    if (x > pixels.width - 1 || y > pixels.height - 1) {
+  if (isNodeTarget(target)) {
+    if (!observation.nodes.has(target.id)) {
       return {
         ok: false,
-        issue:
-          `target.point (${x}, ${y}) is outside the attached ${pixels.width}x${pixels.height} screenshot; ` +
-          `return absolute pixels with x in [0, ${pixels.width - 1}] and y in [0, ${pixels.height - 1}], ` +
-          'never normalized or percentage values',
+        issue: `target.id "${target.id}" is not in the current observation; use a node id exactly as printed after "#", e.g. "n42"`,
       };
     }
-    return validation;
+    return { ok: true, value: { kind: 'node', id: target.id, explanation } };
   }
-  if (!observation.nodes.has(target.id)) {
+  if (pixels === undefined) {
+    return { ok: false, issue: 'no screenshot was attached; select a node from the observation' };
+  }
+  // Bounds are checked in the image space the model was shown, not the CSS
+  // viewport. Out of bounds means the coordinate space was misread — a
+  // normalized or percentage answer — and clamping it would dispatch into a
+  // corner instead of surfacing the mistake for one repair round.
+  const { x, y } = target.point;
+  if (x > pixels.width - 1 || y > pixels.height - 1) {
     return {
       ok: false,
-      issue: `target.id "${target.id}" is not in the current observation; use a node id exactly as printed after "#", e.g. "n42"`,
+      issue:
+        `target.point (${x}, ${y}) is outside the attached ${pixels.width}x${pixels.height} screenshot; ` +
+        `return absolute pixels with x in [0, ${pixels.width - 1}] and y in [0, ${pixels.height - 1}], ` +
+        'never normalized or percentage values',
     };
   }
-  return validation;
+  return {
+    ok: true,
+    value: { kind: 'point', point: toViewportPoint(pixels, target.point), explanation },
+  };
 }
 
 /**
@@ -224,6 +271,8 @@ function clamp(value: number, min: number, max: number): number {
  * a node the model could equally have named. The document root is skipped
  * because it contains every point and would make "nothing is there" — the case
  * that motivates pointing — impossible to report.
+ *
+ * Rects are half-open, so abutting siblings do not both claim their seam.
  */
 export function hitTest(
   observation: AgentObservation,
@@ -235,8 +284,8 @@ export function hitTest(
     const rect = node.rect;
     if (rect === undefined || node.role === 'document' || node.states?.hidden === true) continue;
     if (rect.width <= 0 || rect.height <= 0) continue;
-    if (point.x < rect.x || point.x > rect.x + rect.width) continue;
-    if (point.y < rect.y || point.y > rect.y + rect.height) continue;
+    if (point.x < rect.x || point.x >= rect.x + rect.width) continue;
+    if (point.y < rect.y || point.y >= rect.y + rect.height) continue;
     const area = rect.width * rect.height;
     if (area >= bestArea) continue;
     best = node;
@@ -246,83 +295,131 @@ export function hitTest(
 }
 
 /**
- * Selects one node and resolves it to a deterministic, unique locator.
+ * What a caller does with a screenshot point.
  *
- * `allowPoint` is the caller's answer to "can this method act on a bare
- * coordinate?". Only a plain tap can; every other method needs a node
- * reference to hand the driver, so a point there is a miss, not a fallback.
+ * One value carries both halves of the decision: whether the model is offered
+ * the pointing grammar at all, and what happens to a point that comes back.
+ * A caller with no `perform` is never shown the pointing schema, which is why
+ * `locateOne` resolves to a node for it.
  */
-export function locateOne(
+export type PointPolicy<Value = never> =
+  | { readonly allowed: false }
+  | {
+      readonly allowed: true;
+      /** Dispatches at the point, in place of the located-node action. */
+      readonly perform: (invocation: Invocation, located: LocatedPoint) => Promise<Value>;
+    };
+
+/** The policy of a caller that needs a node reference to hand the driver. */
+export const NODE_ONLY: PointPolicy = { allowed: false };
+
+/**
+ * Selects one node and resolves it to a deterministic, unique locator, or, for
+ * a caller whose policy allows it, dispatches at one screenshot point.
+ *
+ * Under `vision: 'fallback'` this is the method that owns the escalation,
+ * because a locate is the only thing that can say "the tree was not enough"
+ * without guessing: either the model reported no match, or no derived query
+ * resolved the node it chose. Both surface as the same two locator codes, so
+ * one attempt, one predicate, and one retry cover the whole feature.
+ */
+export async function locateOne<Value = never>(
   invocation: Invocation,
   target: string,
-  options: { testIdAttribute: string; allowPoint?: false },
-): Promise<LocatedNode>;
-export function locateOne(
-  invocation: Invocation,
-  target: string,
-  options: { testIdAttribute: string; allowPoint: boolean },
-): Promise<Located>;
-export async function locateOne(
-  invocation: Invocation,
-  target: string,
-  options: { testIdAttribute: string; allowPoint?: boolean },
-): Promise<Located> {
-  const selection = await observeAndSelect(invocation, target);
-  if (selection.declined) {
-    invocation.note({ explanation: selection.explanation });
-    throw new AgentError(
-      'LOCATOR_NOT_FOUND',
-      `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
-    );
+  options: { testIdAttribute: string; point?: PointPolicy<Value> },
+): Promise<LocatedNode | Value> {
+  try {
+    // While an escalation is still available, the first attempt does not spend
+    // the clock proving a tree-only pick unresolvable: one sweep, then ask
+    // again with pixels. The escalated attempt polls to the deadline as usual,
+    // so the worst case is no slower than a single-tier locate.
+    const poll = !invocation.canEscalateVision();
+    return await locateAttempt(invocation, target, { ...options, poll });
+  } catch (cause) {
+    // Re-asked rather than reused: the first attempt spent budget and clock, and
+    // escalating into an exhausted budget would replace the locator failure the
+    // caller needs to read with a budget failure.
+    if (!invocation.canEscalateVision() || invocation.dispatched || !isTreeMiss(cause)) {
+      throw cause;
+    }
+    invocation.escalateVision();
+    return locateAttempt(invocation, target, { ...options, poll: true });
   }
-  if (selection.point !== null) {
-    return locatePoint(invocation, target, selection, selection.point, options.allowPoint === true);
-  }
-  if (selection.selected === null) {
-    throw new AgentError(
-      'LOCATOR_NOT_FOUND',
-      `the observation contains no node matching ${JSON.stringify(target)}`,
-    );
-  }
-  return resolveSelected(
-    invocation,
-    { observation: selection.observation, selected: selection.selected, explanation: selection.explanation },
-    options,
-  );
 }
 
-/** Accepts one pointed selection, recording what the tree says is under it. */
-function locatePoint(
+/**
+ * True for the failures that mean "the accessibility tree did not describe this
+ * target", which are exactly the ones pixels can still answer. Any other
+ * failure — a dispatch, a timeout, a cancelled run — is not retried.
+ */
+function isTreeMiss(cause: unknown): boolean {
+  if (!(cause instanceof AgentError)) return false;
+  return cause.code === 'LOCATOR_NOT_FOUND' || cause.code === 'LOCATOR_AMBIGUOUS';
+}
+
+async function locateAttempt<Value>(
+  invocation: Invocation,
+  target: string,
+  options: { testIdAttribute: string; point?: PointPolicy<Value>; poll: boolean },
+): Promise<LocatedNode | Value> {
+  const policy = options.point ?? NODE_ONLY;
+  const selection = await observeAndSelect(invocation, target, { allowPoint: policy.allowed });
+  if (selection.kind === 'point' && policy.allowed) {
+    return policy.perform(invocation, acceptPoint(invocation, target, selection));
+  }
+  return requireNode(invocation, target, selection, options);
+}
+
+/**
+ * Resolves a selection that has to be a node.
+ *
+ * The pointed case restates the protocol rule "a point requires a caller that
+ * asked for one" as a last line of defence: the grammar and the validator both
+ * already gate on the same policy, so reaching it means those two drifted.
+ */
+async function requireNode(
   invocation: Invocation,
   target: string,
   selection: Selection,
-  point: ViewportPoint,
-  allowPoint: boolean,
-): LocatedPoint {
-  const where = `(${point.x}, ${point.y})`;
-  if (!allowPoint) {
-    invocation.note({ explanation: selection.explanation });
-    throw new AgentError(
-      'LOCATOR_NOT_FOUND',
-      `the model pointed at ${where} for ${JSON.stringify(target)} instead of naming a node, ` +
-        'but this method acts on a semantic node; the model explained: ' +
-        selection.explanation,
-    );
+  options: { testIdAttribute: string; poll?: boolean },
+): Promise<LocatedNode> {
+  switch (selection.kind) {
+    case 'node':
+      return resolveSelected(invocation, selection, options);
+    case 'absent':
+      throw new AgentError(
+        'LOCATOR_NOT_FOUND',
+        `the observation contains no node matching ${JSON.stringify(target)}`,
+      );
+    case 'none':
+      invocation.note({ explanation: selection.explanation });
+      throw new AgentError(
+        'LOCATOR_NOT_FOUND',
+        `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
+      );
+    case 'point':
+      throw new AgentError(
+        'MODEL_OUTPUT_INVALID',
+        `the model pointed at (${selection.point.x}, ${selection.point.y}) for ` +
+          `${JSON.stringify(target)}, but this method acts on a semantic node`,
+      );
   }
-  const hit = selection.hit;
+}
+
+/** Records what the tree says is under a pointed selection, before dispatch. */
+function acceptPoint(
+  invocation: Invocation,
+  target: string,
+  selection: Extract<Selection, { kind: 'point' }>,
+): LocatedPoint {
+  const { point, hit, observation, explanation } = selection;
   invocation.note({
     explanation:
-      `the model pointed at ${where} for ${JSON.stringify(target)}; the runner hit-tested ` +
-      `${hit === null ? 'no semantic node' : describeHit(hit)} there. The model explained: ` +
-      selection.explanation,
+      `the model pointed at (${point.x}, ${point.y}) for ${JSON.stringify(target)}; the runner ` +
+      `hit-tested ${hit === null ? 'no semantic node' : describeHit(hit)} there. ` +
+      `The model explained: ${explanation}`,
   });
-  return {
-    kind: 'point',
-    point,
-    hit,
-    observation: selection.observation,
-    explanation: selection.explanation,
-  };
+  return { kind: 'point', point, hit, observation, explanation };
 }
 
 /** Node identity recorded for a pointed action, per spec 13-reporting.md. */
@@ -335,11 +432,17 @@ function describeHit(node: SemanticNode): string {
 /**
  * Resolves a selected observation node through the first derived query that
  * matches exactly one node with the same semantics.
+ *
+ * `poll: false` runs a single sweep instead of retrying to the deadline. The
+ * node was observed a moment ago, so a sweep that resolves nothing right now is
+ * evidence about the derived queries, not about timing — which is enough for a
+ * fallback caller to decide to escalate, and only ever worth spending the clock
+ * on once there is no escalation left.
  */
 export async function resolveSelected(
   invocation: Invocation,
-  selection: { observation: AgentObservation; selected: SemanticNode; explanation?: string },
-  options: { testIdAttribute: string },
+  selection: Extract<Selection, { kind: 'node' }>,
+  options: { testIdAttribute: string; poll?: boolean },
 ): Promise<LocatedNode> {
   const candidates = deriveQueries(selection.selected, options.testIdAttribute).map((query) =>
     scopeToFrames(query, selection.selected.framePath),
@@ -397,12 +500,12 @@ export async function resolveSelected(
         expression,
         node,
         observation: selection.observation,
-        explanation: selection.explanation ?? '',
+        explanation: selection.explanation,
       };
     }
 
     agentTrace(() => `locate: sweep failed\n  ${outcomes.join('\n  ')}`);
-    if (invocation.deadline.expired()) {
+    if (options.poll === false || invocation.deadline.expired()) {
       invocation.recordPolicy('locate.identity', 'denied');
       // Each candidate's outcome names the exact query and why it was
       // rejected, so a locate failure explains itself.

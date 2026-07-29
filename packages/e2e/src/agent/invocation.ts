@@ -24,7 +24,7 @@ import type {
   StepRecorder,
   VisionDegradation,
 } from '../run/steps.ts';
-import type { AgentErrorCode } from '../types.ts';
+import type { AgentErrorCode, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
 import { serializeLedger, type LedgerContext } from './ledger.ts';
 import {
@@ -33,6 +33,7 @@ import {
   type ModelAdapter,
   type ModelImage,
 } from './model/adapter.ts';
+import type { ModelRouter } from './model/router.ts';
 import { prepareObservation, type AgentObservation } from './observation.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
@@ -41,12 +42,8 @@ import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './pr
 export interface AgentContext {
   readonly engine: LocatorEngine;
   readonly steps: StepRecorder;
-  readonly adapter: ModelAdapter;
-  /**
-   * Adapter for calls with `vision`, built on first use. Absent when no
-   * `agent.visionModel` is configured, and every call then uses `adapter`.
-   */
-  readonly visionAdapter?: () => ModelAdapter;
+  /** Chooses the model for a call; a vision call may use a pinned one. */
+  readonly models: ModelRouter;
   readonly config: ResolvedConfig;
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
@@ -76,25 +73,31 @@ export interface InvocationOptions {
   /** `false` disables the cache for this call; it can never upgrade the mode. */
   readonly cache: boolean;
   /**
-   * Sends masked viewport pixels alongside the semantic tree. Additive: the
-   * tree is always sent, and pixel evidence degrades away under taint or
-   * unprovable masking rather than failing the call.
+   * Whether masked viewport pixels travel alongside the semantic tree.
+   * Additive in every mode: the tree is always sent, and pixel evidence
+   * degrades away under taint or unprovable masking rather than failing the
+   * call. `'fallback'` starts tree-only and can be escalated once, by a caller
+   * that has a signal the tree was not enough.
    */
-  readonly vision: boolean;
+  readonly vision: VisionMode;
 }
 
 const MAX_OUTPUT_TOKENS = 2048;
 
-/** Headroom reserved for the method instruction and parameters. */
-const INSTRUCTION_RESERVE_BYTES = 4_096;
+/**
+ * Headroom reserved for the method instruction and parameters, in the
+ * byte-scaled units `tokenUpperBound` works in.
+ */
+const INSTRUCTION_RESERVE = 4_096;
 
 /**
- * Headroom reserved for one attached screenshot on a vision call. The exact
- * cost is only known once the observation reports its viewport, which is after
- * the observation budget must be fixed, so a vision call reserves enough for a
- * large desktop viewport (1920x1080 CSS pixels bounds to 2,691 image tokens).
+ * Headroom reserved for one attached screenshot on a vision call, in the same
+ * units. The exact cost is only known once the observation reports its
+ * viewport, which is after the observation budget must be fixed, so a vision
+ * call reserves enough for a large desktop viewport: 1920x1080 CSS pixels
+ * bounds to 2,691 by `imageTokenUpperBound`.
  */
-const PIXEL_RESERVE_BYTES = 4_096;
+const PIXEL_RESERVE = 4_096;
 
 /** One instrumented phase: the event kind it records and the debug bucket it feeds. */
 interface PhaseSpec {
@@ -132,12 +135,23 @@ export class Invocation {
   private explanation: string | undefined;
   private visionInput = false;
   private visionDegraded: VisionDegradation | undefined;
+  /**
+   * Whether pixels are currently part of this invocation's requests.
+   *
+   * It is the one piece of invocation state that moves: `'fallback'` starts on
+   * the tree and is escalated at most once, so both the observation request and
+   * the model choice follow from a single value instead of each deriving the
+   * tier for itself.
+   */
+  private pixelTier: boolean;
+  private visionEscalated = false;
 
   constructor(
     private readonly runtime: AgentContext,
     private readonly options: InvocationOptions,
   ) {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
+    this.pixelTier = options.vision === true;
     this.system = buildSystem(options.task, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
@@ -156,14 +170,37 @@ export class Invocation {
   }
 
   /**
-   * The model this invocation talks to. A vision call uses the pinned vision
-   * model for its whole lifetime, including rounds whose pixels were withheld:
-   * one invocation reports one provenance, and a polling method must not switch
-   * models between rounds.
+   * The model this invocation talks to. It follows the pixel tier, so an
+   * escalated fallback invocation asks the pinned vision model — the reason
+   * for escalating is that the cheaper model's tree-only answer missed.
    */
   private get adapter(): ModelAdapter {
-    if (!this.options.vision) return this.runtime.adapter;
-    return this.runtime.visionAdapter?.() ?? this.runtime.adapter;
+    return this.runtime.models.select(this.pixelTier);
+  }
+
+  /**
+   * True while this invocation may still be escalated to pixels.
+   *
+   * Only a caller holding a signal that the tree was insufficient may escalate,
+   * and only once: a second miss with pixels attached is a real miss, not a
+   * reason to keep spending the budget.
+   */
+  canEscalateVision(): boolean {
+    return this.options.vision === 'fallback' && !this.pixelTier && this.canAsk();
+  }
+
+  /**
+   * Attaches pixels to every following request of this invocation.
+   *
+   * Recorded on the step because it changes what the model saw and, when a
+   * vision model is pinned, which model answered.
+   */
+  escalateVision(): void {
+    if (this.pixelTier) return;
+    this.pixelTier = true;
+    this.visionEscalated = true;
+    this.recordPolicy('vision.escalate', 'allowed');
+    agentTrace(() => `${this.options.api} escalating to pixel evidence after a tree-only miss`);
   }
 
   /**
@@ -253,7 +290,7 @@ export class Invocation {
    * redacted, and only the unprovable evidence is dropped.
    */
   private pixelsRequested(): boolean {
-    if (!this.options.vision) return false;
+    if (!this.pixelTier) return false;
     if (this.runtime.taint.value) {
       this.degradeVision('PIXEL_TAINTED');
       return false;
@@ -292,8 +329,8 @@ export class Invocation {
     const overhead =
       tokenUpperBound(this.system) +
       this.ledger.bytes +
-      INSTRUCTION_RESERVE_BYTES +
-      (this.options.vision ? PIXEL_RESERVE_BYTES : 0);
+      INSTRUCTION_RESERVE +
+      (this.pixelTier ? PIXEL_RESERVE : 0);
     const withinTokenCeiling = Math.max(1_024, config.limits.maxModelTokensPerCall - overhead);
     return Math.min(config.agent.maxObservationBytes, withinTokenCeiling);
   }
@@ -432,6 +469,11 @@ export class Invocation {
     }
   }
 
+  /** True once any driver action of this invocation has been dispatched. */
+  get dispatched(): boolean {
+    return this.metrics.actionSteps > 0;
+  }
+
   /** True while the model-call budget and deadline still allow one more call. */
   canAsk(): boolean {
     return this.metrics.modelCalls < this.options.maxModelCalls && !this.deadline.expired();
@@ -459,6 +501,7 @@ export class Invocation {
         : {}),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.visionInput ? { visionInput: true } : {}),
+      ...(this.visionEscalated ? { visionEscalated: true } : {}),
       ...(this.visionDegraded !== undefined ? { visionDegraded: this.visionDegraded } : {}),
     });
   }

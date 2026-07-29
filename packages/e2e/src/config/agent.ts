@@ -3,7 +3,7 @@
 import type { LanguageModel } from 'ai';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { E2EConfig, ModelConfig, ModelInstance } from '../types.ts';
+import type { E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
 
 /** Default environment variable holding the provider credential. */
 export const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
@@ -58,7 +58,7 @@ export interface ResolvedAgentConfig {
   readonly cache: 'off' | 'read-only' | 'read-write';
   readonly context: string | undefined;
   /** Default for the per-call `vision` option; a per-call value always wins. */
-  readonly vision: boolean;
+  readonly vision: VisionMode;
 }
 
 export interface ResolvedLimits {
@@ -158,8 +158,11 @@ export function resolveAgentConfig(
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
   const vision = agent?.vision ?? false;
-  if (typeof vision !== 'boolean') {
-    throw new ConfigurationError('INVALID_CONFIG', 'agent.vision must be a boolean');
+  if (!isVisionMode(vision)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      "agent.vision must be true, false, or 'fallback'",
+    );
   }
 
   return {
@@ -213,6 +216,11 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
  * is structural, exactly like the AI SDK's own model handling, so instances
  * from any realm or provider package are accepted.
  */
+/** True for the closed `vision` value set, wherever it is supplied. */
+export function isVisionMode(value: unknown): value is VisionMode {
+  return typeof value === 'boolean' || value === 'fallback';
+}
+
 export function isModelInstance(value: unknown): value is ModelInstance {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;

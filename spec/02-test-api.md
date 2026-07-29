@@ -186,17 +186,38 @@ Use `agent.waitFor` for eventually true natural-language conditions.
 ## Vision
 
 Every model-backed agent method accepts `vision`, default `false`, with the
-project-wide default in `agent.vision`. A per-call value always wins.
+project-wide default in `agent.vision`. A per-call value always wins. It MUST be
+one of three modes:
 
-`vision: true` adds a masked screenshot of the current observation to the model
-input. It is additive, never a replacement: the semantic tree is always sent,
-because the tree is byte-budgeted, cheap, and carries the node references that
-keep an action auditable. There is no pixels-only mode.
+- `false` — the semantic tree only.
+- `true` — a masked screenshot of the current observation on every call.
+- `"fallback"` — the tree first, escalating to pixels once, and only after the
+  tree turned out not to describe the target.
+
+Pixels are additive in every mode, never a replacement: the semantic tree is
+always sent, because the tree is byte-budgeted, cheap, and carries the node
+references that keep an action auditable. There is no pixels-only mode.
 
 ```ts
 agent.assert('the chart trends upward', { vision: true });
 agent.tap('the red pin on the map', { vision: true });
+agent.tap('the first offer card', { vision: 'fallback' });
 ```
+
+`"fallback"` requires a signal that the tree was insufficient, and a locate is
+the only operation that produces one without guessing: the model reports no
+match, or no derived query resolves the node it chose. A method that locates a
+single target MUST escalate on exactly those outcomes, at most once per
+invocation, and MUST NOT escalate after any action has been dispatched.
+
+A judgment always produces an answer from the tree, so there is no such signal
+for `assert`, `waitFor`, and `extract`; under `"fallback"` they stay tree-only.
+`agent.scrollTo` also stays tree-only, because inside its polling loop a
+tree-only miss is indistinguishable from "the target has not been scrolled to
+yet". Those methods need `vision: true` to be shown pixels.
+
+Because escalation runs the locate a second time, a `"fallback"` invocation's
+model-call budget MUST cover both tiers.
 
 The screenshot and the tree MUST describe the same observation revision. The
 reported image dimensions MUST be the true dimensions of the image bytes, and
@@ -222,6 +243,11 @@ Under `vision`, and only under it, a locate response may answer with a point in
 the attached screenshot instead of a node id. It exists for surfaces the tree
 cannot describe, such as canvas, WebGL, and custom-drawn widgets.
 
+Whether pointing is offered is decided by the calling method, before the model
+is asked. A method with no coordinate equivalent MUST be sent the node-only
+response grammar and the node-only request text even when pixels are attached,
+so a point can never be returned to a caller that cannot act on one.
+
 The runner owns everything about that point:
 
 - it is bounded to the reported image dimensions; an out-of-bounds point is
@@ -234,10 +260,11 @@ The runner owns everything about that point:
 
 Dispatch happens at the point, not at the center of the hit-tested node:
 retargeting would leave the pixels the model chose, which on a canvas is the
-whole surface. Only `tap` and `click` accept a point, because every other
-method needs a semantic node to act on; a point elsewhere is
-`LOCATOR_NOT_FOUND` carrying the model's explanation. A driver without
-coordinate input cannot serve pointing at all.
+whole surface. Only `tap` and `click` offer a point, because every other method
+needs a semantic node to act on; those methods still receive the screenshot,
+which is what lets the model choose a better node. A point answered to a
+node-only call is invalid model output. A driver without coordinate input
+cannot serve pointing at all.
 
 ## Errors
 

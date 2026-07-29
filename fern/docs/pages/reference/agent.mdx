@@ -146,19 +146,55 @@ model that accepts images.
 ```ts
 await agent.assert('the chart trends upward', { vision: true });
 await agent.tap('the red pin on the map', { vision: true });
+await agent.tap('the first offer card', { vision: 'fallback' });
 ```
 
 | Name | Type | Default |
 | --- | --- | --- |
-| `options.vision` | `boolean` | `config.agent.vision`, `false` |
+| `options.vision` | `boolean \| 'fallback'` | `config.agent.vision`, `false` |
 
-Set `agent.vision: true` in config to make it the project default; a per-call
-value always wins. Vision changes no budget, but images are billed as input
-tokens, so a vision call costs more than the same call without it.
+| Mode | What the model sees | Cost |
+| --- | --- | --- |
+| `false` | the tree | no image tokens |
+| `true` | the tree and a screenshot, every call | image tokens on every call |
+| `'fallback'` | the tree, then a screenshot only after the tree missed | image tokens only when the tree was not enough |
 
-Vision calls use `agent.visionModel` when it is set, and `agent.model` otherwise.
-An invocation keeps that model for its whole lifetime, including polling rounds
-whose pixels were withheld, so one step reports one model.
+Set `agent.vision` in config to make a mode the project default; a per-call value
+always wins. Images are billed as input tokens, so `true` costs more than the
+same call without it on every call, and `'fallback'` costs nothing extra until
+something actually fails on the tree.
+
+### Fallback
+
+`'fallback'` needs a signal that the accessibility tree was not enough, and a
+locate is the only operation that produces one without guessing:
+
+- the model reports that no node matches, or
+- no derived query resolves the node it chose — the common real-world case being
+  a control whose accessible name aggregates a whole card, which nothing can
+  re-find.
+
+On either outcome the runner re-observes with pixels attached and asks once more,
+using `agent.visionModel` if one is pinned. It escalates at most once per call
+and never after an action has been dispatched, and the step records
+`visionEscalated: true`.
+
+<Callout intent="warn" title="Judgments stay tree-only under fallback">
+`assert`, `waitFor`, and `extract` always produce an answer from the tree, so
+there is nothing to detect as a miss — escalating on a `false` judgment would
+just bias it toward `true`. `scrollTo` is tree-only for the same reason: inside
+its polling loop, "not in the tree" and "not scrolled there yet" look identical.
+Use `vision: true` when you need pixels judged.
+</Callout>
+
+Escalation runs the locate twice, so a `'fallback'` call gets twice the
+model-call budget of the same call without it.
+
+Calls that send pixels use `agent.visionModel` when it is set, and `agent.model`
+otherwise, and keep it for the rest of the invocation — including polling rounds
+whose pixels were withheld — so a polling method never switches models between
+rounds. A `'fallback'` call that escalates switches model once, at the
+escalation; its step reports the model that answered plus `visionEscalated`.
 
 <Callout intent="info" title="Additive, never pixels-only">
 The tree is always sent. It is byte-budgeted and cheap, and its node references
@@ -194,9 +230,14 @@ await agent.tap('the red pin on the map', { vision: true });
 ```
 
 Dispatch happens at the point, not at the center of the node under it, so a tap
-on a canvas lands where the model looked. Every other method needs a semantic
-node: a point answered to `type`, `select`, `upload`, and friends is
-`LOCATOR_NOT_FOUND` carrying the model's explanation.
+on a canvas lands where the model looked.
+
+Only `tap` and `click` are ever offered a point. Every other method needs a
+semantic node, so `type`, `select`, `upload`, `scrollTo`, `dragTo`, and friends
+are asked for a node even under `vision`: the pointing grammar is not part of
+their request, and the model cannot spend the call on an answer they would have
+to reject. They still receive the screenshot, which is what lets the model pick
+a better node.
 
 ## Judgments and extraction
 

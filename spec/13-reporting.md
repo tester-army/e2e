@@ -120,8 +120,11 @@ A step whose model input included pixel evidence records that pixels were model
 input, not merely an artifact, plus the largest image sent in bytes. A step that
 asked for pixels and did not send them records why they were withheld:
 `PIXEL_TAINTED`, `MASKING_UNPROVEN`, or `UNSUPPORTED_CAPABILITY`. A step that
-dispatched at a model-supplied point records the point and the node hit-tested
-under it, or the absence of one.
+escalated from the tree to pixels under `vision: "fallback"` records that it
+escalated; its model provenance is the model that answered after the escalation,
+not a claim about every call of the step. A step that dispatched at a
+model-supplied point records the point and the node hit-tested under it, or the
+absence of one.
 
 Every model-backed step identifies provider, model ID, resolved endpoint (`local`
 or URL),

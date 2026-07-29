@@ -87,6 +87,9 @@ export class ModelOutputInvalidError extends AgentError {
  * Conservative token upper bound. UTF-8 byte length bounds every byte-level
  * tokenizer from above, so it is used when a provider reports no usage and for
  * the pre-flight ceiling required by 14-security.md.
+ *
+ * Every budget that mixes with this one — reserves, ledger size, observation
+ * size — is therefore in the same byte-scaled units, not in real tokens.
  */
 export function tokenUpperBound(text: string): number {
   return new TextEncoder().encode(text).byteLength;
@@ -104,8 +107,8 @@ const IMAGE_TILE_PX = 28;
  * both cost the same number of patches.
  */
 export function imageTokenUpperBound(image: { width: number; height: number }): number {
-  const tiles =
+  return (
     Math.ceil(Math.max(1, image.width) / IMAGE_TILE_PX) *
-    Math.ceil(Math.max(1, image.height) / IMAGE_TILE_PX);
-  return tiles;
+    Math.ceil(Math.max(1, image.height) / IMAGE_TILE_PX)
+  );
 }

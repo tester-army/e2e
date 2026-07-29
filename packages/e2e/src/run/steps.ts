@@ -78,6 +78,12 @@ export interface StepAgentDetails {
   /** True when masked pixel evidence was model input, not just an artifact. */
   visionInput?: boolean;
   visionDegraded?: VisionDegradation;
+  /**
+   * True when `vision: 'fallback'` escalated: the tree-only attempt missed, so
+   * later calls of this step carried pixels and, when one is pinned, went to
+   * `agent.visionModel`. `model` names the model that answered.
+   */
+  visionEscalated?: boolean;
 }
 
 export interface StepRecord {
@@ -93,6 +99,7 @@ export interface StepRecord {
   explanation?: string;
   visionInput?: boolean;
   visionDegraded?: VisionDegradation;
+  visionEscalated?: boolean;
   viewport?: { width: number; height: number; scale: number };
   metrics?: StepMetrics;
   events: StepEvent[];
@@ -190,6 +197,7 @@ export class StepRecorder {
     if (details.explanation !== undefined) current.explanation = details.explanation;
     if (details.visionInput !== undefined) current.visionInput = details.visionInput;
     if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
+    if (details.visionEscalated !== undefined) current.visionEscalated = details.visionEscalated;
   }
 
   /** Records the viewport a step established (required for web.setViewport). */

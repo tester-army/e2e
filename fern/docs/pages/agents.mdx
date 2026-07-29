@@ -205,8 +205,8 @@ await agent.assert('the chart trends upward', { vision: true });
 await agent.tap('the red pin on the map', { vision: true });
 ```
 
-It needs a model that accepts images. Set `agent.vision: true` in config to turn
-it on for a whole project, and override it per call.
+It needs a model that accepts images. Set `agent.vision` in config to pick a
+default for a whole project, and override it per call.
 
 The snapshot still goes with it — vision adds pixels, it never replaces the tree.
 That is what keeps a vision `tap` on a real control resolving to a real node.
@@ -215,10 +215,33 @@ the screenshot instead, and the runner validates that point, checks what is unde
 it, records both, and taps exactly there. Only `tap` and `click` can act on a
 point; everything else needs a node.
 
+### Paying for pixels only when the tree fails
+
+`vision: 'fallback'` is the middle setting. The call runs on the snapshot alone
+first, and pixels are attached only if that misses — the model says nothing
+matches, or the node it picked cannot be re-found by any derived query. That
+second case is the common one on real sites: an offer card is a single link whose
+accessible name is the entire card, so nothing can address it again. Seeing the
+card, the model picks the small inner control it would actually click.
+
+```ts
+// Free on a page whose tree is fine; pays for one screenshot on a page whose isn't.
+await agent.tap('the first offer card in the results', { vision: 'fallback' });
+```
+
+It escalates once per call, never after an action has been dispatched, and the
+step records `visionEscalated: true` so you can see which steps needed it.
+
+`assert`, `waitFor`, `extract`, and `scrollTo` stay on the snapshot under
+`'fallback'`: they always produce an answer, so there is no miss to detect —
+escalating on a failed assertion would only bias it toward passing. Use
+`vision: true` there.
+
 Three things to expect:
 
-- Images are billed as input tokens, so a vision call costs more than the same
-  call without it. Reach for it on the step that needs pixels, not everywhere.
+- Images are billed as input tokens, so `vision: true` costs more than the same
+  call without it on every call. Reach for it on the step that needs pixels, use
+  `'fallback'` when you only want it as a safety net.
 - Once a test fills a secret, the screen stays pixel-tainted for the rest of the
   attempt: vision calls silently continue with the snapshot alone, and the report
   records that pixels were withheld.
@@ -237,13 +260,13 @@ other call on `agent.model`:
 export default defineConfig({
   agent: {
     model: 'google/gemini-3-flash',
-    visionModel: 'openai/gpt-5.4',
+    visionModel: 'openai/gpt-5.6-luna',
   },
 });
 ```
 
 `E2E_VISION_MODEL` overrides it, the way `E2E_MODEL` overrides `agent.model`.
-Unset, vision calls use `agent.model`. Each step in the report records the model
+Unset, calls that send pixels use `agent.model`. Each step in the report records the model
 it actually used, so a mixed run stays auditable.
 
 When a pointed tap lands in the wrong place, the step tells you where it went:

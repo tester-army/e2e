@@ -95,13 +95,29 @@ export type AgentParam =
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
 /**
- * Sends a masked screenshot of the current observation to the model in
- * addition to the semantic tree. It requires a vision-capable model, and it is
- * additive: the tree is always sent, and pixel evidence degrades away rather
- * than failing the call when it cannot be proven redacted.
+ * When the model is shown a masked screenshot of the current observation, on
+ * top of the semantic tree.
+ *
+ * - `false` — tree only.
+ * - `true` — pixels on every call. Needs a vision-capable model, costs image
+ *   tokens on every call, and is the only mode that can judge pixels.
+ * - `'fallback'` — pixels only after the accessibility tree turned out not to
+ *   describe the target. The cheap tree-only attempt runs first and pixels are
+ *   paid for only when it misses.
+ *
+ * `'fallback'` needs a signal that the tree was insufficient, which only a
+ * method that locates a target has: the model reporting no match, or no derived
+ * query resolving the node it chose. A judgment always produces an answer from
+ * the tree, so `'fallback'` leaves `assert`, `waitFor`, and `extract` tree-only;
+ * use `true` to have pixels judged.
+ *
+ * Pixels are always additive — the tree is sent in every mode — and they
+ * degrade away rather than failing the call when they cannot be proven redacted.
  */
+export type VisionMode = boolean | 'fallback';
+
 export interface VisionOption {
-  vision?: boolean;
+  vision?: VisionMode;
 }
 
 export interface AgentOptions extends VisionOption {
@@ -818,7 +834,7 @@ export interface E2EConfig {
     cache?: 'off' | 'read-only' | 'read-write';
     context?: string;
     /** Project-wide default for the per-call `vision` option. */
-    vision?: boolean;
+    vision?: VisionMode;
   };
   limits?: {
     maxDiscoveredResults?: number;

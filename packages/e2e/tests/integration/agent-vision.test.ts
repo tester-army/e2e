@@ -16,6 +16,7 @@ import {
   installFakeModel,
   judgment,
   locateBestMatch,
+  locateNotFound,
   locatePoint,
   type FakeCall,
 } from '../helpers/fake-model.ts';
@@ -24,6 +25,9 @@ import type { RunOutcome } from '../helpers/run-project.ts';
 
 /** The red pin's fixed viewport position on the canvas fixture page. */
 const RED_PIN = { x: 300, y: 60 };
+
+/** Centre of the left "Pick" button on the twins fixture page. */
+const LEFT_TWIN = { x: 60, y: 100 };
 
 const SUITE = `import { test, expect, credentials } from 'e2e';
 
@@ -44,9 +48,14 @@ test('taps a canvas pin at the point the model chose', async ({ app, agent, scre
   await expect(screen.getByRole('status')).toHaveText('red');
 });
 
-test('refuses a point for a method that needs a semantic node', async ({ agent, web }) => {
+test('never offers a point to a method that needs a semantic node', async ({ agent, web }) => {
   await web.goto('/canvas');
   await agent.type('the red pin on the map', 'hello', { vision: true });
+});
+
+test('scrolls to a node under vision without being offered a point', async ({ agent, web }) => {
+  await web.goto('/canvas');
+  await agent.scrollTo('the Hit output', { vision: true });
 });
 
 test('rejects a point outside the attached screenshot', async ({ agent, web }) => {
@@ -57,6 +66,33 @@ test('rejects a point outside the attached screenshot', async ({ agent, web }) =
 test('never offers pointing without vision', async ({ agent, web }) => {
   await web.goto('/canvas');
   await agent.tap('the red pin on the map');
+});
+
+test('fallback stays on the tree when the tree is enough', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.tap('the Increment button', { vision: 'fallback' });
+  await expect(screen.getByRole('status')).toHaveText('1');
+});
+
+test('fallback escalates to pixels after the tree declines', async ({ agent, web, screen }) => {
+  await web.goto('/canvas');
+  await agent.tap('the map pin only pixels can find', { vision: 'fallback' });
+  await expect(screen.getByRole('status')).toHaveText('red');
+});
+
+test('fallback escalates when no derived query pins the chosen node', async ({
+  agent,
+  web,
+  screen,
+}) => {
+  await web.goto('/twins');
+  await agent.tap('the left Pick button', { vision: 'fallback' });
+  await expect(screen.getByRole('status')).toHaveText('left');
+});
+
+test('fallback leaves a judgment on the tree', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the page has a heading', { vision: 'fallback' });
 });
 
 test('routes a vision call to the pinned vision model', async ({ app, agent }) => {
@@ -71,6 +107,18 @@ function respond(call: FakeCall): unknown {
   switch (call.instruction) {
     case 'the red pin on the map':
       return locatePoint(call, RED_PIN, 'a red circle is drawn there and no node describes it');
+    case 'the map pin only pixels can find':
+      // The tree-only tier of a fallback call has nothing to name here, and its
+      // decline is the signal that escalates the call.
+      return call.images.length === 0
+        ? locateNotFound('no node in the observation is a map pin')
+        : locatePoint(call, RED_PIN, 'a red circle is drawn there');
+    case 'the left Pick button':
+      // Both buttons are identical in the tree, so the tree-only answer strands
+      // the derived-query sweep; with pixels the left one is distinguishable.
+      return call.images.length === 0
+        ? locateBestMatch({ ...call, instruction: 'Pick' })
+        : locatePoint(call, LEFT_TWIN, 'the left canvas is red and this button sits under it');
     case 'the off-screen pin':
       // A normalized answer is the classic coordinate-space mistake: in bounds
       // as a fraction, far outside the image as pixels.
@@ -202,11 +250,42 @@ describe('agent vision', () => {
     ).toBe(true);
   });
 
-  it('refuses a point for a method that acts on a semantic node', () => {
-    const title = 'refuses a point for a method that needs a semantic node';
+  it('withholds the pointing grammar from a method that acts on a node', () => {
+    const title = 'never offers a point to a method that needs a semantic node';
+    // The pixels still go out — vision is additive — but the request never
+    // mentions pointing, so the model cannot spend the call on an answer this
+    // method would have to reject.
+    const calls = fakeCalls.filter((call) => call.instruction === 'the red pin on the map');
+    // agent.tap, same page, same instruction: pointing offered.
+    expect(calls.some((call) => call.prompt.includes('point at it instead'))).toBe(true);
+    // agent.type: pixels attached, pointing withheld.
+    expect(
+      calls.some(
+        (call) => call.images.length === 1 && !call.prompt.includes('point at it instead'),
+      ),
+    ).toBe(true);
     const error = resultByTitle(outcome, title).attempts.at(-1)!.error!;
-    expect(error.code).toBe('LOCATOR_NOT_FOUND');
-    expect(error.message).toContain('this method acts on a semantic node');
+    expect(error.code).toBe('MODEL_OUTPUT_INVALID');
+    expect(error.message).toContain('vision call');
+  });
+
+  it('keeps a polling locate node-only, so a point cannot read as "not yet"', () => {
+    // Regression: scrollTo consumes the selection directly and has no
+    // coordinate equivalent. Offering it the pointing grammar made a pointed
+    // answer indistinguishable from "the target is not on screen yet", which
+    // scrolled the whole model budget away in silence.
+    const title = 'scrolls to a node under vision without being offered a point';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.scrollTo');
+    expect(step.visionInput).toBe(true);
+    const located = fakeCalls.filter((call) => call.instruction === 'the Hit output');
+    expect(located).not.toHaveLength(0);
+    for (const call of located) {
+      expect(call.images).toHaveLength(1);
+      expect(call.prompt).not.toContain('point at it instead');
+      expect(call.prompt).toContain('Select exactly one node from the observation');
+    }
+    expect(step.metrics!.modelCalls).toBe(1);
   });
 
   it('rejects an out-of-bounds point as invalid output instead of clamping it', () => {
@@ -229,6 +308,73 @@ describe('agent vision', () => {
     const step = stepOf(title, 'agent.tap');
     expect(step.visionInput).toBeUndefined();
     expect(step.metrics!.actionSteps).toBe(0);
+  });
+
+  it('pays for no pixels when the tree resolves a fallback target', () => {
+    const title = 'fallback stays on the tree when the tree is enough';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.tap');
+    expect(step.visionInput).toBeUndefined();
+    expect(step.visionEscalated).toBeUndefined();
+    expect(step.metrics!.pixelBytes).toBeUndefined();
+    expect(step.metrics!.modelCalls).toBe(1);
+    const located = fakeCalls.filter((call) => call.instruction === 'the Increment button');
+    expect(located).toHaveLength(1);
+    expect(located[0]!.images).toHaveLength(0);
+    // The cheap tier also stays on the cheap model.
+    expect(step.model!.model).toBe('scripted-text');
+  });
+
+  it('escalates a fallback locate to pixels after the model declines', () => {
+    const title = 'fallback escalates to pixels after the tree declines';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.tap');
+    expect(step.visionEscalated).toBe(true);
+    expect(step.visionInput).toBe(true);
+    // Two locates: the tree-only miss, then the escalated one that answered.
+    expect(step.metrics!.modelCalls).toBe(2);
+    const [first, second] = fakeCalls.filter(
+      (call) => call.instruction === 'the map pin only pixels can find',
+    );
+    expect(first!.images).toHaveLength(0);
+    expect(first!.prompt).not.toContain('point at it instead');
+    expect(second!.images).toHaveLength(1);
+    expect(second!.prompt).toContain('point at it instead');
+    // Escalating also moves to the pinned grounding model, which is the reason
+    // the tree-only answer was worth abandoning.
+    expect(first!.modelId).toBe('scripted-text');
+    expect(second!.modelId).toBe('scripted-grounding');
+    expect(step.model!.model).toBe('scripted-grounding');
+    expect(
+      step.events.some(
+        (event) =>
+          event.kind === 'policy' &&
+          event.name === 'vision.escalate' &&
+          event.decision === 'allowed',
+      ),
+    ).toBe(true);
+  });
+
+  it('escalates a fallback locate when the derived-query sweep strands', () => {
+    // Two identical buttons: every query derived from either matches both, so
+    // the tree-only tier cannot pin its own choice. That is the second
+    // escalation signal, and it must not cost the deadline to detect.
+    const title = 'fallback escalates when no derived query pins the chosen node';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.tap');
+    expect(step.visionEscalated).toBe(true);
+    expect(step.visionInput).toBe(true);
+    expect(step.metrics!.modelCalls).toBe(2);
+    expect(step.explanation).toContain('hit-tested');
+  });
+
+  it('leaves a judgment tree-only under fallback, having no miss to detect', () => {
+    const title = 'fallback leaves a judgment on the tree';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.assert');
+    expect(step.visionInput).toBeUndefined();
+    expect(step.visionEscalated).toBeUndefined();
+    expect(step.model!.model).toBe('scripted-text');
   });
 
   it('sends a vision call to the pinned vision model and others to the main one', () => {
