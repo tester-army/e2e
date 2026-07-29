@@ -89,8 +89,11 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
     "the hotel name and total price text of the first vacation offer visible on screen",
     { schema: z.object({ hotel: z.string(), price: z.string() }), vision: "only" },
   );
-  expect(offer.hotel.length).toBeGreaterThan(2);
-  expect(offer.price).toMatch(/zł|PLN|\d/);
+  // Tight enough to catch a misread, which is the point of extracting from
+  // pixels: `/\d/` would pass on any hallucinated number, so a shrunk or blurred
+  // screenshot could silently keep this suite green while the model guessed.
+  expect(offer.hotel.length).toBeGreaterThan(5);
+  expect(offer.price).toMatch(/\d[\d\s]{2,}\s*(zł|PLN)/);
 
   // An offer card is one link whose accessible name aggregates the whole card:
   // hotel, dates, airports, board, rating, review count, price, CTA. No derived
