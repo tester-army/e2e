@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { fakeCalls, installFakeModel, locateBestMatch, type FakeCall } from '../helpers/fake-model.ts';
 import { assertValidCacheEntry } from '../helpers/cache-schema.ts';
+import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
 import type { ReportStep } from '../../src/report/build.ts';
@@ -51,11 +52,16 @@ describe('locate cache', () => {
     await app?.close();
   });
 
-  /** Runs one project and returns its agent steps plus the locate-call count. */
+  /** Runs one project and returns its report, agent steps, and locate-call count. */
   async function runOnce(
     project: FixtureProject,
     config: Partial<E2EConfig> = {},
-  ): Promise<{ steps: ReportStep[]; locateCalls: number; passed: boolean }> {
+  ): Promise<{
+    report: unknown;
+    steps: ReportStep[];
+    locateCalls: number;
+    passed: boolean;
+  }> {
     const model = installFakeModel(respond);
     const outcome = await runExisting(project, {
       appUrl: app.url,
@@ -74,6 +80,31 @@ describe('locate cache', () => {
       .flatMap((attempt) => attempt.steps)
       .filter((step) => step.kind === 'agent');
     return {
+      report,
+      steps,
+      locateCalls: fakeCalls.filter((call) => call.schemaName === 'agent-locate-1').length,
+      passed: outcome.status === 'passed',
+    };
+  }
+
+  /** Runs a project whose model reports every target as positional. */
+  async function runPositional(
+    project: FixtureProject,
+  ): Promise<Awaited<ReturnType<typeof runOnce>>> {
+    const model = installFakeModel((call) => locateBestMatch(call, true));
+    const outcome = await runExisting(project, {
+      appUrl: app.url,
+      config: { tests: 'tests/**/*.e2e.ts', reporters: ['json'], agent: { model } },
+    });
+    const report = JSON.parse(
+      readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8'),
+    ) as { run: { results: { attempts: { steps: ReportStep[] }[] }[] } };
+    const steps = report.run.results
+      .flatMap((result) => result.attempts)
+      .flatMap((attempt) => attempt.steps)
+      .filter((step) => step.kind === 'agent');
+    return {
+      report,
       steps,
       locateCalls: fakeCalls.filter((call) => call.schemaName === 'agent-locate-1').length,
       passed: outcome.status === 'passed',
@@ -114,10 +145,29 @@ describe('locate cache', () => {
       );
       assertValidCacheEntry(entry);
       expect(entry.kind).toBe('locate');
-      expect(entry.generation).toBe(1);
-      // The entry file name is the key digest, which is also how replay is
-      // authorized.
-      expect(files[0]).toBe(`${entry.keyHash}.json`);
+      // The entry carries only what replay consumes. It does not repeat its own
+      // key: the file name is the key digest, and the runner only ever opens the
+      // digest of the key it just computed.
+      expect(Object.keys(entry).toSorted()).toEqual([
+        'createdAt',
+        'kind',
+        'payload',
+        'schemaVersion',
+      ]);
+      expect(files[0]).toBe(`${first.steps[0]!.cache!.keyHash}.json`);
+    });
+
+    it('keeps debug-only diagnostics out of the report', () => {
+      // `reason` explains a status to `--debug`, but spec/schema/report-v1
+      // closes the cache object. A leak here is a schema violation for every
+      // consumer, so both halves are pinned: the schema, and the exact key.
+      for (const run of [first, second]) {
+        assertValidReport(run.report);
+        for (const step of run.steps) {
+          if (step.cache === undefined) continue;
+          expect(Object.keys(step.cache)).not.toContain('reason');
+        }
+      }
     });
 
     it('spends zero model calls on the warm run', () => {
@@ -254,6 +304,144 @@ describe('locate cache', () => {
         expect(original.locateCalls).toBe(0);
         expect(original.steps[0]!.cache!.status).toBe('hit');
         expect(cacheFiles(project)).toHaveLength(2);
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
+    it('survives a conditional step that only runs on some sessions', async () => {
+      // The shape every real site forces: an optional consent dialog handled in
+      // a try/catch. Whether it appears must not renumber the calls after it,
+      // or a production suite can never warm up at all.
+      // The prelude is a located action that is not cacheable, and that leaves
+      // the semantic screen unchanged: it only moves focus, which the
+      // fingerprint deliberately excludes. So the only thing that can differ
+      // between the two runs is how the call after it gets numbered.
+      const suite = (consent: boolean) => `import { test, expect } from 'e2e';
+
+test('taps the increment button', async ({ app, agent, screen }) => {
+  await app.open();
+${consent ? `  await agent.press('the Email input', 'Escape');
+` : ''}  await agent.tap('the Increment button');
+  await expect(screen.getByRole('status')).toHaveText('1');
+});
+`;
+      const project = createProject({ 'tests/conditional.e2e.ts': suite(true) });
+      try {
+        const withConsent = await runOnce(project);
+        const tapOf = (run: Awaited<ReturnType<typeof runOnce>>) =>
+          run.steps.findLast((step) => step.api === 'agent.tap')!;
+        expect(tapOf(withConsent).cache!.status).toBe('written');
+
+        // The prelude does not happen this time, exactly like a consent dialog
+        // that never showed up.
+        writeFileSync(
+          path.join(project.dir, 'tests', 'conditional.e2e.ts'),
+          suite(false),
+          'utf8',
+        );
+        const withoutConsent = await runOnce(project);
+        expect(tapOf(withoutConsent).cache!.status).toBe('hit');
+        expect(tapOf(withoutConsent).cache!.keyHash).toBe(tapOf(withConsent).cache!.keyHash);
+        expect(withoutConsent.locateCalls).toBe(0);
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
+    it('still separates two identical calls in one test', async () => {
+      const project = createProject({
+        'tests/twice.e2e.ts': `import { test, expect } from 'e2e';
+
+test('taps the same target twice', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.tap('the Increment button');
+  await agent.tap('the Increment button');
+  await expect(screen.getByRole('status')).toHaveText('2');
+});
+`,
+      });
+      try {
+        const cold = await runOnce(project);
+        const taps = cold.steps.filter((step) => step.api === 'agent.tap');
+        expect(taps).toHaveLength(2);
+        // Same method, instruction, and parameters. The occurrence index and
+        // the counter's own text both separate them, so two entries are stored
+        // and each replays for its own round.
+        expect(taps[0]!.cache!.keyHash).not.toBe(taps[1]!.cache!.keyHash);
+        expect(cacheFiles(project)).toHaveLength(2);
+
+        const warm = await runOnce(project);
+        expect(warm.locateCalls).toBe(0);
+        for (const tap of warm.steps.filter((step) => step.api === 'agent.tap')) {
+          expect(tap.cache!.status).toBe('hit');
+        }
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
+    it('keeps hitting while the page content churns', async () => {
+      // The property the cache lives or dies by. /feed re-renders different
+      // offers and prices on every request; the target is named by its own
+      // content, so its locator is still correct and the entry must survive.
+      const project = createProject({
+        'tests/feed.e2e.ts': `import { test, expect } from 'e2e';
+
+test('refreshes the feed', async ({ app, agent, screen }) => {
+  await app.open('/feed');
+  await agent.tap('the Refresh feed button');
+  await expect(screen.getByRole('status')).toHaveText('refreshed');
+});
+`,
+      });
+      try {
+        const cold = await runOnce(project);
+        expect(cold.steps[0]!.cache!.status).toBe('written');
+
+        for (let run = 0; run < 3; run += 1) {
+          const warm = await runOnce(project);
+          expect(warm.passed).toBe(true);
+          expect(warm.steps[0]!.cache!.status).toBe('hit');
+          expect(warm.locateCalls).toBe(0);
+        }
+        // One entry, not one per run: churning content no longer forks the key.
+        expect(cacheFiles(project)).toHaveLength(1);
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
+    it('refuses to record a target the model reports as positional', async () => {
+      // A positional target must not be stored: the locator would be
+      // content-addressed and would keep resolving to whatever occupied that
+      // position when it was recorded.
+      // The target itself is an ordinary stable button; what is under test is
+      // that the model's positional report alone stops the write.
+      const project = createProject({
+        'tests/positional.e2e.ts': `import { test, expect } from 'e2e';
+
+test('taps the first button', async ({ app, agent, screen }) => {
+  await app.open('/feed');
+  await agent.tap('the Refresh feed button');
+  await expect(screen.getByRole('status')).toHaveText('refreshed');
+});
+`,
+      });
+      try {
+        const first = await runPositional(project);
+        expect(first.passed).toBe(true);
+        expect(first.steps[0]!.cache!.status).toBe('miss');
+        // Nothing on disk is the observable contract; the explanation is
+        // debug-only and deliberately absent from the report.
+        expect(cacheFiles(project)).toHaveLength(0);
+
+        // Still not recorded on a second run, and still correct: every run pays
+        // for one locate rather than replaying a drifting locator.
+        const second = await runPositional(project);
+        expect(second.passed).toBe(true);
+        expect(second.locateCalls).toBe(1);
+        expect(cacheFiles(project)).toHaveLength(0);
       } finally {
         project.cleanup();
       }

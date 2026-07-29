@@ -1,162 +1,163 @@
-/** Cacheable locator projection (spec 10-determinism.md, CACHE-LOCATE-001). */
+/** The cacheable locator shape (spec 10-determinism.md, CACHE-LOCATOR-001). */
 
 import { describe, expect, it } from 'vitest';
-import {
-  MAX_REGEXP_SOURCE_BYTES,
-  toCacheLocator,
-  toSemanticIdentity,
-  validateRegexp,
-} from '../../src/cache/index.ts';
-import type { LocatorExpression, SemanticNode, TextPattern } from '../../src/driver/index.ts';
-import {
-  filterExpression,
-  frameExpression,
-  indexExpression,
-  roleQuery,
-  webSelectorExpression,
-} from '../../src/locator/expression.ts';
+import { asCacheLocator, toSemanticIdentity } from '../../src/cache/index.ts';
+import type { LocatorExpression, SemanticNode } from '../../src/driver/index.ts';
 
-/** A text-family query built directly, to keep projection cases explicit. */
-function patternQuery(value: TextPattern): LocatorExpression {
-  return { kind: 'query', query: { kind: 'text', value } };
-}
+const exact = (value: string) => ({ kind: 'string' as const, value, exact: true });
+const roleQuery = (name: string): LocatorExpression => ({
+  kind: 'query',
+  query: { kind: 'role', value: exact('button'), name: exact(name) },
+});
 
-function regexpQuery(source: string, flags: string): LocatorExpression {
-  return patternQuery({ kind: 'regexp', source, flags });
-}
+describe('admitted shapes survive a round trip', () => {
+  it('accepts a query, optionally scoped', () => {
+    expect(asCacheLocator(roleQuery('Save'))).toEqual(roleQuery('Save'));
+    const scoped: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: exact('button'), name: exact('Save') },
+      scope: roleQuery('Panel'),
+    };
+    expect(asCacheLocator(scoped)).toEqual(scoped);
+  });
 
-function projected(expression: LocatorExpression) {
-  const result = toCacheLocator(expression);
-  if (!result.ok) throw new Error(`expected a cacheable locator, got: ${result.reason}`);
-  return result.value;
-}
+  it('accepts a filter and an index', () => {
+    const filtered: LocatorExpression = {
+      kind: 'filter',
+      source: roleQuery('Save'),
+      hasText: exact('Pro'),
+    };
+    expect(asCacheLocator(filtered)).toEqual(filtered);
+    const indexed: LocatorExpression = { kind: 'index', source: filtered, index: 0 };
+    expect(asCacheLocator(indexed)).toEqual(indexed);
+    for (const index of ['first', 'last'] as const) {
+      expect(asCacheLocator({ kind: 'index', source: roleQuery('Save'), index })).toMatchObject({
+        index,
+      });
+    }
+  });
 
-function rejection(expression: LocatorExpression): string {
-  const result = toCacheLocator(expression);
-  if (result.ok) throw new Error('expected the locator to be rejected');
-  return result.reason;
-}
-
-describe('semantic locators project', () => {
-  it('keeps a role query with its name', () => {
-    expect(projected(roleQuery('button', { name: 'Buy' }, undefined))).toEqual({
+  it('keeps only the admitted query states', () => {
+    const withStates = {
       kind: 'query',
       query: {
         kind: 'role',
-        value: { kind: 'string', value: 'button', exact: true },
-        name: { kind: 'string', value: 'Buy', exact: true },
+        value: exact('button'),
+        states: { checked: true, focused: true, nonsense: true },
       },
+    };
+    expect(asCacheLocator(withStates)).toMatchObject({ query: { states: { checked: true } } });
+    // focused is excluded: focus moves for reasons unrelated to node identity.
+    expect(asCacheLocator(withStates)).not.toMatchObject({
+      query: { states: { focused: true } },
     });
   });
 
-  it('keeps nested filters and indexes', () => {
-    const expression = indexExpression(
-      filterExpression(roleQuery('listitem', undefined, undefined), { hasText: 'Pro plan' }),
-      'first',
-    );
-    expect(projected(expression)).toMatchObject({
-      kind: 'index',
-      index: 'first',
-      source: { kind: 'filter', source: { kind: 'query' } },
-    });
+  it('normalizes regexp flags into canonical order', () => {
+    const pattern = { kind: 'regexp', source: 'a', flags: 'gi' };
+    expect(
+      asCacheLocator({ kind: 'query', query: { kind: 'text', value: pattern } }),
+    ).toMatchObject({ query: { value: { flags: 'gi' } } });
+    expect(
+      asCacheLocator({
+        kind: 'query',
+        query: { kind: 'text', value: { ...pattern, flags: 'ig' } },
+      }),
+    ).toMatchObject({ query: { value: { flags: 'gi' } } });
   });
 });
 
-describe('non-semantic locators are refused', () => {
-  it('refuses a raw web selector', () => {
-    expect(rejection(webSelectorExpression('#buy'))).toContain('selector');
+describe('the security boundary', () => {
+  // This is the one thing the cache must refuse. A semantic query can only
+  // address something a user could perceive; a raw selector could reach nodes
+  // the observation deliberately withholds.
+  it('refuses a raw web selector, anywhere in the tree', () => {
+    expect(asCacheLocator({ kind: 'web-selector', selector: '#pwn' })).toBeUndefined();
+    expect(
+      asCacheLocator({ kind: 'index', source: { kind: 'web-selector', selector: '#pwn' }, index: 0 }),
+    ).toBeUndefined();
+    expect(
+      asCacheLocator({
+        kind: 'query',
+        query: { kind: 'role', value: exact('button') },
+        scope: { kind: 'web-selector', selector: '#pwn' },
+      }),
+    ).toBeUndefined();
+    expect(
+      asCacheLocator({ kind: 'filter', source: roleQuery('Save'), has: { kind: 'web-selector', selector: '#x' } }),
+    ).toBeUndefined();
   });
 
   it('refuses a frame chain, which is addressed by CSS selector', () => {
-    // An iframe-scoped locate is a bypass in v0: cache-1 has no frame node and
-    // forbids storing a CSS selector.
     expect(
-      rejection(frameExpression('iframe#pay', roleQuery('textbox', undefined, undefined))),
-    ).toContain('frame');
+      asCacheLocator({ kind: 'frame', selector: 'iframe', source: roleQuery('Save') }),
+    ).toBeUndefined();
   });
 
-  it('refuses a selector nested anywhere in the tree', () => {
-    const nested = filterExpression(roleQuery('listitem', undefined, undefined), {
-      has: webSelectorExpression('.sold-out'),
-    });
-    expect(rejection(nested)).toContain('selector');
+  it('refuses an unknown kind rather than passing it through', () => {
+    expect(asCacheLocator({ kind: 'eval', code: 'fetch("/x")' })).toBeUndefined();
+    expect(asCacheLocator({})).toBeUndefined();
+    expect(asCacheLocator(null)).toBeUndefined();
+    expect(asCacheLocator([roleQuery('Save')])).toBeUndefined();
+  });
+});
+
+describe('malformed input is refused, not coerced', () => {
+  it('refuses an unsupported query kind', () => {
+    expect(asCacheLocator({ kind: 'query', query: { kind: 'css', value: exact('a') } })).toBeUndefined();
+  });
+
+  it('refuses a pattern that is not a string or regexp', () => {
+    for (const value of [exact('a').value, { kind: 'glob', value: 'a' }, { kind: 'string', value: 'a' }]) {
+      expect(asCacheLocator({ kind: 'query', query: { kind: 'text', value } })).toBeUndefined();
+    }
+  });
+
+  it('refuses an oversized regexp source', () => {
+    const source = 'a'.repeat(1_025);
     expect(
-      rejection(
-        indexExpression(frameExpression('iframe', roleQuery('button', undefined, undefined)), 0),
-      ),
-    ).toContain('frame');
+      asCacheLocator({ kind: 'query', query: { kind: 'text', value: { kind: 'regexp', source, flags: '' } } }),
+    ).toBeUndefined();
+  });
+
+  it('refuses mutually exclusive regexp flags', () => {
+    expect(
+      asCacheLocator({
+        kind: 'query',
+        query: { kind: 'text', value: { kind: 'regexp', source: 'a', flags: 'uv' } },
+      }),
+    ).toBeUndefined();
   });
 
   it('refuses a filter that constrains nothing', () => {
-    expect(
-      rejection({ kind: 'filter', source: roleQuery('listitem', undefined, undefined) }),
-    ).toContain('constrain');
+    expect(asCacheLocator({ kind: 'filter', source: roleQuery('Save') })).toBeUndefined();
   });
 
-  it('refuses a negative index', () => {
-    expect(rejection({ kind: 'index', source: roleQuery('listitem', undefined, undefined), index: -1 })).toContain(
-      'negative',
-    );
+  it('refuses a negative or fractional index', () => {
+    for (const index of [-1, 1.5, 'middle']) {
+      expect(asCacheLocator({ kind: 'index', source: roleQuery('Save'), index })).toBeUndefined();
+    }
   });
 });
 
-describe('regexp ceilings', () => {
-  it('accepts a canonical pattern', () => {
-    expect(validateRegexp('^Buy', 'i')).toBeUndefined();
-    expect(projected(regexpQuery('^Buy$', 'i'))).toMatchObject({
-      query: { value: { kind: 'regexp', source: '^Buy$', flags: 'i' } },
+describe('expected identity', () => {
+  const node = (overrides: Partial<SemanticNode>): SemanticNode =>
+    ({ ref: { id: 'n1', revision: 'r1' }, ...overrides }) as SemanticNode;
+
+  it('records role and normalized name', () => {
+    expect(toSemanticIdentity(node({ role: 'button', name: '  Save   now\n' }))).toEqual({
+      role: 'button',
+      name: 'Save now',
     });
   });
 
-  it('refuses a source over the byte cap', () => {
-    const oversized = 'a'.repeat(MAX_REGEXP_SOURCE_BYTES + 1);
-    expect(validateRegexp(oversized, '')).toContain('over the');
-    expect(rejection(regexpQuery(oversized, ''))).toContain('over the');
+  it('omits an empty name rather than storing one', () => {
+    expect(toSemanticIdentity(node({ role: 'button', name: '   ' }))).toEqual({ role: 'button' });
+    expect(toSemanticIdentity(node({ role: 'button' }))).toEqual({ role: 'button' });
   });
 
-  it('measures the cap in UTF-8 bytes, not code units', () => {
-    // Four bytes per emoji, so a quarter of the cap plus one exceeds it.
-    const wide = '\u{1F600}'.repeat(MAX_REGEXP_SOURCE_BYTES / 4 + 1);
-    expect(validateRegexp(wide, '')).toContain('over the');
-  });
-
-  it('refuses mutually exclusive u and v flags', () => {
-    expect(validateRegexp('a', 'uv')).toContain('mutually exclusive');
-  });
-
-  it('refuses non-canonical flag order on read', () => {
-    expect(validateRegexp('a', 'ig')).toContain('canonical order');
-  });
-
-  it('normalizes flag order on write', () => {
-    expect(projected(regexpQuery('a', 'ig'))).toMatchObject({
-      query: { value: { flags: 'gi' } },
-    });
-  });
-});
-
-describe('expected semantic identity', () => {
-  function node(overrides: Partial<SemanticNode> = {}): SemanticNode {
-    return { ref: { id: 'n1', revision: 'r1' }, role: 'button', ...overrides } as SemanticNode;
-  }
-
-  it('records role, normalized name, and stable states', () => {
-    const result = toSemanticIdentity(
-      node({ name: '  Buy \n now ', states: { checked: false, disabled: false } }),
-    );
-    expect(result).toEqual({
-      ok: true,
-      value: { role: 'button', name: 'Buy now', states: { checked: false, disabled: false } },
-    });
-  });
-
-  it('omits focus and secure state, which are not identity', () => {
-    const result = toSemanticIdentity(node({ states: { focused: true, secure: true } }));
-    expect(result.ok && result.value.states).toBeUndefined();
-  });
-
-  it('refuses a node with no explicit role', () => {
-    const roleless = { ref: { id: 'n1', revision: 'r1' } } as SemanticNode;
-    expect(toSemanticIdentity(roleless).ok).toBe(false);
+  it('refuses a node with no role to identify it by', () => {
+    expect(toSemanticIdentity(node({ name: 'Save' }))).toBeUndefined();
+    expect(toSemanticIdentity(node({ role: '', name: 'Save' }))).toBeUndefined();
   });
 });

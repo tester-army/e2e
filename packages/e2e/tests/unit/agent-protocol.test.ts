@@ -18,6 +18,7 @@ describe('agent-locate-1', () => {
         protocolVersion: 'agent-locate-1',
         target: { id: 'n7', revision: 'r3' },
         explanation: 'the only email input',
+        positional: false,
       },
     });
   });
@@ -34,8 +35,41 @@ describe('agent-locate-1', () => {
         protocolVersion: 'agent-locate-1',
         target: null,
         explanation: 'the observation shows a login page without a search box',
+        positional: false,
       },
     });
+  });
+
+  it('reads the optional positional hint and defaults it to false', () => {
+    const base = {
+      protocolVersion: 'agent-locate-1',
+      target: { id: 'n7', revision: 'r3' },
+      explanation: 'the first row',
+    };
+    expect(validateLocateResponse({ ...base, positional: true })).toMatchObject({
+      ok: true,
+      value: { positional: true },
+    });
+    expect(validateLocateResponse({ ...base, positional: false })).toMatchObject({
+      ok: true,
+      value: { positional: false },
+    });
+    // A model that predates the hint still produces a valid response.
+    expect(validateLocateResponse(base)).toMatchObject({
+      ok: true,
+      value: { positional: false },
+    });
+  });
+
+  it('rejects a non-boolean positional hint', () => {
+    expect(
+      validateLocateResponse({
+        protocolVersion: 'agent-locate-1',
+        target: { id: 'n7', revision: 'r3' },
+        explanation: 'the first row',
+        positional: 'yes',
+      }),
+    ).toMatchObject({ ok: false });
   });
 
   it('rejects a response without an explanation', () => {

@@ -137,12 +137,13 @@ export function bestMatch(call: FakeCall): { id: string; line: string } {
 }
 
 /** Builds a valid agent-locate-1 response for the best-matching node. */
-export function locateBestMatch(call: FakeCall): unknown {
+export function locateBestMatch(call: FakeCall, positional = false): unknown {
   const match = bestMatch(call);
   return {
     protocolVersion: 'agent-locate-1',
     target: { id: match.id, revision: call.revision },
     explanation: `best line match: ${match.line.trim()}`,
+    ...(positional ? { positional: true } : {}),
   };
 }
 

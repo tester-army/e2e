@@ -215,9 +215,9 @@ describe('agent fixture', () => {
 
   it('never exposes application-authored instructions as policy', () => {
     const system = fakeCalls[0]!.system;
-    expect(system).toContain('policy-0.1');
+    expect(system).toContain('policy-0.2');
     expect(system).toContain('This is the e2e fixture application.');
-    expect(system.indexOf('policy-0.1')).toBeLessThan(
+    expect(system.indexOf('policy-0.2')).toBeLessThan(
       system.indexOf('This is the e2e fixture application.'),
     );
   });
@@ -249,12 +249,15 @@ describe('agent fixture', () => {
     expect(agentSteps.length).toBeGreaterThan(8);
     for (const step of agentSteps) {
       expect(step.metrics).toBeDefined();
-      // Every cacheable status carries the key hash; only a bypass may omit it.
-      expect(step.cache).toBeDefined();
-      if (step.cache!.status === 'bypassed') {
-        expect(step.cache!.keyHash).toBeUndefined();
-      } else {
-        expect(step.cache!.keyHash).toMatch(/^[a-f0-9]{64}$/);
+      // A step that never located anything carries no cache field: it has no
+      // cache dimension to report. Where there is one, every status but a bypass
+      // carries the key hash.
+      if (step.cache !== undefined) {
+        if (step.cache.status === 'bypassed') {
+          expect(step.cache.keyHash).toBeUndefined();
+        } else {
+          expect(step.cache.keyHash).toMatch(/^[a-f0-9]{64}$/);
+        }
       }
     }
 
@@ -265,7 +268,7 @@ describe('agent fixture', () => {
       provider: 'fake',
       model: 'scripted',
       endpoint: 'provider-default',
-      policyVersion: 'policy-0.1',
+      policyVersion: 'policy-0.2',
       calls: 1,
       tokenAccounting: 'provider',
     });

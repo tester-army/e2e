@@ -144,6 +144,33 @@ const PAGES: Record<string, string> = {
 </html>`,
 };
 
+/**
+ * A page whose content changes on every request while its route stays put,
+ * like a real listing with rotating prices and ordering. Used to prove the
+ * cache survives content churn.
+ */
+let feedRequests = 0;
+
+function renderFeed(): string {
+  feedRequests += 1;
+  const items = [0, 1, 2].map(
+    (offset) =>
+      `<li><a href="/about">Offer ${String(((feedRequests + offset) % 97) + 1)} — ${String(
+        1000 + ((feedRequests * 37 + offset * 13) % 9000),
+      )} zl</a></li>`,
+  );
+  return `<!doctype html>
+<html>
+<head><title>Feed</title></head>
+<body>
+  <h1>Feed</h1>
+  <button id="refresh" onclick="document.getElementById('mark').textContent = 'refreshed'">Refresh feed</button>
+  <output id="mark" role="status" aria-label="Marker">idle</output>
+  <ul>${items.join('')}</ul>
+</body>
+</html>`;
+}
+
 export interface FixtureApp {
   readonly url: string;
   close(): Promise<void>;
@@ -156,6 +183,11 @@ export async function startFixtureApp(): Promise<FixtureApp> {
     if (pathname === '/api/flags') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ betaBoard: false }));
+      return;
+    }
+    if (pathname === '/feed') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(renderFeed());
       return;
     }
     const page = PAGES[pathname];
