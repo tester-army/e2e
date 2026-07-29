@@ -482,6 +482,7 @@ export async function resolveSelected(
     // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
     const outcomes: string[] = [];
     let ambiguous = false;
+    let terminal = false;
     for (const expression of candidates) {
       let refs: readonly NodeRef[];
       try {
@@ -511,6 +512,7 @@ export async function resolveSelected(
           : await pinOne(invocation, refs, selection.selected);
       if (picked.kind === 'miss') {
         ambiguous ||= picked.ambiguous;
+        terminal ||= picked.terminal === true;
         outcomes.push(`${describeExpression(expression)} -> ${picked.detail}`);
         continue;
       }
@@ -541,7 +543,10 @@ export async function resolveSelected(
       invocation.recordPolicy('locate.identity', 'denied');
       return sweepFailure(selection.selected, outcomes, ambiguous);
     };
-    if (options.poll === false || invocation.deadline.expired()) throw giveUp();
+    // `terminal` short-circuits the wait: an instruction that lands on controls
+    // nothing can tell apart is not a page that is still settling, and spending
+    // the whole deadline before saying so buries the diagnosis in a timeout.
+    if (options.poll === false || terminal || invocation.deadline.expired()) throw giveUp();
     await sleep(POLL_INTERVAL_MS, engine.signal);
     // Never begin a sweep on an expired clock. A zero remaining budget reaches
     // the driver as "no timeout" rather than "give up now", so the next query
@@ -589,11 +594,17 @@ type MatchOutcome =
       /** Set when an index is needed to make the query resolve to one node. */
       readonly index?: number;
     }
-  | { readonly kind: 'miss'; readonly detail: string; readonly ambiguous: boolean };
+  | {
+      readonly kind: 'miss';
+      readonly detail: string;
+      readonly ambiguous: boolean;
+      /** True when re-sweeping cannot change this outcome. */
+      readonly terminal?: boolean;
+    };
 
 /** One candidate query failed to pin the node down. */
-function miss(detail: string, ambiguous = false): MatchOutcome {
-  return { kind: 'miss', detail, ambiguous };
+function miss(detail: string, ambiguous = false, terminal = false): MatchOutcome {
+  return { kind: 'miss', detail, ambiguous, terminal };
 }
 
 /**
@@ -638,14 +649,23 @@ async function pinOne(
     return miss(`${refs.length} matches, too many to tell apart`, true);
   }
   const matches: Extract<MatchOutcome, { kind: 'pinned' }>[] = [];
+  let unread = 0;
   for (const [index, ref] of refs.entries()) {
     let node: SemanticNode;
     try {
       node = await invocation.engine.session.screen.read(ref, invocation.operation());
     } catch {
+      // A match that could not be read is a match whose identity is unknown, and
+      // dropping it would shrink the set until whatever is left looks unique.
+      // Under a nearly-expired deadline that turned "indistinguishable" into a
+      // confident index onto an arbitrary element.
+      unread += 1;
       continue;
     }
     if (matchesSignature(selected, node)) matches.push({ kind: 'pinned', ref, node, index });
+  }
+  if (unread > 0) {
+    return miss(`${refs.length} matches, ${unread} of them unreadable`, true);
   }
   if (matches.length === 0) {
     return miss(`${refs.length} matches, none of them the selected node`, true);
@@ -653,9 +673,14 @@ async function pinOne(
   if (matches.length === 1) return matches[0]!;
   const byRect = matches.filter((match) => sameRect(selected.rect, match.node.rect));
   if (byRect.length === 1) return byRect[0]!;
-  // Indistinguishable by name and by position both: the instruction, not the
-  // locator, is what has to choose between them.
-  return miss(`${matches.length} matches indistinguishable from the selected node`, true);
+  // Indistinguishable by name and by position both. Re-sweeping cannot separate
+  // them, so this is terminal: the instruction, not the locator, has to choose,
+  // and polling to the deadline would only delay saying so.
+  return miss(
+    `${matches.length} matches indistinguishable from the selected node`,
+    true,
+    true,
+  );
 }
 
 /** Exact rectangle equality, used only to tell simultaneous matches apart. */

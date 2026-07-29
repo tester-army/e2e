@@ -38,6 +38,11 @@ test('reports controls it cannot tell apart', async ({ agent, web }) => {
   await web.goto('/rows');
   await agent.tap('the Twin button');
 });
+
+test('reports them the same way under a tight clock', async ({ agent, web }) => {
+  await web.goto('/rows');
+  await agent.tap('the Twin button', { timeout: 400 });
+});
 `;
 
 /** The instruction names which repeated row the model is meant to pick. */
@@ -122,6 +127,30 @@ describe('locate ambiguity', () => {
     expect(error.code).toBe('LOCATOR_AMBIGUOUS');
     expect(error.message).toContain('indistinguishable from the selected node');
     expect(error.message).toContain('name what distinguishes the one you mean');
+  });
+
+  it('reports indistinguishable controls the same way under any clock', () => {
+    // Regression: a match whose read timed out used to be dropped silently, so a
+    // tight deadline shrank the candidate set until one entry looked unique and
+    // the runner indexed onto an arbitrary element. It also made the terminal
+    // error code depend on machine speed.
+    const tight = resultByTitle(outcome, 'reports them the same way under a tight clock');
+    const relaxed = resultByTitle(outcome, 'reports controls it cannot tell apart');
+    expect(tight.attempts.at(-1)!.error!.code).toBe(
+      relaxed.attempts.at(-1)!.error!.code,
+    );
+    expect(tight.attempts.at(-1)!.error!.code).toBe('LOCATOR_AMBIGUOUS');
+    // No action is dispatched on either path.
+    expect(stepOf('reports them the same way under a tight clock', 'agent.tap').metrics!
+      .actionSteps).toBe(0);
+  });
+
+  it('gives up immediately on controls nothing can separate', () => {
+    // Re-sweeping cannot separate same-rect duplicates, so the sweep must not
+    // spend the deadline discovering that. This is what turned a 150 s failure
+    // on a production page into an immediate one.
+    const step = stepOf('reports controls it cannot tell apart', 'agent.tap');
+    expect(step.durationMs).toBeLessThan(10_000);
   });
 
   it('asks the model exactly once per tap', () => {
