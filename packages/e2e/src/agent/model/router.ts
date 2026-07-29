@@ -1,17 +1,17 @@
 /** Which model an invocation talks to (spec 05-config.md). */
 
-import type { ResolvedAgentConfig } from "../../config/agent.ts";
-import type { ModelAdapter } from "./adapter.ts";
+import type { ResolvedAgentConfig } from '../../config/agent.ts';
+import type { ModelAdapter } from './adapter.ts';
 
 /**
  * Picks the adapter for one invocation.
  *
- * `agent.visionModel` exists because visual grounding is a much higher bar
- * than accepting an image, and pinning it separately keeps every text-only
- * call on the cheaper model. The vision adapter is built on first use rather
- * than at fixture acquisition: a project that pins a vision model must not
- * fail a run that never asks for pixels, for example because that model's
- * credential is absent from this environment.
+ * `agent.visionModel` exists because visual grounding is a much higher bar than
+ * accepting an image, and pinning it separately keeps every text-only call on the
+ * cheaper model. The vision adapter is built on first use rather than at fixture
+ * acquisition: a project that pins a vision model must not fail a run that never
+ * asks for pixels, for example because that model's credential is absent from
+ * this environment.
  */
 export class ModelRouter {
   private visionAdapter: ModelAdapter | undefined;
@@ -22,10 +22,9 @@ export class ModelRouter {
   ) {}
 
   /**
-   * The adapter for a call. A vision invocation keeps the vision model for its
-   * whole lifetime, including rounds whose pixels were withheld: one
-   * invocation reports one provenance, and a polling method must not switch
-   * models between rounds.
+   * The adapter for a call. An invocation that is sending pixels keeps the vision
+   * model for the rest of its lifetime, including rounds whose pixels were
+   * withheld, so a polling method never switches models between rounds.
    */
   select(vision: boolean): ModelAdapter {
     if (!vision || this.buildVision === undefined) return this.base;
@@ -36,7 +35,7 @@ export class ModelRouter {
 /** Builds the router for one attempt from resolved agent config. */
 export function createModelRouter(
   agent: ResolvedAgentConfig,
-  build: (model: ResolvedAgentConfig["model"]) => ModelAdapter,
+  build: (model: ResolvedAgentConfig['model']) => ModelAdapter,
 ): ModelRouter {
   const visionModel = agent.visionModel;
   return new ModelRouter(
