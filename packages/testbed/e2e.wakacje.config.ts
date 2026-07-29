@@ -27,21 +27,20 @@ export default defineConfig({
   timeout: 300_000,
   actionTimeout: 60_000,
   agent: {
-    // Unused while `vision` is on for the whole project, but kept as the
-    // tree-only baseline: drop the default below and every step falls back to
-    // this model. Override with E2E_MODEL.
+    // gemini-3.6-flash measures ~2x faster wall-clock than gemini-3-flash
+    // here (~3.7s vs ~8.9s per call); override with E2E_MODEL to compare.
     model: process.env.E2E_MODEL ?? 'google/gemini-3.6-flash',
-    // This suite is deliberately vision-driven end to end: every model call
-    // sees the page, because on a commercial site the tree and the screen
-    // disagree constantly — overlays, promo images, sticky bars, cards whose
-    // accessible name is the entire card. Reading a screenshot well is a much
-    // higher bar than accepting one, so the whole run gets the stronger model.
-    // Override with E2E_VISION_MODEL.
+    // Reading a screenshot well is a much higher bar than accepting one: the
+    // flash model above describes this page correctly and still misplaces what
+    // it points at. The three steps that use pixels get the stronger model
+    // without making every tree-only step pay for it. Override with
+    // E2E_VISION_MODEL.
     visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna',
-    // Project-wide default: the tree still travels with the pixels, which is
-    // what keeps a tap on a real control resolving to a real node. Steps whose
-    // question is purely about what the page presents opt down to 'only'.
-    vision: true,
+    // No project-wide default on purpose: `vision` is opted into per step, where
+    // the test can say why the tree is not enough. The suite does pass fully
+    // vision-driven (`vision: true` here, `'only'` on the judgments) if you want
+    // to measure that — it was ~65s against ~114s tree-driven — but most steps
+    // here are answered better and cheaper by the tree.
     // Commercial pages carry a huge SEO footer after the content. The budget
     // truncates the observation in DOM order, visibly to the model. 20 KiB is
     // too tight here: the destination modal's confirm button falls past the
