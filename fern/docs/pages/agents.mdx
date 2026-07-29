@@ -227,9 +227,14 @@ await agent.tap('the Pro plan card');
 // later runs: cache hit, same query, no model call
 ```
 
-Keys include the test, the target, the instruction, the screen, and your
-configuration, so a UI change invalidates the entry rather than replaying
-something stale. Set the policy with `agent.cache`, or per call:
+Keys include the test, the target, the instruction and its parameters, the route
+you were on, and your configuration. They deliberately do **not** include the
+page's content: a listing whose prices and ordering change every minute would
+otherwise cold-start the cache on every run. What keeps a hit correct is that the
+stored locator is semantic and gets re-resolved and re-verified against the live
+page before anything happens.
+
+Set the policy with `agent.cache`, or per call:
 
 ```ts
 await agent.tap('the Pro plan card', { cache: false });
@@ -256,12 +261,77 @@ Only located actions are cached (`tap`, `click`, `type`, `scroll`, `scrollTo`,
 `bypassed`. Path caching for `agent.act` arrives with the planning tier.
 </Callout>
 
+### Positional targets are not cached
+
+Describe a target by *what it is* and it caches. Describe it by *where it sits*
+and it will not:
+
+```ts
+await agent.tap('the Pro plan card');   // cached
+await agent.tap('the first search result');  // never cached
+```
+
+The reason is that a stored locator addresses content. If "the first result" were
+recorded, the entry would keep resolving to whichever item happened to be first
+when it was written — so once the list reordered, a hit would click the *wrong*
+row. A cache is allowed to miss; it is never allowed to be wrong. So the runner
+recognises a positional instruction and declines to record it, reporting
+`not recorded: the instruction targets a position` under `--debug`.
+
+If a step matters and you want it cached, name the thing itself:
+
+```ts
+// instead of "the first offer", say what makes it the one you mean
+await agent.tap('the offer for the Brilliant Holiday Resort');
+```
+
+### Seeing what the cache did
+
+`e2e run --debug` prints one row per agent step explaining what the cache did
+and why, plus what it cost and what the hits saved.
+
+```text
+[e2e debug] locate cache (1 hit, 1 written, 2 bypassed, cache time 41ms, est. 3.4s model time avoided, net 3.3s faster)
+  step                                cache     key           bytes  cache time  model time  why
+  agent.tap "the Pro plan card"       hit       f58afea12623   1422        14ms         0ms  replayed getByRole("button", name: "Pro") to role=button name="Pro"
+  agent.tap "the annual toggle"       written   9c1d40b7ae02   1180        27ms       3.4s  no entry for this key; recorded getByRole("switch", name: "Annual")
+  agent.hover "the price tooltip"     bypassed  -                 -         0ms         0ms  agent.hover is not a cacheable cache-1 method
+  agent.waitFor "the plan list …"     bypassed  -                 -         0ms       2.9s  the call performs no located action
+```
+
+The `why` column is the useful part. Typical answers:
+
+| Status | Why | Meaning |
+| --- | --- | --- |
+| `hit` | `replayed <query> to <node>` | The stored query resolved to one node with the recorded identity. No model call. |
+| `written` | `no entry for this key; recorded <query>` | Cold call. The next run with the same screen hits. |
+| `miss` | `the stored locator matched 0 nodes` | The UI moved. One fresh locate replaced the entry. |
+| `miss` | `the stored key differs` | Something in the key changed — screen, instruction, config, or driver version. |
+| `invalid` | a parse or digest failure | The file on disk is not a usable `cache-1` entry and was ignored. |
+| `bypassed` | `agent.hover is not a cacheable cache-1 method` | Outside the cacheable verb set. |
+| `bypassed` | `the call passed cache: false` | Opted out at the call site. |
+| `bypassed` | `agent.cache mode is off` | Disabled by configuration. |
+| `bypassed` | `retry attempts never consult the cache` | A retry starts from clean state by design. |
+| `miss` | `the instruction targets a position` | Positional target; nothing was recorded, on purpose. |
+| `written`/`miss` | `… not recorded: <reason>` | Nothing was stored, so the next run will pay again too. |
+
+<Callout intent="info" title="How the saving is estimated">
+A hit avoids exactly one locate model call, but that call never happened, so its
+duration cannot be measured. The estimate prices each hit at the mean model call
+the same run actually recorded, and is labelled `est.` for that reason. With no
+model call to compare against, no number is printed. `cache time` is measured,
+not estimated: it is the real cost of reading the entry and resolving its query.
+</Callout>
+
+`E2E_DEBUG=agent` additionally streams the same reasons live, as each step runs.
+
 <Callout intent="warning" title="Sharing a cache across machines">
 Two key fields decide whether a cache travels: `projectId` and the app's base
 URL. `projectId` falls back to a hash of the absolute project path, and the base
 URL contributes its origin and path, so a different checkout location or a
 random preview port produces a cold cache. Set both explicitly before relying on
-a shared or committed cache.
+a shared or committed cache. The driver version contributes as `major.minor`, so
+a patch upgrade keeps your cache warm.
 </Callout>
 
 ## Next
