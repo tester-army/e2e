@@ -4,7 +4,7 @@ import { prepareObservation, type AgentObservation } from '../../src/agent/obser
 import { imageTokenUpperBound } from '../../src/agent/model/adapter.ts';
 import { buildPrompt } from '../../src/agent/prompts.ts';
 import type { Observation, ObservationPixels, SemanticNode } from '../../src/driver/index.ts';
-import { readPngSize } from '../../src/playwright/observe.ts';
+import { downscale, readPngSize } from '../../src/playwright/observe.ts';
 
 const NO_SECRETS = new Map<string, string>();
 const TEST_ID = 'data-testid';
@@ -213,6 +213,35 @@ describe('imageTokenUpperBound', () => {
 
   it('stays under the default per-call token ceiling for a large viewport', () => {
     expect(imageTokenUpperBound({ width: 1920, height: 1080 })).toBeLessThan(4_096);
+  });
+});
+
+describe('screenshot downscaling', () => {
+  const bytes = Uint8Array.from([1, 2, 3, 4]);
+
+  it('leaves the bytes alone when no scaling is asked for', async () => {
+    expect(await downscale(bytes, {})).toBe(bytes);
+    expect(await downscale(bytes, { scale: 1, resize: async () => Uint8Array.of(9) })).toBe(bytes);
+  });
+
+  it('falls back to full scale when the resizer fails', async () => {
+    // The safety property: a resize that cannot finish costs image tokens, never
+    // the observation. Geometry is measured from whatever comes back, so
+    // full-scale bytes stay self-consistent.
+    const rejecting = async (): Promise<Uint8Array> => {
+      throw new Error('scratch page stopped answering');
+    };
+    expect(await downscale(bytes, { scale: 0.75, resize: rejecting })).toBe(bytes);
+  });
+
+  it('passes the requested scale through to the resizer', async () => {
+    const seen: number[] = [];
+    const resize = async (_data: Uint8Array, scale: number): Promise<Uint8Array> => {
+      seen.push(scale);
+      return Uint8Array.of(7);
+    };
+    expect(await downscale(bytes, { scale: 0.5, resize })).toEqual(Uint8Array.of(7));
+    expect(seen).toEqual([0.5]);
   });
 });
 

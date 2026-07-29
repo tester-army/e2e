@@ -75,6 +75,13 @@ const FRAME_CAPTURE_TIMEOUT_MS = 3_000;
 /** Budget for capturing the main document, still capped by the operation timeout. */
 const DOCUMENT_CAPTURE_TIMEOUT_MS = 15_000;
 
+/**
+ * Budget for resampling one screenshot, still capped by the operation timeout.
+ * Decoding and re-encoding a viewport-sized PNG is tens of milliseconds, so this
+ * only has to catch a scratch page that has stopped answering.
+ */
+const RESIZE_TIMEOUT_MS = 5_000;
+
 /** Bounded settle before an observation so a committing navigation is not raced. */
 const SETTLE_TIMEOUT_MS = 5_000;
 
@@ -625,7 +632,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         options?.pixels === true
           ? capturePixels(page, operation, viewport, {
               ...(options.pixelScale === undefined ? {} : { scale: options.pixelScale }),
-              resize: (data, scale) => this.resizeImage(data, scale),
+              resize: (data, scale) => this.resizeImage(data, scale, operation),
             }).catch(() => undefined)
           : Promise.resolve(undefined);
       let captured: Awaited<ReturnType<PlaywrightSession['captureDocument']>>;
@@ -774,15 +781,42 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
    * `createImageBitmap` and read evidence it is not allowed to see. The scratch
    * page is created on first use and only when a scale below 1 is asked for.
    */
-  private async resizeImage(data: Uint8Array, scale: number): Promise<Uint8Array> {
+  private async resizeImage(
+    data: Uint8Array,
+    scale: number,
+    operation: OperationContext,
+  ): Promise<Uint8Array> {
+    this.checkOperation(operation);
     const page = await this.scratchPage();
-    const resized = await page.evaluate(resizeImageFunction, { bytes: [...data], scale });
+    // `page.evaluate` carries no implicit timeout, so an unresponsive scratch page
+    // would hold the observation open indefinitely. Bounding it here is what makes
+    // the caller's fallback real: a resize that cannot finish rejects, and the
+    // observation goes out at full scale instead of hanging the step.
+    const evaluation = page.evaluate(resizeImageFunction, { bytes: [...data], scale });
+    const resized = await withTimeout(
+      evaluation,
+      Math.max(1, Math.min(operation.timeoutMs, RESIZE_TIMEOUT_MS)),
+      () => {
+        // The losing evaluation may still settle; a late rejection must not
+        // become an unhandled rejection.
+        void evaluation.catch(() => undefined);
+        return new DriverError('OPERATION_TIMEOUT', 'screenshot resize timed out', {
+          retryable: true,
+        });
+      },
+    );
     return new Uint8Array(resized);
   }
 
   private async scratchPage(): Promise<Page> {
     const existing = this.scratch;
     if (existing !== null && !existing.isClosed()) return existing;
+    // A closed scratch page means its context is spent too. Releasing it before
+    // replacing it keeps a crash loop from accumulating contexts that would only
+    // be freed when the shared browser is torn down.
+    await this.scratchContext?.close().catch(() => undefined);
+    this.scratchContext = null;
+    this.scratch = null;
     const context = await this.browser.newContext({ viewport: { width: 1, height: 1 } });
     this.scratchContext = context;
     const page = await context.newPage();

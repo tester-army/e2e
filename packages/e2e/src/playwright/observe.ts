@@ -80,7 +80,7 @@ export async function capturePixels(
  * the geometry is measured from whatever comes back, so a skipped resize costs
  * tokens, never correctness.
  */
-async function downscale(
+export async function downscale(
   data: Uint8Array,
   options: { readonly scale?: number; readonly resize?: Resizer },
 ): Promise<Uint8Array> {
