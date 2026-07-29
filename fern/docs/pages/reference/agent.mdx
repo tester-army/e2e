@@ -191,6 +191,27 @@ bytes. The runner still captures the observation — it hit-tests points and rep
 against it — it just isn't sent. The step records `visionOnly: true` and zero
 `observationBytes`.
 
+<Callout intent="warn" title="Pixels are viewport-scoped, the tree is document-scoped">
+The screenshot is the viewport, never the full page. So a condition the tree
+satisfies can be false on screen, and that is usually the point — but it also
+means `'only'` cannot see below the fold.
+
+```ts
+// Tree: passes. The DOM holds prices for all 6701 matched offers.
+// 'only':  fails. The first card is cut off just above its price.
+await agent.waitFor('a list of offers with hotel names and prices is visible', { vision: 'only' });
+```
+
+Write `'only'` conditions about what is on screen, and scroll first when you want
+to ask about something further down.
+
+```ts
+await agent.waitFor('a list of offers with hotel names is visible', { vision: 'only' });
+await agent.scroll({ direction: 'down' });
+await agent.waitFor('an offer card showing a hotel name and a price is visible', { vision: 'only' });
+```
+</Callout>
+
 Two consequences worth knowing:
 
 - **A locate under `'only'` can only point.** There are no node identifiers the

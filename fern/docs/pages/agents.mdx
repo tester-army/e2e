@@ -237,6 +237,12 @@ refuse it rather than blind-clicking something they could have addressed. And if
 pixels are unavailable — a tainted viewport after a secret fill — `'only'` fails
 instead of quietly answering from the snapshot.
 
+One thing to expect: the screenshot is the viewport, not the whole page. A
+snapshot-based "the list shows prices" passes because the DOM holds every price;
+the same question on pixels fails when the first card is cut off above its price.
+That is the mode working, not breaking — but write `'only'` conditions about what
+is on screen, and scroll before asking about anything further down.
+
 ### Paying for pixels only when the tree fails
 
 `vision: 'fallback'` is the middle setting. The call runs on the snapshot alone

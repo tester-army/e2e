@@ -211,6 +211,11 @@ and answer that it is not, while the pixels show the overlay. A mode that means
 than asking the model to disregard it. It costs fewer input tokens than `true`,
 not more.
 
+Pixel evidence is bounded by the captured viewport (14-security.md), while the
+tree describes the document. A condition that `"only"` can answer is therefore a
+condition about what is on screen, and a caller that needs to judge content
+further down MUST bring it into view first.
+
 Under `"only"` the runner MUST still capture the observation, because it
 hit-tests and reports against it; it MUST NOT include the tree serialization in
 the model request, and the step MUST record that the tree was withheld
