@@ -21,6 +21,7 @@
         { "type": "null" }
       ]
     },
-    "explanation": { "type": "string", "maxLength": 8192 }
+    "explanation": { "type": "string", "maxLength": 8192 },
+    "positional": { "type": "boolean" }
   }
 }

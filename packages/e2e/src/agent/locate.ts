@@ -42,6 +42,11 @@ export interface LocatedNode {
   readonly explanation: string;
   /** Whether a model chose this node or a cache entry replayed it. */
   readonly origin: 'model' | 'cache';
+  /**
+   * True when the instruction picked this node out by position rather than by
+   * content, as reported by the model. Such a target is never recorded.
+   */
+  readonly positional: boolean;
 }
 
 export interface LocateOptions {
@@ -49,37 +54,47 @@ export interface LocateOptions {
   /**
    * Non-secret parameters of the calling method, digested into the cache key.
    * A secret contributes only its stable name and purpose, never its value.
+   *
+   * Required, and empty only for a call that genuinely has no parameters. An
+   * optional field here would let a new located action silently key on nothing
+   * and replay an entry recorded for different arguments.
    */
-  readonly input?: Readonly<Record<string, unknown>>;
+  readonly input: Readonly<Record<string, unknown>>;
 }
 
-export interface Selection {
+/**
+ * Outcome of one model locate call. Modelled as a union rather than a nullable
+ * node so the resolve path cannot be reached without a node, and so callers do
+ * not have to re-check an invariant the selection already settled.
+ */
+type Selection = MatchedSelection | UnmatchedSelection;
+
+interface MatchedSelection {
+  readonly matched: true;
   readonly observation: AgentObservation;
-  /** Null when the model declined or named a node absent from this observation. */
-  readonly selected: SemanticNode | null;
-  /** Why the node was selected, or why no node matches. Untrusted prose. */
+  readonly node: SemanticNode;
+  /** Why the node was selected. Untrusted prose. */
   readonly explanation: string;
-  /** True when the model explicitly reported that no node matches. */
+  /** The model's report that the instruction identified this node by position. */
+  readonly positional: boolean;
+}
+
+interface UnmatchedSelection {
+  readonly matched: false;
+  /** Why no node matches. Untrusted prose. */
+  readonly explanation: string;
+  /**
+   * True when the model explicitly reported that no node matches, as opposed
+   * to naming a node absent from the observation.
+   */
   readonly declined: boolean;
 }
 
 /**
- * Takes one fresh observation and asks the model to select one node. Uses
- * exactly one model call.
- */
-export async function observeAndSelect(
-  invocation: Invocation,
-  target: string,
-): Promise<Selection> {
-  return selectFrom(invocation, target, await invocation.observe());
-}
-
-/**
  * Asks the model to select one node from an observation the caller already
- * captured. Split out so the cache can consult an observation before deciding
- * whether a model call is needed at all.
+ * captured. Uses exactly one model call.
  */
-export async function selectFrom(
+async function selectFrom(
   invocation: Invocation,
   target: string,
   observation: AgentObservation,
@@ -93,16 +108,19 @@ export async function selectFrom(
   const explanation = response.explanation;
   if (response.target === null) {
     agentTrace(`locate ${JSON.stringify(target)}: model declined — ${explanation}`);
-    return { observation, selected: null, explanation, declined: true };
+    return { matched: false, explanation, declined: true };
   }
-  const selected = observation.nodes.get(response.target.id) ?? null;
-  if (selected === null) invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
+  const node = observation.nodes.get(response.target.id);
   agentTrace(
     `locate ${JSON.stringify(target)}: model selected #${response.target.id} (${
-      selected === null ? 'not in observation' : describe(selected)
+      node === undefined ? 'not in observation' : describe(node)
     }) — ${explanation}`,
   );
-  return { observation, selected, explanation, declined: false };
+  if (node === undefined) {
+    invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
+    return { matched: false, explanation, declined: false };
+  }
+  return { matched: true, observation, node, explanation, positional: response.positional };
 }
 
 /**
@@ -134,43 +152,101 @@ function validateAgainstObservation(
 }
 
 /**
- * Selects one node and resolves it to a deterministic, unique locator.
+ * Runs one locate under the cache protocol: observe the starting screen, try
+ * to replay a stored locator against it, and otherwise fall back to `resolve`
+ * and record whatever it produced.
  *
- * A valid cache entry short-circuits the model call entirely. Any mismatch
- * falls through to the normal path, whose result replaces the entry, so a stale
- * entry costs one resolve and self-heals.
+ * Every cacheable locate goes through here, so the replay/record pair cannot
+ * drift apart and a caller cannot forget to write back. `resolve` receives the
+ * starting observation, which the miss path needs anyway, so a hit costs one
+ * observation and zero model calls.
+ *
+ * A stale entry never wins: any mismatch falls through to `resolve`, whose
+ * result replaces the entry, so the entry costs one resolve and self-heals.
  */
-export async function locateOne(
+async function locateCached(
+  invocation: Invocation,
+  target: string,
+  options: LocateOptions,
+  resolve: (starting: AgentObservation) => Promise<LocatedNode>,
+): Promise<LocatedNode> {
+  const starting = await invocation.observe();
+  const cache = await openCacheFor(invocation, starting, target, options);
+  const replayed = await cache?.replay();
+  if (replayed !== undefined) return replayed;
+
+  const located = await resolve(starting);
+  await cache?.record(located);
+  return located;
+}
+
+/** Selects one node and resolves it to a deterministic, unique locator. */
+export function locateOne(
   invocation: Invocation,
   target: string,
   options: LocateOptions,
 ): Promise<LocatedNode> {
-  const observation = await invocation.observe();
-  const cache = await openCacheFor(invocation, observation, target, options);
-  const replayed = await cache?.replay();
-  if (replayed !== undefined) return replayed;
+  return locateCached(invocation, target, options, async (observation) => {
+    const selection = await selectFrom(invocation, target, observation);
+    if (!selection.matched) throw unmatched(invocation, target, selection);
+    return resolveSelected(invocation, selection, options);
+  });
+}
 
-  const selection = await selectFrom(invocation, target, observation);
-  if (selection.declined) {
-    invocation.note({ explanation: selection.explanation });
-    throw new AgentError(
-      'LOCATOR_NOT_FOUND',
-      `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
-    );
-  }
-  if (selection.selected === null) {
-    throw new AgentError(
+/** Turns a selection with no node into the locate failure that explains it. */
+function unmatched(
+  invocation: Invocation,
+  target: string,
+  selection: UnmatchedSelection,
+): AgentError {
+  if (!selection.declined) {
+    return new AgentError(
       'LOCATOR_NOT_FOUND',
       `the observation contains no node matching ${JSON.stringify(target)}`,
     );
   }
-  const located = await resolveSelected(
-    invocation,
-    { observation: selection.observation, selected: selection.selected, explanation: selection.explanation },
-    options,
+  invocation.note({ explanation: selection.explanation });
+  return new AgentError(
+    'LOCATOR_NOT_FOUND',
+    `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
   );
-  await cache?.record(located);
-  return located;
+}
+
+/**
+ * Locates one node, scrolling `direction` and re-observing until the model
+ * finds it or the budget runs out.
+ *
+ * The cache is keyed on the screen before any scrolling, which is also the
+ * screen round one examines: a hit therefore skips the scrolling entirely,
+ * and a miss has already paid for the observation it needs.
+ */
+export function locateByScrolling(
+  invocation: Invocation,
+  target: string,
+  options: LocateOptions,
+  scroll: () => Promise<void>,
+): Promise<LocatedNode> {
+  return locateCached(invocation, target, options, async (starting) => {
+    let observation = starting;
+    let lastExplanation = '';
+    for (let round = 1; ; round += 1) {
+      invocation.recordPoll('scrollTo', round);
+      const selection = await selectFrom(invocation, target, observation);
+      if (selection.matched) return resolveSelected(invocation, selection, options);
+      if (selection.declined) lastExplanation = selection.explanation;
+      if (invocation.deadline.expired() || !invocation.canAsk()) {
+        if (lastExplanation !== '') invocation.note({ explanation: lastExplanation });
+        throw new AgentError(
+          'LOCATOR_NOT_FOUND',
+          `scrollTo did not reach ${JSON.stringify(target)} within its budget${
+            lastExplanation === '' ? '' : `; the model reported: ${lastExplanation}`
+          }`,
+        );
+      }
+      await scroll();
+      observation = await invocation.observe();
+    }
+  });
 }
 
 /**
@@ -178,19 +254,22 @@ export async function locateOne(
  * cacheable. `cache-1` admits a closed set of methods, so a located action
  * outside it reports a bypass rather than inventing a key.
  */
-export function openCacheFor(
+function openCacheFor(
   invocation: Invocation,
   observation: AgentObservation,
   target: string,
   options: LocateOptions,
 ): Promise<OpenLocateCache | undefined> {
   const method = cacheMethodForApi(invocation.api);
-  if (method === undefined) return Promise.resolve(undefined);
+  if (method === undefined) {
+    return Promise.resolve(
+      invocation.bypassCache(`${invocation.api} is not a cacheable cache-1 method`),
+    );
+  }
   return openLocateCache(invocation, observation, {
     method,
     instruction: target,
-    input: options.input ?? {},
-    testIdAttribute: options.testIdAttribute,
+    input: options.input,
   });
 }
 
@@ -198,13 +277,13 @@ export function openCacheFor(
  * Resolves a selected observation node through the first derived query that
  * matches exactly one node with the same semantics.
  */
-export async function resolveSelected(
+async function resolveSelected(
   invocation: Invocation,
-  selection: { observation: AgentObservation; selected: SemanticNode; explanation?: string },
-  options: { testIdAttribute: string },
+  selection: MatchedSelection,
+  options: LocateOptions,
 ): Promise<LocatedNode> {
-  const candidates = deriveQueries(selection.selected, options.testIdAttribute).map((query) =>
-    scopeToFrames(query, selection.selected.framePath),
+  const candidates = deriveQueries(selection.node, options.testIdAttribute).map((query) =>
+    scopeToFrames(query, selection.node.framePath),
   );
   if (candidates.length === 0) {
     throw new AgentError(
@@ -246,7 +325,7 @@ export async function resolveSelected(
         outcomes.push(`${describeExpression(expression)} -> matched node became unreadable`);
         continue;
       }
-      if (!matchesSignature(selection.selected, node)) {
+      if (!matchesSignature(selection.node, node)) {
         outcomes.push(
           `${describeExpression(expression)} -> resolved a different node (${describe(node)})`,
         );
@@ -259,8 +338,9 @@ export async function resolveSelected(
         expression,
         node,
         observation: selection.observation,
-        explanation: selection.explanation ?? '',
+        explanation: selection.explanation,
         origin: 'model',
+        positional: selection.positional,
       };
     }
 
@@ -272,7 +352,7 @@ export async function resolveSelected(
       const detail = outcomes.map((outcome) => `\n  ${outcome}`).join('');
       throw new AgentError(
         ambiguous ? 'LOCATOR_AMBIGUOUS' : 'LOCATOR_NOT_FOUND',
-        `no derived query uniquely resolved the selected node (${describe(selection.selected)}):${detail}`,
+        `no derived query uniquely resolved the selected node (${describe(selection.node)}):${detail}`,
       );
     }
     await sleep(POLL_INTERVAL_MS, engine.signal);

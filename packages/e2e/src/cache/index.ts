@@ -11,43 +11,45 @@ import { FileCacheStore, disabledCacheStore, type CacheStore } from './store.ts'
 
 export { MAX_CACHE_WIRE_BYTES, FileCacheStore, disabledCacheStore } from './store.ts';
 export type { CacheStore, CacheReadResult } from './store.ts';
-export { parseCacheEntry } from './entry.ts';
-export type { CacheEntry, LocatePayload, ParsedEntry } from './entry.ts';
+export { readCacheEntry } from './entry.ts';
+export type { CacheEntry, LocatePayload } from './entry.ts';
 export {
   CACHE_METHODS,
   buildCacheKey,
+  cacheCallSignature,
   cacheKeyHash,
-  cacheKeysEqual,
   cacheMethodForApi,
+  createCallIndexer,
+  driverCompatibilityVersion,
   instructionDigest,
   inputDigest,
   normalizeInstruction,
   projectIdentity,
 } from './identity.ts';
-export type { CacheKey, CacheMethod, CacheTargetIdentity } from './identity.ts';
+export type {
+  CacheCallSignature,
+  CacheKey,
+  CacheMethod,
+  CacheTargetIdentity,
+} from './identity.ts';
 export { screenFingerprint } from './fingerprint.ts';
 export type { FingerprintInput } from './fingerprint.ts';
-export {
-  MAX_REGEXP_SOURCE_BYTES,
-  toCacheLocator,
-  toSemanticIdentity,
-  validateRegexp,
-} from './locator.ts';
-export type { CacheLocator, CacheQuery, Projection, SemanticIdentity } from './locator.ts';
+export { asCacheLocator, toSemanticIdentity } from './locator.ts';
+export type { CacheLocator, CacheQuery, SemanticIdentity } from './locator.ts';
 
 /** Directory holding one file per cache key, relative to the project root. */
 export const CACHE_DIRECTORY = join('.e2e', 'cache');
 
 /**
- * Builds the store for one run. Cache entries are committable project input,
- * so the directory lives beside the project rather than in a temporary space.
+ * Builds the store for one run. Cache entries are committable project input, so
+ * the directory lives beside the project rather than in a temporary space.
  */
 export function createCacheStore(options: {
   readonly mode: 'off' | 'read-only' | 'read-write';
   readonly projectRoot: string;
   readonly maxBytes: number;
 }): CacheStore {
-  if (options.mode === 'off') return disabledCacheStore;
+  if (options.mode === 'off') return disabledCacheStore('agent.cache mode is off');
   return new FileCacheStore({
     directory: join(options.projectRoot, CACHE_DIRECTORY),
     maxBytes: options.maxBytes,

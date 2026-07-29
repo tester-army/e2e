@@ -1,19 +1,24 @@
 /**
- * Cacheable locator projection (spec 10-determinism.md "Locate replay").
+ * The cacheable locator shape (spec 10-determinism.md "Locate replay").
  *
  * `cache-1` admits only semantic locators: a query, a filter, or an index. A
  * locate entry never stores a node reference, coordinate, or CSS/XPath
- * selector. That restriction is a security boundary, not a style preference —
- * a cache file is untrusted repository input, and a semantic query can only
- * ever address something a user could perceive, while a raw selector could
- * reach nodes the observation deliberately withholds.
+ * selector. That restriction is the one real security boundary in the cache —
+ * a semantic query can only ever address something a user could perceive,
+ * while a raw selector could reach nodes the observation deliberately
+ * withholds.
+ *
+ * One function enforces it in both directions. `asCacheLocator` accepts
+ * `unknown`, so the same code path checks an expression the runner just derived
+ * and a document it just read off disk. There is no second implementation to
+ * drift from, which is why there is no schema-agreement test either.
  */
 
-import type { LocatorExpression, QueryKind, SemanticNode, TextPattern } from '../driver/index.ts';
-import { normalizeRegexpFlags } from '../internal/text.ts';
+import type { QueryKind, SemanticNode, TextPattern } from '../driver/index.ts';
+import { normalizeRegexpFlags, normalizeText } from '../internal/text.ts';
 
 /** Regexp source ceiling in UTF-8 bytes, per 10-determinism.md. */
-export const MAX_REGEXP_SOURCE_BYTES = 1_024;
+const MAX_REGEXP_SOURCE_BYTES = 1_024;
 
 const QUERY_KINDS: ReadonlySet<string> = new Set<QueryKind>([
   'role',
@@ -24,21 +29,25 @@ const QUERY_KINDS: ReadonlySet<string> = new Set<QueryKind>([
   'testId',
 ]);
 
-const QUERY_STATES = ['checked', 'disabled', 'selected', 'expanded', 'hidden'] as const;
-
-export type CacheQueryStates = Readonly<Partial<Record<(typeof QUERY_STATES)[number], boolean>>>;
+const QUERY_STATES: ReadonlySet<string> = new Set([
+  'checked',
+  'disabled',
+  'selected',
+  'expanded',
+  'hidden',
+]);
 
 export interface CacheQuery {
   readonly kind: QueryKind;
   readonly value: TextPattern;
   readonly name?: TextPattern;
-  readonly states?: CacheQueryStates;
+  readonly states?: Readonly<Record<string, boolean>>;
 }
 
 /**
- * The `cache-1` locator union. It is a structural subset of
- * `LocatorExpression`, so a parsed entry is directly usable for replay without
- * a cast that could smuggle in an unsupported node kind.
+ * The `cache-1` locator union: a structural subset of `LocatorExpression`, so a
+ * validated locator is directly usable for replay without a cast that could
+ * smuggle in an unsupported node kind.
  */
 export type CacheLocator =
   | { readonly kind: 'query'; readonly query: CacheQuery; readonly scope?: CacheLocator }
@@ -57,180 +66,146 @@ export type CacheLocator =
 export interface SemanticIdentity {
   readonly role: string;
   readonly name?: string;
-  readonly states?: Readonly<Record<string, boolean>>;
 }
 
-export type Projection<Value> =
-  | { readonly ok: true; readonly value: Value }
-  | { readonly ok: false; readonly reason: string };
-
 /**
- * Projects a runner locator onto the cacheable union. Returns a reason instead
- * of throwing, because a non-cacheable locator is an ordinary bypass rather
- * than a test failure: the action still runs, it just is not remembered.
+ * Validates one value as a cacheable locator, or returns undefined with no
+ * explanation of which field failed.
+ *
+ * A rejection is never a test failure: on the write side the action still runs
+ * and simply is not remembered, and on the read side it is an ordinary miss.
+ * Callers that want to tell the user why report the shape they were given.
  */
-export function toCacheLocator(expression: LocatorExpression): Projection<CacheLocator> {
-  switch (expression.kind) {
-    case 'web-selector':
-      return { ok: false, reason: 'a raw web selector is not a portable semantic locator' };
-    case 'frame':
-      return {
-        ok: false,
-        reason: 'a frame chain is addressed by CSS selector, which cache-1 does not admit',
-      };
+export function asCacheLocator(value: unknown): CacheLocator | undefined {
+  const raw = asRecord(value);
+  if (raw === undefined) return undefined;
+  switch (raw['kind']) {
     case 'query': {
-      const query = projectQuery(expression.query);
-      if (!query.ok) return query;
-      if (expression.scope === undefined) {
-        return { ok: true, value: { kind: 'query', query: query.value } };
-      }
-      const scope = toCacheLocator(expression.scope);
-      if (!scope.ok) return scope;
-      return { ok: true, value: { kind: 'query', query: query.value, scope: scope.value } };
+      const query = asQuery(raw['query']);
+      if (query === undefined) return undefined;
+      if (raw['scope'] === undefined) return { kind: 'query', query };
+      const scope = asCacheLocator(raw['scope']);
+      return scope === undefined ? undefined : { kind: 'query', query, scope };
     }
     case 'filter': {
-      const source = toCacheLocator(expression.source);
-      if (!source.ok) return source;
-      let hasText: TextPattern | undefined;
-      if (expression.hasText !== undefined) {
-        const projected = projectPattern(expression.hasText);
-        if (!projected.ok) return projected;
-        hasText = projected.value;
-      }
-      let has: CacheLocator | undefined;
-      if (expression.has !== undefined) {
-        const projected = toCacheLocator(expression.has);
-        if (!projected.ok) return projected;
-        has = projected.value;
-      }
-      if (hasText === undefined && has === undefined) {
-        return { ok: false, reason: 'a filter must constrain by text or by a nested locator' };
-      }
+      const source = asCacheLocator(raw['source']);
+      if (source === undefined) return undefined;
+      const hasText = optional(raw['hasText'], asPattern);
+      const has = optional(raw['has'], asCacheLocator);
+      // A filter that constrains nothing is the source, and admitting it would
+      // let one entry stand for two different locators.
+      if (hasText === undefined && has === undefined) return undefined;
+      if (hasText === null || has === null) return undefined;
       return {
-        ok: true,
-        value: {
-          kind: 'filter',
-          source: source.value,
-          ...(hasText === undefined ? {} : { hasText }),
-          ...(has === undefined ? {} : { has }),
-        },
+        kind: 'filter',
+        source,
+        ...(hasText === undefined ? {} : { hasText }),
+        ...(has === undefined ? {} : { has }),
       };
     }
     case 'index': {
-      const source = toCacheLocator(expression.source);
-      if (!source.ok) return source;
-      if (typeof expression.index === 'number' && !Number.isSafeInteger(expression.index)) {
-        return { ok: false, reason: 'a locator index must be a safe integer' };
-      }
-      if (typeof expression.index === 'number' && expression.index < 0) {
-        return { ok: false, reason: 'a locator index must not be negative' };
-      }
-      return { ok: true, value: { kind: 'index', source: source.value, index: expression.index } };
+      const source = asCacheLocator(raw['source']);
+      if (source === undefined) return undefined;
+      const index = raw['index'];
+      const valid =
+        index === 'first' ||
+        index === 'last' ||
+        (typeof index === 'number' && Number.isSafeInteger(index) && index >= 0);
+      return valid ? { kind: 'index', source, index: index as number | 'first' | 'last' } : undefined;
     }
+    default:
+      // Everything else, including a raw web selector or a frame chain.
+      return undefined;
   }
 }
 
-function projectQuery(query: {
-  readonly kind: QueryKind;
-  readonly value: TextPattern;
-  readonly name?: TextPattern;
-  readonly states?: Readonly<Partial<Record<string, boolean>>>;
-}): Projection<CacheQuery> {
-  if (!QUERY_KINDS.has(query.kind)) {
-    return { ok: false, reason: `unsupported query kind "${query.kind}"` };
-  }
-  const value = projectPattern(query.value);
-  if (!value.ok) return value;
-  let name: TextPattern | undefined;
-  if (query.name !== undefined) {
-    const projected = projectPattern(query.name);
-    if (!projected.ok) return projected;
-    name = projected.value;
-  }
-  const states = projectStates(query.states);
+function asQuery(value: unknown): CacheQuery | undefined {
+  const raw = asRecord(value);
+  if (raw === undefined) return undefined;
+  const kind = raw['kind'];
+  if (typeof kind !== 'string' || !QUERY_KINDS.has(kind)) return undefined;
+  const pattern = asPattern(raw['value']);
+  if (pattern === undefined) return undefined;
+  const name = optional(raw['name'], asPattern);
+  if (name === null) return undefined;
+  const states = optional(raw['states'], asStates);
+  if (states === null) return undefined;
   return {
-    ok: true,
-    value: {
-      kind: query.kind,
-      value: value.value,
-      ...(name === undefined ? {} : { name }),
-      ...(states === undefined ? {} : { states }),
-    },
+    kind: kind as QueryKind,
+    value: pattern,
+    ...(name === undefined ? {} : { name }),
+    ...(states === undefined ? {} : { states }),
   };
 }
 
-function projectStates(
-  states: Readonly<Partial<Record<string, boolean>>> | undefined,
-): CacheQueryStates | undefined {
-  if (states === undefined) return undefined;
-  const present: Record<string, boolean> = {};
-  for (const key of QUERY_STATES) {
-    const value = states[key];
-    if (typeof value === 'boolean') present[key] = value;
+/** Keeps only the admitted states, dropping anything else. */
+function asStates(value: unknown): Readonly<Record<string, boolean>> | undefined {
+  const raw = asRecord(value);
+  if (raw === undefined) return undefined;
+  const states: Record<string, boolean> = {};
+  for (const [name, flag] of Object.entries(raw)) {
+    if (typeof flag === 'boolean' && QUERY_STATES.has(name)) states[name] = flag;
   }
-  return Object.keys(present).length === 0 ? undefined : present;
+  return Object.keys(states).length === 0 ? undefined : states;
 }
 
 /**
- * Normalizes one text pattern and enforces the regexp ceilings. An oversized
- * or contradictory pattern makes the entry non-cacheable rather than being
- * silently rewritten, since rewriting could widen what it matches.
+ * Validates one text pattern. Regexp flags are normalized to canonical order
+ * and an oversized source is refused, because replay evaluates the pattern.
  */
-function projectPattern(pattern: TextPattern): Projection<TextPattern> {
-  if (pattern.kind === 'string') {
-    return { ok: true, value: { kind: 'string', value: pattern.value, exact: pattern.exact } };
+function asPattern(value: unknown): TextPattern | undefined {
+  const raw = asRecord(value);
+  if (raw === undefined) return undefined;
+  if (raw['kind'] === 'string') {
+    const text = raw['value'];
+    if (typeof text !== 'string' || typeof raw['exact'] !== 'boolean') return undefined;
+    return { kind: 'string', value: text, exact: raw['exact'] };
   }
-  const flags = normalizeRegexpFlags(pattern.flags);
-  const invalid = validateRegexp(pattern.source, flags);
-  if (invalid !== undefined) return { ok: false, reason: invalid };
-  return { ok: true, value: { kind: 'regexp', source: pattern.source, flags } };
-}
-
-/** Returns a reason when a regexp is not admissible, or undefined when it is. */
-export function validateRegexp(source: string, flags: string): string | undefined {
-  const bytes = new TextEncoder().encode(source).byteLength;
-  if (bytes > MAX_REGEXP_SOURCE_BYTES) {
-    return `regexp source is ${bytes} bytes, over the ${MAX_REGEXP_SOURCE_BYTES}-byte cache limit`;
-  }
-  if (flags.includes('u') && flags.includes('v')) {
-    return 'regexp flags u and v are mutually exclusive';
-  }
-  if (normalizeRegexpFlags(flags) !== flags) {
-    return `regexp flags "${flags}" are not in canonical order`;
-  }
-  return undefined;
-}
-
-/** Derives the expected semantic identity a replayed node must still match. */
-export function toSemanticIdentity(node: SemanticNode): Projection<SemanticIdentity> {
-  const role = node.role;
-  if (role === undefined || role === '') {
-    return { ok: false, reason: 'a cacheable node must expose an explicit role' };
-  }
-  const name = node.name === undefined ? undefined : node.name.replace(/\s+/gu, ' ').trim();
-  const states = node.states === undefined ? undefined : booleanStates(node.states);
-  return {
-    ok: true,
-    value: {
-      role,
-      ...(name === undefined || name === '' ? {} : { name }),
-      ...(states === undefined ? {} : { states }),
-    },
-  };
+  if (raw['kind'] !== 'regexp') return undefined;
+  const source = raw['source'];
+  const flags = raw['flags'];
+  if (typeof source !== 'string' || typeof flags !== 'string') return undefined;
+  if (new TextEncoder().encode(source).byteLength > MAX_REGEXP_SOURCE_BYTES) return undefined;
+  const canonical = normalizeRegexpFlags(flags);
+  if (canonical.includes('u') && canonical.includes('v')) return undefined;
+  return { kind: 'regexp', source, flags: canonical };
 }
 
 /**
- * Keeps only the stable states. `focused` and `secure` are excluded: focus
- * moves for reasons unrelated to node identity, and a recorded `secure` flag
- * would make replay depend on a property the expected identity must not assert.
+ * Derives the expected identity a replayed node must still match. Role and name
+ * only: states are re-checked by actionability before the action runs, so
+ * storing them would just add ways to miss.
  */
-function booleanStates(
-  states: Readonly<Partial<Record<string, boolean>>>,
-): Readonly<Record<string, boolean>> | undefined {
-  const present: Record<string, boolean> = {};
-  for (const key of QUERY_STATES) {
-    const value = states[key];
-    if (typeof value === 'boolean') present[key] = value;
-  }
-  return Object.keys(present).length === 0 ? undefined : present;
+export function toSemanticIdentity(node: SemanticNode): SemanticIdentity | undefined {
+  if (node.role === undefined || node.role === '') return undefined;
+  const name = node.name === undefined ? undefined : normalizeText(node.name);
+  return { role: node.role, ...(name === undefined || name === '' ? {} : { name }) };
+}
+
+/** Validates a stored expected identity. */
+export function asSemanticIdentity(value: unknown): SemanticIdentity | undefined {
+  const raw = asRecord(value);
+  if (raw === undefined) return undefined;
+  const role = raw['role'];
+  if (typeof role !== 'string' || role === '') return undefined;
+  const name = raw['name'];
+  if (name !== undefined && typeof name !== 'string') return undefined;
+  return { role, ...(name === undefined ? {} : { name }) };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Applies `check` to an optional field. Returns undefined when absent and null
+ * when present but invalid, so a caller can tell "not there" from "not valid".
+ */
+function optional<Value>(
+  value: unknown,
+  check: (input: unknown) => Value | undefined,
+): Value | undefined | null {
+  if (value === undefined) return undefined;
+  return check(value) ?? null;
 }

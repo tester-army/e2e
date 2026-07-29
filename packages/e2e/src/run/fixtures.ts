@@ -51,8 +51,8 @@ export interface AttemptEnvironment {
   readonly signal: AbortSignal;
   readonly runId: string;
   readonly attemptId: string;
-  /** Cache identity and storage for this attempt; absent disables the cache. */
-  readonly cache?: AgentCacheContext;
+  /** Cache identity and storage for this attempt. */
+  readonly cache: AgentCacheContext;
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
@@ -145,7 +145,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         taint,
         artifacts: environment.artifacts,
         signal: environment.signal,
-        ...(environment.cache === undefined ? {} : { cache: environment.cache }),
+        cache: environment.cache,
         ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
       });
       return agent;

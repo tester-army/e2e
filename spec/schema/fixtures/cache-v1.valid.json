@@ -1,29 +1,8 @@
 {
   "schemaVersion": "cache-1",
   "kind": "locate",
-  "key": {
-    "specVersion": "0.1",
-    "cacheSchema": "cache-1",
-    "project": "0000000000000000000000000000000000000000000000000000000000000000",
-    "testId": "tests/example.e2e.ts::opens%20app",
-    "targetId": "web",
-    "platform": "web",
-    "driverId": "playwright",
-    "driverVersion": "1.0.0",
-    "driverSpiVersion": 1,
-    "method": "tap",
-    "callIndex": 0,
-    "instructionDigest": "1111111111111111111111111111111111111111111111111111111111111111",
-    "inputDigest": "2222222222222222222222222222222222222222222222222222222222222222",
-    "appIdentity": "3333333333333333333333333333333333333333333333333333333333333333",
-    "screenFingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
-    "policyVersion": "policy-0.1"
-  },
-  "keyHash": "ebc630aaf0be52792e1a67b68505b6d71437fa35c55e2204a48939f108aff87e",
-  "generation": 1,
   "createdAt": "2026-07-24T12:00:00.000Z",
   "payload": {
-    "type": "locate",
     "locator": {
       "kind": "query",
       "query": {

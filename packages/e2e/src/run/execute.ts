@@ -3,7 +3,13 @@
 import path from 'node:path';
 import type { AgentCacheContext } from '../agent/invocation.ts';
 import { POLICY_VERSION } from '../agent/prompts.ts';
-import { createCacheStore, projectIdentity, type CacheStore } from '../cache/index.ts';
+import {
+  createCacheStore,
+  createCallIndexer,
+  disabledCacheStore,
+  projectIdentity,
+  type CacheStore,
+} from '../cache/index.ts';
 import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
@@ -122,21 +128,22 @@ export class TargetExecutor implements SerialHost {
   /**
    * Cache context for one attempt.
    *
-   * Mode `off` and every retry are true bypasses: no key is built and no
-   * fingerprint is computed, so the cache cannot cost anything when it is not
-   * in use. A retry starts from clean state, so a cached locator can never be
-   * blamed for a flake the retry was supposed to clear.
+   * A retry starts from clean state, so it gets the disabled store: a cached
+   * locator can never be blamed for a flake the retry was supposed to clear.
+   * That is a true bypass, not a suppressed hit — no key is built and no
+   * screen is fingerprinted, so a bypassed cache costs nothing.
    */
   private cacheContext(testId: string, attemptIndex: number): AgentCacheContext {
-    let callIndex = 0;
     return {
-      store: this.cacheStore,
+      store:
+        attemptIndex === 0
+          ? this.cacheStore
+          : disabledCacheStore('retry attempts never consult the cache'),
       project: this.cacheProject,
       testId,
       target: this.sessionIdentity,
       policyVersion: POLICY_VERSION,
-      enabled: attemptIndex === 0 && this.config.agent.cache !== 'off',
-      nextCallIndex: () => callIndex++,
+      nextCallIndex: createCallIndexer(),
     };
   }
 

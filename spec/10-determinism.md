@@ -118,11 +118,13 @@ Every key includes:
 
 - specification and cache-schema versions;
 - normalized project identity;
-- test ID, target ID, platform, driver ID, driver version, and SPI version;
-- public method and its zero-based agent-call index in the executed test path;
+- test ID, target ID, platform, driver ID, driver compatibility version, and
+  SPI version;
+- public method and the zero-based index of this call among identical calls,
+  where identical means same method, instruction digest, and parameter digest;
 - SHA-256 digest of the normalized instruction;
 - canonical non-secret parameter and schema digest;
-- app identity and starting semantic-screen fingerprint;
+- app identity and starting route fingerprint;
 - agent-policy version.
 
 Secret values never enter a key or digest. A secret contributes only its stable
@@ -136,31 +138,59 @@ Regexp source is capped at 1,024 UTF-8 bytes. Cache regexp evaluation runs in an
 interruptible worker under the original operation deadline; timeout invalidates
 the entry rather than blocking the runner.
 
+The call index counts only repeats of the same call, and only calls that were
+actually keyed. It must not be a running total over every agent call in the
+test: under that reading a conditional step, such as a consent dialog that
+appears on some sessions and not others, renumbers every entry recorded after it
+and a suite against a real application can never warm up. A non-cacheable call,
+a call that opted out with `cache: false`, and a call under a disabled cache all
+take no number.
+
 Project identity is SHA-256 of the resolved `projectId`. App identity is
 SHA-256/JCS of effective base origin, normalized base path, and declared
-environment. Driver identity uses manifest ID/version/SPI. The key's explicit
-`cacheSchema` value is `cache-1`.
+environment. Driver identity uses manifest ID/SPI plus a compatibility version:
+`major.minor`, with patch, prerelease, and build metadata dropped, because a
+driver patch release cannot change what a semantic query matches. A version that
+is not `major.minor[.patch]` is used unchanged. The key's explicit `cacheSchema`
+value is `cache-1`.
 
-The starting fingerprint hashes the semantic tree after removing node refs,
-geometry, secure values, and volatile focus state. The web attribute allowlist
-is the configured test-ID attribute plus `type`, `autocomplete`, `href` origin
-and path, `aria-*`, and explicit role. It includes URL origin/path, exact
-`width x height @ scale` viewport, roles, names, normalized text, input purpose,
-checked/disabled/selected/expanded/hidden states, and the current canonical URL
-query. Any exact registered secret in a query is replaced by its stable secret
-name before hashing; URLs containing other values classified sensitive by app
-policy are not cacheable. A mismatch is a cache miss.
+The starting route fingerprint is SHA-256/JCS of the canonical URL and the exact
+`width x height @ scale` viewport. The canonical URL keeps origin, normalized
+path, and sorted query, and drops userinfo and fragment. Any exact registered
+secret in a query is replaced by its stable secret name before hashing; URLs
+containing other values classified sensitive by app policy are not cacheable. A
+driver that exposes no URL contributes no route. A mismatch is a cache miss.
+
+The fingerprint MUST NOT hash the semantic tree. Rendered content on a real
+application changes continuously — prices, counts, ordering, advertising — so a
+content-derived key is invalidated within hours and the cache never returns a
+hit. Replay safety does not come from proving the screen is unchanged. It comes
+from the recorded locator expressing the same intent as the instruction, and
+from verifying the resolved node before the action runs. A flow that stays on one
+route is still separated by instruction, parameters, and occurrence index.
 
 ## Locate replay
 
-A locate entry stores a semantic `screen` locator expression and expected
-role/name/states. It never stores a node reference, coordinate, CSS/XPath
-selector, model prose, instruction text, or secret.
+A locate entry stores a semantic `screen` locator expression and the expected
+role and name. It never stores a node reference, coordinate, CSS/XPath selector,
+model prose, instruction text, or secret. States are not stored: actionability
+re-checks the ones that matter before the action runs, so recording them would
+only add ways to miss.
 
 On replay, the runner resolves once. Exactly one compatible node is required.
 Zero, multiple, stale, or incompatible results are a miss and permit one fresh
 model locate. The eventual action still uses normal actionability and policy.
 A successful fresh locate atomically replaces the entry in read-write mode.
+
+A positional target is never recorded. When the instruction identifies a node by
+where it sits rather than by what it says — "the first result", "the last row" —
+a stored locator is content-addressed and would keep resolving to whichever item
+occupied that position when it was recorded. That is a wrong answer rather than a
+miss, which the cache must never produce, so such a call reports a miss that was
+not recorded and pays for one model locate on every run. The runner learns that
+a target is positional from the optional `positional` field of `agent-locate-1`;
+the field is a caching hint only, defaults to false, and can never change what
+the runner executes.
 
 ## Path guidance
 
@@ -183,20 +213,29 @@ timed-out, interrupted, policy-denied, or flaky attempts never update it.
 
 ## Storage and concurrency
 
-Cache files live under `.e2e/cache/`, one entry per key. Readers validate schema,
-size, hash, and path containment before use. Invalid entries are ignored,
-reported as `cache-invalid`, and never interpreted as executable code.
-Replay additionally compares every current project/test/target/driver/app/
-screen/policy key field; an offline semantic check alone cannot authorize use.
+Cache files live under `.e2e/cache/`, one entry per key, named for the key's
+SHA-256/JCS digest. An entry does not repeat its own key: a runner only ever
+opens the digest of the key it just computed, so the file being there is what
+identifies it. Readers check size and path containment, and validate the locator
+shape, before use. An entry that fails is ignored and reported as
+`cache-invalid`, never repaired and never interpreted as executable code.
 
-Read-write mode uses an exclusive per-key lock, writes to a same-directory
-temporary file, fsyncs where supported, and atomically renames. A writer reads
-the current generation under lock and increments it; it never truncates an
-existing file in place. Abandoned temporary files are ignored and cleaned.
+Readers MUST validate the locator shape, because that is what gets handed to the
+locator engine. They need not validate anything they do not consume: a malformed
+timestamp or an unknown field cannot change what runs, and rejecting an entry
+over one discards a usable locator for no gain.
 
-Committed caches are untrusted repository input. They contain only strict JSON
-and no free-form instructions. CI defaults to read-only; untrusted PR jobs MUST
-NOT publish cache changes to a trusted branch or shared store.
+Writes go to a same-directory temporary file with a unique name and are then
+renamed atomically, so a crashed or concurrent writer cannot leave a torn entry
+behind. No lock is required. Two writers collide on a key only when the same call
+runs concurrently on the same route, and then they are writing the same locator,
+so last-write-wins is the correct outcome.
+
+Committed caches are repository input. They contain only strict JSON and no
+free-form instructions, and the strongest thing one can express is a semantic
+locator, which can address only what a user could perceive. CI defaults to
+read-only; untrusted PR jobs MUST NOT publish cache changes to a trusted branch
+or shared store.
 
 ## Error ownership
 

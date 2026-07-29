@@ -22,13 +22,7 @@ import {
   type InvocationOptions,
 } from './invocation.ts';
 import type { PromptInput } from './prompts.ts';
-import {
-  locateOne,
-  openCacheFor,
-  resolveSelected,
-  selectFrom,
-  type LocatedNode,
-} from './locate.ts';
+import { locateByScrolling, locateOne, type LocatedNode } from './locate.ts';
 import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
@@ -71,9 +65,13 @@ export function createAgent(runtime: AgentContext): Agent {
     api: string,
     target: string,
     options: { timeout?: number; cache?: boolean } | undefined,
+    /**
+     * Non-secret call parameters that belong in the cache key. Required so
+     * that adding a located action forces a decision about what its cache key
+     * covers; pass `{}` only when the call really has no parameters.
+     */
+    input: Readonly<Record<string, unknown>>,
     action: (invocation: Invocation, located: LocatedNode) => Promise<void>,
-    /** Non-secret call parameters that belong in the cache key. */
-    input?: Readonly<Record<string, unknown>>,
   ): Promise<void> =>
     step(
       {
@@ -88,10 +86,7 @@ export function createAgent(runtime: AgentContext): Agent {
       },
       target,
       async (invocation) => {
-        const located = await locateOne(invocation, target, {
-          testIdAttribute,
-          ...(input === undefined ? {} : { input }),
-        });
+        const located = await locateOne(invocation, target, { testIdAttribute, input });
         try {
           await action(invocation, located);
         } catch (cause) {
@@ -113,7 +108,7 @@ export function createAgent(runtime: AgentContext): Agent {
   const tapVerb =
     (api: string) =>
     (target: string, options?: { timeout?: number; cache?: boolean }): Promise<void> =>
-      instant(api, target, options, (invocation, located) =>
+      instant(api, target, options, {}, (invocation, located) =>
         invocation.commit('tap', () =>
           invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
         ),
@@ -142,6 +137,11 @@ export function createAgent(runtime: AgentContext): Agent {
         'agent.type',
         target,
         options,
+        // A secret contributes only its stable name and purpose: its value must
+        // never reach a cache key, not even through a digest.
+        sensitive
+          ? { sensitiveName: value.name, purpose: value.purpose }
+          : { value, sensitive: false },
         async (invocation, located) => {
           const plaintext = sensitive
             ? await authorizeSecretFill(invocation, runtime, value, located.node)
@@ -155,29 +155,19 @@ export function createAgent(runtime: AgentContext): Agent {
             ),
           );
         },
-        // A secret contributes only its stable name and purpose: its value must
-        // never reach a cache key, not even through a digest.
-        sensitive
-          ? { sensitiveName: value.name, purpose: value.purpose }
-          : { value, sensitive: false },
       );
     },
 
     longPress(target, options) {
       const durationMs = validateLongPress(options?.durationMs);
-      return instant(
-        'agent.longPress',
-        target,
-        options,
-        (invocation, located) =>
-          invocation.commit('longPress', () =>
-            invocation.session.actions.longPress(
-              { ref: located.ref },
-              durationMs,
-              invocation.operation(),
-            ),
+      return instant('agent.longPress', target, options, { durationMs }, (invocation, located) =>
+        invocation.commit('longPress', () =>
+          invocation.session.actions.longPress(
+            { ref: located.ref },
+            durationMs,
+            invocation.operation(),
           ),
-        { durationMs },
+        ),
       );
     },
 
@@ -185,7 +175,7 @@ export function createAgent(runtime: AgentContext): Agent {
       if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
         throw new TestError('INVALID_ARGUMENT', 'agent.press key must be a short non-empty string');
       }
-      return instant('agent.press', target, options, (invocation, located) =>
+      return instant('agent.press', target, options, { key }, (invocation, located) =>
         invocation.commit('press', () =>
           invocation.session.screen.perform(located.ref, { kind: 'press', key }, invocation.operation()),
         ),
@@ -194,7 +184,7 @@ export function createAgent(runtime: AgentContext): Agent {
 
     select(target, value, options) {
       validateSelectOption(value);
-      return instant('agent.select', target, options, (invocation, located) =>
+      return instant('agent.select', target, options, { value }, (invocation, located) =>
         invocation.commit('selectOption', () =>
           invocation.session.screen.perform(
             located.ref,
@@ -206,7 +196,7 @@ export function createAgent(runtime: AgentContext): Agent {
     },
 
     hover(target, options) {
-      return instant('agent.hover', target, options, (invocation, located) =>
+      return instant('agent.hover', target, options, {}, (invocation, located) =>
         invocation.commit('hover', () =>
           invocation.session.screen.perform(located.ref, { kind: 'hover' }, invocation.operation()),
         ),
@@ -214,7 +204,7 @@ export function createAgent(runtime: AgentContext): Agent {
     },
 
     check(target, options) {
-      return instant('agent.check', target, options, (invocation, located) =>
+      return instant('agent.check', target, options, {}, (invocation, located) =>
         invocation.commit('check', () =>
           invocation.session.screen.perform(located.ref, { kind: 'check' }, invocation.operation()),
         ),
@@ -222,7 +212,7 @@ export function createAgent(runtime: AgentContext): Agent {
     },
 
     uncheck(target, options) {
-      return instant('agent.uncheck', target, options, (invocation, located) =>
+      return instant('agent.uncheck', target, options, {}, (invocation, located) =>
         invocation.commit('uncheck', () =>
           invocation.session.screen.perform(located.ref, { kind: 'uncheck' }, invocation.operation()),
         ),
@@ -231,7 +221,7 @@ export function createAgent(runtime: AgentContext): Agent {
 
     upload(target, paths, options) {
       const resolved = validateUploadPaths(paths, runtime.config.projectRoot);
-      return instant('agent.upload', target, options, (invocation, located) =>
+      return instant('agent.upload', target, options, { paths: resolved }, (invocation, located) =>
         invocation.commit('setInputFiles', () =>
           invocation.session.screen.perform(
             located.ref,
@@ -255,8 +245,8 @@ export function createAgent(runtime: AgentContext): Agent {
         },
         `${source} \u2192 ${destination}`,
         async (invocation) => {
-          const from = await locateOne(invocation, source, { testIdAttribute });
-          const to = await locateOne(invocation, destination, { testIdAttribute });
+          const from = await locateOne(invocation, source, { testIdAttribute, input: {} });
+          const to = await locateOne(invocation, destination, { testIdAttribute, input: {} });
           try {
             await invocation.commit('dragTo', () =>
               invocation.session.screen.perform(
@@ -322,61 +312,22 @@ export function createAgent(runtime: AgentContext): Agent {
         },
         target,
         async (invocation) => {
-          let lastExplanation = '';
-          const scrollIntoView = (located: LocatedNode): Promise<void> =>
-            invocation.commit('scrollIntoView', () =>
-              invocation.session.screen.perform(
-                located.ref,
-                { kind: 'scrollIntoView' },
-                invocation.operation(),
+          const located = await locateByScrolling(
+            invocation,
+            target,
+            { testIdAttribute, input: { direction } },
+            () =>
+              invocation.commit('scroll', () =>
+                invocation.session.actions.scroll(direction, {}, invocation.operation()),
               ),
-            );
-
-          // The starting screen is the one before any scrolling, so the cache
-          // is keyed on it and round one reuses that same observation.
-          const starting = await invocation.observe();
-          const locateOptions = { testIdAttribute, input: { direction } };
-          const cache = await openCacheFor(invocation, starting, target, locateOptions);
-          const replayed = await cache?.replay();
-          if (replayed !== undefined) {
-            await scrollIntoView(replayed);
-            return;
-          }
-
-          let pending: AgentObservation | undefined = starting;
-          for (let round = 1; ; round += 1) {
-            invocation.recordPoll('scrollTo', round);
-            const observation = pending ?? (await invocation.observe());
-            pending = undefined;
-            const selection = await selectFrom(invocation, target, observation);
-            if (selection.declined) lastExplanation = selection.explanation;
-            if (selection.selected !== null) {
-              const located = await resolveSelected(
-                invocation,
-                {
-                  observation: selection.observation,
-                  selected: selection.selected,
-                  explanation: selection.explanation,
-                },
-                locateOptions,
-              );
-              await cache?.record(located);
-              await scrollIntoView(located);
-              return;
-            }
-            if (invocation.deadline.expired() || !invocation.canAsk()) {
-              if (lastExplanation !== '') invocation.note({ explanation: lastExplanation });
-              throw new AgentError(
-                'LOCATOR_NOT_FOUND',
-                `scrollTo did not reach ${JSON.stringify(target)} within its budget${
-                  lastExplanation === '' ? '' : `; the model reported: ${lastExplanation}`
-                }`,
-              );
-            }
-            await invocation.commit('scroll', () =>
-              invocation.session.actions.scroll(direction, {}, invocation.operation()),
-            );
-          }
+          );
+          await invocation.commit('scrollIntoView', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'scrollIntoView' },
+              invocation.operation(),
+            ),
+          );
         },
       );
     },

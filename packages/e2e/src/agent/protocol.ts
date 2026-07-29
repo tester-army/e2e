@@ -15,6 +15,16 @@ export interface LocateResponse {
   readonly target: { readonly id: string; readonly revision: string } | null;
   /** Why the node was selected, or why no node matches. Untrusted prose. */
   readonly explanation: string;
+  /**
+   * True when the instruction picked the node out by its position rather than
+   * by what it says — "the first result" rather than "the Save button".
+   *
+   * This is a caching hint and nothing more. A positional target is not
+   * cached, because a stored locator would keep resolving to the item that
+   * happened to be in that position when it was recorded. Defaults to false
+   * when the model omits it.
+   */
+  readonly positional: boolean;
 }
 
 export interface JudgmentResponse {
@@ -53,6 +63,7 @@ export const LOCATE_SCHEMA: JSONSchema7 = {
       ],
     },
     explanation: { type: 'string', maxLength: EXPLANATION_MAX_LENGTH },
+    positional: { type: 'boolean' },
   },
 };
 
@@ -68,15 +79,27 @@ export const JUDGMENT_SCHEMA: JSONSchema7 = {
 };
 
 export function validateLocateResponse(value: unknown): ProtocolValidation<LocateResponse> {
-  const record = asClosedRecord(value, ['protocolVersion', 'target', 'explanation']);
+  const record = asClosedRecord(value, [
+    'protocolVersion',
+    'target',
+    'explanation',
+    'positional',
+  ]);
   if (record === null) return fail('response is not an agent-locate-1 object');
   if (record['protocolVersion'] !== 'agent-locate-1') return fail('unknown protocolVersion');
   const explanation = asBoundedString(record['explanation'], 0, EXPLANATION_MAX_LENGTH);
   if (explanation === null) return fail('explanation must be a bounded string');
+  // Optional, and only ever a caching hint: a model that omits it, or gets it
+  // wrong, changes how much is cached and never what the runner does.
+  const reported = record['positional'];
+  if (reported !== undefined && typeof reported !== 'boolean') {
+    return fail('positional must be a boolean when present');
+  }
+  const positional = reported === true;
   if (record['target'] === null) {
     return {
       ok: true,
-      value: { protocolVersion: 'agent-locate-1', target: null, explanation },
+      value: { protocolVersion: 'agent-locate-1', target: null, explanation, positional },
     };
   }
   const target = asClosedRecord(record['target'], ['id', 'revision']);
@@ -86,7 +109,12 @@ export function validateLocateResponse(value: unknown): ProtocolValidation<Locat
   if (id === null || revision === null) return fail('target id/revision are invalid');
   return {
     ok: true,
-    value: { protocolVersion: 'agent-locate-1', target: { id, revision }, explanation },
+    value: {
+      protocolVersion: 'agent-locate-1',
+      target: { id, revision },
+      explanation,
+      positional,
+    },
   };
 }
 

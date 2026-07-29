@@ -2,6 +2,7 @@
 
 import type { Observation, SemanticNode } from '../driver/index.ts';
 import { sanitizeText } from '../internal/errors.ts';
+import { createRedactor } from '../internal/redact.ts';
 import { AgentError } from './error.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
@@ -14,11 +15,11 @@ export interface AgentObservation {
   readonly bytes: number;
   readonly nodes: ReadonlyMap<string, SemanticNode>;
   /**
-   * Root of the captured tree. The node index already retains every node, so
-   * exposing the root costs nothing and lets the cache fingerprint the exact
-   * structure the model was shown.
+   * Redaction applied to everything derived from this observation. It is built
+   * once here and shared, so text sent to the model and text folded into a
+   * cache digest can never disagree about what counts as a secret.
    */
-  readonly tree: SemanticNode;
+  readonly redact: (text: string) => string;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
 }
@@ -79,7 +80,7 @@ export function prepareObservation(
     text,
     bytes: encoder.encode(text).byteLength,
     nodes,
-    tree: observation.tree,
+    redact,
     viewport: observation.viewport,
     truncated,
   };
@@ -131,19 +132,6 @@ function formatNode(
 
 function collapse(text: string): string {
   return sanitizeText(text).replace(/\s+/g, ' ').trim();
-}
-
-/** Replaces every exact registered secret value with its stable secret name. */
-export function createRedactor(secrets: ReadonlyMap<string, string>): (text: string) => string {
-  const entries = [...secrets]
-    .filter(([, value]) => value.length > 0)
-    .toSorted((a, b) => b[1].length - a[1].length);
-  if (entries.length === 0) return (text) => text;
-  return (text) => {
-    let out = text;
-    for (const [name, value] of entries) out = out.split(value).join(`<secret:${name}>`);
-    return out;
-  };
 }
 
 function indexNodes(node: SemanticNode, into: Map<string, SemanticNode>): void {

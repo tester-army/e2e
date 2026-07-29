@@ -11,19 +11,22 @@
 
 import {
   buildCacheKey,
+  cacheCallSignature,
   cacheKeyHash,
-  cacheKeysEqual,
   screenFingerprint,
-  toCacheLocator,
+  asCacheLocator,
   toSemanticIdentity,
   type CacheKey,
   type CacheMethod,
   type SemanticIdentity,
 } from '../cache/index.ts';
 import type { SemanticNode } from '../driver/index.ts';
+import { describeExpression } from '../locator/expression.ts';
+import { errorMessage } from '../internal/errors.ts';
+import { normalizeText } from '../internal/text.ts';
 import { agentTrace } from '../internal/trace.ts';
-import { createRedactor, type AgentObservation } from './observation.ts';
-import type { Invocation } from './invocation.ts';
+import type { AgentObservation } from './observation.ts';
+import type { AgentCacheContext, Invocation } from './invocation.ts';
 import type { LocatedNode } from './locate.ts';
 
 /** Inputs that identify one locate call beyond its instruction. */
@@ -32,7 +35,6 @@ export interface LocateCacheParams {
   readonly instruction: string;
   /** Non-secret call parameters; a secret contributes only its name and purpose. */
   readonly input: Readonly<Record<string, unknown>>;
-  readonly testIdAttribute: string;
 }
 
 export interface OpenLocateCache {
@@ -55,24 +57,28 @@ export async function openLocateCache(
   observation: AgentObservation,
   params: LocateCacheParams,
 ): Promise<OpenLocateCache | undefined> {
-  const context = invocation.cache;
-  if (context === undefined || !context.enabled || !invocation.cacheAllowed) return undefined;
+  const bypass = invocation.cacheBypass;
+  if (bypass !== undefined) return invocation.bypassCache(bypass);
+  const context = invocation.cacheContext;
+
+  // Order matters and is therefore explicit: the occurrence index is consumed
+  // once per cacheable call that gets this far, so a bypassed or non-cacheable
+  // call must never take a number.
+  const signature = cacheCallSignature(params.method, params.instruction, params.input);
+  const callIndex = context.nextCallIndex(signature);
+  const fingerprint = screenFingerprint({
+    viewport: observation.viewport,
+    url: await currentUrl(invocation),
+    redact: observation.redact,
+  });
 
   const key = buildCacheKey({
     project: context.project,
     testId: context.testId,
     target: context.target,
-    method: params.method,
-    callIndex: invocation.callIndex,
-    instruction: params.instruction,
-    input: params.input,
-    screenFingerprint: screenFingerprint({
-      tree: observation.tree,
-      viewport: observation.viewport,
-      url: await currentUrl(invocation),
-      redact: createRedactor(invocation.secretValues),
-      testIdAttribute: params.testIdAttribute,
-    }),
+    signature,
+    callIndex,
+    screenFingerprint: fingerprint,
     policyVersion: context.policyVersion,
   });
   const keyHash = cacheKeyHash(key);
@@ -80,38 +86,50 @@ export async function openLocateCache(
   return {
     key,
     keyHash,
-    replay: () => replay(invocation, observation, key, keyHash),
-    record: (located) => record(invocation, key, keyHash, located),
+    replay: () => replay(invocation, context, observation, key, keyHash),
+    record: (located) => record(invocation, context, key, keyHash, located),
   };
 }
 
-async function replay(
+function replay(
   invocation: Invocation,
+  context: AgentCacheContext,
   observation: AgentObservation,
   key: CacheKey,
   keyHash: string,
 ): Promise<LocatedNode | undefined> {
-  const result = await invocation.cache!.store.read(keyHash);
+  return invocation.cacheReplay(() => consult(invocation, context, observation, key, keyHash));
+}
+
+async function consult(
+  invocation: Invocation,
+  context: AgentCacheContext,
+  observation: AgentObservation,
+  key: CacheKey,
+  keyHash: string,
+): Promise<LocatedNode | undefined> {
+  const result = await context.store.read(keyHash);
   if (result.status === 'invalid') {
-    invocation.setCache({ status: 'invalid', keyHash, ...bytesOf(result.bytes) });
+    invocation.setCache({
+      status: 'invalid',
+      keyHash,
+      reason: result.reason,
+      ...bytesOf(result.bytes),
+    });
     invocation.recordPolicy('cache.entry', 'denied', 'CACHE_INVALID');
     agentTrace(`cache: ignored invalid entry ${keyHash.slice(0, 12)} — ${result.reason}`);
     return undefined;
   }
   if (result.status === 'miss') {
-    invocation.setCache({ status: 'miss', keyHash });
+    invocation.setCache({ status: 'miss', keyHash, reason: 'no entry for this key' });
     return undefined;
   }
 
   const miss = (reason: string): undefined => {
-    invocation.setCache({ status: 'miss', keyHash, bytes: result.bytes });
+    invocation.setCache({ status: 'miss', keyHash, bytes: result.bytes, reason });
     agentTrace(`cache: miss on ${keyHash.slice(0, 12)} — ${reason}`);
     return undefined;
   };
-
-  // The file name already implies the digest, but comparing the whole key is
-  // what actually authorizes replay: an offline semantic check alone must not.
-  if (!cacheKeysEqual(result.entry.key, key)) return miss('the stored key differs');
 
   const locator = result.entry.payload.locator;
   let refs;
@@ -120,7 +138,7 @@ async function replay(
     // timeout before the fresh locate that will replace it.
     refs = await invocation.engine.resolveAll(locator, invocation.deadline);
   } catch (cause) {
-    return miss(`the stored locator failed to resolve: ${message(cause)}`);
+    return miss(`the stored locator failed to resolve: ${errorMessage(cause)}`);
   }
   if (refs.length !== 1) return miss(`the stored locator matched ${refs.length} nodes`);
 
@@ -135,46 +153,85 @@ async function replay(
     return miss(`the matched node is ${describe(node)}, not the recorded identity`);
   }
 
-  invocation.setCache({ status: 'hit', keyHash, bytes: result.bytes });
+  invocation.setCache({
+    status: 'hit',
+    keyHash,
+    bytes: result.bytes,
+    reason: `replayed ${describeExpression(locator)} to ${describe(node)}`,
+  });
   invocation.recordPolicy('cache.entry', 'allowed');
   agentTrace(`cache: hit ${keyHash.slice(0, 12)} (${describe(node)})`);
-  return { ref, expression: locator, node, observation, explanation: '', origin: 'cache' };
+  // A replayed target is content-addressed by construction: a positional one is
+  // never recorded, so there is nothing positional to replay.
+  return {
+    ref,
+    expression: locator,
+    node,
+    observation,
+    explanation: '',
+    origin: 'cache',
+    positional: false,
+  };
 }
 
 async function record(
   invocation: Invocation,
+  context: AgentCacheContext,
   key: CacheKey,
   keyHash: string,
   located: LocatedNode,
 ): Promise<void> {
-  const store = invocation.cache!.store;
-  if (!store.writable) return;
+  const store = context.store;
+  if (!store.writable) return notRecorded(invocation, keyHash, 'the cache is read-only');
 
-  const locator = toCacheLocator(located.expression);
-  if (!locator.ok) {
-    agentTrace(`cache: not recording ${keyHash.slice(0, 12)} — ${locator.reason}`);
-    return;
+  // A positional target is deliberately not recorded. The locator would be
+  // content-addressed, so replaying it would keep finding the item that was in
+  // that position when it was recorded rather than whatever is there now — a
+  // wrong answer, not a miss, which the cache is never allowed to produce.
+  if (located.positional) {
+    return notRecorded(
+      invocation,
+      keyHash,
+      'the instruction targets a position, so a stored locator could drift to the wrong item',
+    );
+  }
+
+  const locator = asCacheLocator(located.expression);
+  if (locator === undefined) {
+    return notRecorded(invocation, keyHash, 'the locator is not a portable semantic query');
   }
   const expected = toSemanticIdentity(located.node);
-  if (!expected.ok) {
-    agentTrace(`cache: not recording ${keyHash.slice(0, 12)} — ${expected.reason}`);
-    return;
+  if (expected === undefined) {
+    return notRecorded(invocation, keyHash, 'the node exposes no role to identify it by');
   }
   try {
-    const written = await store.write(key, {
-      type: 'locate',
-      locator: locator.value,
-      expected: expected.value,
-    });
-    if (written !== undefined) {
-      invocation.setCache({ status: 'written', keyHash, bytes: written.bytes });
-      agentTrace(`cache: wrote ${keyHash.slice(0, 12)} (${written.bytes}B)`);
+    const written = await store.write(keyHash, { locator, expected });
+    if (written === undefined) {
+      notRecorded(invocation, keyHash, 'the entry exceeded the cache byte limit');
+      return;
     }
+    invocation.mergeCache({
+      status: 'written',
+      keyHash,
+      bytes: written.bytes,
+      reason: `recorded ${describeExpression(locator)}`,
+    });
+    agentTrace(`cache: wrote ${keyHash.slice(0, 12)} (${written.bytes}B)`);
   } catch (cause) {
     // A cache write is never authority, so losing one must not fail a passing
     // test. The step keeps its miss status and the next run tries again.
-    agentTrace(`cache: write failed for ${keyHash.slice(0, 12)} — ${message(cause)}`);
+    notRecorded(invocation, keyHash, `the write failed: ${errorMessage(cause)}`);
   }
+}
+
+/**
+ * Keeps the step's existing status but explains why nothing was stored, so a
+ * run that never warms up says why instead of just reporting a miss forever.
+ */
+function notRecorded(invocation: Invocation, keyHash: string, reason: string): undefined {
+  invocation.mergeCache({ reason: `not recorded: ${reason}` });
+  agentTrace(`cache: not recording ${keyHash.slice(0, 12)} — ${reason}`);
+  return undefined;
 }
 
 /**
@@ -209,9 +266,5 @@ function describe(node: SemanticNode): string {
 }
 
 function normalize(value: string | undefined): string {
-  return (value ?? '').replace(/\s+/gu, ' ').trim();
-}
-
-function message(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+  return value === undefined ? '' : normalizeText(value);
 }

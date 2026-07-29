@@ -4,13 +4,10 @@
   "title": "e2e cache-1 entry",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "kind", "key", "keyHash", "generation", "createdAt", "payload"],
+  "required": ["schemaVersion", "kind", "payload"],
   "properties": {
     "schemaVersion": { "const": "cache-1" },
     "kind": { "enum": ["locate", "path"] },
-    "key": { "$ref": "#/$defs/key" },
-    "keyHash": { "$ref": "#/$defs/sha256" },
-    "generation": { "type": "integer", "minimum": 1 },
     "createdAt": { "$ref": "#/$defs/timestamp" },
     "payload": {
       "oneOf": [
@@ -130,6 +127,7 @@
       ]
     },
     "key": {
+      "description": "Cache key. Digested with SHA-256/JCS to form the entry file name; not stored inside the entry.",
       "type": "object",
       "additionalProperties": false,
       "required": ["specVersion", "cacheSchema", "project", "testId", "targetId", "platform", "driverId", "driverVersion", "driverSpiVersion", "method", "callIndex", "instructionDigest", "inputDigest", "appIdentity", "screenFingerprint", "policyVersion"],
@@ -153,19 +151,19 @@
       }
     },
     "semanticIdentity": {
+      "description": "Identity a replayed node must still have. Role and name only: states are re-checked by actionability before the action runs.",
       "type": "object",
       "additionalProperties": false,
       "required": ["role"],
       "properties": {
         "role": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "states": { "type": "object", "additionalProperties": { "type": "boolean" } }
+        "name": { "type": "string" }
       }
     },
     "locatePayload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "locator", "expected"],
+      "required": ["locator", "expected"],
       "properties": {
         "type": { "const": "locate" },
         "locator": { "$ref": "#/$defs/locator" },

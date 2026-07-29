@@ -161,9 +161,9 @@ runner implementation, not a standalone specification-repository script.
 
 ## `cache-1`
 
-One `cache-v1.schema.json` document represents one key. `keyHash` is SHA-256 of
-the canonical key object; readers recompute it. `generation` starts at 1 and
-increments under a per-key lock.
+One `cache-v1.schema.json` document represents one key. The key itself is not
+part of the document: its SHA-256/JCS digest is the entry's file name, and that
+is what binds an entry to a call.
 
 Locate payloads contain only normalized locator expressions and expected
 semantic identity. Path payloads contain only normalized allowed tool calls.

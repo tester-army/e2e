@@ -54,10 +54,23 @@ export interface StepModelInfo {
   estimatedCostUsd?: number;
 }
 
+/**
+ * `name` of the driver event covering one cache consultation. The report schema
+ * closes the event-kind enum, so replay is recorded as a named `driver` event
+ * rather than a new kind, and `--debug` sums the cache's cost from it.
+ */
+export const CACHE_REPLAY_EVENT = 'cache.replay';
+
 export interface StepCacheInfo {
   status: 'miss' | 'hit' | 'invalid' | 'bypassed' | 'written';
   keyHash?: string;
   bytes?: number;
+  /**
+   * Why this status was reached, for `--debug`. Diagnostic prose and never
+   * authority. Dropped when the step is serialized: `spec/schema/report-v1`
+   * closes the cache object, so this field must not reach report.json.
+   */
+  reason?: string;
 }
 
 /** Agent-specific step detail attached while the step is still running. */

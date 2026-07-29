@@ -27,7 +27,7 @@ same ambient OS authority as the runner.
 
 ## Policy authority
 
-The runner owns immutable agent policy `policy-0.1`. System policy precedes
+The runner owns immutable agent policy `policy-0.2`. System policy precedes
 project context, ledger data, app content, and model output. No lower-trust
 input can add tools, origins, credentials, budget, filesystem access, network
 destinations, or production permission.

@@ -27,6 +27,11 @@ export type CacheMethod = (typeof CACHE_METHODS)[number];
 
 const CACHE_METHOD_SET: ReadonlySet<string> = new Set(CACHE_METHODS);
 
+/** True when a value names a method `cache-1` admits. */
+function isCacheMethod(value: unknown): value is CacheMethod {
+  return typeof value === 'string' && CACHE_METHOD_SET.has(value);
+}
+
 export interface CacheKey {
   readonly specVersion: '0.1';
   readonly cacheSchema: 'cache-1';
@@ -48,6 +53,20 @@ export interface CacheKey {
   readonly policyVersion: string;
 }
 
+/**
+ * Reduces a driver version to the part that can change how a semantic query
+ * resolves: `1.61.1` becomes `1.61`.
+ *
+ * Keying on the exact version meant a driver patch release cold-started every
+ * entry, which is a large cost for no benefit — a patch does not change what
+ * `getByRole` matches. A minor release might, so that part is kept. A version
+ * that is not `major.minor[.patch]` is used unchanged rather than guessed at.
+ */
+export function driverCompatibilityVersion(version: string): string {
+  const match = /^(\d+)\.(\d+)(?:[.\-+].*)?$/u.exec(version);
+  return match === null ? version : `${match[1]!}.${match[2]!}`;
+}
+
 /** Identity of the target/driver/app an entry was recorded against. */
 export interface CacheTargetIdentity {
   readonly targetId: string;
@@ -64,7 +83,7 @@ export interface CacheTargetIdentity {
  */
 export function cacheMethodForApi(api: string): CacheMethod | undefined {
   const method = api.startsWith('agent.') ? api.slice('agent.'.length) : api;
-  return CACHE_METHOD_SET.has(method) ? (method as CacheMethod) : undefined;
+  return isCacheMethod(method) ? method : undefined;
 }
 
 /**
@@ -95,6 +114,63 @@ export function projectIdentity(projectId: string): string {
 }
 
 /**
+ * What a call asks for, independent of where it sits in the test: the method
+ * plus the digests of its instruction and non-secret parameters.
+ *
+ * Two calls sharing a signature are the same request, so this is the scope the
+ * occurrence index counts within. Scoping it any wider — counting every agent
+ * call in the test — would make an unrelated call appearing or disappearing
+ * renumber every entry after it, which is exactly what a conditional step like
+ * an optional cookie dialog does on a real site.
+ */
+export interface CacheCallSignature {
+  readonly method: CacheMethod;
+  readonly instructionDigest: string;
+  readonly inputDigest: string;
+}
+
+/** Builds one signature by digesting the instruction and parameters. */
+export function cacheCallSignature(
+  method: CacheMethod,
+  instruction: string,
+  input: Readonly<Record<string, unknown>>,
+): CacheCallSignature {
+  return {
+    method,
+    instructionDigest: instructionDigest(instruction),
+    inputDigest: inputDigest(input),
+  };
+}
+
+/**
+ * Map key for one signature. Both digests are hex, so a colon cannot appear
+ * inside either and the join is unambiguous.
+ */
+function cacheCallSignatureKey(signature: CacheCallSignature): string {
+  return `${signature.method}:${signature.instructionDigest}:${signature.inputDigest}`;
+}
+
+/**
+ * Counts occurrences of each call signature within one attempt, returning the
+ * zero-based index of each call among its own repeats.
+ *
+ * The counter is per signature rather than per attempt on purpose. A single
+ * running total would mean any conditional step — an optional cookie dialog, a
+ * branch that only fires on some sessions — renumbers every entry recorded
+ * after it, so a suite against a real site could never warm up. Scoped this
+ * way, only a genuine repeat of the same request advances the number.
+ */
+export function createCallIndexer(): (signature: CacheCallSignature) => number {
+  const seen = new Map<string, number>();
+  return (signature) => {
+    const mapKey = cacheCallSignatureKey(signature);
+    const count = seen.get(mapKey) ?? 0;
+    seen.set(mapKey, count + 1);
+    return count;
+  };
+}
+
+/**
  * Assembles one key. Field order is irrelevant to the digest, since JCS sorts
  * keys, but the explicit shape keeps every required field accounted for.
  */
@@ -102,10 +178,9 @@ export function buildCacheKey(parts: {
   readonly project: string;
   readonly testId: string;
   readonly target: CacheTargetIdentity;
-  readonly method: CacheMethod;
+  readonly signature: CacheCallSignature;
+  /** Zero-based occurrence of this signature within the attempt. */
   readonly callIndex: number;
-  readonly instruction: string;
-  readonly input: Readonly<Record<string, unknown>>;
   readonly screenFingerprint: string;
   readonly policyVersion: string;
 }): CacheKey {
@@ -117,12 +192,12 @@ export function buildCacheKey(parts: {
     targetId: parts.target.targetId,
     platform: parts.target.platform,
     driverId: parts.target.driverId,
-    driverVersion: parts.target.driverVersion,
+    driverVersion: driverCompatibilityVersion(parts.target.driverVersion),
     driverSpiVersion: 1,
-    method: parts.method,
+    method: parts.signature.method,
     callIndex: parts.callIndex,
-    instructionDigest: instructionDigest(parts.instruction),
-    inputDigest: inputDigest(parts.input),
+    instructionDigest: parts.signature.instructionDigest,
+    inputDigest: parts.signature.inputDigest,
     appIdentity: parts.target.appIdentity,
     screenFingerprint: parts.screenFingerprint,
     policyVersion: parts.policyVersion,
@@ -132,13 +207,4 @@ export function buildCacheKey(parts: {
 /** SHA-256/JCS of one key, used as both the entry digest and its file name. */
 export function cacheKeyHash(key: CacheKey): string {
   return canonicalDigest(key);
-}
-
-/**
- * True when two keys are identical in every field. Replay compares the whole
- * key rather than trusting the file name, so a renamed or relocated entry can
- * never authorize itself.
- */
-export function cacheKeysEqual(a: CacheKey, b: CacheKey): boolean {
-  return canonicalDigest(a) === canonicalDigest(b);
 }

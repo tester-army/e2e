@@ -64,6 +64,9 @@ export interface ReportError {
   scopeId?: string | undefined;
 }
 
+/** Reported cache outcome: `StepCacheInfo` without its debug-only reason. */
+export type ReportCacheInfo = Omit<StepCacheInfo, 'reason'>;
+
 export interface ReportStep {
   id: string;
   index: number;
@@ -80,7 +83,7 @@ export interface ReportStep {
   metrics?: StepMetrics | undefined;
   events: readonly StepEvent[];
   model?: StepModelInfo | undefined;
-  cache?: StepCacheInfo | undefined;
+  cache?: ReportCacheInfo | undefined;
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }
@@ -247,12 +250,24 @@ function relativeSource(
 const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
 
 function serializeStep(step: StepRecord): ReportStep {
-  const { error, ...rest } = step;
+  const { error, cache, ...rest } = step;
   return {
     ...rest,
     source: UNIMPLEMENTED_STEP_SOURCE,
+    cache: cache === undefined ? undefined : serializeCacheRecord(cache),
     error: error === undefined ? undefined : serializeErrorRecord(error),
   };
+}
+
+/**
+ * Drops the debug-only `reason`. `spec/schema/report-v1` closes the cache
+ * object, and the reason is diagnostic prose for `--debug`, not part of the
+ * published record.
+ */
+function serializeCacheRecord(cache: StepCacheInfo): ReportCacheInfo {
+  const { reason, ...report } = cache;
+  void reason;
+  return report;
 }
 
 function serializeErrorRecord(error: SerializedError): ReportError {

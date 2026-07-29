@@ -9,7 +9,7 @@
 import type { AgentObservation } from './observation.ts';
 
 /** Immutable agent policy version recorded in every model-backed step. */
-export const POLICY_VERSION = 'policy-0.1';
+export const POLICY_VERSION = 'policy-0.2';
 
 const POLICY = [
   `You are the response generator for the e2e test runner under policy ${POLICY_VERSION}.`,
@@ -97,6 +97,11 @@ export const LOCATE_REQUEST = [
   'If no node in the observation matches the instruction, do not guess a close',
   'substitute: respond with "target": null and set "explanation" to a short',
   'reason grounded in what the observation actually shows.',
+  'Also set "positional": true when the instruction identifies the node by where',
+  'it sits rather than by what it says — "the first result", "the last row", "the',
+  'third card". Set it to false when the instruction names the node by its own',
+  'content or purpose, such as "the Save button" or "the email field". This only',
+  'affects what the runner is allowed to remember; it never changes what runs.',
 ].join('\n');
 
 /** Request text for a boolean judgment. */

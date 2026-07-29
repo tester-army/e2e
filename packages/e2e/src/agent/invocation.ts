@@ -6,7 +6,7 @@
  */
 
 import type { JSONSchema7 } from 'ai';
-import type { CacheStore, CacheTargetIdentity } from '../cache/index.ts';
+import type { CacheCallSignature, CacheStore, CacheTargetIdentity } from '../cache/index.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { DriverSession } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
@@ -17,13 +17,14 @@ import { agentTrace, observationTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
-import type {
-  StepCacheInfo,
-  StepEvent,
-  StepMetrics,
-  StepModelInfo,
-  StepRecord,
-  StepRecorder,
+import {
+  CACHE_REPLAY_EVENT,
+  type StepCacheInfo,
+  type StepEvent,
+  type StepMetrics,
+  type StepModelInfo,
+  type StepRecord,
+  type StepRecorder,
 } from '../run/steps.ts';
 import type { AgentErrorCode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
@@ -37,6 +38,11 @@ import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './pr
  * Attempt-scoped cache identity and storage. Every field except the store is a
  * cache-key input, so they are resolved once per attempt rather than rebuilt
  * per call.
+ *
+ * There is no separate "cache disabled" flag. An attempt that must bypass the
+ * cache — mode `off`, or any retry, which starts from clean state and must not
+ * inherit a locator that may have caused the flake — gets `disabledCacheStore`
+ * and is otherwise identical.
  */
 export interface AgentCacheContext {
   readonly store: CacheStore;
@@ -46,12 +52,11 @@ export interface AgentCacheContext {
   readonly target: CacheTargetIdentity;
   readonly policyVersion: string;
   /**
-   * False when every call in this attempt must bypass the cache. A test-level
-   * retry starts from clean state and does not consult agent caches.
+   * Assigns the zero-based occurrence of one call signature within this
+   * attempt: 0 the first time a given method/instruction/parameters triple
+   * runs, 1 the second time, and so on.
    */
-  readonly enabled: boolean;
-  /** Assigns the next zero-based agent-call index in the executed test path. */
-  nextCallIndex: () => number;
+  nextCallIndex: (signature: CacheCallSignature) => number;
 }
 
 /** Attempt-scoped services one agent fixture needs. */
@@ -71,8 +76,7 @@ export interface AgentContext {
   readonly taint: { value: boolean };
   readonly artifacts: ArtifactSink;
   readonly signal: AbortSignal;
-  /** Absent when the caller runs without a cache at all. */
-  readonly cache?: AgentCacheContext;
+  readonly cache: AgentCacheContext;
   /** `--debug` phase timings; absent when the caller collects none. */
   readonly debug?: DebugTrace;
 }
@@ -99,20 +103,13 @@ const INSTRUCTION_RESERVE_BYTES = 4_096;
 /** One instrumented phase: the event kind it records and the debug bucket it feeds. */
 interface PhaseSpec {
   readonly kind: StepEvent['kind'];
-  readonly phase: 'agent.observe' | 'agent.model' | 'agent.action';
+  readonly phase: 'agent.observe' | 'agent.model' | 'agent.action' | 'agent.cache';
   readonly name?: string;
 }
 
 /** Model-call accounting plus observation/ledger metrics for one invocation. */
 export class Invocation {
   readonly deadline: Deadline;
-
-  /**
-   * Zero-based index of this call in the executed test path. Assigned for every
-   * agent call, cacheable or not, so that adding a non-cacheable call between
-   * two cached ones does not silently reindex their keys.
-   */
-  readonly callIndex: number;
 
   private readonly metrics: StepMetrics = {
     modelCalls: 0,
@@ -137,14 +134,18 @@ export class Invocation {
   private estimatedCostUsd: number | undefined;
   private observationRevision: string | undefined;
   private explanation: string | undefined;
-  private cacheInfo: StepCacheInfo = { status: 'bypassed' };
+  /**
+   * Undefined until something cache-related happens. A call that never locates
+   * anything — a judgment, an extraction — has no cache dimension at all, and
+   * reporting a bypass for it would imply the cache could have helped.
+   */
+  private cacheInfo: StepCacheInfo | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
     private readonly options: InvocationOptions,
   ) {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
-    this.callIndex = runtime.cache?.nextCallIndex() ?? 0;
     this.system = buildSystem(options.task, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
@@ -166,27 +167,62 @@ export class Invocation {
     return this.options.api;
   }
 
-  /** Cache identity and storage, or undefined when the caller has no cache. */
-  get cache(): AgentCacheContext | undefined {
+  /** Attempt-scoped cache identity and storage. Check `cacheBypass` first. */
+  get cacheContext(): AgentCacheContext {
     return this.runtime.cache;
   }
 
   /**
-   * Whether this call opted into the cache. `cache: false` disables it for one
-   * call; it can never upgrade the resolved run mode.
+   * Why this call cannot use the cache, or undefined when it can. `cache: false`
+   * opts one call out; it can never upgrade the resolved run mode, which the
+   * store itself already expresses.
    */
-  get cacheAllowed(): boolean {
-    return this.options.cache;
-  }
-
-  /** Registered secret values, used only for runner-side redaction. */
-  get secretValues(): ReadonlyMap<string, string> {
-    return this.runtime.secretValues;
+  get cacheBypass(): string | undefined {
+    if (!this.options.cache) return 'the call passed cache: false';
+    return this.runtime.cache.store.unusable;
   }
 
   /** Records the cache outcome reported for the enclosing step. */
   setCache(info: StepCacheInfo): void {
     this.cacheInfo = info;
+  }
+
+  /**
+   * Merges a later cache outcome into the one already recorded: fields given
+   * win, and reasons accumulate.
+   *
+   * A cold call has two halves worth reporting — why nothing was replayed, and
+   * what was stored instead — and either alone is misleading. "no entry for
+   * this key; recorded getByRole(...)" is the whole story.
+   */
+  mergeCache(info: Partial<StepCacheInfo> & { reason: string }): void {
+    const previous = this.cacheInfo ?? { status: 'bypassed' };
+    this.cacheInfo = {
+      ...previous,
+      ...info,
+      reason:
+        previous.reason === undefined ? info.reason : `${previous.reason}; ${info.reason}`,
+    };
+  }
+
+  /**
+   * Reports that this call never consulted the cache, and why. Returns
+   * undefined so a bail-out site can `return invocation.bypassCache(reason)`.
+   */
+  bypassCache(reason: string): undefined {
+    this.cacheInfo = { status: 'bypassed', reason };
+    agentTrace(`cache: bypassed — ${reason}`);
+    return undefined;
+  }
+
+  /**
+   * Times one cache consultation. Replay is driver work — one locator resolve
+   * plus one node read — so it is accounted for like every other phase instead
+   * of through a side channel, which is what makes `--debug` able to show the
+   * cache's own cost next to the model time it avoided.
+   */
+  cacheReplay<Value>(body: () => Promise<Value>): Promise<Value> {
+    return this.instrument({ kind: 'driver', phase: 'agent.cache', name: CACHE_REPLAY_EVENT }, body);
   }
 
   /**
@@ -430,7 +466,7 @@ export class Invocation {
     this.runtime.steps.attachAgentDetails({
       metrics: { ...this.metrics },
       ...(this.metrics.modelCalls > 0 ? { model: this.modelInfo() } : {}),
-      cache: this.cacheInfo,
+      ...(this.cacheInfo === undefined ? {} : { cache: this.cacheInfo }),
       ...(this.observationRevision !== undefined
         ? { observationRevision: this.observationRevision }
         : {}),
