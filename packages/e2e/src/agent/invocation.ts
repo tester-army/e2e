@@ -151,7 +151,7 @@ export class Invocation {
     private readonly options: InvocationOptions,
   ) {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
-    this.pixelTier = options.vision === true;
+    this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = buildSystem(options.task, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
@@ -159,6 +159,11 @@ export class Invocation {
         `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
         `(timeout ${options.timeoutMs}ms, budget ${options.maxModelCalls} calls, ledger ${this.ledger.bytes}B)`,
     );
+  }
+
+  /** Public API name of the method being run, e.g. `agent.tap`. */
+  get api(): string {
+    return this.options.api;
   }
 
   get engine(): LocatorEngine {
@@ -176,6 +181,17 @@ export class Invocation {
    */
   private get adapter(): ModelAdapter {
     return this.runtime.models.select(this.pixelTier);
+  }
+
+  /**
+   * Whether the semantic tree reaches the model.
+   *
+   * `'only'` withholds it: a tree sent next to pixels is a cheaper path to an
+   * answer than looking at them. The observation is still captured, because the
+   * runner hit-tests and reports against it.
+   */
+  get treeWithheld(): boolean {
+    return this.options.vision === 'only';
   }
 
   /**
@@ -271,7 +287,10 @@ export class Invocation {
       },
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
-    this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+    // Bytes the request carried, so a withheld tree reads as the zero it is.
+    if (!this.treeWithheld) {
+      this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+    }
     this.observationRevision = observation.revision;
     if (pixels) this.recordPixels(observation);
     observationTrace(
@@ -292,7 +311,7 @@ export class Invocation {
   private pixelsRequested(): boolean {
     if (!this.pixelTier) return false;
     if (this.runtime.taint.value) {
-      this.degradeVision('PIXEL_TAINTED');
+      this.loseVision('PIXEL_TAINTED');
       return false;
     }
     return true;
@@ -302,7 +321,7 @@ export class Invocation {
   private recordPixels(observation: AgentObservation): void {
     const pixels = observation.pixels;
     if (pixels === undefined) {
-      this.degradeVision(observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY');
+      this.loseVision(observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY');
       return;
     }
     this.visionInput = true;
@@ -310,10 +329,25 @@ export class Invocation {
     this.recordPolicy('vision.pixels', 'allowed');
   }
 
-  private degradeVision(code: VisionDegradation): void {
-    if (this.visionDegraded === code) return;
-    this.visionDegraded = code;
-    this.recordPolicy('vision.pixels', 'denied', code);
+  /**
+   * Records that requested pixels did not become model input.
+   *
+   * Every mode that also sends the tree degrades to it. `'only'` has nothing to
+   * degrade to: continuing would answer a question about what the page presents
+   * from the tree the caller deliberately excluded, so it fails instead.
+   */
+  private loseVision(code: VisionDegradation): void {
+    if (this.visionDegraded !== code) {
+      this.visionDegraded = code;
+      this.recordPolicy('vision.pixels', 'denied', code);
+    }
+    if (this.options.vision !== 'only') return;
+    throw new AgentError(
+      'POLICY_DENIED',
+      `${this.options.api} was called with vision: 'only', so the screenshot is its only ` +
+        `evidence, but pixel evidence is unavailable (${code}); it will not answer from the ` +
+        'semantic tree instead',
+    );
   }
 
   /**
@@ -326,6 +360,10 @@ export class Invocation {
    */
   private observationByteBudget(): number {
     const { config } = this.runtime;
+    // Nothing of the tree reaches the request, so the per-call token ceiling
+    // does not bind it. The configured ceiling still bounds the walk, and a
+    // fuller node map means a better hit-test for the point that comes back.
+    if (this.treeWithheld) return config.agent.maxObservationBytes;
     const overhead =
       tokenUpperBound(this.system) +
       this.ledger.bytes +
@@ -354,6 +392,7 @@ export class Invocation {
       this.consumeModelCall();
       const prompt = buildPrompt({
         ...request.prompt,
+        ...(this.treeWithheld ? { withholdTree: true } : {}),
         ledger: this.ledger.text,
         ...(repair === undefined ? {} : { repair }),
       });
@@ -502,6 +541,7 @@ export class Invocation {
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.visionInput ? { visionInput: true } : {}),
       ...(this.visionEscalated ? { visionEscalated: true } : {}),
+      ...(this.treeWithheld ? { visionOnly: true } : {}),
       ...(this.visionDegraded !== undefined ? { visionDegraded: this.visionDegraded } : {}),
     });
   }

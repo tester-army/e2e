@@ -118,6 +118,27 @@ describe('pixel prompt framing', () => {
     );
   });
 
+  it('withholds the tree but keeps the pixel framing and the revision', () => {
+    const prepared = prepare(observation({ pixels: pixels() }));
+    const withheld = buildPrompt({
+      request: 'Point at one thing.',
+      instruction: 'the red pin',
+      observation: prepared,
+      withholdTree: true,
+    });
+    expect(withheld).not.toContain('<observation');
+    expect(withheld).not.toContain(prepared.text);
+    expect(withheld).toContain('no accessibility tree is attached, on purpose');
+    // A point still has to quote the revision, so it travels with the pixels.
+    expect(withheld).toContain(`observation revision is "${prepared.revision}"`);
+    expect(withheld).toContain('1280x720 pixels');
+    expect(withheld).toContain('[0, 1279]');
+    // The sent-tree form is unchanged and does not carry the standalone line.
+    const sent = buildPrompt({ request: 'r', instruction: 'i', observation: prepared });
+    expect(sent).toContain('<observation');
+    expect(sent).not.toContain('observation revision is "');
+  });
+
   it('tells the model how many regions are masked', () => {
     const prepared = prepareObservation(
       observation({ pixels: pixels(), secureNodeCount: 1, maskedRegionCount: 1 }),

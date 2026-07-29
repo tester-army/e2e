@@ -84,6 +84,12 @@ export interface StepAgentDetails {
    * `agent.visionModel`. `model` names the model that answered.
    */
   visionEscalated?: boolean;
+  /**
+   * True when `vision: 'only'` withheld the semantic tree, leaving the masked
+   * screenshot as the model's only evidence. `metrics.observationBytes` is then
+   * zero, because the observation contributed nothing to the request.
+   */
+  visionOnly?: boolean;
 }
 
 export interface StepRecord {
@@ -100,6 +106,7 @@ export interface StepRecord {
   visionInput?: boolean;
   visionDegraded?: VisionDegradation;
   visionEscalated?: boolean;
+  visionOnly?: boolean;
   viewport?: { width: number; height: number; scale: number };
   metrics?: StepMetrics;
   events: StepEvent[];
@@ -198,6 +205,7 @@ export class StepRecorder {
     if (details.visionInput !== undefined) current.visionInput = details.visionInput;
     if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
     if (details.visionEscalated !== undefined) current.visionEscalated = details.visionEscalated;
+    if (details.visionOnly !== undefined) current.visionOnly = details.visionOnly;
   }
 
   /** Records the viewport a step established (required for web.setViewport). */

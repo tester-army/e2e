@@ -161,7 +161,7 @@ export function resolveAgentConfig(
   if (!isVisionMode(vision)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      "agent.vision must be true, false, or 'fallback'",
+      "agent.vision must be true, false, 'fallback', or 'only'",
     );
   }
 
@@ -218,7 +218,7 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
  */
 /** True for the closed `vision` value set, wherever it is supplied. */
 export function isVisionMode(value: unknown): value is VisionMode {
-  return typeof value === 'boolean' || value === 'fallback';
+  return typeof value === 'boolean' || value === 'fallback' || value === 'only';
 }
 
 export function isModelInstance(value: unknown): value is ModelInstance {

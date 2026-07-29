@@ -122,7 +122,7 @@ describe('agent-locate-1', () => {
     };
 
     it('accepts a point only when the call offered one', () => {
-      expect(validateLocateResponse(pointResponse, { allowPoint: true })).toEqual({
+      expect(validateLocateResponse(pointResponse, 'nodeOrPoint')).toEqual({
         ok: true,
         value: pointResponse,
       });
@@ -130,9 +130,7 @@ describe('agent-locate-1', () => {
 
     it('rejects a point answered to a tree-only call', () => {
       expect(validateLocateResponse(pointResponse)).toMatchObject({ ok: false });
-      expect(validateLocateResponse(pointResponse, { allowPoint: false })).toMatchObject({
-        ok: false,
-      });
+      expect(validateLocateResponse(pointResponse, 'node')).toMatchObject({ ok: false });
     });
 
     it('requires the observation revision the point answers for', () => {
@@ -143,7 +141,7 @@ describe('agent-locate-1', () => {
             target: { point: { x: 1, y: 2 } },
             explanation: '',
           },
-          { allowPoint: true },
+          'nodeOrPoint',
         ),
       ).toMatchObject({ ok: false });
     });
@@ -166,10 +164,25 @@ describe('agent-locate-1', () => {
               target: { point, revision: 'r3' },
               explanation: '',
             },
-            { allowPoint: true },
+            'nodeOrPoint',
           ),
         ).toMatchObject({ ok: false });
       }
+    });
+
+    it('rejects a node id when no observation was attached', () => {
+      // The point-only grammar means the model was shown no tree, so any
+      // identifier it names is invented — including one that happens to exist.
+      const node = {
+        protocolVersion: 'agent-locate-1',
+        target: { id: 'n1', revision: 'r3' },
+        explanation: '',
+      };
+      expect(validateLocateResponse(node, 'point')).toMatchObject({ ok: false });
+      expect(validateLocateResponse(pointResponse, 'point')).toEqual({
+        ok: true,
+        value: pointResponse,
+      });
     });
 
     it('still rejects a target carrying both a node id and a point', () => {
@@ -180,7 +193,7 @@ describe('agent-locate-1', () => {
             target: { id: 'n1', point: { x: 1, y: 2 }, revision: 'r3' },
             explanation: '',
           },
-          { allowPoint: true },
+          'nodeOrPoint',
         ),
       ).toMatchObject({ ok: false });
     });

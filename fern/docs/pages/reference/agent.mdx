@@ -151,18 +151,57 @@ await agent.tap('the first offer card', { vision: 'fallback' });
 
 | Name | Type | Default |
 | --- | --- | --- |
-| `options.vision` | `boolean \| 'fallback'` | `config.agent.vision`, `false` |
+| `options.vision` | `boolean \| 'fallback' \| 'only'` | `config.agent.vision`, `false` |
 
 | Mode | What the model sees | Cost |
 | --- | --- | --- |
 | `false` | the tree | no image tokens |
 | `true` | the tree and a screenshot, every call | image tokens on every call |
 | `'fallback'` | the tree, then a screenshot only after the tree missed | image tokens only when the tree was not enough |
+| `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
 
 Set `agent.vision` in config to make a mode the project default; a per-call value
 always wins. Images are billed as input tokens, so `true` costs more than the
 same call without it on every call, and `'fallback'` costs nothing extra until
 something actually fails on the tree.
+
+### Judging pixels and nothing else
+
+`vision: true` sends the tree *and* the screenshot, and that is a problem for a
+visual assertion: the tree is a cheaper path to an answer, and the model will take
+it.
+
+```ts
+// Passes on the tree alone: the form is present, enabled, and named — while a
+// consent sheet covers it on screen.
+await agent.assert('the search form is visible and not covered', { vision: true });
+
+// Judged on the screenshot. There is no tree in the request to answer from.
+await agent.assert('the search form is visible and not covered', { vision: 'only' });
+```
+
+Same for a price rendered at `opacity: 0`, a button under a cookie banner, or a
+broken layout — all of which the tree happily reports as fine. Use `'only'` when
+the question is about what the page *presents*; use `true` when the tree is part
+of the answer (`'the submit button is disabled'` is in the tree and often not
+visible at all).
+
+`'only'` is cheaper than `true`, not more expensive: you drop the observation
+bytes. The runner still captures the observation — it hit-tests points and reports
+against it — it just isn't sent. The step records `visionOnly: true` and zero
+`observationBytes`.
+
+Two consequences worth knowing:
+
+- **A locate under `'only'` can only point.** There are no node identifiers the
+  model has seen, so the point-only grammar is the only thing it can answer in.
+  `tap` and `click` work. `type`, `select`, `upload`, `scrollTo`, and `dragTo`
+  reject `'only'` with `POLICY_DENIED` before spending a model call, rather than
+  blind-clicking a coordinate on a node they could have addressed properly.
+- **No pixels means no answer.** If the viewport is pixel-tainted by a secret fill,
+  or masking cannot be proven complete, `'only'` fails with `POLICY_DENIED`. Every
+  other mode degrades to the tree; `'only'` will not answer a question about
+  pixels from the tree instead.
 
 ### Fallback
 

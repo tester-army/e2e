@@ -7,6 +7,7 @@
  */
 
 import type { AgentObservation, AgentPixels } from './observation.ts';
+import type { LocateGrammar } from './protocol.ts';
 
 /** Immutable agent policy version recorded in every model-backed step. */
 export const POLICY_VERSION = 'policy-0.2';
@@ -44,6 +45,13 @@ export interface PromptInput {
   /** Untrusted test-author instruction or condition. */
   readonly instruction: string;
   readonly observation?: AgentObservation | undefined;
+  /**
+   * Leaves the attached screenshot as the only evidence in the request, for
+   * `vision: 'only'`. The observation is still captured — the runner hit-tests
+   * and reports against it — it just does not reach the model, because a tree
+   * sent next to pixels is a cheaper path to an answer than looking.
+   */
+  readonly withholdTree?: boolean | undefined;
   readonly ledger?: string | undefined;
   readonly repair?:
     | {
@@ -58,18 +66,26 @@ export interface PromptInput {
 /** Builds the user message: request first, then clearly fenced untrusted evidence. */
 export function buildPrompt(input: PromptInput): string {
   const sections: string[] = [input.request, '', '<instruction>', input.instruction, '</instruction>'];
-  if (input.observation !== undefined) {
-    sections.push(
-      '',
-      `<observation revision="${input.observation.revision}" viewport="${input.observation.viewport.width}x${input.observation.viewport.height}@${input.observation.viewport.scale}">`,
-      input.observation.text,
-      '</observation>',
-    );
-    if (input.observation.truncated) {
-      sections.push('The observation above was truncated at the resolved byte limit.');
+  const observation = input.observation;
+  if (observation !== undefined) {
+    if (input.withholdTree !== true) {
+      sections.push(
+        '',
+        `<observation revision="${observation.revision}" viewport="${observation.viewport.width}x${observation.viewport.height}@${observation.viewport.scale}">`,
+        observation.text,
+        '</observation>',
+      );
+      if (observation.truncated) {
+        sections.push('The observation above was truncated at the resolved byte limit.');
+      }
     }
-    const pixels = input.observation.pixels;
-    if (pixels !== undefined) sections.push('', describePixels(pixels));
+    const pixels = observation.pixels;
+    if (pixels !== undefined) {
+      sections.push(
+        '',
+        describePixels(pixels, input.withholdTree === true, observation.revision),
+      );
+    }
   }
   if (input.ledger !== undefined && input.ledger !== '') {
     sections.push('', '<ledger>', input.ledger, '</ledger>');
@@ -103,13 +119,25 @@ export function buildPrompt(input: PromptInput): string {
  * "0.5, 0.5" answer is inside a real viewport and would otherwise dispatch
  * silently into the top-left corner.
  */
-function describePixels(pixels: AgentPixels): string {
+function describePixels(
+  pixels: AgentPixels,
+  soleEvidence: boolean,
+  revision: string,
+): string {
   const maxX = Math.max(0, pixels.width - 1);
   const maxY = Math.max(0, pixels.height - 1);
   return [
-    'A screenshot of this same observation revision is attached, ' +
-      `${pixels.width}x${pixels.height} pixels.`,
-    ...(pixels.scale === 1
+    `A screenshot of the current screen is attached, ${pixels.width}x${pixels.height} pixels.`,
+    ...(soleEvidence
+      ? [
+          'It is the only evidence in this request: no accessibility tree is attached, on purpose.',
+          'Answer from what the screenshot shows, and say so when it does not show enough.',
+          // The tree normally carries the revision, and a target has to quote it
+          // so a stale answer is detectable. Without a tree it is stated here.
+          `Its observation revision is "${revision}".`,
+        ]
+      : []),
+    ...(pixels.scale === 1 && !soleEvidence
       ? [
           'It is a CSS-scale capture of the viewport, so its pixels are exactly the CSS pixels the',
           'node geometry above uses.',
@@ -126,27 +154,8 @@ function describePixels(pixels: AgentPixels): string {
   ].join('\n');
 }
 
-/** Request text for node selection. */
-export const LOCATE_REQUEST = [
-  'Select exactly one node from the observation that the instruction refers to.',
-  'Respond with { "protocolVersion": "agent-locate-1", "target": { "id": <the node id exactly as printed after "#", e.g. "n42">, "revision": <observation revision> }, "explanation": <one short sentence: why this node matches> }.',
-  'If no node in the observation matches the instruction, do not guess a close',
-  'substitute: respond with "target": null and set "explanation" to a short',
-  'reason grounded in what the observation actually shows.',
-].join('\n');
-
-/**
- * Request text for node-or-point selection. It is offered only when pixels are
- * attached: a point can be grounded in the screenshot alone, so it must never
- * be an option for a tree-only call.
- */
-export const LOCATE_VISION_REQUEST = [
-  'Select what the instruction refers to, using the observation and the attached screenshot.',
-  '',
-  'Prefer a node from the observation: respond with { "protocolVersion": "agent-locate-1", "target": { "id": <the node id exactly as printed after "#", e.g. "n42">, "revision": <observation revision> }, "explanation": <one short sentence: why this match> }.',
-  'Only when no node in the observation represents the target, but the screenshot shows it,',
-  'point at it instead: { "protocolVersion": "agent-locate-1", "target": { "point": { "x": <pixels>, "y": <pixels> }, "revision": <observation revision> }, "explanation": <one short sentence: what you see there> }.',
-  '',
+/** Where a point goes, shared by every grammar that can return one. */
+const POINT_PLACEMENT = [
   'Where to put a point:',
   '- at the center of the control itself, not of nearby text, an icon, a card, a dialog, or any',
   '  containing box. Aim for the middle of the control and stay off its borders and edges.',
@@ -155,12 +164,59 @@ export const LOCATE_VISION_REQUEST = [
   '  ignore anything dimmed, blurred, or behind it.',
   '- on the candidate the instruction positions ("first", "last", "top", "in the header"): a',
   '  position given in the instruction outranks a better text match elsewhere.',
+];
+
+/** Request text for node selection. */
+const LOCATE_REQUEST = [
+  'Select exactly one node from the observation that the instruction refers to.',
+  'Respond with { "protocolVersion": "agent-locate-1", "target": { "id": <the node id exactly as printed after "#", e.g. "n42">, "revision": <observation revision> }, "explanation": <one short sentence: why this node matches> }.',
+  'If no node in the observation matches the instruction, do not guess a close',
+  'substitute: respond with "target": null and set "explanation" to a short',
+  'reason grounded in what the observation actually shows.',
+].join('\n');
+
+/**
+ * Request text for node-or-point selection, offered only when pixels are
+ * attached alongside the tree.
+ */
+const LOCATE_NODE_OR_POINT_REQUEST = [
+  'Select what the instruction refers to, using the observation and the attached screenshot.',
+  '',
+  'Prefer a node from the observation: respond with { "protocolVersion": "agent-locate-1", "target": { "id": <the node id exactly as printed after "#", e.g. "n42">, "revision": <observation revision> }, "explanation": <one short sentence: why this match> }.',
+  'Only when no node in the observation represents the target, but the screenshot shows it,',
+  'point at it instead: { "protocolVersion": "agent-locate-1", "target": { "point": { "x": <pixels>, "y": <pixels> }, "revision": <observation revision> }, "explanation": <one short sentence: what you see there> }.',
+  '',
+  ...POINT_PLACEMENT,
   '',
   'If neither the observation nor the screenshot shows the target, respond with "target": null and',
   'set "explanation" to a short reason grounded in what they actually show. Do not guess a close',
   'substitute and do not point at something that is merely nearby: reporting no match costs the',
   'test one clear failure, while a wrong point silently acts on the wrong thing.',
 ].join('\n');
+
+/**
+ * Request text when the screenshot is the only evidence. There is no tree to
+ * name a node from, so the answer is a point or nothing.
+ */
+const LOCATE_POINT_REQUEST = [
+  'Point at what the instruction refers to in the attached screenshot.',
+  '',
+  'Respond with { "protocolVersion": "agent-locate-1", "target": { "point": { "x": <pixels>, "y": <pixels> }, "revision": <the observation revision stated with the screenshot> }, "explanation": <one short sentence: what you see there> }.',
+  '',
+  ...POINT_PLACEMENT,
+  '',
+  'If the screenshot does not show the target, respond with "target": null and set "explanation"',
+  'to a short reason grounded in what it does show. Do not point at something that is merely',
+  'nearby: reporting no match costs the test one clear failure, while a wrong point silently acts',
+  'on the wrong thing.',
+].join('\n');
+
+/** The request text of each locate grammar (protocol.ts). */
+export const LOCATE_REQUESTS: Readonly<Record<LocateGrammar, string>> = {
+  node: LOCATE_REQUEST,
+  nodeOrPoint: LOCATE_NODE_OR_POINT_REQUEST,
+  point: LOCATE_POINT_REQUEST,
+};
 
 /** Request text for a boolean judgment. */
 export const JUDGMENT_REQUEST = [

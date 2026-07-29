@@ -93,7 +93,7 @@ export function createFakeModel(
         prompt,
         instruction: section(prompt, 'instruction').trim(),
         observation,
-        revision: /<observation revision="([^"]+)"/.exec(prompt)?.[1] ?? '',
+        revision: promptRevision(prompt),
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
         images: promptImages(options.prompt),
       };
@@ -132,6 +132,19 @@ function promptText(prompt: FakePrompt, role: string): string {
     }
   }
   return parts.join('\n');
+}
+
+/**
+ * The observation revision the request quotes.
+ *
+ * A pixels-only request carries no `<observation>` element, so the revision
+ * travels with the screenshot description instead — a target still has to quote
+ * it, which is what makes a stale answer detectable.
+ */
+function promptRevision(prompt: string): string {
+  const tree = /<observation revision="([^"]+)"/.exec(prompt)?.[1];
+  if (tree !== undefined) return tree;
+  return /observation revision is "([^"]+)"/.exec(prompt)?.[1] ?? '';
 }
 
 /**

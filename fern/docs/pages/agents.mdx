@@ -215,6 +215,28 @@ the screenshot instead, and the runner validates that point, checks what is unde
 it, records both, and taps exactly there. Only `tap` and `click` can act on a
 point; everything else needs a node.
 
+### Judging the screen, not the snapshot
+
+`vision: true` gives the model both, which is wrong for a visual assertion: the
+snapshot is the easier read, so that is what gets read. "The form is visible and
+not covered" is *satisfied* by a snapshot in which the form is present and named,
+even with a consent sheet over it.
+
+```ts
+await agent.assert('the search form is visible and not covered', { vision: 'only' });
+```
+
+`'only'` sends the screenshot and leaves the snapshot out, so there is nothing
+else to answer from. It costs less than `true`, not more. Reach for `true` when
+the snapshot is part of the answer — "the submit button is disabled" lives in the
+snapshot and is often invisible on screen.
+
+A locate under `'only'` can only point, since no node identifiers were shown, so
+`tap` and `click` work and `type`, `select`, `upload`, `scrollTo`, and `dragTo`
+refuse it rather than blind-clicking something they could have addressed. And if
+pixels are unavailable — a tainted viewport after a secret fill — `'only'` fails
+instead of quietly answering from the snapshot.
+
 ### Paying for pixels only when the tree fails
 
 `vision: 'fallback'` is the middle setting. The call runs on the snapshot alone

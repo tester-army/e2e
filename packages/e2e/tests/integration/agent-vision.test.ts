@@ -95,6 +95,31 @@ test('fallback leaves a judgment on the tree', async ({ app, agent }) => {
   await agent.assert('the page has a heading', { vision: 'fallback' });
 });
 
+test('judges on pixels alone, with no tree in the request', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the chart trends upward', { vision: 'only' });
+});
+
+test('taps a drawn target on pixels alone', async ({ agent, web, screen }) => {
+  await web.goto('/canvas');
+  await agent.tap('the red pin on the map', { vision: 'only' });
+  await expect(screen.getByRole('status')).toHaveText('red');
+});
+
+test('refuses pixels-only for a method that needs a node', async ({ app, agent }) => {
+  await app.open();
+  await agent.type('the Email field', 'ada@example.test', { vision: 'only' });
+});
+
+test('fails pixels-only rather than judging the tree after a secret fill', async ({
+  app,
+  agent,
+}) => {
+  await app.open();
+  await agent.type('the Password field', credentials.user('member').password);
+  await agent.assert('the password field looks filled', { vision: 'only' });
+});
+
 test('routes a vision call to the pinned vision model', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the page has a heading', { vision: true });
@@ -104,6 +129,7 @@ test('routes a vision call to the pinned vision model', async ({ app, agent }) =
 
 function respond(call: FakeCall): unknown {
   if (call.schemaName === 'agent-judgment-1') return judgment(true, 'it does');
+  if (call.instruction === 'the Email field') return locateBestMatch(call);
   switch (call.instruction) {
     case 'the red pin on the map':
       return locatePoint(call, RED_PIN, 'a red circle is drawn there and no node describes it');
@@ -190,7 +216,7 @@ describe('agent vision', () => {
 
   it('tells the model the screenshot bounds and forbids relative coordinates', () => {
     const judged = fakeCalls.find((call) => call.instruction === 'the page renders a chart')!;
-    expect(judged.prompt).toMatch(/screenshot of this same observation revision is attached/);
+    expect(judged.prompt).toMatch(/A screenshot of the current screen is attached/);
     expect(judged.prompt).toMatch(/Never return\s+normalized, relative, percentage/);
   });
 
@@ -375,6 +401,66 @@ describe('agent vision', () => {
     expect(step.visionInput).toBeUndefined();
     expect(step.visionEscalated).toBeUndefined();
     expect(step.model!.model).toBe('scripted-text');
+  });
+
+  it('sends pixels alone, with no observation in the request', () => {
+    const title = 'judges on pixels alone, with no tree in the request';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.assert');
+    expect(step.visionOnly).toBe(true);
+    expect(step.visionInput).toBe(true);
+    // The observation is still captured for the report and for hit-testing; it
+    // just contributes nothing to the request, and the metric says so.
+    expect(step.metrics!.observationBytes).toBe(0);
+    expect(step.metrics!.pixelBytes).toBeGreaterThan(0);
+    const judged = fakeCalls.find((call) => call.instruction === 'the chart trends upward')!;
+    expect(judged.images).toHaveLength(1);
+    expect(judged.observation).toBe('');
+    expect(judged.prompt).not.toContain('<observation');
+    expect(judged.prompt).toContain('no accessibility tree is attached, on purpose');
+    // The revision still has to be quoted, so it travels with the pixels.
+    expect(judged.prompt).toMatch(/Its observation revision is "/);
+  });
+
+  it('offers only the pointing grammar when the tree is withheld', () => {
+    const title = 'taps a drawn target on pixels alone';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.tap');
+    expect(step.visionOnly).toBe(true);
+    const call = fakeCalls.find(
+      (candidate) => candidate.instruction === 'the red pin on the map' && candidate.observation === '',
+    )!;
+    expect(call.prompt).toContain('Point at what the instruction refers to');
+    // No node id is namable, so the request must not invite one.
+    expect(call.prompt).not.toContain('the node id exactly as printed');
+    expect(
+      step.events.some(
+        (event) => event.kind === 'driver' && event.name === 'tapPoint' && event.status === 'passed',
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses pixels-only before spending a call, for a node-only method', () => {
+    const title = 'refuses pixels-only for a method that needs a node';
+    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
+    expect(attempt.error!.code).toBe('POLICY_DENIED');
+    expect(attempt.error!.message).toContain('withholds the observation');
+    const step = stepOf(title, 'agent.type');
+    // Denied before the first model call, not after a wasted round.
+    expect(step.metrics!.modelCalls).toBe(0);
+    expect(step.metrics!.actionSteps).toBe(0);
+  });
+
+  it('fails pixels-only when pixels are withheld instead of judging the tree', () => {
+    const title = 'fails pixels-only rather than judging the tree after a secret fill';
+    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
+    expect(attempt.error!.code).toBe('POLICY_DENIED');
+    expect(attempt.error!.message).toContain('PIXEL_TAINTED');
+    const step = stepOf(title, 'agent.assert');
+    expect(step.visionDegraded).toBe('PIXEL_TAINTED');
+    expect(step.visionInput).toBeUndefined();
+    // Nothing was asked of the model: the tree was never an acceptable answer.
+    expect(step.metrics!.modelCalls).toBe(0);
   });
 
   it('sends a vision call to the pinned vision model and others to the main one', () => {

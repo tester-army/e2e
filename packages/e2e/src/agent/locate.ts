@@ -37,12 +37,12 @@ import { Invocation, toAgentError } from './invocation.ts';
 import type { AgentObservation, AgentPixels } from './observation.ts';
 import {
   isNodeTarget,
-  LOCATE_SCHEMA,
-  LOCATE_VISION_SCHEMA,
+  LOCATE_SCHEMAS,
   validateLocateResponse,
+  type LocateGrammar,
   type ProtocolValidation,
 } from './protocol.ts';
-import { LOCATE_REQUEST, LOCATE_VISION_REQUEST } from './prompts.ts';
+import { LOCATE_REQUESTS } from './prompts.ts';
 
 export interface LocatedNode {
   readonly kind: 'node';
@@ -130,15 +130,16 @@ export async function observeAndSelect(
   // driver without pixels) falls back to the semantic grammar, so the model is
   // never invited to point at an image it cannot see.
   const pixels = options.allowPoint ? observation.pixels : undefined;
+  const grammar: LocateGrammar = invocation.treeWithheld
+    ? 'point'
+    : pixels === undefined
+      ? 'node'
+      : 'nodeOrPoint';
   const answer = await invocation.ask({
     schemaName: 'agent-locate-1',
-    schema: pixels === undefined ? LOCATE_SCHEMA : LOCATE_VISION_SCHEMA,
-    validate: (value) => validateAgainstObservation(value, observation, pixels),
-    prompt: {
-      request: pixels === undefined ? LOCATE_REQUEST : LOCATE_VISION_REQUEST,
-      instruction: target,
-      observation,
-    },
+    schema: LOCATE_SCHEMAS[grammar],
+    validate: (value) => validateAgainstObservation(value, observation, grammar, pixels),
+    prompt: { request: LOCATE_REQUESTS[grammar], instruction: target, observation },
   });
   const explanation = answer.explanation;
   if (answer.kind === 'none') {
@@ -197,9 +198,10 @@ type LocateAnswer =
 function validateAgainstObservation(
   value: unknown,
   observation: AgentObservation,
+  grammar: LocateGrammar,
   pixels: AgentPixels | undefined,
 ): ProtocolValidation<LocateAnswer> {
-  const validation = validateLocateResponse(value, { allowPoint: pixels !== undefined });
+  const validation = validateLocateResponse(value, grammar);
   if (!validation.ok) return validation;
   const { target, explanation } = validation.value;
   if (target === null) return { ok: true, value: { kind: 'none', explanation } };
@@ -328,6 +330,7 @@ export async function locateOne<Value = never>(
   target: string,
   options: { testIdAttribute: string; point?: PointPolicy<Value> },
 ): Promise<LocatedNode | Value> {
+  requirePointCapability(invocation, options.point ?? NODE_ONLY);
   try {
     // While an escalation is still available, the first attempt does not spend
     // the clock proving a tree-only pick unresolvable: one sweep, then ask
@@ -345,6 +348,24 @@ export async function locateOne<Value = never>(
     invocation.escalateVision();
     return locateAttempt(invocation, target, { ...options, poll: true });
   }
+}
+
+/**
+ * Rejects `vision: 'only'` for a method that needs a semantic node.
+ *
+ * Withholding the tree leaves a point as the only expressible answer, and this
+ * method has no coordinate equivalent, so the call cannot be satisfied. Failing
+ * before the first model call says that plainly, instead of paying for a round
+ * that can only come back invalid.
+ */
+function requirePointCapability(invocation: Invocation, policy: PointPolicy<unknown>): void {
+  if (!invocation.treeWithheld || policy.allowed) return;
+  throw new AgentError(
+    'POLICY_DENIED',
+    `${invocation.api} acts on a semantic node, but vision: 'only' withholds the observation, ` +
+      'leaving nothing to name a node from; use true or \'fallback\' here, or tap/click for a ' +
+      'target that only pixels can find',
+  );
 }
 
 /**

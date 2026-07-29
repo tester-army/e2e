@@ -113,8 +113,8 @@ Every run writes the canonical JSON report regardless of renderer selection.
 `agent.maxSteps` and `agent.maxModelCalls` are 1 through 100.
 `agent.maxObservationBytes` is 1 KiB through 16 MiB.
 `agent.vision` is the project-wide default for the per-call `vision` option
-(02-test-api.md) and MUST be `true`, `false`, or `"fallback"`. Any mode that can
-send pixels requires a model that accepts image input.
+(02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
+that can send pixels requires a model that accepts image input.
 
 ## Targets and capabilities
 

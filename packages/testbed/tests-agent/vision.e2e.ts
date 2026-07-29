@@ -1,4 +1,4 @@
-import { test, expect } from 'e2e';
+import { test, expect, AgentError } from 'e2e';
 
 /**
  * Dogfoods the vision tier against a surface with no accessibility semantics:
@@ -16,7 +16,9 @@ import { test, expect } from 'e2e';
 test('the agent judges a drawn chart from pixels', async ({ app, agent }) => {
   await app.open('/canvas');
 
-  await agent.assert('the bar chart trends upward from left to right', { vision: true });
+  // 'only' rather than true: the chart is drawn, so the tree describes nothing
+  // relevant and sending it would only offer a cheaper way to guess.
+  await agent.assert('the bar chart trends upward from left to right', { vision: 'only' });
 });
 
 test('the agent taps a drawn map pin', async ({ app, agent, screen }) => {
@@ -30,9 +32,25 @@ test('the agent taps a drawn map pin', async ({ app, agent, screen }) => {
 test('the agent distinguishes two drawn pins', async ({ app, agent, screen }) => {
   await app.open('/canvas');
 
-  await agent.tap('the blue pin in the lower left of the map', { vision: true });
+  // 'only': nothing on this canvas is in the tree, so pointing is the whole job
+  // and the tree would be dead weight in the request.
+  await agent.tap('the blue pin in the lower left of the map', { vision: 'only' });
 
   await expect(screen.getByRole('status')).toHaveText('picked the blue pin');
+});
+
+test('a node-only method refuses pixels-only input', async ({ app, agent }) => {
+  // Withholding the tree leaves a point as the only possible answer, and type
+  // has nothing to do with one. The runner says so before spending a call.
+  await app.open('/todos');
+
+  let denied: unknown;
+  try {
+    await agent.type('the new todo input', 'nope', { vision: 'only' });
+  } catch (error) {
+    denied = error;
+  }
+  expect(denied instanceof AgentError && denied.code).toBe('POLICY_DENIED');
 });
 
 test('a semantic control still resolves to a node under vision', async ({ app, agent, screen }) => {

@@ -65,7 +65,7 @@ export function createAgent(runtime: AgentContext): Agent {
   const resolveVision = (requested: VisionMode | undefined): VisionMode => {
     if (requested === undefined) return runtime.config.agent.vision;
     if (!isVisionMode(requested)) {
-      throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'fallback'");
+      throw new TestError('INVALID_ARGUMENT', "vision must be true, false, 'fallback', or 'only'");
     }
     return requested;
   };

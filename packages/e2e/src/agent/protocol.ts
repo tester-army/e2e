@@ -99,17 +99,28 @@ function locateSchema(targets: readonly JSONSchema7[]): JSONSchema7 {
   };
 }
 
-export const LOCATE_SCHEMA: JSONSchema7 = locateSchema([NODE_TARGET_SCHEMA]);
-
 /**
- * The locate grammar of a vision call. Pointing is a separate grammar rather
- * than an always-available branch so a tree-only call can never be answered
- * with a coordinate.
+ * What a locate response is allowed to name, decided by the evidence the call
+ * carries and by what the calling method can act on.
+ *
+ * These are separate grammars rather than one permissive grammar with runtime
+ * checks, so a call can never be answered in terms it did not offer: a
+ * coordinate to a method that needs a node reference, or a node identifier to a
+ * call that was never shown the tree those identifiers come from.
  */
-export const LOCATE_VISION_SCHEMA: JSONSchema7 = locateSchema([
-  NODE_TARGET_SCHEMA,
-  POINT_TARGET_SCHEMA,
-]);
+export type LocateGrammar =
+  /** The tree is the only evidence, or the caller cannot act on a coordinate. */
+  | 'node'
+  /** Both are available; a node is preferred and a point is the escape hatch. */
+  | 'nodeOrPoint'
+  /** No tree reached the model, so there is nothing to name but a point. */
+  | 'point';
+
+export const LOCATE_SCHEMAS: Readonly<Record<LocateGrammar, JSONSchema7>> = {
+  node: locateSchema([NODE_TARGET_SCHEMA]),
+  nodeOrPoint: locateSchema([NODE_TARGET_SCHEMA, POINT_TARGET_SCHEMA]),
+  point: locateSchema([POINT_TARGET_SCHEMA]),
+};
 
 export const JUDGMENT_SCHEMA: JSONSchema7 = {
   type: 'object',
@@ -123,13 +134,13 @@ export const JUDGMENT_SCHEMA: JSONSchema7 = {
 };
 
 /**
- * Validates one locate response. `allowPoint` mirrors the grammar the call was
- * made under: a point answered to a tree-only call is invalid output, never a
- * silently accepted coordinate.
+ * Validates one locate response against the grammar the call was made under. An
+ * answer outside that grammar is invalid output worth one repair round, never a
+ * silently accepted target.
  */
 export function validateLocateResponse(
   value: unknown,
-  options: { allowPoint?: boolean } = {},
+  grammar: LocateGrammar = 'node',
 ): ProtocolValidation<LocateResponse> {
   const record = asClosedRecord(value, ['protocolVersion', 'target', 'explanation']);
   if (record === null) return fail('response is not an agent-locate-1 object');
@@ -142,7 +153,7 @@ export function validateLocateResponse(
       value: { protocolVersion: 'agent-locate-1', target: null, explanation },
     };
   }
-  const target = validateTarget(record['target'], options.allowPoint === true);
+  const target = validateTarget(record['target'], grammar);
   if (!target.ok) return target;
   return {
     ok: true,
@@ -150,23 +161,33 @@ export function validateLocateResponse(
   };
 }
 
-function validateTarget(value: unknown, allowPoint: boolean): ProtocolValidation<LocateTarget> {
+/** What each grammar says a target may be, for its own rejection message. */
+const TARGET_SHAPES: Readonly<Record<LocateGrammar, string>> = {
+  node: 'target is not a node reference or null',
+  nodeOrPoint: 'target is not a node reference, a point, or null',
+  point: 'target is not a point or null',
+};
+
+function validateTarget(
+  value: unknown,
+  grammar: LocateGrammar,
+): ProtocolValidation<LocateTarget> {
   const node = asClosedRecord(value, ['id', 'revision']);
   if (node !== null) {
+    if (grammar === 'point') {
+      return fail(
+        'no observation was attached, so there are no node identifiers to name; ' +
+          'answer with a point in the screenshot',
+      );
+    }
     const id = asBoundedString(node['id'], 1, REF_MAX_LENGTH);
     const revision = asBoundedString(node['revision'], 1, REF_MAX_LENGTH);
     if (id === null || revision === null) return fail('target id/revision are invalid');
     return { ok: true, value: { id, revision } };
   }
   const pointTarget = asClosedRecord(value, ['point', 'revision']);
-  if (pointTarget === null) {
-    return fail(
-      allowPoint
-        ? 'target is not a node reference, a point, or null'
-        : 'target is not a node reference or null',
-    );
-  }
-  if (!allowPoint) {
+  if (pointTarget === null) return fail(TARGET_SHAPES[grammar]);
+  if (grammar === 'node') {
     return fail('point targets require a vision call; select a node from the observation');
   }
   const revision = asBoundedString(pointTarget['revision'], 1, REF_MAX_LENGTH);

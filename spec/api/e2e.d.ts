@@ -95,26 +95,39 @@ export type AgentParam =
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
 /**
- * When the model is shown a masked screenshot of the current observation, on
- * top of the semantic tree.
+ * What evidence the model is given: the semantic tree, a masked screenshot of
+ * the current observation, or both.
  *
- * - `false` — tree only.
- * - `true` — pixels on every call. Needs a vision-capable model, costs image
- *   tokens on every call, and is the only mode that can judge pixels.
- * - `'fallback'` — pixels only after the accessibility tree turned out not to
- *   describe the target. The cheap tree-only attempt runs first and pixels are
- *   paid for only when it misses.
+ * - `false` — the tree.
+ * - `true` — the tree and a screenshot, on every call.
+ * - `'fallback'` — the tree, escalating to add a screenshot once the tree turns
+ *   out not to describe the target.
+ * - `'only'` — the screenshot, and not the tree.
+ *
+ * `'only'` exists because a tree sent alongside pixels is a cheaper path to an
+ * answer, and a model will take it: asked whether a form is covered by an
+ * overlay, it can read from the tree that the form is present and named and
+ * answer yes, while the pixels show the overlay. For a judgment that is about
+ * what the page presents, the tree is a distractor, so the mode that means it
+ * removes it. It also costs fewer input tokens than `true`, not more.
+ *
+ * A locate under `'only'` can only answer with a screenshot point, since there
+ * are no node identifiers to choose from. Methods that need a semantic node to
+ * hand the driver — `type`, `select`, `upload`, `scrollTo`, `dragTo` — therefore
+ * reject `'only'` with `POLICY_DENIED` rather than acting on a coordinate.
  *
  * `'fallback'` needs a signal that the tree was insufficient, which only a
  * method that locates a target has: the model reporting no match, or no derived
  * query resolving the node it chose. A judgment always produces an answer from
  * the tree, so `'fallback'` leaves `assert`, `waitFor`, and `extract` tree-only;
- * use `true` to have pixels judged.
+ * use `true` or `'only'` to have pixels judged.
  *
- * Pixels are always additive — the tree is sent in every mode — and they
- * degrade away rather than failing the call when they cannot be proven redacted.
+ * In every mode that sends pixels but also the tree, pixel evidence degrades
+ * away rather than failing the call when it cannot be proven redacted. `'only'`
+ * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
+ * answering the wrong question from the tree.
  */
-export type VisionMode = boolean | 'fallback';
+export type VisionMode = boolean | 'fallback' | 'only';
 
 export interface VisionOption {
   vision?: VisionMode;

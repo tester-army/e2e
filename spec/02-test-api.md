@@ -187,22 +187,43 @@ Use `agent.waitFor` for eventually true natural-language conditions.
 
 Every model-backed agent method accepts `vision`, default `false`, with the
 project-wide default in `agent.vision`. A per-call value always wins. It MUST be
-one of three modes:
+one of four modes, which select what evidence the model is given:
 
-- `false` — the semantic tree only.
-- `true` — a masked screenshot of the current observation on every call.
-- `"fallback"` — the tree first, escalating to pixels once, and only after the
-  tree turned out not to describe the target.
-
-Pixels are additive in every mode, never a replacement: the semantic tree is
-always sent, because the tree is byte-budgeted, cheap, and carries the node
-references that keep an action auditable. There is no pixels-only mode.
+- `false` — the semantic tree.
+- `true` — the tree and a masked screenshot of the current observation, on every
+  call.
+- `"fallback"` — the tree first, escalating to add a screenshot once, and only
+  after the tree turned out not to describe the target.
+- `"only"` — the screenshot, and not the tree.
 
 ```ts
 agent.assert('the chart trends upward', { vision: true });
+agent.assert('the search form is not covered by an overlay', { vision: 'only' });
 agent.tap('the red pin on the map', { vision: true });
 agent.tap('the first offer card', { vision: 'fallback' });
 ```
+
+`"only"` exists because a tree sent alongside pixels is a cheaper path to an
+answer than looking at them, and a model will take it: asked whether a form is
+covered, it can read from the tree that the form is present, enabled, and named,
+and answer that it is not, while the pixels show the overlay. A mode that means
+"judge what the page presents" therefore removes the tree from the request rather
+than asking the model to disregard it. It costs fewer input tokens than `true`,
+not more.
+
+Under `"only"` the runner MUST still capture the observation, because it
+hit-tests and reports against it; it MUST NOT include the tree serialization in
+the model request, and the step MUST record that the tree was withheld
+(13-reporting.md). Because there are then no node identifiers the model has seen,
+a locate under `"only"` MUST be sent the point-only response grammar, and a
+method with no coordinate equivalent MUST reject `"only"` with `POLICY_DENIED`
+before its first model call rather than spending one on an unsatisfiable request.
+
+In every mode that sends the tree as well, pixel evidence degrades rather than
+failing the call: when it is withheld the tree is still sent and the step records
+why. `"only"` has nothing to degrade to, so unavailable pixel evidence MUST fail
+the call with `POLICY_DENIED` instead of answering from the tree the caller
+excluded.
 
 `"fallback"` requires a signal that the tree was insufficient, and a locate is
 the only operation that produces one without guessing: the model reports no
@@ -224,13 +245,11 @@ reported image dimensions MUST be the true dimensions of the image bytes, and
 the image MUST record its scale relative to CSS pixels, because every
 coordinate the model reads off it is relative to those dimensions.
 
-`vision` requires a model that accepts image input. A model that does not fails
+Every mode that can send pixels requires a model that accepts image input. A model that does not fails
 the call with `MODEL_PROVIDER_FAILED`. Vision calls use `agent.visionModel` when
 one is configured and `agent.model` otherwise (05-config.md); visual grounding
 is a materially higher bar than accepting an image, and a model may judge pixels
-well while pointing at them badly. Pixel evidence degrades rather than
-failing the call: when it is withheld the tree is still sent and the step
-records why (13-reporting.md). Pixel policy is defined in
+well while pointing at them badly. Pixel policy is defined in
 [14-security.md](./14-security.md).
 
 Vision is also the only tier that may send pixel evidence *to* the model.

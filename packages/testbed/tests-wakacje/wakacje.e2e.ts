@@ -22,9 +22,10 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
   }
   // "not covered" is a property no accessibility tree encodes: a consent sheet
   // or sticky promo that overlays the form leaves it present and named in the
-  // tree while hiding it on screen. This judgment needs the pixels.
+  // tree while hiding it on screen. Sending the tree too would just offer the
+  // cheaper wrong answer, so this judgment gets the pixels and only the pixels.
   await agent.waitFor("the vacation search form asking where to go is visible and not covered", {
-    vision: true,
+    vision: "only",
   });
 
   await agent.tap("the destination search field asking where you want to go");
@@ -65,11 +66,11 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent }) =>
   );
 
   // Funnel boundary: verify the booking entry point exists, never enter it.
-  // Judged on pixels because the check is about what the page actually presents
-  // — a price rendered into a promo image, a button under a cookie banner — not
-  // about which nodes exist.
+  // Judged on pixels alone because the check is about what the page actually
+  // presents — a price rendered into a promo image, a button under a cookie
+  // banner — not about which nodes exist.
   await agent.assert(
     "the offer page shows a booking or availability button and a total price, and no reservation form has been submitted",
-    { vision: true },
+    { vision: "only" },
   );
 });

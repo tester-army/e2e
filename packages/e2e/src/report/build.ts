@@ -80,6 +80,7 @@ export interface ReportStep {
   visionInput?: boolean | undefined;
   visionDegraded?: VisionDegradation | undefined;
   visionEscalated?: boolean | undefined;
+  visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
   events: readonly StepEvent[];

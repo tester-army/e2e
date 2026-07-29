@@ -217,6 +217,7 @@
         "visionInput": { "type": "boolean" },
         "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"] },
         "visionEscalated": { "type": "boolean" },
+        "visionOnly": { "type": "boolean" },
         "viewport": {
           "type": "object",
           "additionalProperties": false,
