@@ -98,12 +98,17 @@ export class DebugTrace {
   }
 }
 
-/** Renders one aligned table: first column left-aligned, the rest right-aligned. */
+/**
+ * Renders one aligned table. The first column is left-aligned and the rest are
+ * right-aligned, which suits numbers; `leftAligned` names any further columns
+ * that hold prose and would be unreadable pushed to the right.
+ */
 export function table(
   title: string,
   header: readonly string[],
   rows: readonly (readonly string[])[],
   empty: string,
+  leftAligned: ReadonlySet<number> = new Set(),
 ): string {
   const widths = header.map((label, column) =>
     Math.max(label.length, ...rows.map((row) => row[column]?.length ?? 0)),
@@ -111,9 +116,12 @@ export function table(
   const line = (row: readonly string[]): string =>
     `  ${row
       .map((cell, column) =>
-        column === 0 ? cell.padEnd(widths[column] ?? 0) : cell.padStart(widths[column] ?? 0),
+        column === 0 || leftAligned.has(column)
+          ? cell.padEnd(widths[column] ?? 0)
+          : cell.padStart(widths[column] ?? 0),
       )
-      .join('  ')}`;
+      .join('  ')
+      .trimEnd()}`;
   const body = rows.length === 0 ? [`  ${empty}`] : rows.map(line);
   return [title, line(header), ...body, ''].join('\n');
 }

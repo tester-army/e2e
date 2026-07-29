@@ -82,7 +82,7 @@ export function canonicalJson(value: unknown): string {
       }
       const entries = Object.entries(value as Record<string, unknown>)
         .filter(([, v]) => v !== undefined)
-        .toSorted(([a], [b]) => compareUtf16(a, b));
+        .toSorted(([a], [b]) => compareStrings(a, b));
       return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
     }
     default:
@@ -90,7 +90,12 @@ export function canonicalJson(value: unknown): string {
   }
 }
 
-function compareUtf16(a: string, b: string): number {
+/**
+ * Orders strings by UTF-16 code unit, the ordering RFC 8785 requires. Locale
+ * collation must never be used here: it is environment-dependent, and a digest
+ * that depends on the host locale is not canonical.
+ */
+export function compareStrings(a: string, b: string): number {
   if (a === b) return 0;
   return a < b ? -1 : 1;
 }

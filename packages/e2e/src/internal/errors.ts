@@ -2,6 +2,11 @@
 
 import { DriverError } from '../driver/index.ts';
 
+/** Message of an arbitrary thrown value, for diagnostics that must not throw. */
+export function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 export type ErrorCategory =
   | 'test'
   | 'configuration'
@@ -183,12 +188,7 @@ export function translateDriverError(cause: unknown, suffix = ''): E2EError {
         return new E2EError('infrastructure', 'DRIVER_FAILURE', cause.message, { cause });
     }
   }
-  return new E2EError(
-    'infrastructure',
-    'DRIVER_FAILURE',
-    cause instanceof Error ? cause.message : String(cause),
-    { cause },
-  );
+  return new E2EError('infrastructure', 'DRIVER_FAILURE', errorMessage(cause), { cause });
 }
 
 /** Classifies an arbitrary thrown value into an E2EError; unknown values become test failures. */
