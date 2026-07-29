@@ -28,6 +28,7 @@ import type { AgentErrorCode, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
 import { serializeLedger, type LedgerContext } from './ledger.ts';
 import {
+  imageTokenUpperBound,
   ModelOutputInvalidError,
   tokenUpperBound,
   type ModelAdapter,
@@ -92,12 +93,20 @@ const INSTRUCTION_RESERVE = 4_096;
 
 /**
  * Headroom reserved for one attached screenshot on a vision call, in the same
- * units. The exact cost is only known once the observation reports its
- * viewport, which is after the observation budget must be fixed, so a vision
- * call reserves enough for a large desktop viewport: 1920x1080 CSS pixels
- * bounds to 2,691 by `imageTokenUpperBound`.
+ * units.
+ *
+ * The exact cost is only known once the observation reports its viewport, which
+ * is after the observation budget has to be fixed, so this reserves for the
+ * largest viewport worth planning for. It is derived through the same function
+ * the adapter bills with, rather than guessed, so the two cannot drift: a
+ * hard-coded 4,096 was already short of a 1440p capture at 4,784.
+ *
+ * Reserving too much only costs observation bytes when the per-call token ceiling
+ * binds, and there a truncated tree the model can see is better than the
+ * adapter's pre-flight rejecting the call outright. A viewport beyond this is
+ * still safe for that reason: the pre-flight computes the real figure.
  */
-const PIXEL_RESERVE = 4_096;
+const PIXEL_RESERVE = imageTokenUpperBound({ width: 2_560, height: 1_440 });
 
 /** One instrumented phase: the event kind it records and the debug bucket it feeds. */
 interface PhaseSpec {

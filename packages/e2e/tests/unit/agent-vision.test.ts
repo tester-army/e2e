@@ -215,3 +215,20 @@ describe('imageTokenUpperBound', () => {
     expect(imageTokenUpperBound({ width: 1920, height: 1080 })).toBeLessThan(4_096);
   });
 });
+
+describe('pixel token reserve', () => {
+  it('covers every viewport through 1440p', () => {
+    // The reserve exists so the observation budget leaves room for the image.
+    // Under-reserving does not truncate, it makes the adapter pre-flight reject
+    // the whole call, so the reserve must not be smaller than a real capture.
+    const RESERVE = imageTokenUpperBound({ width: 2_560, height: 1_440 });
+    for (const viewport of [
+      { width: 1_280, height: 720 },
+      { width: 1_366, height: 768 },
+      { width: 1_920, height: 1_080 },
+      { width: 2_560, height: 1_440 },
+    ]) {
+      expect(imageTokenUpperBound(viewport)).toBeLessThanOrEqual(RESERVE);
+    }
+  });
+});
