@@ -51,7 +51,8 @@ export interface TargetProvenance {
 
 /** One target's resolved runtime provenance, as reported by `runtime()`. */
 export interface TargetRuntimeProvenance {
-  readonly viewport: { width: number; height: number; scale: number };
+  /** Absent when the backend could not resolve device geometry. */
+  readonly viewport?: { width: number; height: number; scale: number };
   readonly browserVersion?: string;
   readonly device?: string;
   readonly os?: string;

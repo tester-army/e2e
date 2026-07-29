@@ -41,6 +41,10 @@
     "./internal": {
       "types": "./dist/internal/index.d.ts",
       "default": "./dist/internal/index.js"
+    },
+    "./agent-device": {
+      "types": "./dist/agent-device/index.d.ts",
+      "default": "./dist/agent-device/index.js"
     }
   },
   "bin": {
@@ -70,6 +74,7 @@
     "@e2edev/playwright": "workspace:*",
     "@types/json-schema": "7.0.15",
     "@types/node": "26.1.1",
+    "agent-device": "0.20.2",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",
@@ -77,5 +82,13 @@
   },
   "engines": {
     "node": ">=20.19.0"
+  },
+  "peerDependencies": {
+    "agent-device": "^0.20.2"
+  },
+  "peerDependenciesMeta": {
+    "agent-device": {
+      "optional": true
+    }
   }
 }

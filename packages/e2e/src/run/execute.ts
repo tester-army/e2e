@@ -407,8 +407,11 @@ export class TargetExecutor implements SerialHost {
       const runtime = await driverSession.runtime(
         this.op(attemptId, this.config.launchTimeout, signal),
       );
+      // A non-positive viewport means the backend could not resolve device
+      // geometry. It is omitted rather than published as zeros.
+      const resolvedViewport = runtime.viewport.width > 0 && runtime.viewport.height > 0;
       this.options.events.onRuntime({
-        viewport: { ...runtime.viewport },
+        ...(resolvedViewport ? { viewport: { ...runtime.viewport } } : {}),
         ...(runtime.browser !== undefined ? { browserVersion: runtime.browser.version } : {}),
         ...(runtime.device !== undefined
           ? { device: runtime.device.name, os: runtime.device.os }

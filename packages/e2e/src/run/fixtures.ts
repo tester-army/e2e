@@ -321,8 +321,9 @@ function createDevice(environment: AttemptEnvironment, engine: LocatorEngine): D
 }
 
 /**
- * Returns the base URL the web capability requires. Absence means a mobile-only
- * config produced a web fixture, which config resolution prevents.
+ * Returns the base URL the web capability requires. It is resolved per call
+ * rather than when the fixture is built, because every attempt builds the web
+ * fixture eagerly while a mobile target never uses it.
  */
 function requireWebBase(config: ResolvedConfig): NormalizedBaseUrl {
   const base = config.app.base;
@@ -343,9 +344,9 @@ function createWeb(
 ): Web {
   const { config, steps } = environment;
   const allowed = config.app.allowedOrigins;
-  // The web capability exists only for a web target, and config resolution
-  // requires a base URL whenever any target is a web target.
-  const base = requireWebBase(config);
+  // Lazy: a mobile attempt builds this fixture too, and must not fail merely
+  // for having no base URL when no web method is ever called.
+  const base = () => requireWebBase(config);
 
   const driverWeb = () => {
     const web = engine.session.web;
@@ -361,7 +362,7 @@ function createWeb(
   const web: Web = {
     async goto(url, options): Promise<void> {
       await steps.run('web', 'web.goto', url, async () => {
-        const resolved = resolveNavigationUrl(url, base, allowed).url;
+        const resolved = resolveNavigationUrl(url, base(), allowed).url;
         await driverWeb().goto(resolved, options?.waitUntil, engine.operation(options?.timeout ?? config.timeout));
         opened.value = true;
       });
@@ -393,7 +394,7 @@ function createWeb(
         const deadline = engine.deadline(options?.timeout ?? config.assertionTimeout);
         for (;;) {
           const current = await driverWeb().url(engine.operation());
-          if (urlMatches(current, url, base)) return;
+          if (urlMatches(current, url, base())) return;
           if (deadline.expired()) {
             throw new TestError(
               'ASSERTION_FAILED',
@@ -495,7 +496,7 @@ function createWeb(
       await steps.run('web', 'web.setCookies', `${cookies.length} cookie(s)`, async () => {
         for (const cookie of cookies) {
           const originSource =
-            cookie.url ?? `${base.origin.startsWith('https') ? 'https' : 'http'}://${cookie.domain?.replace(/^\./, '')}`;
+            cookie.url ?? `${base().origin.startsWith('https') ? 'https' : 'http'}://${cookie.domain?.replace(/^\./, '')}`;
           let origin: string;
           try {
             origin = new URL(originSource).origin;
@@ -584,7 +585,11 @@ function createWeb(
   };
 
   registerWebExpectTarget(web, {
-    base,
+    // Resolved here: registration happens only for an attempt that has a web
+    // capability, and a web target always has a base URL.
+    get base() {
+      return base();
+    },
     assertionTimeout: config.assertionTimeout,
     signal: environment.signal,
     url: () => driverWeb().url(engine.operation()),

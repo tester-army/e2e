@@ -13,6 +13,7 @@
  * Third-party drivers should depend only on `e2e/driver`.
  */
 
+export { causeMessage, sanitizeFilename } from './driver-text.ts';
 export { InfrastructureError } from './errors.ts';
 export { packageVersion } from './package-version.ts';
 export { matchesText } from './text.ts';
