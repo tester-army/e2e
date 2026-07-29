@@ -147,6 +147,91 @@ describe('agent-locate-1', () => {
     expect(validateLocateResponse([])).toMatchObject({ ok: false });
     expect(validateLocateResponse('agent-locate-1')).toMatchObject({ ok: false });
   });
+
+  describe('point targets', () => {
+    const pointResponse = {
+      protocolVersion: 'agent-locate-1',
+      target: { point: { x: 412, y: 268 }, revision: 'r3' },
+      explanation: 'the red pin is drawn there',
+    };
+
+    it('accepts a point only when the call offered one', () => {
+      expect(validateLocateResponse(pointResponse, 'nodeOrPoint')).toEqual({
+        ok: true,
+        value: { ...pointResponse, positional: false },
+      });
+    });
+
+    it('rejects a point answered to a tree-only call', () => {
+      expect(validateLocateResponse(pointResponse)).toMatchObject({ ok: false });
+      expect(validateLocateResponse(pointResponse, 'node')).toMatchObject({ ok: false });
+    });
+
+    it('requires the observation revision the point answers for', () => {
+      expect(
+        validateLocateResponse(
+          {
+            protocolVersion: 'agent-locate-1',
+            target: { point: { x: 1, y: 2 } },
+            explanation: '',
+          },
+          'nodeOrPoint',
+        ),
+      ).toMatchObject({ ok: false });
+    });
+
+    it('rejects malformed, negative, and non-finite coordinates', () => {
+      const bad = [
+        { x: 1 },
+        { x: 1, y: 2, z: 3 },
+        { x: -1, y: 2 },
+        { x: 1, y: Number.NaN },
+        { x: 1, y: Number.POSITIVE_INFINITY },
+        { x: '1', y: '2' },
+        { x: 100_001, y: 0 },
+      ];
+      for (const point of bad) {
+        expect(
+          validateLocateResponse(
+            {
+              protocolVersion: 'agent-locate-1',
+              target: { point, revision: 'r3' },
+              explanation: '',
+            },
+            'nodeOrPoint',
+          ),
+        ).toMatchObject({ ok: false });
+      }
+    });
+
+    it('rejects a node id when no observation was attached', () => {
+      // The point-only grammar means the model was shown no tree, so any
+      // identifier it names is invented — including one that happens to exist.
+      const node = {
+        protocolVersion: 'agent-locate-1',
+        target: { id: 'n1', revision: 'r3' },
+        explanation: '',
+      };
+      expect(validateLocateResponse(node, 'point')).toMatchObject({ ok: false });
+      expect(validateLocateResponse(pointResponse, 'point')).toEqual({
+        ok: true,
+        value: { ...pointResponse, positional: false },
+      });
+    });
+
+    it('still rejects a target carrying both a node id and a point', () => {
+      expect(
+        validateLocateResponse(
+          {
+            protocolVersion: 'agent-locate-1',
+            target: { id: 'n1', point: { x: 1, y: 2 }, revision: 'r3' },
+            explanation: '',
+          },
+          'nodeOrPoint',
+        ),
+      ).toMatchObject({ ok: false });
+    });
+  });
 });
 
 describe('agent-judgment-1', () => {

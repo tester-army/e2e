@@ -25,11 +25,19 @@ import {
   type StepModelInfo,
   type StepRecord,
   type StepRecorder,
+  type VisionDegradation,
 } from '../run/steps.ts';
-import type { AgentErrorCode } from '../types.ts';
+import type { AgentErrorCode, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
 import { serializeLedger, type LedgerContext } from './ledger.ts';
-import { ModelOutputInvalidError, tokenUpperBound, type ModelAdapter } from './model/adapter.ts';
+import {
+  imageTokenUpperBound,
+  ModelOutputInvalidError,
+  tokenUpperBound,
+  type ModelAdapter,
+  type ModelImage,
+} from './model/adapter.ts';
+import type { ModelRouter } from './model/router.ts';
 import { prepareObservation, type AgentObservation } from './observation.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
@@ -63,7 +71,8 @@ export interface AgentCacheContext {
 export interface AgentContext {
   readonly engine: LocatorEngine;
   readonly steps: StepRecorder;
-  readonly adapter: ModelAdapter;
+  /** Chooses the model for a call; a vision call may use a pinned one. */
+  readonly models: ModelRouter;
   readonly config: ResolvedConfig;
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
@@ -93,12 +102,40 @@ export interface InvocationOptions {
   readonly maxActionSteps: number;
   /** `false` disables the cache for this call; it can never upgrade the mode. */
   readonly cache: boolean;
+  /**
+   * Whether masked viewport pixels travel alongside the semantic tree.
+   * Additive in every mode: the tree is always sent, and pixel evidence
+   * degrades away under taint or unprovable masking rather than failing the
+   * call. `'fallback'` starts tree-only and can be escalated once, by a caller
+   * that has a signal the tree was not enough.
+   */
+  readonly vision: VisionMode;
 }
 
 const MAX_OUTPUT_TOKENS = 2048;
 
-/** Headroom reserved for the method instruction and parameters. */
-const INSTRUCTION_RESERVE_BYTES = 4_096;
+/**
+ * Headroom reserved for the method instruction and parameters, in the
+ * byte-scaled units `tokenUpperBound` works in.
+ */
+const INSTRUCTION_RESERVE = 4_096;
+
+/**
+ * Headroom reserved for one attached screenshot on a vision call, in the same
+ * units.
+ *
+ * The exact cost is only known once the observation reports its viewport, which
+ * is after the observation budget has to be fixed, so this reserves for the
+ * largest viewport worth planning for. It is derived through the same function
+ * the adapter bills with, rather than guessed, so the two cannot drift: a
+ * hard-coded 4,096 was already short of a 1440p capture at 4,784.
+ *
+ * Reserving too much only costs observation bytes when the per-call token ceiling
+ * binds, and there a truncated tree the model can see is better than the
+ * adapter's pre-flight rejecting the call outright. A viewport beyond this is
+ * still safe for that reason: the pre-flight computes the real figure.
+ */
+const PIXEL_RESERVE = imageTokenUpperBound({ width: 2_560, height: 1_440 });
 
 /** One instrumented phase: the event kind it records and the debug bucket it feeds. */
 interface PhaseSpec {
@@ -140,18 +177,37 @@ export class Invocation {
    * reporting a bypass for it would imply the cache could have helped.
    */
   private cacheInfo: StepCacheInfo | undefined;
+  private visionInput = false;
+  private visionDegraded: VisionDegradation | undefined;
+  /**
+   * Whether pixels are currently part of this invocation's requests.
+   *
+   * It is the one piece of invocation state that moves: `'fallback'` starts on
+   * the tree and is escalated at most once, so both the observation request and
+   * the model choice follow from a single value instead of each deriving the
+   * tier for itself.
+   */
+  private pixelTier: boolean;
+  private visionEscalated = false;
 
   constructor(
     private readonly runtime: AgentContext,
     private readonly options: InvocationOptions,
   ) {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
+    this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = buildSystem(options.task, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
-      `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
+      () =>
+        `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
         `(timeout ${options.timeoutMs}ms, budget ${options.maxModelCalls} calls, ledger ${this.ledger.bytes}B)`,
     );
+  }
+
+  /** Public API name of the method being run, e.g. `agent.tap`. */
+  get api(): string {
+    return this.options.api;
   }
 
   get engine(): LocatorEngine {
@@ -160,11 +216,6 @@ export class Invocation {
 
   get session(): DriverSession {
     return this.runtime.engine.session;
-  }
-
-  /** Public API name of the call this invocation serves, e.g. `agent.tap`. */
-  get api(): string {
-    return this.options.api;
   }
 
   /** Attempt-scoped cache identity and storage. Check `cacheBypass` first. */
@@ -211,7 +262,7 @@ export class Invocation {
    */
   bypassCache(reason: string): undefined {
     this.cacheInfo = { status: 'bypassed', reason };
-    agentTrace(`cache: bypassed — ${reason}`);
+    agentTrace(() => `cache: bypassed — ${reason}`);
     return undefined;
   }
 
@@ -223,6 +274,51 @@ export class Invocation {
    */
   cacheReplay<Value>(body: () => Promise<Value>): Promise<Value> {
     return this.instrument({ kind: 'driver', phase: 'agent.cache', name: CACHE_REPLAY_EVENT }, body);
+  }
+
+  /**
+   * The model this invocation talks to. It follows the pixel tier, so an
+   * escalated fallback invocation asks the pinned vision model — the reason
+   * for escalating is that the cheaper model's tree-only answer missed.
+   */
+  private get adapter(): ModelAdapter {
+    return this.runtime.models.select(this.pixelTier);
+  }
+
+  /**
+   * Whether the semantic tree reaches the model.
+   *
+   * `'only'` withholds it: a tree sent next to pixels is a cheaper path to an
+   * answer than looking at them. The observation is still captured, because the
+   * runner hit-tests and reports against it.
+   */
+  get treeWithheld(): boolean {
+    return this.options.vision === 'only';
+  }
+
+  /**
+   * True while this invocation may still be escalated to pixels.
+   *
+   * Only a caller holding a signal that the tree was insufficient may escalate,
+   * and only once: a second miss with pixels attached is a real miss, not a
+   * reason to keep spending the budget.
+   */
+  canEscalateVision(): boolean {
+    return this.options.vision === 'fallback' && !this.pixelTier && this.canAsk();
+  }
+
+  /**
+   * Attaches pixels to every following request of this invocation.
+   *
+   * Recorded on the step because it changes what the model saw and, when a
+   * vision model is pinned, which model answered.
+   */
+  escalateVision(): void {
+    if (this.pixelTier) return;
+    this.pixelTier = true;
+    this.visionEscalated = true;
+    this.recordPolicy('vision.escalate', 'allowed');
+    agentTrace(() => `${this.options.api} escalating to pixel evidence after a tree-only miss`);
   }
 
   /**
@@ -251,7 +347,8 @@ export class Invocation {
         ...eventDetail,
       });
       agentTrace(
-        `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
+        () =>
+          `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
           `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
           `${eventDetail?.bytes !== undefined ? ` bytes=${eventDetail.bytes}` : ''}`,
       );
@@ -266,7 +363,8 @@ export class Invocation {
         code: errorCode(cause),
       });
       agentTrace(
-        `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
+        () =>
+          `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
           `${errorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
       );
       throw toAgentError(cause);
@@ -278,10 +376,11 @@ export class Invocation {
   /** Captures and redacts one fresh observation. */
   async observe(): Promise<AgentObservation> {
     this.checkDeadline();
+    const pixels = this.pixelsRequested();
     const observation = await this.instrument(
       { kind: 'observation', phase: 'agent.observe' },
       async () => {
-        const raw = await this.session.observe(this.operation());
+        const raw = await this.session.observe(this.operation(), { pixels });
         return prepareObservation(raw, {
           secrets: this.runtime.secretValues,
           maxBytes: this.observationByteBudget(),
@@ -290,15 +389,67 @@ export class Invocation {
       },
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
-    this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+    // Bytes the request carried, so a withheld tree reads as the zero it is.
+    if (!this.treeWithheld) {
+      this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+    }
     this.observationRevision = observation.revision;
+    if (pixels) this.recordPixels(observation);
     observationTrace(
-      `${this.options.api} ${observation.revision} (${observation.nodes.size} nodes, ${observation.bytes}B${
-        observation.truncated ? ', truncated' : ''
-      })`,
+      () =>
+        `${this.options.api} ${observation.revision} (${observation.nodes.size} nodes, ${observation.bytes}B${
+          observation.truncated ? ', truncated' : ''
+        }${describePixels(observation)})`,
       observation.text,
     );
     return observation;
+  }
+
+  /**
+   * Whether this observation should carry pixels. A tainted viewport degrades
+   * the call to tree-only input instead of failing it: the tree is still fully
+   * redacted, and only the unprovable evidence is dropped.
+   */
+  private pixelsRequested(): boolean {
+    if (!this.pixelTier) return false;
+    if (this.runtime.taint.value) {
+      this.loseVision('PIXEL_TAINTED');
+      return false;
+    }
+    return true;
+  }
+
+  /** Records whether requested pixels actually became model input. */
+  private recordPixels(observation: AgentObservation): void {
+    const pixels = observation.pixels;
+    if (pixels === undefined) {
+      this.loseVision(observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY');
+      return;
+    }
+    this.visionInput = true;
+    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, pixels.bytes);
+    this.recordPolicy('vision.pixels', 'allowed');
+  }
+
+  /**
+   * Records that requested pixels did not become model input.
+   *
+   * Every mode that also sends the tree degrades to it. `'only'` has nothing to
+   * degrade to: continuing would answer a question about what the page presents
+   * from the tree the caller deliberately excluded, so it fails instead.
+   */
+  private loseVision(code: VisionDegradation): void {
+    if (this.visionDegraded !== code) {
+      this.visionDegraded = code;
+      this.recordPolicy('vision.pixels', 'denied', code);
+    }
+    if (this.options.vision !== 'only') return;
+    throw new AgentError(
+      'POLICY_DENIED',
+      `${this.options.api} was called with vision: 'only', so the screenshot is its only ` +
+        `evidence, but pixel evidence is unavailable (${code}); it will not answer from the ` +
+        'semantic tree instead',
+    );
   }
 
   /**
@@ -311,8 +462,15 @@ export class Invocation {
    */
   private observationByteBudget(): number {
     const { config } = this.runtime;
+    // Nothing of the tree reaches the request, so the per-call token ceiling
+    // does not bind it. The configured ceiling still bounds the walk, and a
+    // fuller node map means a better hit-test for the point that comes back.
+    if (this.treeWithheld) return config.agent.maxObservationBytes;
     const overhead =
-      tokenUpperBound(this.system) + this.ledger.bytes + INSTRUCTION_RESERVE_BYTES;
+      tokenUpperBound(this.system) +
+      this.ledger.bytes +
+      INSTRUCTION_RESERVE +
+      (this.pixelTier ? PIXEL_RESERVE : 0);
     const withinTokenCeiling = Math.max(1_024, config.limits.maxModelTokensPerCall - overhead);
     return Math.min(config.agent.maxObservationBytes, withinTokenCeiling);
   }
@@ -336,16 +494,21 @@ export class Invocation {
       this.consumeModelCall();
       const prompt = buildPrompt({
         ...request.prompt,
+        ...(this.treeWithheld ? { withholdTree: true } : {}),
         ledger: this.ledger.text,
         ...(repair === undefined ? {} : { repair }),
       });
+      // Pixels travel with the observation they were captured for, so the
+      // image and the tree in one request always describe one revision.
+      const images = imagesFor(request.prompt.observation);
       try {
         const result = await this.instrument(
           { kind: 'model', phase: 'agent.model', name: request.schemaName },
           () =>
-            this.runtime.adapter.generate({
+            this.adapter.generate({
               system: this.system,
               prompt,
+              ...(images === undefined ? {} : { images }),
               schemaName: request.schemaName,
               schema: request.schema,
               validate: request.validate,
@@ -367,7 +530,7 @@ export class Invocation {
           !this.deadline.expired()
         ) {
           this.recordSchemaRejection(request.schemaName);
-          agentTrace(`${this.options.api} repair round: ${cause.explanation}`);
+          agentTrace(() => `${this.options.api} repair round: ${cause.explanation}`);
           repair = {
             issue: cause.explanation,
             rawText: cause.rawText,
@@ -447,6 +610,11 @@ export class Invocation {
     }
   }
 
+  /** True once any driver action of this invocation has been dispatched. */
+  get dispatched(): boolean {
+    return this.metrics.actionSteps > 0;
+  }
+
   /** True while the model-call budget and deadline still allow one more call. */
   canAsk(): boolean {
     return this.metrics.modelCalls < this.options.maxModelCalls && !this.deadline.expired();
@@ -471,11 +639,15 @@ export class Invocation {
         ? { observationRevision: this.observationRevision }
         : {}),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
+      ...(this.visionInput ? { visionInput: true } : {}),
+      ...(this.visionEscalated ? { visionEscalated: true } : {}),
+      ...(this.treeWithheld ? { visionOnly: true } : {}),
+      ...(this.visionDegraded !== undefined ? { visionDegraded: this.visionDegraded } : {}),
     });
   }
 
   private modelInfo(): StepModelInfo {
-    const provenance = this.runtime.adapter.provenance;
+    const provenance = this.adapter.provenance;
     return {
       provider: provenance.provider,
       model: provenance.model,
@@ -540,6 +712,31 @@ export function toAgentError(cause: unknown): AgentError {
     return new AgentError('APP_UNREACHABLE', classified.message, { cause });
   }
   return new AgentError('ACTION_FAILED', classified.message, { cause });
+}
+
+/** Trace fragment describing what pixel evidence an observation carried. */
+function describePixels(observation: AgentObservation): string {
+  if (observation.pixels !== undefined) {
+    const { width, height, bytes, maskedRegionCount } = observation.pixels;
+    return `, pixels ${width}x${height} ${bytes}B, ${maskedRegionCount} masked`;
+  }
+  return observation.pixelsWithheld === undefined
+    ? ''
+    : `, pixels withheld (${observation.pixelsWithheld})`;
+}
+
+/** Image parts for one request, derived from the observation it quotes. */
+function imagesFor(observation: AgentObservation | undefined): readonly ModelImage[] | undefined {
+  const pixels = observation?.pixels;
+  if (pixels === undefined) return undefined;
+  return [
+    {
+      data: pixels.data,
+      mediaType: pixels.mediaType,
+      width: pixels.width,
+      height: pixels.height,
+    },
+  ];
 }
 
 function errorCode(cause: unknown): string {

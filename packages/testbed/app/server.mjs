@@ -28,6 +28,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/dialogs">Dialogs</a>
     <a href="/frames">Frames</a>
     <a href="/board">Board</a>
+    <a href="/canvas">Canvas</a>
     <a href="/downloads">Downloads</a>
   </nav>
   ${body}
@@ -344,6 +345,51 @@ const pages = {
          document.getElementById('save-note').addEventListener('click', () => {
            document.querySelector('output').textContent =
              'saved: ' + document.getElementById('note').value;
+         });
+       </script>`,
+    ),
+
+  // A canvas surface with no accessibility semantics whatsoever: the pins and
+  // the bar chart exist only as pixels. Nothing here is reachable through the
+  // semantic tree, so this page is what the vision tier is dogfooded against.
+  '/canvas': () =>
+    layout(
+      'Canvas map',
+      `<h1>Canvas map</h1>
+       <p>Every control below is drawn, not marked up.</p>
+       <canvas id="map" width="480" height="260"></canvas>
+       <output id="picked" role="status" aria-label="Picked">nothing picked</output>
+       <script>
+         const canvas = document.getElementById('map');
+         const context = canvas.getContext('2d');
+         const pins = [
+           { name: 'red', x: 360, y: 70, color: '#d92b2b' },
+           { name: 'blue', x: 110, y: 190, color: '#2b56d9' },
+         ];
+         // An upward-trending bar chart, for judgment assertions about pixels.
+         const bars = [30, 55, 70, 110, 150, 190];
+         context.fillStyle = '#f4f4f5';
+         context.fillRect(0, 0, 480, 260);
+         context.fillStyle = '#9ca3af';
+         bars.forEach((height, index) => {
+           context.fillRect(24 + index * 34, 240 - height, 24, height);
+         });
+         for (const pin of pins) {
+           context.fillStyle = pin.color;
+           context.beginPath();
+           context.arc(pin.x, pin.y, 16, 0, Math.PI * 2);
+           context.fill();
+         }
+         canvas.addEventListener('click', (event) => {
+           const box = canvas.getBoundingClientRect();
+           const x = event.clientX - box.left;
+           const y = event.clientY - box.top;
+           const picked = pins.find(
+             (pin) => Math.hypot(pin.x - x, pin.y - y) <= 20,
+           );
+           document.getElementById('picked').textContent = picked
+             ? 'picked the ' + picked.name + ' pin'
+             : 'missed at ' + Math.round(x) + ',' + Math.round(y);
          });
        </script>`,
     ),

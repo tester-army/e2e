@@ -57,8 +57,6 @@ export async function openLocateCache(
   observation: AgentObservation,
   params: LocateCacheParams,
 ): Promise<OpenLocateCache | undefined> {
-  const bypass = invocation.cacheBypass;
-  if (bypass !== undefined) return invocation.bypassCache(bypass);
   const context = invocation.cacheContext;
 
   // Order matters and is therefore explicit: the occurrence index is consumed
@@ -117,7 +115,7 @@ async function consult(
       ...bytesOf(result.bytes),
     });
     invocation.recordPolicy('cache.entry', 'denied', 'CACHE_INVALID');
-    agentTrace(`cache: ignored invalid entry ${keyHash.slice(0, 12)} — ${result.reason}`);
+    agentTrace(() => `cache: ignored invalid entry ${keyHash.slice(0, 12)} — ${result.reason}`);
     return undefined;
   }
   if (result.status === 'miss') {
@@ -127,7 +125,7 @@ async function consult(
 
   const miss = (reason: string): undefined => {
     invocation.setCache({ status: 'miss', keyHash, bytes: result.bytes, reason });
-    agentTrace(`cache: miss on ${keyHash.slice(0, 12)} — ${reason}`);
+    agentTrace(() => `cache: miss on ${keyHash.slice(0, 12)} — ${reason}`);
     return undefined;
   };
 
@@ -160,10 +158,11 @@ async function consult(
     reason: `replayed ${describeExpression(locator)} to ${describe(node)}`,
   });
   invocation.recordPolicy('cache.entry', 'allowed');
-  agentTrace(`cache: hit ${keyHash.slice(0, 12)} (${describe(node)})`);
+  agentTrace(() => `cache: hit ${keyHash.slice(0, 12)} (${describe(node)})`);
   // A replayed target is content-addressed by construction: a positional one is
   // never recorded, so there is nothing positional to replay.
   return {
+    kind: 'node',
     ref,
     expression: locator,
     node,
@@ -216,7 +215,7 @@ async function record(
       bytes: written.bytes,
       reason: `recorded ${describeExpression(locator)}`,
     });
-    agentTrace(`cache: wrote ${keyHash.slice(0, 12)} (${written.bytes}B)`);
+    agentTrace(() => `cache: wrote ${keyHash.slice(0, 12)} (${written.bytes}B)`);
   } catch (cause) {
     // A cache write is never authority, so losing one must not fail a passing
     // test. The step keeps its miss status and the next run tries again.
@@ -230,7 +229,7 @@ async function record(
  */
 function notRecorded(invocation: Invocation, keyHash: string, reason: string): undefined {
   invocation.mergeCache({ reason: `not recorded: ${reason}` });
-  agentTrace(`cache: not recording ${keyHash.slice(0, 12)} — ${reason}`);
+  agentTrace(() => `cache: not recording ${keyHash.slice(0, 12)} — ${reason}`);
   return undefined;
 }
 

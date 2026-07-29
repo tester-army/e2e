@@ -97,7 +97,46 @@ export type AgentParam =
   | { readonly [key: string]: AgentParam };
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
-export interface AgentOptions {
+/**
+ * What evidence the model is given: the semantic tree, a masked screenshot of
+ * the current observation, or both.
+ *
+ * - `false` — the tree.
+ * - `true` — the tree and a screenshot, on every call.
+ * - `'fallback'` — the tree, escalating to add a screenshot once the tree turns
+ *   out not to describe the target.
+ * - `'only'` — the screenshot, and not the tree.
+ *
+ * `'only'` exists because a tree sent alongside pixels is a cheaper path to an
+ * answer, and a model will take it: asked whether a form is covered by an
+ * overlay, it can read from the tree that the form is present and named and
+ * answer yes, while the pixels show the overlay. For a judgment that is about
+ * what the page presents, the tree is a distractor, so the mode that means it
+ * removes it. It also costs fewer input tokens than `true`, not more.
+ *
+ * A locate under `'only'` can only answer with a screenshot point, since there
+ * are no node identifiers to choose from. Methods that need a semantic node to
+ * hand the driver — `type`, `select`, `upload`, `scrollTo`, `dragTo` — therefore
+ * reject `'only'` with `POLICY_DENIED` rather than acting on a coordinate.
+ *
+ * `'fallback'` needs a signal that the tree was insufficient, which only a
+ * method that locates a target has: the model reporting no match, or no derived
+ * query resolving the node it chose. A judgment always produces an answer from
+ * the tree, so `'fallback'` leaves `assert`, `waitFor`, and `extract` tree-only;
+ * use `true` or `'only'` to have pixels judged.
+ *
+ * In every mode that sends pixels but also the tree, pixel evidence degrades
+ * away rather than failing the call when it cannot be proven redacted. `'only'`
+ * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
+ * answering the wrong question from the tree.
+ */
+export type VisionMode = boolean | 'fallback' | 'only';
+
+export interface VisionOption {
+  vision?: VisionMode;
+}
+
+export interface AgentOptions extends VisionOption {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
@@ -138,7 +177,7 @@ export type AgentErrorCode =
   | 'ASSERTION_FAILED'
   | 'CANCELLED';
 
-export interface InstantActionOptions {
+export interface InstantActionOptions extends VisionOption {
   timeout?: number;
   cache?: boolean;
 }
@@ -208,19 +247,19 @@ export interface Agent {
   /** Polls a natural-language condition until true or timed out. */
   waitFor(
     condition: string,
-    options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
   ): Promise<void>;
   /** Authenticates with a pinned credential. */
   login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
   /** Extracts and validates structured screen data. */
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
   /** Judges a natural-language assertion against fresh observations. */
   assert(
     assertion: string,
-    options?: {
+    options?: VisionOption & {
       timeout?: number;
       screenshot?: boolean;
     },
@@ -771,11 +810,15 @@ export interface E2EConfig {
   };
   agent?: {
     model?: string | ModelConfig | ModelInstance;
+    /** Model used by calls with `vision`; falls back to `model`. */
+    visionModel?: string | ModelConfig | ModelInstance;
     maxSteps?: number;
     maxModelCalls?: number;
     maxObservationBytes?: number;
     cache?: 'off' | 'read-only' | 'read-write';
     context?: string;
+    /** Project-wide default for the per-call `vision` option. */
+    vision?: VisionMode;
   };
   limits?: {
     maxDiscoveredResults?: number;

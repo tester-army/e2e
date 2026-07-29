@@ -72,6 +72,16 @@ export interface NodeRef {
   readonly revision: string;
 }
 
+/**
+ * Per-field bounds a driver applies to observation-tree nodes. A `name` or
+ * `text` whose length reaches its limit was cut at exactly that limit, so
+ * "length >= limit" is a precise truncation signal; every shorter value is
+ * complete. Single-node reads (`screen.read`) are unbounded and always carry
+ * the full value.
+ */
+export const OBSERVED_NAME_LIMIT = 256;
+export const OBSERVED_TEXT_LIMIT = 512;
+
 export interface SemanticNode {
   readonly ref: NodeRef;
   readonly role?: string;
@@ -102,10 +112,43 @@ export interface SemanticNode {
   readonly children?: readonly SemanticNode[];
 }
 
+/** Viewport point in CSS pixels, origin at the top-left of the viewport. */
+export interface ViewportPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * Masked viewport pixels captured for one observation revision.
+ *
+ * `width` and `height` MUST be the true dimensions of `data`, because they are
+ * the space every coordinate read off the image refers to. `scale` relates that
+ * space to the CSS pixels of `SemanticNode.rect`, which is the space actions
+ * dispatch in: one image pixel is `1 / scale` CSS pixels.
+ */
+export interface ObservationPixels {
+  readonly data: Uint8Array;
+  readonly mediaType: 'image/png';
+  readonly width: number;
+  readonly height: number;
+  /** Image pixels per CSS pixel; 1 for a CSS-scale capture. */
+  readonly scale: number;
+}
+
+export interface ObserveOptions {
+  /**
+   * Requests masked viewport pixels for the same revision as the tree. A
+   * driver that cannot produce them omits `Observation.pixels` instead of
+   * failing the observation.
+   */
+  readonly pixels?: boolean;
+}
+
 export interface Observation {
   readonly revision: string;
   readonly capturedAt: string;
   readonly screenshot?: string;
+  readonly pixels?: ObservationPixels;
   readonly tree: SemanticNode;
   readonly viewport: {
     readonly width: number;
@@ -269,6 +312,12 @@ export interface DriverAgentActions {
   ): Promise<void>;
   /** Sends one key. */
   press(key: string, operation: OperationContext): Promise<void>;
+  /**
+   * Taps one runner-validated viewport point. Optional: a driver without
+   * coordinate input omits it, and vision pointing that hit-tests to no
+   * semantic node then fails instead of dispatching.
+   */
+  tapPoint?(point: ViewportPoint, operation: OperationContext): Promise<void>;
 }
 
 export interface DriverWebRoute {
@@ -410,7 +459,7 @@ export interface DriverSession {
   /** Replaces current app state with an immutable captured state. */
   restoreState?(state: DriverState, operation: OperationContext): Promise<void>;
   /** Captures one atomic, fully redacted agent observation. */
-  observe(operation: OperationContext): Promise<Observation>;
+  observe(operation: OperationContext, options?: ObserveOptions): Promise<Observation>;
   /** Returns current runtime provenance after viewport/backend changes. */
   runtime(operation: OperationContext): Promise<DriverRuntime>;
   /** Releases all session resources. It MUST be idempotent. */

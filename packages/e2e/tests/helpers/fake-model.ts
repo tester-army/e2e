@@ -7,9 +7,12 @@
  * works across the src/dist realm boundary.
  */
 
+import { observedLineHasRole } from '../../src/agent/observation.ts';
 import type { ModelInstance } from '../../src/types.ts';
 
 export interface FakeCall {
+  /** Model instance that received the call. */
+  readonly modelId: string;
   readonly schemaName: string;
   readonly system: string;
   readonly prompt: string;
@@ -21,6 +24,14 @@ export interface FakeCall {
   readonly revision: string;
   /** Serialized observation lines, one per node. */
   readonly lines: readonly string[];
+  /** Image parts attached to the user message, in order. */
+  readonly images: readonly FakeImage[];
+}
+
+/** One attached image, as the adapter handed it to the provider. */
+export interface FakeImage {
+  readonly mediaType: string | undefined;
+  readonly bytes: number;
 }
 
 export type FakeResponder = (call: FakeCall) => unknown;
@@ -29,22 +40,44 @@ export type FakeResponder = (call: FakeCall) => unknown;
 export const fakeCalls: FakeCall[] = [];
 
 /** The structural surface the AI SDK reads from a V2 prompt message list. */
+type FakePart = {
+  readonly type: string;
+  readonly text?: string;
+  readonly data?: unknown;
+  readonly mediaType?: string;
+};
+
 type FakePrompt = readonly {
   readonly role: string;
-  readonly content: string | readonly { readonly type: string; readonly text?: string }[];
+  readonly content: string | readonly FakePart[];
 }[];
 
 /**
- * Builds the scripted model. Configure tests with `agent: { model }`; the
- * instance never crosses a process boundary because agent integration tests
- * run through the in-process transport.
+ * Builds the scripted model and clears the call log. Configure tests with
+ * `agent: { model }`; the instance never crosses a process boundary because
+ * agent integration tests run through the in-process transport.
  */
-export function installFakeModel(responder: FakeResponder): ModelInstance {
+export function installFakeModel(
+  responder: FakeResponder,
+  options: { modelId?: string } = {},
+): ModelInstance {
   fakeCalls.length = 0;
+  return createFakeModel(responder, options);
+}
+
+/**
+ * Builds one more scripted model sharing the same call log, for tests that pin
+ * a second model such as `agent.visionModel`.
+ */
+export function createFakeModel(
+  responder: FakeResponder,
+  instance: { modelId?: string } = {},
+): ModelInstance {
+  const modelId = instance.modelId ?? 'scripted';
   return {
     specificationVersion: 'v4',
     provider: 'fake',
-    modelId: 'scripted',
+    modelId,
     supportedUrls: {},
     async doGenerate(options: {
       prompt: FakePrompt;
@@ -54,13 +87,15 @@ export function installFakeModel(responder: FakeResponder): ModelInstance {
       const prompt = promptText(options.prompt, 'user');
       const observation = section(prompt, 'observation');
       const parsed: FakeCall = {
+        modelId,
         schemaName: options.responseFormat?.name ?? inferSchemaName(prompt),
         system,
         prompt,
         instruction: section(prompt, 'instruction').trim(),
         observation,
-        revision: /<observation revision="([^"]+)"/.exec(prompt)?.[1] ?? '',
+        revision: promptRevision(prompt),
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
+        images: promptImages(options.prompt),
       };
       fakeCalls.push(parsed);
       const raw = responder(parsed);
@@ -100,6 +135,45 @@ function promptText(prompt: FakePrompt, role: string): string {
 }
 
 /**
+ * The observation revision the request quotes.
+ *
+ * A pixels-only request carries no `<observation>` element, so the revision
+ * travels with the screenshot description instead — a target still has to quote
+ * it, which is what makes a stale answer detectable.
+ */
+function promptRevision(prompt: string): string {
+  const tree = /<observation revision="([^"]+)"/.exec(prompt)?.[1];
+  if (tree !== undefined) return tree;
+  return /observation revision is "([^"]+)"/.exec(prompt)?.[1] ?? '';
+}
+
+/**
+ * Collects every image part of the user message. The AI SDK normalizes an
+ * `image` part into a `file` part carrying bytes, so both spellings count.
+ */
+function promptImages(prompt: FakePrompt): FakeImage[] {
+  const images: FakeImage[] = [];
+  for (const message of prompt) {
+    if (message.role !== 'user' || typeof message.content === 'string') continue;
+    for (const part of message.content) {
+      if (part.type !== 'image' && part.type !== 'file') continue;
+      images.push({ mediaType: part.mediaType, bytes: byteLength(part.data) });
+    }
+  }
+  return images;
+}
+
+/** Unwraps the AI SDK's normalized `{ type: 'data', data }` file payload. */
+function byteLength(data: unknown): number {
+  if (data instanceof Uint8Array) return data.byteLength;
+  if (typeof data === 'string') return data.length;
+  if (typeof data === 'object' && data !== null && 'data' in data) {
+    return byteLength((data as { data: unknown }).data);
+  }
+  return 0;
+}
+
+/**
  * Text-mode requests (extraction against a caller schema with no JSON Schema
  * projection) carry no provider schema name; the runner's request line is the
  * stable signal that identifies them.
@@ -126,10 +200,8 @@ export function bestMatch(call: FakeCall): { id: string; line: string } {
     if (id === undefined) continue;
     const haystack = line.toLowerCase();
     let score = words.reduce((total, word) => total + (haystack.includes(word) ? 1 : 0), 0);
-    // Prefer semantic controls over plain text holders on equal word overlap:
-    // a role renders as a bare token after the id, while role-less lines jump
-    // straight to a quoted name or `key="value"` attribute.
-    if (score > 0 && /^#\S+ [a-z][a-z-]*(\s|$)/.test(line.trim())) score += 0.5;
+    // Prefer semantic controls over plain text holders on equal word overlap.
+    if (score > 0 && observedLineHasRole(line)) score += 0.5;
     if (best === undefined || score > best.score) best = { id, line, score };
   }
   if (best === undefined) throw new Error(`no observed nodes in prompt:\n${call.prompt}`);
@@ -144,6 +216,19 @@ export function locateBestMatch(call: FakeCall, positional = false): unknown {
     target: { id: match.id, revision: call.revision },
     explanation: `best line match: ${match.line.trim()}`,
     ...(positional ? { positional: true } : {}),
+  };
+}
+
+/** Builds a valid agent-locate-1 point response in the attached image space. */
+export function locatePoint(
+  call: FakeCall,
+  point: { x: number; y: number },
+  explanation = 'drawn there in the screenshot',
+): unknown {
+  return {
+    protocolVersion: 'agent-locate-1',
+    target: { point, revision: call.revision },
+    explanation,
   };
 }
 

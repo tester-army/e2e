@@ -158,22 +158,26 @@ screen?: {
 ```ts
 agent?: {
   model?: string | ModelConfig | ModelInstance;
+  visionModel?: string | ModelConfig | ModelInstance;
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;
   cache?: 'off' | 'read-only' | 'read-write';
   context?: string;
+  vision?: boolean | 'fallback' | 'only';
 };
 ```
 
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
 | `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. |
+| `visionModel` | `string \| ModelConfig \| ModelInstance` | `agent.model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
 | `maxObservationBytes` | `number` | `1048576` | integer 1024-16777216 | Observation payload ceiling. Not a `limits` key. |
 | `cache` | `'off' \| 'read-only' \| 'read-write'` | `'read-only'` in CI, else `'read-write'` | those three | Locate-cache mode |
 | `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
+| `vision` | `boolean \| 'fallback' \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option. `'fallback'` sends pixels only after the tree missed; `'only'` sends pixels instead of the tree. A per-call value wins. |
 
 ### agent.model
 
@@ -296,6 +300,7 @@ The runner reads a closed set. There are no verbosity variables; diagnostics are
 | --- | --- |
 | `APP_URL` | Base URL fallback when `app.url` is unset |
 | `E2E_MODEL` | `provider/model-id` fallback when `agent.model` is unset |
+| `E2E_VISION_MODEL` | `provider/model-id` fallback when `agent.visionModel` is unset |
 | `E2E_MODEL_API_KEY` | Default provider credential |
 | `AI_GATEWAY_API_KEY` | Gateway credential, used when the named key variable holds no value |
 | `E2E_USER_<NAME>_USERNAME` | Overrides `credentials.<name>.username` |
@@ -308,6 +313,7 @@ The runner reads a closed set. There are no verbosity variables; diagnostics are
 | --- | --- |
 | Base URL | `app.url`, then `APP_URL`, then `APP_URL_REQUIRED` |
 | Model | `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
+| Vision model | `agent.visionModel`, then `E2E_VISION_MODEL`, then `agent.model` |
 | Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 

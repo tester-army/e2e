@@ -194,7 +194,8 @@
         "actionSteps": { "type": "integer", "minimum": 0 },
         "observationBytes": { "type": "integer", "minimum": 0 },
         "contextBytes": { "type": "integer", "minimum": 0 },
-        "ledgerBytes": { "type": "integer", "minimum": 0 }
+        "ledgerBytes": { "type": "integer", "minimum": 0 },
+        "pixelBytes": { "type": "integer", "minimum": 0 }
       }
     },
     "step": {
@@ -213,6 +214,10 @@
         "durationMs": { "type": "integer", "minimum": 0 },
         "observationRevision": { "type": "string", "minLength": 1, "maxLength": 256 },
         "explanation": { "type": "string", "maxLength": 8192 },
+        "visionInput": { "type": "boolean" },
+        "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"] },
+        "visionEscalated": { "type": "boolean" },
+        "visionOnly": { "type": "boolean" },
         "viewport": {
           "type": "object",
           "additionalProperties": false,

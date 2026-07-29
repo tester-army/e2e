@@ -3,7 +3,7 @@
 import type { LanguageModel } from 'ai';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { E2EConfig, ModelConfig, ModelInstance } from '../types.ts';
+import type { E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
 
 /** Default environment variable holding the provider credential. */
 export const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
@@ -46,11 +46,19 @@ export type ResolvedModel =
 export interface ResolvedAgentConfig {
   /** Undefined until a model is configured; acquiring `agent` then fails. */
   readonly model: ResolvedModel | undefined;
+  /**
+   * Model used by calls with `vision`. Visual grounding is a much higher bar
+   * than accepting an image, so the tier that needs it can be pinned
+   * separately. Undefined falls back to `model`.
+   */
+  readonly visionModel: ResolvedModel | undefined;
   readonly maxSteps: number;
   readonly maxModelCalls: number;
   readonly maxObservationBytes: number;
   readonly cache: 'off' | 'read-only' | 'read-write';
   readonly context: string | undefined;
+  /** Default for the per-call `vision` option; a per-call value always wins. */
+  readonly vision: VisionMode;
 }
 
 export interface ResolvedLimits {
@@ -77,11 +85,13 @@ export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 
 const AGENT_KEYS = new Set([
   'model',
+  'visionModel',
   'maxSteps',
   'maxModelCalls',
   'maxObservationBytes',
   'cache',
   'context',
+  'vision',
 ]);
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
@@ -147,14 +157,23 @@ export function resolveAgentConfig(
   if (cacheOverride === 'off') cache = 'off';
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
+  const vision = agent?.vision ?? false;
+  if (!isVisionMode(vision)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      "agent.vision must be true, false, 'fallback', or 'only'",
+    );
+  }
 
   return {
     model: resolveModel(agent?.model, env),
+    visionModel: resolveModel(agent?.visionModel, env, 'agent.visionModel', 'E2E_VISION_MODEL'),
     maxSteps,
     maxModelCalls,
     maxObservationBytes,
     cache,
     context,
+    vision,
   };
 }
 
@@ -197,6 +216,11 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
  * is structural, exactly like the AI SDK's own model handling, so instances
  * from any realm or provider package are accepted.
  */
+/** True for the closed `vision` value set, wherever it is supplied. */
+export function isVisionMode(value: unknown): value is VisionMode {
+  return typeof value === 'boolean' || value === 'fallback' || value === 'only';
+}
+
 export function isModelInstance(value: unknown): value is ModelInstance {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -209,25 +233,31 @@ export function isModelInstance(value: unknown): value is ModelInstance {
 }
 
 /**
- * Resolves the model from config or `E2E_MODEL`. There is no implicit default
- * model; an unconfigured agent fails at fixture acquisition.
+ * Resolves one model reference from config or its environment override.
+ *
+ * `label` and `envName` are parameters because the same grammar serves
+ * `agent.model` and `agent.visionModel`; every diagnostic then names the key the
+ * author actually wrote. There is no implicit default model; an unconfigured
+ * agent fails at fixture acquisition.
  */
 function resolveModel(
   model: string | ModelConfig | ModelInstance | undefined,
   env: NodeJS.ProcessEnv,
+  label = 'agent.model',
+  envName = 'E2E_MODEL',
 ): ResolvedModel | undefined {
   if (model === undefined) {
-    const fromEnv = env['E2E_MODEL'];
+    const fromEnv = env[envName];
     if (fromEnv === undefined || fromEnv.trim() === '') return undefined;
-    return parseModelReference(fromEnv.trim(), 'E2E_MODEL', env);
+    return parseModelReference(fromEnv.trim(), envName, env);
   }
   if (typeof model === 'string') {
-    return parseModelReference(model, 'agent.model', env);
+    return parseModelReference(model, label, env);
   }
   if (typeof model !== 'object' || model === null || Array.isArray(model)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'agent.model must be "provider/model-id", a model object, or an AI SDK model instance',
+      `${label} must be "provider/model-id", a model object, or an AI SDK model instance`,
     );
   }
   if (isModelInstance(model)) {
@@ -241,11 +271,11 @@ function resolveModel(
   }
   for (const key of Object.keys(model)) {
     if (!MODEL_KEYS.has(key)) {
-      throw new ConfigurationError('INVALID_CONFIG', `unknown agent.model key "${key}"`);
+      throw new ConfigurationError('INVALID_CONFIG', `unknown ${label} key "${key}"`);
     }
   }
-  const provider = requireNonEmpty(model.provider, 'agent.model.provider');
-  const id = requireNonEmpty(model.id, 'agent.model.id');
+  const provider = requireNonEmpty(model.provider, `${label}.provider`);
+  const id = requireNonEmpty(model.id, `${label}.id`);
   return gatewayModel(provider, id, model.endpoint, model.apiKeyEnv, env);
 }
 

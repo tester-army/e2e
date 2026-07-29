@@ -63,16 +63,16 @@ export interface Agent {
   ): Promise<void>;
   waitFor(
     condition: string,
-    options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
   ): Promise<void>;
   login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
   assert(
     assertion: string,
-    options?: {
+    options?: VisionOption & {
       timeout?: number;
       screenshot?: boolean;
     },
@@ -141,6 +141,168 @@ await agent.type('the Password field', credentials.user('admin').password);
 await agent.scroll({ direction: 'down', within: 'the results list' });
 ```
 
+## Vision
+
+Every model-backed method accepts `vision`. It adds a masked screenshot of the
+current observation to the model input, on top of the semantic tree, and needs a
+model that accepts images.
+
+```ts
+await agent.assert('the chart trends upward', { vision: true });
+await agent.tap('the red pin on the map', { vision: true });
+await agent.tap('the first offer card', { vision: 'fallback' });
+```
+
+| Name | Type | Default |
+| --- | --- | --- |
+| `options.vision` | `boolean \| 'fallback' \| 'only'` | `config.agent.vision`, `false` |
+
+| Mode | What the model sees | Cost |
+| --- | --- | --- |
+| `false` | the tree | no image tokens |
+| `true` | the tree and a screenshot, every call | image tokens on every call |
+| `'fallback'` | the tree, then a screenshot only after the tree missed | image tokens only when the tree was not enough |
+| `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
+
+Set `agent.vision` in config to make a mode the project default; a per-call value
+always wins. Images are billed as input tokens, so `true` costs more than the
+same call without it on every call, and `'fallback'` costs nothing extra until
+something actually fails on the tree.
+
+### Judging pixels and nothing else
+
+`vision: true` sends the tree *and* the screenshot, and that is a problem for a
+visual assertion: the tree is a cheaper path to an answer, and the model will take
+it.
+
+```ts
+// Passes on the tree alone: the form is present, enabled, and named — while a
+// consent sheet covers it on screen.
+await agent.assert('the search form is visible and not covered', { vision: true });
+
+// Judged on the screenshot. There is no tree in the request to answer from.
+await agent.assert('the search form is visible and not covered', { vision: 'only' });
+```
+
+Same for a price rendered at `opacity: 0`, a button under a cookie banner, or a
+broken layout — all of which the tree happily reports as fine. Use `'only'` when
+the question is about what the page *presents*; use `true` when the tree is part
+of the answer (`'the submit button is disabled'` is in the tree and often not
+visible at all).
+
+`'only'` is cheaper than `true`, not more expensive: you drop the observation
+bytes. The runner still captures the observation — it hit-tests points and reports
+against it — it just isn't sent. The step records `visionOnly: true` and zero
+`observationBytes`.
+
+<Callout intent="warn" title="Pixels are viewport-scoped, the tree is document-scoped">
+The screenshot is the viewport, never the full page. So a condition the tree
+satisfies can be false on screen, and that is usually the point — but it also
+means `'only'` cannot see below the fold.
+
+```ts
+// Tree: passes. The DOM holds prices for all 6701 matched offers.
+// 'only':  fails. The first card is cut off just above its price.
+await agent.waitFor('a list of offers with hotel names and prices is visible', { vision: 'only' });
+```
+
+Write `'only'` conditions about what is on screen, and scroll first when you want
+to ask about something further down.
+
+```ts
+await agent.waitFor('a list of offers with hotel names is visible', { vision: 'only' });
+await agent.scroll({ direction: 'down' });
+await agent.waitFor('an offer card showing a hotel name and a price is visible', { vision: 'only' });
+```
+</Callout>
+
+Two consequences worth knowing:
+
+- **A locate under `'only'` can only point.** There are no node identifiers the
+  model has seen, so the point-only grammar is the only thing it can answer in.
+  `tap` and `click` work. `type`, `select`, `upload`, `scrollTo`, and `dragTo`
+  reject `'only'` with `POLICY_DENIED` before spending a model call, rather than
+  blind-clicking a coordinate on a node they could have addressed properly.
+- **No pixels means no answer.** If the viewport is pixel-tainted by a secret fill,
+  or masking cannot be proven complete, `'only'` fails with `POLICY_DENIED`. Every
+  other mode degrades to the tree; `'only'` will not answer a question about
+  pixels from the tree instead.
+
+### Fallback
+
+`'fallback'` needs a signal that the accessibility tree was not enough, and a
+locate is the only operation that produces one without guessing:
+
+- the model reports that no node matches, or
+- no derived query resolves the node it chose — the common real-world case being
+  a control whose accessible name aggregates a whole card, which nothing can
+  re-find.
+
+On either outcome the runner re-observes with pixels attached and asks once more,
+using `agent.visionModel` if one is pinned. It escalates at most once per call
+and never after an action has been dispatched, and the step records
+`visionEscalated: true`.
+
+<Callout intent="warn" title="Judgments stay tree-only under fallback">
+`assert`, `waitFor`, and `extract` always produce an answer from the tree, so
+there is nothing to detect as a miss — escalating on a `false` judgment would
+just bias it toward `true`. `scrollTo` is tree-only for the same reason: inside
+its polling loop, "not in the tree" and "not scrolled there yet" look identical.
+Use `vision: true` when you need pixels judged.
+</Callout>
+
+Escalation runs the locate twice, so a `'fallback'` call gets twice the
+model-call budget of the same call without it.
+
+Calls that send pixels use `agent.visionModel` when it is set, and `agent.model`
+otherwise, and keep it for the rest of the invocation — including polling rounds
+whose pixels were withheld — so a polling method never switches models between
+rounds. A `'fallback'` call that escalates switches model once, at the
+escalation; its step reports the model that answered plus `visionEscalated`.
+
+<Callout intent="info" title="Additive, never pixels-only">
+The tree is always sent. It is byte-budgeted and cheap, and its node references
+are what keep an action auditable, so there is no pixels-only mode.
+</Callout>
+
+Pixel evidence degrades instead of failing the call. It is withheld, and the tree
+sent alone, when the viewport is pixel-tainted by a secret fill
+(`visionDegraded: "PIXEL_TAINTED"` on the step), when the driver masked fewer
+regions than the secure fields it observed (`MASKING_UNPROVEN`), or when the
+driver cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
+pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
+
+`options.vision` and `assert`'s `options.screenshot` are unrelated: `screenshot`
+controls failure evidence attached to the report after the judgment, `vision`
+controls what the model is shown before it.
+
+### Visual pointing
+
+Under `vision`, `tap` and `click` can reach targets the tree cannot describe,
+such as canvas, WebGL, and custom-drawn widgets: the model may answer with a
+point in the screenshot instead of a node.
+
+The runner keeps ownership of it. The point is bounded to the image it was read
+off (an out-of-bounds answer is invalid output, worth one repair round, never
+clamped), converted to CSS pixels, hit-tested against the same observation, and
+recorded on the step together with whatever node was found under it. The action
+stays predetermined by the method you called.
+
+```ts
+// Reachable only through pixels: nothing in the tree names the pin.
+await agent.tap('the red pin on the map', { vision: true });
+```
+
+Dispatch happens at the point, not at the center of the node under it, so a tap
+on a canvas lands where the model looked.
+
+Only `tap` and `click` are ever offered a point. Every other method needs a
+semantic node, so `type`, `select`, `upload`, `scrollTo`, `dragTo`, and friends
+are asked for a node even under `vision`: the pointing grammar is not part of
+their request, and the model cannot spend the call on an answer they would have
+to reject. They still receive the screenshot, which is what lets the model pick
+a better node.
+
 ## Judgments and extraction
 
 ### agent.assert
@@ -148,7 +310,7 @@ await agent.scroll({ direction: 'down', within: 'the results list' });
 ```ts
 assert(
   assertion: string,
-  options?: { timeout?: number; screenshot?: boolean },
+  options?: { timeout?: number; screenshot?: boolean; vision?: boolean },
 ): Promise<void>;
 ```
 
@@ -159,6 +321,7 @@ One fresh observation, exactly one judgment. It does not poll.
 | `assertion` | `string` | - |
 | `options.timeout` | `number` | `30000` |
 | `options.screenshot` | `boolean` | `true` |
+| `options.vision` | `boolean` | `config.agent.vision`, `false` |
 
 Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and, when
 permitted, a screenshot path. Evidence is skipped with `screenshot: false` and
@@ -227,12 +390,16 @@ const summary = await agent.extract('the workspace name and plan', {
 ## Types
 
 ```ts
-export interface InstantActionOptions {
+export interface VisionOption {
+  vision?: boolean;
+}
+
+export interface InstantActionOptions extends VisionOption {
   timeout?: number;
   cache?: boolean;
 }
 
-export interface AgentOptions {
+export interface AgentOptions extends VisionOption {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;

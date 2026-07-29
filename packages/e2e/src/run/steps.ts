@@ -37,7 +37,15 @@ export interface StepMetrics {
   observationBytes: number;
   contextBytes: number;
   ledgerBytes: number;
+  /** Largest masked image sent to the model in this step, in bytes. */
+  pixelBytes?: number;
 }
+
+/**
+ * Why a vision step fell back to tree-only input. Pixel evidence degrades
+ * rather than failing the step (spec 14-security.md).
+ */
+export type VisionDegradation = 'PIXEL_TAINTED' | 'MASKING_UNPROVEN' | 'UNSUPPORTED_CAPABILITY';
 
 /** Model provenance and usage for one model-backed step. */
 export interface StepModelInfo {
@@ -80,6 +88,21 @@ export interface StepAgentDetails {
   cache?: StepCacheInfo;
   observationRevision?: string;
   explanation?: string;
+  /** True when masked pixel evidence was model input, not just an artifact. */
+  visionInput?: boolean;
+  visionDegraded?: VisionDegradation;
+  /**
+   * True when `vision: 'fallback'` escalated: the tree-only attempt missed, so
+   * later calls of this step carried pixels and, when one is pinned, went to
+   * `agent.visionModel`. `model` names the model that answered.
+   */
+  visionEscalated?: boolean;
+  /**
+   * True when `vision: 'only'` withheld the semantic tree, leaving the masked
+   * screenshot as the model's only evidence. `metrics.observationBytes` is then
+   * zero, because the observation contributed nothing to the request.
+   */
+  visionOnly?: boolean;
 }
 
 export interface StepRecord {
@@ -93,6 +116,10 @@ export interface StepRecord {
   durationMs: number;
   observationRevision?: string;
   explanation?: string;
+  visionInput?: boolean;
+  visionDegraded?: VisionDegradation;
+  visionEscalated?: boolean;
+  visionOnly?: boolean;
   viewport?: { width: number; height: number; scale: number };
   metrics?: StepMetrics;
   events: StepEvent[];
@@ -188,6 +215,10 @@ export class StepRecorder {
       current.observationRevision = details.observationRevision;
     }
     if (details.explanation !== undefined) current.explanation = details.explanation;
+    if (details.visionInput !== undefined) current.visionInput = details.visionInput;
+    if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
+    if (details.visionEscalated !== undefined) current.visionEscalated = details.visionEscalated;
+    if (details.visionOnly !== undefined) current.visionOnly = details.visionOnly;
   }
 
   /** Records the viewport a step established (required for web.setViewport). */

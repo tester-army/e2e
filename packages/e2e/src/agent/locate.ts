@@ -4,11 +4,24 @@
  * The model selects exactly one node from one fresh observation. The runner
  * derives portable semantic queries for that node, resolves them itself, and
  * requires a query that identifies the same single node before dispatching any
- * action. The model never supplies a selector, coordinate, or action.
+ * action. The model never supplies a selector or an action.
+ *
+ * A vision call may answer with a screenshot point instead of a node, for
+ * surfaces the tree cannot describe. That is the one case where the model
+ * supplies a coordinate, and it stays data: the runner bounds it to the
+ * observed viewport, hit-tests it against the same observation, and records
+ * what was found there before any dispatch.
  */
 
 import { cacheMethodForApi } from '../cache/index.ts';
-import type { LocatorExpression, NodeRef, SemanticNode } from '../driver/index.ts';
+import {
+  OBSERVED_NAME_LIMIT,
+  OBSERVED_TEXT_LIMIT,
+  type LocatorExpression,
+  type NodeRef,
+  type SemanticNode,
+  type ViewportPoint,
+} from '../driver/index.ts';
 import {
   describeExpression,
   filterExpression,
@@ -23,16 +36,18 @@ import type { Role } from '../types.ts';
 import { AgentError } from './error.ts';
 import { Invocation, toAgentError } from './invocation.ts';
 import { openLocateCache, type OpenLocateCache } from './locate-cache.ts';
-import type { AgentObservation } from './observation.ts';
+import type { AgentObservation, AgentPixels } from './observation.ts';
 import {
-  LOCATE_SCHEMA,
+  isNodeTarget,
+  LOCATE_SCHEMAS,
   validateLocateResponse,
-  type LocateResponse,
+  type LocateGrammar,
   type ProtocolValidation,
 } from './protocol.ts';
-import { LOCATE_REQUEST } from './prompts.ts';
+import { LOCATE_REQUESTS } from './prompts.ts';
 
 export interface LocatedNode {
+  readonly kind: 'node';
   readonly ref: NodeRef;
   readonly expression: LocatorExpression;
   /** Freshly read node behind the derived query. */
@@ -49,6 +64,273 @@ export interface LocatedNode {
   readonly positional: boolean;
 }
 
+/**
+ * A validated screenshot point to act on directly. The runner dispatches at
+ * the point, not at `hit`: retargeting to the center of an enclosing node
+ * would move the action away from the pixels the model actually chose, which
+ * on a canvas is the whole surface. `hit` is the audit record of what the tree
+ * says is there.
+ */
+export interface LocatedPoint {
+  readonly kind: 'point';
+  readonly point: ViewportPoint;
+  /** Innermost observed node containing the point, when the tree has one. */
+  readonly hit: SemanticNode | null;
+  readonly observation: AgentObservation;
+  readonly explanation: string;
+}
+
+export type Located = LocatedNode | LocatedPoint;
+
+/**
+ * What one locate call got back, as the four outcomes it actually has.
+ *
+ * A union rather than a bag of correlated nulls: every consumer has to say
+ * what it does with a point and with a miss, so a polling caller cannot
+ * mistake a pointed answer for "not on screen yet".
+ */
+export type Selection =
+  | {
+      readonly kind: 'node';
+      readonly observation: AgentObservation;
+      readonly selected: SemanticNode;
+      /** Why the node was selected. Untrusted prose. */
+      readonly explanation: string;
+      /** The model's report that the instruction identified this node by position. */
+      readonly positional: boolean;
+    }
+  | {
+      readonly kind: 'point';
+      readonly observation: AgentObservation;
+      readonly point: ViewportPoint;
+      /** Innermost observed node under `point`, for the audit record. */
+      readonly hit: SemanticNode | null;
+      readonly explanation: string;
+    }
+  /** The model named a node id the current observation does not contain. */
+  | {
+      readonly kind: 'absent';
+      readonly observation: AgentObservation;
+      readonly explanation: string;
+    }
+  /** The model explicitly reported that nothing matches. */
+  | {
+      readonly kind: 'none';
+      readonly observation: AgentObservation;
+      readonly explanation: string;
+    };
+
+/**
+ * Takes one fresh observation and asks the model to select one node, or, when
+ * the caller can act on a coordinate and pixels reached the request, one
+ * point. Uses exactly one model call.
+ *
+ * `allowPoint` is the caller's answer to "can I act on a bare coordinate?",
+ * and it gates the grammar, not the result. A caller that needs a node
+ * reference is never shown the pointing schema or the pointing instructions,
+ * so it can never spend a model call on an answer it would have to reject.
+ */
+export async function observeAndSelect(
+  invocation: Invocation,
+  target: string,
+  options: { allowPoint: boolean } = { allowPoint: false },
+): Promise<Selection> {
+  const observation = await invocation.observe();
+  // Pointing additionally requires pixels that actually became model input. A
+  // vision call degraded to tree-only input (taint, unprovable masking, a
+  // driver without pixels) falls back to the semantic grammar, so the model is
+  // never invited to point at an image it cannot see.
+  const pixels = options.allowPoint ? observation.pixels : undefined;
+  const grammar: LocateGrammar = invocation.treeWithheld
+    ? 'point'
+    : pixels === undefined
+      ? 'node'
+      : 'nodeOrPoint';
+  const answer = await invocation.ask({
+    schemaName: 'agent-locate-1',
+    schema: LOCATE_SCHEMAS[grammar],
+    validate: (value) => validateAgainstObservation(value, observation, grammar, pixels),
+    prompt: { request: LOCATE_REQUESTS[grammar], instruction: target, observation },
+  });
+  const explanation = answer.explanation;
+  if (answer.kind === 'none') {
+    agentTrace(() => `locate ${JSON.stringify(target)}: model declined — ${explanation}`);
+    return { kind: 'none', observation, explanation };
+  }
+  if (answer.kind === 'point') {
+    const { point } = answer;
+    const hit = hitTest(observation, point);
+    invocation.recordPolicy('locate.point', 'allowed');
+    agentTrace(
+      () =>
+        `locate ${JSON.stringify(target)}: model pointed at (${point.x}, ${point.y}) (${
+          hit === null ? 'no semantic node there' : describe(hit)
+        }) — ${explanation}`,
+    );
+    return { kind: 'point', observation, point, hit, explanation };
+  }
+  const selected = observation.nodes.get(answer.id);
+  agentTrace(
+    () =>
+      `locate ${JSON.stringify(target)}: model selected #${answer.id} (${
+        selected === undefined ? 'not in observation' : describe(selected)
+      }) — ${explanation}`,
+  );
+  if (selected === undefined) {
+    invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
+    return { kind: 'absent', observation, explanation };
+  }
+  return { kind: 'node', observation, selected, explanation, positional: answer.positional };
+}
+
+/**
+ * One locate answer, already grounded in the observation it was asked about
+ * and already expressed in runner space.
+ *
+ * Validation is where the answer meets the observation, so it is also where a
+ * screenshot coordinate becomes a viewport coordinate: the image is in scope
+ * exactly once, and no later stage has to re-derive which space a number is in
+ * or assert that a screenshot was attached.
+ */
+type LocateAnswer =
+  | {
+      readonly kind: 'node';
+      readonly id: string;
+      readonly explanation: string;
+      readonly positional: boolean;
+    }
+  | { readonly kind: 'point'; readonly point: ViewportPoint; readonly explanation: string }
+  | { readonly kind: 'none'; readonly explanation: string };
+
+/**
+ * Protocol validation plus observation grounding. A response naming a node id,
+ * a revision, or a point outside the current observation violates "never
+ * invent identifiers" and is invalid output, so the ask() repair loop can
+ * correct one bad reference while the model-call budget allows.
+ *
+ * `pixels` is the image the model was shown, or undefined for a tree-only
+ * call. Undefined makes a point target invalid rather than merely unusable.
+ */
+function validateAgainstObservation(
+  value: unknown,
+  observation: AgentObservation,
+  grammar: LocateGrammar,
+  pixels: AgentPixels | undefined,
+): ProtocolValidation<LocateAnswer> {
+  const validation = validateLocateResponse(value, grammar);
+  if (!validation.ok) return validation;
+  const { target, explanation, positional } = validation.value;
+  if (target === null) return { ok: true, value: { kind: 'none', explanation } };
+  if (target.revision !== observation.revision) {
+    return {
+      ok: false,
+      issue: `target.revision "${target.revision}" is stale; answer for the current observation revision "${observation.revision}"`,
+    };
+  }
+  if (isNodeTarget(target)) {
+    if (!observation.nodes.has(target.id)) {
+      return {
+        ok: false,
+        issue: `target.id "${target.id}" is not in the current observation; use a node id exactly as printed after "#", e.g. "n42"`,
+      };
+    }
+    return { ok: true, value: { kind: 'node', id: target.id, explanation, positional } };
+  }
+  if (pixels === undefined) {
+    return { ok: false, issue: 'no screenshot was attached; select a node from the observation' };
+  }
+  // Bounds are checked in the image space the model was shown, not the CSS
+  // viewport. Out of bounds means the coordinate space was misread — a
+  // normalized or percentage answer — and clamping it would dispatch into a
+  // corner instead of surfacing the mistake for one repair round.
+  const { x, y } = target.point;
+  if (x > pixels.width - 1 || y > pixels.height - 1) {
+    return {
+      ok: false,
+      issue:
+        `target.point (${x}, ${y}) is outside the attached ${pixels.width}x${pixels.height} screenshot; ` +
+        `return absolute pixels with x in [0, ${pixels.width - 1}] and y in [0, ${pixels.height - 1}], ` +
+        'never normalized or percentage values',
+    };
+  }
+  return {
+    ok: true,
+    value: { kind: 'point', point: toViewportPoint(pixels, target.point), explanation },
+  };
+}
+
+/**
+ * Converts a point read off the screenshot into the CSS pixel space the driver
+ * dispatches in and node rects are expressed in, clamped to that space.
+ *
+ * The ratio is 1 for a CSS-scale capture, so this is a no-op on web today, but
+ * it is what keeps a device-scale capture — the normal case for a phone
+ * screenshot — from acting at a fraction of the intended position.
+ */
+function toViewportPoint(pixels: AgentPixels, point: { x: number; y: number }): ViewportPoint {
+  const scale = pixels.scale > 0 ? pixels.scale : 1;
+  const maxX = Math.max(0, Math.round(pixels.width / scale) - 1);
+  const maxY = Math.max(0, Math.round(pixels.height / scale) - 1);
+  return {
+    x: clamp(Math.round(point.x / scale), 0, maxX),
+    y: clamp(Math.round(point.y / scale), 0, maxY),
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * Finds the innermost observed node containing a point.
+ *
+ * Node rects and the screenshot share the CSS pixel space, so the observation
+ * is itself the hit-test surface: no extra driver round-trip, and the answer is
+ * a node the model could equally have named. The document root is skipped
+ * because it contains every point and would make "nothing is there" — the case
+ * that motivates pointing — impossible to report.
+ *
+ * Rects are half-open, so abutting siblings do not both claim their seam.
+ */
+export function hitTest(
+  observation: AgentObservation,
+  point: ViewportPoint,
+): SemanticNode | null {
+  let best: SemanticNode | null = null;
+  let bestArea = Number.POSITIVE_INFINITY;
+  for (const node of observation.nodes.values()) {
+    const rect = node.rect;
+    if (rect === undefined || node.role === 'document' || node.states?.hidden === true) continue;
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    if (point.x < rect.x || point.x >= rect.x + rect.width) continue;
+    if (point.y < rect.y || point.y >= rect.y + rect.height) continue;
+    const area = rect.width * rect.height;
+    if (area >= bestArea) continue;
+    best = node;
+    bestArea = area;
+  }
+  return best;
+}
+
+/**
+ * What a caller does with a screenshot point.
+ *
+ * One value carries both halves of the decision: whether the model is offered
+ * the pointing grammar at all, and what happens to a point that comes back.
+ * A caller with no `perform` is never shown the pointing schema, which is why
+ * `locateOne` resolves to a node for it.
+ */
+export type PointPolicy<Value = never> =
+  | { readonly allowed: false }
+  | {
+      readonly allowed: true;
+      /** Dispatches at the point, in place of the located-node action. */
+      readonly perform: (invocation: Invocation, located: LocatedPoint) => Promise<Value>;
+    };
+
+/** The policy of a caller that needs a node reference to hand the driver. */
+export const NODE_ONLY: PointPolicy = { allowed: false };
+
 export interface LocateOptions {
   readonly testIdAttribute: string;
   /**
@@ -63,209 +345,26 @@ export interface LocateOptions {
 }
 
 /**
- * Outcome of one model locate call. Modelled as a union rather than a nullable
- * node so the resolve path cannot be reached without a node, and so callers do
- * not have to re-check an invariant the selection already settled.
- */
-type Selection = MatchedSelection | UnmatchedSelection;
-
-interface MatchedSelection {
-  readonly matched: true;
-  readonly observation: AgentObservation;
-  readonly node: SemanticNode;
-  /** Why the node was selected. Untrusted prose. */
-  readonly explanation: string;
-  /** The model's report that the instruction identified this node by position. */
-  readonly positional: boolean;
-}
-
-interface UnmatchedSelection {
-  readonly matched: false;
-  /** Why no node matches. Untrusted prose. */
-  readonly explanation: string;
-  /**
-   * True when the model explicitly reported that no node matches, as opposed
-   * to naming a node absent from the observation.
-   */
-  readonly declined: boolean;
-}
-
-/**
- * Asks the model to select one node from an observation the caller already
- * captured. Uses exactly one model call.
- */
-async function selectFrom(
-  invocation: Invocation,
-  target: string,
-  observation: AgentObservation,
-): Promise<Selection> {
-  const response = await invocation.ask({
-    schemaName: 'agent-locate-1',
-    schema: LOCATE_SCHEMA,
-    validate: (value) => validateAgainstObservation(value, observation),
-    prompt: { request: LOCATE_REQUEST, instruction: target, observation },
-  });
-  const explanation = response.explanation;
-  if (response.target === null) {
-    agentTrace(`locate ${JSON.stringify(target)}: model declined — ${explanation}`);
-    return { matched: false, explanation, declined: true };
-  }
-  const node = observation.nodes.get(response.target.id);
-  agentTrace(
-    `locate ${JSON.stringify(target)}: model selected #${response.target.id} (${
-      node === undefined ? 'not in observation' : describe(node)
-    }) — ${explanation}`,
-  );
-  if (node === undefined) {
-    invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
-    return { matched: false, explanation, declined: false };
-  }
-  return { matched: true, observation, node, explanation, positional: response.positional };
-}
-
-/**
- * Protocol validation plus observation grounding. A response naming a node id
- * or revision outside the current observation violates "never invent node
- * identifiers" and is invalid output, so the ask() repair loop can correct one
- * hallucinated identifier while the model-call budget allows.
- */
-function validateAgainstObservation(
-  value: unknown,
-  observation: AgentObservation,
-): ProtocolValidation<LocateResponse> {
-  const validation = validateLocateResponse(value);
-  if (!validation.ok || validation.value.target === null) return validation;
-  const { id, revision } = validation.value.target;
-  if (revision !== observation.revision) {
-    return {
-      ok: false,
-      issue: `target.revision "${revision}" is stale; answer for the current observation revision "${observation.revision}"`,
-    };
-  }
-  if (!observation.nodes.has(id)) {
-    return {
-      ok: false,
-      issue: `target.id "${id}" is not in the current observation; use a node id exactly as printed after "#", e.g. "n42"`,
-    };
-  }
-  return validation;
-}
-
-/**
- * Runs one locate under the cache protocol: observe the starting screen, try
- * to replay a stored locator against it, and otherwise fall back to `resolve`
- * and record whatever it produced.
- *
- * Every cacheable locate goes through here, so the replay/record pair cannot
- * drift apart and a caller cannot forget to write back. `resolve` receives the
- * starting observation, which the miss path needs anyway, so a hit costs one
- * observation and zero model calls.
- *
- * A stale entry never wins: any mismatch falls through to `resolve`, whose
- * result replaces the entry, so the entry costs one resolve and self-heals.
- */
-async function locateCached(
-  invocation: Invocation,
-  target: string,
-  options: LocateOptions,
-  resolve: (starting: AgentObservation) => Promise<LocatedNode>,
-): Promise<LocatedNode> {
-  const starting = await invocation.observe();
-  const cache = await openCacheFor(invocation, starting, target, options);
-  const replayed = await cache?.replay();
-  if (replayed !== undefined) return replayed;
-
-  const located = await resolve(starting);
-  await cache?.record(located);
-  return located;
-}
-
-/** Selects one node and resolves it to a deterministic, unique locator. */
-export function locateOne(
-  invocation: Invocation,
-  target: string,
-  options: LocateOptions,
-): Promise<LocatedNode> {
-  return locateCached(invocation, target, options, async (observation) => {
-    const selection = await selectFrom(invocation, target, observation);
-    if (!selection.matched) throw unmatched(invocation, target, selection);
-    return resolveSelected(invocation, selection, options);
-  });
-}
-
-/** Turns a selection with no node into the locate failure that explains it. */
-function unmatched(
-  invocation: Invocation,
-  target: string,
-  selection: UnmatchedSelection,
-): AgentError {
-  if (!selection.declined) {
-    return new AgentError(
-      'LOCATOR_NOT_FOUND',
-      `the observation contains no node matching ${JSON.stringify(target)}`,
-    );
-  }
-  invocation.note({ explanation: selection.explanation });
-  return new AgentError(
-    'LOCATOR_NOT_FOUND',
-    `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
-  );
-}
-
-/**
- * Locates one node, scrolling `direction` and re-observing until the model
- * finds it or the budget runs out.
- *
- * The cache is keyed on the screen before any scrolling, which is also the
- * screen round one examines: a hit therefore skips the scrolling entirely,
- * and a miss has already paid for the observation it needs.
- */
-export function locateByScrolling(
-  invocation: Invocation,
-  target: string,
-  options: LocateOptions,
-  scroll: () => Promise<void>,
-): Promise<LocatedNode> {
-  return locateCached(invocation, target, options, async (starting) => {
-    let observation = starting;
-    let lastExplanation = '';
-    for (let round = 1; ; round += 1) {
-      invocation.recordPoll('scrollTo', round);
-      const selection = await selectFrom(invocation, target, observation);
-      if (selection.matched) return resolveSelected(invocation, selection, options);
-      if (selection.declined) lastExplanation = selection.explanation;
-      if (invocation.deadline.expired() || !invocation.canAsk()) {
-        if (lastExplanation !== '') invocation.note({ explanation: lastExplanation });
-        throw new AgentError(
-          'LOCATOR_NOT_FOUND',
-          `scrollTo did not reach ${JSON.stringify(target)} within its budget${
-            lastExplanation === '' ? '' : `; the model reported: ${lastExplanation}`
-          }`,
-        );
-      }
-      await scroll();
-      observation = await invocation.observe();
-    }
-  });
-}
-
-/**
  * Opens the cache for this call, or returns undefined when the method is not
  * cacheable. `cache-1` admits a closed set of methods, so a located action
  * outside it reports a bypass rather than inventing a key.
  */
-function openCacheFor(
+async function openCacheFor(
   invocation: Invocation,
-  observation: AgentObservation,
   target: string,
   options: LocateOptions,
 ): Promise<OpenLocateCache | undefined> {
   const method = cacheMethodForApi(invocation.api);
   if (method === undefined) {
-    return Promise.resolve(
-      invocation.bypassCache(`${invocation.api} is not a cacheable cache-1 method`),
-    );
+    return invocation.bypassCache(`${invocation.api} is not a cacheable cache-1 method`);
   }
+  const bypass = invocation.cacheBypass;
+  if (bypass !== undefined) return invocation.bypassCache(bypass);
+  // Observed only once it is known this call will be keyed, so a non-cacheable
+  // or opted-out method never pays for it. A hit replays against this
+  // observation; a miss re-observes inside the attempt, which is one extra
+  // observation against the model call it is about to avoid paying for.
+  const observation = await invocation.observe();
   return openLocateCache(invocation, observation, {
     method,
     instruction: target,
@@ -274,16 +373,215 @@ function openCacheFor(
 }
 
 /**
+ * Locates one node, scrolling and re-observing until the model finds it or the
+ * budget runs out, then hands the node back for the caller to act on.
+ *
+ * Node-only by construction: `scrollIntoView` needs a node reference, so the
+ * model is never shown the pointing grammar here and a pointed answer, which
+ * this loop would misread as "not on screen yet", cannot reach it.
+ */
+export async function locateByScrolling(
+  invocation: Invocation,
+  target: string,
+  options: LocateOptions,
+  scroll: () => Promise<void>,
+): Promise<LocatedNode> {
+  const cache = await openCacheFor(invocation, target, options);
+  const replayed = await cache?.replay();
+  if (replayed !== undefined) return replayed;
+
+  let lastExplanation = '';
+  for (let round = 1; ; round += 1) {
+    invocation.recordPoll('scrollTo', round);
+    const selection = await observeAndSelect(invocation, target);
+    if (selection.kind === 'node') {
+      const located = await resolveSelected(invocation, selection, options);
+      await cache?.record(located);
+      return located;
+    }
+    if (selection.kind === 'none') lastExplanation = selection.explanation;
+    if (invocation.deadline.expired() || !invocation.canAsk()) {
+      if (lastExplanation !== '') invocation.note({ explanation: lastExplanation });
+      throw new AgentError(
+        'LOCATOR_NOT_FOUND',
+        `scrollTo did not reach ${JSON.stringify(target)} within its budget${
+          lastExplanation === '' ? '' : `; the model reported: ${lastExplanation}`
+        }`,
+      );
+    }
+    await scroll();
+  }
+}
+
+/**
+ * Selects one node and resolves it to a deterministic, unique locator, or, for
+ * a caller whose policy allows it, dispatches at one screenshot point.
+ *
+ * Under `vision: 'fallback'` this is the method that owns the escalation,
+ * because a locate is the only thing that can say "the tree was not enough"
+ * without guessing: either the model reported no match, or no derived query
+ * resolved the node it chose. Both surface as the same two locator codes, so
+ * one attempt, one predicate, and one retry cover the whole feature.
+ */
+export async function locateOne<Value = never>(
+  invocation: Invocation,
+  target: string,
+  options: LocateOptions & { point?: PointPolicy<Value> },
+): Promise<LocatedNode | Value> {
+  requirePointCapability(invocation, options.point ?? NODE_ONLY);
+
+  // Opened once, before any attempt: a vision escalation re-asks the model but
+  // stays on the same route, so it is the same key and must not be looked up
+  // twice.
+  const cache = await openCacheFor(invocation, target, options);
+  const replayed = await cache?.replay();
+  if (replayed !== undefined) return replayed;
+
+  try {
+    // While an escalation is still available, the first attempt does not spend
+    // the clock proving a tree-only pick unresolvable: one sweep, then ask
+    // again with pixels. The escalated attempt polls to the deadline as usual,
+    // so the worst case is no slower than a single-tier locate.
+    const poll = !invocation.canEscalateVision();
+    return await locateAttempt(invocation, target, { ...options, poll, cache });
+  } catch (cause) {
+    // Re-asked rather than reused: the first attempt spent budget and clock, and
+    // escalating into an exhausted budget would replace the locator failure the
+    // caller needs to read with a budget failure.
+    if (!invocation.canEscalateVision() || invocation.dispatched || !isTreeMiss(cause)) {
+      throw cause;
+    }
+    invocation.escalateVision();
+    return locateAttempt(invocation, target, { ...options, poll: true, cache });
+  }
+}
+
+/**
+ * Rejects `vision: 'only'` for a method that needs a semantic node.
+ *
+ * Withholding the tree leaves a point as the only expressible answer, and this
+ * method has no coordinate equivalent, so the call cannot be satisfied. Failing
+ * before the first model call says that plainly, instead of paying for a round
+ * that can only come back invalid.
+ */
+function requirePointCapability(invocation: Invocation, policy: PointPolicy<unknown>): void {
+  if (!invocation.treeWithheld || policy.allowed) return;
+  throw new AgentError(
+    'POLICY_DENIED',
+    `${invocation.api} acts on a semantic node, but vision: 'only' withholds the observation, ` +
+      'leaving nothing to name a node from; use true or \'fallback\' here, or tap/click for a ' +
+      'target that only pixels can find',
+  );
+}
+
+/**
+ * True for the failures that mean "the accessibility tree did not describe this
+ * target", which are exactly the ones pixels can still answer. Any other
+ * failure — a dispatch, a timeout, a cancelled run — is not retried.
+ */
+function isTreeMiss(cause: unknown): boolean {
+  if (!(cause instanceof AgentError)) return false;
+  return cause.code === 'LOCATOR_NOT_FOUND' || cause.code === 'LOCATOR_AMBIGUOUS';
+}
+
+async function locateAttempt<Value>(
+  invocation: Invocation,
+  target: string,
+  options: LocateOptions & {
+    point?: PointPolicy<Value>;
+    poll: boolean;
+    cache?: OpenLocateCache | undefined;
+  },
+): Promise<LocatedNode | Value> {
+  const policy = options.point ?? NODE_ONLY;
+  const selection = await observeAndSelect(invocation, target, { allowPoint: policy.allowed });
+  if (selection.kind === 'point' && policy.allowed) {
+    // Not recorded, and not by omission: a point is a screen coordinate, which
+    // `cache-1` must never store. Keeping the write on the node branch makes
+    // that structural rather than a check someone can forget.
+    return policy.perform(invocation, acceptPoint(invocation, target, selection));
+  }
+  const located = await requireNode(invocation, target, selection, options);
+  await options.cache?.record(located);
+  return located;
+}
+
+/**
+ * Resolves a selection that has to be a node.
+ *
+ * The pointed case restates the protocol rule "a point requires a caller that
+ * asked for one" as a last line of defence: the grammar and the validator both
+ * already gate on the same policy, so reaching it means those two drifted.
+ */
+async function requireNode(
+  invocation: Invocation,
+  target: string,
+  selection: Selection,
+  options: { testIdAttribute: string; poll?: boolean },
+): Promise<LocatedNode> {
+  switch (selection.kind) {
+    case 'node':
+      return resolveSelected(invocation, selection, options);
+    case 'absent':
+      throw new AgentError(
+        'LOCATOR_NOT_FOUND',
+        `the observation contains no node matching ${JSON.stringify(target)}`,
+      );
+    case 'none':
+      invocation.note({ explanation: selection.explanation });
+      throw new AgentError(
+        'LOCATOR_NOT_FOUND',
+        `the model found no node matching ${JSON.stringify(target)}: ${selection.explanation}`,
+      );
+    case 'point':
+      throw new AgentError(
+        'MODEL_OUTPUT_INVALID',
+        `the model pointed at (${selection.point.x}, ${selection.point.y}) for ` +
+          `${JSON.stringify(target)}, but this method acts on a semantic node`,
+      );
+  }
+}
+
+/** Records what the tree says is under a pointed selection, before dispatch. */
+function acceptPoint(
+  invocation: Invocation,
+  target: string,
+  selection: Extract<Selection, { kind: 'point' }>,
+): LocatedPoint {
+  const { point, hit, observation, explanation } = selection;
+  invocation.note({
+    explanation:
+      `the model pointed at (${point.x}, ${point.y}) for ${JSON.stringify(target)}; the runner ` +
+      `hit-tested ${hit === null ? 'no semantic node' : describeHit(hit)} there. ` +
+      `The model explained: ${explanation}`,
+  });
+  return { kind: 'point', point, hit, observation, explanation };
+}
+
+/** Node identity recorded for a pointed action, per spec 13-reporting.md. */
+function describeHit(node: SemanticNode): string {
+  const name = normalize(node.name ?? node.text);
+  const role = node.role ?? 'node';
+  return name === '' ? `a ${role}` : `the ${role} ${JSON.stringify(name)}`;
+}
+
+/**
  * Resolves a selected observation node through the first derived query that
  * matches exactly one node with the same semantics.
+ *
+ * `poll: false` runs a single sweep instead of retrying to the deadline. The
+ * node was observed a moment ago, so a sweep that resolves nothing right now is
+ * evidence about the derived queries, not about timing — which is enough for a
+ * fallback caller to decide to escalate, and only ever worth spending the clock
+ * on once there is no escalation left.
  */
-async function resolveSelected(
+export async function resolveSelected(
   invocation: Invocation,
-  selection: MatchedSelection,
-  options: LocateOptions,
+  selection: Extract<Selection, { kind: 'node' }>,
+  options: { testIdAttribute: string; poll?: boolean },
 ): Promise<LocatedNode> {
-  const candidates = deriveQueries(selection.node, options.testIdAttribute).map((query) =>
-    scopeToFrames(query, selection.node.framePath),
+  const candidates = deriveQueries(selection.selected, options.testIdAttribute).map((query) =>
+    scopeToFrames(query, selection.selected.framePath),
   );
   if (candidates.length === 0) {
     throw new AgentError(
@@ -292,12 +590,11 @@ async function resolveSelected(
     );
   }
   const engine = invocation.engine;
-  let outcomes: string[] = [];
 
   for (;;) {
-    // Outcomes are judged per sweep: a query that stopped matching several
+    // Outcomes are collected per sweep: a query that stopped matching several
     // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
-    outcomes = [];
+    const outcomes: string[] = [];
     let ambiguous = false;
     for (const expression of candidates) {
       let refs: readonly NodeRef[];
@@ -325,15 +622,16 @@ async function resolveSelected(
         outcomes.push(`${describeExpression(expression)} -> matched node became unreadable`);
         continue;
       }
-      if (!matchesSignature(selection.node, node)) {
+      if (!matchesSignature(selection.selected, node)) {
         outcomes.push(
           `${describeExpression(expression)} -> resolved a different node (${describe(node)})`,
         );
         continue;
       }
       invocation.recordPolicy('locate.identity', 'allowed');
-      agentTrace(`locate: resolved via ${describeExpression(expression)}`);
+      agentTrace(() => `locate: resolved via ${describeExpression(expression)}`);
       return {
+        kind: 'node',
         ref,
         expression,
         node,
@@ -344,15 +642,15 @@ async function resolveSelected(
       };
     }
 
-    agentTrace(`locate: sweep failed\n  ${outcomes.join('\n  ')}`);
-    if (invocation.deadline.expired()) {
+    agentTrace(() => `locate: sweep failed\n  ${outcomes.join('\n  ')}`);
+    if (options.poll === false || invocation.deadline.expired()) {
       invocation.recordPolicy('locate.identity', 'denied');
       // Each candidate's outcome names the exact query and why it was
       // rejected, so a locate failure explains itself.
       const detail = outcomes.map((outcome) => `\n  ${outcome}`).join('');
       throw new AgentError(
         ambiguous ? 'LOCATOR_AMBIGUOUS' : 'LOCATOR_NOT_FOUND',
-        `no derived query uniquely resolved the selected node (${describe(selection.node)}):${detail}`,
+        `no derived query uniquely resolved the selected node (${describe(selection.selected)}):${detail}`,
       );
     }
     await sleep(POLL_INTERVAL_MS, engine.signal);
@@ -372,14 +670,6 @@ function scopeToFrames(
 }
 
 /**
- * Observed names and texts at or beyond this length may have been truncated by
- * the driver's observation bound, which driver-1 does not signal. Such values
- * are matched as substrings and compared as prefixes: for a complete value the
- * relaxed match still holds, so the fallback is safe in both cases.
- */
-const POSSIBLY_TRUNCATED_LENGTH = 200;
-
-/**
  * Bounded prefix used to re-find nodes whose names aggregate a whole card of
  * text. Long names diverge between accessible-name computation and rendered
  * text (image alts, badges), so a role-scoped text-content prefix filter is
@@ -387,8 +677,15 @@ const POSSIBLY_TRUNCATED_LENGTH = 200;
  */
 const NAME_PREFIX_LENGTH = 64;
 
-function possiblyTruncated(value: string): boolean {
-  return value.length >= POSSIBLY_TRUNCATED_LENGTH;
+/**
+ * True when an observed field was cut at the driver contract's observation
+ * bound (`OBSERVED_NAME_LIMIT` / `OBSERVED_TEXT_LIMIT`). Checked on the raw
+ * value — normalization only shrinks — so every value below the limit is
+ * provably complete. Truncated values are matched as substrings and compared
+ * as prefixes.
+ */
+function truncatedAt(value: string | undefined, limit: number): boolean {
+  return (value ?? '').length >= limit;
 }
 
 /**
@@ -419,14 +716,14 @@ export function deriveQueries(
   const role = node.role;
   const name = normalize(node.name);
   const text = normalize(node.text);
+  const nameTruncated = truncatedAt(node.name, OBSERVED_NAME_LIMIT);
+  const textTruncated = truncatedAt(node.text, OBSERVED_TEXT_LIMIT);
   const testId = node.attributes?.[testIdAttribute];
   const placeholder = node.attributes?.['placeholder'];
 
   if (role !== undefined && role !== '' && name !== '') {
-    candidates.push(
-      roleQuery(role as Role, { name, exact: !possiblyTruncated(name) }, undefined),
-    );
-    if (possiblyTruncated(name)) {
+    candidates.push(roleQuery(role as Role, { name, exact: !nameTruncated }, undefined));
+    if (nameTruncated) {
       candidates.push(
         filterExpression(roleQuery(role as Role, undefined, undefined), {
           hasText: prefixPattern(name),
@@ -446,11 +743,11 @@ export function deriveQueries(
     candidates.push(textQuery('placeholder', placeholder, { exact: true }, undefined));
   }
   if (name !== '') {
-    candidates.push(textQuery('label', name, { exact: !possiblyTruncated(name) }, undefined));
-    candidates.push(textQuery('text', name, { exact: !possiblyTruncated(name) }, undefined));
+    candidates.push(textQuery('label', name, { exact: !nameTruncated }, undefined));
+    candidates.push(textQuery('text', name, { exact: !nameTruncated }, undefined));
   }
   if (text !== '' && text !== name) {
-    candidates.push(textQuery('text', text, { exact: !possiblyTruncated(text) }, undefined));
+    candidates.push(textQuery('text', text, { exact: !textTruncated }, undefined));
   }
   if (role !== undefined && role !== '' && text !== '') {
     candidates.push(
@@ -483,9 +780,9 @@ export function matchesSignature(observed: SemanticNode, resolved: SemanticNode)
   const observedName = normalize(observed.name);
   if (observedName !== '') {
     const resolvedName = normalize(resolved.name);
-    // A possibly-truncated observed name identifies its node by prefix; the
-    // re-read node carries the full name.
-    return possiblyTruncated(observedName)
+    // A truncated observed name identifies its node by prefix; the re-read
+    // node comes from an unbounded single-node read and carries the full name.
+    return truncatedAt(observed.name, OBSERVED_NAME_LIMIT)
       ? resolvedName.startsWith(observedName)
       : resolvedName === observedName;
   }

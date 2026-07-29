@@ -102,6 +102,8 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.maxSteps` | 25 | 25 |
 | `agent.maxModelCalls` | 25 | 25 |
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
+| `agent.vision` | false | false |
+| `agent.visionModel` | `agent.model` | `agent.model` |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
 `0`, or `false`. Numeric config values except `maxEstimatedCostUsd` MUST be safe
@@ -110,6 +112,9 @@ retries must be 0 through 10; timeouts must be positive.
 Every run writes the canonical JSON report regardless of renderer selection.
 `agent.maxSteps` and `agent.maxModelCalls` are 1 through 100.
 `agent.maxObservationBytes` is 1 KiB through 16 MiB.
+`agent.vision` is the project-wide default for the per-call `vision` option
+(02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
+that can send pixels requires a model that accepts image input.
 
 ## Targets and capabilities
 
@@ -180,6 +185,19 @@ The first `/` separates provider from model ID in a string reference.
 may name another variable. The credential value never enters config digests,
 logs, reports, or child-process arguments. Local adapters without credentials
 MAY omit it.
+
+`agent.visionModel` pins the model used by calls with `vision`
+(02-test-api.md), accepting the same three forms and overridden by
+`E2E_VISION_MODEL`. It is optional: unset, vision calls use `agent.model`. It
+exists because visual grounding is a materially higher bar than accepting an
+image, so the tier that needs it is pinnable without changing the model every
+other call uses. An invocation that is sending pixels uses that model for the
+rest of its lifetime, including rounds whose pixel evidence was withheld, so a
+polling method never switches models between rounds. A `"fallback"` invocation
+that escalates therefore changes model once, at the escalation, and the step
+records that it escalated (13-reporting.md) so its reported provenance is not
+read as covering the tree-only calls that preceded it. Both models are disclosed before first agent use (14-security.md), and
+each step records the model it actually used (13-reporting.md).
 
 A model instance owns its own transport and credentials; the runner passes it
 to its adapter as-is. Live instances never cross a process boundary: workers

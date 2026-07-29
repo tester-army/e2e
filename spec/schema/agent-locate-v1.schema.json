@@ -9,19 +9,41 @@
     "protocolVersion": { "const": "agent-locate-1" },
     "target": {
       "anyOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["id", "revision"],
-          "properties": {
-            "id": { "type": "string", "minLength": 1, "maxLength": 256 },
-            "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
-          }
-        },
+        { "$ref": "#/$defs/nodeTarget" },
+        { "$ref": "#/$defs/pointTarget" },
         { "type": "null" }
       ]
     },
     "explanation": { "type": "string", "maxLength": 8192 },
     "positional": { "type": "boolean" }
+  },
+  "$defs": {
+    "nodeTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "pointTarget": {
+      "description": "Offered only to vision calls; the runner validates and hit-tests the point before any dispatch.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["point", "revision"],
+      "properties": {
+        "point": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 100000 },
+            "y": { "type": "number", "minimum": 0, "maximum": 100000 }
+          }
+        },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
   }
 }

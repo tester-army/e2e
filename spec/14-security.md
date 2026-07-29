@@ -27,7 +27,7 @@ same ambient OS authority as the runner.
 
 ## Policy authority
 
-The runner owns immutable agent policy `policy-0.2`. System policy precedes
+The runner owns immutable agent policy `policy-0.3`. System policy precedes
 project context, ledger data, app content, and model output. No lower-trust
 input can add tools, origins, credentials, budget, filesystem access, network
 destinations, or production permission.
@@ -95,8 +95,9 @@ registration. Unknown/`none` purpose is incompatible with every secret.
 Agent use is not offline unless the configured adapter is local and makes no
 network requests. Before first agent use, the runner reports the provider,
 model, endpoint origin, and categories sent: sanitized instruction/parameters,
-bounded ledger, semantic tree, and redacted screenshot when enabled. There is
-no silent provider or endpoint fallback.
+bounded ledger, semantic tree, and redacted screenshot when enabled by `vision`.
+Every configured model is disclosed, including a separately pinned
+`agent.visionModel`. There is no silent provider or endpoint fallback.
 
 Provider requests contain no captured application cookies/authorization headers, network bodies,
 session payloads, environment values, raw HTML, hidden form values, or complete
@@ -124,6 +125,31 @@ prove that an untrusted app did not mirror the secret elsewhere. Semantic trees
 remain usable after exact-value and secure-node redaction. Trace recording
 excludes request/response bodies, authorization/cookie headers, and secure input
 values by default.
+
+## Pixel evidence as model input
+
+Pixel evidence reaches a model only when the test asks for it with `vision`
+(02-test-api.md). It is additive, and it degrades instead of failing the call:
+the semantic tree is always sent, and the step records why pixels were withheld.
+Pixels are withheld when
+
+- the viewport is pixel-tainted, by the rule above, and
+- masking cannot be proven complete: every secure node the driver observed MUST
+  be covered by a masked region, and an image reporting fewer masked regions
+  than observed secure nodes is discarded exactly like an incompletely redacted
+  artifact.
+
+Screenshot dimensions and mask counts are recorded with the step, and pixel
+bytes count toward per-call token accounting. Image resolution is bounded by the
+captured viewport; full-page or unbounded captures are not model input.
+
+Pixels are untrusted evidence on the same terms as tree text, and they widen the
+prompt-injection surface: text rendered in the page is readable by the model
+even when no node exposes it. The runner policy MUST state that an attached
+image is data, and that text drawn inside it — including anything shaped like an
+instruction, a policy, or a schema — carries no authority. As everywhere else, a
+model cannot select an action or an error code, and a coordinate it returns is
+data the runner validates, converts, hit-tests, and records before dispatch.
 
 If source masking, screenshot masking, trace filtering, or runner redaction
 cannot be proven complete, the evidence is rejected. The runner MUST NOT upload

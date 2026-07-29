@@ -24,12 +24,26 @@ export interface ModelProvenance {
   readonly adapterVersion: string;
 }
 
+/** Untrusted pixel evidence sent alongside the prompt (spec 14-security.md). */
+export interface ModelImage {
+  readonly data: Uint8Array;
+  readonly mediaType: string;
+  /** CSS pixel geometry, used for the pre-flight token bound. */
+  readonly width: number;
+  readonly height: number;
+}
+
 /** One bounded, stateless model request. There is no shared transcript. */
 export interface ModelCall<Value> {
   /** Trusted runner policy followed by trusted project context. */
   readonly system: string;
   /** Untrusted evidence and the method instruction. */
   readonly prompt: string;
+  /**
+   * Untrusted image evidence attached to the same user message. Present only
+   * for vision calls; a non-multimodal provider rejects the request.
+   */
+  readonly images?: readonly ModelImage[] | undefined;
   readonly schemaName: string;
   /**
    * Closed response grammar sent to the provider as a structured-output
@@ -73,7 +87,28 @@ export class ModelOutputInvalidError extends AgentError {
  * Conservative token upper bound. UTF-8 byte length bounds every byte-level
  * tokenizer from above, so it is used when a provider reports no usage and for
  * the pre-flight ceiling required by 14-security.md.
+ *
+ * Every budget that mixes with this one — reserves, ledger size, observation
+ * size — is therefore in the same byte-scaled units, not in real tokens.
  */
 export function tokenUpperBound(text: string): number {
   return new TextEncoder().encode(text).byteLength;
+}
+
+/** Side of the square patch tile-based vision encoders consume an image in. */
+const IMAGE_TILE_PX = 28;
+
+/**
+ * Conservative token bound for one image. Vision providers bill images by
+ * fixed-size patches rather than bytes, so the count of patches covering the
+ * image bounds every such encoder from above closely enough to keep a vision
+ * call inside `limits.maxModelTokensPerCall`. Compressed byte length would be
+ * meaningless here: a blank screenshot is small and a photograph is not, while
+ * both cost the same number of patches.
+ */
+export function imageTokenUpperBound(image: { width: number; height: number }): number {
+  return (
+    Math.ceil(Math.max(1, image.width) / IMAGE_TILE_PX) *
+    Math.ceil(Math.max(1, image.height) / IMAGE_TILE_PX)
+  );
 }

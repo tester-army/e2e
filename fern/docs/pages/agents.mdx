@@ -180,17 +180,132 @@ expect(summary.plan).toBe('Pro plan');   // brittle
 
 ## What the model sees
 
-Only three things reach the model:
+By default only three things reach the model:
 
 - a redacted snapshot of the screen: roles, accessible names, text, test IDs, and
   states
 - a short summary of previous steps in the same test
 - your `agent.context` string
 
-It never receives screenshots, raw HTML, cookies, headers, network bodies, or
-environment values. Password fields arrive masked, and any configured credential
-value found on screen is replaced with a placeholder before the snapshot leaves
-the runner. Screenshots exist for your report, not for the model.
+It never receives raw HTML, cookies, headers, network bodies, or environment
+values. Password fields arrive masked, and any configured credential value found
+on screen is replaced with a placeholder before the snapshot leaves the runner.
+Screenshots are for your report, not the model, unless you ask for them with
+`vision`.
+
+## Seeing the screen
+
+Some things no snapshot describes: a chart drawn on a canvas, a map pin, a
+WebGL scene, a custom widget with no semantics, or a purely visual property like
+a trend or a broken layout. Pass `vision: true` and the model also gets a masked
+screenshot of the current screen.
+
+```ts
+await agent.assert('the chart trends upward', { vision: true });
+await agent.tap('the red pin on the map', { vision: true });
+```
+
+It needs a model that accepts images. Set `agent.vision` in config to pick a
+default for a whole project, and override it per call.
+
+The snapshot still goes with it — vision adds pixels, it never replaces the tree.
+That is what keeps a vision `tap` on a real control resolving to a real node.
+When the tree genuinely describes nothing, as on a canvas, the model can point at
+the screenshot instead, and the runner validates that point, checks what is under
+it, records both, and taps exactly there. Only `tap` and `click` can act on a
+point; everything else needs a node.
+
+### Judging the screen, not the snapshot
+
+`vision: true` gives the model both, which is wrong for a visual assertion: the
+snapshot is the easier read, so that is what gets read. "The form is visible and
+not covered" is *satisfied* by a snapshot in which the form is present and named,
+even with a consent sheet over it.
+
+```ts
+await agent.assert('the search form is visible and not covered', { vision: 'only' });
+```
+
+`'only'` sends the screenshot and leaves the snapshot out, so there is nothing
+else to answer from. It costs less than `true`, not more. Reach for `true` when
+the snapshot is part of the answer — "the submit button is disabled" lives in the
+snapshot and is often invisible on screen.
+
+A locate under `'only'` can only point, since no node identifiers were shown, so
+`tap` and `click` work and `type`, `select`, `upload`, `scrollTo`, and `dragTo`
+refuse it rather than blind-clicking something they could have addressed. And if
+pixels are unavailable — a tainted viewport after a secret fill — `'only'` fails
+instead of quietly answering from the snapshot.
+
+One thing to expect: the screenshot is the viewport, not the whole page. A
+snapshot-based "the list shows prices" passes because the DOM holds every price;
+the same question on pixels fails when the first card is cut off above its price.
+That is the mode working, not breaking — but write `'only'` conditions about what
+is on screen, and scroll before asking about anything further down.
+
+### Paying for pixels only when the tree fails
+
+`vision: 'fallback'` is the middle setting. The call runs on the snapshot alone
+first, and pixels are attached only if that misses — the model says nothing
+matches, or the node it picked cannot be re-found by any derived query. That
+second case is the common one on real sites: an offer card is a single link whose
+accessible name is the entire card, so nothing can address it again. Seeing the
+card, the model picks the small inner control it would actually click.
+
+```ts
+// Free on a page whose tree is fine; pays for one screenshot on a page whose isn't.
+await agent.tap('the first offer card in the results', { vision: 'fallback' });
+```
+
+It escalates once per call, never after an action has been dispatched, and the
+step records `visionEscalated: true` so you can see which steps needed it.
+
+`assert`, `waitFor`, `extract`, and `scrollTo` stay on the snapshot under
+`'fallback'`: they always produce an answer, so there is no miss to detect —
+escalating on a failed assertion would only bias it toward passing. Use
+`vision: true` there.
+
+Three things to expect:
+
+- Images are billed as input tokens, so `vision: true` costs more than the same
+  call without it on every call. Reach for it on the step that needs pixels, use
+  `'fallback'` when you only want it as a safety net.
+- Once a test fills a secret, the screen stays pixel-tainted for the rest of the
+  attempt: vision calls silently continue with the snapshot alone, and the report
+  records that pixels were withheld.
+- Pointing needs a model that is good at visual grounding, which is a much higher
+  bar than accepting an image. A weak model judges a chart correctly and still
+  returns a confident wrong coordinate for a pin. Pin `agent.visionModel` for
+  suites that point.
+
+### Pinning a model for pixels
+
+The model that reads your snapshots well is often not the model that points
+accurately. `agent.visionModel` pins the one that vision calls use, leaving every
+other call on `agent.model`:
+
+```ts
+export default defineConfig({
+  agent: {
+    model: 'google/gemini-3-flash',
+    visionModel: 'openai/gpt-5.6-luna',
+  },
+});
+```
+
+`E2E_VISION_MODEL` overrides it, the way `E2E_MODEL` overrides `agent.model`.
+Unset, calls that send pixels use `agent.model`. Each step in the report records the model
+it actually used, so a mixed run stays auditable.
+
+When a pointed tap lands in the wrong place, the step tells you where it went:
+the report records the point the model chose, what the runner hit-tested there,
+and the model's own explanation.
+
+```
+the model pointed at (391, 253) for "the red pin on the map";
+the runner hit-tested no semantic node there.
+The model explained: The red pin is the red circular marker in the map area.
+```
 
 ## Cost and limits
 
@@ -204,6 +319,9 @@ Every call is bounded, so a bad prompt cannot spend your budget in a loop.
 | `assert` | 1 | 30 s |
 | `extract` | 2 | 30 s |
 | `waitFor` | up to `agent.maxModelCalls`, default 25 | 30 s |
+
+`vision: true` changes no budget in this table; it makes each of those calls
+carry an image, which costs input tokens.
 
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time raises
 `STEP_TIMEOUT`. Both are test failures you can see in the report.

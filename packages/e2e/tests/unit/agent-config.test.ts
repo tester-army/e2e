@@ -25,6 +25,39 @@ describe('agent config defaults', () => {
     expect(config.agent.cache).toBe('read-write');
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.context).toBeUndefined();
+    expect(config.agent.vision).toBe(false);
+  });
+
+  it('accepts every vision mode as a project default and rejects anything else', () => {
+    expect(resolve({ agent: { vision: true } }).agent.vision).toBe(true);
+    expect(resolve({ agent: { vision: false } }).agent.vision).toBe(false);
+    expect(resolve({ agent: { vision: 'fallback' } }).agent.vision).toBe('fallback');
+    expect(() => resolve({ agent: { vision: 'yes' } } as never)).toThrow(/agent.vision/);
+    expect(() => resolve({ agent: { vision: 1 } } as never)).toThrow(/agent.vision/);
+  });
+
+  it('resolves a separate vision model, defaulting to none', () => {
+    expect(resolve({}).agent.visionModel).toBeUndefined();
+    const config = resolve({
+      agent: { model: 'fake/text', visionModel: 'fake/grounding' },
+    });
+    expect(config.agent.model).toMatchObject({ provider: 'fake', id: 'text' });
+    expect(config.agent.visionModel).toMatchObject({ provider: 'fake', id: 'grounding' });
+  });
+
+  it('overrides the vision model from E2E_VISION_MODEL', () => {
+    const config = resolve({ agent: { model: 'fake/text' } }, {
+      ...BASE_ENV,
+      E2E_VISION_MODEL: 'fake/grounding',
+    } as NodeJS.ProcessEnv);
+    expect(config.agent.visionModel).toMatchObject({ provider: 'fake', id: 'grounding' });
+  });
+
+  it('names agent.visionModel in its own diagnostics', () => {
+    expect(() => resolve({ agent: { visionModel: 'nope' } })).toThrow(/agent\.visionModel/);
+    expect(() => resolve({ agent: { visionModel: { id: 'x' } } } as never)).toThrow(
+      /agent\.visionModel\.provider/,
+    );
   });
 
   it('defaults the cache to read-only in CI so untrusted runs cannot publish guidance', () => {

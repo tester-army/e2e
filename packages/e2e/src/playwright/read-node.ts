@@ -1,5 +1,17 @@
 /** In-page semantic reader executed via locator.evaluate / locator.evaluateHandle. */
 
+/**
+ * The one definition of a secure field.
+ *
+ * It is a selector rather than a predicate because it has to be applied from
+ * two sides that cannot share code: the in-page reader matches elements
+ * against it to mark nodes `secure`, and the driver hands the same string to
+ * the screenshot masker. One string means the tree's redaction and the image's
+ * redaction cannot describe different sets of elements, which is what the
+ * runner's pixel-clearance check relies on.
+ */
+export const SECURE_FIELD_SELECTOR = 'input[type="password" i]';
+
 export interface RawNodeData {
   role: string | null;
   name: string | null;
@@ -40,7 +52,16 @@ export interface RawObservation {
   secureNodeCount: number;
 }
 
-export type SemanticMode = { kind: 'node' } | { kind: 'tree'; maxNodes: number };
+export type SemanticMode =
+  | { kind: 'node' }
+  | {
+      kind: 'tree';
+      maxNodes: number;
+      /** Cuts each node's name at this length; the caller owns the contract value. */
+      nameLimit: number;
+      /** Cuts each node's text at this length; the caller owns the contract value. */
+      textLimit: number;
+    };
 
 export interface SemanticOptions {
   testIdAttribute: string;
@@ -64,7 +85,7 @@ export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'no
  */
 export const readSemanticsFunction = <Mode extends SemanticMode>(
   element: Element,
-  options: { testIdAttribute: string; mode: Mode },
+  options: { testIdAttribute: string; secureFieldSelector: string; mode: Mode },
 ): SemanticResult<Mode> => {
   const SKIP_TAGS = [
     'script',
@@ -98,8 +119,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     options.mode.kind === 'tree'
       ? {
           attributes: [options.testIdAttribute, 'type', 'autocomplete', 'href', 'role'],
-          textLimit: 512,
-          nameLimit: 256,
+          textLimit: options.mode.textLimit,
+          nameLimit: options.mode.nameLimit,
           redactHref: true,
           directTextOnly: true,
           documentRoot: true,
@@ -286,7 +307,6 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   const describe = (el: Element): RawNodeData => {
     const tag = el.tagName.toLowerCase();
-    const type = (el.getAttribute('type') ?? '').toLowerCase();
     const autocomplete = (el.getAttribute('autocomplete') ?? '').toLowerCase();
 
     let value: string | null = null;
@@ -317,7 +337,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       el.getAttribute('aria-disabled') === 'true';
 
     const ariaExpanded = el.getAttribute('aria-expanded');
-    const secure = tag === 'input' && type === 'password';
+    // Matched against the shared selector rather than re-derived from tag and
+    // type, so this node's `secure` flag and the screenshot mask agree by
+    // construction.
+    const secure = el.matches(options.secureFieldSelector);
 
     let inputPurpose: RawNodeData['inputPurpose'] = 'none';
     if (secure) inputPurpose = 'password';

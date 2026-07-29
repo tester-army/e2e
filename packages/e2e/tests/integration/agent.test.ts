@@ -215,9 +215,9 @@ describe('agent fixture', () => {
 
   it('never exposes application-authored instructions as policy', () => {
     const system = fakeCalls[0]!.system;
-    expect(system).toContain('policy-0.2');
+    expect(system).toContain('policy-0.3');
     expect(system).toContain('This is the e2e fixture application.');
-    expect(system.indexOf('policy-0.2')).toBeLessThan(
+    expect(system.indexOf('policy-0.3')).toBeLessThan(
       system.indexOf('This is the e2e fixture application.'),
     );
   });
@@ -268,7 +268,7 @@ describe('agent fixture', () => {
       provider: 'fake',
       model: 'scripted',
       endpoint: 'provider-default',
-      policyVersion: 'policy-0.2',
+      policyVersion: 'policy-0.3',
       calls: 1,
       tokenAccounting: 'provider',
     });

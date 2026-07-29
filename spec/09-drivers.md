@@ -152,6 +152,21 @@ revision. References are unique within a session and valid only for that
 revision. The root and every actionable node have stable geometry for the
 captured viewport.
 
+Pixel evidence is captured only when the runner asks for it. When it does, the
+driver captures it within the same observation and under the same revision, as
+close in time to the tree as its backend allows, and it MUST report:
+
+- the true pixel dimensions of the image bytes it returns, measured rather than
+  assumed. They are the coordinate space of everything read off the image, so a
+  reported size that disagrees with the bytes displaces every coordinate;
+- the scale relating those pixels to the CSS pixels of `SemanticNode.rect`,
+  which is the space actions dispatch in;
+- the number of regions it masked, in `redaction.maskedRegionCount`.
+
+A driver that cannot capture pixels omits them rather than failing the
+observation. A driver MAY implement point dispatch for the visual pointing tier;
+without it, a runner-validated point cannot be acted on.
+
 Secure fields have `states.secure: true`; their `value`, text, and sensitive
 attributes are masked. `inputPurpose` is derived from standardized profile
 rules. On web, password input type maps to `password`; autocomplete tokens

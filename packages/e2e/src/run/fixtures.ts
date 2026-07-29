@@ -2,6 +2,7 @@
 
 import { createAgent } from '../agent/index.ts';
 import type { AgentCacheContext } from '../agent/invocation.ts';
+import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
@@ -133,7 +134,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
       agent ??= createAgent({
         engine,
         steps: environment.steps,
-        adapter: createModelAdapter(environment.config.agent.model),
+        models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
         priorSteps: environment.priorSteps,
         agentContext: joinAgentContext(
@@ -545,5 +546,3 @@ function validateJsonValue(value: unknown, label: string): void {
   };
   visit(value);
 }
-
-
