@@ -2,6 +2,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 .e2e/artifacts/
+# Cache entries are committable in a user's project, and `e2e init` leaves them
+# tracked on purpose. They are ignored here because this repo's only caches come
+# from the testbed: throwaway fixture apps and a live production site, so no entry
+# is ever worth committing.
+.e2e/cache/
 .e2e/sessions/
 .e2e/report.json
 .e2e/report.html
