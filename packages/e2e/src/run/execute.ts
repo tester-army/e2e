@@ -12,6 +12,7 @@ import {
   type CacheTargetIdentity,
 } from '../cache/index.ts';
 import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
+import { isMobileTarget } from '../config/resolve.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
   classifyError,
@@ -28,6 +29,7 @@ import { Deadline, withTimeout } from '../internal/time.ts';
 import type { CollectedFile } from '../collect/collect.ts';
 import type { RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
+import type { TargetRuntimeProvenance } from '../report/build.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { findRegistered, RealmManager, type Realm } from './realm.ts';
@@ -49,6 +51,12 @@ export interface ExecutionEvents {
   onSerialGroup?(group: SerialGroupRecord): void;
   /** Fires before a runnable pair (or serial unit via its first member) starts. */
   onPairStart?(pair: TestTargetPair): void;
+  /**
+   * Fires once per target, after its first session reports `runtime()`. It
+   * carries the resolved backend provenance the report needs and which no
+   * manifest can supply.
+   */
+  onRuntime?(runtime: TargetRuntimeProvenance): void;
 }
 
 export interface TargetExecutorOptions {
@@ -94,6 +102,7 @@ export class TargetExecutor implements SerialHost {
    */
   private readonly cacheStore: CacheStore;
   private readonly cacheProject: string;
+  private runtimeReported = false;
 
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
@@ -114,11 +123,15 @@ export class TargetExecutor implements SerialHost {
       driverVersion: options.driver.version,
       spiVersion: options.driver.spiVersion,
       platform: options.target.platform,
-      appIdentity: canonicalDigest({
-        origin: options.config.app.base.origin,
-        basePath: options.config.app.base.basePath,
-        environment: options.config.app.environment,
-      }),
+      appIdentity: canonicalDigest(
+        isMobileTarget(options.target)
+          ? { app: options.target.app, environment: options.config.app.environment }
+          : {
+              origin: options.config.app.base?.origin,
+              basePath: options.config.app.base?.basePath,
+              environment: options.config.app.environment,
+            },
+      ),
     };
     // The cache is deployment-independent on purpose: a preview URL, a staging
     // host, and localhost on another port serve the same app, and keying on the
@@ -341,7 +354,9 @@ export class TargetExecutor implements SerialHost {
           target: this.target.driverTarget,
           targetId: this.target.name,
           app: {
-            baseUrl: this.config.app.base.href,
+            ...(this.config.app.base !== undefined
+              ? { baseUrl: this.config.app.base.href }
+              : {}),
             allowedOrigins: this.config.app.allowedOrigins,
             environment: this.config.app.environment,
             allowProduction: this.config.app.allowProduction,
@@ -358,6 +373,8 @@ export class TargetExecutor implements SerialHost {
       ),
     );
 
+    await this.reportRuntimeProvenance(driverSession, attemptId, signal);
+
     if (pair.options.session !== undefined) {
       const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
       if (driverSession.restoreState === undefined) {
@@ -372,6 +389,34 @@ export class TargetExecutor implements SerialHost {
         .catch(() => undefined);
     }
     return driverSession;
+  }
+
+  /**
+   * Reads resolved backend provenance from the first session of this target.
+   * It is best-effort: a driver that cannot report runtime state must not fail
+   * the attempt over report metadata.
+   */
+  private async reportRuntimeProvenance(
+    driverSession: DriverSession,
+    attemptId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (this.runtimeReported || this.options.events?.onRuntime === undefined) return;
+    this.runtimeReported = true;
+    try {
+      const runtime = await driverSession.runtime(
+        this.op(attemptId, this.config.launchTimeout, signal),
+      );
+      this.options.events.onRuntime({
+        viewport: { ...runtime.viewport },
+        ...(runtime.browser !== undefined ? { browserVersion: runtime.browser.version } : {}),
+        ...(runtime.device !== undefined
+          ? { device: runtime.device.name, os: runtime.device.os }
+          : {}),
+      });
+    } catch {
+      // Provenance is diagnostic; the attempt owns the failure surface.
+    }
   }
 
   /** Finalizes trace and closes the driver session with a fresh cleanup budget. */

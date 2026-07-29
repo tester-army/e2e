@@ -1,6 +1,6 @@
 {
   "specVersion": "0.1",
-  "suiteVersion": "0.1.0",
+  "suiteVersion": "0.2.0",
   "profiles": {
     "sdk-0.1": [
       { "id": "SDK-TYPES-001", "source": "api/e2e.d.ts", "requirement": "Canonical SDK declarations compile in strict TypeScript." },
@@ -107,6 +107,29 @@
       { "id": "CONFORMANCE-COMPLETE-001", "source": "00-conformance.md", "requirement": "Every manifest ID appears exactly once and unknown, missing, duplicate, or skipped IDs fail." },
       { "id": "CONFORMANCE-STATUS-001", "source": "13-reporting.md", "requirement": "Overall status is derived from requirement results." },
       { "id": "CONFORMANCE-EVIDENCE-001", "source": "00-conformance.md", "requirement": "Claims are accepted only after a trusted reference-suite rerun against the digest-pinned artifact." }
+    ],
+    "mobile-0.1": [
+      { "id": "MOBILE-DEVICE-001", "source": "16-mobile.md", "requirement": "Physical-device targets and destructive-device operations are rejected rather than degraded." },
+      { "id": "MOBILE-DEVICE-002", "source": "16-mobile.md", "requirement": "Every device operation is scoped to the target application and unset restores the platform default." },
+      { "id": "MOBILE-APP-001", "source": "16-mobile.md", "requirement": "Application identity resolves from installed identity and from build artifact without filename inference." },
+      { "id": "MOBILE-APP-002", "source": "16-mobile.md", "requirement": "App open, restart, clearState, and back scope data reset to the target app and preserve required containers." },
+      { "id": "MOBILE-APP-003", "source": "16-mobile.md", "requirement": "Deep links apply web origin policy to http(s) URLs and allow custom schemes without origin checking." },
+      { "id": "MOBILE-TREE-001", "source": "16-mobile.md", "requirement": "Projection preserves platform document order and binds every node to its observation revision." },
+      { "id": "MOBILE-TREE-002", "source": "16-mobile.md", "requirement": "Off-screen accessible nodes are included and never omitted, summarized, or collapsed." },
+      { "id": "MOBILE-TREE-003", "source": "16-mobile.md", "requirement": "Frames, web selectors, and framePath are absent and rejected as unsupported." },
+      { "id": "MOBILE-ROLE-001", "source": "16-mobile.md", "requirement": "Every iOS role normalization table entry maps to its specified ARIA role." },
+      { "id": "MOBILE-ROLE-002", "source": "16-mobile.md", "requirement": "Every Android role normalization table entry maps to its specified ARIA role." },
+      { "id": "MOBILE-ROLE-003", "source": "16-mobile.md", "requirement": "Role precedence is role, subrole, then native type, and unmapped types normalize to generic." },
+      { "id": "MOBILE-QUERY-001", "source": "16-mobile.md", "requirement": "Role, label, text, displayValue, and testId map to their specified mobile sources." },
+      { "id": "MOBILE-QUERY-002", "source": "16-mobile.md", "requirement": "Placeholder matches only the label of a valueless textbox or searchbox." },
+      { "id": "MOBILE-QUERY-003", "source": "16-mobile.md", "requirement": "checked derives only for checkbox, radio, and switch; expanded and unavailable states never match." },
+      { "id": "MOBILE-ACTION-001", "source": "16-mobile.md", "requirement": "Actionability requires visibility, hit testability, and enablement without retargeting." },
+      { "id": "MOBILE-ACTION-002", "source": "16-mobile.md", "requirement": "Every mobile mutator distinguishes precommit stale state from possibly committed failure." },
+      { "id": "MOBILE-SCROLL-001", "source": "16-mobile.md", "requirement": "Momentum distances and durations and scroll-container selection are exact." },
+      { "id": "MOBILE-OBSERVE-001", "source": "16-mobile.md", "requirement": "Secure masking and inputPurpose derivation follow the specified platform signals." },
+      { "id": "MOBILE-OBSERVE-002", "source": "16-mobile.md", "requirement": "Pixels are omitted when a visible secure node exists, and returned pixels report measured size and scale." },
+      { "id": "MOBILE-CAPABILITY-001", "source": "16-mobile.md", "requirement": "State capability, trace artifact, and web fixture are absent and produce their specified errors." },
+      { "id": "MOBILE-ARTIFACT-001", "source": "16-mobile.md", "requirement": "Screenshot and video artifacts are contained, canonicalized, and finalized on close." }
     ]
   }
 }

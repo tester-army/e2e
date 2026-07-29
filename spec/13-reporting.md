@@ -48,8 +48,13 @@ references.
 environment provenance, resolved target/driver manifests, every discovered
 test-target result (including filtered/skipped pairs), all attempts, steps,
 artifacts, errors, cleanup outcomes, and selection counts.
-Target provenance includes browser engine/version, viewport/scale, fixture and
-artifact capabilities, state capability, origin, and production policy.
+Target provenance includes viewport/scale, fixture and artifact capabilities,
+state capability, and production policy. The rest is platform-family specific
+and a target carries exactly one family's fields: a web target records browser
+engine/version and app origin, and a mobile target records the resolved device
+and OS version instead. A report MUST NOT substitute a placeholder for a field
+its platform does not have, because target provenance is what makes two runs
+comparable.
 The target viewport is the initial runtime value; a step that changes viewport
 records the resulting viewport on that step.
 

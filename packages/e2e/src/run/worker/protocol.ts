@@ -12,6 +12,7 @@ import type { ResolvedTestOptions } from '../../collect/select.ts';
 import type { CliOverrides, ResolvedTarget } from '../../config/resolve.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
+import type { TargetRuntimeProvenance } from '../../report/build.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../records.ts';
 
 /** One runnable pair on the wire; the worker resolves the test function. */
@@ -115,12 +116,19 @@ export interface FatalMessage {
   readonly error: SerializedError;
 }
 
+/** Resolved backend provenance, sent once per target after its first launch. */
+export interface RuntimeMessage {
+  readonly type: 'runtime';
+  readonly runtime: TargetRuntimeProvenance;
+}
+
 export type WorkerToMain =
   | ReadyMessage
   | PairStartMessage
   | ResultMessage
   | SerialGroupMessage
   | UnitDoneMessage
+  | RuntimeMessage
   | FatalMessage;
 
 /** Strips the live target from a result for transport. */

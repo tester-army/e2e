@@ -1,6 +1,7 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
 import os from 'node:os';
+import { isMobileTarget } from '../config/resolve.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
 import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
@@ -30,13 +31,30 @@ export interface ReportSource {
   column: number;
 }
 
+/**
+ * Per-target provenance. The manifest fields are known at pre-flight; the
+ * runtime fields are filled in from the first session's `runtime()` and stay
+ * absent for a target whose tests were all filtered out.
+ */
 export interface TargetProvenance {
-  browserVersion: string;
-  viewport: { width: number; height: number; scale: number };
   driver: { id: string; version: string; spiVersion: 1 };
   capabilities: string[];
   artifactCapabilities: ('screenshot' | 'trace' | 'video')[];
   stateCapability: boolean;
+  viewport?: { width: number; height: number; scale: number };
+  /** Web runtime provenance. */
+  browserVersion?: string;
+  /** Mobile runtime provenance. */
+  device?: string;
+  os?: string;
+}
+
+/** One target's resolved runtime provenance, as reported by `runtime()`. */
+export interface TargetRuntimeProvenance {
+  readonly viewport: { width: number; height: number; scale: number };
+  readonly browserVersion?: string;
+  readonly device?: string;
+  readonly os?: string;
 }
 
 export interface BuildReportOptions {
@@ -161,10 +179,12 @@ export interface ReportTarget {
   id: string;
   index: number;
   platform: string;
-  browser: string | undefined;
-  browserVersion: string;
-  viewport: { width: number; height: number; scale: number };
-  baseOrigin: string;
+  browser?: string | undefined;
+  browserVersion?: string | undefined;
+  device?: string | undefined;
+  os?: string | undefined;
+  viewport?: { width: number; height: number; scale: number } | undefined;
+  baseOrigin?: string | undefined;
   environment: string;
   allowProduction: boolean;
   testIdAttribute: string;
@@ -358,18 +378,33 @@ function serializeTarget(
   target: ResolvedTarget,
   provenance: TargetProvenance | undefined,
 ): ReportTarget {
+  // Target provenance is platform-family specific: a web target records
+  // browser engine/version and app origin, a mobile target the resolved
+  // device and OS. report-1 forbids carrying the other family's fields, so
+  // absent keys are left undefined and dropped by JSON serialization.
+  const family: Pick<ReportTarget, 'browser' | 'browserVersion' | 'baseOrigin' | 'device' | 'os'> =
+    isMobileTarget(target)
+      ? { device: provenance?.device ?? target.device, os: provenance?.os ?? target.os }
+      : {
+          browser: target.browser,
+          browserVersion: provenance?.browserVersion ?? 'unknown',
+          baseOrigin: config.app.base?.origin,
+        };
+  // A mobile viewport belongs to the resolved device, so it exists only once a
+  // session has reported it. A web target keeps its configured fallback.
+  const viewport = isMobileTarget(target)
+    ? provenance?.viewport
+    : provenance?.viewport ?? {
+        width: target.viewport?.width ?? 1280,
+        height: target.viewport?.height ?? 720,
+        scale: 1,
+      };
   return {
     id: target.name,
     index: target.index,
     platform: target.platform,
-    browser: target.browser,
-    browserVersion: provenance?.browserVersion ?? 'unknown',
-    viewport: provenance?.viewport ?? {
-      width: target.viewport?.width ?? 1280,
-      height: target.viewport?.height ?? 720,
-      scale: 1,
-    },
-    baseOrigin: config.app.base.origin,
+    ...family,
+    viewport,
     environment: config.app.environment,
     allowProduction: config.app.allowProduction,
     testIdAttribute: config.testIdAttribute,

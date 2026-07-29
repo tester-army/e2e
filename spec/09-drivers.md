@@ -115,9 +115,11 @@ resolves. Route/dialog decision methods and download waiters are bound to the
 attempt signal and receive a current operation context for each decision.
 
 `runtime()` supplies current viewport/scale and backend provenance. A
-`web-0.1` session MUST return browser engine and exact version. The runner reads
-it after launch to populate target provenance and after viewport changes to
-record the operation's resulting runtime state.
+`web-0.1` session MUST return browser engine and exact version, and a
+`mobile-0.1` session MUST return the resolved device name and OS version. The
+runner reads it after launch to populate target provenance and after viewport
+changes to record the operation's resulting runtime state. A target whose tests
+were all filtered out never launches, so its provenance stays unresolved.
 
 ## Ownership boundary
 
@@ -254,11 +256,16 @@ are idempotent under cancellation.
 
 ## Capability fixtures
 
-Standard capabilities use standardized IDs and public types. A third-party
-family returns runtime values in `capabilityFixtures` under its namespaced ID
-and augments `TestFixtures` with the corresponding property. A manifest entry
-without a runtime value, or a runtime value without a manifest entry, is a
-driver error.
+Standard capabilities use standardized IDs and public types, and each has a
+dedicated SPI member: `DriverWeb` for `web` and `DriverDevice` for `device`.
+Like every other SPI surface these expose lower-level operations that receive an
+operation context, so the runner keeps deadlines, cancellation, step recording,
+and policy. The public `Web` and `Device` objects are runner proxies.
+
+A third-party family instead returns runtime values in `capabilityFixtures`
+under its namespaced ID and augments `TestFixtures` with the corresponding
+property. A manifest entry without a runtime value, or a runtime value without a
+manifest entry, is a driver error.
 
 Capabilities do not bypass the universal SPI. Every platform still implements
 `app`, `screen`, observation, actions, artifacts, cancellation, and cleanup.

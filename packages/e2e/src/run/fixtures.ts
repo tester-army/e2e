@@ -4,12 +4,17 @@ import { createAgent } from '../agent/index.ts';
 import type { AgentCacheContext } from '../agent/invocation.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
-import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
+import type {
+  DriverDevice,
+  DriverDialog,
+  DriverSession,
+  DriverWebRoute,
+} from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { toRoutePattern } from '../internal/route-pattern.ts';
-import { resolveNavigationUrl, urlMatches } from '../internal/urls.ts';
+import { resolveNavigationUrl, urlMatches, type NormalizedBaseUrl } from '../internal/urls.ts';
 import { Deadline, sleep, withTimeout } from '../internal/time.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { webSelectorExpression } from '../locator/expression.ts';
@@ -126,6 +131,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
   const screen = createScreen(screenContext);
   const app = createApp(environment, engine, opened);
   const web = createWeb(environment, engine, screenContext, opened);
+  const device = createDevice(environment, engine);
 
   let agent: Agent | undefined;
 
@@ -155,12 +161,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
     screen,
     platform: environment.target.platform,
     web,
-    get device(): Device {
-      throw new ConfigurationError(
-        'UNSUPPORTED_CAPABILITY',
-        'the device fixture is reserved for future mobile profiles; web-0.1 does not provide it',
-      );
-    },
+    device,
     session: {
       save: async (name: string) => {
         const saveSession = environment.saveSession;
@@ -205,14 +206,25 @@ function createApp(
 ): App {
   const { config, steps } = environment;
   const allowed = config.app.allowedOrigins;
+  const base = config.app.base;
+
+  /**
+   * Resolves a navigation-ish argument for the target's platform family. A web
+   * target resolves against its base URL under origin policy. A mobile target
+   * has no base URL: an `http(s)` URL is still origin-checked, and a
+   * custom-scheme deep link is passed through because it cannot leave the
+   * device.
+   */
+  const resolveTargetUrl = (value: string): string => {
+    if (base !== undefined) return resolveNavigationUrl(value, base, allowed).url;
+    return /^https?:/i.test(value) ? resolveNavigationUrl(value, undefined, allowed).url : value;
+  };
 
   return {
     async open(openPath?: string): Promise<void> {
       await steps.run('app', 'app.open', openPath ?? '/', async () => {
         const resolved =
-          openPath === undefined
-            ? config.app.base.href
-            : resolveNavigationUrl(openPath, config.app.base, allowed).url;
+          openPath === undefined ? base?.href : resolveTargetUrl(openPath);
         await engine.session.app.open(resolved, engine.operation(config.timeout));
         opened.value = true;
       });
@@ -236,7 +248,7 @@ function createApp(
     },
     async deepLink(url: string): Promise<void> {
       await steps.run('app', 'app.deepLink', url, async () => {
-        const resolved = resolveNavigationUrl(url, config.app.base, allowed).url;
+        const resolved = resolveTargetUrl(url);
         await engine.session.app.deepLink(resolved, engine.operation(config.timeout));
         opened.value = true;
       });
@@ -251,6 +263,78 @@ function createApp(
   };
 }
 
+/**
+ * Builds the `device` capability proxy. Every call is deadline-bounded and
+ * step-recorded by the runner; the driver only performs the operation.
+ */
+function createDevice(environment: AttemptEnvironment, engine: LocatorEngine): Device {
+  const { config, steps, target } = environment;
+
+  const driverDevice = (): DriverDevice => {
+    const device = engine.session.device;
+    if (device === undefined) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `driver for target "${target.name}" does not provide the device capability`,
+      );
+    }
+    return device;
+  };
+
+  return {
+    get platform(): 'ios' | 'android' {
+      if (target.platform !== 'ios' && target.platform !== 'android') {
+        throw new ConfigurationError(
+          'UNSUPPORTED_CAPABILITY',
+          `target "${target.name}" is not a mobile target`,
+        );
+      }
+      return target.platform;
+    },
+    home: () => steps.run('device', 'device.home', '', () => driverDevice().home(engine.operation())),
+    hideKeyboard: () =>
+      steps.run('device', 'device.hideKeyboard', '', () =>
+        driverDevice().hideKeyboard(engine.operation()),
+      ),
+    openUrl: (url) =>
+      steps.run('device', 'device.openUrl', url, () => {
+        // A device URL follows app deep-link policy: http(s) is origin-checked,
+        // a custom scheme cannot leave the device and passes through.
+        const resolved = /^https?:/i.test(url)
+          ? resolveNavigationUrl(url, config.app.base, config.app.allowedOrigins).url
+          : url;
+        return driverDevice().openUrl(resolved, engine.operation(config.timeout));
+      }),
+    setLocation: (location) =>
+      steps.run('device', 'device.setLocation', `${location.latitude},${location.longitude}`, () =>
+        driverDevice().setLocation(location, engine.operation()),
+      ),
+    setPermission: (permission, state) =>
+      steps.run('device', 'device.setPermission', `${permission}=${state}`, () =>
+        driverDevice().setPermission(permission, state, engine.operation()),
+      ),
+    pushNotification: (payload) =>
+      steps.run('device', 'device.pushNotification', '', () =>
+        driverDevice().pushNotification(payload, engine.operation()),
+      ),
+  };
+}
+
+/**
+ * Returns the base URL the web capability requires. Absence means a mobile-only
+ * config produced a web fixture, which config resolution prevents.
+ */
+function requireWebBase(config: ResolvedConfig): NormalizedBaseUrl {
+  const base = config.app.base;
+  if (base === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'the web capability requires a configured app URL',
+    );
+  }
+  return base;
+}
+
 function createWeb(
   environment: AttemptEnvironment,
   engine: LocatorEngine,
@@ -259,6 +343,9 @@ function createWeb(
 ): Web {
   const { config, steps } = environment;
   const allowed = config.app.allowedOrigins;
+  // The web capability exists only for a web target, and config resolution
+  // requires a base URL whenever any target is a web target.
+  const base = requireWebBase(config);
 
   const driverWeb = () => {
     const web = engine.session.web;
@@ -274,7 +361,7 @@ function createWeb(
   const web: Web = {
     async goto(url, options): Promise<void> {
       await steps.run('web', 'web.goto', url, async () => {
-        const resolved = resolveNavigationUrl(url, config.app.base, allowed).url;
+        const resolved = resolveNavigationUrl(url, base, allowed).url;
         await driverWeb().goto(resolved, options?.waitUntil, engine.operation(options?.timeout ?? config.timeout));
         opened.value = true;
       });
@@ -306,7 +393,7 @@ function createWeb(
         const deadline = engine.deadline(options?.timeout ?? config.assertionTimeout);
         for (;;) {
           const current = await driverWeb().url(engine.operation());
-          if (urlMatches(current, url, config.app.base)) return;
+          if (urlMatches(current, url, base)) return;
           if (deadline.expired()) {
             throw new TestError(
               'ASSERTION_FAILED',
@@ -408,7 +495,7 @@ function createWeb(
       await steps.run('web', 'web.setCookies', `${cookies.length} cookie(s)`, async () => {
         for (const cookie of cookies) {
           const originSource =
-            cookie.url ?? `${config.app.base.origin.startsWith('https') ? 'https' : 'http'}://${cookie.domain?.replace(/^\./, '')}`;
+            cookie.url ?? `${base.origin.startsWith('https') ? 'https' : 'http'}://${cookie.domain?.replace(/^\./, '')}`;
           let origin: string;
           try {
             origin = new URL(originSource).origin;
@@ -497,7 +584,7 @@ function createWeb(
   };
 
   registerWebExpectTarget(web, {
-    base: config.app.base,
+    base,
     assertionTimeout: config.assertionTimeout,
     signal: environment.signal,
     url: () => driverWeb().url(engine.operation()),

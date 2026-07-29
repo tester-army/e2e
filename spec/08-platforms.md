@@ -32,9 +32,8 @@ include a future Electron target. Drivers publish capabilities before launch.
 The universal portable test fixtures are `agent`, `app`, `screen`, and
 `platform`. Setup tests additionally receive the state-backed `session` writer.
 A driver profile MUST implement each universal fixture and its declared state
-capability. Family
-capabilities are separate fixtures: `web` for web semantics and, in a future
-profile, `device` for mobile system controls.
+capability. Family capabilities are separate fixtures: `web` for web semantics
+and `device` for the mobile system controls of `mobile-0.1`.
 
 A third-party family augments `TestFixtures` and returns its runtime object
 under the same capability name. Capability IDs MUST be globally namespaced
@@ -243,10 +242,14 @@ Node references include that revision and expire when it changes.
 If the UI changes during capture, the driver retries capture within the
 operation deadline. It fails rather than returning mixed evidence.
 
-## Future mobile profiles
+## Mobile profiles
 
-The `Device` declaration and iOS/Android target shapes reserve source-level
-vocabulary only. Mobile execution, accessibility projections, deep-link
-mapping, permission behavior, application identity, and destructive-device
-safety require dedicated profiles and conformance vectors before mobile release. A v0
-runner rejects configured mobile targets instead of skipping them.
+Mobile execution is defined by `mobile-0.1` in [16-mobile.md](./16-mobile.md),
+which assigns the `Device` declaration and the iOS/Android target shapes to a
+normative profile. It specifies application identity, accessibility projection,
+role normalization, deep-link mapping, permission behavior, and
+destructive-device safety, and it covers simulators and emulators only.
+
+A runner that does not implement a mobile profile rejects configured mobile
+targets instead of skipping them. Physical mobile devices are unassigned and are
+rejected rather than degraded.

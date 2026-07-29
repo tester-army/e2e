@@ -1,0 +1,332 @@
+# 16 - Mobile Execution
+
+`mobile-0.1` defines iOS and Android execution. The canonical source API is
+[`api/e2e.d.ts`](./api/e2e.d.ts); the normalized backend contract is
+[`api/driver.d.ts`](./api/driver.d.ts). This document is normative.
+
+`mobile-0.1` is a sibling of `web-0.1`. Both build on `core-0.1` and `driver-1`,
+and a driver MAY implement either or both. Nothing here changes `web-0.1`.
+
+## Device scope
+
+`mobile-0.1` covers iOS simulators and Android emulators only. A driver MUST
+reject a physical-device target with `UNSUPPORTED_CAPABILITY` rather than
+degrading, because required primitives of this profile — application data
+reset, push injection, permission control, and biometric simulation — are not
+available on physical devices across both platforms. Physical devices require a
+separate profile.
+
+A driver MUST NOT erase a device, reset system settings it did not set, remove
+apps it did not install, or modify user data outside the target application's
+container. Device-destructive operations are outside this profile.
+
+## Targets and application identity
+
+```ts
+export default defineConfig({
+  targets: [
+    { name: 'ios', platform: 'ios', driver: agentDevice(), app: 'com.example.app' },
+    { name: 'android', platform: 'android', driver: agentDevice(), app: './android/app.apk' },
+  ],
+});
+```
+
+`MobileTarget.app` is REQUIRED and is either:
+
+- an **installed application identity** — an iOS bundle identifier or an Android
+  package name; the driver MUST fail launch with `INVALID_STATE` when it is not
+  installed on the selected device; or
+- a **build artifact path** — `.app` or `.ipa` on iOS, `.apk` or `.aab` on
+  Android, resolved against the project root. The driver installs it and derives
+  the application identity from the artifact. It MUST NOT infer identity from the
+  filename.
+
+`device` selects the simulator or emulator by name and `os` selects its OS
+version. Omitting either lets the driver select any available matching device. A
+session MUST report the device name and OS version it resolved from `runtime()`,
+which the runner records as target provenance. A mobile target has no configured
+viewport; its viewport is a property of the resolved device and is likewise read
+from `runtime()`.
+
+Mobile targets have no browser, no viewport configuration, and no base URL.
+`app.baseUrl` is not required by this profile, and `DriverContext.app.baseUrl` is
+absent for a mobile target.
+
+## Accessibility projection
+
+The driver projects the platform accessibility tree onto `SemanticNode`. The
+projection is the profile's portability surface, so it is fully specified here.
+
+A projection MUST:
+
+- preserve platform tree order as document order, so `first`, `last`, `nth`, and
+  ordering vectors are stable;
+- include every node the platform exposes to assistive technology, including
+  nodes currently scrolled out of the viewport. A driver MUST NOT omit,
+  summarize, or collapse off-screen content, because `count`,
+  `scrollUntilVisible`, and `scrollTo` depend on its presence;
+- bind every node to the observation revision it was captured in. A reference
+  used after its revision is superseded is `NODE_STALE` and retryable.
+
+`rect` is in device-independent points, the same space actions dispatch in. A
+node without geometry omits `rect`; it is never zero-filled.
+
+There is no frame concept on mobile. `framePath` is always absent, and the
+`frame` and `web-selector` locator-expression kinds MUST be rejected with
+`UNSUPPORTED_CAPABILITY`.
+
+## Role normalization
+
+`getByRole` uses WAI-ARIA 1.2 role names on every platform. A driver MUST map the
+platform role, subrole, or native element type — in that precedence order, first
+match wins — through the tables below. An element type absent from its platform's
+table normalizes to `generic`.
+
+Role-based targeting of static text is NOT portable to web, where the same text
+usually computes to `generic`. `getByText` is the portable way to target text.
+
+### iOS
+
+| Platform element type | Role |
+|---|---|
+| `Button`, `Key` | `button` |
+| `Link` | `link` |
+| `StaticText`, non-editable `TextView` | `paragraph` |
+| `TextField`, editable `TextView` | `textbox` |
+| `SecureTextField` | `textbox`, `states.secure: true` |
+| `SearchField` | `searchbox` |
+| `CheckBox` | `checkbox` |
+| `RadioButton` | `radio` |
+| `Switch` | `switch` |
+| `Slider` | `slider` |
+| `Stepper` | `spinbutton` |
+| `Image` | `img` |
+| `Cell` | `listitem` |
+| `Table`, `CollectionView` | `list` |
+| `NavigationBar` | `navigation` |
+| `TabBar`, `SegmentedControl` | `tablist` |
+| `Tab` | `tab` |
+| `Alert`, `Sheet` | `alertdialog` |
+| `ActivityIndicator`, `ProgressIndicator` | `progressbar` |
+| `Toolbar` | `toolbar` |
+| `Picker`, `PickerWheel` | `combobox` |
+| `Menu` | `menu` |
+| `MenuItem` | `menuitem` |
+| `StatusBar` | `banner` |
+| `WebView` | `document` |
+| `Application` | `application` |
+| `Window`, `Other`, `Keyboard` | `generic` |
+
+### Android
+
+| Platform class or semantic role | Role |
+|---|---|
+| `Button`, `ImageButton`, Compose `Button` | `button` |
+| `TextView`, `CheckedTextView` without a checkable state | `paragraph` |
+| `EditText` | `textbox` |
+| `EditText` with a search input type, `SearchView` | `searchbox` |
+| `CheckBox`, `CheckedTextView` with a checkable state, Compose `Checkbox` | `checkbox` |
+| `RadioButton`, Compose `RadioButton` | `radio` |
+| `Switch`, `SwitchCompat`, `ToggleButton`, Compose `Switch` | `switch` |
+| `SeekBar`, `RatingBar` | `slider` |
+| `ProgressBar` | `progressbar` |
+| `ImageView`, Compose `Image` | `img` |
+| `RecyclerView`, `ListView`, `GridView` | `list` |
+| direct child of a `list` role | `listitem` |
+| `Spinner`, Compose `DropdownList` | `combobox` |
+| `TabWidget`, `TabLayout` | `tablist` |
+| `TabView`, Compose `Tab` | `tab` |
+| `Toolbar`, `ActionBar` | `toolbar` |
+| `AlertDialog` root | `alertdialog` |
+| `WebView` | `document` |
+| any other `View` or `ViewGroup` | `generic` |
+
+A node whose native type is `ScrollView`, `HorizontalScrollView`,
+`NestedScrollView`, `RecyclerView`, `ListView`, `GridView`, `Table`,
+`CollectionView`, or iOS `ScrollView` is a **scroll container**.
+`screen.scrollUntilVisible` scrolls the nearest scroll-container ancestor of the
+target; with none, it scrolls the viewport.
+
+## Query mapping
+
+| Query | Mobile source |
+|---|---|
+| `role` | the normalized role |
+| `label` | the accessibility label |
+| `text` | the accessibility label, else the value |
+| `displayValue` | the accessibility value |
+| `testId` | the accessibility identifier |
+| `placeholder` | the label of a `textbox` or `searchbox` whose value is empty or absent |
+
+`testId` maps to the iOS accessibility identifier and the Android view
+resource-id or Compose test tag. React Native's `testID` sets exactly these.
+`screen.testIdAttribute` is a web-only setting and MUST be ignored.
+
+The `placeholder` mapping reflects how both platforms expose placeholder and hint
+text: an unfilled field's prompt is its accessibility label, and it stops being
+the label once the field holds a value. A driver MUST NOT match `placeholder`
+against a field that has a value.
+
+Text normalization and exact/regexp behavior follow 03-assertions.md, identically
+to `web-0.1`.
+
+### Role states
+
+| State | Mobile source |
+|---|---|
+| `disabled` | the node is not enabled |
+| `selected` | the node is selected |
+| `focused` | the node is focused |
+| `hidden` | the node is not visible to the user |
+| `checked` | derived; see below |
+| `expanded` | not supported |
+
+`checked` is derived only for a node whose normalized role is `checkbox`,
+`radio`, or `switch`. The value `1`, `true`, or `checked` is checked; `0`,
+`false`, or `unchecked` is unchecked; with no value, the selected state is used.
+Any other value leaves the state unavailable.
+
+An unsupported state on a role does not match, per 08-platforms.md. `expanded`
+therefore never matches on mobile; neither does `checked` on a role outside that
+set. A driver MUST NOT guess an unavailable state.
+
+## Cardinality
+
+Cardinality, ordering, scope, filters, and index behavior are exactly as
+08-platforms.md defines them. A scoped query examines descendants and excludes
+the scope node. The runner owns polling and strictness; `resolve` and `read` are
+immediate.
+
+## Actionability
+
+The driver owns actionability for one already resolved node. For mobile, an
+actionable node is present in the current revision, visible to the user, hit
+testable at its action point, and enabled when its role supports the state.
+`fill` additionally requires an editable control.
+
+The driver MUST NOT retarget. If a resolved node is not itself hit testable, the
+action fails `NOT_ACTIONABLE`; substituting an ancestor or a nearby node would
+silently violate the node the test selected.
+
+The stale/commit contract of 09-drivers.md applies unchanged: stale before
+dispatch is retryable `NODE_STALE`, and once input may have reached the
+application the failure is `ACTION_MAY_HAVE_COMMITTED` with `retryable: false`.
+
+## Scrolling
+
+Scroll direction is from the user's perspective, and momentum distances and
+durations are exactly as 08-platforms.md defines them: `none` moves 50% of the
+active scrollport over 250 ms, `slow` 75% over 500 ms, and `fast` 150% over
+250 ms, capped by the remaining scroll range. Viewport and locator swipes start
+at 75% and end at 25% of the relevant axis.
+
+## `app` in the mobile profile
+
+- `open()` launches the application, replacing any running instance, and waits
+  for it to become foreground. `open(path)` launches it and then opens `path` as
+  a deep link.
+- `restart()` terminates and relaunches the application, preserving its data
+  container.
+- `clearState()` clears the application data container, then relaunches. It MUST
+  NOT clear another application's data or any system setting.
+- `back()` performs one application-owned back navigation: visible in-app back
+  affordance on iOS, the platform back event on Android. No back target is a
+  successful no-op.
+- `deepLink(url)` opens `url` on the device. An `http` or `https` URL MUST pass
+  the same origin policy as web navigation. A custom-scheme URL is allowed
+  without origin checking because it cannot leave the device.
+- `screenshot()` returns an artifact-root-relative POSIX path, subject to the
+  redaction rule below.
+
+Launch starts with the application not yet foreground. UI operations before
+`app.open` fail with `APP_NOT_OPEN`.
+
+## `device`
+
+`mobile-0.1` requires the `device` capability. Tests using it SHOULD declare
+`requires: ['device']`. The public `Device` object is a runner proxy over
+`DriverDevice`, so every operation is deadline-bounded and step-recorded.
+
+`home` sends the device to its home screen. `hideKeyboard` dismisses the
+software keyboard and is a successful no-op when no keyboard is shown.
+`openUrl` follows `app.deepLink` policy. `setLocation` sets the simulated
+location. `setPermission` sets one permission for the target application only;
+`unset` restores the platform default rather than denying. `pushNotification`
+delivers one simulated notification to the target application.
+
+A permission or notification operation MUST be scoped to the target
+application. `setPermission` on a permission the platform does not expose is
+`UNSUPPORTED_CAPABILITY`.
+
+## Observation and redaction
+
+`observe` returns one atomic revision, per 09-drivers.md. Secure fields have
+`states.secure: true`, and their value, text, and sensitive attributes are
+masked at the source.
+
+`inputPurpose` derives from platform signals: an iOS secure text field and an
+Android password input type map to `password`; an explicitly registered secure
+custom field maps to `generic-secret`; a field whose content type declares a
+one-time code maps to `one-time-code`; a username content type maps to
+`username`; all others are `none`.
+
+Pixel evidence has no platform masking primitive on mobile. A driver that cannot
+mask a secure region MUST omit `pixels` from the observation whenever the
+captured revision contains a visible secure node, rather than returning
+unmasked pixels or `redaction.complete: false`. Omission degrades the vision
+tier; the alternatives leak a secret or force the runner to discard the
+observation. When pixels are returned, the driver MUST report the true measured
+dimensions of the image bytes and the scale relating them to `rect` points.
+
+`app.screenshot()` follows the same rule and rejects with `POLICY_DENIED` when a
+visible secure node would appear unmasked.
+
+Attributes are allowlisted. A mobile driver MUST omit authorization data,
+credential values, and any attribute carrying the contents of a secure field.
+
+## State
+
+`mobile-0.1` does not define application state capture. A `mobile-0.1` driver
+declares `state: false` and omits `captureState` and `restoreState`, so
+`test.setup` and session reuse fail `UNSUPPORTED_CAPABILITY` on mobile targets.
+`app.clearState()` remains available for per-test reset.
+
+A future profile revision MAY define state capture. Until it does, a driver MUST
+NOT declare `state: true` for a mobile target on the basis of a partial
+container copy, per 09-drivers.md.
+
+## Artifacts
+
+`mobile-0.1` requires `screenshot` and `video`. It does not define `trace`,
+which has no portable iOS and Android equivalent; configuring it is a pre-run
+`UNSUPPORTED_ARTIFACT` error. Containment, canonicalization, and finalization
+rules are unchanged from 09-drivers.md.
+
+## Capability boundary
+
+A `mobile-0.1` driver does not implement `DriverWeb`. The `web` fixture is
+absent, and a test requiring it is skipped as capability-unavailable rather than
+failing.
+
+## Conformance
+
+The `mobile-0.1` vectors cover:
+
+- device-scope rejection of physical devices and destructive operations;
+- application identity from both installed identity and build artifact;
+- accessibility projection ordering, off-screen inclusion, and revision binding;
+- every role normalization table entry on both platforms;
+- every query mapping, including the placeholder value rule;
+- `checked` derivation and non-matching of unsupported states;
+- actionability without retargeting, and the precommit/committed boundary;
+- scroll momentum distances and scroll-container selection;
+- `app` lifecycle, data-container reset scope, and deep-link origin policy;
+- every `device` operation and its application scoping;
+- secure-field masking, `inputPurpose` derivation, and pixel omission;
+- absence of state capability, `trace`, `web`, and frames;
+- artifact containment and finalization.
+
+Every vector has a stable requirement ID in
+[`conformance/v0-requirements.json`](./conformance/v0-requirements.json). A
+driver claiming `mobile-0.1` runs them on both an iOS simulator and an Android
+emulator; a single-platform result does not satisfy the profile.

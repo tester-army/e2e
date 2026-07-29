@@ -13,7 +13,7 @@ import {
   wellKnownDriverIds,
   type WellKnownDriverId,
 } from './drivers.ts';
-import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
+import type { CommandConfig, E2EConfig, MobileTarget, Target, WebTarget } from '../types.ts';
 import {
   isModelInstance,
   resolveAgentConfig,
@@ -24,16 +24,40 @@ import {
 
 export type { ResolvedAgentConfig, ResolvedLimits, ResolvedModel } from './agent.ts';
 
-export interface ResolvedTarget {
+interface ResolvedTargetBase {
   readonly name: string;
   readonly index: number;
-  readonly platform: 'web';
-  readonly browser: 'chromium' | 'firefox' | 'webkit';
-  readonly viewport: { readonly width: number; readonly height: number } | undefined;
   /** Well-known driver id resolved on demand, or an imported branded handle. */
   readonly driver: WellKnownDriverId | Driver;
   /** Wire-shaped target passed to the driver at launch. */
   readonly driverTarget: Target;
+}
+
+export interface ResolvedWebTarget extends ResolvedTargetBase {
+  readonly platform: 'web';
+  readonly browser: 'chromium' | 'firefox' | 'webkit';
+  readonly viewport: { readonly width: number; readonly height: number } | undefined;
+}
+
+/**
+ * A `mobile-0.1` target. There is no bundled mobile driver, so the driver is
+ * always an imported handle. `device` and `os` are left to the driver to
+ * resolve when absent, and it reports what it selected as target provenance.
+ */
+export interface ResolvedMobileTarget extends ResolvedTargetBase {
+  readonly platform: 'ios' | 'android';
+  readonly driver: Driver;
+  /** Installed application identity, or a build artifact path. */
+  readonly app: string;
+  readonly device: string | undefined;
+  readonly os: string | undefined;
+}
+
+export type ResolvedTarget = ResolvedWebTarget | ResolvedMobileTarget;
+
+/** Narrows a resolved target to the mobile family. */
+export function isMobileTarget(target: ResolvedTarget): target is ResolvedMobileTarget {
+  return target.platform !== 'web';
 }
 
 export interface ResolvedCredential {
@@ -50,8 +74,12 @@ export interface ResolvedConfig {
   readonly configPath: string | undefined;
   readonly ci: boolean;
   readonly app: {
-    readonly base: NormalizedBaseUrl;
-    readonly readyUrl: string;
+    /**
+     * Absent for a config whose targets are all mobile. `mobile-0.1` has no
+     * base URL, so requiring one would force an unused placeholder.
+     */
+    readonly base: NormalizedBaseUrl | undefined;
+    readonly readyUrl: string | undefined;
     readonly allowedOrigins: readonly string[];
     readonly environment: 'test' | 'staging' | 'production';
     readonly allowProduction: boolean;
@@ -155,8 +183,10 @@ export function resolveConfig(
     );
   }
 
-  const app = resolveApp(raw, env);
+  // Targets first: whether an app URL is required depends on whether any
+  // selected target is a web target.
   const targets = resolveTargets(raw);
+  const app = resolveApp(raw, env, targets.some((target) => !isMobileTarget(target)));
   const tests = normalizeTests(raw.tests);
 
   const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
@@ -250,7 +280,11 @@ function boundedInt(
   return value;
 }
 
-function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app'] {
+function resolveApp(
+  raw: E2EConfig,
+  env: NodeJS.ProcessEnv,
+  baseUrlRequired: boolean,
+): ResolvedConfig['app'] {
   if (raw.app !== undefined) {
     for (const key of Object.keys(raw.app)) {
       if (!APP_KEYS.has(key)) {
@@ -260,17 +294,22 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
   }
   const rawUrl = raw.app?.url ?? env['APP_URL'];
   if (rawUrl === undefined || rawUrl === '') {
-    throw new ConfigurationError(
-      'APP_URL_REQUIRED',
-      'an app URL is required: set app.url in e2e.config.ts or the APP_URL environment variable',
-    );
+    if (baseUrlRequired) {
+      throw new ConfigurationError(
+        'APP_URL_REQUIRED',
+        'an app URL is required: set app.url in e2e.config.ts or the APP_URL environment variable',
+      );
+    }
   }
-  const base = normalizeBaseUrl(rawUrl);
-  const baseHost = new URL(base.href).hostname;
+  const base =
+    rawUrl === undefined || rawUrl === '' ? undefined : normalizeBaseUrl(rawUrl);
 
   let environment = raw.app?.environment;
   if (environment === undefined) {
-    if (!isImplicitTestHost(baseHost)) {
+    // Without a base URL there is no host to infer an environment from, so a
+    // mobile-only config defaults to test rather than demanding a declaration.
+    const baseHost = base === undefined ? undefined : new URL(base.href).hostname;
+    if (baseHost !== undefined && !isImplicitTestHost(baseHost)) {
       throw new ConfigurationError(
         'ENVIRONMENT_REQUIRED',
         `host ${baseHost} requires an explicit app.environment of "test", "staging", or "production"`,
@@ -289,7 +328,7 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     );
   }
 
-  const allowedOrigins = raw.app?.allowedOrigins ?? [base.origin];
+  const allowedOrigins = raw.app?.allowedOrigins ?? (base === undefined ? [] : [base.origin]);
   for (const origin of allowedOrigins) {
     let parsed: URL;
     try {
@@ -310,11 +349,19 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     if (typeof command.executable !== 'string' || command.executable.length === 0) {
       throw new ConfigurationError('INVALID_CONFIG', 'app.command.executable is required');
     }
+    // Readiness is polled over HTTP. Without a base URL to derive it from, the
+    // config must say where to poll rather than start a process blind.
+    if (base === undefined && raw.app?.readyUrl === undefined) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'app.command requires app.readyUrl when no app URL is configured',
+      );
+    }
   }
 
   return {
     base,
-    readyUrl: raw.app?.readyUrl ?? base.href,
+    readyUrl: raw.app?.readyUrl ?? base?.href,
     allowedOrigins,
     environment,
     allowProduction,
@@ -358,10 +405,13 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${target.name}"`);
     }
     seen.add(target.name);
+    if (target.platform === 'ios' || target.platform === 'android') {
+      return resolveMobileTarget(target as MobileTarget, index);
+    }
     if (target.platform !== 'web') {
       throw new ConfigurationError(
         'PLATFORM_UNSUPPORTED',
-        `target "${target.name}" requests platform "${target.platform}"; this v0 runner executes web targets only`,
+        `target "${target.name}" requests platform "${target.platform}"; this runner executes web, ios, and android targets`,
       );
     }
     const webTarget = target as WebTarget;
@@ -397,6 +447,59 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       },
     };
   });
+}
+
+/**
+ * Resolves one `mobile-0.1` target. There is no bundled mobile driver, so
+ * `driver` must be an imported `defineDriver` handle that declares the
+ * requested platform.
+ */
+function resolveMobileTarget(target: MobileTarget, index: number): ResolvedMobileTarget {
+  const platform = target.platform;
+  if (!isDriverHandle(target.driver)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `target "${target.name}" requires a defineDriver handle; there is no bundled "${platform}" driver`,
+    );
+  }
+  if (!target.driver.platforms.includes(platform)) {
+    throw new ConfigurationError(
+      'PLATFORM_UNSUPPORTED',
+      `target "${target.name}" requests platform "${platform}" but driver ${target.driver.id} declares ${target.driver.platforms.join(', ')}`,
+    );
+  }
+  if (typeof target.app !== 'string' || target.app.length === 0) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `target "${target.name}" requires app as a bundle identifier, package name, or build artifact path`,
+    );
+  }
+  for (const field of ['device', 'os'] as const) {
+    const value = target[field];
+    if (value !== undefined && (typeof value !== 'string' || value.length === 0)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `target "${target.name}" ${field} must be a nonempty string when present`,
+      );
+    }
+  }
+  return {
+    name: target.name,
+    index,
+    platform,
+    driver: target.driver,
+    app: target.app,
+    device: target.device,
+    os: target.os,
+    driverTarget: {
+      name: target.name,
+      platform,
+      driver: target.driver,
+      app: target.app,
+      ...(target.device !== undefined ? { device: target.device } : {}),
+      ...(target.os !== undefined ? { os: target.os } : {}),
+    },
+  };
 }
 
 function normalizeTests(tests: E2EConfig['tests']): readonly string[] {

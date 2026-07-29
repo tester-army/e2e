@@ -257,12 +257,27 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     }
   }
 
+  /**
+   * Returns the target base URL, which `web-0.1` always supplies. It is
+   * optional in `DriverContext` only so profiles without one, such as
+   * `mobile-0.1`, can omit it.
+   */
+  private get baseUrl(): string {
+    const baseUrl = this.driverContext.app.baseUrl;
+    if (baseUrl === undefined) {
+      throw new DriverError('INVALID_STATE', 'web target is missing a base URL', {
+        retryable: false,
+      });
+    }
+    return baseUrl;
+  }
+
   // --- DriverApp ---
 
   readonly app: DriverApp = {
     open: (openPath, operation) =>
       this.guard(operation, 'navigation', async () => {
-        const url = new URL(openPath ?? '', this.driverContext.app.baseUrl).href;
+        const url = new URL(openPath ?? '', this.baseUrl).href;
         const page = await this.ensurePage();
         await page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs });
       }),
@@ -272,7 +287,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         for (const page of context.pages()) await page.close();
         this.page = null;
         const page = await this.ensurePage();
-        await page.goto(this.driverContext.app.baseUrl, {
+        await page.goto(this.baseUrl, {
           waitUntil: 'load',
           timeout: operation.timeoutMs,
         });
@@ -286,7 +301,7 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         this.pendingState = null;
         await this.createContext();
         const page = await this.ensurePage();
-        await page.goto(this.driverContext.app.baseUrl, {
+        await page.goto(this.baseUrl, {
           waitUntil: 'load',
           timeout: operation.timeoutMs,
         });

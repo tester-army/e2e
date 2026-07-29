@@ -88,6 +88,7 @@ export class TargetWorker {
         events: {
           onResult: (result) => this.host.emit({ type: 'result', result: encodeResult(result) }),
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
+          onRuntime: (runtime) => this.host.emit({ type: 'runtime', runtime }),
           onPairStart: (pair) =>
             this.host.emit({
               type: 'pair-start',

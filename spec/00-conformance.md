@@ -15,7 +15,7 @@ Normative material, from highest to lowest precedence:
 2. The declarations under [`api/`](./api/).
 3. [`conformance/v0-requirements.json`](./conformance/v0-requirements.json) for
    required IDs and profile assignment.
-4. Prose in 00 and 02 through 11, 13 through 15.
+4. Prose in 00 and 02 through 11, 13 through 16.
 5. TypeScript blocks explicitly labeled **Normative algorithm**.
 
 01-principles.md, 12-migration.md, all other code blocks, the root README, RFC,
@@ -39,8 +39,7 @@ independently testable profiles:
 | Cache format | `cache-1` | yes |
 | Session format | `session-1` | yes |
 | Conformance format | `conformance-1` | yes |
-| iOS execution | not assigned | no, future |
-| Android execution | not assigned | no, future |
+| Mobile execution | `mobile-0.1` | no |
 
 A product MUST list every profile and version it implements. It MUST NOT claim
 "e2e v0 conformance" unless it implements every profile marked required above.
@@ -98,8 +97,12 @@ alone never certifies conformance.
 
 ## v0 boundary
 
-v0 executes web targets only. The portable `app`, `screen`, target, and
-capability vocabulary is designed for future mobile profiles, but iOS and
-Android execution claims are reserved until those profiles and conformance
-suites are published. Mobile API sketches in 08-platforms.md are informative
-unless incorporated into a later profile.
+v0 requires web execution. `web-0.1` is the only required execution profile, and
+"e2e v0 conformance" never implies mobile support.
+
+`mobile-0.1`, defined in [16-mobile.md](./16-mobile.md), is a published optional
+execution profile covering iOS simulators and Android emulators. It is normative
+for any implementation that claims it, and its required IDs cannot be skipped.
+An implementation MUST NOT claim iOS or Android execution without a passing
+`mobile-0.1` report covering both platforms. Physical mobile devices remain
+unassigned.

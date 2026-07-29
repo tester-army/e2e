@@ -45,6 +45,7 @@ export type Cases = [
   Expect<Equals<Spec.DriverWebResponse, Src.DriverWebResponse>>,
   Expect<Equals<Spec.DriverDialog, Src.DriverDialog>>,
   Expect<Equals<Spec.DriverWeb, Src.DriverWeb>>,
+  Expect<Equals<Spec.DriverDevice, Src.DriverDevice>>,
   Expect<Equals<Spec.DriverArtifacts, Src.DriverArtifacts>>,
   Expect<Equals<Spec.DriverRuntime, Src.DriverRuntime>>,
   Expect<Equals<Spec.DriverSession, Src.DriverSession>>,

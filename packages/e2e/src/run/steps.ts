@@ -10,6 +10,7 @@ export type StepKind =
   | 'screen'
   | 'app'
   | 'web'
+  | 'device'
   | 'session'
   | 'resource';
 

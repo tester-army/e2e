@@ -32,8 +32,12 @@ export interface FingerprintInput {
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   /** Current top-level URL, or undefined for a driver that exposes none. */
   readonly url: string | undefined;
-  /** Configured app base, which routes inside the app are expressed against. */
-  readonly base: { readonly origin: string; readonly basePath: string };
+  /**
+   * Configured app base, which routes inside the app are expressed against.
+   * Undefined for a target that declares no base — a mobile app has none — in
+   * which case no URL can be in-app and every route keeps its own origin.
+   */
+  readonly base: { readonly origin: string; readonly basePath: string } | undefined;
 }
 
 /** SHA-256/JCS of the canonical route projection. */
@@ -67,7 +71,7 @@ function canonicalRoute(href: string, base: FingerprintInput['base']): string | 
   } catch {
     return null;
   }
-  const inApp = url.origin === base.origin;
+  const inApp = base !== undefined && url.origin === base.origin;
   const path = normalizePath(inApp ? relativeToBase(url.pathname, base.basePath) : url.pathname);
   return `${inApp ? '' : url.origin}${path}`;
 }

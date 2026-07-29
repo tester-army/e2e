@@ -205,7 +205,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
-        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "web", "session", "resource"] },
+        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "web", "device", "session", "resource"] },
         "api": { "type": "string", "minLength": 1 },
         "label": { "type": "string", "maxLength": 8192 },
         "source": { "$ref": "#/$defs/source" },
@@ -462,13 +462,28 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "index", "platform", "browser", "browserVersion", "viewport", "baseOrigin", "environment", "allowProduction", "testIdAttribute", "driver", "capabilities", "artifactCapabilities", "stateCapability"],
+      "required": ["id", "index", "platform", "environment", "allowProduction", "testIdAttribute", "driver", "capabilities", "artifactCapabilities", "stateCapability"],
+      "allOf": [
+        {
+          "comment": "Browser engine and app origin are web provenance; device and OS are mobile provenance. Each platform family carries exactly its own, never a placeholder for the other's. A mobile viewport belongs to the resolved device, so it is absent until a session reports it.",
+          "if": { "properties": { "platform": { "const": "web" } }, "required": ["platform"] },
+          "then": {
+            "required": ["browser", "browserVersion", "baseOrigin", "viewport"],
+            "properties": { "device": false, "os": false }
+          },
+          "else": {
+            "properties": { "browser": false, "browserVersion": false }
+          }
+        }
+      ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
         "platform": { "type": "string", "minLength": 1 },
         "browser": { "enum": ["chromium", "firefox", "webkit"] },
         "browserVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "device": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "os": { "type": "string", "minLength": 1, "maxLength": 128 },
         "viewport": {
           "type": "object",
           "additionalProperties": false,

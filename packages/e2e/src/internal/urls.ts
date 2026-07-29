@@ -64,12 +64,12 @@ const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:']);
  */
 export function resolveNavigationUrl(
   input: string,
-  base: NormalizedBaseUrl,
+  base: NormalizedBaseUrl | undefined,
   allowedOrigins: readonly string[],
 ): { url: string } {
   let url: URL;
   try {
-    url = new URL(input, base.href);
+    url = new URL(input, base?.href);
   } catch {
     throw new ConfigurationError('POLICY_DENIED', `malformed URL: ${input}`);
   }

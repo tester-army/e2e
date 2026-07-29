@@ -237,7 +237,11 @@ export interface DriverContext {
   readonly target: Target;
   readonly targetId: string;
   readonly app: {
-    readonly baseUrl: string;
+    /**
+     * Absent for a target whose profile defines no base URL, such as a
+     * `mobile-0.1` target. Present for every `web-0.1` target.
+     */
+    readonly baseUrl?: string;
     readonly allowedOrigins: readonly string[];
     readonly environment: 'test' | 'staging' | 'production';
     readonly allowProduction: boolean;
@@ -441,6 +445,36 @@ export interface DriverWeb {
   mouseUp(operation: OperationContext): Promise<void>;
 }
 
+/**
+ * Mobile system controls behind the `device` capability. Every operation
+ * receives an operation context so the runner keeps deadlines, cancellation,
+ * step recording, and policy, exactly as it does for `DriverWeb`.
+ */
+export interface DriverDevice {
+  /** Sends the device to its home screen. */
+  home(operation: OperationContext): Promise<void>;
+  /** Hides the software keyboard; a no-op when none is shown. */
+  hideKeyboard(operation: OperationContext): Promise<void>;
+  /** Opens a device URL, already resolved and policy-checked by the runner. */
+  openUrl(url: string, operation: OperationContext): Promise<void>;
+  /** Sets the simulated device location. */
+  setLocation(
+    location: { readonly latitude: number; readonly longitude: number },
+    operation: OperationContext,
+  ): Promise<void>;
+  /** Sets one permission for the target application only. */
+  setPermission(
+    permission: 'camera' | 'location' | 'notifications' | 'contacts',
+    state: 'allow' | 'deny' | 'unset',
+    operation: OperationContext,
+  ): Promise<void>;
+  /** Delivers one simulated notification to the target application. */
+  pushNotification(
+    payload: Readonly<Record<string, unknown>>,
+    operation: OperationContext,
+  ): Promise<void>;
+}
+
 export interface DriverArtifacts {
   /** Captures a redacted screenshot and returns an artifact-relative path. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string>;
@@ -459,6 +493,11 @@ export interface DriverRuntime {
     readonly name: 'chromium' | 'firefox' | 'webkit';
     readonly version: string;
   };
+  /** Resolved device provenance. A `mobile-0.1` session MUST supply it. */
+  readonly device?: {
+    readonly name: string;
+    readonly os: string;
+  };
   readonly viewport: {
     readonly width: number;
     readonly height: number;
@@ -471,6 +510,7 @@ export interface DriverSession {
   readonly screen: DriverScreen;
   readonly actions: DriverAgentActions;
   readonly web?: DriverWeb;
+  readonly device?: DriverDevice;
   readonly artifacts: DriverArtifacts;
   readonly capabilityFixtures?: Readonly<Record<string, unknown>>;
   /** Captures immutable app state for a session envelope. */
@@ -526,7 +566,7 @@ export interface DriverDefinition extends DriverManifest {
 /** Type-checks and returns a driver-1 implementation. */
 export function defineDriver(driver: DriverDefinition): Driver;
 
-export type DriverProfile = 'driver-1' | 'core-0.1' | 'web-0.1';
+export type DriverProfile = 'driver-1' | 'core-0.1' | 'web-0.1' | 'mobile-0.1';
 
 export interface DriverConformanceResult {
   readonly requirementId: string;

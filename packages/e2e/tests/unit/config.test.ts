@@ -60,7 +60,7 @@ describe('resolveConfig', () => {
 
   it('prefers app.url over APP_URL', () => {
     const config = resolve({ app: { url: 'http://127.0.0.1:4000' } });
-    expect(config.app.base.origin).toBe('http://127.0.0.1:4000');
+    expect(config.app.base!.origin).toBe('http://127.0.0.1:4000');
   });
 
   it('rejects unknown top-level and app keys', () => {
@@ -94,12 +94,59 @@ describe('resolveConfig', () => {
     ).toThrow(/duplicate target/);
   });
 
-  it('rejects mobile targets instead of skipping them', () => {
+  it('resolves mobile targets with their app identity and optional device selectors', () => {
+    const driver = fakeMobileDriver();
+    const config = resolve({
+      targets: [
+        { name: 'ios', platform: 'ios', driver, app: 'com.example.app', device: 'iPhone 16' },
+        { name: 'android', platform: 'android', driver, app: './build/app.apk' },
+      ],
+    });
+    const [ios, android] = config.targets;
+    expect(ios).toMatchObject({
+      platform: 'ios',
+      app: 'com.example.app',
+      device: 'iPhone 16',
+      os: undefined,
+      driver,
+    });
+    expect(ios).not.toHaveProperty('browser');
+    expect(ios!.driverTarget).toMatchObject({ platform: 'ios', device: 'iPhone 16' });
+    expect(ios!.driverTarget).not.toHaveProperty('os');
+    expect(android).toMatchObject({ platform: 'android', app: './build/app.apk' });
+  });
+
+  it('rejects a mobile target without a driver handle declaring its platform', () => {
     expect(() =>
       resolve({
-        targets: [{ name: 'ios', platform: 'ios', driver: fakeDriver(), app: 'App.app' }],
+        targets: [{ name: 'ios', platform: 'ios', app: 'com.example.app' }],
       } as never),
-    ).toThrow(/web targets only/);
+    ).toThrow(/no bundled "ios" driver/);
+    expect(() =>
+      resolve({
+        targets: [{ name: 'ios', platform: 'ios', driver: fakeDriver(), app: 'com.example.app' }],
+      } as never),
+    ).toThrow(/declares web/);
+  });
+
+  it('requires app on a mobile target and rejects empty device selectors', () => {
+    const driver = fakeMobileDriver();
+    expect(() => resolve({ targets: [{ name: 'ios', platform: 'ios', driver }] } as never)).toThrow(
+      /requires app/,
+    );
+    expect(() =>
+      resolve({
+        targets: [{ name: 'ios', platform: 'ios', driver, app: 'com.example.app', os: '' }],
+      } as never),
+    ).toThrow(/os must be a nonempty string/);
+  });
+
+  it('still rejects a platform outside the web and mobile families', () => {
+    expect(() =>
+      resolve({
+        targets: [{ name: 'tv', platform: 'acme.tv', driver: fakeMobileDriver() }],
+      } as never),
+    ).toThrow(/executes web, ios, and android targets/);
   });
 
   it('accepts branded third-party drivers and rejects plain objects', () => {
@@ -198,6 +245,17 @@ function fakeDriver() {
     platforms: ['web'],
     spiVersion: 1,
     capabilities: { fixtures: ['web'], artifacts: ['screenshot'], state: false },
+    launch: () => Promise.reject(new Error('not implemented')),
+  });
+}
+
+function fakeMobileDriver() {
+  return defineDriver({
+    id: 'fake-mobile-driver',
+    version: '1.0.0',
+    platforms: ['ios', 'android'],
+    spiVersion: 1,
+    capabilities: { fixtures: ['device'], artifacts: ['screenshot', 'video'], state: false },
     launch: () => Promise.reject(new Error('not implemented')),
   });
 }

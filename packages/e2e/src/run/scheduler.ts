@@ -26,12 +26,15 @@ import {
   unstartedResult,
   type WorkUnit,
 } from './units.ts';
+import type { TargetRuntimeProvenance } from '../report/build.ts';
 import { decodeResult, type WirePair, type WorkerToMain } from './worker/protocol.ts';
 
 export interface SchedulerEvents {
   onResult(result: ResultRecord): void;
   onSerialGroup(group: SerialGroupRecord): void;
   onRunError(error: RunError): void;
+  /** Resolved backend provenance for one target, reported after its first launch. */
+  onRuntime?(targetName: string, runtime: TargetRuntimeProvenance): void;
   /** A worker began executing one test-target pair. */
   onTestStart?(testId: string, title: string, targetName: string): void;
   /** Phase timings a child-process worker drained after one unit. */
@@ -427,6 +430,10 @@ class Scheduler {
       }
       case 'serial-group': {
         this.options.events.onSerialGroup(message.group);
+        break;
+      }
+      case 'runtime': {
+        this.options.events.onRuntime?.(worker.targetName, message.runtime);
         break;
       }
       case 'unit-done': {

@@ -177,7 +177,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
   try {
     if (config.app.command !== undefined) {
-      appProcess = new AppProcess(config.app.command, config.projectRoot, config.app.readyUrl);
+      // Config resolution guarantees a readiness URL whenever a command is set.
+      const readyUrl = config.app.readyUrl ?? '';
+      appProcess = new AppProcess(config.app.command, config.projectRoot, readyUrl);
       await debug.time('app.start', () => appProcess!.start());
     }
 
@@ -291,6 +293,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             },
             onSerialGroup: (group) => serialGroups.push(group),
             onRunError: (error) => runErrors.push(error),
+            onRuntime: (targetName, runtime) => {
+              const existing = targetProvenance.get(targetName);
+              if (existing !== undefined) Object.assign(existing, runtime);
+            },
             onTestStart: (testId, title, targetName) =>
               listReporter?.onTestStart({ id: testId, title, target: targetName }),
             onDebug: (snapshot) => debug.merge(snapshot),
@@ -388,12 +394,6 @@ function validateDriver(
     }
   }
   return {
-    browserVersion: 'unknown',
-    viewport: {
-      width: target.viewport?.width ?? 1280,
-      height: target.viewport?.height ?? 720,
-      scale: 1,
-    },
     driver: { id: driver.id, version: driver.version, spiVersion: 1 },
     capabilities: [...driver.capabilities.fixtures],
     artifactCapabilities: [...driver.capabilities.artifacts],
