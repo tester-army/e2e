@@ -210,7 +210,7 @@ describe('screen', () => {
       context().operation,
     );
     expect(refs).toHaveLength(2);
-    expect(refs[0]).toMatchObject({ id: '@e4' });
+    expect(refs[0]).toMatchObject({ id: 'e4' });
     await session.close(cleanup);
     await dispose();
   });
@@ -279,9 +279,16 @@ describe('screen', () => {
           rect: { x: 0, y: 0, width: 402, height: 874 },
           children: [
             {
-              type: 'XCUIElementTypeButton',
-              label: 'Below fold',
-              rect: { x: 0, y: 2000, width: 402, height: 44 },
+              // A scroll container, so the row below the fold keeps its geometry.
+              type: 'XCUIElementTypeTable',
+              rect: { x: 0, y: 0, width: 402, height: 874 },
+              children: [
+                {
+                  type: 'XCUIElementTypeButton',
+                  label: 'Below fold',
+                  rect: { x: 0, y: 2000, width: 402, height: 44 },
+                },
+              ],
             },
           ],
         },
@@ -299,6 +306,97 @@ describe('screen', () => {
     expect(error).toMatchObject({ code: 'NOT_ACTIONABLE', retryable: false });
     expect(String((error as Error).message)).toContain('scroll it into view');
     expect(daemon.commands()).not.toContain('click');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('dispatches a switch action at the inner control, not the row wrapper', async () => {
+    // The wrapper carries the human label but its center lies on the row text,
+    // where a tap does nothing at all.
+    const daemon = createFakeDaemon({
+      screen: () => [
+        {
+          type: 'XCUIElementTypeSwitch',
+          label: 'Reduce Motion',
+          value: '1',
+          rect: { x: 36, y: 146, width: 330, height: 28 },
+          children: [
+            {
+              type: 'XCUIElementTypeSwitch',
+              label: '1',
+              value: '1',
+              rect: { x: 305, y: 146, width: 63, height: 28 },
+            },
+          ],
+        },
+      ],
+    });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(
+      {
+        kind: 'query',
+        query: {
+          kind: 'role',
+          value: { kind: 'string', value: 'switch', exact: true },
+          name: { kind: 'string', value: 'Reduce Motion', exact: true },
+        },
+      },
+      op,
+    );
+    expect(refs[0]?.id).toBe('e1');
+    await session.screen.perform(refs[0]!, { kind: 'uncheck' }, op);
+    const click = daemon.calls.find((call) => call.command === 'click');
+    expect(click?.positionals).toEqual(['@e2']);
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('clears a field with one delete key per character', async () => {
+    // The backend has no clear command and rejects empty fill text.
+    const daemon = createFakeDaemon({
+      screen: () => [
+        {
+          type: 'XCUIElementTypeTextField',
+          label: 'Email',
+          value: 'abc',
+          rect: { x: 20, y: 100, width: 280, height: 44 },
+        },
+      ],
+    });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(
+      { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'textbox', exact: true } } },
+      op,
+    );
+    await session.screen.perform(refs[0]!, { kind: 'clear' }, op);
+    const typed = daemon.calls.find((call) => call.command === 'type');
+    expect(typed?.positionals[0]).toBe('\u0008\u0008\u0008');
+    // Focus first, because typing goes to the focused field.
+    expect(daemon.commands()).toContain('focus');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('skips clearing a field that is already empty', async () => {
+    const daemon = createFakeDaemon({
+      screen: () => [
+        {
+          type: 'XCUIElementTypeTextField',
+          label: 'Email',
+          rect: { x: 20, y: 100, width: 280, height: 44 },
+        },
+      ],
+    });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(
+      { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'textbox', exact: true } } },
+      op,
+    );
+    await session.screen.perform(refs[0]!, { kind: 'clear' }, op);
+    expect(daemon.commands()).not.toContain('type');
     await session.close(cleanup);
     await dispose();
   });

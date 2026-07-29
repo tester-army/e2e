@@ -92,7 +92,19 @@ export interface SemanticNode {
   readonly states?: Readonly<
     Partial<
       Record<
-        'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure',
+        | 'checked'
+        | 'disabled'
+        | 'selected'
+        | 'expanded'
+        | 'focused'
+        | 'hidden'
+        | 'secure'
+        /**
+         * The node's action point lies outside the viewport, so it is visible
+         * but not actionable until it is scrolled into view. A profile whose
+         * backend scrolls as part of actionability never sets it.
+         */
+        | 'offscreen',
         boolean
       >
     >

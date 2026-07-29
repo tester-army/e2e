@@ -28,7 +28,14 @@ import {
   type ScrollDirection,
   type SemanticNode,
 } from '../driver/index.ts';
-import { assertActionable, performAction, performScroll, performSwipe, requireRect } from './actions.ts';
+import {
+  assertActionable,
+  performAction,
+  performScroll,
+  performSwipe,
+  requireRect,
+  type InteractionScope,
+} from './actions.ts';
 import type { AgentDeviceClient, SnapshotResult } from './client.ts';
 import { createDriverDevice } from './device.ts';
 import { resolveExpression } from './locators.ts';
@@ -100,8 +107,13 @@ export class MobileSession implements DriverSession {
     });
   }
 
-  private get scope(): { readonly platform: 'ios' | 'android' } {
-    return { platform: this.platform };
+  private get scope(): InteractionScope {
+    return {
+      platform: this.platform,
+      ...(this.viewport !== null
+        ? { viewport: { width: this.viewport.width, height: this.viewport.height } }
+        : {}),
+    };
   }
 
   /**

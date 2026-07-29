@@ -98,7 +98,13 @@ export interface SemanticNode {
         | 'expanded'
         | 'focused'
         | 'hidden'
-        | 'secure',
+        | 'secure'
+        /**
+         * The node's action point lies outside the viewport, so it is visible
+         * but not actionable until it is scrolled into view. A profile whose
+         * backend scrolls as part of actionability never sets it.
+         */
+        | 'offscreen',
         boolean
       >
     >

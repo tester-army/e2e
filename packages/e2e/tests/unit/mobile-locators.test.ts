@@ -49,20 +49,20 @@ describe('resolveExpression', () => {
   it('resolves each query kind against its mobile source', () => {
     const snapshot = loginSnapshot();
     expect(refs(snapshot, { kind: 'query', query: { kind: 'role', value: exact('button') } })).toEqual(
-      ['@e6'],
+      ['e6'],
     );
     expect(refs(snapshot, { kind: 'query', query: { kind: 'label', value: exact('Email') } })).toEqual(
-      ['@e4'],
+      ['e4'],
     );
     expect(refs(snapshot, { kind: 'query', query: { kind: 'testId', value: exact('email') } })).toEqual(
-      ['@e4'],
+      ['e4'],
     );
     expect(
       refs(snapshot, { kind: 'query', query: { kind: 'text', value: exact('Sign in') } }),
-    ).toEqual(['@e3']);
+    ).toEqual(['e3']);
     expect(
       refs(snapshot, { kind: 'query', query: { kind: 'placeholder', value: exact('Password') } }),
-    ).toEqual(['@e5']);
+    ).toEqual(['e5']);
   });
 
   it('matches only the innermost carrier of a label repeated up the chain', () => {
@@ -88,10 +88,10 @@ describe('resolveExpression', () => {
       },
     ]);
     expect(refs(snapshot, { kind: 'query', query: { kind: 'text', value: exact('General') } })).toEqual(
-      ['@e4'],
+      ['e4'],
     );
     expect(refs(snapshot, { kind: 'query', query: { kind: 'label', value: exact('General') } })).toEqual(
-      ['@e4'],
+      ['e4'],
     );
     // A role query still reaches the control, because the role disambiguates it.
     expect(
@@ -99,7 +99,7 @@ describe('resolveExpression', () => {
         kind: 'query',
         query: { kind: 'role', value: exact('button'), name: exact('General') },
       }),
-    ).toEqual(['@e3']);
+    ).toEqual(['e3']);
     // hasText still sees the whole subtree, so row filtering keeps working.
     // The public API always builds hasText as a substring pattern.
     expect(
@@ -108,7 +108,7 @@ describe('resolveExpression', () => {
         source: { kind: 'query', query: { kind: 'role', value: exact('listitem') } },
         hasText: loose('General'),
       }),
-    ).toEqual(['@e1']);
+    ).toEqual(['e1']);
   });
 
   it('keeps a composite label that no descendant repeats', () => {
@@ -127,9 +127,9 @@ describe('resolveExpression', () => {
         kind: 'query',
         query: { kind: 'text', value: exact('Apple Account, Sign in to access your data') },
       }),
-    ).toEqual(['@e1']);
+    ).toEqual(['e1']);
     expect(refs(snapshot, { kind: 'query', query: { kind: 'text', value: exact('Apple Account') } })).toEqual(
-      ['@e2'],
+      ['e2'],
     );
   });
 
@@ -140,7 +140,7 @@ describe('resolveExpression', () => {
         kind: 'query',
         query: { kind: 'role', value: exact('button'), name: exact('Continue') },
       }),
-    ).toEqual(['@e6']);
+    ).toEqual(['e6']);
     expect(
       refs(snapshot, {
         kind: 'query',
@@ -157,7 +157,7 @@ describe('resolveExpression', () => {
     expect(refs(snapshot, { kind: 'query', query })).toEqual([]);
     expect(
       refs(snapshot, { kind: 'query', query: { ...query, states: { hidden: true } } }),
-    ).toEqual(['@e1']);
+    ).toEqual(['e1']);
   });
 
   it('filters by derived checked and by disabled state', () => {
@@ -171,13 +171,13 @@ describe('resolveExpression', () => {
         kind: 'query',
         query: { kind: 'role', value: exact('switch'), states: { checked: true } },
       }),
-    ).toEqual(['@e1']);
+    ).toEqual(['e1']);
     expect(
       refs(snapshot, {
         kind: 'query',
         query: { kind: 'role', value: exact('button'), states: { disabled: true } },
       }),
-    ).toEqual(['@e3']);
+    ).toEqual(['e3']);
   });
 
   it('never matches expanded, which mobile does not support', () => {
@@ -209,7 +209,7 @@ describe('resolveExpression', () => {
         query: { kind: 'role', value: exact('button') },
         scope: { kind: 'query', query: { kind: 'testId', value: exact('second') } },
       }),
-    ).toEqual(['@e4']);
+    ).toEqual(['e4']);
     expect(
       refs(snapshot, {
         kind: 'query',
@@ -238,7 +238,7 @@ describe('resolveExpression', () => {
       query: { kind: 'role', value: exact('listitem') },
     };
     expect(refs(snapshot, { kind: 'filter', source: cells, hasText: loose('alice') })).toEqual([
-      '@e1',
+      'e1',
     ]);
     expect(
       refs(snapshot, {
@@ -246,7 +246,7 @@ describe('resolveExpression', () => {
         source: cells,
         has: { kind: 'query', query: { kind: 'role', value: exact('button') } },
       }),
-    ).toEqual(['@e1']);
+    ).toEqual(['e1']);
     expect(
       refs(snapshot, {
         kind: 'filter',
@@ -277,9 +277,9 @@ describe('resolveExpression', () => {
       kind: 'query',
       query: { kind: 'role', value: exact('button') },
     };
-    expect(refs(snapshot, { kind: 'index', source, index: 'first' })).toEqual(['@e1']);
-    expect(refs(snapshot, { kind: 'index', source, index: 'last' })).toEqual(['@e3']);
-    expect(refs(snapshot, { kind: 'index', source, index: 1 })).toEqual(['@e2']);
+    expect(refs(snapshot, { kind: 'index', source, index: 'first' })).toEqual(['e1']);
+    expect(refs(snapshot, { kind: 'index', source, index: 'last' })).toEqual(['e3']);
+    expect(refs(snapshot, { kind: 'index', source, index: 1 })).toEqual(['e2']);
     expect(refs(snapshot, { kind: 'index', source, index: 9 })).toEqual([]);
   });
 

@@ -152,7 +152,10 @@ class ScreenImpl implements Screen {
         const deadline = engine.deadline(options?.timeout ?? 30_000);
         for (;;) {
           const { node } = await engine.tryRead(internals.expression, deadline);
-          if (isNodeVisible(node)) return;
+          // Reaching a target means both rendered and inside the viewport. A
+          // backend that scrolls as part of actionability never reports
+          // `offscreen`, so this is the same single check on every platform.
+          if (isNodeVisible(node) && node?.states?.offscreen !== true) return;
           if (deadline.expired()) {
             throw new TestError(
               'LOCATOR_NOT_FOUND',

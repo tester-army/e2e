@@ -31,8 +31,9 @@ export const SCREEN = { x: 0, y: 0, width: 402, height: 874 } as const;
  * `@e{n}` refs and `index`/`parentIndex` in depth-first document order.
  *
  * Every node gets geometry unless the spec sets it, because a real iOS node
- * always has a rect and the projection derives visibility from it. Roots cover
- * the screen; other nodes are stacked down the screen in declaration order.
+ * always has a rect and the projection derives visibility from it. A root covers
+ * the screen and any other node inherits its parent's rect, so default geometry
+ * is consistent with the tree the way a real view hierarchy is.
  */
 export function buildSnapshot(
   roots: readonly NodeSpec[],
@@ -40,11 +41,15 @@ export function buildSnapshot(
 ): SnapshotResult {
   const nodes: SnapshotNode[] = [];
   let next = 1;
-  let stackY = 0;
 
-  const walk = (spec: NodeSpec, parentIndex: number | undefined, depth: number): void => {
+  const walk = (
+    spec: NodeSpec,
+    parentIndex: number | undefined,
+    depth: number,
+    parentRect: { x: number; y: number; width: number; height: number },
+  ): void => {
     const index = next++;
-    const rect = spec.rect ?? defaultRect(parentIndex === undefined, () => (stackY += 48));
+    const rect = spec.rect ?? parentRect;
     const node = {
       index,
       ref: `@e${index}`,
@@ -67,26 +72,16 @@ export function buildSnapshot(
         : {}),
     } as SnapshotNode;
     nodes.push(node);
-    for (const child of spec.children ?? []) walk(child, index, depth + 1);
+    for (const child of spec.children ?? []) walk(child, index, depth + 1, rect);
   };
 
-  for (const root of roots) walk(root, undefined, 0);
+  for (const root of roots) walk(root, undefined, 0, { ...SCREEN });
   return {
     nodes,
     truncated: false,
     identifiers: {},
     ...(options.refsGeneration !== undefined ? { refsGeneration: options.refsGeneration } : {}),
   } as SnapshotResult;
-}
-
-/** Geometry for a node whose spec left it out. */
-function defaultRect(
-  isRoot: boolean,
-  nextY: () => number,
-): { x: number; y: number; width: number; height: number } {
-  if (isRoot) return { ...SCREEN };
-  const y = nextY();
-  return { x: 0, y, width: SCREEN.width, height: 44 };
 }
 
 /** A small login screen used across projection and locator tests. */

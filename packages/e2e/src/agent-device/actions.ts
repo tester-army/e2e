@@ -15,12 +15,21 @@ import {
   type ScrollDirection,
 } from '../driver/index.ts';
 import type { AgentDeviceClient } from './client.ts';
-import type { ProjectedNode } from './snapshot.ts';
+import { clientRef, controlOf, nearestScrollContainer, type ProjectedNode } from './snapshot.ts';
 import { momentumGesture, rectCenter, swipePath, unsupported, withDeadline } from './support.ts';
+
+/**
+ * The platform delete key. Both backends interpret it inside typed text, which
+ * is the only way to empty a field: there is no clear command and empty fill
+ * text is rejected.
+ */
+const DELETE_KEY = '\u0008';
 
 /** Selection fields every interaction carries so the daemon targets one device. */
 export interface InteractionScope {
   readonly platform: 'ios' | 'android';
+  /** Device viewport in points, when a snapshot has revealed it. */
+  readonly viewport?: { readonly width: number; readonly height: number } | undefined;
 }
 
 /**
@@ -84,7 +93,10 @@ export async function performAction(
   action: LocatorAction,
   operation: OperationContext,
 ): Promise<void> {
-  const base = { platform: scope.platform, ref: node.ref } as const;
+  // Dispatch against the node input actually reaches, which for a nested
+  // control is an inner node of the selected one rather than its wrapper.
+  const control = controlOf(node);
+  const base = { platform: scope.platform, ref: clientRef(control) } as const;
   switch (action.kind) {
     case 'tap':
       await withDeadline(client.interactions.click({ ...base }), operation, 'tap');
@@ -106,21 +118,38 @@ export async function performAction(
         'longPress',
       );
       return;
-    case 'fill':
-    case 'clear': {
-      // `clear` is a fill with empty text: both replace the field's content.
-      const text = action.kind === 'fill' ? action.value : '';
-      const options = { ...base, text };
+    case 'fill': {
+      const options = { ...base, text: action.value };
       // oxlint-disable-next-line no-array-fill-with-reference-type -- this is the daemon's fill command, not Array#fill
-      await withDeadline(client.interactions.fill(options), operation, action.kind);
+      await withDeadline(client.interactions.fill(options), operation, 'fill');
+      return;
+    }
+    case 'clear': {
+      // The backend has no clear command and rejects empty fill text, so
+      // clearing is one delete key per character. Focus first, because typing
+      // goes to the focused field.
+      if (control.valueLength === 0) return;
+      await withDeadline(
+        client.interactions.focus(pointOf(scope, control)),
+        operation,
+        'clear',
+      );
+      await withDeadline(
+        client.interactions.type({
+          platform: scope.platform,
+          text: DELETE_KEY.repeat(control.valueLength),
+        }),
+        operation,
+        'clear',
+      );
       return;
     }
     case 'focus':
-      await withDeadline(client.interactions.focus(pointOf(scope, node)), operation, 'focus');
+      await withDeadline(client.interactions.focus(pointOf(scope, control)), operation, 'focus');
       return;
     case 'press':
       // A key press targets the focused field, so focus the node first.
-      await withDeadline(client.interactions.focus(pointOf(scope, node)), operation, 'press');
+      await withDeadline(client.interactions.focus(pointOf(scope, control)), operation, 'press');
       await withDeadline(
         client.interactions.type({ platform: scope.platform, text: action.key }),
         operation,
@@ -137,22 +166,25 @@ export async function performAction(
       return;
     }
     case 'scrollIntoView': {
-      await withDeadline(
-        client.interactions.scroll({
-          platform: scope.platform,
-          direction: 'down',
-          amount: momentumGesture('slow').amount,
-        }),
-        operation,
-        'scrollIntoView',
-      );
+      // One gesture toward the target, in its own scroll container when it has
+      // one. A single gesture may not be enough to reach a distant target;
+      // `screen.scrollUntilVisible` is the loop that re-resolves each round.
+      const direction = scrollDirectionToward(node, scope.viewport);
+      if (direction === undefined) return;
+      const container = nearestScrollContainer(node);
+      const rect = container?.rect;
+      if (rect === undefined) {
+        await performScroll(client, scope, direction, 'slow', operation);
+      } else {
+        await performSwipe(client, scope, rect, direction, 'slow', operation);
+      }
       return;
     }
     case 'swipe': {
       await performSwipe(
         client,
         scope,
-        requireRect(node),
+        requireRect(control),
         action.direction,
         action.momentum ?? 'none',
         operation,
@@ -168,6 +200,26 @@ export async function performAction(
     case 'dragTo':
       throw unsupported('dragTo');
   }
+}
+
+/**
+ * Which way to scroll to bring a node into the viewport, or undefined when it
+ * is already inside it. Vertical displacement wins when both axes are off,
+ * because mobile lists scroll vertically.
+ */
+function scrollDirectionToward(
+  node: ProjectedNode,
+  viewport: { readonly width: number; readonly height: number } | undefined,
+): ScrollDirection | undefined {
+  const rect = node.rect;
+  if (rect === undefined || viewport === undefined) return 'down';
+  const centerY = rect.y + rect.height / 2;
+  const centerX = rect.x + rect.width / 2;
+  if (centerY > viewport.height) return 'down';
+  if (centerY < 0) return 'up';
+  if (centerX > viewport.width) return 'right';
+  if (centerX < 0) return 'left';
+  return undefined;
 }
 
 /** The viewport point one node dispatches coordinate input at. */
@@ -211,9 +263,13 @@ export async function performScroll(
   momentum: Momentum,
   operation: OperationContext,
 ): Promise<void> {
-  const { amount, durationMs } = momentumGesture(momentum);
+  // Distance only: agent-device 0.20.2 turns a `scroll` with `durationMs` into
+  // a no-op on iOS, verified by measuring a row's position across a scroll with
+  // and without it. Momentum distance is what reaches content, so the gesture
+  // duration is left to the backend rather than silently scrolling nothing.
+  const { amount } = momentumGesture(momentum);
   await withDeadline(
-    client.interactions.scroll({ platform: scope.platform, direction, amount, durationMs }),
+    client.interactions.scroll({ platform: scope.platform, direction, amount }),
     operation,
     'scroll',
   );

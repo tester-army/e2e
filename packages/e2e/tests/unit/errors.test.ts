@@ -109,3 +109,41 @@ describe('E2EError', () => {
     expect(error.retryable).toBe(false);
   });
 });
+
+describe('cross-realm driver errors', () => {
+  /**
+   * A driver imported by a config file is loaded through a different module
+   * registry than the runner, so its DriverError is a different class. Without
+   * structural detection every third-party driver's typed failures degrade to a
+   * generic error and lose their taxonomy.
+   */
+  function foreignDriverError(code: string, message: string): Error {
+    const error = new Error(message);
+    error.name = 'DriverError';
+    Object.assign(error, { code, retryable: false });
+    return error;
+  }
+
+  it('translates a foreign DriverError by its code', () => {
+    const classified = classifyError(
+      foreignDriverError('UNSUPPORTED_CAPABILITY', 'the device has no keyboard control'),
+    );
+    expect(classified.category).toBe('configuration');
+    expect(classified.code).toBe('UNSUPPORTED_CAPABILITY');
+    expect(classified.message).toBe('the device has no keyboard control');
+  });
+
+  it('maps a foreign action failure the same way as a local one', () => {
+    const foreign = classifyError(foreignDriverError('NOT_ACTIONABLE', 'covered'));
+    const local = classifyError(new DriverError('NOT_ACTIONABLE', 'covered', { retryable: false }));
+    expect(foreign.category).toBe(local.category);
+    expect(foreign.code).toBe(local.code);
+  });
+
+  it('ignores an unrelated error that merely borrows the name', () => {
+    const impostor = new Error('nope');
+    impostor.name = 'DriverError';
+    Object.assign(impostor, { code: 'NOT_A_DRIVER_CODE' });
+    expect(classifyError(impostor).code).toBe('ERROR');
+  });
+});

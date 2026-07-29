@@ -71,6 +71,19 @@ A projection MUST:
 `rect` is in device-independent points, the same space actions dispatch in. A
 node without geometry omits `rect`; it is never zero-filled.
 
+Geometry MUST be validated against the tree before it is trusted. A rect
+encloses area, and a node's rect intersects the bounds its ancestors impose. A
+scroll container imposes no bounds on its children, because a row scrolled below
+the fold is genuinely outside its container's frame while still being real; every
+other view does, because its subviews lie inside it. Geometry failing this check
+counts as absent.
+
+This is not defensive coding. iOS reports stale geometry for the descendants of
+a row scrolled out of the viewport, placing them where the row used to be and
+zeroing the innermost ones. Trusting that reports an unreachable node as
+reachable, and hands the row's label to a node that can be neither seen nor
+tapped, which makes the row unmatchable.
+
 There is no frame concept on mobile. `framePath` is always absent, and the
 `frame` and `web-selector` locator-expression kinds MUST be rejected with
 `UNSUPPORTED_CAPABILITY`.
@@ -219,11 +232,27 @@ The driver MUST NOT retarget. If a resolved node is not itself actionable, the
 action fails `NOT_ACTIONABLE`; substituting an ancestor or a nearby node would
 silently violate the node the test selected.
 
+Choosing where inside a node to dispatch is not retargeting. A platform may
+expose one control as nested nodes that share a role: iOS wraps a switch in a
+same-role container spanning the whole row, and that container's center lies on
+the row label, where input has no effect. The action point is therefore the
+center of the innermost descendant that shares the node's role and covers less
+area, and the node's own center when it has no such descendant. Without this
+rule an action on a correctly resolved control is a silent no-op, which is worse
+than a failure.
+
 A node scrolled outside the viewport is visible but not actionable, because
-`mobile-0.1` does not scroll implicitly before dispatching. Tests reach such a
-node with `scrollIntoView` or `screen.scrollUntilVisible`. This is a deliberate
-difference from `web-0.1`, where the backend scrolls into view as part of
-actionability.
+`mobile-0.1` does not scroll implicitly before dispatching. Such a node carries
+`states.offscreen`, so a test, an assertion, and a model can all tell "not
+rendered" apart from "not reachable yet". Tests reach it with `scrollIntoView`
+or `screen.scrollUntilVisible`, which waits for `offscreen` to clear. This is a
+deliberate difference from `web-0.1`, where the backend scrolls into view as
+part of actionability and therefore never reports `offscreen`.
+
+`scrollIntoView` performs one gesture toward the target, in the target's nearest
+scroll container when it has one. A single gesture need not reach a distant
+target; `screen.scrollUntilVisible` is the loop, and it re-resolves the target
+each round because a scroll invalidates every node reference.
 
 The stale/commit contract of 09-drivers.md applies unchanged: stale before
 dispatch is retryable `NODE_STALE`, and once input may have reached the
@@ -231,11 +260,15 @@ application the failure is `ACTION_MAY_HAVE_COMMITTED` with `retryable: false`.
 
 ## Scrolling
 
-Scroll direction is from the user's perspective, and momentum distances and
-durations are exactly as 08-platforms.md defines them: `none` moves 50% of the
-active scrollport over 250 ms, `slow` 75% over 500 ms, and `fast` 150% over
-250 ms, capped by the remaining scroll range. Viewport and locator swipes start
-at 75% and end at 25% of the relevant axis.
+Scroll direction is from the user's perspective, and momentum distances are
+exactly as 08-platforms.md defines them: `none` moves 50% of the active
+scrollport, `slow` 75%, and `fast` 150%, capped by the remaining scroll range.
+Locator swipes start at 75% and end at 25% of the relevant axis.
+
+Momentum duration is advisory for a scrollport scroll. Distance is what reaches
+content, and a mobile backend may own the gesture's timing; a driver MUST
+preserve the distance and MUST NOT trade a correct distance for a requested
+duration.
 
 ## `app` in the mobile profile
 

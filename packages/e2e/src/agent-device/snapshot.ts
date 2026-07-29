@@ -48,6 +48,12 @@ export interface ProjectedNode {
   readonly selected: boolean | undefined;
   readonly checked: boolean | undefined;
   readonly secure: boolean;
+  /**
+   * Character count of the field's current value, kept even for a secure field
+   * whose value is masked, because clearing needs one delete per character. It
+   * never leaves the driver.
+   */
+  readonly valueLength: number;
   readonly inputPurpose: SemanticNode['inputPurpose'] | undefined;
   readonly editable: boolean;
   readonly scrollContainer: boolean;
@@ -68,14 +74,20 @@ export interface ProjectedSnapshot {
 }
 
 /**
- * Normalizes a backend ref to the form its commands accept.
+ * Canonical node id: the backend ref without its `@` sigil.
  *
- * The snapshot JSON carries a bare `e12` while every interaction expects
- * `@e12`; a bare ref is parsed as a selector and rejected. Normalizing once at
- * projection keeps one spelling everywhere downstream.
+ * The sigil is an agent-device wire detail, not part of the node's identity. It
+ * matters because a node id is printed into the model's observation as `#id`,
+ * and `#@e12` reads as two sigils: models drop the `@` and their answer is then
+ * rejected as a node that is not in the observation.
  */
-export function normalizeRef(ref: string): string {
-  return ref.startsWith('@') ? ref : `@${ref}`;
+export function canonicalRef(ref: string): string {
+  return ref.startsWith('@') ? ref.slice(1) : ref;
+}
+
+/** The ref spelling the backend's commands require. */
+export function clientRef(node: Pick<ProjectedNode, 'ref'>): string {
+  return `@${node.ref}`;
 }
 
 /** iOS secure text entry, and the Android password input-type markers. */
@@ -149,8 +161,10 @@ export function projectSnapshot(
   const build = (
     node: SnapshotNode,
     parent: ProjectedNode | undefined,
-    /** Labels carried anywhere below this node, filled by the recursion. */
-    subtreeLabels: Set<string>,
+    /** Labels owned anywhere below this node, filled by the recursion. */
+    descendantOwned: Set<string>,
+    /** Nearest ancestor rect that passed the consistency check. */
+    trustedAncestorRect: NodeRect | undefined,
   ): ProjectedNode => {
     const secure = isSecure(node);
     const role = normalizeRole(node, platform, {
@@ -161,26 +175,27 @@ export function projectSnapshot(
     // hittability flag is false for plainly tappable controls, so a flag-based
     // gate would hide the whole UI. Scroll position does not affect visibility,
     // matching web, where an element below the fold is still visible.
-    const area = node.rect === undefined ? 0 : node.rect.width * node.rect.height;
-    const visible = node.visibleToUser !== false && area > 0;
+    const rect = usableRect(node.rect, trustedAncestorRect);
+    const visible = node.visibleToUser !== false && rect !== undefined;
     // A secure field's value never leaves the driver, per spec/16-mobile.md.
     const value = secure ? undefined : node.value;
     const editable = EDITABLE_ROLES.has(role) && node.enabled !== false;
     const projected: ProjectedNode = {
-      ref: normalizeRef(node.ref),
+      ref: canonicalRef(node.ref),
       role,
       label: node.label,
       value,
       identifier: node.identifier,
-      rect: node.rect,
+      rect,
       enabled: node.enabled !== false,
       visible,
-      withinViewport: isWithinViewport(node.rect, viewport),
+      withinViewport: isWithinViewport(rect, viewport),
       covered: node.interactionBlocked === 'covered',
       focused: node.focused,
       selected: node.selected,
       checked: deriveChecked(role, value, node.selected),
       secure,
+      valueLength: node.value?.length ?? 0,
       inputPurpose: deriveInputPurpose(node, secure, editable),
       editable,
       scrollContainer: isScrollContainer(node),
@@ -192,17 +207,23 @@ export function projectSnapshot(
     if (secure && visible) secureVisible = true;
     ordered.push(projected);
     byRef.set(projected.ref, projected);
-    const childLabels = new Set<string>();
+    const childOwned = new Set<string>();
+    // A scroll container's content legitimately extends past its own frame, so
+    // it imposes no containment on its children. Any other view does: its
+    // subviews are inside it.
+    const boundsForChildren = projected.scrollContainer ? undefined : rect ?? trustedAncestorRect;
     const kids = (children.get(node.index) ?? []).map((child) =>
-      build(child, projected, childLabels),
+      build(child, projected, childOwned, boundsForChildren),
     );
     // A label repeated on an ancestor belongs to the innermost carrier, which
-    // is what web `getByText` resolves to.
+    // is what web `getByText` resolves to. Only a node with usable geometry can
+    // own one: iOS zeroes the rects of a scrolled-away cell's descendants, and
+    // letting one of those claim the label makes the whole row unmatchable.
     const own = queryText(projected);
-    (projected as { ownsLabel: boolean }).ownsLabel =
-      own !== undefined && !childLabels.has(own);
-    for (const label of childLabels) subtreeLabels.add(label);
-    if (own !== undefined) subtreeLabels.add(own);
+    const owns = own !== undefined && rect !== undefined && !childOwned.has(own);
+    (projected as { ownsLabel: boolean }).ownsLabel = owns;
+    for (const label of childOwned) descendantOwned.add(label);
+    if (owns) descendantOwned.add(own);
     // `children` is readonly to consumers; it is filled here because a node
     // must exist before its children can reference it as their parent.
     (projected as { children: readonly ProjectedNode[] }).children = kids;
@@ -210,7 +231,7 @@ export function projectSnapshot(
   };
 
   const roots = (children.get(undefined) ?? []).map((node) =>
-    build(node, undefined, new Set<string>()),
+    build(node, undefined, new Set<string>(), undefined),
   );
   return { revision, roots, ordered, byRef, secureVisible, viewport };
 }
@@ -229,6 +250,35 @@ function rootBounds(
     height = Math.max(height, Math.round(rect.y + rect.height));
   }
   return width > 0 && height > 0 ? { width, height } : undefined;
+}
+
+/**
+ * Returns a rect only when it can be trusted.
+ *
+ * A rect must enclose some area, and must intersect the bounds its ancestors
+ * impose. iOS reports stale geometry for the descendants of a cell scrolled out
+ * of the viewport: it places them where the row used to be, far outside their
+ * own parent, and zeroes the innermost ones. Believing that makes an
+ * unreachable node look reachable and hands the row's label to a node that
+ * cannot be seen or tapped, so inconsistent geometry counts as none at all.
+ *
+ * A scroll container imposes no bounds on its children, because a row scrolled
+ * below the fold is genuinely outside its container's frame while still being
+ * real.
+ */
+function usableRect(
+  rect: NodeRect | undefined,
+  trustedAncestorRect: NodeRect | undefined,
+): NodeRect | undefined {
+  if (rect === undefined || rect.width <= 0 || rect.height <= 0) return undefined;
+  if (trustedAncestorRect === undefined) return rect;
+  return intersects(rect, trustedAncestorRect) ? rect : undefined;
+}
+
+function intersects(a: NodeRect, b: NodeRect): boolean {
+  return (
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  );
 }
 
 /** Reports whether a rect's center lies inside the viewport. */
@@ -304,6 +354,9 @@ function nodeFields(
   const states: Record<string, boolean> = {};
   if (!node.enabled) states['disabled'] = true;
   if (!node.visible) states['hidden'] = true;
+  // Visible but out of reach: the runner scrolls rather than dispatching, and
+  // the model is told why the node cannot be tapped yet.
+  if (node.visible && !node.withinViewport) states['offscreen'] = true;
   if (node.selected === true) states['selected'] = true;
   if (node.focused === true) states['focused'] = true;
   if (node.checked !== undefined) states['checked'] = node.checked;
@@ -360,6 +413,32 @@ function observedNodes(node: ProjectedNode, revision: string): SemanticNode[] {
   const children = node.children.flatMap((child) => observedNodes(child, revision));
   if (!isObservable(node)) return children;
   return [{ ...nodeFields(node, revision, true), children }];
+}
+
+/**
+ * The node input actually reaches for a selected node.
+ *
+ * A platform may expose one control as nested nodes that share a role: iOS
+ * wraps a switch in a same-role container spanning the whole row, whose center
+ * lies on the row label and receives no input at all. The control is the
+ * innermost descendant that shares the node's role and covers less area. This
+ * picks a point inside the selected node rather than substituting a different
+ * node, so it is not retargeting.
+ */
+export function controlOf(node: ProjectedNode): ProjectedNode {
+  let control = node;
+  for (;;) {
+    const inner = control.children.find(
+      (child) => child.role === control.role && area(child) > 0 && area(child) < area(control),
+    );
+    if (inner === undefined) return control;
+    control = inner;
+  }
+}
+
+function area(node: ProjectedNode): number {
+  const rect = node.rect;
+  return rect === undefined ? 0 : rect.width * rect.height;
 }
 
 /**

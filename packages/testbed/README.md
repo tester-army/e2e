@@ -82,6 +82,18 @@ mobile project ends up with:
 Expect roughly 3-8 s per test: every locator resolve is an XCTest accessibility
 snapshot, which is orders of magnitude slower than a browser query.
 
+`tests-mobile/settings-deep.e2e.ts` holds the edge cases worth keeping: rows
+below the fold, a switch whose state lives in a platform value, strict
+cardinality against a wall of identical switches, and locators surviving
+navigation. Two Settings quirks shape it, and both generalize to real apps:
+
+- **Settings persists its search query across launches.** A leftover query
+  changes the root screen every later run observes, so tests reset it rather
+  than trusting relaunch. A mobile suite cannot assume the app resets itself.
+- **A Settings search field exposes no native keyboard dismiss control**, so
+  `device.hideKeyboard()` reports `UNSUPPORTED_CAPABILITY` there. Relaunching is
+  what clears the keyboard.
+
 ## Mobile agentic suite
 
 `test:mobile-agent` points the agent tier at the same Settings app. It is
