@@ -285,6 +285,19 @@ export function toSemanticNode(
   revision: string,
   options: { readonly bounded: boolean },
 ): SemanticNode {
+  return {
+    ...nodeFields(node, revision, options.bounded),
+    children: node.children.map((child) => toSemanticNode(child, revision, options)),
+  };
+}
+
+/** Every wire field of one node except its children. */
+function nodeFields(
+  node: ProjectedNode,
+  revision: string,
+  bounded: boolean,
+): Omit<SemanticNode, 'children'> {
+  const options = { bounded };
   const ref: NodeRef = { id: node.ref, revision };
   const nameLimit = options.bounded ? OBSERVED_NAME_LIMIT : Number.POSITIVE_INFINITY;
   const textLimit = options.bounded ? OBSERVED_TEXT_LIMIT : Number.POSITIVE_INFINITY;
@@ -309,7 +322,6 @@ export function toSemanticNode(
     ...(Object.keys(states).length > 0 ? { states } : {}),
     ...(node.identifier !== undefined ? { attributes: { testId: node.identifier } } : {}),
     ...(node.rect !== undefined ? { rect: { ...node.rect } } : {}),
-    children: node.children.map((child) => toSemanticNode(child, revision, options)),
   };
 }
 
@@ -318,15 +330,36 @@ export function toSemanticNode(
  * single node while a mobile snapshot can expose several window roots.
  */
 export function toObservationTree(snapshot: ProjectedSnapshot): SemanticNode {
-  const children = snapshot.roots.map((root) =>
-    toSemanticNode(root, snapshot.revision, { bounded: true }),
-  );
+  const children = snapshot.roots.flatMap((root) => observedNodes(root, snapshot.revision));
   if (children.length === 1 && children[0] !== undefined) return children[0];
   return {
     ref: { id: 'root', revision: snapshot.revision },
     role: 'application',
     children,
   };
+}
+
+/**
+ * Reports whether a node carries meaning for an observation.
+ *
+ * A mobile tree is dominated by layout wrappers: a single Settings row nests
+ * four `generic` nodes that only repeat the row's own label. Sending them costs
+ * tokens and asks the model to choose between identical candidates, so a
+ * wrapper that contributes no role, no owned label, and no identifier is
+ * collapsed and its children are promoted. Every node the model can act on is
+ * kept, so refs stay resolvable.
+ */
+function isObservable(node: ProjectedNode): boolean {
+  if (node.role !== 'generic') return true;
+  if (node.ownsLabel && queryText(node) !== undefined) return true;
+  return node.identifier !== undefined;
+}
+
+/** Projects one subtree, promoting the children of collapsed wrappers. */
+function observedNodes(node: ProjectedNode, revision: string): SemanticNode[] {
+  const children = node.children.flatMap((child) => observedNodes(child, revision));
+  if (!isObservable(node)) return children;
+  return [{ ...nodeFields(node, revision, true), children }];
 }
 
 /**

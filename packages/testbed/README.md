@@ -81,3 +81,22 @@ mobile project ends up with:
 
 Expect roughly 3-8 s per test: every locator resolve is an XCTest accessibility
 snapshot, which is orders of magnitude slower than a browser query.
+
+## Mobile agentic suite
+
+`test:mobile-agent` points the agent tier at the same Settings app. It is
+opt-in twice over: it needs a simulator *and* spends real model calls.
+
+```bash
+OPENAI_API_KEY=... pnpm --filter @e2e/testbed test:mobile-agent
+E2E_MODEL=gpt-5.6-luna OPENAI_API_KEY=... pnpm --filter @e2e/testbed test:mobile-agent
+```
+
+It passes a provider instance rather than a gateway model reference, so a plain
+`OPENAI_API_KEY` is enough; the web agentic suite uses the gateway form instead.
+
+The agent tier consumes `observe()` and the driver's action surface rather than
+the locator engine, so it is the only place mobile observation quality shows up.
+A Settings root screen serializes to roughly 1.8 KB: layout wrappers that only
+repeat a descendant's label are collapsed out of the observation, which is what
+keeps a mobile tree affordable to send.

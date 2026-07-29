@@ -218,6 +218,69 @@ describe('toObservationTree', () => {
   });
 });
 
+describe('toObservationTree pruning', () => {
+  it('collapses layout wrappers that only repeat a descendant label', () => {
+    // A real Settings row nests four generic wrappers that each repeat the
+    // row's label; sending them costs tokens and asks the model to choose
+    // between identical candidates.
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeApplication',
+        children: [
+          {
+            type: 'XCUIElementTypeCell',
+            label: 'General',
+            children: [
+              {
+                type: 'XCUIElementTypeOther',
+                label: 'General',
+                children: [
+                  {
+                    type: 'XCUIElementTypeOther',
+                    label: 'General',
+                    children: [
+                      {
+                        type: 'XCUIElementTypeButton',
+                        label: 'General',
+                        children: [{ type: 'XCUIElementTypeStaticText', label: 'General' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const tree = toObservationTree(projectSnapshot(snapshot, 'ios', 'r1'));
+    const roles: string[] = [];
+    const walk = (node: { role?: string; children?: readonly unknown[] }) => {
+      if (node.role !== undefined) roles.push(node.role);
+      for (const child of node.children ?? []) walk(child as typeof node);
+    };
+    walk(tree);
+    // The wrappers are gone; every node the model can act on is kept.
+    expect(roles).toEqual(['application', 'listitem', 'button', 'paragraph']);
+  });
+
+  it('keeps a wrapper that carries its own label or an identifier', () => {
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeApplication',
+        children: [
+          { type: 'XCUIElementTypeOther', label: 'Section heading' },
+          { type: 'XCUIElementTypeOther', identifier: 'login-form' },
+          { type: 'XCUIElementTypeOther' },
+        ],
+      },
+    ]);
+    const tree = toObservationTree(projectSnapshot(snapshot, 'ios', 'r1'));
+    // The bare wrapper is dropped; the labelled and identified ones remain.
+    expect(tree.children).toHaveLength(2);
+  });
+});
+
 describe('nearestScrollContainer', () => {
   it('finds the closest scrollable ancestor, or none', () => {
     const snapshot = buildSnapshot([

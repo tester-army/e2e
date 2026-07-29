@@ -12,13 +12,15 @@
     "app": "node app/server.mjs",
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts",
-    "test:mobile": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile.config.ts"
+    "test:mobile": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile.config.ts",
+    "test:mobile-agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile-agent.config.ts"
   },
   "dependencies": {
     "@e2edev/playwright": "workspace:*",
     "e2e": "workspace:*"
   },
   "devDependencies": {
+    "@ai-sdk/openai": "4.0.23",
     "@types/node": "26.1.1",
     "agent-device": "0.20.2",
     "typescript": "7.0.2",
