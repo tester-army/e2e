@@ -23,7 +23,7 @@ import {
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
-import { agentStepTable } from '../report/debug-steps.ts';
+import { agentStepTable, cacheTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { ensureBrowsersInstalled } from '../playwright/install.ts';
@@ -125,6 +125,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (debug.enabled) {
       process.stderr.write(debug.summary());
       process.stderr.write(agentStepTable(results, serialGroups));
+      process.stderr.write(cacheTable(results, serialGroups));
     }
     return { exitCode, status, report, reportPath, results };
   };
@@ -133,12 +134,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     runErrors.push({ error: serializeError(error, phase === undefined ? {} : { phase }) });
   };
 
+  // Hoisted: workers re-resolve the same config file and need these overrides,
+  // or a flag would apply in the runner and be dropped in every worker.
+  const cli: CliOverrides = {};
+  if (options.retries !== undefined) cli.retries = options.retries;
+  if (options.workers !== undefined) cli.workers = options.workers;
+  if (options.reporters !== undefined) cli.reporters = options.reporters;
+  if (options.agentCache === false) cli.agentCache = 'off';
+
   try {
-    const cli: CliOverrides = {};
-    if (options.retries !== undefined) cli.retries = options.retries;
-    if (options.workers !== undefined) cli.workers = options.workers;
-    if (options.reporters !== undefined) cli.reporters = options.reporters;
-    if (options.agentCache === false) cli.agentCache = 'off';
 
     config = await debug.time('config.load', async () => {
       if (options.rawConfig !== undefined) {
@@ -259,6 +263,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
               configPath: config.configPath,
               projectRoot: config.projectRoot,
               configDigest: config.configDigest,
+              cli,
               runId,
               artifactsRoot,
               headed: options.headed ?? false,

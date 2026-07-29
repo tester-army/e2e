@@ -9,7 +9,7 @@
 
 import type { TestIdentity } from '../../collect/collect.ts';
 import type { ResolvedTestOptions } from '../../collect/select.ts';
-import type { ResolvedTarget } from '../../config/resolve.ts';
+import type { CliOverrides, ResolvedTarget } from '../../config/resolve.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../records.ts';
@@ -37,6 +37,14 @@ export interface WorkerBootstrap {
   readonly configPath: string;
   readonly projectRoot: string;
   readonly configDigest: string;
+  /**
+   * The runner's command-line overrides. A worker re-resolves the config from
+   * the same file, so without these it would silently disagree with the runner
+   * about anything a flag changed — `--no-agent-cache` and `--retries` among
+   * them. The config digest covers only the file, so the mismatch check cannot
+   * catch it.
+   */
+  readonly cli: CliOverrides;
   readonly targetName: string;
   readonly runId: string;
   readonly artifactsRoot: string;

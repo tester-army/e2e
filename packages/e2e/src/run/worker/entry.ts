@@ -37,6 +37,7 @@ async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<T
     projectRoot: message.projectRoot,
     configPath: message.configPath,
     env: process.env,
+    cli: message.cli,
   });
   if (config.configDigest !== message.configDigest) {
     throw new ConfigurationError(
