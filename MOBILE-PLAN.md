@@ -1,6 +1,6 @@
 # Mobile Driver Plan (`e2e/agent-device`)
 
-**Status:** ready
+**Status:** executing
 **Created:** 2026-07-29
 **Scope:** PLAN.md Phase 5 — Mobile v1, iOS + Android simulators/emulators only
 
@@ -361,6 +361,42 @@ Ordered; each is independently reviewable.
   `metro.reload` stay unused; no config surface for them.
 - **`raw: true`** for every snapshot capture, so off-screen content is never
   collapsed into prose summaries.
+
+## What real hardware changed
+
+Running the suite against a real iOS simulator invalidated four assumptions that
+every layer of unit testing had accepted. Each is now a spec change plus a fix.
+
+1. **Backend visibility and hittability flags are unusable.** iOS omits
+   `visibleToUser` entirely and reports `hittable: false` for plainly tappable
+   controls whenever the simulator window is not frontmost. Verified by tapping
+   a `hittable: false` cell and watching it navigate. Visibility and
+   actionability now derive from geometry plus the backend's explicit occlusion
+   signal; hittability is advisory.
+2. **Refs have two spellings.** Snapshot JSON carries a bare `e12`; every
+   interaction requires `@e12` and parses a bare ref as a selector. Normalized
+   once at projection.
+3. **iOS repeats a label up the ancestor chain.** A single Settings row put
+   `General` on six nested nodes, so `getByText` matched six. Only the innermost
+   carrier now owns a label for text and label queries, matching what web
+   `getByText` resolves to.
+4. **Launch must not open the app.** Resetting state by relaunching, then
+   letting the attempt call `app.open`, started the app twice per test. Launch
+   now resets without launching: 17 opens became 9 for the same 8 tests.
+
+Two runner defects surfaced that are not mobile-specific, only mobile-visible:
+
+- the direct-read surfaces encode "do not wait for a value" as an expired
+  deadline, which reached the driver as a 1 ms I/O budget. Harmless against an
+  in-process browser query, fatal against a 2.4 s XCTest snapshot.
+- runtime provenance was read at launch, before any session could know device
+  geometry, so a mobile report had no viewport. It is now read as the session
+  closes, which also fixes `browserVersion` always being `unknown` for web.
+
+Not yet addressed: `mobile-0.1` does not scroll implicitly before dispatching,
+so an off-screen node is `NOT_ACTIONABLE` until a test scrolls it into view.
+Web auto-scrolls as part of actionability, so this is a real portability seam.
+Auto-scrolling the nearest scroll container is the obvious follow-up.
 
 ## Open Questions
 
