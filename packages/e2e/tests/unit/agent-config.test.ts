@@ -36,6 +36,17 @@ describe('agent config defaults', () => {
     expect(() => resolve({ agent: { vision: 1 } } as never)).toThrow(/agent.vision/);
   });
 
+  it('accepts a pixel scale in range and rejects anything else', () => {
+    expect(resolve({}).agent.pixelScale).toBe(1);
+    expect(resolve({ agent: { pixelScale: 0.75 } }).agent.pixelScale).toBe(0.75);
+    expect(resolve({ agent: { pixelScale: 0.25 } }).agent.pixelScale).toBe(0.25);
+    // Above 1 would upsample bytes the runner never captured.
+    expect(() => resolve({ agent: { pixelScale: 1.5 } })).toThrow(/pixelScale/);
+    expect(() => resolve({ agent: { pixelScale: 0.1 } })).toThrow(/pixelScale/);
+    expect(() => resolve({ agent: { pixelScale: Number.NaN } })).toThrow(/pixelScale/);
+    expect(() => resolve({ agent: { pixelScale: '0.5' } } as never)).toThrow(/pixelScale/);
+  });
+
   it('resolves a separate vision model, defaulting to none', () => {
     expect(resolve({}).agent.visionModel).toBeUndefined();
     const config = resolve({

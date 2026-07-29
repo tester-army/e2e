@@ -165,6 +165,38 @@ always wins. Images are billed as input tokens, so `true` costs more than the
 same call without it on every call, and `'fallback'` costs nothing extra until
 something actually fails on the tree.
 
+### Paying less per screenshot
+
+Vision providers bill images by **area**, not bytes, so shrinking the image is the
+only thing that reduces cost — JPEG or a lower PNG quality would change the byte
+count and nothing on the invoice.
+
+```ts
+export default defineConfig({
+  agent: { pixelScale: 0.75 },
+});
+```
+
+At a 1280x720 viewport that is 700 billed image tiles instead of 1196, a 41%
+saving on every call that sends pixels. The capture is unchanged — still masked,
+still at CSS scale — and only the bytes handed to the model are resampled, so
+redaction is untouched and any coordinate the model returns is still converted
+back to CSS pixels for you.
+
+What degrades is small text. Measured against 11-20px UI text with
+`openai/gpt-5.6-luna`:
+
+| `pixelScale` | image | billed tiles | 11px text |
+| --- | --- | --- | --- |
+| `1` | 1280x720 | 1196 | read correctly |
+| `0.75` | 960x540 | 700 | read correctly |
+| `0.6` | 768x432 | 448 | read correctly |
+| `0.5` | 640x360 | 299 | unreadable |
+
+Larger text survives further down. Keep `1` for a suite whose steps read small
+print, and note that a step which cannot read what it was asked about reports that
+rather than guessing.
+
 ### Judging pixels and nothing else
 
 `vision: true` sends the tree *and* the screenshot, and that is a problem for a

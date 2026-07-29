@@ -165,6 +165,7 @@ agent?: {
   cache?: 'off' | 'read-only' | 'read-write';
   context?: string;
   vision?: boolean | 'fallback' | 'only';
+  pixelScale?: number;
 };
 ```
 
@@ -177,6 +178,7 @@ agent?: {
 | `maxObservationBytes` | `number` | `1048576` | integer 1024-16777216 | Observation payload ceiling. Not a `limits` key. |
 | `cache` | `'off' \| 'read-only' \| 'read-write'` | `'read-only'` in CI, else `'read-write'` | those three | Not implemented yet: no effect |
 | `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
+| `pixelScale` | `number` | `1` | - | Scales screenshots sent to the model, 0.25 through 1. Providers bill images by area, so the saving is quadratic. |
 | `vision` | `boolean \| 'fallback' \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option. `'fallback'` sends pixels only after the tree missed; `'only'` sends pixels instead of the tree. A per-call value wins. |
 
 ### agent.model

@@ -129,6 +129,21 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  */
 export type VisionMode = boolean | 'fallback' | 'only';
 
+/**
+ * Scales the masked screenshot before it becomes model input, between 0.25 and 1.
+ *
+ * Vision providers bill images by area, so halving each dimension quarters the
+ * cost of a call. The capture itself is unchanged — still masked, still at CSS
+ * scale — and only the bytes handed to the model are resampled, so redaction and
+ * the coordinate contract are unaffected: `ObservationPixels.scale` reports the
+ * ratio and the runner converts any returned point back to CSS pixels.
+ *
+ * Text is what degrades. Measured against 11-20px UI text, `0.75` transcribes as
+ * well as `1` and `0.5` loses the 11px line. Lower it for pages whose targets are
+ * large, keep `1` when a step has to read small print.
+ */
+export type PixelScale = number;
+
 export interface VisionOption {
   vision?: VisionMode;
 }
@@ -848,6 +863,8 @@ export interface E2EConfig {
     context?: string;
     /** Project-wide default for the per-call `vision` option. */
     vision?: VisionMode;
+    /** Scales screenshots sent to the model, 0.25 through 1. Defaults to 1. */
+    pixelScale?: PixelScale;
   };
   limits?: {
     maxDiscoveredResults?: number;

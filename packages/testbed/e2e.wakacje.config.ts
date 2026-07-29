@@ -36,6 +36,10 @@ export default defineConfig({
     // without making every tree-only step pay for it. Override with
     // E2E_VISION_MODEL.
     visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna',
+    // Images are billed by area, so the three steps that send pixels each cost
+    // 700 tiles instead of 1196 at this viewport. 0.75 reads 11-20px text as
+    // accurately as full scale; below ~0.6 small print starts failing.
+    pixelScale: 0.75,
     // No project-wide default on purpose: `vision` is opted into per step, where
     // the test can say why the tree is not enough. The suite does pass fully
     // vision-driven (`vision: true` here, `'only'` on the judgments) if you want

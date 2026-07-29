@@ -59,6 +59,8 @@ export interface ResolvedAgentConfig {
   readonly context: string | undefined;
   /** Default for the per-call `vision` option; a per-call value always wins. */
   readonly vision: VisionMode;
+  /** Screenshot scale for model input, 0.25 through 1. */
+  readonly pixelScale: number;
 }
 
 export interface ResolvedLimits {
@@ -92,6 +94,7 @@ const AGENT_KEYS = new Set([
   'cache',
   'context',
   'vision',
+  'pixelScale',
 ]);
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
@@ -167,6 +170,7 @@ export function resolveAgentConfig(
 
   return {
     model: resolveModel(agent?.model, env),
+    pixelScale: resolvePixelScale(agent?.pixelScale),
     visionModel: resolveModel(agent?.visionModel, env, 'agent.visionModel', 'E2E_VISION_MODEL'),
     maxSteps,
     maxModelCalls,
@@ -216,6 +220,28 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
  * is structural, exactly like the AI SDK's own model handling, so instances
  * from any realm or provider package are accepted.
  */
+/** Smallest useful screenshot scale; below this even large controls blur away. */
+const MIN_PIXEL_SCALE = 0.25;
+
+/**
+ * Resolves `agent.pixelScale`. Only downscaling is offered: the capture is
+ * already at CSS scale, so a value above 1 would upsample bytes the runner never
+ * had and bill the model for invented detail.
+ */
+function resolvePixelScale(value: unknown): number {
+  if (value === undefined) return 1;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'agent.pixelScale must be a number');
+  }
+  if (value < MIN_PIXEL_SCALE || value > 1) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `agent.pixelScale must be between ${MIN_PIXEL_SCALE} and 1, got ${value}`,
+    );
+  }
+  return value;
+}
+
 /** True for the closed `vision` value set, wherever it is supplied. */
 export function isVisionMode(value: unknown): value is VisionMode {
   return typeof value === 'boolean' || value === 'fallback' || value === 'only';

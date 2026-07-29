@@ -163,6 +163,12 @@ close in time to the tree as its backend allows, and it MUST report:
   which is the space actions dispatch in;
 - the number of regions it masked, in `redaction.maskedRegionCount`.
 
+A runner MAY request scaled pixels. Scaling MUST be applied after masking, so no
+redacted region can reappear, and the reported dimensions MUST remain the true
+dimensions of the returned bytes. A driver that cannot scale returns full-scale
+pixels rather than misreporting them: the runner measures what it receives, so a
+skipped scale costs tokens and never correctness.
+
 A driver that cannot capture pixels omits them rather than failing the
 observation. A driver MAY implement point dispatch for the visual pointing tier;
 without it, a runner-validated point cannot be acted on.

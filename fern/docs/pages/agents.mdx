@@ -215,6 +215,17 @@ the screenshot instead, and the runner validates that point, checks what is unde
 it, records both, and taps exactly there. Only `tap` and `click` can act on a
 point; everything else needs a node.
 
+### Paying less per screenshot
+
+Images are billed by area, so a smaller screenshot is the only lever that lowers
+the bill — re-encoding as JPEG changes bytes, which nobody charges for.
+`agent.pixelScale: 0.75` bills 700 image tiles instead of 1196 at a 1280x720
+viewport, and reads 11-20px text just as accurately. Below about `0.6` small text
+starts failing, and it fails by refusing rather than by inventing a value.
+
+The screenshot is still masked and still captured at CSS scale; only the copy sent
+to the model is resampled, and coordinates it returns are converted back for you.
+
 ### Judging the screen, not the snapshot
 
 `vision: true` gives the model both, which is wrong for a visual assertion: the

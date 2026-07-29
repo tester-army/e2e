@@ -29,7 +29,7 @@ import {
 import { matchesText } from '../internal/text.ts';
 import { withTimeout } from '../internal/time.ts';
 import { frameSelectors, projectExpression } from './locators.ts';
-import { capturePixels, type PixelCapture } from './observe.ts';
+import { capturePixels, resizeImageFunction, type PixelCapture } from './observe.ts';
 import {
   readSemanticsFunction,
   SECURE_FIELD_SELECTOR,
@@ -105,6 +105,9 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
 
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  /** Scratch page for screenshot resizing, isolated from the app's context. */
+  private scratchContext: BrowserContext | null = null;
+  private scratch: Page | null = null;
   private closed = false;
   private revisionCounter = 0;
   private refCounter = 0;
@@ -620,7 +623,10 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       // a tree-only observation, exactly like a driver that has no pixels.
       const pixelCapture =
         options?.pixels === true
-          ? capturePixels(page, operation, viewport).catch(() => undefined)
+          ? capturePixels(page, operation, viewport, {
+              ...(options.pixelScale === undefined ? {} : { scale: options.pixelScale }),
+              resize: (data, scale) => this.resizeImage(data, scale),
+            }).catch(() => undefined)
           : Promise.resolve(undefined);
       let captured: Awaited<ReturnType<PlaywrightSession['captureDocument']>>;
       let capturedPixels: PixelCapture | undefined;
@@ -759,10 +765,38 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     };
   }
 
+  /**
+   * Resamples screenshot bytes in a scratch page, kept in its own context.
+   *
+   * A separate context rather than the app's page: the bytes being resized are a
+   * masked screenshot of the app, and running the resize in the app's own
+   * execution context would hand it back to the page under test, which could hook
+   * `createImageBitmap` and read evidence it is not allowed to see. The scratch
+   * page is created on first use and only when a scale below 1 is asked for.
+   */
+  private async resizeImage(data: Uint8Array, scale: number): Promise<Uint8Array> {
+    const page = await this.scratchPage();
+    const resized = await page.evaluate(resizeImageFunction, { bytes: [...data], scale });
+    return new Uint8Array(resized);
+  }
+
+  private async scratchPage(): Promise<Page> {
+    const existing = this.scratch;
+    if (existing !== null && !existing.isClosed()) return existing;
+    const context = await this.browser.newContext({ viewport: { width: 1, height: 1 } });
+    this.scratchContext = context;
+    const page = await context.newPage();
+    this.scratch = page;
+    return page;
+  }
+
   async close(context: CleanupContext): Promise<void> {
     if (this.closed) return;
     this.closed = true;
     void context;
+    await this.scratchContext?.close().catch(() => undefined);
+    this.scratchContext = null;
+    this.scratch = null;
     if (this.tracing && this.context !== null) {
       await this.context.tracing.stop().catch(() => undefined);
     }

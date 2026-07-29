@@ -142,6 +142,14 @@ export interface ObserveOptions {
    * failing the observation.
    */
   readonly pixels?: boolean;
+  /**
+   * Scales the returned pixels, 0.25 through 1, to trade image detail for the
+   * area vision providers bill. It applies after masking, so redaction is
+   * unaffected, and the driver MUST report the resulting geometry truthfully in
+   * `ObservationPixels`: a driver that cannot resize returns full-scale pixels
+   * rather than misreporting them.
+   */
+  readonly pixelScale?: number;
 }
 
 export interface Observation {

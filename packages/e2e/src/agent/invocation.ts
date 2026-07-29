@@ -92,8 +92,14 @@ const MAX_OUTPUT_TOKENS = 2048;
 const INSTRUCTION_RESERVE = 4_096;
 
 /**
+ * Largest viewport a screenshot reserve plans for. Beyond this the adapter's
+ * pre-flight computes the real figure, so a bigger viewport stays safe.
+ */
+const RESERVE_VIEWPORT = { width: 2_560, height: 1_440 } as const;
+
+/**
  * Headroom reserved for one attached screenshot on a vision call, in the same
- * units.
+ * units, for a given `agent.pixelScale`.
  *
  * The exact cost is only known once the observation reports its viewport, which
  * is after the observation budget has to be fixed, so this reserves for the
@@ -101,12 +107,20 @@ const INSTRUCTION_RESERVE = 4_096;
  * the adapter bills with, rather than guessed, so the two cannot drift: a
  * hard-coded 4,096 was already short of a 1440p capture at 4,784.
  *
+ * The scale belongs in here because it is the whole point of scaling: a downscaled
+ * screenshot costs quadratically fewer tokens, and reserving for full scale would
+ * hand that saving straight back to an untouched observation budget.
+ *
  * Reserving too much only costs observation bytes when the per-call token ceiling
  * binds, and there a truncated tree the model can see is better than the
- * adapter's pre-flight rejecting the call outright. A viewport beyond this is
- * still safe for that reason: the pre-flight computes the real figure.
+ * adapter's pre-flight rejecting the call outright.
  */
-const PIXEL_RESERVE = imageTokenUpperBound({ width: 2_560, height: 1_440 });
+function pixelReserve(scale: number): number {
+  return imageTokenUpperBound({
+    width: RESERVE_VIEWPORT.width * scale,
+    height: RESERVE_VIEWPORT.height * scale,
+  });
+}
 
 /** One instrumented phase: the event kind it records and the debug bucket it feeds. */
 interface PhaseSpec {
@@ -287,7 +301,10 @@ export class Invocation {
     const observation = await this.instrument(
       { kind: 'observation', phase: 'agent.observe' },
       async () => {
-        const raw = await this.session.observe(this.operation(), { pixels });
+        const raw = await this.session.observe(this.operation(), {
+          pixels,
+          pixelScale: this.runtime.config.agent.pixelScale,
+        });
         return prepareObservation(raw, {
           secrets: this.runtime.secretValues,
           maxBytes: this.observationByteBudget(),
@@ -377,7 +394,7 @@ export class Invocation {
       tokenUpperBound(this.system) +
       this.ledger.bytes +
       INSTRUCTION_RESERVE +
-      (this.pixelTier ? PIXEL_RESERVE : 0);
+      (this.pixelTier ? pixelReserve(config.agent.pixelScale) : 0);
     const withinTokenCeiling = Math.max(1_024, config.limits.maxModelTokensPerCall - overhead);
     return Math.min(config.agent.maxObservationBytes, withinTokenCeiling);
   }

@@ -103,6 +103,7 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.maxModelCalls` | 25 | 25 |
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
 | `agent.vision` | false | false |
+| `agent.pixelScale` | 1 | 1 |
 | `agent.visionModel` | `agent.model` | `agent.model` |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
@@ -115,6 +116,14 @@ Every run writes the canonical JSON report regardless of renderer selection.
 `agent.vision` is the project-wide default for the per-call `vision` option
 (02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
 that can send pixels requires a model that accepts image input.
+
+`agent.pixelScale` scales the screenshot handed to the model and MUST be a number
+from 0.25 through 1. Values above 1 are a config error: the capture is already at
+CSS scale, so upsampling would bill the model for detail the runner never had.
+Scaling applies after masking, and the driver MUST report the resulting geometry
+truthfully, so redaction and the coordinate contract are unaffected
+(09-drivers.md). Providers bill images by area, so the saving is quadratic; what
+degrades is small text, measurably from around 11px below 0.6.
 
 ## Targets and capabilities
 
