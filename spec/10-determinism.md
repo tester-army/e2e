@@ -210,7 +210,7 @@ MAY instead store the platform selector the driver reported for the node, and it
 MUST prefer the semantic expression whenever that expression is recordable: an
 expression says what the node is, so it survives the DOM churn that invalidates
 any structural path. The selector exists for the node whose expression is not
-recordable — a control the page repeats verbatim, which resolves only by index —
+recordable — a control the page repeats verbatim, which no derived query names —
 and which otherwise could not be cached at all and paid a model locate every run.
 
 A driver SHOULD NOT report a selector that is positional all the way to the

@@ -3,9 +3,9 @@
  *
  * A page of repeated rows gives every derived query several matches, which used
  * to strand the locate sweep even though the runner knew exactly which node the
- * model had selected. The sweep now pins the selected node by position within the
- * match set the query actually returned, and still verifies the node before
- * dispatching, so a page that reordered fails rather than acting on a neighbour.
+ * model had selected. Ambiguous queries are now dropped and the selection's own
+ * reference carries the action, so identity never depends on where the page
+ * happened to be when the observation was taken.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -34,18 +34,17 @@ test('taps a later row through the same ambiguous query', async ({ agent, screen
   await expect(screen.getByRole('status')).toHaveText('Gamma');
 });
 
-test('reports controls it cannot tell apart', async ({ agent, web }) => {
-  await web.goto('/rows');
-  await agent.tap('the Twin button');
-});
-
-test('reports them the same way under a tight clock', async ({ agent, web }) => {
-  await web.goto('/rows');
-  await agent.tap('the Twin button', { timeout: 400 });
+test('types into the field it chose while the layout moves', async ({ agent, screen, web }) => {
+  await web.goto('/drift');
+  await agent.type('the second surname field', 'Bravo');
+  // The deterministic half of the pair: the second field, named by position from
+  // the test rather than by the model, is the one that must carry the text.
+  await expect(screen.getByTestId('surname').nth(1)).toHaveValue('Bravo');
+  await expect(screen.getByTestId('surname').first()).toHaveValue('');
 });
 `;
 
-/** The instruction names which repeated row the model is meant to pick. */
+/** The instruction names which repeated node the model is meant to pick. */
 function respond(call: FakeCall): unknown {
   const buy = /Kup teraz/;
   switch (call.instruction) {
@@ -53,6 +52,8 @@ function respond(call: FakeCall): unknown {
       return locateNth(call, buy, 1);
     case 'the buy button of the third row':
       return locateNth(call, buy, 2);
+    case 'the second surname field':
+      return locateNth(call, /textbox "Nazwisko"/, 1);
     default:
       return locateBestMatch(call);
   }
@@ -90,8 +91,7 @@ describe('locate ambiguity', () => {
   };
 
   it('acts on the selected row when every query matches all of them', () => {
-    // Three rows share role, name, and test id. Before indexing, this failed with
-    // LOCATOR_AMBIGUOUS after polling to the deadline.
+    // Three rows share role, name, and test id, so no derived query is unique.
     const title = 'taps the row the model chose, not the first one';
     expect(resultByTitle(outcome, title).status).toBe('passed');
     expect(stepOf(title, 'agent.tap').status).toBe('passed');
@@ -104,7 +104,10 @@ describe('locate ambiguity', () => {
     expect(resultByTitle(outcome, title).status).toBe('passed');
   });
 
-  it('records the indexed query it dispatched through', () => {
+  it('dispatches through the reference rather than a positional query', () => {
+    // An index would name an order the next run need not have, and the cache
+    // refuses to store one anyway. The reference is exact and its node carries a
+    // recordable selector, so this is the cheaper answer as well as the safer one.
     const step = stepOf('taps a later row through the same ambiguous query', 'agent.tap');
     const dispatched = step.events.find(
       (event) => event.kind === 'driver' && event.name === 'tap',
@@ -113,48 +116,38 @@ describe('locate ambiguity', () => {
     expect(
       step.events.some(
         (event) =>
-          event.kind === 'policy' && event.name === 'locate.identity' && event.decision === 'allowed',
+          event.kind === 'policy' &&
+          event.name === 'locate.reference' &&
+          event.decision === 'allowed',
       ),
     ).toBe(true);
   });
 
-  it('still fails, with a remedy, on controls that are truly identical', () => {
-    // Two buttons stacked at the same rect: same name, same test id, same
-    // geometry. Nothing but the instruction can choose, so the error says so
-    // instead of listing failed queries and leaving the author to guess.
-    const title = 'reports controls it cannot tell apart';
-    const error = resultByTitle(outcome, title).attempts.at(-1)!.error!;
-    expect(error.code).toBe('LOCATOR_AMBIGUOUS');
-    expect(error.message).toContain('indistinguishable from the selected node');
-    expect(error.message).toContain('name what distinguishes the one you mean');
+  it('survives a rectangle that moves between observation and sweep', () => {
+    // The regression this replaced geometry to fix. Two fields share a name and a
+    // test id while the page grows underneath them, so every rect the model saw is
+    // stale by the time the queries run. Comparing coordinates called that
+    // "indistinguishable" and failed a run that was never ambiguous about which
+    // node it meant.
+    const title = 'types into the field it chose while the layout moves';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    expect(stepOf(title, 'agent.type').status).toBe('passed');
   });
 
-  it('reports indistinguishable controls the same way under any clock', () => {
-    // Regression: a match whose read timed out used to be dropped silently, so a
-    // tight deadline shrank the candidate set until one entry looked unique and
-    // the runner indexed onto an arbitrary element. It also made the terminal
-    // error code depend on machine speed.
-    const tight = resultByTitle(outcome, 'reports them the same way under a tight clock');
-    const relaxed = resultByTitle(outcome, 'reports controls it cannot tell apart');
-    expect(tight.attempts.at(-1)!.error!.code).toBe(
-      relaxed.attempts.at(-1)!.error!.code,
-    );
-    expect(tight.attempts.at(-1)!.error!.code).toBe('LOCATOR_AMBIGUOUS');
-    // No action is dispatched on either path.
-    expect(stepOf('reports them the same way under a tight clock', 'agent.tap').metrics!
-      .actionSteps).toBe(0);
-  });
-
-  it('gives up immediately on controls nothing can separate', () => {
-    // Re-sweeping cannot separate same-rect duplicates, so the sweep must not
-    // spend the deadline discovering that. This is what turned a 150 s failure
-    // on a production page into an immediate one.
-    const step = stepOf('reports controls it cannot tell apart', 'agent.tap');
-    expect(step.durationMs).toBeLessThan(10_000);
+  it('gives up immediately on an ambiguous sweep it cannot answer', () => {
+    // Ambiguity is answered by the reference or not at all: re-running the same
+    // queries against the same selection cannot make duplicates unique, so no
+    // path here may spend the deadline discovering that.
+    for (const title of [
+      'taps the row the model chose, not the first one',
+      'taps a later row through the same ambiguous query',
+    ]) {
+      expect(stepOf(title, 'agent.tap').durationMs).toBeLessThan(10_000);
+    }
   });
 
   it('asks the model exactly once per tap', () => {
-    // Indexing happens runner-side, so it costs driver reads, never model calls.
+    // Resolution happens runner-side, so it costs driver reads, never model calls.
     const calls = fakeCalls.filter(
       (call) => call.instruction === 'the buy button of the second row',
     );

@@ -191,18 +191,14 @@ const PAGES: Record<string, string> = {
 </body>
 </html>`,
   // Repeated cross-sell rows: several buttons share role, name, and test id, so
-  // every derived query is ambiguous and only position tells them apart. The
-  // last row is a deliberate dead end — two buttons stacked at the same rect.
+  // every derived query is ambiguous and nothing in the query vocabulary can
+  // separate them. Only the reference the model selected can.
   '/rows': `<!doctype html>
 <html>
 <head><title>Rows</title></head>
 <body>
   <output id="picked" role="status" aria-label="Picked">none</output>
   <div id="rows"></div>
-  <div style="position:relative;height:30px">
-    <button data-testid="buy" style="position:absolute;left:0;top:0;width:80px;height:30px">Twin</button>
-    <button data-testid="buy" style="position:absolute;left:0;top:0;width:80px;height:30px">Twin</button>
-  </div>
   <script>
     const host = document.getElementById('rows');
     for (const hotel of ['Alpha', 'Beta', 'Gamma']) {
@@ -218,6 +214,33 @@ const PAGES: Record<string, string> = {
       row.append(label, button);
       host.append(row);
     }
+  </script>
+</body>
+</html>`,
+  // Two identically named fields on a page whose layout keeps moving, the way a
+  // lazily-loaded banner or an expanding summary shifts a booking form under the
+  // cursor. Every node keeps its identity while its rectangle drifts between the
+  // observation and the sweep that follows it, which is precisely what geometry
+  // cannot survive: the coordinates the model saw name nothing by the time the
+  // queries run.
+  '/drift': `<!doctype html>
+<html>
+<head><title>Drift</title></head>
+<body style="margin:0">
+  <div id="pad" style="height:40px"></div>
+  <label>Nazwisko <input data-testid="surname" id="one"></label>
+  <div style="height:900px"></div>
+  <label>Nazwisko <input data-testid="surname" id="two"></label>
+  <script>
+    // Bounded: the layout keeps moving across the observation and the sweep that
+    // follows it, then settles, so what the assertion reads afterwards is a page
+    // at rest rather than one still shifting under the matcher.
+    let height = 40;
+    const drift = setInterval(() => {
+      height += 7;
+      document.getElementById('pad').style.height = height + 'px';
+      if (height > 600) clearInterval(drift);
+    }, 40);
   </script>
 </body>
 </html>`,

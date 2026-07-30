@@ -617,8 +617,9 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
 
   describe('a selection no derived query can separate', () => {
     // Three controls with identical semantics, as a listing repeats one button
-    // per row. Every query derived from any of them matches all of them, so the
-    // sweep pins the chosen one by its index in the match set.
+    // per row. Every query derived from any of them matches all of them, so no
+    // query can name the chosen one and the sweep hands the step to the
+    // reference the model selected.
     const button = (id: string, y: number): SemanticNode => ({
       ref: { id, revision: 'rev-1' },
       role: 'button',
@@ -678,10 +679,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       };
     }
 
-    /**
-     * Reads one match back with the rect it was observed at, as a real driver
-     * does. Rect is what separates twins once role and name cannot.
-     */
+    /** Reads one match back as a real driver does, observation rect included. */
     const readMatch = (ref: { id: string }): SemanticNode => {
       const index = Number(/(\d+)$/.exec(ref.id)?.[1] ?? 0);
       const source = ref.id.startsWith('match-') ? observed[index]! : button(ref.id, 0);
@@ -689,7 +687,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     };
 
     it(
-      'pins the selected node by index, and never stores the index',
+      'acts through the selected reference, and stores no position',
       async () => {
         const fake = createFakeDriver({
           tree,
@@ -698,26 +696,24 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
         });
         const run = await runRepeats(fake);
         expect(run.status).toBe('passed');
-        // The match the index pinned, which is the node the model named.
-        expect(run.taps).toEqual(['actions.tap(match-1)']);
-        // An index is measured against this run's match set, so it is resolvable
-        // now and meaningless later. Nothing is recorded.
+        // `node-2` is the observation's own handle for the button the model
+        // named. A `match-*` tap would mean the runner picked one of the query's
+        // matches by position instead — right only until the page reorders.
+        expect(run.taps).toEqual(['actions.tap(node-2)']);
+        // The instruction targeted a position, so nothing about it is recordable.
         expect(run.cached).toBe(0);
       },
       60_000,
     );
 
     it(
-      'never indexes onto an arbitrary match when one cannot be read',
+      'never falls onto an arbitrary match when one cannot be read',
       async () => {
-        // Dropping an unreadable match would shrink the set until whatever is
-        // left looks unique, and the sweep would index onto an arbitrary
-        // element. Indexing must stay inconclusive here.
-        //
-        // The step still succeeds, through the model's own reference rather than
-        // through a guessed index — exact, and checked before dispatch. What
-        // matters is which node is tapped: `match-*` would mean the sweep indexed
-        // into a set it could not read.
+        // A match the driver cannot read is a match whose identity is unknown.
+        // Nothing here may narrow the set until whatever is left looks unique:
+        // the step succeeds through the model's own reference, exact and checked
+        // before dispatch. What matters is which node is tapped, since `match-*`
+        // would mean the runner chose out of a set it could not read.
         const fake = createFakeDriver({
           tree,
           resolve: () => matchRefs,
@@ -736,9 +732,9 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     );
 
     it(
-      'stores the driver selector instead of the index when the node has one',
+      'stores the driver selector for a node no query can name',
       async () => {
-        // The recordable form of "one of several identical controls". An index
+        // The recordable form of "one of several identical controls". A position
         // would replay as whatever is second next run, and role and name are
         // identical across the twins so the identity check could not catch it. A
         // selector anchored on what names the element survives a reorder.

@@ -6,15 +6,15 @@
  * in a re-read of the live node and a signature check, so a selection that has
  * gone stale is a miss rather than a blind dispatch.
  *
- * A query that matches several nodes is not a dead end: the selected node is one
- * of them, and pinning it by index turns an ambiguous query into a unique one.
- * That index is a property of this run's match set, not of the page, which is
- * why an index-bearing locator is resolvable now but not recordable later — see
- * `storableLocator`.
+ * A query that matches several nodes is not a dead end and is not something to
+ * disambiguate either: the selection already carries the identity of the node
+ * the model picked, as a reference the driver backs with the element itself.
+ * Ambiguous queries are dropped and `addressByReference` dispatches through that
+ * reference, which no reflow, scroll, or repeated row can confuse.
  */
 
 import type { NodeRef, SemanticNode } from '../driver/index.ts';
-import { describeExpression, indexExpression } from '../locator/expression.ts';
+import { describeExpression } from '../locator/expression.ts';
 import { POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { agentTrace } from '../internal/trace.ts';
 import { AgentError } from './error.ts';
@@ -58,7 +58,6 @@ export async function resolveSelected(
     // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
     const outcomes: string[] = [];
     let ambiguous = false;
-    let terminal = false;
     for (const expression of candidates) {
       let refs: readonly NodeRef[];
       try {
@@ -79,36 +78,37 @@ export async function resolveSelected(
         outcomes.push(`${describeExpression(expression)} -> no matches`);
         continue;
       }
-      // A query matching several nodes is not necessarily a dead end: the
-      // selected node is one of them, and pinning it by position turns the
-      // ambiguous query into a unique one.
-      const picked =
-        refs.length === 1
-          ? await readOnly(invocation, refs[0]!)
-          : await pinOne(invocation, refs, selection.selected);
-      if (picked.kind === 'miss') {
-        ambiguous ||= picked.ambiguous;
-        terminal ||= picked.terminal === true;
-        outcomes.push(`${describeExpression(expression)} -> ${picked.detail}`);
+      // A query that matches several nodes cannot say which one the model meant,
+      // and no amount of reading them can: separating them by geometry compares
+      // viewport coordinates captured before the page scrolled, and separating
+      // them by index records an order the next run will not have. The reference
+      // below already knows, so this query is simply not the way to say it.
+      if (refs.length > 1) {
+        ambiguous = true;
+        outcomes.push(`${describeExpression(expression)} -> ${refs.length} matches`);
         continue;
       }
-      if (!matchesSignature(selection.selected, picked.node)) {
+      const ref = refs[0]!;
+      let node: SemanticNode;
+      try {
+        node = await invocation.engine.session.screen.read(ref, invocation.operation());
+      } catch {
+        outcomes.push(`${describeExpression(expression)} -> matched node became unreadable`);
+        continue;
+      }
+      if (!matchesSignature(selection.selected, node)) {
         outcomes.push(
-          `${describeExpression(expression)} -> resolved a different node (${describeSignature(picked.node)})`,
+          `${describeExpression(expression)} -> resolved a different node (${describeSignature(node)})`,
         );
         continue;
       }
-      // The expression carries the index, so the action still dispatches through
-      // a query the report can show, not through a raw handle.
-      const resolved =
-        picked.index === undefined ? expression : indexExpression(expression, picked.index);
       invocation.recordPolicy('locate.identity', 'allowed');
-      agentTrace(() => `locate: resolved via ${describeExpression(resolved)}`);
+      agentTrace(() => `locate: resolved via ${describeExpression(expression)}`);
       return {
         kind: 'node',
-        ref: picked.ref,
-        expression: resolved,
-        node: picked.node,
+        ref,
+        expression,
+        node,
         observation: selection.observation,
         explanation: selection.explanation,
         origin: 'model',
@@ -121,24 +121,24 @@ export async function resolveSelected(
       invocation.recordPolicy('locate.identity', 'denied');
       return sweepFailure(selection.selected, outcomes, ambiguous);
     };
-    // Indexing answers a query that matched too many nodes. This answers the
-    // opposite failure: one that matched none, because the name Playwright
-    // computes for a node diverges from the one the observation read — routine
-    // for a card-sized accessible name, where a single whitespace or a nested
-    // button's text is enough. The model saw that node and the reference still
-    // points at it, so there is nothing to wait for and nothing to guess.
+    // Both sweep failures land here: a query that matched several nodes, and one
+    // that matched none because the name Playwright computes for a node diverges
+    // from the one the observation read — routine for a card-sized accessible
+    // name, where a single whitespace or a nested button's text is enough. The
+    // model saw that node and the reference still points at it, so there is
+    // nothing to wait for and nothing to guess.
     //
-    // Not offered when the outcome is terminal: matches nothing can tell apart
-    // are #17's deliberate dead end, and the instruction, not the locator, is
-    // what has to choose there.
-    if (!terminal && options.poll !== false) {
+    // Skipped only for `poll: false`, where the caller means to escalate rather
+    // than to act.
+    if (options.poll !== false) {
       const byReference = await addressByReference(invocation, selection);
       if (byReference !== undefined) return byReference;
     }
-    // `terminal` short-circuits the wait: an instruction that lands on controls
-    // nothing can tell apart is not a page that is still settling, and spending
-    // the whole deadline before saying so buries the diagnosis in a timeout.
-    if (options.poll === false || terminal || invocation.deadline.expired()) throw giveUp();
+    // An ambiguous sweep whose reference is gone is not a page still settling:
+    // re-running the same queries against the same selection cannot make
+    // duplicates unique, and spending the whole deadline before saying so buries
+    // the diagnosis in a timeout.
+    if (options.poll === false || ambiguous || invocation.deadline.expired()) throw giveUp();
     await sleep(POLL_INTERVAL_MS, engine.signal);
     // Never begin a sweep on an expired clock. A zero remaining budget reaches
     // the driver as "no timeout" rather than "give up now", so the next query
@@ -172,22 +172,28 @@ async function addressByReference(
   selection: Extract<Selection, { kind: 'node' }>,
 ): Promise<LocatedNode | undefined> {
   const selected = selection.selected;
-  const node = await readOnly(invocation, selected.ref);
-  if (node.kind === 'miss' || !matchesSignature(selected, node.node)) {
+  let node: SemanticNode;
+  try {
+    node = await invocation.engine.session.screen.read(selected.ref, invocation.operation());
+  } catch {
+    agentTrace(() => 'locate: the observed reference could not be read');
+    return undefined;
+  }
+  if (!matchesSignature(selected, node)) {
     agentTrace(() => 'locate: the observed reference no longer reads as the selected node');
     return undefined;
   }
   invocation.recordPolicy('locate.reference', 'allowed');
   agentTrace(
     () =>
-      `locate: no derived query resolved ${describeSignature(node.node)}; ` +
+      `locate: no derived query resolved ${describeSignature(node)}; ` +
       'acting on its observed reference',
   );
   return {
     kind: 'node',
     ref: selected.ref,
     expression: undefined,
-    node: node.node,
+    node,
     observation: selection.observation,
     explanation: selection.explanation,
     origin: 'model',
@@ -198,10 +204,11 @@ async function addressByReference(
 /**
  * The failure of a completed sweep, naming every candidate and its outcome.
  *
- * Ambiguity that survived indexing is a property of the page rather than of the
- * query vocabulary, so it comes with the only remedy that works: a more specific
- * instruction. Without that line a reader sees a list of rejected queries and
- * reaches for a longer timeout instead.
+ * Reaching this with an ambiguous outcome means the reference was gone too, so
+ * nothing left in the run knows which control was meant. That is a property of
+ * the page rather than of the query vocabulary, so it comes with the only remedy
+ * that works: a more specific instruction. Without that line a reader sees a list
+ * of rejected queries and reaches for a longer timeout instead.
  */
 function sweepFailure(
   selected: SemanticNode,
@@ -218,113 +225,3 @@ function sweepFailure(
     `no derived query uniquely resolved the selected node (${describeSignature(selected)}):${detail}${remedy}`,
   );
 }
-
-/**
- * What one candidate query produced: the selected node pinned down, or why not.
- *
- * `ambiguous` is carried rather than inferred from the text, because it decides
- * whether the sweep reports LOCATOR_AMBIGUOUS or LOCATOR_NOT_FOUND.
- */
-type MatchOutcome =
-  | {
-      readonly kind: 'pinned';
-      readonly ref: NodeRef;
-      readonly node: SemanticNode;
-      /** Set when an index is needed to make the query resolve to one node. */
-      readonly index?: number;
-    }
-  | {
-      readonly kind: 'miss';
-      readonly detail: string;
-      readonly ambiguous: boolean;
-      /** True when re-sweeping cannot change this outcome. */
-      readonly terminal?: boolean;
-    };
-
-/** One candidate query failed to pin the node down. */
-function miss(detail: string, ambiguous = false, terminal = false): MatchOutcome {
-  return { kind: 'miss', detail, ambiguous, terminal };
-}
-
-/**
- * Beyond this many matches a query is not worth disambiguating: an instruction
- * that lands on dozens of identical controls needs rewording, not an index, and
- * reading them all would spend the sweep's budget on one hopeless candidate.
- */
-const MAX_AMBIGUOUS_MATCHES = 24;
-
-/** Reads the single match of an unambiguous query. */
-async function readOnly(invocation: Invocation, ref: NodeRef): Promise<MatchOutcome> {
-  try {
-    const node = await invocation.engine.session.screen.read(ref, invocation.operation());
-    return { kind: 'pinned', ref, node };
-  } catch {
-    return miss('matched node became unreadable');
-  }
-}
-
-/**
- * Picks the selected node out of an ambiguous query's matches.
- *
- * The index is computed here, against the match set the query actually returned,
- * rather than recorded during observation. That is what keeps `nth` honest: the
- * observation is byte-budgeted and may not even contain every match, and the page
- * can reflow between capture and resolution. Deciding at resolve time means the
- * index always refers to the list it was measured against, and the caller still
- * signature-checks the node before dispatching, so a page that reordered fails
- * the check instead of acting on the wrong control.
- *
- * Discrimination is by signature first, then by observed geometry. Two distinct
- * visible controls cannot occupy the same rectangle, so a rect that still matches
- * identifies the one the model chose; a reflow moves all of them and matches
- * none, which reports ambiguity rather than guessing.
- */
-async function pinOne(
-  invocation: Invocation,
-  refs: readonly NodeRef[],
-  selected: SemanticNode,
-): Promise<MatchOutcome> {
-  if (refs.length > MAX_AMBIGUOUS_MATCHES) {
-    return miss(`${refs.length} matches, too many to tell apart`, true);
-  }
-  const matches: Extract<MatchOutcome, { kind: 'pinned' }>[] = [];
-  let unread = 0;
-  for (const [index, ref] of refs.entries()) {
-    let node: SemanticNode;
-    try {
-      node = await invocation.engine.session.screen.read(ref, invocation.operation());
-    } catch {
-      // A match that could not be read is a match whose identity is unknown, and
-      // dropping it would shrink the set until whatever is left looks unique.
-      // Under a nearly-expired deadline that turned "indistinguishable" into a
-      // confident index onto an arbitrary element.
-      unread += 1;
-      continue;
-    }
-    if (matchesSignature(selected, node)) matches.push({ kind: 'pinned', ref, node, index });
-  }
-  if (unread > 0) {
-    return miss(`${refs.length} matches, ${unread} of them unreadable`, true);
-  }
-  if (matches.length === 0) {
-    return miss(`${refs.length} matches, none of them the selected node`, true);
-  }
-  if (matches.length === 1) return matches[0]!;
-  const byRect = matches.filter((match) => sameRect(selected.rect, match.node.rect));
-  if (byRect.length === 1) return byRect[0]!;
-  // Indistinguishable by name and by position both. Re-sweeping cannot separate
-  // them, so this is terminal: the instruction, not the locator, has to choose,
-  // and polling to the deadline would only delay saying so.
-  return miss(
-    `${matches.length} matches indistinguishable from the selected node`,
-    true,
-    true,
-  );
-}
-
-/** Exact rectangle equality, used only to tell simultaneous matches apart. */
-function sameRect(a: SemanticNode['rect'], b: SemanticNode['rect']): boolean {
-  if (a === undefined || b === undefined) return false;
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
-}
-
