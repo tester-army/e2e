@@ -198,6 +198,13 @@ route is still separated by instruction, parameters, and occurrence index.
 A locate entry stores one locator plus the expected role and name. It never
 stores a node reference, coordinate, model prose, instruction text, or secret.
 
+A node inside an embedded document is stored behind the chain of iframe
+selectors that reaches it; neither a query nor a selector crosses a frame on its
+own. The recorded identity is role and name, of which at least one is required:
+an unlabelled container — a drag handle, a hover zone — is identified by its
+accessible name alone, and a node with neither cannot be verified and is not
+stored.
+
 The locator is the semantic `screen` expression that re-found the node. A runner
 MAY instead store the platform selector the driver reported for the node, and it
 MUST prefer the semantic expression when there is one: an expression says what

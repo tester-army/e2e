@@ -133,6 +133,17 @@
             "kind": { "const": "web-selector" },
             "selector": { "type": "string", "minLength": 1, "maxLength": 2048 }
           }
+        },
+        {
+          "description": "One iframe boundary along the way to the node. Neither a query nor a selector reaches across a frame on its own.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "selector", "source"],
+          "properties": {
+            "kind": { "const": "frame" },
+            "selector": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "source": { "$ref": "#/$defs/locator" }
+          }
         }
       ]
     },
@@ -161,13 +172,13 @@
       }
     },
     "semanticIdentity": {
-      "description": "Identity a replayed node must still have. Role and name only: states are re-checked by actionability before the action runs.",
+      "description": "Identity a replayed node must still have. Role and name only: states are re-checked by actionability before the action runs. At least one is required; an unlabelled container is identified by its accessible name alone, and a node with neither cannot be verified and is not stored.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["role"],
+      "minProperties": 1,
       "properties": {
         "role": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" }
+        "name": { "type": "string", "minLength": 1 }
       }
     },
     "locatePayload": {

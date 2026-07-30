@@ -21,8 +21,12 @@ import {
   type CacheMethod,
   type SemanticIdentity,
 } from '../cache/index.ts';
-import type { SemanticNode } from '../driver/index.ts';
-import { describeExpression } from '../locator/expression.ts';
+import type { LocatorExpression, SemanticNode } from '../driver/index.ts';
+import {
+  describeExpression,
+  frameExpression,
+  webSelectorExpression,
+} from '../locator/expression.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { normalizeText } from '../internal/text.ts';
 import { agentTrace } from '../internal/trace.ts';
@@ -192,10 +196,15 @@ async function consult(
 function storableLocator(located: LocatedNode): CacheLocator | undefined {
   if (located.expression !== undefined) return asCacheLocator(located.expression);
   const selector = located.node.selector;
-  // A selector is document-local; a node inside an iframe needs the frame chain
-  // a stored selector cannot carry.
-  if (selector === undefined || (located.node.framePath ?? []).length > 0) return undefined;
-  return asCacheLocator({ kind: 'web-selector', selector });
+  if (selector === undefined) return undefined;
+  // A selector is document-local, so a node inside an iframe is stored behind
+  // the chain of frames that reaches its document.
+  const framePath = located.node.framePath ?? [];
+  const scoped = framePath.reduceRight<LocatorExpression>(
+    (source, frame) => frameExpression(frame, source),
+    webSelectorExpression(selector),
+  );
+  return asCacheLocator(scoped);
 }
 
 async function record(
@@ -265,7 +274,7 @@ function notRecorded(invocation: Invocation, keyHash: string, reason: string): u
  * the states that matter before the action runs.
  */
 function matchesIdentity(expected: SemanticIdentity, node: SemanticNode): boolean {
-  if (node.role !== expected.role) return false;
+  if (expected.role !== undefined && node.role !== expected.role) return false;
   if (expected.name === undefined) return true;
   // Case-insensitive on purpose. A control that renders "DALEJ" one run and
   // "Dalej" the next — a text transform, a re-render, a label the app cases

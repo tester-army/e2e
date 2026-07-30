@@ -68,10 +68,23 @@ export type CacheLocator =
    * node no query can single out — and it is only ever a guess, because the
    * identity behind it is checked before the entry is used.
    */
-  | { readonly kind: 'web-selector'; readonly selector: string };
+  | { readonly kind: 'web-selector'; readonly selector: string }
+  /**
+   * One iframe boundary along the way to the node. Without it a node inside an
+   * embedded document could not be stored at all, because neither a query nor a
+   * selector reaches across a frame on its own.
+   */
+  | { readonly kind: 'frame'; readonly selector: string; readonly source: CacheLocator };
 
+/**
+ * What a replayed node must still be. Role and name are both optional but at
+ * least one is required: a node with neither is indistinguishable from any other
+ * and cannot be verified, so it is not stored. Requiring a role would have left
+ * every unlabelled container — a drag handle, a hover zone — permanently
+ * uncacheable even though its accessible name identifies it perfectly.
+ */
 export interface SemanticIdentity {
-  readonly role: string;
+  readonly role?: string;
   readonly name?: string;
 }
 
@@ -126,8 +139,14 @@ export function asCacheLocator(value: unknown): CacheLocator | undefined {
         ? { kind: 'web-selector', selector }
         : undefined;
     }
+    case 'frame': {
+      const selector = raw['selector'];
+      const source = asCacheLocator(raw['source']);
+      return typeof selector === 'string' && selector !== '' && source !== undefined
+        ? { kind: 'frame', selector, source }
+        : undefined;
+    }
     default:
-      // Everything else, including a frame chain.
       return undefined;
   }
 }
@@ -190,9 +209,11 @@ function asPattern(value: unknown): TextPattern | undefined {
  * storing them would just add ways to miss.
  */
 export function toSemanticIdentity(node: SemanticNode): SemanticIdentity | undefined {
-  if (node.role === undefined || node.role === '') return undefined;
-  const name = node.name === undefined ? undefined : normalizeText(node.name);
-  return { role: node.role, ...(name === undefined || name === '' ? {} : { name }) };
+  const role = node.role === undefined || node.role === '' ? undefined : node.role;
+  const named = node.name === undefined ? undefined : normalizeText(node.name);
+  const name = named === undefined || named === '' ? undefined : named;
+  if (role === undefined && name === undefined) return undefined;
+  return { ...(role === undefined ? {} : { role }), ...(name === undefined ? {} : { name }) };
 }
 
 /** Validates a stored expected identity. */
@@ -200,10 +221,14 @@ export function asSemanticIdentity(value: unknown): SemanticIdentity | undefined
   const raw = asRecord(value);
   if (raw === undefined) return undefined;
   const role = raw['role'];
-  if (typeof role !== 'string' || role === '') return undefined;
+  if (role !== undefined && (typeof role !== 'string' || role === '')) return undefined;
   const name = raw['name'];
-  if (name !== undefined && typeof name !== 'string') return undefined;
-  return { role, ...(name === undefined ? {} : { name }) };
+  if (name !== undefined && (typeof name !== 'string' || name === '')) return undefined;
+  if (role === undefined && name === undefined) return undefined;
+  return {
+    ...(role === undefined ? {} : { role: role as string }),
+    ...(name === undefined ? {} : { name: name as string }),
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

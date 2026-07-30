@@ -84,9 +84,15 @@ describe('the security boundary', () => {
     expect(asCacheLocator({ kind: 'web-selector', selector: 42 })).toBeUndefined();
   });
 
-  it('refuses a frame chain, which is addressed by CSS selector', () => {
+  it('admits a frame chain, which is the only way across an embedded document', () => {
     expect(
-      asCacheLocator({ kind: 'frame', selector: 'iframe', source: roleQuery('Save') }),
+      asCacheLocator({ kind: 'frame', selector: '#editor', source: roleQuery('Save') }),
+    ).toEqual({ kind: 'frame', selector: '#editor', source: roleQuery('Save') });
+    // Still structurally validated, all the way down.
+    expect(asCacheLocator({ kind: 'frame', selector: '#editor' })).toBeUndefined();
+    expect(asCacheLocator({ kind: 'frame', selector: '', source: roleQuery('Save') })).toBeUndefined();
+    expect(
+      asCacheLocator({ kind: 'frame', selector: '#editor', source: { kind: 'eval' } }),
     ).toBeUndefined();
   });
 
@@ -152,8 +158,15 @@ describe('expected identity', () => {
     expect(toSemanticIdentity(node({ role: 'button' }))).toEqual({ role: 'button' });
   });
 
-  it('refuses a node with no role to identify it by', () => {
-    expect(toSemanticIdentity(node({ name: 'Save' }))).toBeUndefined();
-    expect(toSemanticIdentity(node({ role: '', name: 'Save' }))).toBeUndefined();
+  it('identifies an unlabelled container by its name alone', () => {
+    // Requiring a role left every div a page uses as a hover zone or a drag
+    // handle permanently uncacheable, even though its name identifies it.
+    expect(toSemanticIdentity(node({ name: 'Save' }))).toEqual({ name: 'Save' });
+    expect(toSemanticIdentity(node({ role: '', name: 'Save' }))).toEqual({ name: 'Save' });
+  });
+
+  it('refuses a node with neither a role nor a name', () => {
+    expect(toSemanticIdentity(node({}))).toBeUndefined();
+    expect(toSemanticIdentity(node({ role: '', name: '  ' }))).toBeUndefined();
   });
 });
