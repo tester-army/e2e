@@ -47,7 +47,7 @@ import {
   sanitizeFilename,
   staleOr,
   translatePwError,
-  unsupportedDrag,
+  performPointerDrag,
   type ActionTarget,
 } from './support.ts';
 import { WebChannel, type WebSessionHost } from './web.ts';
@@ -458,10 +458,15 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
         return;
       case 'dragTo': {
         const other = this.lookupRef(action.target);
-        if (target.kind !== 'locator' || other.target.kind !== 'locator') {
-          throw unsupportedDrag();
+        // Playwright's own drag when both sides are locators: it waits for
+        // actionability on each and reports better failures than a pointer
+        // sequence can. Anything else — an observed reference on either side —
+        // is dragged with the pointer.
+        if (target.kind === 'locator' && other.target.kind === 'locator') {
+          await target.locator.dragTo(other.target.locator, { timeout });
+        } else {
+          await performPointerDrag(target, other.target, timeout);
         }
-        await target.locator.dragTo(other.target.locator, { timeout });
         return;
       }
       case 'swipe': {
@@ -804,12 +809,19 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
 
 /**
  * True when a frame document's origin is inside the app's allowed origins.
+ *
  * `about:blank` and `srcdoc` documents inherit their parent's origin, so they
- * are the app's own content (consent managers, editors) and always allowed;
- * the parent frame was already admitted to be captured at all.
+ * are the app's own content (consent managers, editors) and always allowed; the
+ * parent frame was already admitted to be captured at all. A `data:` document
+ * is the same trust class: its bytes are written by the page that embeds it and
+ * it has no network origin to check, so refusing it excluded the app's own
+ * markup — inline widgets and demo frames — rather than any third party. The
+ * check exists to keep ads, trackers, and cross-origin embeds out of
+ * observations, and all of those have a real origin.
  */
 function isAllowedFrameOrigin(url: string, allowedOrigins: readonly string[]): boolean {
   if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;
+  if (url.startsWith('data:')) return true;
   try {
     return allowedOrigins.includes(new URL(url).origin);
   } catch {

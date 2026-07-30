@@ -1,8 +1,12 @@
 /**
  * Resolving a model's selection to something the driver can act on.
  *
- * The model picks a node out of an observation; this turns that pick into a
- * portable query the driver can re-run and the report can show. Every path ends
+ * The model picks a node out of an observation; this turns that pick into
+ * something the driver can act on. A portable query is preferred, because it is
+ * what a report can show and a cache can store. Failing that there is the
+ * driver's own selector for the node, and failing that the observation's
+ * reference to the element itself — a control with no name, no test id, and no
+ * text has only those, and is the reason the agent tier exists. Every path ends
  * in a re-read of the live node and a signature check, so a selection that has
  * gone stale is a miss rather than a blind dispatch.
  *
@@ -13,8 +17,12 @@
  * reference, which no reflow, scroll, or repeated row can confuse.
  */
 
-import type { NodeRef, SemanticNode } from '../driver/index.ts';
-import { describeExpression } from '../locator/expression.ts';
+import type { LocatorExpression, NodeRef, SemanticNode } from '../driver/index.ts';
+import {
+  describeExpression,
+  frameExpression,
+  webSelectorExpression,
+} from '../locator/expression.ts';
 import { POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { agentTrace } from '../internal/trace.ts';
 import { AgentError } from './error.ts';
@@ -46,10 +54,16 @@ export async function resolveSelected(
     scopeToFrames(query, selection.selected.framePath),
   );
   if (candidates.length === 0) {
-    throw new AgentError(
-      'LOCATOR_NOT_FOUND',
-      'the selected node exposes no role, name, test ID, placeholder, or text to address it portably',
-    );
+    // A node with nothing to build a query from is the case the agent tier
+    // exists for: an unlabelled input whose only description is the table cell
+    // beside it. Throwing here skipped the reference path below, which needs no
+    // query at all — so the tier failed hardest on exactly the pages that
+    // cannot be addressed deterministically either. `poll: false` still means
+    // "report so the caller can escalate", so it keeps its early exit.
+    if (options.poll === false) throw noAddress(selection.selected);
+    const addressed = await addressByReference(invocation, selection);
+    if (addressed !== undefined) return addressed;
+    throw noAddress(selection.selected);
   }
   const engine = invocation.engine;
 
@@ -149,6 +163,18 @@ export async function resolveSelected(
 }
 
 /**
+ * The selection carried no way to address its node: no query could be derived
+ * from it, and its reference could not be re-read either.
+ */
+function noAddress(selected: SemanticNode): AgentError {
+  return new AgentError(
+    'LOCATOR_NOT_FOUND',
+    `the selected node exposes nothing to address it by (${describeSignature(selected)}): ` +
+      'no role and name, test ID, placeholder, or text, and its observed reference is gone',
+  );
+}
+
+/**
  * Acts on the node through the reference the observation handed out.
  *
  * Derived queries describe a node by what it says, and what a node says is not
@@ -163,9 +189,10 @@ export async function resolveSelected(
  * first, so a node that has gone away is still a miss rather than a blind
  * dispatch, and the read doubles as the identity check the sweep would have done.
  *
- * What it cannot do is outlive the observation, so it is not a locator and never
- * recorded as one. `storableLocator` stores the driver's selector for this node
- * instead.
+ * A reference cannot outlive the observation, so it is not a locator and never
+ * recorded as one. Before falling back to it, the driver's selector for this node
+ * is tried: when there is one it addresses the same element as a real locator,
+ * which the cache can store and `dragTo` can use on both sides.
  */
 async function addressByReference(
   invocation: Invocation,
@@ -183,6 +210,31 @@ async function addressByReference(
     agentTrace(() => 'locate: the observed reference no longer reads as the selected node');
     return undefined;
   }
+  // The driver's own selector for this node, when it has one, is a real locator:
+  // it is document-local, anchored on a naming attribute, and re-resolved and
+  // identity-checked here exactly as `storableLocator` promises for replay. A
+  // node addressed this way is not reference-only, so it survives into the cache
+  // and into `dragTo`, which cannot dispatch through an element handle.
+  const bySelector = await addressBySelector(invocation, node);
+  if (bySelector !== undefined) {
+    invocation.recordPolicy('locate.selector', 'allowed');
+    agentTrace(
+      () =>
+        `locate: no derived query resolved ${describeSignature(node)}; ` +
+        `using the platform selector ${describeExpression(bySelector.expression)}`,
+    );
+    return {
+      kind: 'node',
+      ref: bySelector.ref,
+      expression: bySelector.expression,
+      node,
+      observation: selection.observation,
+      explanation: selection.explanation,
+      origin: 'model',
+      targeting: selection.targeting,
+    };
+  }
+
   invocation.recordPolicy('locate.reference', 'allowed');
   agentTrace(
     () =>
@@ -199,6 +251,42 @@ async function addressByReference(
     origin: 'model',
     targeting: selection.targeting,
   };
+}
+
+/**
+ * Re-resolves the node through the platform selector the driver derived for it,
+ * scoped to the frame chain the node lives in because a selector is
+ * document-local.
+ *
+ * Returns nothing unless the selector resolves to exactly one node that still
+ * reads as the same node: a selector that has gone ambiguous or stale is no
+ * better than no selector, and the caller has a reference to fall back on.
+ */
+async function addressBySelector(
+  invocation: Invocation,
+  node: SemanticNode,
+): Promise<{ ref: NodeRef; expression: LocatorExpression } | undefined> {
+  const selector = node.selector;
+  if (selector === undefined || selector === '') return undefined;
+  const expression = (node.framePath ?? []).reduceRight<LocatorExpression>(
+    (source, frame) => frameExpression(frame, source),
+    webSelectorExpression(selector),
+  );
+  let refs: readonly NodeRef[];
+  try {
+    refs = await invocation.engine.resolveAll(expression, invocation.deadline);
+  } catch {
+    return undefined;
+  }
+  const ref = refs.length === 1 ? refs[0] : undefined;
+  if (ref === undefined) return undefined;
+  try {
+    const resolved = await invocation.engine.session.screen.read(ref, invocation.operation());
+    if (!matchesSignature(node, resolved)) return undefined;
+  } catch {
+    return undefined;
+  }
+  return { ref, expression };
 }
 
 /**

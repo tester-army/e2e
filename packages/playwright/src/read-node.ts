@@ -297,14 +297,64 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return null;
   };
 
-  const isHidden = (el: Element): boolean => {
+  /** Computed style, or undefined for a node the view cannot style. */
+  const styleOf = (el: Element): CSSStyleDeclaration | undefined =>
+    el instanceof HTMLElement ? el.ownerDocument.defaultView?.getComputedStyle(el) : undefined;
+
+  const isHidden = (el: Element, style = styleOf(el)): boolean => {
     if (el.getAttribute('aria-hidden') === 'true') return true;
     if (!(el instanceof HTMLElement)) return el.getClientRects().length === 0;
-    const style = el.ownerDocument.defaultView?.getComputedStyle(el);
     if (style !== undefined && (style.visibility === 'hidden' || style.display === 'none')) {
       return true;
     }
     return el.getClientRects().length === 0;
+  };
+
+  /** Smallest side, in CSS pixels, an empty box must have to be worth reporting. */
+  const MIN_BOX_SIDE = 12;
+
+  /** True when a computed style paints something a person can see. */
+  const hasPaint = (style: CSSStyleDeclaration): boolean => {
+    if (style.backgroundImage !== 'none' && style.backgroundImage !== '') return true;
+    // A fully transparent color serializes with a zero alpha component.
+    const background = style.backgroundColor;
+    if (background !== '' && background !== 'transparent' && !/,\s*0\)$/.test(background)) {
+      return true;
+    }
+    if (parseFloat(style.outlineWidth) > 0 && style.outlineStyle !== 'none') return true;
+    const sides = ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+    const styles = ['borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle'];
+    for (let index = 0; index < sides.length; index += 1) {
+      const width = parseFloat(style[sides[index]! as 'borderTopWidth']);
+      const kind = style[styles[index]! as 'borderTopStyle'];
+      if (width > 0 && kind !== 'none' && kind !== 'hidden') return true;
+    }
+    return false;
+  };
+
+  /**
+   * True when an element is an empty painted rectangle: no children, no text,
+   * no role, no name — and yet plainly visible, because it has a border, an
+   * outline, or a background of its own.
+   *
+   * This is the one element class defined by being empty. A drop zone, a canvas,
+   * a chart placeholder, a colour swatch: a person sees a rectangle and can aim
+   * at it, so a tree that omits it cannot describe the page it is describing.
+   * `dragTo` in particular has no usable destination without it.
+   *
+   * The size floor and the paint requirement are what keep this from admitting
+   * every layout div: a spacer, a clearfix, or a zero-alpha wrapper paints
+   * nothing and is not something anyone can point at.
+   */
+  const isVisibleEmptyBox = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
+    if (style === undefined) return false;
+    if (el.children.length > 0) return false;
+    const explicit = (el.getAttribute('role') ?? '').trim();
+    if (explicit !== '') return false;
+    if (directTextOf(el) !== '') return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < MIN_BOX_SIDE || rect.height < MIN_BOX_SIDE) return false;
+    return hasPaint(style);
   };
 
   /**
@@ -402,7 +452,23 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const frameSelectorOf = (el: Element): string => pathTo(el).selector;
 
-  const describe = (el: Element): RawNodeData => {
+  /**
+   * The role both read modes report for one element.
+   *
+   * A tree walk and a single-node re-read have to agree: the runner acts on a
+   * node it selected from an observation by re-reading that node and requiring
+   * the same signature, so a role the walk invents and the re-read does not
+   * makes the node unactionable. Anything the walk used to attach after the fact
+   * belongs here instead.
+   */
+  const roleOf = (el: Element, tag: string, style: CSSStyleDeclaration | undefined): string | null => {
+    const implicit = implicitRole(el);
+    if (implicit !== null) return implicit;
+    if (tag === 'iframe') return 'iframe';
+    return isVisibleEmptyBox(el, style) ? 'box' : null;
+  };
+
+  const describe = (el: Element, style = styleOf(el)): RawNodeData => {
     const tag = el.tagName.toLowerCase();
     const autocomplete = (el.getAttribute('autocomplete') ?? '').toLowerCase();
 
@@ -474,7 +540,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const rect = el.getBoundingClientRect();
 
     return {
-      role: isDocumentRoot ? 'document' : implicitRole(el),
+      role: isDocumentRoot ? 'document' : roleOf(el, tag, style),
       name,
       text,
       value: secure ? null : value,
@@ -504,8 +570,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   let truncated = false;
   let secureNodeCount = 0;
 
-  const include = (el: Element, parent: number): number => {
-    const data = describe(el);
+  const include = (el: Element, parent: number, style = styleOf(el)): number => {
+    const data = describe(el, style);
     if (data.states.secure) secureNodeCount += 1;
     nodes.push({ ...data, parent });
     elements.push(el);
@@ -525,7 +591,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (truncated) return;
     const tag = el.tagName.toLowerCase();
     if (SKIP_TAGS.indexOf(tag) !== -1) return;
-    if (isHidden(el)) return;
+    // Read once and share: `isHidden` and the empty-box test both need it, and
+    // this walk already pays one `getComputedStyle` per node.
+    const style = styleOf(el);
+    if (isHidden(el, style)) return;
 
     // Iframes are emitted as boundary nodes and never entered: their content
     // lives in another document, which the driver captures per frame and
@@ -535,10 +604,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
         truncated = true;
         return;
       }
-      const index = include(el, parent);
+      const index = include(el, parent, style);
       const node = nodes[index]!;
       node.frameSelector = frameSelectorOf(el);
-      node.role = 'iframe';
       if (node.name === null) {
         const title = el.getAttribute('title');
         if (title !== null && title.trim() !== '') node.name = title.trim();
@@ -547,15 +615,27 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
 
     let nextParent = parent;
-    if (isInteresting(el)) {
+    // An empty painted rectangle carries no semantics to be "interesting" by and
+    // is still something a person sees and aims at; `roleOf` names it `box`.
+    if (isInteresting(el) || isVisibleEmptyBox(el, style)) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;
       }
-      nextParent = include(el, parent);
+      nextParent = include(el, parent, style);
     }
     if (OPAQUE_TAGS.indexOf(tag) !== -1) return;
     for (const child of Array.from(el.children)) walk(child, nextParent);
+    // An open shadow root is part of what the user sees, so it is part of what
+    // the model is shown. Walking the host's light children and its shadow tree
+    // double-counts nothing: slotted elements are light children, and the shadow
+    // tree holds the `<slot>` placeholders rather than copies of them. A closed
+    // root is not reachable from script, so it stays invisible — the same as for
+    // a person reading the page.
+    const shadow = el.shadowRoot;
+    if (shadow !== null) {
+      for (const child of Array.from(shadow.children)) walk(child, nextParent);
+    }
   };
 
   include(element, -1);

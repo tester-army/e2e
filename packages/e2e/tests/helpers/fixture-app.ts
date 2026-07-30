@@ -244,6 +244,96 @@ const PAGES: Record<string, string> = {
   </script>
 </body>
 </html>`,
+  // Controls a real page routinely ships and no query vocabulary can name: the
+  // label is a sibling table cell rather than a `<label for>`, so every control
+  // here has a role but no accessible name, no test id, no placeholder, and no
+  // text. Derived queries come back empty, which used to fail the locate before
+  // the reference or the platform selector ever got a turn.
+  //
+  // The three form controls carry a `name`, as a real form does, so the driver
+  // derives an anchored selector for them and they resolve to locators. The
+  // badge image carries nothing anchorable, so it can only be reached through
+  // the observation's reference — the two rungs of the fallback, on one page.
+  //
+  // `#zone` is the other case: an empty painted rectangle, which no role, name,
+  // or text can describe. `#spacer` is the same size with nothing painted, and
+  // must stay out of the tree — otherwise the rule that admits drop zones admits
+  // every layout div.
+  '/unnamed': `<!doctype html>
+<html>
+<head><title>Unnamed</title></head>
+<body>
+  <output id="state" role="status" aria-label="State">idle</output>
+  <!-- A separate signal: the pointer drag ends with a click on the drop zone,
+       so a shared output would report the tap and hide the drop. -->
+  <output id="drops" role="status" aria-label="Drops">none</output>
+  <table>
+    <tr><td>Nickname:</td><td><input id="nickname" name="nickname" type="text" /></td></tr>
+    <tr><td>Plan choice:</td><td>
+      <select id="tier" name="tier" onchange="document.getElementById('state').textContent = this.value">
+        <option value="free">Free tier</option>
+        <option value="pro">Pro tier</option>
+      </select>
+    </td></tr>
+    <tr><td>Pre-checked:</td><td><input id="flag" name="flag" type="checkbox" checked /></td></tr>
+  </table>
+  <div id="zone" style="width:200px;height:40px;border:1px solid #333"
+       onclick="document.getElementById('state').textContent = 'zone tapped'"></div>
+  <div id="spacer" style="width:200px;height:40px"></div>
+  <img id="ticket" data-testid="ticket" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"
+       width="80" height="30" draggable="true"
+       ondragstart="event.dataTransfer.setData('text', 'ticket')" />
+  <img id="badge" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"
+       width="80" height="30" draggable="true"
+       onclick="document.getElementById('state').textContent = 'badge tapped'"
+       ondragstart="event.dataTransfer.setData('text', 'badge')" />
+  <script>
+    const zone = document.getElementById('zone');
+    zone.addEventListener('dragover', (event) => event.preventDefault());
+    zone.addEventListener('drop', (event) => {
+      event.preventDefault();
+      zone.appendChild(document.getElementById(event.dataTransfer.getData('text')));
+      document.getElementById('drops').textContent = 'dropped';
+    });
+  </script>
+</body>
+</html>`,
+  // An open shadow root: the panel and its button exist only in the shadow tree,
+  // so a walk over light-DOM children alone cannot see them, while the slotted
+  // heading is light DOM the component merely renders.
+  '/shadow': `<!doctype html>
+<html>
+<head><title>Shadow</title></head>
+<body>
+  <output id="picked" role="status" aria-label="Picked">none</output>
+  <my-panel><h2 slot="title">Slotted title</h2></my-panel>
+  <script>
+    customElements.define('my-panel', class extends HTMLElement {
+      constructor() {
+        super();
+        const root = this.attachShadow({ mode: 'open' });
+        root.innerHTML =
+          '<div id="panel"><slot name="title"></slot>' +
+          '<button id="inner">Shadow action</button></div>';
+        root.getElementById('inner').addEventListener('click', () => {
+          document.getElementById('picked').textContent = 'shadow';
+        });
+      }
+    });
+  </script>
+</body>
+</html>`,
+  // A frame the page writes itself. Its document has no network origin, so an
+  // origin allowlist has nothing to match and used to exclude it — leaving the
+  // agent a boundary node and no way in.
+  '/data-frame': `<!doctype html>
+<html>
+<head><title>Data frame</title></head>
+<body>
+  <h1>Data frame host</h1>
+  <iframe id="inline" title="inline" src="data:text/html,<body><label for=%22ok%22>Confirm</label><input id=%22ok%22 type=%22checkbox%22 /></body>"></iframe>
+</body>
+</html>`,
   '/flags': `<!doctype html>
 <html>
 <head><title>Flags</title></head>

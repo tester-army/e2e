@@ -66,10 +66,41 @@ export function targetBoundingBox(target: ActionTarget, timeout: number): Promis
     : target.element.boundingBox();
 }
 
-export function unsupportedDrag(): DriverError {
-  return new DriverError('UNSUPPORTED_CAPABILITY', 'dragTo requires locator-backed targets', {
-    retryable: false,
-  });
+/**
+ * Drags one target onto another with the pointer.
+ *
+ * `Locator.dragTo` exists but takes a locator on both sides, and a node the
+ * agent reached through its observed reference is an element handle — which used
+ * to make the whole verb unavailable for exactly the elements that have no
+ * locator: an unlabelled thumbnail, an empty drop zone. Driving the pointer
+ * works for both kinds because a handle has a bounding box like anything else.
+ *
+ * The second move to the same point is not redundant: HTML5 drag-and-drop
+ * commits on `dragover`, and one move into the destination does not always
+ * produce one.
+ */
+export async function performPointerDrag(
+  source: ActionTarget,
+  destination: ActionTarget,
+  timeout: number,
+): Promise<void> {
+  // Hover auto-waits for actionability and scrolls the source into view, so the
+  // boxes read below are settled and inside the viewport.
+  await asActionable(source).hover({ timeout });
+  const from = await targetBoundingBox(source, timeout);
+  const to = await targetBoundingBox(destination, timeout);
+  if (from === null || to === null) {
+    throw new DriverError('NOT_ACTIONABLE', 'a drag endpoint has no visible bounding box', {
+      retryable: false,
+    });
+  }
+  const page = await targetPage(source);
+  const target = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 2 });
+  await page.mouse.move(target.x, target.y);
+  await page.mouse.up();
 }
 
 // Re-exported so the rest of the package keeps importing its text helpers from
