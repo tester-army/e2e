@@ -63,12 +63,15 @@ const DRIVER_ERROR_CODES: ReadonlySet<string> = new Set([
  * closed code set: without this, every third-party driver's typed failures
  * silently degrade to a generic error and lose their taxonomy.
  */
-function asDriverError(value: unknown): { code: DriverErrorCode; message: string } | undefined {
+export function asDriverError(
+  value: unknown,
+): { code: DriverErrorCode; message: string; retryable: boolean } | undefined {
   if (value instanceof DriverError) return value;
   if (!(value instanceof Error) || value.name !== 'DriverError') return undefined;
   const code = (value as unknown as { code?: unknown }).code;
   if (typeof code !== 'string' || !DRIVER_ERROR_CODES.has(code)) return undefined;
-  return { code: code as DriverErrorCode, message: value.message };
+  const retryable = (value as unknown as { retryable?: unknown }).retryable;
+  return { code: code as DriverErrorCode, message: value.message, retryable: retryable === true };
 }
 
 /** Base class for every runner-classified error. */

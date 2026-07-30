@@ -117,6 +117,10 @@ export async function withDeadline<T>(
 ): Promise<T> {
   assertNotAborted(operation.signal);
   let timer: NodeJS.Timeout | undefined;
+  // `{ once: true }` only detaches on an abort that fires. Every daemon round
+  // trip shares one attempt-scoped signal, so a listener left behind by a call
+  // that completed normally would accumulate for the whole test.
+  let detachAbort: (() => void) | undefined;
   const guard = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(
@@ -128,12 +132,14 @@ export async function withDeadline<T>(
     const onAbort = () => {
       reject(new DriverError('CANCELLED', `${label} cancelled`, { retryable: false }));
     };
+    detachAbort = () => operation.signal.removeEventListener('abort', onAbort);
     operation.signal.addEventListener('abort', onAbort, { once: true });
   });
   try {
     return await Promise.race([work, guard]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    detachAbort?.();
   }
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertDeviceUrlAllowed,
   isLoopbackHost,
   normalizeBaseUrl,
   resolveNavigationUrl,
@@ -61,6 +62,24 @@ describe('resolveNavigationUrl', () => {
     expect(() => resolveNavigationUrl('file:///etc/passwd', base, allowed)).toThrow(/scheme/);
     expect(() => resolveNavigationUrl('data:text/html,x', base, allowed)).toThrow(/scheme/);
     expect(() => resolveNavigationUrl('javascript:alert(1)', base, allowed)).toThrow(/scheme/);
+  });
+});
+
+describe('assertDeviceUrlAllowed', () => {
+  it('passes a custom-scheme deep link through', () => {
+    expect(assertDeviceUrlAllowed('myapp://orders/42')).toBe('myapp://orders/42');
+  });
+
+  it('denies the forbidden schemes a custom scheme could otherwise smuggle', () => {
+    // A mobile deep link skips origin checking, but not the scheme check: these
+    // are the local-code and local-file vectors.
+    expect(() => assertDeviceUrlAllowed('file:///etc/passwd')).toThrow(/scheme/);
+    expect(() => assertDeviceUrlAllowed('data:text/html,x')).toThrow(/scheme/);
+    expect(() => assertDeviceUrlAllowed('javascript:alert(1)')).toThrow(/scheme/);
+  });
+
+  it('denies a URL with no scheme at all', () => {
+    expect(() => assertDeviceUrlAllowed('/orders/42')).toThrow(/malformed/);
   });
 });
 

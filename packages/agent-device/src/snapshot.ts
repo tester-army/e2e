@@ -223,8 +223,11 @@ export function projectSnapshot(
     // it imposes no containment on its children. Any other view does: its
     // subviews are inside it.
     const boundsForChildren = projected.scrollContainer ? undefined : rect ?? trustedAncestorRect;
+    // Only a label this node actually owns is claimed against its descendants.
+    // A wrapper rejected for having no usable rect must not deny its visible
+    // child the label, or no node would match it at all.
     const labelsForChildren =
-      own === undefined ? ancestorLabels : new Set([...ancestorLabels, own]);
+      own !== undefined && owns ? new Set([...ancestorLabels, own]) : ancestorLabels;
     const kids = (children.get(node.index) ?? []).map((child) =>
       build(child, projected, labelsForChildren, boundsForChildren),
     );

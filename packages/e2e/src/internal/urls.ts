@@ -59,6 +59,27 @@ export function isImplicitTestHost(hostname: string): boolean {
 const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:']);
 
 /**
+ * Enforces the scheme half of navigation policy on a device URL.
+ *
+ * A custom-scheme deep link skips *origin* checking per spec 16-mobile.md
+ * because it cannot leave the device, but the forbidden schemes are denied
+ * everywhere: they are the local-code and local-file vectors, and letting them
+ * through unchecked would make the mobile path weaker than the web one.
+ */
+export function assertDeviceUrlAllowed(input: string): string {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new ConfigurationError('POLICY_DENIED', `malformed URL: ${input}`);
+  }
+  if (FORBIDDEN_PROTOCOLS.has(url.protocol)) {
+    throw new ConfigurationError('POLICY_DENIED', `forbidden URL scheme: ${url.protocol}`);
+  }
+  return url.href;
+}
+
+/**
  * Resolves a navigation URL against the base and enforces the allowed-origin
  * policy. Returns the absolute URL string.
  */

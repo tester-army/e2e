@@ -194,6 +194,36 @@ describe('projectSnapshot', () => {
     expect(projected.byRef.get('e4')?.ownsLabel).toBe(false);
   });
 
+  it('lets a visible child own a label its rectless wrapper could not claim', () => {
+    // A wrapper rejected for stale geometry owns nothing, so it must not deny
+    // its visible child the label: otherwise no node matches it at all and a
+    // plainly visible row is unreachable by its text.
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeApplication',
+        rect: { ...SCREEN },
+        children: [
+          {
+            type: 'XCUIElementTypeOther',
+            label: 'Wi-Fi',
+            rect: { x: 0, y: 9000, width: 320, height: 44 },
+            children: [
+              {
+                type: 'XCUIElementTypeButton',
+                label: 'Wi-Fi',
+                rect: { x: 20, y: 100, width: 280, height: 44 },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const projected = projectSnapshot(snapshot, 'ios', 'r1');
+    expect(projected.byRef.get('e2')?.rect).toBeUndefined();
+    expect(projected.byRef.get('e2')?.ownsLabel).toBe(false);
+    expect(projected.byRef.get('e3')?.ownsLabel).toBe(true);
+  });
+
   it('marks a node the backend reports as covered', () => {
     const snapshot = buildSnapshot([{ type: 'XCUIElementTypeButton', label: 'Behind sheet' }]);
     const covered = { ...snapshot.nodes[0]!, interactionBlocked: 'covered' as const };

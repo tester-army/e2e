@@ -14,7 +14,12 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { toRoutePattern } from '../internal/route-pattern.ts';
-import { resolveNavigationUrl, urlMatches, type NormalizedBaseUrl } from '../internal/urls.ts';
+import {
+  assertDeviceUrlAllowed,
+  resolveNavigationUrl,
+  urlMatches,
+  type NormalizedBaseUrl,
+} from '../internal/urls.ts';
 import { Deadline, sleep, withTimeout } from '../internal/time.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { webSelectorExpression } from '../locator/expression.ts';
@@ -212,12 +217,14 @@ function createApp(
    * Resolves a navigation-ish argument for the target's platform family. A web
    * target resolves against its base URL under origin policy. A mobile target
    * has no base URL: an `http(s)` URL is still origin-checked, and a
-   * custom-scheme deep link is passed through because it cannot leave the
-   * device.
+   * custom-scheme deep link skips origin checking because it cannot leave the
+   * device — but never the forbidden-scheme check.
    */
   const resolveTargetUrl = (value: string): string => {
     if (base !== undefined) return resolveNavigationUrl(value, base, allowed).url;
-    return /^https?:/i.test(value) ? resolveNavigationUrl(value, undefined, allowed).url : value;
+    return /^https?:/i.test(value)
+      ? resolveNavigationUrl(value, undefined, allowed).url
+      : assertDeviceUrlAllowed(value);
   };
 
   return {
@@ -299,10 +306,10 @@ function createDevice(environment: AttemptEnvironment, engine: LocatorEngine): D
     openUrl: (url) =>
       steps.run('device', 'device.openUrl', url, () => {
         // A device URL follows app deep-link policy: http(s) is origin-checked,
-        // a custom scheme cannot leave the device and passes through.
+        // a custom scheme skips origin checking but not the scheme check.
         const resolved = /^https?:/i.test(url)
           ? resolveNavigationUrl(url, config.app.base, config.app.allowedOrigins).url
-          : url;
+          : assertDeviceUrlAllowed(url);
         return driverDevice().openUrl(resolved, engine.operation(config.timeout));
       }),
     setLocation: (location) =>

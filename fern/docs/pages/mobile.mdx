@@ -70,7 +70,7 @@ a mobile-only config should omit it entirely.
 
 ```ts
 await app.open();                  // launch, replacing any running instance
-await app.open('/orders/42');      // launch, then follow a deep link
+await app.open('myapp://orders/42'); // launch, then follow a deep link
 await app.restart();               // relaunch, keeping the data container
 await app.clearState();            // clear the data container, then relaunch
 await app.back();                  // in-app back; no back target is a no-op
@@ -79,6 +79,11 @@ await app.deepLink('myapp://orders/42');
 
 A session launches with the application not yet in the foreground. Any query,
 action, or read before `app.open()` fails with `APP_NOT_OPEN`.
+
+With no base URL there is nothing to resolve a relative path against, so a deep
+link is an absolute URL. An `http(s)` one is origin-checked exactly as web
+navigation is; a custom-scheme one skips that check because it cannot leave the
+device. `file:`, `data:`, and `javascript:` are denied everywhere.
 
 ## The device fixture
 

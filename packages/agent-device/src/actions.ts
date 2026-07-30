@@ -174,15 +174,19 @@ export async function performAction(
     case 'focus':
       await withDeadline(client.interactions.focus(pointOf(scope, control)), operation, 'focus');
       return;
-    case 'press':
+    case 'press': {
+      // Resolve the encoding before anything is dispatched, so an unsupported
+      // key fails without having touched the device.
+      const text = requireKeyText(action.key, scope.platform);
       // A key press targets the focused field, so focus the node first.
       await withDeadline(client.interactions.focus(pointOf(scope, control)), operation, 'press');
       await withDeadline(
-        client.interactions.type({ platform: scope.platform, text: action.key }),
+        client.interactions.type({ platform: scope.platform, text }),
         operation,
         'press',
       );
       return;
+    }
     case 'check':
     case 'uncheck': {
       const wanted = action.kind === 'check';

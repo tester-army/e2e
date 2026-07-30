@@ -8,7 +8,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentDevice } from '../../src/index.ts';
-import { DriverError, type DriverContext, type DriverSession } from 'e2e/driver';
+import {
+  DriverError,
+  type DriverContext,
+  type DriverSession,
+  type LocatorExpression,
+} from 'e2e/driver';
 import { createFakeDaemon, type FakeDaemon } from '../helpers/fake-daemon.ts';
 import type { NodeSpec } from '../helpers/snapshot.ts';
 
@@ -43,6 +48,20 @@ const LOGIN_SCREEN: readonly NodeSpec[] = [
     ],
   },
 ];
+
+/** One editable field, so a textbox query resolves unambiguously. */
+const TEXT_FIELD_SCREEN: readonly NodeSpec[] = [
+  {
+    type: 'XCUIElementTypeTextField',
+    label: 'Email',
+    rect: { x: 20, y: 100, width: 280, height: 44 },
+  },
+];
+
+const TEXTBOX_QUERY: LocatorExpression = {
+  kind: 'query',
+  query: { kind: 'role', value: { kind: 'string', value: 'textbox', exact: true } },
+};
 
 let artifactsDir: string;
 
@@ -685,6 +704,32 @@ describe('key presses', () => {
     await expect(session.actions.press('F13', context().operation)).rejects.toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
     });
+    expect(daemon.commands()).not.toContain('type');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('encodes a named key on the locator path too', async () => {
+    // `locator.press('Enter')` reaches `screen.perform`, not `actions.press`.
+    const daemon = createFakeDaemon({ screen: () => TEXT_FIELD_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(TEXTBOX_QUERY, op);
+    await session.screen.perform(refs[0]!, { kind: 'press', key: 'Enter' }, op);
+    expect(daemon.calls.find((call) => call.command === 'type')?.positionals[0]).toBe('\r');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('rejects an inexpressible key on the locator path before touching the device', async () => {
+    const daemon = createFakeDaemon({ screen: () => TEXT_FIELD_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(TEXTBOX_QUERY, op);
+    await expect(
+      session.screen.perform(refs[0]!, { kind: 'press', key: 'F13' }, op),
+    ).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(daemon.commands()).not.toContain('focus');
     expect(daemon.commands()).not.toContain('type');
     await session.close(cleanup);
     await dispose();

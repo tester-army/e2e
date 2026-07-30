@@ -318,7 +318,9 @@ equivalent because a mobile backend does not expose animation frames.
   successful no-op.
 - `deepLink(url)` opens `url` on the device. An `http` or `https` URL MUST pass
   the same origin policy as web navigation. A custom-scheme URL is allowed
-  without origin checking because it cannot leave the device.
+  without origin checking because it cannot leave the device. Every URL MUST
+  still be absolute and MUST NOT use `file:`, `data:`, or `javascript:`, which
+  are denied on every platform.
 - `screenshot()` returns an artifact-root-relative POSIX path, subject to the
   redaction rule below.
 
