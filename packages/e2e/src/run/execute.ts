@@ -140,6 +140,11 @@ export class TargetExecutor implements SerialHost {
     // about where it happens to be running. Session state keeps the strict
     // identity above: cookies from one origin must never be restored onto
     // another.
+    //
+    // On a mobile target the same rule drops the target's `app`, so repointing
+    // one target name at another build or bundle identifier reuses its entries.
+    // The target id still separates targets, so this only bites a target that
+    // changes what it runs (spec 16-mobile.md "Locate cache").
     this.cacheTarget = {
       ...this.sessionIdentity,
       appIdentity: canonicalDigest({ environment: options.config.app.environment }),

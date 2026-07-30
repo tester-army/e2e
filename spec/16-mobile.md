@@ -370,6 +370,38 @@ visible secure node would appear unmasked.
 Attributes are allowlisted. A mobile driver MUST omit authorization data,
 credential values, and any attribute carrying the contents of a secure field.
 
+## Locate cache
+
+`cache-1` applies unchanged, but two of its inputs behave differently here and
+both are load-bearing.
+
+A mobile session exposes no URL, so it contributes no route (10-determinism.md)
+and the starting route fingerprint reduces to the viewport alone. The viewport
+is therefore the only part of the key that describes *where* the session is, and
+on a device it does not vary between screens. A cached locate is separated from
+another by the test, the instruction, its parameters, and its occurrence index —
+never by the screen. That is safe for the reason any route collision is safe: an
+entry is re-resolved and its role and name re-verified against the live node
+before the action runs, so the worst case is a miss. It does mean a conditional
+screen, which mobile has more of than the web, shifts occurrence indexes and
+costs hits.
+
+Because the viewport carries that weight, a driver MUST report a stable viewport
+for the life of a session: the value it reports for one revision is the value it
+reports for every later revision. `observation.viewport` is in point space, the
+space `rect` coordinates and dispatched actions use, so its scale is `1`. Device
+pixel density describes the captured image, not the geometry, and is reported on
+`pixels.scale`. A driver that adopts a measured density into the viewport when
+it first captures pixels re-keys every later call of that session, and only on
+the runs that captured pixels, which fills the store with entries no run can
+read.
+
+App identity for a cache key is the declared environment alone
+(10-determinism.md), so it does not include `MobileTarget.app`. Repointing one
+target name at a different build or bundle identifier therefore does not
+invalidate its entries. Give genuinely different applications different target
+names.
+
 ## State
 
 `mobile-0.1` does not define application state capture. A `mobile-0.1` driver

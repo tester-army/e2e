@@ -8,9 +8,9 @@
 import type { JSONSchema7 } from 'ai';
 import type { CacheCallSignature, CacheStore, CacheTargetIdentity } from '../cache/index.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
-import { DriverError, type DriverSession, type Observation } from '../driver/index.ts';
+import type { DriverSession, Observation } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { E2EError, classifyError } from '../internal/errors.ts';
+import { asDriverError, E2EError, classifyError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { agentTrace, observationTrace } from '../internal/trace.ts';
@@ -29,7 +29,7 @@ import {
   type StepRecorder,
   type VisionDegradation,
 } from '../run/steps.ts';
-import type { AgentErrorCode, VisionMode } from '../types.ts';
+import type { AgentErrorCode, Platform, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
 import { serializeLedger, type LedgerContext } from './ledger.ts';
 import {
@@ -41,6 +41,7 @@ import {
 } from './model/adapter.ts';
 import type { ModelRouter } from './model/router.ts';
 import { prepareObservation, type AgentObservation } from './observation.ts';
+import { observedTestIdAttribute } from './queries.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
 
@@ -76,6 +77,8 @@ export interface AgentContext {
   /** Chooses the model for a call; a vision call may use a pinned one. */
   readonly models: ModelRouter;
   readonly config: ResolvedConfig;
+  /** Target platform, which decides where an observed node carries its test id. */
+  readonly platform: Platform;
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
   /** Trusted project context: config.agent.context then test/group agentContext. */
@@ -396,7 +399,10 @@ export class Invocation {
         return prepareObservation(raw, {
           secrets: this.runtime.secretValues,
           maxBytes: this.observationByteBudget(),
-          testIdAttribute: this.runtime.config.testIdAttribute,
+          testIdAttribute: observedTestIdAttribute(
+            this.runtime.platform,
+            this.runtime.config.testIdAttribute,
+          ),
         });
       },
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
@@ -435,11 +441,13 @@ export class Invocation {
         return await this.session.observe(this.operation(), { pixels });
       } catch (cause) {
         this.checkDeadline(cause);
-        if (!(cause instanceof DriverError && cause.retryable)) {
+        const driverError = asDriverError(cause);
+        if (driverError?.retryable !== true) {
           throw cause;
         }
         agentTrace(
-          () => `${this.options.api} observation attempt ${attempt} raced the page: ${cause.code}`,
+          () =>
+            `${this.options.api} observation attempt ${attempt} raced the page: ${driverError.code}`,
         );
         await sleep(POLL_INTERVAL_MS, this.runtime.signal);
       }

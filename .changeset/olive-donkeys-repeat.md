@@ -41,3 +41,10 @@ In `e2e` itself:
   URL. A config with only mobile targets no longer requires `app.url`.
 - `e2e/internal` additionally shares `sleep`, `causeMessage`, and
   `sanitizeFilename` with first-party driver packages.
+- The agent reads a mobile node's test id from the platform accessibility
+  identifier. `screen.testIdAttribute` names a DOM attribute and is web-only, so
+  reading it on every platform meant no mobile `testId` query was ever derived
+  and the model never saw one.
+- The `cache-1` locate cache works on mobile targets. A mobile session exposes
+  no URL, so the screen fingerprint rests entirely on the viewport, which a
+  driver must now keep stable for the life of a session.

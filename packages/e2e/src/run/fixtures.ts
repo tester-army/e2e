@@ -147,6 +147,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         steps: environment.steps,
         models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
+        platform: environment.target.platform,
         priorSteps: environment.priorSteps,
         agentContext: joinAgentContext(
           environment.config.agent.context,

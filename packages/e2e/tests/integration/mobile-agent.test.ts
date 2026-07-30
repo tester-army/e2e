@@ -134,6 +134,11 @@ test('observes once', async ({ app, agent }) => {
       expect(call.observation).toContain('Continue');
       expect(call.observation).toContain('textbox');
       expect(call.observation).not.toContain('XCUIElementType');
+      // The platform accessibility identifier reaches the model as a test id.
+      // `screen.testIdAttribute` names a DOM attribute and is web-only
+      // (spec 16-mobile.md), so a mobile driver fills the neutral key instead
+      // and the runner must read that one on a mobile target.
+      expect(call.observation).toContain('testid="email"');
       // One revision per observation, and every line is bound to it.
       expect(call.revision).not.toBe('');
       project.cleanup();

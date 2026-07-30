@@ -40,6 +40,7 @@ import {
   type LocatedPoint,
   type PointPolicy,
 } from './locate.ts';
+import { observedTestIdAttribute } from './queries.ts';
 import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
@@ -62,7 +63,7 @@ const EXTRACT_MODEL_CALLS = 2;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgent(runtime: AgentContext): Agent {
-  const testIdAttribute = runtime.config.testIdAttribute;
+  const testIdAttribute = observedTestIdAttribute(runtime.platform, runtime.config.testIdAttribute);
   /**
    * Default budget for polling, judgment, and extraction steps: the action
    * timeout expresses the suite's model-latency headroom in one place, with a

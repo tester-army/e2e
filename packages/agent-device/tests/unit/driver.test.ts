@@ -542,7 +542,32 @@ describe('observe', () => {
     expect(observation.pixels?.width).toBe(750);
     // Image pixels per point, the space rect coordinates live in.
     expect(observation.pixels?.scale).toBe(2);
-    expect(observation.viewport).toEqual({ width: 375, height: 667, scale: 2 });
+    // The viewport stays in point space. Density describes the image, not the
+    // geometry actions dispatch in, so it is reported on `pixels` alone.
+    expect(observation.viewport).toEqual({ width: 10, height: 10, scale: 1 });
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('never revises the viewport once resolved, so cache keys stay stable', async () => {
+    const daemon = createFakeDaemon({ screen: () => TEXT_FIELD_SCREEN });
+    const { session, dispose } = await launch(daemon);
+
+    // A tree-only observation resolves the viewport from snapshot geometry.
+    const first = await session.observe(context().operation);
+    expect(first.viewport.width).toBeGreaterThan(0);
+
+    // Escalating to pixels measures the device, whose logical size and density
+    // both differ from the snapshot's. Adopting either would re-key every later
+    // step of a run that escalated, and only on the runs that escalated.
+    const escalated = await session.observe(context().operation, { pixels: true });
+    expect(escalated.pixels?.scale).toBe(2);
+    expect(escalated.viewport).toEqual(first.viewport);
+
+    // And it stays put for every observation after the escalation.
+    const after = await session.observe(context().operation);
+    expect(after.viewport).toEqual(first.viewport);
+
     await session.close(cleanup);
     await dispose();
   });

@@ -25,7 +25,7 @@ import {
   testIdQuery,
   textQuery,
 } from '../locator/expression.ts';
-import type { Role } from '../types.ts';
+import type { Platform, Role } from '../types.ts';
 
 /**
  * Scopes one derived query to the observed node's enclosing frame chain, so a
@@ -72,6 +72,21 @@ function prefixPattern(value: string): RegExp {
     .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     .replace(/ /g, '\\s*');
   return new RegExp(escaped, 'i');
+}
+
+/**
+ * Attribute an observed node carries its test id under.
+ *
+ * `screen.testIdAttribute` names a DOM attribute, so it is meaningful on web
+ * only. A driver for any other platform reports the platform's own identifier —
+ * the iOS accessibility identifier, an Android resource id or Compose test tag —
+ * under the neutral `testId` key, and MUST ignore the setting
+ * (spec 16-mobile.md). Reading the configured name everywhere silently dropped
+ * every mobile test id: no `testId` query was ever derived, and the model never
+ * saw one.
+ */
+export function observedTestIdAttribute(platform: Platform, configured: string): string {
+  return platform === 'web' ? configured : 'testId';
 }
 
 /**

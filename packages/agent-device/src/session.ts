@@ -254,8 +254,9 @@ export class MobileSession implements DriverSession {
     this.snapshot = projected;
     if (this.viewport === null) {
       const size = projected.viewport;
-      // Scale stays 1 until a pixel capture measures the real density: rect
-      // coordinates are points, and points are the space actions dispatch in.
+      // Snapshot geometry is in points, which is the space actions dispatch in,
+      // so the scale that goes with it is 1. Whichever capture resolves the
+      // viewport first fixes it for the session; see `capturePixels`.
       if (size !== undefined) this.viewport = { ...size, scale: 1 };
     }
     return projected;
@@ -571,9 +572,9 @@ export class MobileSession implements DriverSession {
   }
 
   /**
-   * Captures masked-free pixels for the current revision. It also refreshes the
-   * viewport, because the screenshot is the only place the backend reports the
-   * device's true logical size and pixel density.
+   * Captures masked-free pixels for the current revision, and resolves the
+   * viewport when nothing has yet: the screenshot is the only place the backend
+   * reports the device's true logical size and pixel density.
    */
   private async capturePixels(operation: OperationContext): Promise<Observation['pixels']> {
     const { absolute } = containedArtifact(
@@ -597,11 +598,20 @@ export class MobileSession implements DriverSession {
     if (width === undefined || height === undefined) return undefined;
     const logicalWidth = result.logicalWidth ?? width;
     const logicalHeight = result.logicalHeight ?? height;
-    this.viewport = {
-      width: logicalWidth,
-      height: logicalHeight,
-      scale: result.pixelDensity ?? width / logicalWidth,
-    };
+    // Resolve the viewport, never revise it, and keep it in point space.
+    //
+    // The observation viewport is identity-bearing: the locate cache
+    // fingerprints `WxH@scale`, so a viewport that moves mid-session re-keys
+    // every later step. Adopting the screenshot's pixel density here did
+    // exactly that, and only on the runs that happened to capture pixels, so a
+    // vision escalation churned the cache instead of filling it.
+    //
+    // Scale 1 is not a placeholder for a density that has not been measured. A
+    // mobile node's geometry is in points, and points are the space actions
+    // dispatch in, so the viewport describing them is 1:1 by construction.
+    // Device density belongs to the image, and is reported on `pixels.scale`
+    // below, which is where the vision tier reads it.
+    this.viewport ??= { width: logicalWidth, height: logicalHeight, scale: 1 };
     const data = await readFile(absolute);
     return {
       data: new Uint8Array(data),
