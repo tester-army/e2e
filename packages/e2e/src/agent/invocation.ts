@@ -8,11 +8,11 @@
 import type { JSONSchema7 } from 'ai';
 import type { CacheCallSignature, CacheStore, CacheTargetIdentity } from '../cache/index.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
-import type { DriverSession } from '../driver/index.ts';
+import { DriverError, type DriverSession, type Observation } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError, classifyError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import { Deadline } from '../internal/time.ts';
+import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { agentTrace, observationTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
@@ -223,6 +223,11 @@ export class Invocation {
     return this.runtime.cache;
   }
 
+  /** Configured app base, which cache route identity is expressed against. */
+  get appBase(): ResolvedConfig['app']['base'] {
+    return this.runtime.config.app.base;
+  }
+
   /**
    * Why this call cannot use the cache, or undefined when it can. `cache: false`
    * opts one call out; it can never upgrade the resolved run mode, which the
@@ -294,6 +299,11 @@ export class Invocation {
    */
   get treeWithheld(): boolean {
     return this.options.vision === 'only';
+  }
+
+  /** Whether this invocation asks for pixel evidence at all. */
+  get pixelsRequired(): boolean {
+    return this.pixelTier;
   }
 
   /**
@@ -380,7 +390,7 @@ export class Invocation {
     const observation = await this.instrument(
       { kind: 'observation', phase: 'agent.observe' },
       async () => {
-        const raw = await this.session.observe(this.operation(), { pixels });
+        const raw = await this.captureObservation(pixels);
         return prepareObservation(raw, {
           secrets: this.runtime.secretValues,
           maxBytes: this.observationByteBudget(),
@@ -403,6 +413,29 @@ export class Invocation {
       observation.text,
     );
     return observation;
+  }
+
+  /**
+   * Captures one raw observation, re-capturing while the driver reports a
+   * retryable failure and the invocation deadline remains. A page that
+   * navigates as it is read (a redirect, a hydration swap, a form submit still
+   * committing) makes the capture lose its document; that is a race, not a
+   * broken app, so it is re-read rather than surfaced as a failed call.
+   */
+  private async captureObservation(pixels: boolean): Promise<Observation> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.session.observe(this.operation(), { pixels });
+      } catch (cause) {
+        if (!(cause instanceof DriverError && cause.retryable) || this.deadline.expired()) {
+          throw cause;
+        }
+        agentTrace(
+          () => `${this.options.api} observation attempt ${attempt} raced the page: ${cause.code}`,
+        );
+        await sleep(POLL_INTERVAL_MS, this.runtime.signal);
+      }
+    }
   }
 
   /**

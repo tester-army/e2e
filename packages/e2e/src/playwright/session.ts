@@ -42,6 +42,7 @@ import {
   invalidState,
   isPwTimeout,
   message,
+  navigationStaleOr,
   performElementSwipe,
   performViewportSwipe,
   sanitizeFilename,
@@ -190,13 +191,22 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
     }
   }
 
-  /** Checks cancellation, runs fn, and translates raw errors at the SPI boundary. */
-  async guard<T>(operation: OperationContext, label: string, fn: () => Promise<T>): Promise<T> {
+  /**
+   * Checks cancellation, runs fn, and translates raw errors at the SPI
+   * boundary. `translate` overrides the default translation for operations
+   * with a documented retryable failure mode.
+   */
+  async guard<T>(
+    operation: OperationContext,
+    label: string,
+    fn: () => Promise<T>,
+    translate: (cause: unknown, label: string) => DriverError = translatePwError,
+  ): Promise<T> {
     this.checkOperation(operation);
     try {
       return await fn();
     } catch (cause) {
-      throw translatePwError(cause, label);
+      throw translate(cause, label);
     }
   }
 
@@ -602,62 +612,76 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
    * page as closely in time as two backend calls can.
    */
   async observe(operation: OperationContext, options?: ObserveOptions): Promise<Observation> {
-    return this.guard(operation, 'observe', async () => {
-      const page = this.requirePage();
-      // A preceding action may still be committing a navigation. Settling is
-      // bounded and best-effort: a slow document never fails the observation.
-      await page
-        .waitForLoadState('domcontentloaded', {
-          timeout: Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS),
-        })
-        .catch(() => undefined);
-      const revision = this.nextRevision();
-      const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-      const generation = new Map<string, StoredRef>();
-      // The screenshot masks by sweeping the page's frames, so it needs nothing
-      // from the tree walk and runs with it instead of after it. Pixels never
-      // fail an observation: an image the page could not produce in time gives
-      // a tree-only observation, exactly like a driver that has no pixels.
-      const pixelCapture =
-        options?.pixels === true
-          ? capturePixels(page, operation, viewport).catch(() => undefined)
-          : Promise.resolve(undefined);
-      let captured: Awaited<ReturnType<PlaywrightSession['captureDocument']>>;
-      let capturedPixels: PixelCapture | undefined;
-      try {
-        // Both halves are awaited before the generation swap, so a failed
-        // observation leaves the session on its previous generation instead of
-        // publishing handles for a revision no caller ever received.
-        [captured, capturedPixels] = await Promise.all([
-          this.captureDocument(
-            page.locator(':root'),
-            revision,
-            [],
-            MAX_OBSERVED_NODES,
-            generation,
-            Math.max(1, Math.min(operation.timeoutMs, DOCUMENT_CAPTURE_TIMEOUT_MS)),
-          ),
-          pixelCapture,
-        ]);
-      } catch (cause) {
-        PlaywrightSession.disposeGeneration(generation);
-        throw cause;
-      }
-      PlaywrightSession.disposeGeneration(this.observationRefs);
-      this.observationRefs = generation;
-      return {
-        revision,
-        capturedAt: new Date().toISOString(),
-        ...(capturedPixels === undefined ? {} : { pixels: capturedPixels.pixels }),
-        tree: captured.tree,
-        viewport: { width: viewport.width, height: viewport.height, scale: 1 },
-        redaction: {
-          secureNodeCount: captured.secureNodeCount,
-          maskedRegionCount: capturedPixels?.maskedRegionCount ?? 0,
-          complete: true,
-        },
-      };
-    });
+    // A capture that lost its document to a navigation reads as a stale node:
+    // nothing was dispatched, so the runner re-observes the new document
+    // within the same deadline instead of failing the call.
+    return this.guard(
+      operation,
+      'observe',
+      () => this.captureObservation(operation, options),
+      navigationStaleOr,
+    );
+  }
+
+  /** One observation capture attempt, unclassified. */
+  private async captureObservation(
+    operation: OperationContext,
+    options: ObserveOptions | undefined,
+  ): Promise<Observation> {
+    const page = this.requirePage();
+    // A preceding action may still be committing a navigation. Settling is
+    // bounded and best-effort: a slow document never fails the observation.
+    await page
+      .waitForLoadState('domcontentloaded', {
+        timeout: Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS),
+      })
+      .catch(() => undefined);
+    const revision = this.nextRevision();
+    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+    const generation = new Map<string, StoredRef>();
+    // The screenshot masks by sweeping the page's frames, so it needs nothing
+    // from the tree walk and runs with it instead of after it. Pixels never
+    // fail an observation: an image the page could not produce in time gives
+    // a tree-only observation, exactly like a driver that has no pixels.
+    const pixelCapture =
+      options?.pixels === true
+        ? capturePixels(page, operation, viewport).catch(() => undefined)
+        : Promise.resolve(undefined);
+    let captured: Awaited<ReturnType<PlaywrightSession['captureDocument']>>;
+    let capturedPixels: PixelCapture | undefined;
+    try {
+      // Both halves are awaited before the generation swap, so a failed
+      // observation leaves the session on its previous generation instead of
+      // publishing handles for a revision no caller ever received.
+      [captured, capturedPixels] = await Promise.all([
+        this.captureDocument(
+          page.locator(':root'),
+          revision,
+          [],
+          MAX_OBSERVED_NODES,
+          generation,
+          Math.max(1, Math.min(operation.timeoutMs, DOCUMENT_CAPTURE_TIMEOUT_MS)),
+        ),
+        pixelCapture,
+      ]);
+    } catch (cause) {
+      PlaywrightSession.disposeGeneration(generation);
+      throw cause;
+    }
+    PlaywrightSession.disposeGeneration(this.observationRefs);
+    this.observationRefs = generation;
+    return {
+      revision,
+      capturedAt: new Date().toISOString(),
+      ...(capturedPixels === undefined ? {} : { pixels: capturedPixels.pixels }),
+      tree: captured.tree,
+      viewport: { width: viewport.width, height: viewport.height, scale: 1 },
+      redaction: {
+        secureNodeCount: captured.secureNodeCount,
+        maskedRegionCount: capturedPixels?.maskedRegionCount ?? 0,
+        complete: true,
+      },
+    };
   }
 
   /**
@@ -805,8 +829,10 @@ async function collectElementHandles(
     const property = properties.get(String(index));
     const element = (property?.asElement() ?? null) as ElementHandle<Element> | null;
     if (element === null) {
-      throw new DriverError('DRIVER_FAILURE', `observation node ${index} lost its element`, {
-        retryable: false,
+      // The in-page array outlived its document (a navigation committed while
+      // the handles were being read back). The capture is repeatable.
+      throw new DriverError('NODE_STALE', `observation node ${index} lost its element`, {
+        retryable: true,
       });
     }
     elements.push(element);
@@ -829,7 +855,9 @@ function assembleTree(
   frameChildren: ReadonlyMap<number, SemanticNode> = new Map(),
 ): SemanticNode {
   if (nodes.length === 0 || refs.length === 0) {
-    throw new DriverError('DRIVER_FAILURE', 'observation produced no nodes', { retryable: false });
+    // An empty document is what a navigation in flight looks like; a real page
+    // always has nodes, so the capture is worth repeating.
+    throw new DriverError('NODE_STALE', 'observation produced no nodes', { retryable: true });
   }
   const childLists: SemanticNode[][] = nodes.map(() => []);
   const built: SemanticNode[] = [];
@@ -868,6 +896,7 @@ function toSemanticNode(
     states,
     attributes: raw.attributes,
     rect: raw.rect,
+    ...(raw.selector === '' ? {} : { selector: raw.selector }),
     ...(framePath.length > 0 ? { framePath } : {}),
     ...(children.length > 0 ? { children } : {}),
   };

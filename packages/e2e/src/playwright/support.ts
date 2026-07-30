@@ -103,10 +103,41 @@ export function translatePwError(cause: unknown, operation: string): DriverError
   });
 }
 
+const STALE_PATTERN = /detached|not attached|resolved to hidden|no element|not found/i;
+
+/**
+ * A read that raced a navigation: the document it was reading was replaced
+ * mid-flight. Nothing was dispatched, so the read is repeatable against the
+ * new document — the same condition as a stale node, reported as one.
+ */
+const NAVIGATION_RACE_PATTERN =
+  /execution context was destroyed|because of a navigation|navigating and changing the content|frame was detached|frame got detached|node is detached from document/i;
+
+/** Whether a Playwright failure describes a read that lost its document to a navigation. */
+export function isNavigationRace(cause: unknown): boolean {
+  return NAVIGATION_RACE_PATTERN.test(message(cause));
+}
+
+/**
+ * Like translatePwError, but a read that lost its document to a navigation
+ * becomes retryable NODE_STALE so the runner re-reads the new document instead
+ * of failing the call. Timeouts keep their meaning: an observation that cannot
+ * be captured in time is not a race.
+ */
+export function navigationStaleOr(cause: unknown, operation: string): DriverError {
+  if (!(cause instanceof DriverError) && isNavigationRace(cause)) {
+    return new DriverError('NODE_STALE', `${operation}: ${message(cause)}`, {
+      retryable: true,
+      cause,
+    });
+  }
+  return translatePwError(cause, operation);
+}
+
 /** Like translatePwError, but detachment/miss failures become retryable NODE_STALE. */
 export function staleOr(cause: unknown, operation: string): DriverError {
   const text = message(cause);
-  if (/detached|not attached|resolved to hidden|no element|not found/i.test(text) || isPwTimeout(cause)) {
+  if (STALE_PATTERN.test(text) || isNavigationRace(cause) || isPwTimeout(cause)) {
     return new DriverError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
   }
   return translatePwError(cause, operation);

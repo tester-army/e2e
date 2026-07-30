@@ -163,6 +163,11 @@ close in time to the tree as its backend allows, and it MUST report:
   which is the space actions dispatch in;
 - the number of regions it masked, in `redaction.maskedRegionCount`.
 
+A capture that loses its document to a navigation in flight has dispatched
+nothing and is repeatable: it is `NODE_STALE` and retryable, and the runner
+re-observes the new document while the operation deadline remains. A capture
+that ran out of budget is `OPERATION_TIMEOUT` and is not retried in place.
+
 A driver that cannot capture pixels omits them rather than failing the
 observation. A driver MAY implement point dispatch for the visual pointing tier;
 without it, a runner-validated point cannot be acted on.
