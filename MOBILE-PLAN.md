@@ -1,4 +1,4 @@
-# Mobile Driver Plan (`e2e/agent-device`)
+# Mobile Driver Plan (`@e2edev/agent-device`)
 
 **Status:** executing
 **Created:** 2026-07-29
@@ -6,7 +6,7 @@
 
 ## Goal
 
-Ship `e2e/agent-device`, a `driver-1` implementation backed by
+Ship `@e2edev/agent-device`, a `driver-1` implementation backed by
 [agent-device](https://oss.callstack.com/agent-device/docs/client-api)'s typed
 Node client, and lift the runner gates that currently reject mobile targets.
 
@@ -39,9 +39,7 @@ Settled scope calls (2026-07-29):
 - The `mobile-0.1` profile is frozen as part of this work, not deferred.
 - `packages/e2e` is unreleased, so breaking changes to `ResolvedTarget`,
   `DriverContext`, and config shape are in scope.
-- `agent-device` is a **peer** dependency, so web-only users pay nothing for it.
-  The driver is written to be extractable into its own package later, once the
-  core/driver split happens.
+- The driver ships as its own package, so web-only users pay nothing for it.
 - Simulators and emulators only. Physical devices are a later profile.
 - No Metro / React Native dev-server integration.
 - Snapshots are captured with `raw: true`.
@@ -81,7 +79,7 @@ Notable shape facts that drive the design:
 
 ## Approach
 
-Mirror the structure of `src/playwright/*` under `src/agent-device/*`: a thin
+Mirror the structure of `packages/playwright/src/*`: a thin
 `defineDriver` factory plus a session class, with the semantic translation split
 into focused modules.
 
@@ -115,26 +113,23 @@ Layer sketch:
 
 ## Key Decisions
 
-### 1. Packaging: subpath export, peer dependency
+### 1. Packaging: its own package, `@e2edev/agent-device`
 
-`e2e/agent-device`, alongside `e2e/playwright` — PLAN.md:120 names it exactly
-that, and `spec/09-drivers.md:9-11` reserves `e2e-driver-*` for third parties.
+The driver was first written as an `e2e/agent-device` subpath with `agent-device`
+as an optional peer, on the assumption that extraction would be a later refactor
+that also moved the Playwright driver. That refactor landed first, so the driver
+ships as `packages/agent-device`: `@e2edev/agent-device`, depending on `e2e` as a
+peer and owning `agent-device` outright. A web-only project installs neither, and
+`e2e` carries no mobile peer at all.
 
-`agent-device` is a **peer dependency** (with a matching `peerDependenciesMeta`
-optional flag), not a direct one. Web-only users must not download platform
-runner assets or inherit a Node >= 22.12 floor. The subpath is therefore
-import-time-safe only when the peer is installed, which is the normal peer
-contract and is exactly how the driver will behave once extracted.
+Every module under `packages/agent-device/src/*` imports only from `e2e/driver`,
+`e2e/internal`, and `agent-device` — never from runner internals.
 
-Every module under `src/agent-device/*` imports only from `e2e/driver`,
-`src/types.ts`, and `agent-device` — never from runner internals. That keeps the
-later extraction into a standalone package a file move plus a manifest, with no
-call-site changes.
-
-*Rejected for now:* creating `packages/e2e-driver-agent-device` immediately. The
-core/driver split is a separate refactor that should also move
-`e2e/playwright`; doing it as a side effect of the mobile work would couple two
-unrelated reviews.
+It is deliberately **not** in the well-known driver registry that resolves
+`driver: 'playwright'`. `MobileTarget.driver` is a required `DriverHandle` in the
+frozen `spec/api/e2e.d.ts`, so a mobile target imports `agentDevice()` rather
+than naming a string; adding a string id would contradict the spec rather than
+extend it.
 
 ### 2. Revision model: `refsGeneration` is the revision
 
@@ -310,9 +305,8 @@ Ordered; each is independently reviewable.
 
 ### Driver
 
-- [ ] Add the `agent-device` peer dependency and the `./agent-device` export,
-      with locally derived types for the client surface. Enforce the
-      internals-free import boundary so later extraction is a file move.
+- [ ] Stand up `packages/agent-device` with locally derived types for the client
+      surface, and enforce the internals-free import boundary.
 - [ ] Implement the factory, manifest, client/session bootstrap, and
       instance-retained device lease with idempotent `dispose`.
 - [ ] Implement snapshot projection: flat → nested tree, ref/revision binding,
@@ -352,8 +346,8 @@ Ordered; each is independently reviewable.
 - **Breaking changes allowed.** `packages/e2e` is unreleased, so
   `ResolvedTarget`, `DriverContext.app`, and the config schema change shape
   directly rather than growing compatibility layers.
-- **Peer dependency**, with extraction into a standalone driver package planned
-  as a separate refactor that also moves `e2e/playwright`.
+- **Its own package**, `@e2edev/agent-device`, which owns the `agent-device`
+  dependency; `e2e` carries no mobile peer.
 - **Simulators and emulators only.** Physical devices are a later profile; many
   primitives the profile depends on (`clear-app-state`, `push`, `settings`,
   Face ID, clipboard) are simulator-only.

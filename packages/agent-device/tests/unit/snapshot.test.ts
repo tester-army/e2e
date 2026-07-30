@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/driver/index.ts';
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from 'e2e/driver';
 import {
   clientRef,
   controlOf,
@@ -8,8 +8,8 @@ import {
   queryPlaceholder,
   toObservationTree,
   toSemanticNode,
-} from '../../src/agent-device/snapshot.ts';
-import { buildSnapshot, loginSnapshot, SCREEN } from '../helpers/mobile-snapshot.ts';
+} from '../../src/snapshot.ts';
+import { buildSnapshot, loginSnapshot, SCREEN } from '../helpers/snapshot.ts';
 
 describe('projectSnapshot', () => {
   it('rebuilds the tree from the flat parentIndex wire shape', () => {

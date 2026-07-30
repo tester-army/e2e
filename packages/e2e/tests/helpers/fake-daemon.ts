@@ -1,16 +1,17 @@
 /**
- * An in-memory agent-device daemon.
+ * Minimal in-memory agent-device daemon for runner-level mobile tests.
  *
- * It lets the real `e2e/agent-device` driver run against the real runner with
- * no simulator: the driver still builds every request and parses every
- * response, so projection, resolution, actionability, and lifecycle are
- * exercised for real. Only the device is fake.
+ * Mobile integration tests here assert on the runner's behaviour — target
+ * gating, fixtures, artifacts, and `report-1` provenance — through the real
+ * `@e2edev/agent-device` driver, so they need a device that answers, not a
+ * device that can be provoked. The driver's own suites own the exhaustive
+ * daemon (failure injection, ref-frame invalidation, session reclamation) and
+ * live beside the driver.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { AgentDeviceTransport } from '../../src/agent-device/client.ts';
-import { buildSnapshot, type NodeSpec } from './mobile-snapshot.ts';
+import type { AgentDeviceTransport } from '@e2edev/agent-device';
 
 /**
  * One recorded daemon call. The typed client serializes options into
@@ -23,24 +24,19 @@ export interface DaemonCall {
   readonly flags: Readonly<Record<string, unknown>>;
 }
 
+/** A node in the screen a test declares, nested the way a view hierarchy is. */
+export interface NodeSpec {
+  readonly type?: string;
+  readonly label?: string;
+  readonly value?: string;
+  readonly identifier?: string;
+  readonly rect?: { x: number; y: number; width: number; height: number };
+  readonly children?: readonly NodeSpec[];
+}
+
 export interface FakeDaemonOptions {
   /** Screen returned by `snapshot`, re-read on every capture. */
   screen?: () => readonly NodeSpec[];
-  /** Devices returned by `devices`. */
-  devices?: readonly {
-    id: string;
-    name: string;
-    kind: 'simulator' | 'emulator' | 'device';
-    booted?: boolean;
-  }[];
-  /** Fails the named command once, then succeeds. */
-  failOnce?: Readonly<Record<string, { code: string; message: string }>>;
-  /** Fails the named command every time. */
-  failAlways?: Readonly<Record<string, { code: string; message: string }>>;
-  /** Screenshot pixel geometry reported back to the driver. */
-  screenshot?: { width: number; height: number; logicalWidth: number; logicalHeight: number };
-  /** Sessions the daemon reports as open, for reclamation tests. */
-  sessions?: readonly { name: string }[];
 }
 
 export interface FakeDaemon {
@@ -48,18 +44,12 @@ export interface FakeDaemon {
   readonly calls: readonly DaemonCall[];
   /** Commands seen, in order, for concise assertions. */
   commands(): readonly string[];
-  /** Replaces the screen the next snapshot returns. */
-  setScreen(screen: readonly NodeSpec[]): void;
-  /** Bumps the ref-frame epoch, which makes outstanding refs stale. */
-  bumpRefsGeneration(): void;
 }
 
-const DEFAULT_SCREENSHOT = {
-  width: 750,
-  height: 1334,
-  logicalWidth: 375,
-  logicalHeight: 667,
-} as const;
+/** iPhone-sized screen in points, matching a real iOS snapshot root rect. */
+const SCREEN_RECT = { x: 0, y: 0, width: 402, height: 874 } as const;
+
+const SCREENSHOT = { width: 750, height: 1334, logicalWidth: 375, logicalHeight: 667 } as const;
 
 /** Commands that change the UI, and therefore invalidate outstanding refs. */
 const MUTATORS: ReadonlySet<string> = new Set([
@@ -83,18 +73,53 @@ const PNG_BYTES = Buffer.from(
   'hex',
 );
 
+/**
+ * Flattens a nested screen into the backend's flat `index`/`parentIndex` wire
+ * shape, so the driver performs the same projection it performs on a device.
+ */
+function buildSnapshot(
+  roots: readonly NodeSpec[],
+  refsGeneration: number,
+): Record<string, unknown> {
+  const nodes: Record<string, unknown>[] = [];
+  let next = 1;
+
+  const walk = (
+    spec: NodeSpec,
+    parentIndex: number | undefined,
+    depth: number,
+    parentRect: { x: number; y: number; width: number; height: number },
+  ): void => {
+    const index = next++;
+    const rect = spec.rect ?? parentRect;
+    nodes.push({
+      index,
+      ref: `@e${index}`,
+      depth,
+      rect,
+      ...(parentIndex !== undefined ? { parentIndex } : {}),
+      ...(spec.type !== undefined ? { type: spec.type } : {}),
+      ...(spec.label !== undefined ? { label: spec.label } : {}),
+      ...(spec.value !== undefined ? { value: spec.value } : {}),
+      ...(spec.identifier !== undefined ? { identifier: spec.identifier } : {}),
+    });
+    for (const child of spec.children ?? []) walk(child, index, depth + 1, rect);
+  };
+
+  for (const root of roots) walk(root, undefined, 0, { ...SCREEN_RECT });
+  return { nodes, truncated: false, identifiers: {}, refsGeneration };
+}
+
 export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
   const calls: DaemonCall[] = [];
-  const failedOnce = new Set<string>();
-  let screen: readonly NodeSpec[] = options.screen?.() ?? [
-    { type: 'XCUIElementTypeButton', label: 'Continue', rect: { x: 0, y: 0, width: 100, height: 40 } },
+  const fallbackScreen: readonly NodeSpec[] = [
+    {
+      type: 'XCUIElementTypeButton',
+      label: 'Continue',
+      rect: { x: 0, y: 0, width: 100, height: 40 },
+    },
   ];
   let refsGeneration = 1;
-  const geometry = options.screenshot ?? DEFAULT_SCREENSHOT;
-
-  const devices = options.devices ?? [
-    { id: 'SIM-1', name: 'iPhone 16', kind: 'simulator' as const, booted: true },
-  ];
 
   const transport: AgentDeviceTransport = (request) => {
     const command = request.command;
@@ -102,34 +127,27 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
     const flags = (request.flags ?? {}) as Record<string, unknown>;
     calls.push({ command, positionals, flags });
 
-    const always = options.failAlways?.[command];
-    if (always !== undefined) {
-      return Promise.resolve({ ok: false as const, error: { ...always } });
-    }
-    const once = options.failOnce?.[command];
-    if (once !== undefined && !failedOnce.has(command)) {
-      failedOnce.add(command);
-      return Promise.resolve({ ok: false as const, error: { ...once } });
-    }
-
     switch (command) {
       case 'devices':
         return ok({
-          devices: devices.map((device) => ({
-            platform: 'ios',
-            target: 'mobile',
-            kind: device.kind,
-            id: device.id,
-            name: device.name,
-            booted: device.booted ?? false,
-            identifiers: { udid: device.id },
-            ios: { udid: device.id },
-          })),
+          devices: [
+            {
+              platform: 'ios',
+              target: 'mobile',
+              kind: 'simulator',
+              id: 'SIM-1',
+              name: 'iPhone 16',
+              booted: true,
+              identifiers: { udid: 'SIM-1' },
+              ios: { udid: 'SIM-1' },
+            },
+          ],
         });
-      case 'snapshot': {
-        const snapshot = buildSnapshot(options.screen?.() ?? screen, { refsGeneration });
-        return ok({ ...snapshot, appName: 'Example' });
-      }
+      case 'snapshot':
+        return ok({
+          ...buildSnapshot(options.screen?.() ?? fallbackScreen, refsGeneration),
+          appName: 'Example',
+        });
       case 'screenshot': {
         const target = positionals[0];
         if (target !== undefined) {
@@ -138,38 +156,16 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
         }
         return ok({
           path: target,
-          width: geometry.width,
-          height: geometry.height,
-          logicalWidth: geometry.logicalWidth,
-          logicalHeight: geometry.logicalHeight,
-          pixelDensity: geometry.width / geometry.logicalWidth,
+          ...SCREENSHOT,
+          pixelDensity: SCREENSHOT.width / SCREENSHOT.logicalWidth,
         });
       }
       case 'open':
         return ok({ session: 'fake', appName: 'Example', appBundleId: 'com.example.app' });
-      case 'install':
-        return ok({
-          app: 'com.example.app',
-          bundleId: 'com.example.app',
-          appPath: positionals[0] ?? '',
-          platform: 'ios',
-          identifiers: { appBundleId: 'com.example.app' },
-        });
       case 'close':
         return ok({ session: 'fake' });
       case 'session_list':
-        // The client validates each entry, so the fake returns the wire shape a
-        // real daemon sends: a flat session with `device` as the device name.
-        return ok({
-          sessions: (options.sessions ?? []).map((session) => ({
-            name: session.name,
-            createdAt: 0,
-            platform: 'ios',
-            kind: 'simulator',
-            id: 'SIM-1',
-            device: 'iPhone 16',
-          })),
-        });
+        return ok({ sessions: [] });
       default:
         // Every mutating command invalidates outstanding refs, exactly as a
         // real UI change would.
@@ -178,18 +174,7 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
     }
   };
 
-  return {
-    transport,
-    calls,
-    commands: () => calls.map((call) => call.command),
-    setScreen: (next) => {
-      screen = next;
-      refsGeneration += 1;
-    },
-    bumpRefsGeneration: () => {
-      refsGeneration += 1;
-    },
-  };
+  return { transport, calls, commands: () => calls.map((call) => call.command) };
 }
 
 function ok(data: Record<string, unknown>) {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { LocatorExpression, TextPattern } from '../../src/driver/index.ts';
+import type { LocatorExpression, TextPattern } from 'e2e/driver';
 import {
   matchesPattern,
   normalizeText,
   resolveExpression,
-} from '../../src/agent-device/locators.ts';
-import { projectSnapshot } from '../../src/agent-device/snapshot.ts';
-import { buildSnapshot, loginSnapshot } from '../helpers/mobile-snapshot.ts';
+} from '../../src/locators.ts';
+import { projectSnapshot } from '../../src/snapshot.ts';
+import { buildSnapshot, loginSnapshot } from '../helpers/snapshot.ts';
 
 const exact = (value: string): TextPattern => ({ kind: 'string', value, exact: true });
 const loose = (value: string): TextPattern => ({ kind: 'string', value, exact: false });

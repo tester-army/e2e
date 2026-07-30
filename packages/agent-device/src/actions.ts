@@ -13,7 +13,7 @@ import {
   type Momentum,
   type OperationContext,
   type ScrollDirection,
-} from '../driver/index.ts';
+} from 'e2e/driver';
 import type { AgentDeviceClient } from './client.ts';
 import { keyToText } from './keys.ts';
 import { clientRef, controlOf, nearestScrollContainer, type ProjectedNode } from './snapshot.ts';

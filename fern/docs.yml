@@ -40,6 +40,9 @@ navigation:
           - page: Web capabilities
             path: docs/pages/web.mdx
             slug: web
+          - page: Mobile
+            path: docs/pages/mobile.mdx
+            slug: mobile
           - page: Running tests
             path: docs/pages/running-tests.mdx
             slug: running-tests

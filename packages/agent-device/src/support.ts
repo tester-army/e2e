@@ -2,8 +2,8 @@
 
 import path from 'node:path';
 import { isAgentDeviceError } from 'agent-device';
-import { causeMessage as message, sanitizeFilename } from '../internal/driver-text.ts';
-import { DriverError, type Momentum, type ScrollDirection } from '../driver/index.ts';
+import { causeMessage as message, sanitizeFilename } from 'e2e/internal';
+import { DriverError, type Momentum, type ScrollDirection } from 'e2e/driver';
 import type { NodeRect } from './client.ts';
 
 /**

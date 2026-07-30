@@ -1,5 +1,5 @@
 /**
- * `e2e/agent-device` - the reference `mobile-0.1` driver.
+ * `@e2edev/agent-device` - the reference `mobile-0.1` driver.
  *
  * It maps e2e-owned mobile semantics onto the agent-device daemon, which owns
  * simulator and emulator mechanics. The driver keeps semantics: it resolves
@@ -7,15 +7,15 @@
  * selector language, so cardinality, text matching, and polling stay exactly
  * as the specification defines them.
  *
- * `agent-device` is a peer dependency, so importing this module requires it to
- * be installed alongside `e2e`.
+ * The package owns its `agent-device` dependency, so installing it is all a
+ * mobile project needs; `e2e` itself stays free of a mobile toolchain.
  */
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createAgentDeviceClient } from 'agent-device';
-import { defineDriver, type Driver, type DriverContext, type DriverSession } from '../driver/index.ts';
-import { packageVersion } from '../internal/package-version.ts';
+import { defineDriver, type Driver, type DriverContext, type DriverSession } from 'e2e/driver';
+import { packageVersion } from 'e2e/internal';
 import type { MobilePlatform } from './roles.ts';
 import type {
   AgentDeviceClient,
@@ -25,6 +25,10 @@ import type {
 } from './client.ts';
 import { MobileSession } from './session.ts';
 import { invalidState, translateAgentDeviceError, withDeadline } from './support.ts';
+
+// The option types are part of the surface: a caller that supplies a transport
+// or extra client configuration must be able to name what it is passing.
+export type { AgentDeviceClientConfig, AgentDeviceTransport } from './client.ts';
 
 /** Build-artifact extensions `MobileTarget.app` may point at. */
 const ARTIFACT_EXTENSIONS: ReadonlySet<string> = new Set(['.app', '.ipa', '.apk', '.aab']);
@@ -348,7 +352,7 @@ export function agentDevice(options: AgentDeviceOptions = {}): Driver {
     // The driver artifact is this package, and `id` already identifies the
     // backend. agent-device does not export its own package.json, so reading a
     // backend version here would silently and permanently report "unknown".
-    version: packageVersion(import.meta.url, '../../package.json', 'unknown'),
+    version: packageVersion(import.meta.url, '../package.json', 'unknown'),
     platforms: ['ios', 'android'],
     spiVersion: 1,
     capabilities: {

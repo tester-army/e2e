@@ -174,7 +174,7 @@ export interface SuiteFixtures {
 | `screen` | [`Screen`](/reference/screen) | Always available. |
 | `platform` | `Platform` | `'web' \| 'ios' \| 'android' \| (string & {})`. |
 | `web` | [`Web`](/reference/app-web) | Capability fixture. Declare `requires: ['web']` in portable suites. |
-| `device` | `Device` | Native device control. Not implemented yet: rejects with `UNSUPPORTED_CAPABILITY`. |
+| `device` | `Device` | Capability fixture for mobile targets. Declare `requires: ['device']` in portable suites. |
 
 Fixtures are lazy. Destructuring in the callback parameter list acquires them
 before the first statement of the body.

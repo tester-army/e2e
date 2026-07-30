@@ -100,12 +100,10 @@ Platform-specific power is quarantined behind a named fixture. `web` gives you
 URLs, routes, cookies, and frames; `device` gives you permissions, location, and
 push. A glance at a test tells you whether it can run on more than one platform.
 
-<Callout intent="warning" title="Native platforms are not implemented yet">
-This release executes web targets. An iOS or Android target is rejected rather
-than approximated, and the `device` fixture rejects with
-`UNSUPPORTED_CAPABILITY`. The portable API, the gesture model, and the runner are
-built for both, so tests written against the portable surface today are the tests
-that will run on device.
+<Callout intent="info" title="Mobile covers simulators and emulators">
+iOS simulators and Android emulators run today through
+[`@e2edev/agent-device`](/mobile). Physical devices do not: the reset,
+permission, and push primitives the profile depends on are simulator-only.
 </Callout>
 
 ## The runner owns the boring parts

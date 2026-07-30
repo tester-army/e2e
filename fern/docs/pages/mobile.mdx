@@ -1,0 +1,151 @@
+---
+title: Mobile
+subtitle: The same tests, the same API, running on a simulator or an emulator.
+---
+
+`screen`, `app`, `expect`, and `agent` behave the same on iOS and Android as
+they do on the web. What changes is the target: a mobile target names a driver
+and an application instead of a browser and a URL.
+
+```bash
+npm install --save-dev e2e @e2edev/agent-device
+```
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+import { agentDevice } from '@e2edev/agent-device';
+
+export default defineConfig({
+  targets: [
+    {
+      name: 'ios',
+      platform: 'ios',
+      driver: agentDevice(),
+      app: 'com.example.app',
+      device: 'iPhone 16',
+      os: '18.0',
+    },
+  ],
+  artifacts: ['screenshot'],
+  workers: 1,
+});
+```
+
+<Callout intent="info" title="Simulators and emulators only">
+A physical device is rejected. The profile depends on state reset, permission
+control, and push injection, and those primitives are simulator-only.
+</Callout>
+
+The mobile driver ships as its own package, so a web-only project never
+installs a mobile toolchain. There is no default mobile driver: unlike a web
+target, a mobile target always names one explicitly.
+
+## Requirements
+
+| Platform | Needs |
+| --- | --- |
+| iOS | macOS with Xcode and its simulators |
+| Android | the Android SDK with at least one AVD |
+
+The first iOS run builds the XCTest runner used for accessibility snapshots, so
+budget extra time for it.
+
+## The application
+
+`app` is the application's identity, not a URL:
+
+- an **installed application** - an iOS bundle identifier or an Android package
+  name. Launch fails with `INVALID_STATE` when it is not installed.
+- a **build artifact** - `.app` or `.ipa` on iOS, `.apk` or `.aab` on Android,
+  resolved against the project root. It is installed on first use, and its
+  identity comes from the artifact rather than from the filename.
+
+`device` and `os` are both optional. Omitting them lets the driver pick any
+matching available device, and it reports what it selected in the run report.
+
+There is no base URL in the mobile profile, so `app.url` is not required - and
+a mobile-only config should omit it entirely.
+
+## Lifecycle
+
+```ts
+await app.open();                  // launch, replacing any running instance
+await app.open('/orders/42');      // launch, then follow a deep link
+await app.restart();               // relaunch, keeping the data container
+await app.clearState();            // clear the data container, then relaunch
+await app.back();                  // in-app back; no back target is a no-op
+await app.deepLink('myapp://orders/42');
+```
+
+A session launches with the application not yet in the foreground. Any query,
+action, or read before `app.open()` fails with `APP_NOT_OPEN`.
+
+## The device fixture
+
+Everything that only makes sense on a device lives behind `device`, exactly as
+browser-only power lives behind `web`:
+
+```ts
+test('permission prompt', { requires: ['device'] }, async ({ app, device }) => {
+  await device.setPermission('notifications', 'allow');
+  await app.open();
+  await device.pushNotification({ aps: { alert: 'Your order shipped' } });
+  await device.home();
+});
+```
+
+`setPermission` covers `camera`, `location`, `notifications`, and `contacts`,
+and is scoped to the target application. `unset` restores the platform default
+rather than denying. `hideKeyboard` is a successful no-op when no keyboard is
+shown, and reports `UNSUPPORTED_CAPABILITY` where the app exposes no dismiss
+control. `setLocation` sets the simulated position.
+
+Declaring `requires: ['device']` keeps a mobile-only test in a shared file: it
+is reported skipped on web targets instead of failed.
+
+## State isolation
+
+Each attempt clears the application's data container before it starts, so one
+test can never leak state into the next.
+
+A built-in system application has no container to clear. Those need `relaunch`,
+which returns the app to its initial screen but does **not** isolate state:
+
+```ts
+driver: agentDevice({ reset: 'relaunch' }),
+```
+
+The choice is explicit on purpose. An application that cannot be reset does not
+get per-attempt isolation, and the driver refuses to pretend otherwise.
+
+## Artifacts and workers
+
+`trace` is web-only and `video` is mobile-only, so the default
+`['screenshot', 'trace']` fails on a mobile target with `UNSUPPORTED_ARTIFACT`.
+Set `artifacts` explicitly.
+
+Parallelism is one device per worker. With a single configured simulator, use
+`workers: 1`; additional workers only contend for the same device.
+
+Expect a few seconds per test. Every locator resolve is a full accessibility
+snapshot, which is far slower than a browser query, and Android is roughly twice
+as fast as iOS.
+
+## Platform differences worth knowing
+
+Roles are normalized to WAI-ARIA names on both platforms, but the trees
+underneath are not the same shape:
+
+- iOS repeats a label on ancestor containers; Android puts it on the leaf.
+- Android sends no state for a `Switch`, so `checked` can be unavailable. The
+  driver reports it as unavailable rather than guessing `false`, and an
+  assertion against an unavailable state fails loudly.
+- A mobile transition animates. Reads wait for the screen to settle first,
+  because a read taken mid-transition would return the previous screen and
+  report success.
+
+## Secure fields
+
+A screen containing a secure text field is never sent to a model as pixels, and
+secure values never appear in observations, reports, or logs. An agentic step on
+such a screen works from the semantic tree alone.

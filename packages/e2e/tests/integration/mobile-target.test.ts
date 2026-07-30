@@ -1,13 +1,12 @@
 /**
- * End-to-end mobile execution: the real runner, the real `e2e/agent-device`
+ * End-to-end mobile execution: the real runner, the real `@e2edev/agent-device`
  * driver, and an in-memory daemon in place of a simulator. It proves the
  * runner-side gates, the fixtures, and `report-1` mobile provenance.
  */
 
 import { describe, expect, it } from 'vitest';
-import { agentDevice } from '../../src/agent-device/index.ts';
-import { createFakeDaemon } from '../helpers/fake-daemon.ts';
-import type { NodeSpec } from '../helpers/mobile-snapshot.ts';
+import { agentDevice } from '@e2edev/agent-device';
+import { createFakeDaemon, type NodeSpec } from '../helpers/fake-daemon.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';

@@ -21,13 +21,13 @@ tests.
   extraction with zod, host-side secret fills, and mixed agentic/deterministic
   flows in a serial group.
 - `e2e.mobile.config.ts` + `tests-mobile/` — opt-in `mobile-0.1` suite driving
-  the built-in iOS Settings app through `e2e/agent-device`, so it needs no app
+  the built-in iOS Settings app through `@e2edev/agent-device`, so it needs no app
   build of its own.
 
 ## Commands
 
 ```bash
-pnpm --filter e2e build            # the testbed runs the built runner
+pnpm build                         # the testbed runs the built packages
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
 pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
@@ -62,9 +62,9 @@ simulator, and the first run builds the XCTest runner that `agent-device` uses
 for snapshots.
 
 ```bash
-pnpm --filter e2e build
-pnpm --filter @e2e/testbed test:mobile
-E2E_IOS_DEVICE="iPhone 17 Pro" pnpm --filter @e2e/testbed test:mobile
+pnpm build
+pnpm --filter @e2edev/testbed test:mobile
+E2E_IOS_DEVICE="iPhone 17 Pro" pnpm --filter @e2edev/testbed test:mobile
 ```
 
 Three things about the config are load-bearing, and they are the shape any
@@ -101,8 +101,8 @@ needs an Android SDK and a booted emulator:
 
 ```bash
 ~/Library/Android/sdk/emulator/emulator -list-avds
-pnpm --filter @e2e/testbed test:android
-E2E_ANDROID_DEVICE=Pixel_8_API_35 pnpm --filter @e2e/testbed test:android
+pnpm --filter @e2edev/testbed test:android
+E2E_ANDROID_DEVICE=Pixel_8_API_35 pnpm --filter @e2edev/testbed test:android
 ```
 
 Android is roughly twice as fast as iOS per test, and its accessibility tree is
@@ -121,8 +121,8 @@ shaped differently in ways worth knowing:
 opt-in twice over: it needs a simulator *and* spends real model calls.
 
 ```bash
-OPENAI_API_KEY=... pnpm --filter @e2e/testbed test:mobile-agent
-E2E_MODEL=gpt-5.6-luna OPENAI_API_KEY=... pnpm --filter @e2e/testbed test:mobile-agent
+OPENAI_API_KEY=... pnpm --filter @e2edev/testbed test:mobile-agent
+E2E_MODEL=gpt-5.6-luna OPENAI_API_KEY=... pnpm --filter @e2edev/testbed test:mobile-agent
 ```
 
 It passes a provider instance rather than a gateway model reference, so a plain

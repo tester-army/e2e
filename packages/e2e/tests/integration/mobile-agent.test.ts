@@ -1,6 +1,6 @@
 /**
  * Agent tier on a mobile target: real observation and real driver actions
- * through `e2e/agent-device`, with an in-memory daemon standing in for a
+ * through `@e2edev/agent-device`, with an in-memory daemon standing in for a
  * device and a scripted model so the assertions stay deterministic.
  *
  * The agent tier is the one surface that consumes `session.observe` and
@@ -9,8 +9,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { agentDevice } from '../../src/agent-device/index.ts';
-import { createFakeDaemon } from '../helpers/fake-daemon.ts';
+import { agentDevice } from '@e2edev/agent-device';
+import { createFakeDaemon, type NodeSpec } from '../helpers/fake-daemon.ts';
 import {
   fakeCalls,
   installFakeModel,
@@ -18,7 +18,6 @@ import {
   locateBestMatch,
   locatePoint,
 } from '../helpers/fake-model.ts';
-import type { NodeSpec } from '../helpers/mobile-snapshot.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';

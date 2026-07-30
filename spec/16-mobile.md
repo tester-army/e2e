@@ -23,6 +23,8 @@ container. Device-destructive operations are outside this profile.
 ## Targets and application identity
 
 ```ts
+import { agentDevice } from '@e2edev/agent-device';
+
 export default defineConfig({
   targets: [
     { name: 'ios', platform: 'ios', driver: agentDevice(), app: 'com.example.app' },

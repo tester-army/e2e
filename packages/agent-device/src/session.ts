@@ -7,7 +7,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { sleep } from '../internal/time.ts';
+import { sleep } from 'e2e/internal';
 import {
   DriverError,
   type CleanupContext,
@@ -28,7 +28,7 @@ import {
   type OperationContext,
   type ScrollDirection,
   type SemanticNode,
-} from '../driver/index.ts';
+} from 'e2e/driver';
 import {
   assertActionable,
   performAction,

@@ -4,14 +4,16 @@ This directory defines e2e specification **0.1**, a local-first agentic testing
 framework standard.
 
 **Status: frozen implementation contract.** The reference implementation
-(`packages/e2e`, `packages/playwright`) tracks it and is exercised in CI, but no
-profile is claimed conformant: the required-ID set is
+(`packages/e2e`, `packages/playwright`, `packages/agent-device`) tracks it and is
+exercised in CI, but no profile is claimed conformant: the required-ID set is
 [`conformance/v0-requirements.json`](./conformance/v0-requirements.json) (see
 [15-conformance-matrix.md](./15-conformance-matrix.md)) and no `conformance-1`
 report is produced until the conformance harness lands.
 
-v0 executes web targets. The API is designed for future mobile profiles, but
-iOS and Android execution are not claimed until their conformance suites exist.
+v0 requires web execution: `web-0.1` is the only required execution profile, and
+v0 conformance never implies mobile support. `mobile-0.1` is a published
+optional profile covering iOS simulators and Android emulators, normative for
+any implementation that claims it.
 
 ## Documents
 
@@ -61,6 +63,7 @@ Required conformance IDs:
 - root SDK import: `e2e`;
 - driver authoring import: `e2e/driver`;
 - reference web driver: `@e2edev/playwright`;
+- reference mobile driver: `@e2edev/agent-device`;
 - default tests: `tests/**/*.e2e.ts`;
 - config: `e2e.config.ts` or `e2e.config.mts`.
 

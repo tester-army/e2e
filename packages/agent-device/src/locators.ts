@@ -9,7 +9,7 @@
  * mutates and whose `wait` adds the hidden retries spec/09-drivers.md forbids.
  */
 
-import { DriverError, type LocatorExpression, type SemanticQuery, type TextPattern } from '../driver/index.ts';
+import { DriverError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/driver';
 import {
   ownedLabel,
   ownedText,

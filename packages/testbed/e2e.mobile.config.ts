@@ -1,11 +1,11 @@
 import { defineConfig } from 'e2e';
-import { agentDevice } from 'e2e/agent-device';
+import { agentDevice } from '@e2edev/agent-device';
 
 /**
  * Mobile dogfood suite. It drives the built-in iOS Settings app, so it needs no
  * app build of its own:
  *
- *   pnpm --filter @e2e/testbed test:mobile
+ *   pnpm --filter @e2edev/testbed test:mobile
  *
  * Not part of CI: it needs macOS, Xcode, and a booted simulator, and the first
  * run builds the XCTest runner agent-device uses for snapshots.

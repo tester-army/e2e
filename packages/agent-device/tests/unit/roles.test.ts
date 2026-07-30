@@ -4,7 +4,7 @@ import {
   isScrollContainer,
   normalizeRole,
   roleKey,
-} from '../../src/agent-device/roles.ts';
+} from '../../src/roles.ts';
 
 describe('roleKey', () => {
   it('folds platform spellings onto one comparison key', () => {

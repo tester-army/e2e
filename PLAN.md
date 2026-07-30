@@ -117,7 +117,7 @@ security review, and conformance vectors.
 - define iOS and Android app identity, navigation/deep-link, state, permission,
   accessibility, actionability, artifact, and destructive-device policy;
 - publish mobile reference apps and device/simulator conformance harnesses;
-- implement `e2e/agent-device` only after those profiles freeze;
+- implement `@e2edev/agent-device` only after those profiles freeze;
 - prove one portable test against web, iOS, and Android.
 
 **Exit:** mobile profiles are normative and green; only then may project

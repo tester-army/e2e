@@ -72,6 +72,8 @@ export function unsupportedDrag(): DriverError {
   });
 }
 
+// Re-exported so the rest of the package keeps importing its text helpers from
+// one place, whether they are shared with the other drivers or local to this one.
 export { message, sanitizeFilename };
 
 export function isPwTimeout(cause: unknown): boolean {

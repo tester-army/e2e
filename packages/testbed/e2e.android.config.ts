@@ -1,10 +1,10 @@
 import { defineConfig } from 'e2e';
-import { agentDevice } from 'e2e/agent-device';
+import { agentDevice } from '@e2edev/agent-device';
 
 /**
  * Android half of the mobile dogfood suite, against the built-in Settings app.
  *
- *   pnpm --filter @e2e/testbed test:android
+ *   pnpm --filter @e2edev/testbed test:android
  *
  * Not part of CI: it needs an Android SDK and a booted emulator.
  */

@@ -4,7 +4,7 @@
  * same conversion the driver performs against a device.
  */
 
-import type { SnapshotNode, SnapshotResult } from '../../src/agent-device/client.ts';
+import type { SnapshotNode, SnapshotResult } from '../../src/client.ts';
 
 export interface NodeSpec {
   readonly type?: string;

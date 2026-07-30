@@ -8,6 +8,7 @@ This project is a pnpm monorepo containing:
 
 - `packages/e2e` — the published `e2e` package (SDK, runner, CLI, driver SPI)
 - `packages/playwright` — the published `@e2edev/playwright` reference web driver
+- `packages/agent-device` — the published `@e2edev/agent-device` reference mobile driver
 - `packages/testbed` — private dogfood suite that consumes the built packages
 - `spec/` — the normative contract, `fern/` — the docs site
 
@@ -77,7 +78,7 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `e2e` or `@e2edev/playwright`, add a changeset:
+If your change affects a published package, add a changeset:
 
 ```sh
 pnpm changeset

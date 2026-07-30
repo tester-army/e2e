@@ -16,7 +16,8 @@ test('user can sign up', async ({ app, agent }) => {
 ```
 
 ```bash
-pnpm add -D e2e@beta @e2edev/playwright@beta
+pnpm add -D e2e@beta @e2edev/playwright@beta      # web
+pnpm add -D e2e@beta @e2edev/agent-device@beta    # iOS and Android
 E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... pnpm e2e run
 ```
 
@@ -49,9 +50,11 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 - [`e2e`](./packages/e2e) — the SDK, runner, and CLI.
 - [`@e2edev/playwright`](./packages/playwright) — the reference web driver,
   loaded on demand by `driver: 'playwright'`.
+- [`@e2edev/agent-device`](./packages/agent-device) — the reference mobile
+  driver, for iOS simulators and Android emulators.
 
-Both publish under the `beta` dist-tag while the surface stabilizes, so npm's
-`latest` is never moved.
+All three publish under the `beta` dist-tag while the surface stabilizes, so
+npm's `latest` is never moved.
 
 ## Contributing
 

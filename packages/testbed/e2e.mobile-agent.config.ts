@@ -1,11 +1,11 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { defineConfig } from 'e2e';
-import { agentDevice } from 'e2e/agent-device';
+import { agentDevice } from '@e2edev/agent-device';
 
 /**
  * Opt-in agentic mobile suite against the built-in iOS Settings app:
  *
- *   E2E_MODEL_API_KEY=... pnpm --filter @e2e/testbed test:mobile-agent
+ *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:mobile-agent
  *
  * Not part of CI: it needs a simulator and spends real model calls.
  */

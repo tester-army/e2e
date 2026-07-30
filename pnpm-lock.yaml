@@ -30,6 +30,25 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
+  packages/agent-device:
+    dependencies:
+      agent-device:
+        specifier: 0.20.2
+        version: 0.20.2
+    devDependencies:
+      '@types/node':
+        specifier: 26.1.1
+        version: 26.1.1
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@26.1.1)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/e2e:
     dependencies:
       '@clack/prompts':
@@ -54,6 +73,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@e2edev/agent-device':
+        specifier: workspace:*
+        version: link:../agent-device
       '@e2edev/playwright':
         specifier: workspace:*
         version: link:../playwright
@@ -63,9 +85,6 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
-      agent-device:
-        specifier: 0.20.2
-        version: 0.20.2
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -100,6 +119,9 @@ importers:
 
   packages/testbed:
     dependencies:
+      '@e2edev/agent-device':
+        specifier: workspace:*
+        version: link:../agent-device
       '@e2edev/playwright':
         specifier: workspace:*
         version: link:../playwright
@@ -113,9 +135,6 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
-      agent-device:
-        specifier: 0.20.2
-        version: 0.20.2
       typescript:
         specifier: 7.0.2
         version: 7.0.2

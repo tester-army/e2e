@@ -1,6 +1,6 @@
 /** The `device` capability, mapped onto agent-device system commands. */
 
-import type { DriverDevice, OperationContext } from '../driver/index.ts';
+import type { DriverDevice, OperationContext } from 'e2e/driver';
 import type { AgentDeviceClient } from './client.ts';
 import { translateAgentDeviceError, unsupported, withDeadline } from './support.ts';
 

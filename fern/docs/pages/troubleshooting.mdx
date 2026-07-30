@@ -38,10 +38,11 @@ rather than with the terminal output.
   <Accordion title="UNSUPPORTED_CAPABILITY on the device fixture">
     **Symptom.** Touching `device` throws, though destructuring it is fine.
 
-    **Cause.** `device` is the reserved mobile surface. Nothing implements it yet.
+    **Cause.** `device` is the mobile surface, and the target being run is a web
+    target. Only a mobile driver implements it.
 
-    **Fix.** Remove the usage. To keep a mobile-only test in the file, mark it
-    `requires: ['device']` so it is reported skipped instead of failed.
+    **Fix.** Mark the test `requires: ['device']` so it is reported skipped on
+    web targets instead of failed.
   </Accordion>
 
   <Accordion title="LOCATOR_NOT_FOUND">
@@ -132,11 +133,13 @@ rather than with the terminal output.
   <Accordion title="PLATFORM_UNSUPPORTED on a mobile target">
     **Symptom.** A target with `platform: 'ios'` or `'android'` is rejected.
 
-    **Cause.** This release executes web targets. A mobile target fails loudly
-    instead of being silently approximated.
+    **Cause.** Either the target has no `driver`, or the driver it names does not
+    declare that platform. There is no default mobile driver: unlike a web
+    target, a mobile target always names one explicitly.
 
-    **Fix.** Remove the target for now. To gate individual tests, use
-    `platforms: ['web']`, which filters rather than fails.
+    **Fix.** Install `@e2edev/agent-device` and pass `driver: agentDevice()`. See
+    [Mobile](/mobile). To gate individual tests instead, use `platforms: ['web']`,
+    which filters rather than fails.
   </Accordion>
 
   <Accordion title="POLICY_DENIED">

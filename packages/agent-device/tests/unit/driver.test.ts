@@ -7,10 +7,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { agentDevice } from '../../src/agent-device/index.ts';
-import { DriverError, type DriverContext, type DriverSession } from '../../src/driver/index.ts';
+import { agentDevice } from '../../src/index.ts';
+import { DriverError, type DriverContext, type DriverSession } from 'e2e/driver';
 import { createFakeDaemon, type FakeDaemon } from '../helpers/fake-daemon.ts';
-import type { NodeSpec } from '../helpers/mobile-snapshot.ts';
+import type { NodeSpec } from '../helpers/snapshot.ts';
 
 const LOGIN_SCREEN: readonly NodeSpec[] = [
   {

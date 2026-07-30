@@ -7,6 +7,9 @@ documentation: [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
 pnpm add -D e2e@beta @e2edev/playwright@beta
 ```
 
+The runner drives a backend through a driver package. `@e2edev/playwright` is
+the web one; `@e2edev/agent-device` drives iOS simulators and Android emulators.
+
 ## Usage
 
 ```bash

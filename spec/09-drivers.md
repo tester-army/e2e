@@ -6,9 +6,10 @@ that map e2e-owned semantics onto an automation backend.
 
 ## Packaging and selection
 
-`@e2edev/playwright` is the required reference driver for `web-0.1`. It ships
-separately from the runner so that a project targeting another backend does not
-pay for a browser download. Community drivers use their own package names,
+`@e2edev/playwright` is the required reference driver for `web-0.1`, and
+`@e2edev/agent-device` is the reference driver for `mobile-0.1`. Each ships
+separately from the runner so that a project targeting one backend does not pay
+for the other's toolchain. Community drivers use their own package names,
 conventionally `e2e-driver-*`, and create instances with `defineDriver` from
 `e2e/driver`.
 

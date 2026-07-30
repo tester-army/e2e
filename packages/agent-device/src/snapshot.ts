@@ -13,7 +13,7 @@ import {
   OBSERVED_TEXT_LIMIT,
   type NodeRef,
   type SemanticNode,
-} from '../driver/index.ts';
+} from 'e2e/driver';
 import type { NodeRect, SnapshotNode, SnapshotResult } from './client.ts';
 import {
   deriveChecked,

@@ -34,6 +34,12 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   reference web driver. It depends on `e2e` (peer), never the reverse. The
   runner loads it on demand for `driver: 'playwright'`; `src/config/drivers.ts`
   is the one place that maps a well-known driver id to its package.
+- `packages/agent-device` — the published `@e2edev/agent-device` package: the
+  reference `mobile-0.1` driver, same peer direction. It is **not** in the
+  well-known registry, because `MobileTarget.driver` is a required handle in the
+  frozen spec: a mobile target imports `agentDevice()` rather than naming a
+  string. Driver packages consume `e2e/driver` plus `e2e/internal` (unstable,
+  first-party only) and nothing else.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `PLAN.md` (phase ordering only).
@@ -56,6 +62,7 @@ pnpm --filter e2e run test:unit                       # unit only, no build
 pnpm --filter e2e exec vitest run tests/unit/scheduler.test.ts
 pnpm --filter e2e exec vitest run -t 'name fragment'
 pnpm --filter @e2edev/playwright run test
+pnpm --filter @e2edev/agent-device run test          # no device needed
 pnpm --filter @e2edev/testbed run test:headed
 ```
 
@@ -97,6 +104,12 @@ pnpm --filter @e2edev/testbed run test:headed
   calls, need `E2E_MODEL_API_KEY`, optional `E2E_MODEL=provider/model-id`) run
   only on the weekly `.github/workflows/agent.yml` schedule or by manual
   dispatch. `test:wakacje` is non-blocking there: the site is third-party.
+  `test:mobile` / `test:android` / `test:mobile-agent` run in no workflow at
+  all: they need a booted simulator or emulator, and macOS plus Xcode for iOS.
+- Every mobile suite that runs in CI does so against the in-memory daemon in
+  `tests/helpers/fake-daemon.ts`, so no suite in `pnpm test` needs a device. The
+  driver package owns the exhaustive daemon; `packages/e2e` keeps a minimal one
+  for runner-level mobile tests.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 
@@ -108,7 +121,9 @@ pnpm --filter @e2edev/testbed run test:headed
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
 - No implicit default model. Agent fixtures without model config fail with
-  `MODEL_UNAVAILABLE`; mobile targets are rejected by the v0 boundary.
+  `MODEL_UNAVAILABLE`.
+- Artifact kinds are per-driver: `trace` is web-only, `video` is mobile-only, so
+  the default `['screenshot', 'trace']` fails on a mobile target.
 - Secrets must never reach model input, digests, logs, or reports. Model input
   is the redacted semantic tree plus the bounded ledger only.
 - CI (`.github/workflows/spec.yml`) runs Node 26 and pins actions by SHA; keep

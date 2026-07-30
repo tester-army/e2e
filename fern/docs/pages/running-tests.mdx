@@ -112,12 +112,11 @@ npx playwright show-trace .e2e/artifacts/web/tests_login.e2e.ts__signs_in/attemp
 Traces exclude request and response bodies, authorization and cookie headers, and
 secure input values.
 
-<Callout intent="warning" title="Video is not implemented yet">
-`artifacts: ['screenshot', 'trace', 'video']` is the full set, but video
-recording is not available. Requesting it fails with `UNSUPPORTED_ARTIFACT`
-before any browser launches, rather than leaving you an empty directory to
-discover later. A trace already carries screenshots, network activity, and a DOM
-timeline.
+<Callout intent="info" title="Artifacts are per-driver">
+`artifacts: ['screenshot', 'trace', 'video']` is the full set, but no driver
+produces all three. `trace` is web-only and `video` is mobile-only. Requesting
+one a target's driver cannot produce fails with `UNSUPPORTED_ARTIFACT` before
+anything launches, rather than leaving you an empty directory to discover later.
 </Callout>
 
 ## The report
