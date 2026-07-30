@@ -213,6 +213,17 @@ any structural path. The selector exists for the node whose expression is not
 recordable — a control the page repeats verbatim, which resolves only by index —
 and which otherwise could not be cached at all and paid a model locate every run.
 
+A driver SHOULD NOT report a selector that is positional all the way to the
+document root, and a runner SHOULD NOT store one. Such a path is shifted by
+anything inserted above the node — a chat widget, a consent frame, a portal —
+none of which has anything to do with the node. Measured against a production
+page that injects one, the entry went stale between every run: the step paid its
+full model locate anyway and left one dead entry behind each time, while
+reporting that it had recorded something. A selector anchored on an attribute
+that names an element or one of its ancestors is positional only below that
+anchor; where no such anchor exists, reporting no selector costs the same locate
+and states the reason.
+
 A stored selector is a guess, never an identity. Replay resolves it, reads the
 node it landed on, and requires the recorded role and name before the entry is
 used, so a selector that has gone stale — the DOM moved, the path now points at

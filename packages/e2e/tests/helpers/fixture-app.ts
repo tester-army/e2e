@@ -274,6 +274,36 @@ export interface FixtureApp {
 }
 
 /**
+ * Three identical controls with nothing that names them or any ancestor: no test
+ * id, no form `name`, plain divs all the way to `body`. The sweep can still pin
+ * one by index, but there is no selector worth storing for it — a path counted
+ * from `body` is shifted by the widget this page appends, exactly as a chat
+ * bubble does on a production page.
+ */
+const UNANCHORED_PAGE = `<!doctype html>
+<html>
+<head><title>Unanchored</title></head>
+<body style="margin:0">
+  <output id="picked" role="status" aria-label="Picked">none</output>
+  <div>
+    <div><span>Row one</span> <button onclick="pick('1')">Zarezerwuj</button></div>
+    <div><span>Row two</span> <button onclick="pick('2')">Zarezerwuj</button></div>
+    <div><span>Row three</span> <button onclick="pick('3')">Zarezerwuj</button></div>
+  </div>
+  <script>
+    function pick(row) {
+      document.getElementById('picked').textContent = row;
+    }
+    setTimeout(() => {
+      const widget = document.createElement('div');
+      widget.textContent = 'Chat with us';
+      document.body.prepend(widget);
+    }, 150);
+  </script>
+</body>
+</html>`;
+
+/**
  * A control repeated per row, as a listing repeats one reservation button. Every
  * query derived from any row matches all of them, so the sweep can only resolve
  * one by pinning an index.
@@ -323,6 +353,11 @@ export async function startFixtureApp(): Promise<FixtureApp> {
   const server: Server = createServer((request, response) => {
     const requested = new URL(request.url ?? '/', 'http://localhost');
     const pathname = requested.pathname;
+    if (pathname === '/unanchored') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(UNANCHORED_PAGE);
+      return;
+    }
     if (pathname === '/repeats') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(renderRepeats(requested.searchParams.get('reverse') === '1'));

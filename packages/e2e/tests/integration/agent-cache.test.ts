@@ -575,6 +575,58 @@ test('taps the repeat for one offer', async ({ agent, screen, web }) => {
       }
     }, 240_000);
 
+    it('records nothing rather than a path counted from the document root', async () => {
+      // The node needs a selector — its twins share role and name, so the sweep
+      // resolves it by index and an index is not recordable — but nothing names
+      // it or any ancestor, so the only selector available counts positions from
+      // `body`. This page appends a widget at body level, which shifts every one
+      // of those positions.
+      //
+      // Measured on a production page, storing that path meant the entry went
+      // stale between every run: the step paid its full model call anyway, wrote
+      // a fresh dead file, and reported `written` as though it had warmed up.
+      // Recording nothing costs the same model call and says so.
+      const project = createProject({
+        'tests/unanchored.e2e.ts': `import { test, expect } from 'e2e';
+
+test('taps a control nothing names', async ({ agent, screen, web }) => {
+  await web.goto('/unanchored');
+  await agent.tap('the Zarezerwuj button in the second row');
+  await expect(screen.getByRole('status')).toHaveText('2');
+});
+`,
+      });
+      try {
+        const model = installFakeModel((call) => {
+          const lines = call.lines.filter((line) => line.includes('Zarezerwuj'));
+          return {
+            protocolVersion: 'agent-locate-1',
+            target: { id: /#(\S+)/.exec(lines[1] ?? '')?.[1] ?? '', revision: call.revision },
+            explanation: "the second row's Zarezerwuj button",
+            // Content-addressed as far as the model is concerned, so the only
+            // thing standing between this node and an entry is the selector.
+            positional: false,
+          };
+        });
+        const config: Partial<E2EConfig> = {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'],
+          agent: { model },
+        };
+        const first = await runExisting(project, { appUrl: app.url, config });
+        expect(first.status).toBe('passed');
+        expect(cacheFiles(project)).toHaveLength(0);
+
+        // And still nothing on a second run: an unanchored path is refused every
+        // time rather than rewritten every time.
+        const second = await runExisting(project, { appUrl: app.url, config });
+        expect(second.status).toBe('passed');
+        expect(cacheFiles(project)).toHaveLength(0);
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
     it('replays onto the right control after the page reorders', async () => {
       // The reason an index is refused and a selector stored. The warm run gets
       // the same three offers in reverse order, on the same route — cache route

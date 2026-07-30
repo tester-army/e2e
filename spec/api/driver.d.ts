@@ -116,6 +116,11 @@ export interface SemanticNode {
    * content changes that rename a node, and a runner may store it to re-find
    * the node cheaply on a later run. It is never part of the node's identity,
    * so whatever it resolves to is still checked before it is used.
+   *
+   * It SHOULD be anchored on an attribute naming the node or one of its
+   * ancestors, and SHOULD be absent rather than positional all the way to the
+   * document root: such a path is shifted by anything inserted above the node,
+   * so it does not survive to the later run it exists for (10-determinism.md).
    */
   readonly selector?: string;
   /**

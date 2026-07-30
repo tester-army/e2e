@@ -30,10 +30,13 @@ export interface RawNodeData {
   attributes: Record<string, string>;
   rect: { x: number; y: number; width: number; height: number };
   /**
-   * Unique CSS path of this element within its own document, or `''` when the
-   * active mode does not derive one. Structural, so it survives the content
-   * changes that rename a node. Only `node` mode derives it: the probe is
-   * document-wide, so a tree walk must not pay for it per node.
+   * CSS selector for this element within its own document, or `''` when the
+   * active mode derives none or the element has none worth keeping. Structural,
+   * so it survives the content changes that rename a node, but anchored on an
+   * attribute that names something rather than counted from `body` — an
+   * unanchored path does not survive to the next run, which is the only run it
+   * exists for. Only `node` mode derives it: the probe is document-wide, so a
+   * tree walk must not pay for it per node.
    */
   selector: string;
 }
@@ -347,21 +350,21 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
-   * Selector that addresses one element in its own document, anchored as close
-   * to it as possible.
+   * Path to one element in its own document, and whether anything along it names
+   * the element rather than counting positions to it.
    *
-   * A path is walked upward only until it reaches an element something names,
-   * and stops there. A full path from `body` is the last resort and a poor one:
-   * a chat widget or a portal appended anywhere above shifts every
-   * `nth-child` index below it, so absolute paths break for reasons that have
-   * nothing to do with the element.
+   * The walk stops at the first ancestor something names, so an anchored path is
+   * only positional *below* that ancestor. An unanchored path is positional all
+   * the way from `body`, which makes it fragile for a reason that has nothing to
+   * do with the element: a chat widget, a consent frame, or a portal appended
+   * anywhere above shifts every `nth-child` index beneath it.
    *
    * Each `namedSelectorOf` probe is a document-wide `querySelectorAll`, so this
    * is deliberately not called for every node of a tree walk; see `projection`.
    */
-  const uniqueSelectorOf = (el: Element): string => {
+  const pathTo = (el: Element): { selector: string; anchored: boolean } => {
     const named = namedSelectorOf(el);
-    if (named !== null) return named;
+    if (named !== null) return { selector: named, anchored: true };
     const parts: string[] = [];
     let current: Element | null = el;
     while (current !== null && current.tagName.toLowerCase() !== 'html') {
@@ -370,11 +373,34 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       const index = Array.prototype.indexOf.call(parent.children, current) + 1;
       parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
       const anchor = namedSelectorOf(parent);
-      if (anchor !== null) return `${anchor} > ${parts.join(' > ')}`;
+      if (anchor !== null) return { selector: `${anchor} > ${parts.join(' > ')}`, anchored: true };
       current = parent;
     }
-    return parts.join(' > ');
+    return { selector: parts.join(' > '), anchored: false };
   };
+
+  /**
+   * The selector a runner may keep, or `''` when this element has none worth
+   * keeping.
+   *
+   * An unanchored path is refused rather than offered. A runner stores a selector
+   * to re-find the node on a later run, and a body-rooted path does not survive
+   * to one: measured against a production page that injects a chat widget, the
+   * entry went stale between every run, so the step paid its full model call
+   * anyway and left one dead file behind each time. Reporting no selector costs
+   * the same model call and tells the truth about why.
+   */
+  const storableSelectorOf = (el: Element): string => {
+    const path = pathTo(el);
+    return path.anchored ? path.selector : '';
+  };
+
+  /**
+   * The selector used to re-enter one iframe. Unanchored is fine here: it is
+   * resolved against the document it was just read from, within this
+   * observation, and never stored.
+   */
+  const frameSelectorOf = (el: Element): string => pathTo(el).selector;
 
   const describe = (el: Element): RawNodeData => {
     const tag = el.tagName.toLowerCase();
@@ -464,7 +490,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       },
       attributes,
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      selector: projection.selector ? uniqueSelectorOf(el) : '',
+      selector: projection.selector ? storableSelectorOf(el) : '',
     };
   };
 
@@ -511,7 +537,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       }
       const index = include(el, parent);
       const node = nodes[index]!;
-      node.frameSelector = uniqueSelectorOf(el);
+      node.frameSelector = frameSelectorOf(el);
       node.role = 'iframe';
       if (node.name === null) {
         const title = el.getAttribute('title');
