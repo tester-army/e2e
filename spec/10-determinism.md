@@ -242,7 +242,12 @@ pays for one model locate on every run.
 
 The runner learns how a target was identified from the `positional` field of
 `agent-locate-1`. A runner MUST treat an absent field as positional and MUST NOT
-default it to false. Absence is silence, not an assertion, and the two failure
+default it to false. It MUST also declare the field as required in the
+structured-output schema it requests the locate under: that schema is closed, so
+a field it does not declare is one a strict provider strips from the response,
+and asking for it in the prompt alone leaves every locate unrecordable and the
+cache permanently cold. Tolerating absence is a backstop for a provider that does
+not enforce schemas, not the expected path. Absence is silence, not an assertion, and the two failure
 modes are not worth trading: declining to record costs one model locate per run,
 while recording a positional target wrongly costs a wrong action. A locator's
 shape is not a substitute for the report — derived queries never contain an index

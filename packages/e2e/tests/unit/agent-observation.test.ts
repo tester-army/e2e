@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/driver/index.ts';
-import { prepareObservation } from '../../src/agent/observation.ts';
+import { observationShape, prepareObservation } from '../../src/agent/observation.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -163,5 +163,38 @@ describe('observation byte budget', () => {
       expect(prepared.truncated).toBe(true);
       expect(prepared.text).toContain('[observation truncated');
     }
+  });
+});
+
+describe('observationShape', () => {
+  const shapeOf = (text: string): string =>
+    observationShape({ text } as unknown as Parameters<typeof observationShape>[0]);
+
+  it('ignores the per-observation node ids', () => {
+    expect(shapeOf('#n1 button "Save"\n  #n2 link "Home"')).toBe(
+      shapeOf('#n9 button "Save"\n  #n7 link "Home"'),
+    );
+  });
+
+  it('ignores focus, which moves without the page changing', () => {
+    // The browser settling focus after load, a script claiming it, a widget
+    // stealing it: none of it changes what a judgment would answer, so none of
+    // it may cost a model call.
+    expect(shapeOf('#n1 textbox "Email" [focused]')).toBe(shapeOf('#n1 textbox "Email"'));
+    expect(shapeOf('#n1 checkbox "Terms" [checked focused]')).toBe(
+      shapeOf('#n1 checkbox "Terms" [checked]'),
+    );
+  });
+
+  it('still notices a state that is about the page', () => {
+    expect(shapeOf('#n1 checkbox "Terms" [checked]')).not.toBe(shapeOf('#n1 checkbox "Terms"'));
+    expect(shapeOf('#n1 button "Save" [disabled]')).not.toBe(shapeOf('#n1 button "Save"'));
+  });
+
+  it('notices changed text and changed structure', () => {
+    expect(shapeOf('#n1 status "Loading"')).not.toBe(shapeOf('#n1 status "Ready"'));
+    expect(shapeOf('#n1 list\n  #n2 listitem "A"')).not.toBe(
+      shapeOf('#n1 list\n  #n2 listitem "A"\n  #n3 listitem "B"'),
+    );
   });
 });

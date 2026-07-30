@@ -1,9 +1,59 @@
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import {
   acceptAnyJson,
+  LOCATE_SCHEMAS,
   validateJudgmentResponse,
   validateLocateResponse,
+  type LocateGrammar,
 } from '../../src/agent/protocol.ts';
+
+const GRAMMARS = ['node', 'nodeOrPoint', 'point'] as const satisfies readonly LocateGrammar[];
+
+describe('the locate request schema', () => {
+  // A field the request schema does not declare is one a strict provider strips
+  // from the response, because additionalProperties is false. Asking for
+  // `positional` in the prompt alone therefore got it removed from every answer,
+  // which left every locate unrecordable and the cache permanently cold. The
+  // prompt is not the request; this schema is.
+  it('declares and requires every field the validator reads', () => {
+    for (const grammar of GRAMMARS) {
+      const schema = LOCATE_SCHEMAS[grammar];
+      expect(Object.keys(schema.properties ?? {}).toSorted()).toEqual([
+        'explanation',
+        'positional',
+        'protocolVersion',
+        'target',
+      ]);
+      // Strict structured-output modes emit only required properties, so an
+      // optional field here is an absent field in practice.
+      expect(schema.required?.toSorted()).toEqual([
+        'explanation',
+        'positional',
+        'protocolVersion',
+        'target',
+      ]);
+    }
+  });
+
+  it('accepts what the validator accepts, so a compliant answer round-trips', () => {
+    const ajv = new Ajv2020({ allErrors: true, strict: false });
+    // The request schema is typed as the SDK's JSONSchema7; ajv types its own
+    // input, and the two describe the same JSON.
+    const requestSchema = LOCATE_SCHEMAS.node as object;
+    const answer = {
+      protocolVersion: 'agent-locate-1',
+      target: { id: 'n7', revision: 'r3' },
+      explanation: 'the only email input',
+      positional: false,
+    };
+    expect(ajv.validate(requestSchema, answer)).toBe(true);
+    expect(validateLocateResponse(answer)).toMatchObject({
+      ok: true,
+      value: { targeting: 'content' },
+    });
+  });
+});
 
 describe('agent-locate-1', () => {
   it('accepts exactly the closed shape', () => {

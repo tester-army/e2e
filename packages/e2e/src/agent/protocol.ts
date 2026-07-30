@@ -101,17 +101,30 @@ const POINT_TARGET_SCHEMA: JSONSchema7 = {
   },
 };
 
+/**
+ * The structured-output schema one locate call is made under.
+ *
+ * `positional` is declared and required here even though the protocol tolerates
+ * its absence. The two are not in tension: `additionalProperties` is false, so a
+ * field this schema does not declare is one a strict provider forbids the model
+ * from sending — asking for it in the prompt alone got it silently stripped from
+ * every response, which left every locate unrecordable and the cache
+ * permanently cold. Requiring it is how the runner actually asks. The
+ * validator's tolerance stays a backstop for a provider that does not enforce
+ * schemas, not the expected path.
+ */
 function locateSchema(targets: readonly JSONSchema7[]): JSONSchema7 {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['protocolVersion', 'target', 'explanation'],
+    required: ['protocolVersion', 'target', 'explanation', 'positional'],
     properties: {
       // Single-value enum rather than const: strict structured-output modes
       // across providers accept enum but not const.
       protocolVersion: { type: 'string', enum: ['agent-locate-1'] },
       target: { anyOf: [...targets, { type: 'null' }] },
       explanation: { type: 'string', maxLength: EXPLANATION_MAX_LENGTH },
+      positional: { type: 'boolean' },
     },
   };
 }

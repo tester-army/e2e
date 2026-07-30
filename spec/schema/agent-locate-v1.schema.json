@@ -16,7 +16,7 @@
     },
     "explanation": { "type": "string", "maxLength": 8192 },
     "positional": {
-      "description": "Whether the instruction identified the node by where it sits rather than by what it says. Caching hint only; it never changes what the runner executes. An absent field means the model did not report, which a runner MUST treat as positional rather than defaulting to false (10-determinism.md).",
+      "description": "Whether the instruction identified the node by where it sits rather than by what it says. Caching hint only; it never changes what the runner executes. Not required, so a response without it is still valid agent-locate-1, and a runner MUST treat absence as positional rather than defaulting to false (10-determinism.md). A runner's own structured-output request schema SHOULD nonetheless require it: a closed request schema that omits it forbids the model from answering, which leaves every locate unrecordable.",
       "type": "boolean"
     }
   },

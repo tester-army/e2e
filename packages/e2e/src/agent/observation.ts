@@ -171,13 +171,22 @@ export function observedLineHasRole(line: string): boolean {
 /**
  * What the page looks like, independent of which observation looked at it.
  *
- * Node ids are minted per observation, so two observations of a page that has
- * not moved never render identically. Dropping them leaves what describes the
- * page, which is what a caller comparing two observations is asking about.
+ * Two things are dropped. Node ids, because they are minted per observation, so
+ * two looks at a page that has not moved would never render identically. And
+ * the focus state, because focus moves on its own — the browser settling it
+ * after load, a script claiming it, a widget stealing it — without the page
+ * having changed in any way a judgment could answer differently about. Leaving
+ * it in meant a genuinely static page could still spend a second model call.
+ *
  * Lives next to `formatNode` so the line grammar keeps one owner.
  */
 export function observationShape(observation: AgentObservation): string {
-  return observation.text.replaceAll(/(^|\n)(\s*)#\S+/g, '$1$2');
+  return observation.text
+    .replaceAll(/(^|\n)(\s*)#\S+/g, '$1$2')
+    .replaceAll(/ \[([^\]]*)\]/g, (_match, states: string) => {
+      const stable = states.split(' ').filter((state) => state !== 'focused');
+      return stable.length === 0 ? '' : ` [${stable.join(' ')}]`;
+    });
 }
 
 function collapse(text: string): string {
