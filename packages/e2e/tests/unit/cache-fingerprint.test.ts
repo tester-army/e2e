@@ -2,16 +2,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { screenFingerprint } from '../../src/cache/index.ts';
-import { createRedactor } from '../../src/internal/redact.ts';
 
 const viewport = { width: 1280, height: 720, scale: 1 };
 const base = { origin: 'https://app.test', basePath: '/' };
-const noSecrets = createRedactor(new Map());
 
 function fingerprint(
   options: {
     url?: string | undefined;
-    secrets?: Map<string, string>;
     viewport?: typeof viewport;
     base?: typeof base;
   } = {},
@@ -20,26 +17,24 @@ function fingerprint(
     viewport: options.viewport ?? viewport,
     url: 'url' in options ? options.url : 'https://app.test/checkout',
     base: options.base ?? base,
-    redact: options.secrets === undefined ? noSecrets : createRedactor(options.secrets),
   });
 }
 
 describe('route identity', () => {
-  it('reacts to origin, path, and query', () => {
+  it('reacts to origin and path', () => {
     const baseline = fingerprint();
-    for (const url of [
-      'https://other.test/checkout',
-      'https://app.test/cart',
-      'https://app.test/checkout?step=2',
-    ]) {
+    for (const url of ['https://other.test/checkout', 'https://app.test/cart']) {
       expect(fingerprint({ url })).not.toBe(baseline);
     }
   });
 
-  it('ignores the fragment and query ordering', () => {
-    const a = fingerprint({ url: 'https://app.test/c?b=2&a=1' });
-    const b = fingerprint({ url: 'https://app.test/c?a=1&b=2#anywhere' });
-    expect(a).toBe(b);
+  it('ignores the query and the fragment', () => {
+    // The query is where a site keeps what is not the place: a session marker, a
+    // campaign tag, an experiment bucket. One production offer page arrived as
+    // "?...,srcx_auction" on one run and "?...,srcx_v4_auction" on the next,
+    // which was enough to mint a new key for a step that had not changed.
+    expect(fingerprint({ url: 'https://app.test/checkout?step=2' })).toBe(fingerprint());
+    expect(fingerprint({ url: 'https://app.test/checkout?b=2&a=1#anywhere' })).toBe(fingerprint());
   });
 
   it('drops userinfo, which can carry credentials', () => {
@@ -74,19 +69,16 @@ describe('deployment independence', () => {
       viewport,
       url: 'https://app-git-feat-cache.vercel.app/checkout',
       base: { origin: 'https://app-git-feat-cache.vercel.app', basePath: '/' },
-      redact: noSecrets,
     });
     const staging = screenFingerprint({
       viewport,
       url: 'https://staging.app.test/checkout',
       base: { origin: 'https://staging.app.test', basePath: '/' },
-      redact: noSecrets,
     });
     const local = screenFingerprint({
       viewport,
       url: 'http://localhost:4173/checkout',
       base: { origin: 'http://localhost:4173', basePath: '/' },
-      redact: noSecrets,
     });
     expect(new Set([preview, staging, local, fingerprint()]).size).toBe(1);
   });
@@ -96,7 +88,6 @@ describe('deployment independence', () => {
       viewport,
       url: 'https://app.test/shop/checkout',
       base: { origin: 'https://app.test', basePath: '/shop' },
-      redact: noSecrets,
     });
     expect(mounted).toBe(fingerprint());
   });
@@ -163,34 +154,16 @@ describe('rendered content does not contribute', () => {
   it('depends on nothing but the route and the viewport', () => {
     // Guards against a future change quietly reintroducing tree input: the
     // digest must be reproducible from these two values alone.
-    expect(screenFingerprint({ url: 'https://app.test/x', viewport, base, redact: noSecrets })).toBe(
-      screenFingerprint({ url: 'https://app.test/x', viewport, base, redact: noSecrets }),
+    expect(screenFingerprint({ url: 'https://app.test/x', viewport, base })).toBe(
+      screenFingerprint({ url: 'https://app.test/x', viewport, base }),
     );
   });
 });
 
 describe('secret safety', () => {
-  it('replaces a registered secret in a query with its stable name', () => {
-    const secrets = new Map([['sessionToken', 'super-secret-value']]);
-    const digest = fingerprint({
-      url: 'https://app.test/c?token=super-secret-value',
-      secrets,
-    });
-    expect(digest).not.toBe(
-      fingerprint({ url: 'https://app.test/c?token=super-secret-value' }),
-    );
-    // Two different secret values under the same name collapse to one route, so
-    // rotating a credential does not cold-start the cache.
-    const rotated = new Map([['sessionToken', 'other-secret-value']]);
-    expect(
-      fingerprint({ url: 'https://app.test/c?token=other-secret-value', secrets: rotated }),
-    ).toBe(digest);
-  });
-
-  it('replaces a registered secret in a query key', () => {
-    const secrets = new Map([['paramName', 'leaky']]);
-    expect(fingerprint({ url: 'https://app.test/c?leaky=1', secrets })).not.toBe(
-      fingerprint({ url: 'https://app.test/c?leaky=1' }),
-    );
+  it('cannot leak a secret from a query, because no query is hashed', () => {
+    const digest = fingerprint({ url: 'https://app.test/c?token=super-secret-value' });
+    expect(digest).toBe(fingerprint({ url: 'https://app.test/c' }));
+    expect(digest).toBe(fingerprint({ url: 'https://app.test/c?token=other-secret-value' }));
   });
 });

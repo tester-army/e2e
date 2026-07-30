@@ -26,7 +26,7 @@
  * record identifiers out of a path cannot merge two calls that differ.
  */
 
-import { canonicalDigest, compareStrings } from '../internal/ids.ts';
+import { canonicalDigest } from '../internal/ids.ts';
 
 export interface FingerprintInput {
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
@@ -34,42 +34,42 @@ export interface FingerprintInput {
   readonly url: string | undefined;
   /** Configured app base, which routes inside the app are expressed against. */
   readonly base: { readonly origin: string; readonly basePath: string };
-  /** Replaces every exact registered secret value with its stable name. */
-  readonly redact: (text: string) => string;
 }
 
 /** SHA-256/JCS of the canonical route projection. */
 export function screenFingerprint(input: FingerprintInput): string {
   return canonicalDigest({
-    url: input.url === undefined ? null : canonicalRoute(input.url, input.base, input.redact),
+    url: input.url === undefined ? null : canonicalRoute(input.url, input.base),
     viewport: `${input.viewport.width}x${input.viewport.height}@${input.viewport.scale}`,
   });
 }
 
 /**
- * Reduces a URL to a normalized route and query. Userinfo and fragment are
- * dropped: neither is part of the route's identity and userinfo can carry
- * credentials. Query parameters are sorted so that a reordered but equivalent
- * query stays a hit, and every exact registered secret becomes its stable name.
+ * Reduces a URL to a normalized path. Query, userinfo, and fragment are all
+ * dropped.
+ *
+ * The query is where a site keeps what is not the place: session markers,
+ * campaign tags, an experiment bucket. Measured on one production site, the same
+ * offer page arrived as `?...,srcx_auction` on one run and `?...,srcx_v4_auction`
+ * on the next, which is enough to mint a new key for a step that had not
+ * changed at all. Dropping it also means a query can never carry a secret into a
+ * key.
+ *
+ * Two places that differ only by their query therefore share a route. That is
+ * safe because a route is not a key: the test, the instruction, the parameters,
+ * and the occurrence index still separate the calls, and every replay
+ * re-resolves and re-checks identity, so the worst case is a miss.
  */
-function canonicalRoute(
-  href: string,
-  base: FingerprintInput['base'],
-  redact: (text: string) => string,
-): string | null {
+function canonicalRoute(href: string, base: FingerprintInput['base']): string | null {
   let url: URL;
   try {
     url = new URL(href);
   } catch {
     return null;
   }
-  const params = [...url.searchParams]
-    .map(([key, value]) => [redact(key), redact(value)] as const)
-    .toSorted((a, b) => (a[0] === b[0] ? compareStrings(a[1], b[1]) : compareStrings(a[0], b[0])));
-  const query = params.map(([key, value]) => `${key}=${value}`).join('&');
   const inApp = url.origin === base.origin;
   const path = normalizePath(inApp ? relativeToBase(url.pathname, base.basePath) : url.pathname);
-  return `${inApp ? '' : url.origin}${path}${query === '' ? '' : `?${query}`}`;
+  return `${inApp ? '' : url.origin}${path}`;
 }
 
 /**

@@ -161,21 +161,28 @@ is not `major.minor[.patch]` is used unchanged. The key's explicit `cacheSchema`
 value is `cache-1`.
 
 The starting route fingerprint is SHA-256/JCS of the canonical route and the
-exact `width x height @ scale` viewport. A route inside the app keeps its path
-relative to the configured base and its sorted query; a page on any other origin
-keeps that origin, because an identity provider's `/login` is not the app's
-`/login`. Userinfo and fragment are dropped. Path normalization replaces every
-segment that identifies a record rather than a place — a UUID, a
+exact `width x height @ scale` viewport. A route inside the app is its path
+relative to the configured base; a page on any other origin keeps that origin,
+because an identity provider's `/login` is not the app's `/login`.
+
+Query, userinfo, and fragment are all dropped. The query is where a site keeps
+what is not the place: a session marker, a campaign tag, an experiment bucket.
+One production offer page was observed arriving as `?...,srcx_auction` on one run
+and `?...,srcx_v4_auction` on the next, which was enough to mint a new key for a
+step that had not changed. Dropping it also means a query can never carry a
+secret into a key. Two places differing only by their query share a route, which
+is safe for the same reason as any other route collision: a route is not a key.
+
+Path normalization replaces every segment that identifies a record rather than a place — a UUID, a
 long hex digest, a numeric id, an opaque token — with a fixed placeholder. A
 checkout at `/order/<per-session hash>/form` is the same place on every run, and
 hashing the raw path would give every visit its own key: nothing would ever hit
 and the store would grow one dead entry per run. Two places differing only by
 such a segment collapse, which is safe because a key is never a route alone.
 
-Any exact registered secret in a query is replaced by its stable secret name
-before hashing; URLs containing other values classified sensitive by app policy
-are not cacheable. A driver that exposes no URL contributes no route. A mismatch
-is a cache miss.
+URLs whose path carries values classified sensitive by app policy are not
+cacheable. A driver that exposes no URL contributes no route. A mismatch is a
+cache miss.
 
 The fingerprint MUST NOT hash the semantic tree. Rendered content on a real
 application changes continuously — prices, counts, ordering, advertising — so a
