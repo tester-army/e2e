@@ -131,7 +131,10 @@ describe('reads fail closed', () => {
       JSON.stringify({
         schemaVersion: 'cache-1',
         kind: 'locate',
-        payload: { locator: { kind: 'web-selector', selector: '#pwn' }, expected: { role: 'button' } },
+        payload: {
+          locator: { kind: 'frame', selector: 'iframe', source: {} },
+          expected: { role: 'button' },
+        },
       }),
     );
     expect((await cache.read(keyHash)).status).toBe('invalid');

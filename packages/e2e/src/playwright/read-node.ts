@@ -29,6 +29,11 @@ export interface RawNodeData {
   };
   attributes: Record<string, string>;
   rect: { x: number; y: number; width: number; height: number };
+  /**
+   * Unique CSS path of this element within its own document. Structural, so it
+   * survives the content changes that rename a node, and cheap to resolve.
+   */
+  selector: string;
 }
 
 /** One observed node plus its position in the flattened depth-first tree. */
@@ -393,6 +398,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       },
       attributes,
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      selector: uniqueSelectorOf(el),
     };
   };
 
@@ -423,12 +429,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return directTextOf(el) !== '';
   };
 
-  /** Unique CSS selector for one iframe element in its own document. */
-  const frameSelectorOf = (el: Element): string => {
-    const id = el.getAttribute('id');
-    if (id !== null && id !== '' && el.ownerDocument.querySelectorAll(`#${CSS.escape(id)}`).length === 1) {
-      return `#${CSS.escape(id)}`;
-    }
+  /**
+   * Unique CSS path for one element in its own document. Declared rather than
+   * bound to a const: the single-node projection runs before this point in the
+   * closure, and a const would be in its temporal dead zone.
+   */
+  function uniqueSelectorOf(el: Element): string {
+    // Structural only, never `#id`: a framework that mints ids per render
+    // (`#firstName-aepj7PyFWSmXAkB8bb91h`) would make every selector single-use,
+    // which is worse than useless for anything that stores one.
     const parts: string[] = [];
     let current: Element | null = el;
     while (current !== null && current.tagName.toLowerCase() !== 'html') {
@@ -439,7 +448,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       current = parent;
     }
     return parts.join(' > ');
-  };
+  }
 
   const walk = (el: Element, parent: number): void => {
     if (truncated) return;
@@ -457,7 +466,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       }
       const index = include(el, parent);
       const node = nodes[index]!;
-      node.frameSelector = frameSelectorOf(el);
+      node.frameSelector = uniqueSelectorOf(el);
       node.role = 'iframe';
       if (node.name === null) {
         const title = el.getAttribute('title');

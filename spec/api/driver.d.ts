@@ -111,6 +111,14 @@ export interface SemanticNode {
     readonly height: number;
   };
   /**
+   * Platform selector that addresses this node within its own document, when
+   * the platform has one. It is structural, not semantic: it survives the
+   * content changes that rename a node, and a runner may store it to re-find
+   * the node cheaply on a later run. It is never part of the node's identity,
+   * so whatever it resolves to is still checked before it is used.
+   */
+  readonly selector?: string;
+  /**
    * Enclosing frame chain as CSS selectors of each `<iframe>` element,
    * outermost first. Absent for nodes in the main document.
    */

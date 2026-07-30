@@ -123,6 +123,16 @@
               ]
             }
           }
+        },
+        {
+          "description": "Platform selector the driver reported for the observed node. Structural rather than semantic, and never trusted: replay checks the resolved node against the recorded identity.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "selector"],
+          "properties": {
+            "kind": { "const": "web-selector" },
+            "selector": { "type": "string", "minLength": 1, "maxLength": 2048 }
+          }
         }
       ]
     },

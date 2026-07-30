@@ -187,11 +187,30 @@ route is still separated by instruction, parameters, and occurrence index.
 
 ## Locate replay
 
-A locate entry stores a semantic `screen` locator expression and the expected
-role and name. It never stores a node reference, coordinate, CSS/XPath selector,
-model prose, instruction text, or secret. States are not stored: actionability
-re-checks the ones that matter before the action runs, so recording them would
-only add ways to miss.
+A locate entry stores one locator plus the expected role and name. It never
+stores a node reference, coordinate, model prose, instruction text, or secret.
+
+The locator is the semantic `screen` expression that re-found the node. A runner
+MAY instead store the platform selector the driver reported for the node, and it
+MUST prefer the semantic expression when there is one: an expression says what
+the node is, so it survives the DOM churn that invalidates any structural path.
+The selector exists for the node an expression cannot express — a control the
+page repeats verbatim, where every twin is semantically identical — which
+otherwise could not be cached at all and paid a model locate on every run.
+
+A stored selector is a guess, never an identity. Replay resolves it, reads the
+node it landed on, and requires the recorded role and name before the entry is
+used, so a selector that has gone stale — the DOM moved, the path now points at
+something else — costs a miss and one model locate. That is the same price as
+having stored nothing, which is what makes storing it optimistically safe.
+
+States are not stored: actionability re-checks the ones that matter before the
+action runs, so recording them would only add ways to miss.
+
+Identity comparison is case-insensitive on the name. A control that renders
+"DALEJ" one run and "Dalej" the next — a text transform, a re-render, a label the
+app cases by state — is the same control, and comparing case makes each run
+reject the previous run's entry and rewrite it, so the step never replays.
 
 On replay, the runner resolves once. Exactly one compatible node is required.
 Zero, multiple, stale, or incompatible results are a miss and permit one fresh
@@ -206,7 +225,9 @@ miss, which the cache must never produce, so such a call reports a miss that was
 not recorded and pays for one model locate on every run. The runner learns that
 a target is positional from the optional `positional` field of `agent-locate-1`;
 the field is a caching hint only, defaults to false, and can never change what
-the runner executes.
+the runner executes. A selection the runner could only address by
+its observation reference (02-test-api.md) is likewise never recorded: a
+reference is not a locator, and there is nothing content-addressed to store.
 
 ## Path guidance
 

@@ -17,6 +17,7 @@ import {
   asCacheLocator,
   toSemanticIdentity,
   type CacheKey,
+  type CacheLocator,
   type CacheMethod,
   type SemanticIdentity,
 } from '../cache/index.ts';
@@ -174,6 +175,30 @@ async function consult(
   };
 }
 
+/**
+ * The locator to store for one located node.
+ *
+ * A semantic query comes first when there is one: it says what the node is, so
+ * it survives the DOM churn — a new wrapper, a reordered container — that
+ * invalidates any structural path, and it reads back in a report as something a
+ * human wrote.
+ *
+ * The driver's selector is the answer for the node a query cannot express: a
+ * control the page repeats verbatim, where the semantics of every twin are
+ * identical. Without it such a step could not be cached at all and paid a model
+ * call on every run. Storing it is safe because it is never trusted — replay
+ * resolves it, reads the node it landed on, and requires the recorded role and
+ * name before acting, so a stale path costs a miss, not a wrong action.
+ */
+function storableLocator(located: LocatedNode): CacheLocator | undefined {
+  if (located.expression !== undefined) return asCacheLocator(located.expression);
+  const selector = located.node.selector;
+  // A selector is document-local; a node inside an iframe needs the frame chain
+  // a stored selector cannot carry.
+  if (selector === undefined || (located.node.framePath ?? []).length > 0) return undefined;
+  return asCacheLocator({ kind: 'web-selector', selector });
+}
+
 async function record(
   invocation: Invocation,
   context: AgentCacheContext,
@@ -196,9 +221,9 @@ async function record(
     );
   }
 
-  const locator = asCacheLocator(located.expression);
+  const locator = storableLocator(located);
   if (locator === undefined) {
-    return notRecorded(invocation, keyHash, 'the locator is not a portable semantic query');
+    return notRecorded(invocation, keyHash, 'the node exposes nothing storable to re-find it by');
   }
   const expected = toSemanticIdentity(located.node);
   if (expected === undefined) {
@@ -243,7 +268,12 @@ function notRecorded(invocation: Invocation, keyHash: string, reason: string): u
 function matchesIdentity(expected: SemanticIdentity, node: SemanticNode): boolean {
   if (node.role !== expected.role) return false;
   if (expected.name === undefined) return true;
-  return normalize(node.name) === expected.name;
+  // Case-insensitive on purpose. A control that renders "DALEJ" one run and
+  // "Dalej" the next — a text transform, a re-render, a label the app cases
+  // differently by state — is the same control to anyone reading the page, and
+  // comparing case made each run reject the other run's entry and rewrite it,
+  // so the step never once replayed.
+  return normalize(node.name).toLowerCase() === expected.name.toLowerCase();
 }
 
 /** Reads the current top-level URL, or undefined for a driver exposing none. */

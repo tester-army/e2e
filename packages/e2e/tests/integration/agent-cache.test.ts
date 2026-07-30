@@ -184,16 +184,21 @@ describe('locate cache', () => {
       expect(second.steps[0]!.cache!.keyHash).toBe(first.steps[0]!.cache!.keyHash);
     });
 
-    it('stores a semantic locator and no node reference or selector', () => {
+    it('stores a semantic locator and an identity, never a node reference', () => {
       const raw = readFileSync(
         path.join(project.dir, '.e2e', 'cache', cacheFiles(project)[0]!),
         'utf8',
       );
-      expect(raw).not.toContain('web-selector');
+      // A reference is bound to one observation revision, so it could only ever
+      // resolve during the run that recorded it.
       expect(raw).not.toContain('"ref"');
       expect(raw).not.toContain('revision');
-      expect(JSON.parse(raw).payload.locator.kind).toBe('query');
-      expect(JSON.parse(raw).payload.expected).toMatchObject({ role: 'button' });
+      const payload = JSON.parse(raw).payload;
+      // A node a query addresses is stored as that query: it says what the node
+      // is, so DOM churn around it does not invalidate the entry.
+      expect(payload.locator.kind).toBe('query');
+      expect(raw).not.toContain('web-selector');
+      expect(payload.expected).toMatchObject({ role: 'button' });
     });
 
     it('still performs the real action on a hit', () => {
@@ -236,14 +241,44 @@ describe('locate cache', () => {
     it('misses when the stored locator no longer resolves', async () => {
       const file = path.join(project.dir, '.e2e', 'cache', cacheFiles(project)[0]!);
       const entry = JSON.parse(readFileSync(file, 'utf8'));
-      entry.payload.locator.query.name = { kind: 'string', value: 'Nonexistent', exact: true };
-      entry.payload.expected = { role: 'button', name: 'Nonexistent' };
+      entry.payload.locator = { kind: 'web-selector', selector: 'html > body > #gone' };
       writeFileSync(file, JSON.stringify(entry, null, 2), 'utf8');
 
       const stale = await runOnce(project);
       expect(stale.passed).toBe(true);
       expect(stale.locateCalls).toBe(1);
       expect(stale.steps[0]!.cache!.status).toBe('written');
+    }, 180_000);
+
+    it('hits when only the letter case of the name changed', async () => {
+      // A label the app renders "INCREMENT" one run and "Increment" the next is
+      // the same control. Comparing case made every run reject the previous
+      // run's entry and rewrite it, so the step never replayed once.
+      const file = path.join(project.dir, '.e2e', 'cache', cacheFiles(project)[0]!);
+      const entry = JSON.parse(readFileSync(file, 'utf8'));
+      entry.payload.expected.name = 'INCREMENT';
+      writeFileSync(file, JSON.stringify(entry, null, 2), 'utf8');
+
+      const recased = await runOnce(project);
+      expect(recased.passed).toBe(true);
+      expect(recased.locateCalls).toBe(0);
+      expect(recased.steps[0]!.cache!.status).toBe('hit');
+    }, 180_000);
+
+    it('misses when the stored locator resolves a different node', async () => {
+      // The guard that makes an optimistic selector safe: the element at that
+      // path is not the one that was recorded, so the entry is not used.
+      const file = path.join(project.dir, '.e2e', 'cache', cacheFiles(project)[0]!);
+      const entry = JSON.parse(readFileSync(file, 'utf8'));
+      // #menu is a real button on the page, so the selector resolves; it is
+      // simply not the Increment button the entry recorded.
+      entry.payload.locator = { kind: 'web-selector', selector: '#menu' };
+      writeFileSync(file, JSON.stringify(entry, null, 2), 'utf8');
+
+      const wrongNode = await runOnce(project);
+      expect(wrongNode.passed).toBe(true);
+      expect(wrongNode.locateCalls).toBe(1);
+      expect(wrongNode.steps[0]!.cache!.status).toBe('written');
     }, 180_000);
   });
 
@@ -442,6 +477,49 @@ test('taps the first button', async ({ app, agent, screen }) => {
         expect(second.passed).toBe(true);
         expect(second.locateCalls).toBe(1);
         expect(cacheFiles(project)).toHaveLength(0);
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
+    it('records a target addressed by its observed reference, by its selector', async () => {
+      // Three identical buttons: no derived query addresses one of them, so the
+      // action goes through the reference the observation handed out. The
+      // reference itself is unstorable, but the driver's structural selector
+      // re-finds the same element on the next run, which is what makes a page
+      // full of repeated controls cacheable at all.
+      const project = createProject({
+        'tests/placed.e2e.ts': `import { test, expect } from 'e2e';
+
+test('taps the third repeat', async ({ agent, screen, web }) => {
+  await web.goto('/repeats');
+  await agent.tap('the third Reserve now button');
+  await expect(screen.getByRole('status')).toHaveText('C');
+});
+`,
+      });
+      try {
+        const model = installFakeModel((call) => {
+          const lines = call.lines.filter((line) => line.includes('Reserve now'));
+          const id = /#(\S+)/.exec(lines.at(-1) ?? '')?.[1] ?? '';
+          return {
+            protocolVersion: 'agent-locate-1',
+            target: { id, revision: call.revision },
+            explanation: 'the last Reserve now button in the observation',
+          };
+        });
+        const outcome = await runExisting(project, {
+          appUrl: app.url,
+          config: { tests: 'tests/**/*.e2e.ts', reporters: ['json'], agent: { model } },
+        });
+        expect(outcome.status).toBe('passed');
+        const files = cacheFiles(project);
+        expect(files).toHaveLength(1);
+        const entry = JSON.parse(
+          readFileSync(path.join(project.dir, '.e2e', 'cache', files[0]!), 'utf8'),
+        );
+        expect(entry.payload.locator.kind).toBe('web-selector');
+        expect(entry.payload.expected).toMatchObject({ role: 'button', name: 'Reserve now' });
       } finally {
         project.cleanup();
       }

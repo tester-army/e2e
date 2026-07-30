@@ -71,21 +71,17 @@ describe('the security boundary', () => {
   // This is the one thing the cache must refuse. A semantic query can only
   // address something a user could perceive; a raw selector could reach nodes
   // the observation deliberately withholds.
-  it('refuses a raw web selector, anywhere in the tree', () => {
-    expect(asCacheLocator({ kind: 'web-selector', selector: '#pwn' })).toBeUndefined();
-    expect(
-      asCacheLocator({ kind: 'index', source: { kind: 'web-selector', selector: '#pwn' }, index: 0 }),
-    ).toBeUndefined();
-    expect(
-      asCacheLocator({
-        kind: 'query',
-        query: { kind: 'role', value: exact('button') },
-        scope: { kind: 'web-selector', selector: '#pwn' },
-      }),
-    ).toBeUndefined();
-    expect(
-      asCacheLocator({ kind: 'filter', source: roleQuery('Save'), has: { kind: 'web-selector', selector: '#x' } }),
-    ).toBeUndefined();
+  it('admits a driver selector, which is a guess and not an identity', () => {
+    // A structural selector re-finds an element whose text has changed and an
+    // element no semantic query separates from its twins. Replay checks the
+    // node it lands on against the recorded role and name, so a stale selector
+    // costs a miss, never a wrong action.
+    expect(asCacheLocator({ kind: 'web-selector', selector: 'html > body > button:nth-child(2)' })).toEqual(
+      { kind: 'web-selector', selector: 'html > body > button:nth-child(2)' },
+    );
+    expect(asCacheLocator({ kind: 'web-selector', selector: '' })).toBeUndefined();
+    expect(asCacheLocator({ kind: 'web-selector' })).toBeUndefined();
+    expect(asCacheLocator({ kind: 'web-selector', selector: 42 })).toBeUndefined();
   });
 
   it('refuses a frame chain, which is addressed by CSS selector', () => {

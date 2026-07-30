@@ -41,7 +41,7 @@ describe('version and kind pinning', () => {
 describe('only the replayable parts are required', () => {
   it('rejects an entry whose locator is not admissible', () => {
     expect(
-      readCacheEntry(mutated((d) => (d.payload.locator = { kind: 'web-selector', selector: '#x' }))),
+      readCacheEntry(mutated((d) => (d.payload.locator = { kind: 'frame', selector: 'iframe', source: {} }))),
     ).toBeUndefined();
     expect(readCacheEntry(mutated((d) => delete d.payload.locator))).toBeUndefined();
   });

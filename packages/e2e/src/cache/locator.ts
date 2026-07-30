@@ -61,7 +61,14 @@ export type CacheLocator =
       readonly kind: 'index';
       readonly source: CacheLocator;
       readonly index: number | 'first' | 'last';
-    };
+    }
+  /**
+   * A platform selector the driver reported for an observed node. Structural
+   * rather than semantic, so it re-finds a node whose text has changed and a
+   * node no query can single out — and it is only ever a guess, because the
+   * identity behind it is checked before the entry is used.
+   */
+  | { readonly kind: 'web-selector'; readonly selector: string };
 
 export interface SemanticIdentity {
   readonly role: string;
@@ -113,8 +120,14 @@ export function asCacheLocator(value: unknown): CacheLocator | undefined {
         (typeof index === 'number' && Number.isSafeInteger(index) && index >= 0);
       return valid ? { kind: 'index', source, index: index as number | 'first' | 'last' } : undefined;
     }
+    case 'web-selector': {
+      const selector = raw['selector'];
+      return typeof selector === 'string' && selector !== ''
+        ? { kind: 'web-selector', selector }
+        : undefined;
+    }
     default:
-      // Everything else, including a raw web selector or a frame chain.
+      // Everything else, including a frame chain.
       return undefined;
   }
 }
