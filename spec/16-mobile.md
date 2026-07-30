@@ -171,6 +171,14 @@ target; with none, it scrolls the viewport.
 | `testId` | the accessibility identifier |
 | `placeholder` | the label of a `textbox` or `searchbox` whose value is empty or absent |
 
+A platform may copy one element's label onto the nodes nested inside it: iOS
+repeats a row's accessibility label on every wrapper down to its innermost text.
+A repeated label belongs to its **outermost** carrier, which is the element the
+user sees and taps; the copies are that one control's internals, not separate
+targets. A node carrying a label it does not own matches no label or text query,
+and an observation MUST omit it, because a model can only select nodes a derived
+query can address.
+
 `testId` maps to the iOS accessibility identifier and the Android view
 resource-id or Compose test tag. React Native's `testID` sets exactly these.
 `screen.testIdAttribute` is a web-only setting and MUST be ignored.
@@ -198,6 +206,13 @@ to `web-0.1`.
 `radio`, or `switch`. The value `1`, `true`, or `checked` is checked; `0`,
 `false`, or `unchecked` is unchecked; with no value, the selected state is used.
 Any other value leaves the state unavailable.
+
+State availability is platform-dependent, and a driver MUST leave an
+unobservable state unavailable rather than reporting it as false. A backend may
+expose a switch as a node carrying no value, selected state, or label at all, in
+which case `checked` cannot be derived for it. A test that needs the state on
+such a platform must read it from whatever the app itself exposes, for example a
+row label that spells the state out.
 
 An unsupported state on a role does not match, per 08-platforms.md. `expanded`
 therefore never matches on mobile; neither does `checked` on a role outside that
@@ -269,6 +284,18 @@ Momentum duration is advisory for a scrollport scroll. Distance is what reaches
 content, and a mobile backend may own the gesture's timing; a driver MUST
 preserve the distance and MUST NOT trade a correct distance for a requested
 duration.
+
+## Settling
+
+A mobile transition animates for a few hundred milliseconds. A driver MUST wait
+for the UI to go quiet after a mutation, before the next observation can be
+taken.
+
+This is not a convenience. Assertions poll and would recover on their own, but a
+direct read does not: a read taken during a push transition returns the previous
+screen and reports success, which is a false pass. `web-0.1` gets the same
+guarantee from actionability's stability requirement, which has no mobile
+equivalent because a mobile backend does not expose animation frames.
 
 ## `app` in the mobile profile
 

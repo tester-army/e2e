@@ -16,6 +16,7 @@ import path from 'node:path';
 import { createAgentDeviceClient } from 'agent-device';
 import { defineDriver, type Driver, type DriverContext, type DriverSession } from '../driver/index.ts';
 import { packageVersion } from '../internal/package-version.ts';
+import type { MobilePlatform } from './roles.ts';
 import type {
   AgentDeviceClient,
   AgentDeviceClientConfig,
@@ -46,6 +47,16 @@ export interface AgentDeviceOptions {
    * workers never share one device; override only to join a session you own.
    */
   readonly sessionPrefix?: string;
+  /**
+   * Reclaims a device held by an abandoned session of this same prefix.
+   *
+   * The daemon outlives the runner, so a cancelled or killed run leaves its
+   * session open and its device claimed, and every later run then fails with
+   * `DEVICE_IN_USE`. Defaults to true: reclaiming our own abandoned sessions is
+   * what makes a local or CI rerun work without manual cleanup. A session
+   * belonging to another prefix is never touched.
+   */
+  readonly reclaimAbandonedSessions?: boolean;
   /** Shuts the simulator or emulator down on dispose, for CI cleanliness. */
   readonly shutdownOnDispose?: boolean;
   /** Extra agent-device client configuration, such as a remote daemon URL. */
@@ -63,6 +74,25 @@ interface MobileWireTarget {
   readonly app: string;
   readonly device?: string;
   readonly os?: string;
+}
+
+/** Reads the pid a session name encodes, or undefined when it is not ours. */
+function ownerPidOf(sessionName: string, prefix: string): number | undefined {
+  const match = new RegExp(`^${prefix}-(\\d+)-[a-z0-9]+$`).exec(sessionName);
+  if (match?.[1] === undefined) return undefined;
+  const pid = Number(match[1]);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+/** Reports whether a pid still exists, without signalling it. */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (cause) {
+    // EPERM means the process exists but belongs to another user.
+    return (cause as { code?: string }).code === 'EPERM';
+  }
 }
 
 /** Narrows the open `Platform` union to the two platforms this driver drives. */
@@ -121,6 +151,7 @@ class DeviceLease {
 
   constructor(
     private readonly sessionName: string,
+    private readonly prefix: string,
     private readonly options: AgentDeviceOptions,
   ) {}
 
@@ -156,6 +187,9 @@ class DeviceLease {
     if (this.resolved !== null) {
       return { client, device: this.resolved.device, app: this.resolved.app };
     }
+    if (this.options.reclaimAbandonedSessions !== false) {
+      await this.reclaimAbandoned(client, context);
+    }
     const selection = {
       platform: target.platform,
       ...(target.device !== undefined ? { device: target.device } : {}),
@@ -174,7 +208,7 @@ class DeviceLease {
       );
     }
     await withDeadline(
-      client.devices.boot({ platform: target.platform, udid: device.id }),
+      client.devices.boot({ platform: target.platform, ...deviceSelector(device, target.platform) }),
       context.operation,
       'devices.boot',
     );
@@ -183,6 +217,34 @@ class DeviceLease {
       : target.app;
     this.resolved = { device, app };
     return { client, device, app };
+  }
+
+  /**
+   * Closes sessions left behind by an earlier run of this prefix.
+   *
+   * Only sessions whose owning process is gone are closed. The prefix carries
+   * the pid that created it, so a live parallel worker's session is left alone
+   * and only genuinely abandoned claims are released.
+   */
+  private async reclaimAbandoned(
+    client: AgentDeviceClient,
+    context: DriverContext,
+  ): Promise<void> {
+    let sessions;
+    try {
+      sessions = await withDeadline(client.sessions.list(), context.operation, 'sessions.list');
+    } catch {
+      // Reclamation is a convenience; launch reports the real failure.
+      return;
+    }
+    for (const session of sessions) {
+      if (session.name === this.sessionName) continue;
+      const owner = ownerPidOf(session.name, this.prefix);
+      if (owner === undefined || owner === process.pid || isProcessAlive(owner)) continue;
+      await client.sessions
+        .close({ session: session.name })
+        .catch(() => undefined);
+    }
   }
 
   /** Installs a build artifact and returns the identity it resolved to. */
@@ -217,12 +279,48 @@ class DeviceLease {
   }
 }
 
+/**
+ * Folds a device name to a comparable form.
+ *
+ * An Android AVD is configured as `Medium_Phone_API_36.1` but reports itself as
+ * `Medium Phone API 36.1` once booted, so a configured name must survive the
+ * separator and case change rather than stopping working the moment the
+ * emulator starts.
+ */
+function foldDeviceName(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, ' ');
+}
+
+/**
+ * Names one resolved device the way its platform expects.
+ *
+ * The two platforms use different selector fields, and the daemon rejects the
+ * wrong one outright rather than ignoring it: Apple targets are addressed by
+ * UDID, Android by serial.
+ */
+function deviceSelector(
+  device: DeviceInfo,
+  platform: MobilePlatform,
+): { readonly udid: string } | { readonly serial: string } {
+  if (platform === 'android') return { serial: device.android?.serial ?? device.id };
+  return { udid: device.ios?.udid ?? device.id };
+}
+
+/** Reports whether one device answers to a configured selector. */
+function matchesSelector(device: DeviceInfo, selector: string): boolean {
+  // An id match lets a selector be a UDID or an emulator serial.
+  return (
+    device.name === selector ||
+    device.id === selector ||
+    foldDeviceName(device.name) === foldDeviceName(selector)
+  );
+}
+
 /** Picks the device matching the target's selectors, preferring a booted one. */
 function selectDevice(devices: readonly DeviceInfo[], target: MobileWireTarget): DeviceInfo {
-  const candidates = devices.filter((device) => {
-    if (target.device !== undefined && device.name !== target.device) return false;
-    return true;
-  });
+  const candidates = devices.filter(
+    (device) => target.device === undefined || matchesSelector(device, target.device),
+  );
   const chosen = candidates.find((device) => device.booted === true) ?? candidates[0];
   if (chosen === undefined) {
     const wanted = [target.device, target.os].filter((value) => value !== undefined).join(' ');
@@ -240,8 +338,10 @@ function selectDevice(devices: readonly DeviceInfo[], target: MobileWireTarget):
  */
 export function agentDevice(options: AgentDeviceOptions = {}): Driver {
   const prefix = options.sessionPrefix ?? 'e2e';
+  // The pid is part of the name so a later run can tell an abandoned session
+  // from a live parallel worker's.
   const sessionName = `${prefix}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-  const lease = new DeviceLease(sessionName, options);
+  const lease = new DeviceLease(sessionName, prefix, options);
 
   return defineDriver({
     id: 'agent-device',

@@ -39,6 +39,8 @@ export interface FakeDaemonOptions {
   failAlways?: Readonly<Record<string, { code: string; message: string }>>;
   /** Screenshot pixel geometry reported back to the driver. */
   screenshot?: { width: number; height: number; logicalWidth: number; logicalHeight: number };
+  /** Sessions the daemon reports as open, for reclamation tests. */
+  sessions?: readonly { name: string }[];
 }
 
 export interface FakeDaemon {
@@ -155,6 +157,19 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
         });
       case 'close':
         return ok({ session: 'fake' });
+      case 'session_list':
+        // The client validates each entry, so the fake returns the wire shape a
+        // real daemon sends: a flat session with `device` as the device name.
+        return ok({
+          sessions: (options.sessions ?? []).map((session) => ({
+            name: session.name,
+            createdAt: 0,
+            platform: 'ios',
+            kind: 'simulator',
+            id: 'SIM-1',
+            device: 'iPhone 16',
+          })),
+        });
       default:
         // Every mutating command invalidates outstanding refs, exactly as a
         // real UI change would.

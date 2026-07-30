@@ -138,6 +138,32 @@ export async function withDeadline<T>(
 }
 
 /**
+ * Explains why a capture cannot be resolved against, or undefined when it can.
+ *
+ * The backend reports its own verdict, and a degraded capture is not a cosmetic
+ * problem: its fallback mode returns a tree whose nodes have no names, so every
+ * query silently misses and the failure surfaces as a screen that is not there.
+ * A truncated capture is the same hazard with a different cause: the node budget
+ * cut the tree, so an absent node proves nothing.
+ */
+export function describeUnusableCapture(result: {
+  readonly snapshotQuality?:
+    | { readonly state?: string; readonly backend?: string; readonly reason?: string }
+    | undefined;
+  readonly truncated?: boolean | undefined;
+  readonly nodes: readonly unknown[];
+}): string | undefined {
+  if (result.nodes.length === 0) return 'it contains no nodes';
+  const quality = result.snapshotQuality;
+  if (quality?.state === 'sparse') {
+    const detail = quality.reason ?? `backend ${quality.backend ?? 'unknown'}`;
+    return `the backend reported a sparse tree (${detail})`;
+  }
+  if (result.truncated === true) return 'the node budget truncated it';
+  return undefined;
+}
+
+/**
  * Resolves an artifact path beneath the attempt directory and returns it as a
  * relative POSIX path. It rejects traversal rather than writing outside the
  * attempt directory.

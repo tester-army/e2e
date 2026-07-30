@@ -15,8 +15,34 @@ import {
   type ScrollDirection,
 } from '../driver/index.ts';
 import type { AgentDeviceClient } from './client.ts';
+import { keyToText } from './keys.ts';
 import { clientRef, controlOf, nearestScrollContainer, type ProjectedNode } from './snapshot.ts';
 import { momentumGesture, rectCenter, swipePath, unsupported, withDeadline } from './support.ts';
+
+/**
+ * Waiting for the UI to go quiet after a mutation.
+ *
+ * A mobile transition animates for a few hundred milliseconds, so a snapshot
+ * taken straight after a tap can capture the previous screen. Assertions poll
+ * and would recover, but a direct read does not: it would return the old screen
+ * and report success. The backend can fold this wait into the action's own round
+ * trip, which costs nothing extra when the UI is already still.
+ */
+const SETTLE: { readonly settle: true; readonly settleQuietMs: number; readonly timeoutMs: number } =
+  { settle: true, settleQuietMs: 250, timeoutMs: 5_000 };
+
+/**
+ * Resolves one key to the text that presses it, failing loudly when the platform
+ * cannot express it. Typing the key's name instead would insert the word
+ * "Enter" into a field and report success.
+ */
+export function requireKeyText(key: string, platform: 'ios' | 'android'): string {
+  const text = keyToText(key, platform);
+  if (text === undefined) {
+    throw unsupported(`the key "${key}" on ${platform}; no keyboard encoding exists for it`);
+  }
+  return text;
+}
 
 /**
  * The platform delete key. Both backends interpret it inside typed text, which
@@ -99,11 +125,11 @@ export async function performAction(
   const base = { platform: scope.platform, ref: clientRef(control) } as const;
   switch (action.kind) {
     case 'tap':
-      await withDeadline(client.interactions.click({ ...base }), operation, 'tap');
+      await withDeadline(client.interactions.click({ ...base, ...SETTLE }), operation, 'tap');
       return;
     case 'doubleTap':
       await withDeadline(
-        client.interactions.click({ ...base, doubleTap: true }),
+        client.interactions.click({ ...base, doubleTap: true, ...SETTLE }),
         operation,
         'doubleTap',
       );
@@ -113,13 +139,14 @@ export async function performAction(
         client.interactions.longPress({
           ...base,
           ...(action.durationMs !== undefined ? { durationMs: action.durationMs } : {}),
+          ...SETTLE,
         }),
         operation,
         'longPress',
       );
       return;
     case 'fill': {
-      const options = { ...base, text: action.value };
+      const options = { ...base, text: action.value, ...SETTLE };
       // oxlint-disable-next-line no-array-fill-with-reference-type -- this is the daemon's fill command, not Array#fill
       await withDeadline(client.interactions.fill(options), operation, 'fill');
       return;
@@ -162,7 +189,7 @@ export async function performAction(
       // Toggling an already-correct control would invert it, so this is a
       // no-op when the derived state already matches.
       if (node.checked === wanted) return;
-      await withDeadline(client.interactions.click({ ...base }), operation, action.kind);
+      await withDeadline(client.interactions.click({ ...base, ...SETTLE }), operation, action.kind);
       return;
     }
     case 'scrollIntoView': {

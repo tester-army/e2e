@@ -65,9 +65,10 @@ describe('resolveExpression', () => {
     ).toEqual(['e5']);
   });
 
-  it('matches only the innermost carrier of a label repeated up the chain', () => {
-    // Real iOS repeats a row's accessibility label on every ancestor wrapper:
-    // Cell > Other > Button > StaticText all read "General".
+  it('matches only the outermost carrier of a label repeated down the chain', () => {
+    // Real iOS copies a row's accessibility label onto every wrapper inside it:
+    // Cell > Other > Button > StaticText all read "General". The row is what the
+    // user sees and taps; the copies are that one control's internals.
     const snapshot = buildSnapshot([
       {
         type: 'XCUIElementTypeCell',
@@ -88,10 +89,10 @@ describe('resolveExpression', () => {
       },
     ]);
     expect(refs(snapshot, { kind: 'query', query: { kind: 'text', value: exact('General') } })).toEqual(
-      ['e4'],
+      ['e1'],
     );
     expect(refs(snapshot, { kind: 'query', query: { kind: 'label', value: exact('General') } })).toEqual(
-      ['e4'],
+      ['e1'],
     );
     // A role query still reaches the control, because the role disambiguates it.
     expect(

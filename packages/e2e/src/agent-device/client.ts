@@ -1,10 +1,18 @@
 /**
- * Types for the agent-device typed client.
+ * The backend seam: everything this driver needs from agent-device, in one file.
  *
  * agent-device exports its runtime entry points but not its types, so every
  * shape here is derived structurally from `createAgentDeviceClient`. That keeps
  * the driver pinned to the real contract: a shape change upstream becomes a
  * compile error here rather than a runtime surprise.
+ *
+ * This module is also the only place that names the backend. The driver consumes
+ * device primitives — snapshot, ref-addressed input, gestures, artifacts,
+ * settings — and never agent-device's semantic layer: its `find` resolves and
+ * mutates in one call and its `wait` adds hidden retries, both of which belong
+ * to the runner under `spec/09-drivers.md`. Keeping the surface listed here
+ * makes upstream drift a compile error in one file, and keeps a second backend
+ * a possibility rather than a rewrite.
  */
 
 import type { createAgentDeviceClient } from 'agent-device';
@@ -22,6 +30,8 @@ type Options<F> = F extends (options: infer O, ...rest: never[]) => unknown ? O 
 
 export type SnapshotResult = Result<Group<'capture'>['snapshot']>;
 export type SnapshotNode = SnapshotResult['nodes'][number];
+/** The backend's own verdict on whether a capture can be trusted. */
+export type SnapshotQuality = NonNullable<SnapshotResult['snapshotQuality']>;
 export type ScreenshotResult = Result<Group<'capture'>['screenshot']>;
 export type ScreenshotOptions = NonNullable<Options<Group<'capture'>['screenshot']>>;
 export type AppOpenOptions = Options<Group<'apps'>['open']>;

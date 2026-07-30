@@ -127,6 +127,7 @@
       { "id": "MOBILE-ACTION-001", "source": "16-mobile.md", "requirement": "Visibility and actionability derive from geometry and occlusion, not backend hittability flags, and never retarget." },
       { "id": "MOBILE-ACTION-003", "source": "16-mobile.md", "requirement": "The action point is the innermost same-role descendant, so a nested control never no-ops." },
       { "id": "MOBILE-ACTION-002", "source": "16-mobile.md", "requirement": "Every mobile mutator distinguishes precommit stale state from possibly committed failure." },
+      { "id": "MOBILE-SETTLE-001", "source": "16-mobile.md", "requirement": "A mutation waits for the UI to go quiet, so a direct read never returns the pre-action screen." },
       { "id": "MOBILE-SCROLL-001", "source": "16-mobile.md", "requirement": "Momentum distances and durations and scroll-container selection are exact." },
       { "id": "MOBILE-SCROLL-002", "source": "16-mobile.md", "requirement": "An out-of-viewport node reports states.offscreen and becomes actionable once scrolled into view." },
       { "id": "MOBILE-OBSERVE-001", "source": "16-mobile.md", "requirement": "Secure masking and inputPurpose derivation follow the specified platform signals." },

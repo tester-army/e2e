@@ -7,6 +7,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { sleep } from '../internal/time.ts';
 import {
   DriverError,
   type CleanupContext,
@@ -31,6 +32,7 @@ import {
 import {
   assertActionable,
   performAction,
+  requireKeyText,
   performScroll,
   performSwipe,
   requireRect,
@@ -50,6 +52,7 @@ import {
 import {
   assertNotAborted,
   containedArtifact,
+  describeUnusableCapture,
   invalidState,
   translateAgentDeviceError,
   withDeadline,
@@ -61,6 +64,10 @@ import {
  * than publishing zeros.
  */
 const UNKNOWN_VIEWPORT = { width: 0, height: 0, scale: 1 } as const;
+
+/** Retries for a capture the backend reports as unusable, then give up. */
+const CAPTURE_RETRIES = 2;
+const CAPTURE_RETRY_DELAY_MS = 250;
 
 /** Everything the session needs that the factory resolved once per instance. */
 export interface MobileSessionOptions {
@@ -156,6 +163,24 @@ export class MobileSession implements DriverSession {
     return this.client.apps.open({ platform: this.platform, app: this.appId, url });
   }
 
+  /**
+   * Waits for the UI to go quiet, for mutations whose command cannot fold the
+   * wait in. Navigation animates for a few hundred milliseconds, so without this
+   * a direct read straight after `back` returns the previous screen and reports
+   * success. It is best effort: failing to settle is not a reason to fail an
+   * action that already committed.
+   */
+  private async settle(operation: OperationContext): Promise<void> {
+    await withDeadline(
+      this.client.command
+        .wait({ platform: this.platform, stable: true, quietMs: 250, timeoutMs: 5_000 })
+        .then(() => undefined)
+        .catch(() => undefined),
+      operation,
+      'settle',
+    ).catch(() => undefined);
+  }
+
   /** Rejects use of a closed session, and honors cancellation up front. */
   private assertUsable(operation: OperationContext): void {
     if (this.closed) throw invalidState('driver session is closed');
@@ -185,9 +210,29 @@ export class MobileSession implements DriverSession {
    */
   private async capture(operation: OperationContext): Promise<ProjectedSnapshot> {
     this.assertOpened();
-    let result: SnapshotResult;
+    // A degraded capture is retried rather than trusted: the backend can fall
+    // back to a mode that returns a tree with no names, and resolving against
+    // that reports a screen that is not there.
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await this.captureOnce(operation);
+      const unusable = describeUnusableCapture(result);
+      if (unusable === undefined) return this.project(result);
+      if (attempt >= CAPTURE_RETRIES || operation.signal.aborted) {
+        throw new DriverError('NODE_STALE', `snapshot is unusable: ${unusable}`, {
+          // Retryable so the runner re-resolves within its own deadline: a
+          // degraded capture is a transient backend condition, not a verdict
+          // about the app.
+          retryable: true,
+        });
+      }
+      await sleep(CAPTURE_RETRY_DELAY_MS, operation.signal);
+    }
+  }
+
+  /** One snapshot request, translated at the SPI boundary. */
+  private async captureOnce(operation: OperationContext): Promise<SnapshotResult> {
     try {
-      result = await withDeadline(
+      return await withDeadline(
         this.client.capture.snapshot({ platform: this.platform, raw: true }),
         operation,
         'snapshot',
@@ -195,6 +240,10 @@ export class MobileSession implements DriverSession {
     } catch (cause) {
       throw translateAgentDeviceError(cause, 'snapshot');
     }
+  }
+
+  /** Projects one accepted capture and caches it as the current revision. */
+  private project(result: SnapshotResult): ProjectedSnapshot {
     // The backend's ref-frame epoch is the natural revision. Without one, a
     // local counter still guarantees a ref never outlives its capture.
     const revision =
@@ -240,6 +289,7 @@ export class MobileSession implements DriverSession {
         );
         this.opened = true;
         this.invalidate();
+        await this.settle(operation);
         // A path is a deep link on mobile: the app launches first, then
         // receives the link, per spec/16-mobile.md.
         if (openPath !== undefined) {
@@ -259,6 +309,7 @@ export class MobileSession implements DriverSession {
         );
         this.opened = true;
         this.invalidate();
+        await this.settle(operation);
       } catch (cause) {
         throw translateAgentDeviceError(cause, 'app.restart');
       }
@@ -299,6 +350,7 @@ export class MobileSession implements DriverSession {
           operation,
           'app.back',
         );
+        await this.settle(operation);
       } catch (cause) {
         throw translateAgentDeviceError(cause, 'app.back', { committed: true });
       }
@@ -309,6 +361,7 @@ export class MobileSession implements DriverSession {
       try {
         await withDeadline(this.openUrl(url), operation, 'app.deepLink');
         this.opened = true;
+        await this.settle(operation);
       } catch (cause) {
         throw translateAgentDeviceError(cause, 'app.deepLink', { committed: true });
       }
@@ -395,10 +448,11 @@ export class MobileSession implements DriverSession {
     press: async (key, operation) => {
       this.assertUsable(operation);
       this.assertOpened();
+      const text = requireKeyText(key, this.platform);
       this.invalidate();
       try {
         await withDeadline(
-          this.client.interactions.type({ platform: this.platform, text: key }),
+          this.client.interactions.type({ platform: this.platform, text }),
           operation,
           'press',
         );

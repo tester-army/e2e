@@ -84,7 +84,7 @@
     "node": ">=20.19.0"
   },
   "peerDependencies": {
-    "agent-device": "^0.20.2"
+    "agent-device": "0.20.2"
   },
   "peerDependenciesMeta": {
     "agent-device": {

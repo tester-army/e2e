@@ -94,6 +94,27 @@ navigation. Two Settings quirks shape it, and both generalize to real apps:
   `device.hideKeyboard()` reports `UNSUPPORTED_CAPABILITY` there. Relaunching is
   what clears the keyboard.
 
+## Android suite
+
+`test:android` runs the same driver against Android's built-in Settings app. It
+needs an Android SDK and a booted emulator:
+
+```bash
+~/Library/Android/sdk/emulator/emulator -list-avds
+pnpm --filter @e2e/testbed test:android
+E2E_ANDROID_DEVICE=Pixel_8_API_35 pnpm --filter @e2e/testbed test:android
+```
+
+Android is roughly twice as fast as iOS per test, and its accessibility tree is
+shaped differently in ways worth knowing:
+
+- labels sit on leaf `TextView`s with no ancestor duplication, unlike iOS
+- `visibleToUser` is always present, where iOS never sends it
+- `selected` and `focused` are never sent, and a `Switch` arrives with no value,
+  label, or state at all, so `checked` cannot be derived on Android. The driver
+  leaves the state unavailable rather than reporting false; `tests-android`
+  pins that so a fix upstream is noticed.
+
 ## Mobile agentic suite
 
 `test:mobile-agent` points the agent tier at the same Settings app. It is

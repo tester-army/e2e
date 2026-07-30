@@ -51,9 +51,11 @@ test('types into the search field through the agent', async ({ app, agent, scree
 
 test('judges the screen and extracts structured data', async ({ app, agent, screen }) => {
   await app.open();
-  await screen.getByText('General').first().tap();
 
-  await agent.assert('this screen shows general device settings');
+  // Judged on the screen the launch guarantees. Hanging an agentic judgment off
+  // a separate navigation step makes a model call report that step's timing
+  // instead of the thing under test.
+  await agent.assert('this screen shows a list of settings the user can open');
 
   // Extraction is judged against the screen rather than against a hard-coded
   // string: "the first row" has more than one defensible answer, but a real

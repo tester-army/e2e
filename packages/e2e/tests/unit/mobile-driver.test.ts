@@ -116,12 +116,22 @@ describe('launch', () => {
     // Launch leaves the app not yet foreground, so the attempt's own app.open
     // is the single launch. Resetting here and launching there costs one app
     // start per attempt instead of two.
-    expect(daemon.commands()).toEqual(['devices', 'boot', 'settings']);
+    // A run first releases any device its own abandoned sessions still hold.
+    expect(daemon.commands()).toEqual(['session_list', 'devices', 'boot', 'settings']);
     const settings = daemon.calls.find((call) => call.command === 'settings');
     expect(settings?.positionals).toEqual(['clear-app-state', 'com.example.app']);
 
     await session.app.open(undefined, context().operation);
-    expect(daemon.commands()).toEqual(['devices', 'boot', 'settings', 'open']);
+    // Launching animates, so the app settles before anything observes it: a
+    // direct read during a transition would return the previous screen.
+    expect(daemon.commands()).toEqual([
+      'session_list',
+      'devices',
+      'boot',
+      'settings',
+      'open',
+      'wait',
+    ]);
     await session.close(cleanup);
     await dispose();
   });
@@ -132,7 +142,7 @@ describe('launch', () => {
     const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
     const driver = agentDevice({ transport: daemon.transport, reset: 'relaunch' });
     const session = await driver.launch(context());
-    expect(daemon.commands()).toEqual(['devices', 'boot']);
+    expect(daemon.commands()).toEqual(['session_list', 'devices', 'boot']);
     await session.close(cleanup);
     await driver.dispose?.();
   });
@@ -171,6 +181,54 @@ describe('launch', () => {
     });
     const driver = agentDevice({ transport: daemon.transport });
     await expect(driver.launch(context())).rejects.toThrow(/physical device/);
+  });
+
+  it('matches a device name across separator and case changes', async () => {
+    // An Android AVD is configured as `Medium_Phone_API_36.1` and reports
+    // itself as `Medium Phone API 36.1` once booted.
+    const daemon = createFakeDaemon({
+      screen: () => LOGIN_SCREEN,
+      devices: [
+        { id: 'emulator-5554', name: 'Medium Phone API 36.1', kind: 'emulator', booted: true },
+      ],
+    });
+    const driver = agentDevice({ transport: daemon.transport });
+    const session = await driver.launch(
+      context({
+        target: {
+          name: 'android',
+          platform: 'android',
+          app: 'com.example.app',
+          device: 'Medium_Phone_API_36.1',
+          driver: {} as never,
+        },
+      }),
+    );
+    expect(daemon.commands()).toContain('boot');
+    await session.close(cleanup);
+    await driver.dispose?.();
+  });
+
+  it('matches a device by its id, so a serial or udid works', async () => {
+    const daemon = createFakeDaemon({
+      screen: () => LOGIN_SCREEN,
+      devices: [{ id: 'emulator-5554', name: 'Pixel', kind: 'emulator', booted: true }],
+    });
+    const driver = agentDevice({ transport: daemon.transport });
+    const session = await driver.launch(
+      context({
+        target: {
+          name: 'android',
+          platform: 'android',
+          app: 'com.example.app',
+          device: 'emulator-5554',
+          driver: {} as never,
+        },
+      }),
+    );
+    expect(daemon.commands()).toContain('boot');
+    await session.close(cleanup);
+    await driver.dispose?.();
   });
 
   it('fails when no device matches the requested selector', async () => {
@@ -597,5 +655,132 @@ describe('lifecycle', () => {
     expect(runtime.browser).toBeUndefined();
     await session.close(cleanup);
     await dispose();
+  });
+});
+
+describe('key presses', () => {
+  it('sends a control character for a named key, not the key name', async () => {
+    // Typing "Enter" would insert that word into the field and report success.
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    await session.actions.press('Enter', context().operation);
+    const typed = daemon.calls.find((call) => call.command === 'type');
+    expect(typed?.positionals[0]).toBe('\r');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('passes a printable key through as itself', async () => {
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    await session.actions.press('a', context().operation);
+    expect(daemon.calls.find((call) => call.command === 'type')?.positionals[0]).toBe('a');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('rejects a key the platform cannot express instead of typing its name', async () => {
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    await expect(session.actions.press('F13', context().operation)).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+    });
+    expect(daemon.commands()).not.toContain('type');
+    await session.close(cleanup);
+    await dispose();
+  });
+});
+
+describe('settling', () => {
+  it('folds a settle wait into a tap, in the same round trip', async () => {
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    const refs = await session.screen.resolve(
+      { kind: 'query', query: { kind: 'label', value: { kind: 'string', value: 'Continue', exact: true } } },
+      op,
+    );
+    await session.screen.perform(refs[0]!, { kind: 'tap' }, op);
+    const click = daemon.calls.find((call) => call.command === 'click');
+    expect(click?.flags['settle']).toBe(true);
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('waits for quiet after navigation, which cannot fold it in', async () => {
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    const op = context().operation;
+    await session.app.back(op);
+    const waits = daemon.calls.filter((call) => call.command === 'wait');
+    expect(waits.at(-1)?.positionals[0]).toBe('stable');
+    await session.close(cleanup);
+    await dispose();
+  });
+
+  it('never fails an already committed action because settling failed', async () => {
+    const daemon = createFakeDaemon({
+      screen: () => LOGIN_SCREEN,
+      failAlways: { wait: { code: 'COMMAND_FAILED', message: 'never went quiet' } },
+    });
+    const { session, dispose } = await launch(daemon);
+    await session.app.back(context().operation);
+    await session.close(cleanup);
+    await dispose();
+  });
+});
+
+describe('abandoned session reclamation', () => {
+  /** A session name from a process that no longer exists. */
+  const deadPid = 2_147_480_000;
+
+  it('closes a session left behind by a dead run of the same prefix', async () => {
+    // The daemon outlives the runner, so a cancelled run keeps its device
+    // claimed and every later run fails DEVICE_IN_USE.
+    const daemon = createFakeDaemon({
+      screen: () => LOGIN_SCREEN,
+      sessions: [{ name: `e2e-${deadPid}-abc123` }],
+    });
+    const driver = agentDevice({ transport: daemon.transport });
+    const session = await driver.launch(context());
+    const reclaimed = daemon.calls
+      .filter((call) => call.command === 'close')
+      .map((call) => call.flags['session']);
+    expect(reclaimed).toContain(`e2e-${deadPid}-abc123`);
+    await session.close(cleanup);
+    await driver.dispose?.();
+  });
+
+  it('leaves a live worker session and a foreign session alone', async () => {
+    const daemon = createFakeDaemon({
+      screen: () => LOGIN_SCREEN,
+      sessions: [
+        // This process is alive: a parallel worker's device must not be taken.
+        { name: `e2e-${process.pid}-live01` },
+        // Another tool's session, which is none of our business.
+        { name: 'qa-ios' },
+      ],
+    });
+    const driver = agentDevice({ transport: daemon.transport });
+    const session = await driver.launch(context());
+    const closedNames = daemon.calls
+      .filter((call) => call.command === 'close')
+      .map((call) => call.flags['session']);
+    expect(closedNames).not.toContain(`e2e-${process.pid}-live01`);
+    expect(closedNames).not.toContain('qa-ios');
+    await session.close(cleanup);
+    await driver.dispose?.();
+  });
+
+  it('can be turned off', async () => {
+    const daemon = createFakeDaemon({
+      screen: () => LOGIN_SCREEN,
+      sessions: [{ name: `e2e-${deadPid}-abc123` }],
+    });
+    const driver = agentDevice({ transport: daemon.transport, reclaimAbandonedSessions: false });
+    const session = await driver.launch(context());
+    expect(daemon.commands()).not.toContain('session_list');
+    await session.close(cleanup);
+    await driver.dispose?.();
   });
 });

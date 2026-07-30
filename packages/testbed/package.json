@@ -13,7 +13,8 @@
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts",
     "test:mobile": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile.config.ts",
-    "test:mobile-agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile-agent.config.ts"
+    "test:mobile-agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.mobile-agent.config.ts",
+    "test:android": "node node_modules/e2e/dist/cli/bin.js run --config e2e.android.config.ts"
   },
   "dependencies": {
     "@e2edev/playwright": "workspace:*",

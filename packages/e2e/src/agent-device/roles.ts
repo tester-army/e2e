@@ -164,6 +164,31 @@ const SCROLL_CONTAINERS: ReadonlySet<string> = new Set([
   'table-view',
 ]);
 
+/**
+ * Roles a user acts on directly. A control stays in an observation even when a
+ * container above it repeats its label, because it is the only node carrying the
+ * role, and a role query addresses it.
+ */
+const INTERACTIVE_ROLES: ReadonlySet<MobileRole> = new Set([
+  'button',
+  'link',
+  'textbox',
+  'searchbox',
+  'checkbox',
+  'radio',
+  'switch',
+  'slider',
+  'spinbutton',
+  'combobox',
+  'tab',
+  'menuitem',
+]);
+
+/** Reports whether a role is one a user acts on directly. */
+export function isInteractiveRole(role: MobileRole): boolean {
+  return INTERACTIVE_ROLES.has(role);
+}
+
 /** The `checkable` roles for which `mobile-0.1` derives a `checked` state. */
 const CHECKABLE_ROLES: ReadonlySet<MobileRole> = new Set(['checkbox', 'radio', 'switch']);
 

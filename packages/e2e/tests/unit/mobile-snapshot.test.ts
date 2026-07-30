@@ -330,8 +330,10 @@ describe('toObservationTree pruning', () => {
       for (const child of node.children ?? []) walk(child as typeof node);
     };
     walk(tree);
-    // The wrappers are gone; every node the model can act on is kept.
-    expect(roles).toEqual(['application', 'listitem', 'button', 'paragraph']);
+    // The wrappers and the duplicate text are gone. The row and the control
+    // inside it remain: a role query addresses the control, and a container
+    // repeating its label must not make it disappear.
+    expect(roles).toEqual(['listitem', 'button']);
   });
 
   it('keeps a wrapper that carries its own label or an identifier', () => {
@@ -408,5 +410,29 @@ describe('nearestScrollContainer', () => {
     const projected = projectSnapshot(snapshot, 'ios', 'r1');
     expect(nearestScrollContainer(projected.byRef.get('e3')!)?.ref).toBe('e2');
     expect(nearestScrollContainer(projected.byRef.get('e1')!)).toBeUndefined();
+  });
+});
+
+describe('observation contains only addressable nodes', () => {
+  it('drops the inner copies of a row label, keeping the row', () => {
+    // iOS repeats a row's label on its inner button. Advertising it there lets
+    // a model select a node that no derived query resolves to, which the agent
+    // tier rejects as unaddressable.
+    const snapshot = buildSnapshot([
+      {
+        type: 'XCUIElementTypeCell',
+        label: 'Keyboards & Typing',
+        children: [{ type: 'XCUIElementTypeButton', label: 'Keyboards & Typing' }],
+      },
+    ]);
+    const projected = projectSnapshot(snapshot, 'ios', 'r1');
+    // The row owns the label; its inner copy does not, so the observation
+    // contains the row alone and everything in it is addressable.
+    expect(projected.byRef.get('e1')?.ownsLabel).toBe(true);
+    expect(projected.byRef.get('e2')?.ownsLabel).toBe(false);
+    const tree = toObservationTree(projected);
+    expect(tree.name).toBe('Keyboards & Typing');
+    // The inner button survives as a control; a plain text copy would not.
+    expect(tree.children?.map((child) => child.role)).toEqual(['button']);
   });
 });

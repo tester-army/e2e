@@ -17,6 +17,7 @@ import {
 import type { NodeRect, SnapshotNode, SnapshotResult } from './client.ts';
 import {
   deriveChecked,
+  isInteractiveRole,
   isScrollContainer,
   normalizeRole,
   roleKey,
@@ -162,7 +163,8 @@ export function projectSnapshot(
     node: SnapshotNode,
     parent: ProjectedNode | undefined,
     /** Labels owned anywhere below this node, filled by the recursion. */
-    descendantOwned: Set<string>,
+    /** Labels carried by this node's ancestors, for outermost-wins ownership. */
+    ancestorLabels: ReadonlySet<string>,
     /** Nearest ancestor rect that passed the consistency check. */
     trustedAncestorRect: NodeRect | undefined,
   ): ProjectedNode => {
@@ -207,23 +209,25 @@ export function projectSnapshot(
     if (secure && visible) secureVisible = true;
     ordered.push(projected);
     byRef.set(projected.ref, projected);
-    const childOwned = new Set<string>();
+    // A label repeated down a chain belongs to its outermost carrier: iOS copies
+    // a row's label onto every wrapper inside it, and the row is the thing the
+    // user sees and taps. The inner copies are one control's internals, not
+    // separate targets. Only a node with usable geometry can own a label, since
+    // iOS zeroes the rects of a scrolled-away row's descendants and one of those
+    // claiming the label would make the row unmatchable.
+    const own = queryText(projected);
+    const owns = own !== undefined && rect !== undefined && !ancestorLabels.has(own);
+    (projected as { ownsLabel: boolean }).ownsLabel = owns;
+
     // A scroll container's content legitimately extends past its own frame, so
     // it imposes no containment on its children. Any other view does: its
     // subviews are inside it.
     const boundsForChildren = projected.scrollContainer ? undefined : rect ?? trustedAncestorRect;
+    const labelsForChildren =
+      own === undefined ? ancestorLabels : new Set([...ancestorLabels, own]);
     const kids = (children.get(node.index) ?? []).map((child) =>
-      build(child, projected, childOwned, boundsForChildren),
+      build(child, projected, labelsForChildren, boundsForChildren),
     );
-    // A label repeated on an ancestor belongs to the innermost carrier, which
-    // is what web `getByText` resolves to. Only a node with usable geometry can
-    // own one: iOS zeroes the rects of a scrolled-away cell's descendants, and
-    // letting one of those claim the label makes the whole row unmatchable.
-    const own = queryText(projected);
-    const owns = own !== undefined && rect !== undefined && !childOwned.has(own);
-    (projected as { ownsLabel: boolean }).ownsLabel = owns;
-    for (const label of childOwned) descendantOwned.add(label);
-    if (owns) descendantOwned.add(own);
     // `children` is readonly to consumers; it is filled here because a node
     // must exist before its children can reference it as their parent.
     (projected as { children: readonly ProjectedNode[] }).children = kids;
@@ -301,9 +305,8 @@ export function queryText(node: ProjectedNode): string | undefined {
 }
 
 /**
- * The text a `text` query matches. Only the innermost carrier of a repeated
- * label matches, mirroring web, where an ancestor that contains text only
- * through its descendants is not a `getByText` match.
+ * The text a `text` query matches: only the outermost carrier of a repeated
+ * label, which is the row a user sees rather than one of its internals.
  */
 export function ownedText(node: ProjectedNode): string | undefined {
   return node.ownsLabel ? queryText(node) : undefined;
@@ -341,7 +344,12 @@ export function toSemanticNode(
   };
 }
 
-/** Every wire field of one node except its children. */
+/**
+ * Every wire field of one node except its children.
+ *
+ * `bounded` marks an observation, whose per-field limits keep a model prompt
+ * affordable. A direct read is unbounded and carries whole values.
+ */
 function nodeFields(
   node: ProjectedNode,
   revision: string,
@@ -403,9 +411,16 @@ export function toObservationTree(snapshot: ProjectedSnapshot): SemanticNode {
  * kept, so refs stay resolvable.
  */
 function isObservable(node: ProjectedNode): boolean {
-  if (node.role !== 'generic') return true;
-  if (node.ownsLabel && queryText(node) !== undefined) return true;
-  return node.identifier !== undefined;
+  // A control is always kept: it is the only node carrying its role, a role
+  // query addresses it, and a container above it may well repeat its label.
+  if (isInteractiveRole(node.role)) return true;
+  if (node.identifier !== undefined) return true;
+  // Otherwise a node carrying a label it does not own is an inner copy of its
+  // row, and a derived query resolves that label to the owner instead, so the
+  // copy could not be addressed.
+  if (queryText(node) !== undefined) return node.ownsLabel;
+  // An unnamed, unaddressable container carries nothing a model can use.
+  return false;
 }
 
 /** Projects one subtree, promoting the children of collapsed wrappers. */
