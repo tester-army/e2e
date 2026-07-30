@@ -55,14 +55,31 @@ describe('instruction normalization', () => {
 });
 
 describe('cacheable methods', () => {
-  it('accepts every method in the cache-1 enum', () => {
-    for (const api of ['tap', 'click', 'type', 'scroll', 'scrollTo', 'longPress', 'act']) {
+  it('accepts every located action, because they all find a node the same way', () => {
+    const methods = [
+      'tap',
+      'click',
+      'type',
+      'scroll',
+      'scrollTo',
+      'longPress',
+      'act',
+      'press',
+      'hover',
+      'select',
+      'check',
+      'uncheck',
+      'dragTo',
+      'upload',
+    ];
+    for (const api of methods) {
       expect(cacheMethodForApi(`agent.${api}`)).toBe(api);
     }
   });
 
-  it('rejects located actions outside the enum', () => {
-    for (const api of ['press', 'select', 'hover', 'check', 'uncheck', 'upload', 'dragTo']) {
+  it('rejects a method that locates nothing', () => {
+    // A judgment, an extraction, and a login have no located node to store.
+    for (const api of ['assert', 'waitFor', 'extract', 'login']) {
       expect(cacheMethodForApi(`agent.${api}`)).toBeUndefined();
     }
   });

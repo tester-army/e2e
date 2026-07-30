@@ -151,7 +151,7 @@
         "driverId": { "type": "string", "minLength": 1 },
         "driverVersion": { "type": "string", "minLength": 1 },
         "driverSpiVersion": { "const": 1 },
-        "method": { "enum": ["act", "tap", "click", "type", "scroll", "scrollTo", "longPress"] },
+        "method": { "enum": ["act", "tap", "click", "type", "scroll", "scrollTo", "longPress", "press", "hover", "select", "check", "uncheck", "dragTo", "upload"] },
         "callIndex": { "type": "integer", "minimum": 0 },
         "instructionDigest": { "$ref": "#/$defs/sha256" },
         "inputDigest": { "$ref": "#/$defs/sha256" },

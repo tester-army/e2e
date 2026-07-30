@@ -10,8 +10,12 @@
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 
 /**
- * Public methods that may be cached, per `cache-1` `key.method`. Located
- * actions outside this set are never cached even though they use the model.
+ * Public methods that may be cached, per `cache-1` `key.method`.
+ *
+ * Every located action belongs here: they differ in what they do with the node,
+ * not in how they find it, and an entry stores only the finding. Leaving some
+ * out meant a suite paid a model call per run for a hover or an upload that had
+ * resolved to the same control every time.
  */
 export const CACHE_METHODS = [
   'act',
@@ -21,6 +25,13 @@ export const CACHE_METHODS = [
   'scroll',
   'scrollTo',
   'longPress',
+  'press',
+  'hover',
+  'select',
+  'check',
+  'uncheck',
+  'dragTo',
+  'upload',
 ] as const;
 
 export type CacheMethod = (typeof CACHE_METHODS)[number];

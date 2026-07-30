@@ -104,8 +104,9 @@ intended semantics.
 
 There are two entry kinds:
 
-- **Locate:** maps one located-action call to a portable locator expression.
-  A valid hit uses zero model calls.
+- **Locate:** maps one located-action call to a locator. Every located action
+  qualifies — they differ in what they do with the node, not in how they find it,
+  and the entry stores only the finding. A valid hit uses zero model calls.
 - **Path:** stores a structured successful `agent.act` action trace as
   guidance. Replay still uses a model and fresh observations and is not called
   deterministic replay.
