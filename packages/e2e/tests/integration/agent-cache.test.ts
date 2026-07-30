@@ -482,18 +482,53 @@ test('taps the first button', async ({ app, agent, screen }) => {
       }
     }, 240_000);
 
+    it('refuses to record when the model reports nothing about positioning', async () => {
+      // Silence is not the recordable answer. A model that omits `positional`
+      // has not asserted the target is content-addressed, and recording on its
+      // silence would trade a wasted locate for a possible wrong action.
+      const project = createProject({
+        'tests/silent.e2e.ts': `import { test, expect } from 'e2e';
+
+test('taps the button', async ({ app, agent, screen }) => {
+  await app.open('/feed');
+  await agent.tap('the Refresh feed button');
+  await expect(screen.getByRole('status')).toHaveText('refreshed');
+});
+`,
+      });
+      try {
+        const model = installFakeModel((call) => {
+          const answer = locateBestMatch(call) as Record<string, unknown>;
+          const { positional, ...silent } = answer;
+          void positional;
+          return silent;
+        });
+        const outcome = await runExisting(project, {
+          appUrl: app.url,
+          config: { tests: 'tests/**/*.e2e.ts', reporters: ['json'], agent: { model } },
+        });
+        expect(outcome.status).toBe('passed');
+        expect(cacheFiles(project)).toHaveLength(0);
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
     it('records a target addressed by its observed reference, by its selector', async () => {
-      // Three identical buttons: no derived query addresses one of them, so the
-      // action goes through the reference the observation handed out. The
-      // reference itself is unstorable, but the driver's structural selector
-      // re-finds the same element on the next run, which is what makes a page
-      // full of repeated controls cacheable at all.
+      // Three identical buttons: the instruction names one by the offer beside
+      // it, so it is content-addressed and recordable, but no query derived from
+      // the button separates it from its twins — they share role and name, and
+      // the offer is a sibling, not the button's name. So the action goes through
+      // the reference the observation handed out. The reference itself is
+      // unstorable, but the driver's structural selector re-finds the same
+      // element next run, which is what makes a page of repeated controls
+      // cacheable at all.
       const project = createProject({
         'tests/placed.e2e.ts': `import { test, expect } from 'e2e';
 
-test('taps the third repeat', async ({ agent, screen, web }) => {
+test('taps the repeat for one offer', async ({ agent, screen, web }) => {
   await web.goto('/repeats');
-  await agent.tap('the third Reserve now button');
+  await agent.tap('the Reserve now button for Offer C');
   await expect(screen.getByRole('status')).toHaveText('C');
 });
 `,
@@ -505,7 +540,8 @@ test('taps the third repeat', async ({ agent, screen, web }) => {
           return {
             protocolVersion: 'agent-locate-1',
             target: { id, revision: call.revision },
-            explanation: 'the last Reserve now button in the observation',
+            explanation: "the Reserve now button in Offer C's row",
+            positional: false,
           };
         });
         const outcome = await runExisting(project, {

@@ -173,11 +173,12 @@ const LOCATE_REQUEST = [
   'If no node in the observation matches the instruction, do not guess a close',
   'substitute: respond with "target": null and set "explanation" to a short',
   'reason grounded in what the observation actually shows.',
-  'Also set "positional": true when the instruction identifies the node by where',
-  'it sits rather than by what it says — "the first result", "the last row", "the',
-  'third card". Set it to false when the instruction names the node by its own',
+  'Always set "positional". Use true when the instruction identifies the node by',
+  'where it sits rather than by what it says — "the first result", "the last row",',
+  '"the third card". Use false when the instruction names the node by its own',
   'content or purpose, such as "the Save button" or "the email field". This only',
   'affects what the runner is allowed to remember; it never changes what runs.',
+  'Omitting it is safe but wastes work, so answer it every time.',
 ].join('\n');
 
 /**

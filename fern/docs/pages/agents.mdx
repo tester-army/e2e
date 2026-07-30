@@ -396,6 +396,13 @@ row. A cache is allowed to miss; it is never allowed to be wrong. So the runner
 recognises a positional instruction and declines to record it, reporting
 `not recorded: the instruction targets a position` under `--debug`.
 
+The runner learns this from the model, which reports whether the instruction it
+was given named the node or placed it. That report is only ever allowed to reduce
+what gets cached: when it is missing the runner assumes the worst and records
+nothing, reporting `not recorded: the model did not report whether the
+instruction targets a position`. So a step that never warms up is worth reading
+the `--debug` cache table for — the answer is usually the instruction.
+
 If a step matters and you want it cached, name the thing itself:
 
 ```ts

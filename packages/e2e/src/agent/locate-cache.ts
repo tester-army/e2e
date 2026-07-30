@@ -117,7 +117,7 @@ async function consult(
       status: 'invalid',
       keyHash,
       reason: result.reason,
-      ...bytesOf(result.bytes),
+      ...(result.bytes === undefined ? {} : { bytes: result.bytes }),
     });
     invocation.recordPolicy('cache.entry', 'denied', 'CACHE_INVALID');
     agentTrace(() => `cache: ignored invalid entry ${keyHash.slice(0, 12)} — ${result.reason}`);
@@ -164,8 +164,8 @@ async function consult(
   });
   invocation.recordPolicy('cache.entry', 'allowed');
   agentTrace(() => `cache: hit ${keyHash.slice(0, 12)} (${describe(node)})`);
-  // A replayed target is content-addressed by construction: a positional one is
-  // never recorded, so there is nothing positional to replay.
+  // Content-addressed by construction: only a content target is ever recorded,
+  // so there is nothing else an entry could replay as.
   return {
     kind: 'node',
     ref,
@@ -174,7 +174,7 @@ async function consult(
     observation,
     explanation: '',
     origin: 'cache',
-    positional: false,
+    targeting: 'content',
   };
 }
 
@@ -207,6 +207,17 @@ function storableLocator(located: LocatedNode): CacheLocator | undefined {
   return asCacheLocator(scoped);
 }
 
+/**
+ * Why a target's reported addressing is not recordable, keyed by that report.
+ * `content` is absent because it is the one recordable case.
+ */
+const NOT_RECORDABLE: Partial<Record<LocatedNode['targeting'], string>> = {
+  position:
+    'the instruction targets a position, so a stored locator would drift to whatever now carries that content',
+  unreported:
+    'the model did not report whether the instruction targets a position, and a stored locator is only safe when it did not',
+};
+
 async function record(
   invocation: Invocation,
   context: AgentCacheContext,
@@ -217,17 +228,15 @@ async function record(
   const store = context.store;
   if (!store.writable) return notRecorded(invocation, keyHash, 'the cache is read-only');
 
-  // A positional target is deliberately not recorded. The locator would be
-  // content-addressed, so replaying it would keep finding the item that was in
-  // that position when it was recorded rather than whatever is there now — a
-  // wrong answer, not a miss, which the cache is never allowed to produce.
-  if (located.positional) {
-    return notRecorded(
-      invocation,
-      keyHash,
-      'the instruction targets a position, so a stored locator could drift to the wrong item',
-    );
-  }
+  // Only a content-addressed target is recordable, and the model has to say so.
+  // Every derived locator matches on content, so replaying one for a positional
+  // instruction finds whatever now carries that content rather than whatever now
+  // sits in that position — a wrong answer, not a miss, which the cache is never
+  // allowed to produce. Silence is treated as positional for the same reason: an
+  // unrecorded entry costs one model locate per run, while a wrongly recorded one
+  // costs a wrong action, so the two failures are not worth trading.
+  const declined = NOT_RECORDABLE[located.targeting];
+  if (declined !== undefined) return notRecorded(invocation, keyHash, declined);
 
   const locator = storableLocator(located);
   if (locator === undefined) {
@@ -293,10 +302,6 @@ async function currentUrl(invocation: Invocation): Promise<string | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function bytesOf(bytes: number | undefined): { bytes?: number } {
-  return bytes === undefined ? {} : { bytes };
 }
 
 function describe(node: SemanticNode): string {

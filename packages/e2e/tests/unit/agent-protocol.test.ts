@@ -18,7 +18,7 @@ describe('agent-locate-1', () => {
         protocolVersion: 'agent-locate-1',
         target: { id: 'n7', revision: 'r3' },
         explanation: 'the only email input',
-        positional: false,
+        targeting: 'unreported',
       },
     });
   });
@@ -35,12 +35,12 @@ describe('agent-locate-1', () => {
         protocolVersion: 'agent-locate-1',
         target: null,
         explanation: 'the observation shows a login page without a search box',
-        positional: false,
+        targeting: 'unreported',
       },
     });
   });
 
-  it('reads the optional positional hint and defaults it to false', () => {
+  it('distinguishes a reported positional hint from an absent one', () => {
     const base = {
       protocolVersion: 'agent-locate-1',
       target: { id: 'n7', revision: 'r3' },
@@ -48,16 +48,17 @@ describe('agent-locate-1', () => {
     };
     expect(validateLocateResponse({ ...base, positional: true })).toMatchObject({
       ok: true,
-      value: { positional: true },
+      value: { targeting: 'position' },
     });
     expect(validateLocateResponse({ ...base, positional: false })).toMatchObject({
       ok: true,
-      value: { positional: false },
+      value: { targeting: 'content' },
     });
-    // A model that predates the hint still produces a valid response.
+    // A model that predates the hint still produces a valid response, but its
+    // silence must never be read as the recordable answer.
     expect(validateLocateResponse(base)).toMatchObject({
       ok: true,
-      value: { positional: false },
+      value: { targeting: 'unreported' },
     });
   });
 
@@ -158,7 +159,7 @@ describe('agent-locate-1', () => {
     it('accepts a point only when the call offered one', () => {
       expect(validateLocateResponse(pointResponse, 'nodeOrPoint')).toEqual({
         ok: true,
-        value: { ...pointResponse, positional: false },
+        value: { ...pointResponse, targeting: 'unreported' },
       });
     });
 
@@ -215,7 +216,7 @@ describe('agent-locate-1', () => {
       expect(validateLocateResponse(node, 'point')).toMatchObject({ ok: false });
       expect(validateLocateResponse(pointResponse, 'point')).toEqual({
         ok: true,
-        value: { ...pointResponse, positional: false },
+        value: { ...pointResponse, targeting: 'unreported' },
       });
     });
 

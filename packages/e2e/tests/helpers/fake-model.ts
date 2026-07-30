@@ -208,14 +208,20 @@ export function bestMatch(call: FakeCall): { id: string; line: string } {
   return { id: best.id, line: best.line };
 }
 
-/** Builds a valid agent-locate-1 response for the best-matching node. */
+/**
+ * Builds a valid agent-locate-1 response for the best-matching node.
+ *
+ * `positional` is always reported, like a compliant model: the runner treats an
+ * absent field as positional and declines to record, so a fake that omitted it
+ * would silently exercise only the not-recordable path.
+ */
 export function locateBestMatch(call: FakeCall, positional = false): unknown {
   const match = bestMatch(call);
   return {
     protocolVersion: 'agent-locate-1',
     target: { id: match.id, revision: call.revision },
     explanation: `best line match: ${match.line.trim()}`,
-    ...(positional ? { positional: true } : {}),
+    positional,
   };
 }
 

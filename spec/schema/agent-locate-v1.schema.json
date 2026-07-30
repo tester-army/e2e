@@ -15,7 +15,10 @@
       ]
     },
     "explanation": { "type": "string", "maxLength": 8192 },
-    "positional": { "type": "boolean" }
+    "positional": {
+      "description": "Whether the instruction identified the node by where it sits rather than by what it says. Caching hint only; it never changes what the runner executes. An absent field means the model did not report, which a runner MUST treat as positional rather than defaulting to false (10-determinism.md).",
+      "type": "boolean"
+    }
   },
   "$defs": {
     "nodeTarget": {

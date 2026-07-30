@@ -34,15 +34,22 @@ export interface LocateResponse {
   /** Why the node was selected, or why no node matches. Untrusted prose. */
   readonly explanation: string;
   /**
-   * True when the instruction picked the node out by its position rather than
-   * by what it says — "the first result" rather than "the Save button".
+   * How the instruction picked the node out, as the model reports it.
    *
-   * This is a caching hint and nothing more. A positional target is not
-   * cached, because a stored locator would keep resolving to the item that
-   * happened to be in that position when it was recorded. Defaults to false
-   * when the model omits it.
+   * `content` means by what the node says — "the Save button". `position` means
+   * by where it sits — "the first result". `unreported` means the model did not
+   * say, and is deliberately distinct from `content`: a derived locator is
+   * always content-addressed, so replaying one for a positional instruction
+   * resolves whatever now carries that content rather than whatever now sits in
+   * that position. That is a wrong answer, and the cache is never allowed to
+   * produce one. Only `content` is recordable, so a model that omits the field
+   * costs a model locate per run and can never cause a wrong action.
+   *
+   * There is no structural substitute for this report. Derived queries never
+   * contain an index node (`deriveQueries`), so a locator's shape cannot reveal
+   * whether the instruction behind it was positional.
    */
-  readonly positional: boolean;
+  readonly targeting: 'content' | 'position' | 'unreported';
 }
 
 /** True when a validated target names an observation node rather than a point. */
@@ -162,24 +169,25 @@ export function validateLocateResponse(
   if (record['protocolVersion'] !== 'agent-locate-1') return fail('unknown protocolVersion');
   const explanation = asBoundedString(record['explanation'], 0, EXPLANATION_MAX_LENGTH);
   if (explanation === null) return fail('explanation must be a bounded string');
-  // Optional, and only ever a caching hint: a model that omits it, or gets it
-  // wrong, changes how much is cached and never what the runner does.
+  // Absence is its own answer rather than a default, so silence can never be
+  // read as the model asserting the recordable case.
   const reported = record['positional'];
   if (reported !== undefined && typeof reported !== 'boolean') {
     return fail('positional must be a boolean when present');
   }
-  const positional = reported === true;
+  const targeting: LocateResponse['targeting'] =
+    reported === undefined ? 'unreported' : reported ? 'position' : 'content';
   if (record['target'] === null) {
     return {
       ok: true,
-      value: { protocolVersion: 'agent-locate-1', target: null, explanation, positional },
+      value: { protocolVersion: 'agent-locate-1', target: null, explanation, targeting },
     };
   }
   const target = validateTarget(record['target'], grammar);
   if (!target.ok) return target;
   return {
     ok: true,
-    value: { protocolVersion: 'agent-locate-1', target: target.value, explanation, positional },
+    value: { protocolVersion: 'agent-locate-1', target: target.value, explanation, targeting },
   };
 }
 
