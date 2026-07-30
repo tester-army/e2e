@@ -140,8 +140,8 @@ function respond(call: FakeCall): unknown {
         ? locateNotFound('no node in the observation is a map pin')
         : locatePoint(call, RED_PIN, 'a red circle is drawn there');
     case 'the left Pick button':
-      // Both buttons are identical in the tree, so the tree-only answer strands
-      // the derived-query sweep; with pixels the left one is distinguishable.
+      // The two buttons are indistinguishable in the tree even by position, so
+      // the tree-only answer strands the sweep; with pixels the model points.
       return call.images.length === 0
         ? locateBestMatch({ ...call, instruction: 'Pick' })
         : locatePoint(call, LEFT_TWIN, 'the left canvas is red and this button sits under it');
@@ -382,9 +382,9 @@ describe('agent vision', () => {
   });
 
   it('escalates a fallback locate when the derived-query sweep strands', () => {
-    // Two identical buttons: every query derived from either matches both, so
-    // the tree-only tier cannot pin its own choice. That is the second
-    // escalation signal, and it must not cost the deadline to detect.
+    // Two buttons stacked at one rect: role, name, and geometry are all shared,
+    // so neither a derived query nor an index can pin the tree-only choice. That
+    // is the second escalation signal, and it must not cost the deadline.
     const title = 'fallback escalates when no derived query pins the chosen node';
     expect(resultByTitle(outcome, title).status).toBe('passed');
     const step = stepOf(title, 'agent.tap');

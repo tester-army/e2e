@@ -514,15 +514,15 @@ test('taps the button', async ({ app, agent, screen }) => {
       }
     }, 240_000);
 
-    it('records a target addressed by its observed reference, by its selector', async () => {
+    it('records a selector, not an index, for a node no query separates', async () => {
       // Three identical buttons: the instruction names one by the offer beside
       // it, so it is content-addressed and recordable, but no query derived from
       // the button separates it from its twins — they share role and name, and
-      // the offer is a sibling, not the button's name. So the action goes through
-      // the reference the observation handed out. The reference itself is
-      // unstorable, but the driver's structural selector re-finds the same
-      // element next run, which is what makes a page of repeated controls
-      // cacheable at all.
+      // the offer is a sibling, not the button's name. The sweep resolves it by
+      // pinning an index, which is what makes the action work; the index is not
+      // what gets stored, because it would replay as whatever is third next run
+      // and the twins' identical role and name could not catch that. The driver's
+      // selector is anchored on the element's own name, so it can be.
       const project = createProject({
         'tests/placed.e2e.ts': `import { test, expect } from 'e2e';
 

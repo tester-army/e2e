@@ -181,20 +181,27 @@ async function consult(
 /**
  * The locator to store for one located node.
  *
- * A semantic query comes first when there is one: it says what the node is, so
- * it survives the DOM churn — a new wrapper, a reordered container — that
- * invalidates any structural path, and it reads back in a report as something a
- * human wrote.
+ * A semantic query comes first: it says what the node is, so it survives the DOM
+ * churn — a new wrapper, a reordered container — that invalidates any structural
+ * path, and it reads back in a report as something a human wrote.
  *
- * The driver's selector is the answer for the node a query cannot express: a
- * control the page repeats verbatim, where the semantics of every twin are
- * identical. Without it such a step could not be cached at all and paid a model
- * call on every run. Storing it is safe because it is never trusted — replay
- * resolves it, reads the node it landed on, and requires the recorded role and
- * name before acting, so a stale path costs a miss, not a wrong action.
+ * An index-bearing query is the exception, and must not be stored. `pinOne`
+ * derives that index against the match set of the run that resolved it, which
+ * makes it correct now and meaningless later: replaying `nth(2)` finds whatever
+ * is third next run. Nothing catches that, either — an index is only ever needed
+ * when the matches are semantically identical, so the recorded role and name
+ * match every twin and the identity check passes on the wrong one. That is a
+ * wrong action rather than a miss, which is the one thing the cache may not do.
+ *
+ * The driver's selector is the recordable answer for exactly that node. It is
+ * anchored on an attribute that names the element — a test id, a form control's
+ * `name` — so unlike an index it still points at the same control after a
+ * reorder. Storing it is safe because it is never trusted: replay resolves it,
+ * reads what it landed on, and requires the recorded identity before acting, so
+ * a stale path costs a miss.
  */
 function storableLocator(located: LocatedNode): CacheLocator | undefined {
-  if (located.expression !== undefined) return asCacheLocator(located.expression);
+  if (!isPositional(located.expression)) return asCacheLocator(located.expression);
   const selector = located.node.selector;
   if (selector === undefined) return undefined;
   // A selector is document-local, so a node inside an iframe is stored behind
@@ -205,6 +212,25 @@ function storableLocator(located: LocatedNode): CacheLocator | undefined {
     webSelectorExpression(selector),
   );
   return asCacheLocator(scoped);
+}
+
+/**
+ * True when an expression addresses its node by position anywhere along the way,
+ * so what it resolves to depends on the order of the page rather than on the
+ * content of the node.
+ */
+function isPositional(expression: LocatorExpression): boolean {
+  switch (expression.kind) {
+    case 'index':
+      return true;
+    case 'filter':
+    case 'frame':
+      return isPositional(expression.source);
+    case 'query':
+      return expression.scope !== undefined && isPositional(expression.scope);
+    default:
+      return false;
+  }
 }
 
 /**

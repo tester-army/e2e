@@ -4,6 +4,8 @@
  * guarantees third-party drivers rely on can never silently regress.
  */
 
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createFakeDriver, BuiltDriverError, type FakeDriverHandle } from '../helpers/fake-driver.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
@@ -37,6 +39,19 @@ const REPEATS_TEST = `import { test } from 'e2e';
 test('taps one of three identical controls', async ({ app, agent }) => {
   await app.open('/');
   await agent.tap('the second Reserve now button');
+});
+`;
+
+/**
+ * The same three twins reached by a content-addressed instruction: it names the
+ * offer, so the target is recordable, but the button still shares role and name
+ * with its twins so the sweep still has to pin it by index.
+ */
+const REPEATS_NAMED_TEST = `import { test } from 'e2e';
+
+test('taps one of three identical controls', async ({ app, agent }) => {
+  await app.open('/');
+  await agent.tap('the Reserve now button for Offer B');
 });
 `;
 
@@ -497,8 +512,8 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
 
   describe('a selection no derived query can separate', () => {
     // Three controls with identical semantics, as a listing repeats one button
-    // per row. Every query derived from any of them matches all of them, so
-    // only the reference the observation handed out identifies the one chosen.
+    // per row. Every query derived from any of them matches all of them, so the
+    // sweep pins the chosen one by its index in the match set.
     const button = (id: string, y: number): SemanticNode => ({
       ref: { id, revision: 'rev-1' },
       role: 'button',
@@ -519,27 +534,34 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       revision: 'rev-1',
     }));
 
-    /** Answers with the second Reserve now button in the observation. */
-    const locateSecondReserve = () =>
+    /**
+     * Answers with the second Reserve now button. `positional` mirrors the
+     * instruction the run was given: "the second button" is a position, and only
+     * a content-addressed instruction may be recorded.
+     */
+    const locateSecondReserve = (positional: boolean) =>
       installFakeModel((call) => {
         const lines = call.lines.filter((line) => line.includes('Reserve now'));
         return {
           protocolVersion: 'agent-locate-1',
           target: { id: /#(\S+)/.exec(lines[1] ?? '')?.[1] ?? '', revision: call.revision },
           explanation: 'the second Reserve now button in the observation',
+          positional,
         };
       });
 
     async function runRepeats(
       fake: FakeDriverHandle,
-    ): Promise<{ status: string; taps: string[]; cached: number }> {
-      const model = locateSecondReserve();
+      source: string = REPEATS_TEST,
+    ): Promise<{ status: string; taps: string[]; cached: number; locator: unknown }> {
+      const model = locateSecondReserve(source === REPEATS_TEST);
       const { outcome, project } = await runProject(
-        { 'tests/repeats.e2e.ts': REPEATS_TEST },
+        { 'tests/repeats.e2e.ts': source },
         { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
       );
       const result = resultByTitle(outcome, 'taps one of three identical controls');
       const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.tap');
+      const locator = storedLocator(project.dir);
       project.cleanup();
       return {
         status: result.status,
@@ -547,45 +569,89 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
           .filter((operation) => operation.method.startsWith('actions.tap'))
           .map((operation) => operation.method),
         cached: step?.cache?.status === 'written' ? 1 : 0,
+        locator,
       };
     }
 
+    /** The locator of the one cache entry a run wrote, if it wrote any. */
+    function storedLocator(projectDir: string): unknown {
+      const directory = path.join(projectDir, '.e2e', 'cache');
+      const files = existsSync(directory)
+        ? readdirSync(directory).filter((name) => name.endsWith('.json'))
+        : [];
+      if (files.length !== 1) return undefined;
+      const entry = JSON.parse(readFileSync(path.join(directory, files[0]!), 'utf8'));
+      return entry.payload.locator;
+    }
+
+    /**
+     * Reads one match back with the rect it was observed at, as a real driver
+     * does. Rect is what separates twins once role and name cannot.
+     */
+    const readMatch = (ref: { id: string }): SemanticNode => {
+      const index = Number(/(\d+)$/.exec(ref.id)?.[1] ?? 0);
+      const source = ref.id.startsWith('match-') ? observed[index]! : button(ref.id, 0);
+      return { ...source, ref: ref as SemanticNode['ref'] };
+    };
+
     it(
-      'acts on the observed reference, and never stores it',
+      'pins the selected node by index, and never stores the index',
       async () => {
         const fake = createFakeDriver({
           tree,
           resolve: () => matchRefs,
-          read: (ref) => ({ ...button(ref.id, 0), ref }),
+          read: readMatch,
         });
         const run = await runRepeats(fake);
         expect(run.status).toBe('passed');
-        // The node the model named, not one of the query's matches, and only it.
-        expect(run.taps).toEqual(['actions.tap(node-2)']);
-        // A reference is not a locator, so there is nothing to record.
+        // The match the index pinned, which is the node the model named.
+        expect(run.taps).toEqual(['actions.tap(match-1)']);
+        // An index is measured against this run's match set, so it is resolvable
+        // now and meaningless later. Nothing is recorded.
         expect(run.cached).toBe(0);
       },
       60_000,
     );
 
     it(
-      'reports a miss when the observed reference no longer reads as that node',
+      'refuses to pin when a match cannot be read',
       async () => {
-        // A re-render replaced the element behind the reference. Acting anyway
-        // would dispatch at whatever took its place.
+        // Dropping an unreadable match would shrink the set until whatever is
+        // left looks unique, and the sweep would index onto an arbitrary
+        // element. Inconclusive is the only safe answer.
         const fake = createFakeDriver({
           tree,
           resolve: () => matchRefs,
           read: (ref) => {
-            if (ref.id.startsWith('node-')) {
+            if (ref.id === 'match-0') {
               throw new BuiltDriverError('NODE_STALE', 'replaced', { retryable: true });
             }
-            return { ...button(ref.id, 0), ref };
+            return readMatch(ref);
           },
         });
         const run = await runRepeats(fake);
         expect(run.status).toBe('failed');
         expect(run.taps).toEqual([]);
+      },
+      60_000,
+    );
+
+    it(
+      'stores the driver selector instead of the index when the node has one',
+      async () => {
+        // The recordable form of "one of several identical controls". An index
+        // would replay as whatever is second next run, and role and name are
+        // identical across the twins so the identity check could not catch it. A
+        // selector anchored on what names the element survives a reorder.
+        const fake = createFakeDriver({
+          tree,
+          resolve: () => matchRefs,
+          read: (ref) => ({ ...readMatch(ref), selector: '[name="reserve-b"]' }),
+        });
+        const run = await runRepeats(fake, REPEATS_NAMED_TEST);
+        expect(run.status).toBe('passed');
+        expect(run.cached).toBe(1);
+        expect(run.locator).toEqual({ kind: 'web-selector', selector: '[name="reserve-b"]' });
       },
       60_000,
     );

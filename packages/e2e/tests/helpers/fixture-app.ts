@@ -162,14 +162,17 @@ const PAGES: Record<string, string> = {
   // Two controls the tree cannot tell apart: every query derived from either one
   // matches both, so a tree-only locate strands on LOCATOR_AMBIGUOUS. Only the
   // pixels distinguish them.
+  // Two "Pick" buttons stacked at one rect, so no derived query and no index can
+  // separate them: role, name, and geometry are all shared. That is what strands
+  // a tree-only locate for good, rather than merely making it ambiguous.
   '/twins': `<!doctype html>
 <html>
 <head><title>Twins</title></head>
 <body style="margin:0">
   <canvas id="left" width="120" height="60" style="position:fixed;left:0;top:0"></canvas>
   <canvas id="right" width="120" height="60" style="position:fixed;left:200px;top:0"></canvas>
-  <button style="position:fixed;left:0;top:80px">Pick</button>
-  <button style="position:fixed;left:200px;top:80px">Pick</button>
+  <button style="position:fixed;left:0;top:80px;width:90px;height:24px">Pick</button>
+  <button style="position:fixed;left:0;top:80px;width:90px;height:24px">Pick</button>
   <output id="picked" role="status" aria-label="Picked">none</output>
   <script>
     for (const [id, label] of [['left', 'L'], ['right', 'R']]) {
@@ -211,6 +214,37 @@ const PAGES: Record<string, string> = {
       widget.textContent = 'Chat with us';
       document.body.prepend(widget);
     }, 150);
+  </script>
+</body>
+</html>`,
+  // Repeated cross-sell rows: several buttons share role, name, and test id, so
+  // every derived query is ambiguous and only position tells them apart. The
+  // last row is a deliberate dead end — two buttons stacked at the same rect.
+  '/rows': `<!doctype html>
+<html>
+<head><title>Rows</title></head>
+<body>
+  <output id="picked" role="status" aria-label="Picked">none</output>
+  <div id="rows"></div>
+  <div style="position:relative;height:30px">
+    <button data-testid="buy" style="position:absolute;left:0;top:0;width:80px;height:30px">Twin</button>
+    <button data-testid="buy" style="position:absolute;left:0;top:0;width:80px;height:30px">Twin</button>
+  </div>
+  <script>
+    const host = document.getElementById('rows');
+    for (const hotel of ['Alpha', 'Beta', 'Gamma']) {
+      const row = document.createElement('div');
+      const label = document.createElement('span');
+      label.textContent = hotel;
+      const button = document.createElement('button');
+      button.textContent = 'Kup teraz';
+      button.setAttribute('data-testid', 'buy');
+      button.addEventListener('click', () => {
+        document.getElementById('picked').textContent = hotel;
+      });
+      row.append(label, button);
+      host.append(row);
+    }
   </script>
 </body>
 </html>`,

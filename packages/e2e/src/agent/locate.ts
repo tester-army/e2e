@@ -41,13 +41,11 @@ export interface LocatedNode {
   readonly kind: 'node';
   readonly ref: NodeRef;
   /**
-   * The portable query that re-found this node, or undefined when the node was
-   * addressed by the reference the observation itself handed out. A node the
-   * page repeats verbatim has no query that singles it out, and its reference
-   * is the only exact answer; nothing about it is storable, so a
-   * reference-addressed target is never cached.
+   * The portable query that re-found this node. Always present: a query that
+   * matched several nodes is pinned with an index rather than abandoned, so
+   * every located node is addressable by an expression the report can show.
    */
-  readonly expression: LocatorExpression | undefined;
+  readonly expression: LocatorExpression;
   /** Freshly read node behind the derived query. */
   readonly node: SemanticNode;
   readonly observation: AgentObservation;

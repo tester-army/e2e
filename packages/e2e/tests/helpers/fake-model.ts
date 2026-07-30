@@ -253,6 +253,26 @@ export function locateBestMatch(call: FakeCall, positional = false): unknown {
   };
 }
 
+/**
+ * Builds a locate response naming the nth observed node matching a predicate, for
+ * pages where several nodes are identical and the choice has to be deliberate.
+ */
+export function locateNth(call: FakeCall, matches: RegExp, nth: number): unknown {
+  const ids = call.lines
+    .filter((line) => matches.test(line))
+    .map((line) => /#(\S+)/.exec(line)?.[1])
+    .filter((id): id is string => id !== undefined);
+  const id = ids[nth];
+  if (id === undefined) {
+    throw new Error(`no node ${nth} matching ${String(matches)} among ${ids.length}`);
+  }
+  return {
+    protocolVersion: 'agent-locate-1',
+    target: { id, revision: call.revision },
+    explanation: `deliberately the node at index ${nth}`,
+  };
+}
+
 /** Builds a valid agent-locate-1 point response in the attached image space. */
 export function locatePoint(
   call: FakeCall,

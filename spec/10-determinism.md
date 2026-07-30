@@ -207,11 +207,11 @@ stored.
 
 The locator is the semantic `screen` expression that re-found the node. A runner
 MAY instead store the platform selector the driver reported for the node, and it
-MUST prefer the semantic expression when there is one: an expression says what
-the node is, so it survives the DOM churn that invalidates any structural path.
-The selector exists for the node an expression cannot express — a control the
-page repeats verbatim, where every twin is semantically identical — which
-otherwise could not be cached at all and paid a model locate on every run.
+MUST prefer the semantic expression whenever that expression is recordable: an
+expression says what the node is, so it survives the DOM churn that invalidates
+any structural path. The selector exists for the node whose expression is not
+recordable — a control the page repeats verbatim, which resolves only by index —
+and which otherwise could not be cached at all and paid a model locate every run.
 
 A stored selector is a guess, never an identity. Replay resolves it, reads the
 node it landed on, and requires the recorded role and name before the entry is
@@ -247,16 +247,25 @@ structured-output schema it requests the locate under: that schema is closed, so
 a field it does not declare is one a strict provider strips from the response,
 and asking for it in the prompt alone leaves every locate unrecordable and the
 cache permanently cold. Tolerating absence is a backstop for a provider that does
-not enforce schemas, not the expected path. Absence is silence, not an assertion, and the two failure
-modes are not worth trading: declining to record costs one model locate per run,
-while recording a positional target wrongly costs a wrong action. A locator's
-shape is not a substitute for the report — derived queries never contain an index
-node — so this is the only signal available, and it is therefore given the safe
-default rather than the useful one.
+not enforce schemas, not the expected path. Absence is silence, not an assertion,
+and the two failure modes are not worth trading: declining to record costs one
+model locate per run, while recording a positional target wrongly costs a wrong
+action.
 
-A selection the runner could only address by its observation reference
-(02-test-api.md) is likewise never recorded: a reference is not a locator, and
-there is nothing content-addressed to store.
+A locator's shape is not a substitute for the report. A derived locator may carry
+an index, but it carries one because the *page* repeats a control, not because the
+*instruction* named a position — "the Reserve now button for Offer B" needs an
+index and is still content-addressed. So the two questions are independent and the
+model's report is the only answer to this one.
+
+An index-bearing locator MUST NOT be recorded, whatever the instruction was. The
+index is measured against the match set of the run that resolved it, so replaying
+it finds whichever node now occupies that position. Nothing catches the
+difference: an index is only ever needed when the matches are semantically
+identical, so the recorded role and name match every one of them and the identity
+check passes on the wrong node. A runner MAY instead record the platform selector
+for that node, which is anchored on an attribute that names the element and so
+still addresses the same control after a reorder.
 
 ## Path guidance
 

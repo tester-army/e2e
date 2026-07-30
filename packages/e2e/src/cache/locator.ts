@@ -14,8 +14,9 @@
  * identity check on replay constrains what the resolved node must *be*, not
  * which nodes the selector may reach. It is admitted anyway because the node it
  * exists for — a control the page repeats verbatim, where every twin is
- * semantically identical — has no query that singles it out and would otherwise
- * pay a model locate on every run. What that concedes against a hostile entry is
+ * semantically identical — is addressable only by an index, which is measured
+ * against one run's match set and so cannot be replayed on the next. Without the
+ * selector such a node would pay a model locate on every run. What that concedes against a hostile entry is
  * stated in 10-determinism.md "Storage and concurrency".
  *
  * One function enforces it in both directions. `asCacheLocator` accepts
