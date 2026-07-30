@@ -219,6 +219,74 @@ test('never runs', async ({ app }) => {
   );
 
   it(
+    'scrolls a node below the fold into view instead of refusing to act',
+    async () => {
+      // The same test, unchanged, passes against a web target: a backend that
+      // scrolls as part of actionability never reports the node unreachable.
+      // Mobile refuses until it is scrolled to, so the runner does the
+      // scrolling — otherwise a portable action would mean two different
+      // things depending on the platform underneath it.
+      const daemon = createFakeDaemon({
+        scrollStep: 400,
+        screen: () => [
+          {
+            type: 'XCUIElementTypeApplication',
+            rect: { x: 0, y: 0, width: 402, height: 874 },
+            children: [
+              {
+                type: 'XCUIElementTypeScrollView',
+                rect: { x: 0, y: 0, width: 402, height: 874 },
+                children: [
+                  {
+                    type: 'XCUIElementTypeButton',
+                    label: 'Far Below',
+                    rect: { x: 20, y: 2400, width: 280, height: 48 },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const { outcome, project } = await runProject(
+        {
+          'tests/reach.e2e.ts': `import { test, expect } from 'e2e';
+
+test('taps a row below the fold', async ({ app, screen }) => {
+  await app.open();
+  // No scrollUntilVisible, no scrollIntoView: exactly what a web test writes.
+  await screen.getByRole('button', { name: 'Far Below' }).tap();
+});
+`,
+        },
+        {
+          appUrl: '',
+          config: {
+            specVersion: '0.1',
+            targets: [
+              {
+                name: 'ios',
+                platform: 'ios',
+                driver: agentDevice({ transport: daemon.transport }),
+                app: 'com.example.app',
+              },
+            ],
+            artifacts: [],
+          } as unknown as E2EConfig,
+        },
+      );
+
+      expect(resultByTitle(outcome, 'taps a row below the fold').status).toBe('passed');
+      expect(daemon.commands()).toContain('click');
+      // It got there by scrolling, rather than by dispatching at a point that
+      // was never on the screen.
+      expect(daemon.scrollOffset()).toBeGreaterThan(0);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'still requires an app URL when a web target is present',
     async () => {
       const daemon = createFakeDaemon({ screen: () => SCREEN });

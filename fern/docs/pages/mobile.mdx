@@ -110,23 +110,29 @@ is reported skipped on web targets instead of failed.
 
 ## Reaching what is below the fold
 
-A mobile app never scrolls implicitly before an action, so a node outside the
-viewport reports `offscreen` and refuses input until it is scrolled to. That is
-deliberate: it keeps "not rendered" distinct from "not reachable yet".
-
-The observation includes those nodes, so an agent step can name one that is
-thousands of points away. `agent.scrollTo` and `screen.scrollUntilVisible` both
-keep scrolling until the target is genuinely in view:
+You do not have to scroll before acting. A row below the fold is scrolled into
+view for you, exactly as it would be in a browser:
 
 ```ts
-await agent.scrollTo('the Development Overrides row');
-await agent.tap('the Development Overrides row');
-
-await screen.getByText('Wireless Insights').scrollIntoView(); // one gesture
+await screen.getByRole('button', { name: 'Wireless Insights' }).tap();
 ```
 
-`scrollIntoView` on a locator is the single gesture the driver contract defines;
-reach for the loops above when the target may be far away.
+That is the same code a web test writes, and it is the point: a portable action
+means the same thing on both platforms.
+
+The mechanism differs underneath, which shows up in two places worth knowing.
+Mobile reports a node it cannot reach yet as `offscreen`, so you can assert on
+reachability if you want to:
+
+```ts
+await expect(screen.getByText('Wireless Insights')).toBeVisible(); // rendered
+await screen.getByText('Wireless Insights').scrollIntoView();     // one gesture
+```
+
+And because scrolling is a real gesture rather than a DOM call, reaching
+something thousands of points down takes a few seconds. `screen.scrollUntilVisible`
+and `agent.scrollTo` are the explicit loops when you want the scroll to be a step
+of its own.
 
 ## State isolation
 

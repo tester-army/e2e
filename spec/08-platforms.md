@@ -97,6 +97,12 @@ The runner owns query, matcher, URL, and condition polling. `resolve` and
 `read` in `driver-1` are immediate. This rule overrides backend defaults and
 ensures one timeout model across drivers.
 
+A node outside the viewport is brought into view before its action is
+dispatched, on every profile. A backend may do it as part of actionability, and
+a profile whose backend cannot may report `states.offscreen` and let the runner
+scroll and retry within the action's deadline. Which layer scrolls is not
+observable to a portable test.
+
 The driver owns actionability for one already resolved node. For web, an
 actionable node is attached, visible, stable for two consecutive animation
 frames, enabled when applicable, and able to receive the requested input at its

@@ -45,6 +45,10 @@ In `e2e` itself:
   identifier. `screen.testIdAttribute` names a DOM attribute and is web-only, so
   reading it on every platform meant no mobile `testId` query was ever derived
   and the model never saw one.
+- A located action on a node below the fold scrolls it into view and retries,
+  so the same test behaves the same on web and on mobile. `states.offscreen`
+  stays observable, and `scrollUntilVisible` and `agent.scrollTo` remain the
+  explicit loops.
 - The `cache-1` locate cache works on mobile targets. A mobile session exposes
   no URL, so the screen fingerprint rests entirely on the viewport, which a
   driver must now keep stable for the life of a session.

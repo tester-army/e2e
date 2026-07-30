@@ -70,7 +70,7 @@ test.describe('Settings navigation depth', () => {
 });
 
 test.describe('rows below the fold', () => {
-  test('an off-screen row is visible but not actionable until scrolled', async ({ app, screen }) => {
+  test('an off-screen row is acted on by scrolling to it, as on web', async ({ app, screen }) => {
     await openAccessibility({ app, screen });
 
     const offscreen = screen.getByText('Keyboards & Typing');
@@ -79,14 +79,22 @@ test.describe('rows below the fold', () => {
     // is what web does too.
     await expect(offscreen).toBeVisible();
 
-    // Out of reach, so not actionable: mobile-0.1 never scrolls implicitly.
-    const denied = await offscreen
-      .tap({ timeout: 5_000 })
-      .then(() => null)
-      .catch((cause: unknown) => cause);
-    expect(denied instanceof Error && denied.message).toContain('scroll it into view');
+    // Out of reach, and reached anyway. No scrollUntilVisible and no
+    // scrollIntoView: this is exactly the line a web test writes, and the
+    // runner does the scrolling a browser would have done itself.
+    const before = await offscreen.boundingBox();
+    expect(before === null || before.y > 0).toBe(true);
 
-    // scrollUntilVisible re-resolves each round and stops once it is reachable.
+    await offscreen.tap();
+    await expect(screen.getByText('Full Keyboard Access')).toBeVisible();
+  });
+
+  test('scrollUntilVisible stays available as an explicit step', async ({ app, screen }) => {
+    await openAccessibility({ app, screen });
+
+    // Reaching a row is implicit now, but a test that wants the scroll to be
+    // its own step, with its own timeout, still gets one.
+    const offscreen = screen.getByText('Keyboards & Typing');
     await screen.scrollUntilVisible(offscreen);
     await offscreen.tap();
     await expect(screen.getByText('Full Keyboard Access')).toBeVisible();

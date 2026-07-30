@@ -181,6 +181,14 @@ export class LocatorEngine {
    * Performs exactly one action against exactly one match. Stale nodes are
    * re-resolved while the deadline remains; a possibly committed action is
    * never repeated.
+   *
+   * A node the driver reports as outside the viewport is scrolled into view and
+   * the action retried, which is what keeps a portable action portable: a
+   * backend that scrolls as part of actionability accepts it directly, and one
+   * that refuses until the node is reachable gets the same treatment here.
+   * Without this the identical test passes on web and throws on mobile, and
+   * `01-principles.md` does not allow a backend to change what a portable test
+   * does.
    */
   async perform(
     expression: LocatorExpression,
@@ -202,8 +210,47 @@ export class LocatorEngine {
         ) {
           continue;
         }
+        if (
+          driverError?.code === 'NOT_ACTIONABLE' &&
+          !deadline.expired() &&
+          (await this.scrollIntoView(ref, action, deadline))
+        ) {
+          continue;
+        }
         throw translateDriverError(cause, expression);
       }
+    }
+  }
+
+  /**
+   * Brings an unreachable node into view, reporting whether it did anything.
+   *
+   * The check is deliberate rather than assumed from the failure: a node can be
+   * unactionable for reasons scrolling cannot fix — disabled, covered, not
+   * visible — and retrying those would only burn the deadline. Nothing was
+   * dispatched, because actionability is checked before input, so the reference
+   * is still current and can carry the scroll. `scrollIntoView` moves one
+   * gesture per call by contract, so the caller's loop is what reaches a
+   * distant target.
+   */
+  private async scrollIntoView(
+    ref: NodeRef,
+    action: LocatorAction,
+    deadline: Deadline,
+  ): Promise<boolean> {
+    if (action.kind === 'scrollIntoView') return false;
+    try {
+      const node = await this.session.screen.read(ref, this.operationWithin(deadline));
+      if (node.states?.offscreen !== true) return false;
+      await this.session.screen.perform(
+        ref,
+        { kind: 'scrollIntoView' },
+        this.operationWithin(deadline),
+      );
+      return true;
+    } catch {
+      // The original failure is the one worth reporting.
+      return false;
     }
   }
 }

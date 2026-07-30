@@ -258,13 +258,25 @@ area, and the node's own center when it has no such descendant. Without this
 rule an action on a correctly resolved control is a silent no-op, which is worse
 than a failure.
 
-A node scrolled outside the viewport is visible but not actionable, because
-`mobile-0.1` does not scroll implicitly before dispatching. Such a node carries
-`states.offscreen`, so a test, an assertion, and a model can all tell "not
-rendered" apart from "not reachable yet". Tests reach it with `scrollIntoView`
-or `screen.scrollUntilVisible`, which waits for `offscreen` to clear. This is a
-deliberate difference from `web-0.1`, where the backend scrolls into view as
-part of actionability and therefore never reports `offscreen`.
+A node scrolled outside the viewport is visible but not yet actionable, and
+carries `states.offscreen`, so a test, an assertion, and a model can all tell
+"not rendered" apart from "not reachable yet". A `mobile-0.1` driver MUST NOT
+scroll implicitly before dispatching: a scroll is a physical gesture that
+invalidates every node reference, and a driver that scrolled and then re-found
+its target would be retargeting.
+
+The runner scrolls instead. A located action against an offscreen node scrolls
+it into view and retries, within the action's own deadline, which is the runner
+exercising the waiting and retry duties 01-principles.md already assigns it. The
+observable result is that a portable action behaves the same here as under
+`web-0.1`, where the backend scrolls as part of actionability: the same test
+passes on both, and `01-principles.md` does not permit a backend to change what
+a portable test does. Only the layer that performs the scroll differs, which is
+not something a test can observe.
+
+`states.offscreen` remains observable for tests that want to assert on
+reachability, and `screen.scrollUntilVisible` remains the explicit loop for
+waiting on it.
 
 `scrollIntoView` performs one gesture toward the target, in the target's nearest
 scroll container when it has one. A single gesture need not reach a distant
