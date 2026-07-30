@@ -575,6 +575,66 @@ test('taps the repeat for one offer', async ({ agent, screen, web }) => {
       }
     }, 240_000);
 
+    it('replays onto the right control after the page reorders', async () => {
+      // The reason an index is refused and a selector stored. The warm run gets
+      // the same three offers in reverse order, on the same route — cache route
+      // identity drops the query, so it is the same key and the entry replays.
+      //
+      // The recorded selector is anchored on the button's own name, so it still
+      // finds Offer C's button and the page still reports "C". Had the index been
+      // stored, `.nth(2)` would now be Offer A's button, and the identity check
+      // could not tell: all three twins are role=button name="Reserve now".
+      const project = createProject({
+        'tests/reorder.e2e.ts': `import { test, expect } from 'e2e';
+
+const REVERSE = process.env.REVERSE === '1' ? '?reverse=1' : '';
+
+test('books Offer C whichever row it is in', async ({ agent, screen, web }) => {
+  await web.goto('/repeats' + REVERSE);
+  await agent.tap('the Reserve now button for Offer C');
+  await expect(screen.getByRole('status')).toHaveText('C');
+});
+`,
+      });
+      try {
+        // Always answers with Offer C's row, wherever the observation shows it.
+        const model = installFakeModel((call) => {
+          const line = call.lines.find((candidate) => candidate.includes('Reserve now')) ?? '';
+          const offerC = call.lines.filter((candidate) => candidate.includes('Reserve now'));
+          const chosen = offerC.at(process.env['REVERSE'] === '1' ? 0 : -1) ?? line;
+          return {
+            protocolVersion: 'agent-locate-1',
+            target: { id: /#(\S+)/.exec(chosen)?.[1] ?? '', revision: call.revision },
+            explanation: "the Reserve now button in Offer C's row",
+            positional: false,
+          };
+        });
+        const config: Partial<E2EConfig> = {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'],
+          agent: { model },
+        };
+
+        const cold = await runExisting(project, { appUrl: app.url, config });
+        expect(cold.status).toBe('passed');
+        expect(cacheFiles(project)).toHaveLength(1);
+
+        // Same route, rows reversed, and no model call left to fix a bad guess.
+        process.env['REVERSE'] = '1';
+        try {
+          const warm = await runExisting(project, { appUrl: app.url, config });
+          // Passing is the assertion: the test itself checks the status text is
+          // "C", so a locator that drifted to another offer fails here.
+          expect(warm.status).toBe('passed');
+          expect(fakeCalls.filter((call) => call.schemaName === 'agent-locate-1')).toHaveLength(1);
+        } finally {
+          delete process.env['REVERSE'];
+        }
+      } finally {
+        project.cleanup();
+      }
+    }, 240_000);
+
     it('bypasses the cache on a retry attempt', async () => {
       const project = createProject({
         'tests/retry.e2e.ts': `import { test, expect } from 'e2e';

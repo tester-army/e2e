@@ -190,33 +190,6 @@ const PAGES: Record<string, string> = {
   </script>
 </body>
 </html>`,
-  // A control repeated per row, exactly as a listing repeats a reservation
-  // button: every query derived from any row matches all of them, so only the
-  // node's place in the observation tells them apart. The widget appended at
-  // body level is what a chat bubble, a consent frame, or a React portal does,
-  // and it shifts every nth-child index under body.
-  '/repeats': `<!doctype html>
-<html>
-<head><title>Repeats</title></head>
-<body style="margin:0">
-  <output id="picked" role="status" aria-label="Picked">none</output>
-  <ul style="list-style:none;padding:0">
-    <li><span>Offer A</span> <button name="reserve-a" onclick="pick('A')">Reserve now</button></li>
-    <li><span>Offer B</span> <button name="reserve-b" onclick="pick('B')">Reserve now</button></li>
-    <li><span>Offer C</span> <button name="reserve-c" onclick="pick('C')">Reserve now</button></li>
-  </ul>
-  <script>
-    function pick(offer) {
-      document.getElementById('picked').textContent = offer;
-    }
-    setTimeout(() => {
-      const widget = document.createElement('div');
-      widget.textContent = 'Chat with us';
-      document.body.prepend(widget);
-    }, 150);
-  </script>
-</body>
-</html>`,
   // Repeated cross-sell rows: several buttons share role, name, and test id, so
   // every derived query is ambiguous and only position tells them apart. The
   // last row is a deliberate dead end — two buttons stacked at the same rect.
@@ -300,10 +273,61 @@ export interface FixtureApp {
   close(): Promise<void>;
 }
 
+/**
+ * A control repeated per row, as a listing repeats one reservation button. Every
+ * query derived from any row matches all of them, so the sweep can only resolve
+ * one by pinning an index.
+ *
+ * `?reverse=1` serves the same three offers in the opposite order. Cache route
+ * identity drops the query, so both URLs are the same place and share a key —
+ * which is how a warm run can replay an entry recorded against a page whose rows
+ * have since reordered. An index would land on the wrong offer; a selector
+ * anchored on the button's own name does not.
+ *
+ * The widget appended at body level is what a chat bubble, a consent frame, or a
+ * React portal does, and it shifts every nth-child index under body.
+ */
+function renderRepeats(reverse: boolean): string {
+  const offers = reverse ? ['C', 'B', 'A'] : ['A', 'B', 'C'];
+  const rows = offers
+    .map(
+      (offer) =>
+        `    <li><span>Offer ${offer}</span> <button name="reserve-${offer.toLowerCase()}" ` +
+        `onclick="pick('${offer}')">Reserve now</button></li>`,
+    )
+    .join('\n');
+  return `<!doctype html>
+<html>
+<head><title>Repeats</title></head>
+<body style="margin:0">
+  <output id="picked" role="status" aria-label="Picked">none</output>
+  <ul style="list-style:none;padding:0">
+${rows}
+  </ul>
+  <script>
+    function pick(offer) {
+      document.getElementById('picked').textContent = offer;
+    }
+    setTimeout(() => {
+      const widget = document.createElement('div');
+      widget.textContent = 'Chat with us';
+      document.body.prepend(widget);
+    }, 150);
+  </script>
+</body>
+</html>`;
+}
+
 /** Starts the fixture app on an ephemeral loopback port. */
 export async function startFixtureApp(): Promise<FixtureApp> {
   const server: Server = createServer((request, response) => {
-    const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const requested = new URL(request.url ?? '/', 'http://localhost');
+    const pathname = requested.pathname;
+    if (pathname === '/repeats') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(renderRepeats(requested.searchParams.get('reverse') === '1'));
+      return;
+    }
     if (pathname === '/api/flags') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ betaBoard: false }));
