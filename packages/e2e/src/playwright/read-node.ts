@@ -30,8 +30,10 @@ export interface RawNodeData {
   attributes: Record<string, string>;
   rect: { x: number; y: number; width: number; height: number };
   /**
-   * Unique CSS path of this element within its own document. Structural, so it
-   * survives the content changes that rename a node, and cheap to resolve.
+   * Unique CSS path of this element within its own document, or `''` when the
+   * active mode does not derive one. Structural, so it survives the content
+   * changes that rename a node. Only `node` mode derives it: the probe is
+   * document-wide, so a tree walk must not pay for it per node.
    */
   selector: string;
 }
@@ -129,6 +131,12 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           redactHref: true,
           directTextOnly: true,
           documentRoot: true,
+          // Off for the tree walk. Deriving a selector probes the whole document
+          // once per naming attribute per ancestor, so doing it for every
+          // observed node costs O(nodes x depth) document-wide queries per
+          // observation. Only the one node a caller goes on to act on needs it,
+          // and that node is re-read in `node` mode, which does derive it.
+          selector: false,
         }
       : {
           attributes: [
@@ -149,6 +157,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           redactHref: false,
           directTextOnly: false,
           documentRoot: false,
+          selector: true,
         };
 
   const implicitRole = (el: Element): string | null => {
@@ -310,6 +319,63 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
   };
 
+  /** Attributes that name an element rather than describe where it sits. */
+  const NAMING_ATTRIBUTES = [options.testIdAttribute, 'name'];
+
+  /**
+   * A document-unique attribute selector for one element, when it has one.
+   *
+   * A test ID names an element by definition; a form control's `name` names it
+   * because the server reads it, which is also why it outlives redesigns. Ids
+   * are deliberately absent: a framework that mints them per render
+   * (`#firstName-aepj7PyFWSmXAkB8bb91h`) would make every selector single-use.
+   */
+  const namedSelectorOf = (el: Element): string | null => {
+    for (const attribute of NAMING_ATTRIBUTES) {
+      const value = el.getAttribute(attribute);
+      if (value === null || value === '') continue;
+      const selector = `[${attribute}="${value.replace(/["\\]/g, '\\$&')}"]`;
+      let unique: boolean;
+      try {
+        unique = el.ownerDocument.querySelectorAll(selector).length === 1;
+      } catch {
+        continue;
+      }
+      if (unique) return selector;
+    }
+    return null;
+  };
+
+  /**
+   * Selector that addresses one element in its own document, anchored as close
+   * to it as possible.
+   *
+   * A path is walked upward only until it reaches an element something names,
+   * and stops there. A full path from `body` is the last resort and a poor one:
+   * a chat widget or a portal appended anywhere above shifts every
+   * `nth-child` index below it, so absolute paths break for reasons that have
+   * nothing to do with the element.
+   *
+   * Each `namedSelectorOf` probe is a document-wide `querySelectorAll`, so this
+   * is deliberately not called for every node of a tree walk; see `projection`.
+   */
+  const uniqueSelectorOf = (el: Element): string => {
+    const named = namedSelectorOf(el);
+    if (named !== null) return named;
+    const parts: string[] = [];
+    let current: Element | null = el;
+    while (current !== null && current.tagName.toLowerCase() !== 'html') {
+      const parent: Element | null = current.parentElement;
+      if (parent === null) break;
+      const index = Array.prototype.indexOf.call(parent.children, current) + 1;
+      parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
+      const anchor = namedSelectorOf(parent);
+      if (anchor !== null) return `${anchor} > ${parts.join(' > ')}`;
+      current = parent;
+    }
+    return parts.join(' > ');
+  };
+
   const describe = (el: Element): RawNodeData => {
     const tag = el.tagName.toLowerCase();
     const autocomplete = (el.getAttribute('autocomplete') ?? '').toLowerCase();
@@ -398,7 +464,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       },
       attributes,
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      selector: uniqueSelectorOf(el),
+      selector: projection.selector ? uniqueSelectorOf(el) : '',
     };
   };
 
@@ -428,64 +494,6 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (accessibleName(el) !== null) return true;
     return directTextOf(el) !== '';
   };
-
-  /**
-   * A document-unique attribute selector for one element, when it has one.
-   *
-   * The attributes name an element rather than describe where it sits. A test
-   * ID is one by definition; a form control's `name` is one because the server
-   * reads it, which is also why it outlives redesigns. Ids are deliberately
-   * absent: a framework that mints them per render
-   * (`#firstName-aepj7PyFWSmXAkB8bb91h`) would make every selector single-use.
-   *
-   * The list is inline rather than hoisted to a const for the same reason this
-   * is a declaration: the single-node projection runs before this point in the
-   * closure, and a const would be in its temporal dead zone.
-   */
-  function namedSelectorOf(el: Element): string | null {
-    for (const attribute of [options.testIdAttribute, 'name']) {
-      const value = el.getAttribute(attribute);
-      if (value === null || value === '') continue;
-      const selector = `[${attribute}="${value.replace(/["\\]/g, '\\$&')}"]`;
-      let unique: boolean;
-      try {
-        unique = el.ownerDocument.querySelectorAll(selector).length === 1;
-      } catch {
-        continue;
-      }
-      if (unique) return selector;
-    }
-    return null;
-  }
-
-  /**
-   * Selector that addresses one element in its own document, anchored as close
-   * to it as possible. Declared rather than bound to a const: the single-node
-   * projection runs before this point in the closure, and a const would be in
-   * its temporal dead zone.
-   *
-   * A path is walked upward only until it reaches an element something names,
-   * and stops there. A full path from `body` is the last resort and a poor one:
-   * a chat widget or a portal appended anywhere above shifts every
-   * `nth-child` index below it, so absolute paths break for reasons that have
-   * nothing to do with the element.
-   */
-  function uniqueSelectorOf(el: Element): string {
-    const named = namedSelectorOf(el);
-    if (named !== null) return named;
-    const parts: string[] = [];
-    let current: Element | null = el;
-    while (current !== null && current.tagName.toLowerCase() !== 'html') {
-      const parent: Element | null = current.parentElement;
-      if (parent === null) break;
-      const index = Array.prototype.indexOf.call(parent.children, current) + 1;
-      parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
-      const anchor = namedSelectorOf(parent);
-      if (anchor !== null) return `${anchor} > ${parts.join(' > ')}`;
-      current = parent;
-    }
-    return parts.join(' > ');
-  }
 
   const walk = (el: Element, parent: number): void => {
     if (truncated) return;
