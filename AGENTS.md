@@ -23,12 +23,16 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 ## Layout
 
 - `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
-  `e2e/driver` SPI, `e2e/playwright` reference driver.
+  `e2e/driver` SPI.
   - `src/run/` runner core (scheduler, units, workers, retries, sessions),
     `src/collect/` registration+selection, `src/locator/` locator AST/engine,
-    `src/agent/` agent tiers, `src/cache/` `cache-1`, `src/playwright/` driver.
-- `packages/testbed` (`@e2e/testbed`, private) — dogfood project that consumes
-  the **built** `e2e` package like a real user would.
+    `src/agent/` agent tiers, `src/cache/` `cache-1`.
+- `packages/playwright` — the published `@e2edev/playwright` package: the
+  reference web driver. It depends on `e2e` (peer), never the reverse. The
+  runner loads it on demand for `driver: 'playwright'`; `src/config/drivers.ts`
+  is the one place that maps a well-known driver id to its package.
+- `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
+  consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `PLAN.md` (phase ordering only).
 
 ## Commands
@@ -48,15 +52,21 @@ pnpm --filter e2e run build
 pnpm --filter e2e run test:unit                       # unit only, no build
 pnpm --filter e2e exec vitest run tests/unit/scheduler.test.ts
 pnpm --filter e2e exec vitest run -t 'name fragment'
-pnpm --filter @e2e/testbed run test:headed
+pnpm --filter @e2edev/playwright run test
+pnpm --filter @e2edev/testbed run test:headed
 ```
 
+- Package `test` scripts do **not** build. Root `build` and `test` order the
+  packages explicitly rather than relying on topological sort, because `e2e`
+  devDepends on the driver for its browser-backed integration tests while the
+  driver peer-depends on `e2e` — pnpm reports that cycle on every install.
 - `pnpm typecheck` runs `build` first, then per-package `typecheck`.
 - `pnpm check:spec` typechecks `spec/api` + `spec/examples` under a separate,
   stricter config (`skipLibCheck: false`, DOM lib) — it can fail while package
   typecheck passes.
-- Integration tests need Chromium: `pnpm --filter e2e exec playwright install
-  chromium`. The runner also auto-installs missing browsers on first run.
+- Integration tests need Chromium: `pnpm --filter @e2edev/playwright exec
+  playwright install chromium`. The driver's `prepare` hook also installs
+  missing browsers on first run, before any session launches.
 
 ## Non-obvious conventions
 
@@ -100,3 +110,7 @@ pnpm --filter @e2e/testbed run test:headed
   new actions SHA-pinned.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
+- Releases go through changesets: a user-visible change adds a `.changeset/`
+  entry. Peer ranges point one way only (driver -> `e2e`, widened to `>=x <1`);
+  making them mutual or narrow forces changesets to bump both packages to a
+  major on every release.

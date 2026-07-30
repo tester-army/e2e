@@ -21,7 +21,7 @@
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run build && changeset publish",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm run build && pnpm --filter e2e --filter @e2edev/playwright run test",
+    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
     "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
