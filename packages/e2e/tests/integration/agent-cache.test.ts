@@ -26,13 +26,13 @@ test('taps the increment button', async ({ app, agent, screen }) => {
 });
 `;
 
-/** A suite whose located action is not in the cache-1 method enum. */
-const UNCACHEABLE_SUITE = `import { test, expect } from 'e2e';
+/** A suite of located actions the locate cache covers beyond tap and type. */
+const VERBS_SUITE = `import { test, expect } from 'e2e';
 
-test('hovers the hover zone', async ({ app, agent, screen }) => {
+test('presses Enter in the search field', async ({ app, agent, screen }) => {
   await app.open('/verbs');
-  await agent.hover('the Hover zone');
-  await expect(screen.getByRole('button', { name: 'Revealed action' })).toBeVisible();
+  await agent.press('the Search field', 'Enter');
+  await expect(screen.getByLabel('Submitted')).toHaveText('submitted:');
 });
 `;
 
@@ -518,8 +518,22 @@ test('taps the third repeat', async ({ agent, screen, web }) => {
         const entry = JSON.parse(
           readFileSync(path.join(project.dir, '.e2e', 'cache', files[0]!), 'utf8'),
         );
-        expect(entry.payload.locator.kind).toBe('web-selector');
+        // Anchored on what names the element, not on where it sits: the page
+        // appends a widget at body level, which shifts every nth-child index
+        // under it and would break a path walked up to body.
+        expect(entry.payload.locator).toEqual({
+          kind: 'web-selector',
+          selector: '[name="reserve-c"]',
+        });
         expect(entry.payload.expected).toMatchObject({ role: 'button', name: 'Reserve now' });
+
+        // And it replays: the whole point of storing one.
+        const second = await runExisting(project, {
+          appUrl: app.url,
+          config: { tests: 'tests/**/*.e2e.ts', reporters: ['json'], agent: { model } },
+        });
+        expect(second.status).toBe('passed');
+        expect(fakeCalls.filter((call) => call.schemaName === 'agent-locate-1')).toHaveLength(1);
       } finally {
         project.cleanup();
       }
@@ -623,17 +637,26 @@ test('drives every cacheable verb', async ({ app, agent, screen }) => {
     });
   });
 
-  describe('non-cacheable calls', () => {
-    it('bypasses a located action outside the cache-1 method enum', async () => {
-      const project = createProject({ 'tests/hover.e2e.ts': UNCACHEABLE_SUITE });
+  describe('every located action is cacheable', () => {
+    it('caches a verb that is not tap or type, and replays it', async () => {
+      // These verbs differ in what they do with the node, not in how they find
+      // it, and an entry stores only the finding. While they were outside the
+      // method enum, a suite paid one model call per run for a hover that had
+      // resolved to the same control every time.
+      const project = createProject({ 'tests/hover.e2e.ts': VERBS_SUITE });
       try {
-        const outcome = await runOnce(project);
-        expect(outcome.passed).toBe(true);
-        expect(outcome.steps[0]!.cache).toEqual({ status: 'bypassed' });
-        expect(cacheFiles(project)).toEqual([]);
+        const first = await runOnce(project);
+        expect(first.passed).toBe(true);
+        expect(first.steps[0]!.cache).toMatchObject({ status: 'written' });
+        expect(cacheFiles(project)).toHaveLength(1);
+
+        const second = await runOnce(project);
+        expect(second.passed).toBe(true);
+        expect(second.steps[0]!.cache).toMatchObject({ status: 'hit' });
+        expect(second.locateCalls).toBe(0);
       } finally {
         project.cleanup();
       }
-    }, 180_000);
+    }, 240_000);
   });
 });
