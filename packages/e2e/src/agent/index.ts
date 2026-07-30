@@ -23,7 +23,7 @@ import type {
   VisionMode,
 } from '../types.ts';
 import { AgentError } from './error.ts';
-import type { AgentObservation } from './observation.ts';
+import { observationShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
   toAgentError,
@@ -47,6 +47,13 @@ import { authorizeSecretFill } from './secrets.ts';
 
 const MIN_STEP_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
+
+/**
+ * How often `waitFor` looks at the page between judgments. One observation is
+ * driver-only work — a fraction of a model call, and free — so it is cheap
+ * enough to notice a change quickly and far cheaper than asking again.
+ */
+const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
 
 /** Builds the agent fixture for one attempt. */
@@ -451,12 +458,36 @@ export function createAgent(runtime: AgentContext): Agent {
         },
         condition,
         async (invocation) => {
-          // The exhaustion checks live at the top of the loop — the only exit
-          // — so a timeout after a sleep still reports the last judgment
-          // instead of a bare deadline error.
+          // Judgments are spent on changes, not on the clock. A judgment reads
+          // the observation and nothing else, so while the page looks the same
+          // the answer is the same, and asking again is a model call that can
+          // only repeat itself. So a false judgment is followed by cheap
+          // driver-only observations until the page actually changes, and then
+          // one judgment — which is also what makes a condition that came true
+          // two seconds ago cost two seconds instead of a full interval.
+          //
+          // `intervalMs` stays the rate limit it always was: at most one
+          // judgment per interval, so a page that changes continuously (a
+          // spinner, a countdown) cannot spend the budget in a second.
+          //
+          // Pixels are the exception: an animation the tree cannot see is a
+          // real change, so a vision call keeps judging on the interval alone.
+          const watchTree = !invocation.pixelsRequired;
+          const tickMs = Math.min(intervalMs, CHANGE_POLL_MS);
           let lastExplanation = 'no judgment was produced';
+          let observation = await invocation.observe();
           for (let round = 1; ; round += 1) {
-            if (round > 1) {
+            invocation.recordPoll('waitFor', round);
+            const judgment = await askJudgment(invocation, condition, observation);
+            lastExplanation = judgment.explanation;
+            invocation.note({ explanation: judgment.explanation });
+            if (judgment.result) return;
+            const judgedAt = Date.now();
+            const judgedShape = observationShape(observation);
+            // The exhaustion checks live at the top of this wait — the only
+            // exit — so a timeout still reports the last judgment instead of a
+            // bare deadline error.
+            for (;;) {
               if (invocation.deadline.expired()) {
                 throw new AgentError(
                   'STEP_TIMEOUT',
@@ -469,17 +500,12 @@ export function createAgent(runtime: AgentContext): Agent {
                   `waitFor exhausted its model-call budget; last judgment: ${lastExplanation}`,
                 );
               }
+              const remainder = Math.min(tickMs, invocation.deadline.remaining());
+              if (remainder > 0) await sleep(remainder, runtime.signal);
+              observation = await invocation.observe();
+              const due = Date.now() - judgedAt >= intervalMs;
+              if (due && (!watchTree || observationShape(observation) !== judgedShape)) break;
             }
-            invocation.recordPoll('waitFor', round);
-            const observation = await invocation.observe();
-            const judgment = await askJudgment(invocation, condition, observation);
-            lastExplanation = judgment.explanation;
-            invocation.note({ explanation: judgment.explanation });
-            if (judgment.result) return;
-            await sleep(
-              Math.min(intervalMs, Math.max(1, invocation.deadline.remaining())),
-              runtime.signal,
-            );
           }
         },
       );

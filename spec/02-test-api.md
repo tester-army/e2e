@@ -159,9 +159,15 @@ single-call instant actions:
 
 - `scrollTo` alternates deterministic scrolling and fresh locate judgments
   until the node is found or the timeout/model-call budget expires.
-- `waitFor` makes one fresh observation and judgment per `intervalMs`, default
-  3,000 ms. It succeeds on the first true judgment. The interval is an integer
-  from 100 through 60,000 ms.
+- `waitFor` succeeds on the first true judgment. `intervalMs`, default 3,000 ms,
+  is the shortest time between two judgments, not a pause added after each one:
+  it is a rate limit on model calls, and a runner MUST NOT make the caller wait
+  it out after a judgment that already took longer. A judgment reads the
+  observation, so while the observation is unchanged the answer cannot change; a
+  runner MAY therefore keep observing — driver-only work — and spend the next
+  judgment when the page changes rather than when the clock says so. A call that
+  sends pixels judges on the interval alone, because an animation the tree cannot
+  see is still a change. The interval is an integer from 100 through 60,000 ms.
 
 Every polling method is bounded by both its timeout and the resolved
 `maxModelCalls` limit.

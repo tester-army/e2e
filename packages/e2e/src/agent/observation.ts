@@ -175,6 +175,18 @@ export function observedLineHasRole(line: string): boolean {
   return /^\s*#\S+ [a-z][a-z-]*(\s|$)/.test(line);
 }
 
+/**
+ * What the page looks like, independent of which observation looked at it.
+ *
+ * Node ids are minted per observation, so two observations of a page that has
+ * not moved never render identically. Dropping them leaves what describes the
+ * page, which is what a caller comparing two observations is asking about.
+ * Lives next to `formatNode` so the line grammar keeps one owner.
+ */
+export function observationShape(observation: AgentObservation): string {
+  return observation.text.replaceAll(/(^|\n)(\s*)#\S+/g, '$1$2');
+}
+
 function collapse(text: string): string {
   return sanitizeText(text).replace(/\s+/g, ' ').trim();
 }

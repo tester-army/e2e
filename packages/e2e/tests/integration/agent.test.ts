@@ -199,8 +199,30 @@ describe('agent fixture', () => {
     await app?.close();
   });
 
+  const stepOf = (title: string, api: string) => {
+    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
+    const step = attempt.steps.find((candidate) => candidate.api === api);
+    if (step === undefined) throw new Error(`no ${api} step in "${title}"`);
+    return step;
+  };
+
   it('runs located actions, polling, and judgments against the real driver', () => {
     expect(resultByTitle(outcome, 'located actions and judgments').status).toBe('passed');
+  });
+
+  it('spends one judgment while the page it is waiting on does not change', () => {
+    // The condition is false and the About page is static, so re-judging could
+    // only repeat the same answer. Every extra round would be a model call and
+    // a few seconds, which is what made waiting on a real page sluggish.
+    const title = 'waits without re-judging a page that has not changed';
+    const result = resultByTitle(outcome, title);
+    expect(result.status).toBe('failed');
+    expect(result.attempts.at(-1)!.error?.code).toBe('STEP_TIMEOUT');
+    const step = stepOf(title, 'agent.waitFor');
+    expect(step.metrics!.modelCalls).toBe(1);
+    // It kept looking, though: observations are driver-only and cost nothing.
+    const observations = step.events.filter((event) => event.kind === 'observation').length;
+    expect(observations).toBeGreaterThan(2);
   });
 
   it('validates extracted data with Standard Schema v1', () => {
