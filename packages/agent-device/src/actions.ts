@@ -32,6 +32,15 @@ const SETTLE: { readonly settle: true; readonly settleQuietMs: number; readonly 
   { settle: true, settleQuietMs: 250, timeoutMs: 5_000 };
 
 /**
+ * A scroll is a mutation, and iOS scrolling carries inertia: the list keeps
+ * moving after the gesture returns. `spec/16-mobile.md` requires the UI to be
+ * quiet before the next observation, so a scroll settles like any other
+ * mutation. Without it a snapshot taken mid-momentum reports geometry that is
+ * already wrong, and an action dispatched against it lands on whatever slid
+ * into that position.
+ */
+
+/**
  * Resolves one key to the text that presses it, failing loudly when the platform
  * cannot express it. Typing the key's name instead would insert the word
  * "Enter" into a field and report success.
@@ -280,6 +289,7 @@ export async function performSwipe(
       dx: Math.round(to.x - from.x),
       dy: Math.round(to.y - from.y),
       durationMs,
+      ...SETTLE,
     }),
     operation,
     'swipe',
@@ -300,7 +310,7 @@ export async function performScroll(
   // duration is left to the backend rather than silently scrolling nothing.
   const { amount } = momentumGesture(momentum);
   await withDeadline(
-    client.interactions.scroll({ platform: scope.platform, direction, amount }),
+    client.interactions.scroll({ platform: scope.platform, direction, amount, ...SETTLE }),
     operation,
     'scroll',
   );

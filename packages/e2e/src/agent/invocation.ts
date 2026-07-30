@@ -591,6 +591,21 @@ export class Invocation {
     }
   }
 
+  /**
+   * Runs one driver call that makes a node actionable rather than acting on it.
+   *
+   * Scrolling a node into view is the mobile half of actionability: on web the
+   * backend does it inside the action and nothing observes it. Charging it to
+   * the action-step budget would mean a located action costs two steps on one
+   * platform and one on the other, and `agent.tap`, which is allowed exactly
+   * one action, could never reach anything below the fold. It stays on the
+   * clock and in the step log; it just is not the action.
+   */
+  async prepare<Value>(name: string, body: () => Promise<Value>): Promise<Value> {
+    this.checkDeadline();
+    return this.instrument({ kind: 'driver', phase: 'agent.action', name }, body);
+  }
+
   /** Runs one committed driver action against the action-step budget. */
   async commit<Value>(name: string, body: () => Promise<Value>): Promise<Value> {
     this.checkDeadline();

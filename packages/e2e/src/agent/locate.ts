@@ -17,7 +17,6 @@ import { cacheMethodForApi } from '../cache/index.ts';
 import type {
   LocatorExpression,
   NodeRef,
-  ScrollDirection,
   SemanticNode,
   ViewportPoint,
 } from '../driver/index.ts';
@@ -374,53 +373,51 @@ async function openCacheFor(
 }
 
 /**
- * Brings a located node inside the viewport, so the caller's next action can
- * dispatch against it.
+ * Brings a located node inside the viewport and returns it re-resolved, so the
+ * caller's next action dispatches against a reference that is still current.
  *
- * `scrollIntoView` is one gesture by contract (spec 16-mobile.md), and it is the
- * runner that owns the loop. That split is invisible on a backend which scrolls
- * as part of actionability, because such a backend never reports `offscreen` and
- * one gesture is the whole story. On a profile that does report it the two rules
- * compose badly: the observation deliberately carries nodes far below the fold,
- * so the model can locate a target thousands of points away without the runner
- * having scrolled at all, and `scrollTo` would then report success having moved
- * a fraction of the distance, leaving the next action to fail `NOT_ACTIONABLE`
- * on a node the test just asked for.
+ * A node the driver reports as `offscreen` refuses input until it is scrolled
+ * to, and `scrollIntoView` moves one gesture per call by contract
+ * (spec 16-mobile.md), so reaching a distant target is a loop. The loop lives
+ * here because it needs the query the model produced: a scroll invalidates
+ * every reference, so each round has to re-resolve rather than reuse a ref.
+ * That also makes it free of model calls.
  *
- * The loop is deterministic: every round re-resolves the query the model already
- * produced, so reaching a distant target costs no further model calls. A node
- * the model could only address by reference cannot be re-resolved that way, and
- * keeps the single gesture.
+ * A backend that scrolls as part of actionability never reports `offscreen`, so
+ * on those platforms this returns immediately. A node the model could only
+ * address by reference is returned untouched, because there is no query to
+ * re-resolve it with after a scroll.
  */
 export async function reachLocatedNode(
   invocation: Invocation,
   located: LocatedNode,
-  direction: ScrollDirection,
-): Promise<void> {
-  await invocation.commit('scrollIntoView', () =>
-    invocation.session.screen.perform(
-      located.ref,
-      { kind: 'scrollIntoView' },
-      invocation.operation(),
-    ),
-  );
+): Promise<LocatedNode> {
+  if (located.node.states?.offscreen !== true) return located;
   const expression = located.expression;
-  if (expression === undefined || located.node.states?.offscreen !== true) return;
+  if (expression === undefined) return located;
 
+  let current = located;
   for (let round = 1; ; round += 1) {
     invocation.recordPoll('scrollTo', round);
-    // A scroll invalidates every reference the observation handed out, so the
-    // target is re-resolved by query rather than by ref.
     const { node } = await invocation.engine.tryRead(expression, invocation.deadline);
-    if (node !== null && node.states?.offscreen !== true) return;
+    if (node !== null) {
+      // Rebuilt from the original rather than from the previous round: only the
+      // reference and the node it reads change, everything else is settled.
+      current = { ...located, ref: node.ref, node };
+      if (node.states?.offscreen !== true) return current;
+    }
     if (invocation.deadline.expired()) {
       throw new AgentError(
         'LOCATOR_NOT_FOUND',
-        `scrollTo found ${describeExpression(expression)} but it did not come into view within its budget`,
+        `${describeExpression(expression)} did not come into view within its budget`,
       );
     }
-    await invocation.commit('scroll', () =>
-      invocation.session.actions.scroll(direction, {}, invocation.operation()),
+    await invocation.prepare('scrollIntoView', () =>
+      invocation.session.screen.perform(
+        current.ref,
+        { kind: 'scrollIntoView' },
+        invocation.operation(),
+      ),
     );
   }
 }

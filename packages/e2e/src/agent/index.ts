@@ -175,7 +175,11 @@ export function createAgent(runtime: AgentContext): Agent {
         const located = await locateOne(invocation, target, { testIdAttribute, input, point });
         // Null means the model pointed and the policy already dispatched.
         if (located === null) return;
-        await dispatch(invocation, api, target, located, () => action(invocation, located));
+        // A node below the fold is scrolled to before it is acted on, so an
+        // agent step behaves the same here as it does on web, where the backend
+        // scrolls as part of actionability.
+        const reached = await reachLocatedNode(invocation, located);
+        await dispatch(invocation, api, target, reached, () => action(invocation, reached));
       },
     );
   };
@@ -487,7 +491,19 @@ export function createAgent(runtime: AgentContext): Agent {
                 invocation.session.actions.scroll(direction, {}, invocation.operation()),
               ),
           );
-          await reachLocatedNode(invocation, located, direction);
+          if (located.node.states?.offscreen === true) {
+            await reachLocatedNode(invocation, located);
+          } else {
+            // Nothing reported the node out of reach, so this is the web shape:
+            // one gesture that brings it in, and no loop to run.
+            await invocation.commit('scrollIntoView', () =>
+              invocation.session.screen.perform(
+                located.ref,
+                { kind: 'scrollIntoView' },
+                invocation.operation(),
+              ),
+            );
+          }
         },
       );
     },

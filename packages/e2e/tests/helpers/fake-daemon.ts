@@ -177,6 +177,11 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
         });
       }
       case 'open':
+        // A launch replaces the running instance, so the screen is back at the
+        // top. Without this a scrolled test would leak its position into the
+        // next one, which is exactly the state a fixture must not carry.
+        scrolled = 0;
+        refsGeneration += 1;
         return ok({ session: 'fake', appName: 'Example', appBundleId: 'com.example.app' });
       case 'close':
         return ok({ session: 'fake' });

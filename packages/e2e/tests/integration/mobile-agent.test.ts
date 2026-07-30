@@ -187,6 +187,11 @@ test('reaches a row below the fold', async ({ app, agent }) => {
   await agent.scrollTo('the Development Overrides row');
   await agent.tap('the Development Overrides row');
 });
+
+test('acts on a row below the fold without scrolling first', async ({ app, agent }) => {
+  await app.open();
+  await agent.tap('the Development Overrides row');
+});
 `,
         },
         {
@@ -208,6 +213,12 @@ test('reaches a row below the fold', async ({ app, agent }) => {
       );
 
       expect(resultByTitle(outcome, 'reaches a row below the fold').status).toBe('passed');
+      // A located agent action reaches its own target too: the model names a
+      // row 2,400 points down and the step scrolls to it before tapping,
+      // exactly as it would on web.
+      expect(
+        resultByTitle(outcome, 'acts on a row below the fold without scrolling first').status,
+      ).toBe('passed');
       // It kept scrolling until the row was actually reachable, rather than
       // reporting success after the single gesture the driver contract defines.
       expect(daemon.scrollOffset()).toBeGreaterThanOrEqual(2400 - 874);
