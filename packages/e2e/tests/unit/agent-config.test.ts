@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { APICallError } from 'ai';
+import { describe, expect, it, vi } from 'vitest';
 import { resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 
 const ROOT = '/tmp/e2e-agent-config-project';
@@ -275,4 +276,94 @@ describe('model error classification', () => {
       adapter.generate({ ...call, signal: live.signal, timeoutMs: 1 }),
     ).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
   });
+
+  it('does not retry a provider failure the provider called permanent', async () => {
+    const failing = scriptedFailure({ statusCode: 400, isRetryable: false });
+    const adapter = await instanceAdapter(failing.model);
+
+    await expect(adapter.generate(modelCall())).rejects.toMatchObject({
+      code: 'MODEL_PROVIDER_FAILED',
+      message: expect.stringContaining('provider said no'),
+    });
+    expect(failing.attempts()).toBe(1);
+  });
+
+  it('retries a retryable provider failure and reports the underlying cause', async () => {
+    // The retry chain is wrapped by the SDK once exhausted; the surfaced error
+    // must still name the provider failure rather than the wrapper.
+    const failing = scriptedFailure({ statusCode: 503, isRetryable: true });
+    const adapter = await instanceAdapter(failing.model);
+    vi.useFakeTimers();
+    try {
+      const generated = adapter.generate(modelCall());
+      const assertion = expect(generated).rejects.toMatchObject({
+        code: 'MODEL_PROVIDER_FAILED',
+        message: expect.stringContaining('provider said no'),
+      });
+      await vi.advanceTimersByTimeAsync(TRANSPORT_BACKOFF_BUDGET_MS);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(failing.attempts()).toBe(TRANSPORT_ATTEMPTS);
+  });
 });
+
+/** One first call plus `TRANSPORT_RETRIES` retries in `src/agent/model/sdk.ts`. */
+const TRANSPORT_ATTEMPTS = 6;
+
+/** Exceeds the SDK's 2s-doubling backoff across every retry of one call. */
+const TRANSPORT_BACKOFF_BUDGET_MS = 120_000;
+
+/** Builds the adapter for a caller-supplied AI SDK model instance. */
+async function instanceAdapter(model: unknown) {
+  const { createModelAdapter } = await import('../../src/agent/model/sdk.ts');
+  return createModelAdapter({
+    kind: 'instance',
+    provider: 'scripted',
+    id: 'always-fails',
+    model: model as never,
+  });
+}
+
+/** A model instance that always fails one way, counting the attempts made. */
+function scriptedFailure(options: { statusCode: number; isRetryable: boolean }) {
+  let attempts = 0;
+  return {
+    attempts: () => attempts,
+    model: {
+      specificationVersion: 'v3',
+      provider: 'scripted',
+      modelId: 'always-fails',
+      supportedUrls: {},
+      doGenerate: () => {
+        attempts += 1;
+        return Promise.reject(
+          new APICallError({
+            message: 'provider said no',
+            url: 'https://scripted.invalid',
+            requestBodyValues: {},
+            statusCode: options.statusCode,
+            isRetryable: options.isRetryable,
+          }),
+        );
+      },
+      doStream: () => Promise.reject(new Error('not called')),
+    },
+  };
+}
+
+/** The minimal model call used by the error-classification tests. */
+function modelCall() {
+  return {
+    system: 's',
+    prompt: 'p',
+    schemaName: 'agent-judgment-1',
+    schema: undefined,
+    validate: (value: unknown) => ({ ok: true as const, value }),
+    maxOutputTokens: 16,
+    maxInputTokens: 64_000,
+    timeoutMs: 600_000,
+    signal: new AbortController().signal,
+  };
+}

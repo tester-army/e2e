@@ -14,6 +14,7 @@ import {
   jsonSchema,
   NoObjectGeneratedError,
   Output,
+  RetryError,
   type ModelMessage,
 } from 'ai';
 import {
@@ -39,8 +40,17 @@ const DEFAULT_GATEWAY_ENDPOINT = 'https://ai-gateway.vercel.sh/v4/ai';
 
 const PROVIDER_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
-/** Provider transport retries; distinct from runner-owned model-call budget. */
-const TRANSPORT_RETRIES = 2;
+/**
+ * Provider transport retries; distinct from runner-owned model-call budget.
+ *
+ * Rate limits and 5xx bursts are the dominant cause of spurious agent-step
+ * failures, and the SDK only retries errors the provider marked retryable,
+ * honoring `retry-after` before its own exponential backoff. Raising the SDK
+ * default of 2 costs nothing on a healthy provider: `timeout` below is merged
+ * into the signal the retry loop waits on, so the step deadline — not the
+ * attempt count — bounds the whole chain.
+ */
+const TRANSPORT_RETRIES = 5;
 
 /** Creates the adapter for one resolved model, or fails with MODEL_UNAVAILABLE. */
 export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapter {
@@ -238,7 +248,8 @@ function parseCost(raw: unknown): number | undefined {
 }
 
 /** Maps adapter and provider failures onto the closed agent error set. */
-function translateModelError(cause: unknown, issue: string | undefined, signal: AbortSignal): Error {
+function translateModelError(rawCause: unknown, issue: string | undefined, signal: AbortSignal): Error {
+  const cause = unwrapRetry(rawCause);
   if (cause instanceof AgentError) return cause;
   // Only an aborted attempt is a cancellation. A request that exceeded the
   // remaining step budget is a timeout, which is a test failure (06-cli.md).
@@ -270,6 +281,17 @@ function translateModelError(cause: unknown, issue: string | undefined, signal: 
   );
 }
 
+/**
+ * Unwraps a spent transport retry chain to the attempt that actually failed,
+ * because the wrapper's message names the retry reason rather than the failure.
+ * A chain cut short by the deadline stays wrapped so it classifies as an abort.
+ */
+function unwrapRetry(cause: unknown): unknown {
+  if (!RetryError.isInstance(cause) || cause.reason === 'abort') return cause;
+  return cause.lastError ?? cause;
+}
+
 function isAbort(cause: unknown): boolean {
+  if (RetryError.isInstance(cause) && cause.reason === 'abort') return true;
   return cause instanceof Error && (cause.name === 'AbortError' || cause.name === 'TimeoutError');
 }
