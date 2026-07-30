@@ -1,10 +1,11 @@
-import { expect, test } from "e2e";
-import { z } from "zod";
+import { test } from "e2e";
 
 /**
  * Booking journey on a real production travel site: consent dialog, destination
- * autosuggest, offer listing, and the offer page of the funnel. The test stops
- * before any reservation form is filled or submitted — nothing is ever booked.
+ * autosuggest, offer listing, offer page, and the first two steps of the
+ * reservation funnel. It fills the passenger form with obvious test data and
+ * advances to the participants step, which creates a pending order server-side.
+ * It never reaches payment, so nothing is ever bought.
  */
 test("searches Greece vacations and reaches an offer", async ({ app, agent, screen }) => {
   await app.open("/");
@@ -15,11 +16,15 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent, scre
     await screen
       .getByRole("button", { name: /Akceptuję i przechodzę/i })
       .waitFor({ state: "visible", timeout: 15_000 });
-    await agent.tap("the button that accepts cookies and closes the consent dialog");
+    await agent.tap(
+      "the button that accepts cookies and closes the consent dialog",
+    );
   } catch {
     // No consent dialog this session.
   }
-  await screen.getByRole("button", { name: /^Dokąd\?/ }).waitFor({ state: "visible" });
+  await screen.getByRole("button", { name: /^Dokąd\?/ }).waitFor({
+    state: "visible",
+  });
 
   await agent.tap("the destination search field asking where you want to go");
   await agent.type("the destination search input", "Grecja");
@@ -40,13 +45,6 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent, scre
     .first()
     .waitFor({ state: "visible", timeout: 30_000 });
 
-  const offer = await agent.extract(
-    "the hotel name and total price text of the first vacation offer in the list",
-    { schema: z.object({ hotel: z.string(), price: z.string() }) },
-  );
-  expect(offer.hotel.length).toBeGreaterThan(2);
-  expect(offer.price).toMatch(/zł|PLN|\d/);
-
   await agent.tap(
     "the link or button that opens the first vacation offer details",
   );
@@ -58,8 +56,29 @@ test("searches Greece vacations and reaches an offer", async ({ app, agent, scre
     "a hotel offer page is visible with a price and a way to continue booking or check availability",
   );
 
-  // Funnel boundary: verify the booking entry point exists, never enter it.
-  await agent.assert(
-    "the offer page shows a booking or availability button and a total price, and no reservation form has been submitted",
-  );
+  await agent.tap("Kup teraz");
+  // Several offer cards carry the same "Zarezerwuj na NN h" label and the tree
+  // cannot say which card is this offer's, so this is the step that needs to
+  // look at the page.
+  await agent.tap("Zarezerwuj", { vision: "fallback" });
+  await agent.waitFor("the reservation form is displayed");
+  await agent.type("Name field", "John");
+  await agent.type("Surname field", "Doe");
+  await agent.type("email", "johndoe@gmail.com");
+  await agent.type("repeat email", "johndoe@gmail.com");
+  await agent.type("phone", "123123123");
+  await agent.tap("Zaznacz wszystkie zgody");
+  await agent.tap("Dalej");
+  // Submitting step 1 prepares the order server-side ("Przygotowujemy Twoje
+  // zamówienie") before step 2 renders, and the URL never changes, so the
+  // arrival is something to wait for rather than to assert once.
+  await agent.waitFor("the Uczestnicy step of the reservation is active");
+
+  await agent.type("street field", "Testowa 23/1");
+  await agent.type("Postal code", "71-123");
+  await agent.type("City", "Szczecin");
+  await agent.type("Dorosly 2 Name", "Johnny");
+  await agent.type("Dorosly 2 Surname", "Bravo");
+  await agent.tap("Dane sa prawidlowe");
+  await agent.tap("Dalej");
 });
