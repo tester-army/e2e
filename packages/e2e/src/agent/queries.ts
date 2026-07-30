@@ -88,12 +88,19 @@ export function deriveQueries(
   const text = normalizeSignatureText(node.text);
   const nameTruncated = truncatedAt(node.name, OBSERVED_NAME_LIMIT);
   const textTruncated = truncatedAt(node.text, OBSERVED_TEXT_LIMIT);
+  // A name this long is an aggregate of a whole card rather than a label, so it
+  // cannot be matched exactly even when it arrived complete: the driver
+  // recomputes the accessible name at resolve time and a single space, or a
+  // nested control's text, is enough to make an exact match find nothing. A
+  // truncated name has the same problem for a different reason, so both take the
+  // whitespace-tolerant prefix filter.
+  const nameUnmatchable = nameTruncated || name.length > NAME_PREFIX_LENGTH;
   const testId = node.attributes?.[testIdAttribute];
   const placeholder = node.attributes?.['placeholder'];
 
   if (role !== undefined && role !== '' && name !== '') {
     candidates.push(roleQuery(role as Role, { name, exact: !nameTruncated }, undefined));
-    if (nameTruncated) {
+    if (nameUnmatchable) {
       candidates.push(
         filterExpression(roleQuery(role as Role, undefined, undefined), {
           hasText: prefixPattern(name),

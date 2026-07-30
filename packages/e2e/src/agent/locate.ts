@@ -41,11 +41,14 @@ export interface LocatedNode {
   readonly kind: 'node';
   readonly ref: NodeRef;
   /**
-   * The portable query that re-found this node. Always present: a query that
-   * matched several nodes is pinned with an index rather than abandoned, so
-   * every located node is addressable by an expression the report can show.
+   * The portable query that re-found this node, or undefined when no derived
+   * query resolved it at all and it was addressed by the reference the
+   * observation handed out. A query that matched *several* nodes is pinned with
+   * an index rather than abandoned; this is the opposite case, a query that
+   * matched none because the name the driver recomputes diverges from the one
+   * the observation read.
    */
-  readonly expression: LocatorExpression;
+  readonly expression: LocatorExpression | undefined;
   /** Freshly read node behind the derived query. */
   readonly node: SemanticNode;
   readonly observation: AgentObservation;

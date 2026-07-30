@@ -105,8 +105,17 @@ test('taps one control among identical repeats', async ({ agent, screen, web }) 
   await expect(screen.getByRole('status')).toHaveText('C');
 });
 
-test('waits without re-judging a page that has not changed', async ({ app, agent }) => {
+test('waits without re-judging a page that has not changed', async ({
+  app,
+  agent,
+  screen,
+}) => {
   await app.open('/about');
+  // Settle first, and assert it. Otherwise the first observation can catch a
+  // document still being parsed, and the tree filling in afterwards is a real
+  // change that legitimately earns a second judgment — which is not what this
+  // test is about.
+  await expect(screen.getByRole('heading')).toHaveText('About');
   // Budget for several judgments on purpose: the point is that a static page
   // never spends the second one.
   await agent.waitFor('a checkout button is on the About page', {

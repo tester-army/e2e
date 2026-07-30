@@ -121,6 +121,20 @@ export async function resolveSelected(
       invocation.recordPolicy('locate.identity', 'denied');
       return sweepFailure(selection.selected, outcomes, ambiguous);
     };
+    // Indexing answers a query that matched too many nodes. This answers the
+    // opposite failure: one that matched none, because the name Playwright
+    // computes for a node diverges from the one the observation read — routine
+    // for a card-sized accessible name, where a single whitespace or a nested
+    // button's text is enough. The model saw that node and the reference still
+    // points at it, so there is nothing to wait for and nothing to guess.
+    //
+    // Not offered when the outcome is terminal: matches nothing can tell apart
+    // are #17's deliberate dead end, and the instruction, not the locator, is
+    // what has to choose there.
+    if (!terminal && options.poll !== false) {
+      const byReference = await addressByReference(invocation, selection);
+      if (byReference !== undefined) return byReference;
+    }
     // `terminal` short-circuits the wait: an instruction that lands on controls
     // nothing can tell apart is not a page that is still settling, and spending
     // the whole deadline before saying so buries the diagnosis in a timeout.
@@ -132,6 +146,53 @@ export async function resolveSelected(
     // diagnosis this sweep already has.
     if (invocation.deadline.expired()) throw giveUp();
   }
+}
+
+/**
+ * Acts on the node through the reference the observation handed out.
+ *
+ * Derived queries describe a node by what it says, and what a node says is not
+ * always something a query can be built from: a listing card's accessible name
+ * aggregates its whole contents — dates, price, rating, the nested button's
+ * label — and the name Playwright recomputes for it differs from the one the
+ * observation read by a space or a fragment. Every query then matches nothing,
+ * even though the node is right there.
+ *
+ * The reference is bound to the element the model was shown, in the revision it
+ * was shown in, which is a stricter identity than any query. It is re-read
+ * first, so a node that has gone away is still a miss rather than a blind
+ * dispatch, and the read doubles as the identity check the sweep would have done.
+ *
+ * What it cannot do is outlive the observation, so it is not a locator and never
+ * recorded as one. `storableLocator` stores the driver's selector for this node
+ * instead.
+ */
+async function addressByReference(
+  invocation: Invocation,
+  selection: Extract<Selection, { kind: 'node' }>,
+): Promise<LocatedNode | undefined> {
+  const selected = selection.selected;
+  const node = await readOnly(invocation, selected.ref);
+  if (node.kind === 'miss' || !matchesSignature(selected, node.node)) {
+    agentTrace(() => 'locate: the observed reference no longer reads as the selected node');
+    return undefined;
+  }
+  invocation.recordPolicy('locate.reference', 'allowed');
+  agentTrace(
+    () =>
+      `locate: no derived query resolved ${describeSignature(node.node)}; ` +
+      'acting on its observed reference',
+  );
+  return {
+    kind: 'node',
+    ref: selected.ref,
+    expression: undefined,
+    node: node.node,
+    observation: selection.observation,
+    explanation: selection.explanation,
+    origin: 'model',
+    targeting: selection.targeting,
+  };
 }
 
 /**

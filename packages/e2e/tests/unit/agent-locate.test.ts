@@ -50,6 +50,29 @@ describe('deriveQueries', () => {
     expect(described(node({ role: 'generic' }))).toEqual([]);
   });
 
+  it('adds a prefix filter for a card-sized name that arrived complete', () => {
+    // 231 characters, well under the driver limit, so nothing was cut — this is
+    // simply what a listing card's accessible name looks like once it aggregates
+    // dates, price, rating, and the nested button's label. The driver recomputes
+    // that name at resolve time and differs by a space, so an exact match finds
+    // nothing and the sweep has to have a second way to ask.
+    const card =
+      'Lato 2026 Grecja / Samos / Psili Ammos Sirenes Beach 26.09.2026- 03.10.2026 ' +
+      '(8 dni / 7 nocy) Katowice, Warszawa All Inclusive Sun&Fun PROMOCJA: Gwarancja ' +
+      'Niezmiennosci Ceny 7.9 Dobry 69 opinii od 6 220 zl za wszystkich SPRAWDZ CENE';
+    expect(card.length).toBeLessThan(OBSERVED_NAME_LIMIT);
+    const queries = described(node({ role: 'link', name: card }));
+    expect(queries[1]).toMatch(/^getByRole\("link"\)\.filter\(\{ hasText: \//);
+  });
+
+  it('keeps exact matching for a name short enough to be a label', () => {
+    const queries = deriveQueries(node({ role: 'button', name: 'Save changes' }), 'data-testid');
+    expect(queries[0]).toMatchObject({ query: { name: { exact: true } } });
+    // No prefix filter: a short name is matchable as it stands, and an extra
+    // candidate is an extra resolve on every locate.
+    expect(queries.filter((query) => query.kind === 'filter')).toHaveLength(0);
+  });
+
   it('relaxes matching only for a name cut at the driver limit', () => {
     const base = 'Hotel Blue Lagoon '.repeat(20);
     const complete = deriveQueries(

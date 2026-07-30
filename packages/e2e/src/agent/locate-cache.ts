@@ -201,7 +201,8 @@ async function consult(
  * a stale path costs a miss.
  */
 function storableLocator(located: LocatedNode): CacheLocator | undefined {
-  if (!isPositional(located.expression)) return asCacheLocator(located.expression);
+  const expression = located.expression;
+  if (expression !== undefined && !isPositional(expression)) return asCacheLocator(expression);
   const selector = located.node.selector;
   if (selector === undefined) return undefined;
   // A selector is document-local, so a node inside an iframe is stored behind

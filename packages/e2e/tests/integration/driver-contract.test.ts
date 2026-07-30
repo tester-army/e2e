@@ -34,6 +34,25 @@ test('taps a node', async ({ app, screen }) => {
 });
 `;
 
+/** The locator of the one cache entry a run wrote, if it wrote any. */
+function storedLocator(projectDir: string): unknown {
+  const directory = path.join(projectDir, '.e2e', 'cache');
+  const files = existsSync(directory)
+    ? readdirSync(directory).filter((name) => name.endsWith('.json'))
+    : [];
+  if (files.length !== 1) return undefined;
+  const entry = JSON.parse(readFileSync(path.join(directory, files[0]!), 'utf8'));
+  return entry.payload.locator;
+}
+
+const CARD_TEST = `import { test } from 'e2e';
+
+test('opens the Samos offer', async ({ app, agent }) => {
+  await app.open('/');
+  await agent.tap('the Samos offer card');
+});
+`;
+
 const REPEATS_TEST = `import { test } from 'e2e';
 
 test('taps one of three identical controls', async ({ app, agent }) => {
@@ -510,6 +529,92 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     60_000,
   );
 
+  describe('a selection no derived query resolves at all', () => {
+    // A listing card, whose accessible name aggregates its whole contents. The
+    // driver recomputes that name when it resolves a query and comes back with a
+    // slightly different string — one space, one nested label — so every derived
+    // query matches nothing even though the node is right there in the tree.
+    // This is the opposite of ambiguity: indexing has nothing to index.
+    const card: SemanticNode = {
+      ref: { id: 'card-1', revision: 'rev-1' },
+      role: 'link',
+      name: 'Lato 2026 Grecja / Samos / Psili Ammos Sirenes Beach 26.09.2026- 03.10.2026 (8 dni / 7 nocy) Katowice, Warszawa All Inclusive PROMOCJA: Gwarancja Niezmiennosci Ceny 7.9 Dobry 69 opinii od 6 220 zl SPRAWDZ CENE',
+      states: { hidden: false },
+      rect: { x: 0, y: 0, width: 320, height: 200 },
+    };
+    const tree: SemanticNode = {
+      ref: { id: 'node-root', revision: 'rev-1' },
+      role: 'document',
+      children: [card],
+    };
+
+    async function runCard(
+      fake: FakeDriverHandle,
+    ): Promise<{ status: string; taps: string[]; locator: unknown }> {
+      const model = installFakeModel((call) => ({
+        protocolVersion: 'agent-locate-1',
+        target: {
+          id: /#(\S+)/.exec(call.lines.find((line) => line.includes('Lato')) ?? '')?.[1] ?? '',
+          revision: call.revision,
+        },
+        explanation: 'the Samos offer card',
+        positional: false,
+      }));
+      const { outcome, project } = await runProject(
+        { 'tests/card.e2e.ts': CARD_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+      );
+      const result = resultByTitle(outcome, 'opens the Samos offer');
+      const locator = storedLocator(project.dir);
+      project.cleanup();
+      return {
+        status: result.status,
+        taps: fake.operations
+          .filter((operation) => operation.method.startsWith('actions.tap'))
+          .map((operation) => operation.method),
+        locator,
+      };
+    }
+
+    it(
+      'falls back to the observed reference when every query matches nothing',
+      async () => {
+        const fake = createFakeDriver({
+          tree,
+          // No query resolves: this is the name divergence, reproduced.
+          resolve: () => [],
+          read: (ref) => ({ ...card, ref, selector: '[data-offer="samos"]' }),
+        });
+        const run = await runCard(fake);
+        expect(run.status).toBe('passed');
+        expect(run.taps).toEqual(['actions.tap(card-1)']);
+        // A reference cannot be replayed, but the driver's selector for that node
+        // can, so the step still warms the cache.
+        expect(run.locator).toEqual({ kind: 'web-selector', selector: '[data-offer="samos"]' });
+      },
+      60_000,
+    );
+
+    it(
+      'still refuses when the reference no longer reads as the selected node',
+      async () => {
+        // A re-render replaced the element behind the reference. Acting anyway
+        // would dispatch at whatever took its place.
+        const fake = createFakeDriver({
+          tree,
+          resolve: () => [],
+          read: () => {
+            throw new BuiltDriverError('NODE_STALE', 'replaced', { retryable: true });
+          },
+        });
+        const run = await runCard(fake);
+        expect(run.status).toBe('failed');
+        expect(run.taps).toEqual([]);
+      },
+      60_000,
+    );
+  });
+
   describe('a selection no derived query can separate', () => {
     // Three controls with identical semantics, as a listing repeats one button
     // per row. Every query derived from any of them matches all of them, so the
@@ -573,17 +678,6 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       };
     }
 
-    /** The locator of the one cache entry a run wrote, if it wrote any. */
-    function storedLocator(projectDir: string): unknown {
-      const directory = path.join(projectDir, '.e2e', 'cache');
-      const files = existsSync(directory)
-        ? readdirSync(directory).filter((name) => name.endsWith('.json'))
-        : [];
-      if (files.length !== 1) return undefined;
-      const entry = JSON.parse(readFileSync(path.join(directory, files[0]!), 'utf8'));
-      return entry.payload.locator;
-    }
-
     /**
      * Reads one match back with the rect it was observed at, as a real driver
      * does. Rect is what separates twins once role and name cannot.
@@ -614,11 +708,16 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     );
 
     it(
-      'refuses to pin when a match cannot be read',
+      'never indexes onto an arbitrary match when one cannot be read',
       async () => {
         // Dropping an unreadable match would shrink the set until whatever is
         // left looks unique, and the sweep would index onto an arbitrary
-        // element. Inconclusive is the only safe answer.
+        // element. Indexing must stay inconclusive here.
+        //
+        // The step still succeeds, through the model's own reference rather than
+        // through a guessed index — exact, and checked before dispatch. What
+        // matters is which node is tapped: `match-*` would mean the sweep indexed
+        // into a set it could not read.
         const fake = createFakeDriver({
           tree,
           resolve: () => matchRefs,
@@ -630,8 +729,8 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
           },
         });
         const run = await runRepeats(fake);
-        expect(run.status).toBe('failed');
-        expect(run.taps).toEqual([]);
+        expect(run.status).toBe('passed');
+        expect(run.taps).toEqual(['actions.tap(node-2)']);
       },
       60_000,
     );
