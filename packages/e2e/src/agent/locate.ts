@@ -17,6 +17,7 @@ import { cacheMethodForApi } from '../cache/index.ts';
 import type {
   LocatorExpression,
   NodeRef,
+  ScrollDirection,
   SemanticNode,
   ViewportPoint,
 } from '../driver/index.ts';
@@ -26,6 +27,7 @@ import { Invocation } from './invocation.ts';
 import { openLocateCache, type OpenLocateCache } from './locate-cache.ts';
 import type { AgentObservation, AgentPixels } from './observation.ts';
 import { describeSignature, normalizeSignatureText } from './queries.ts';
+import { describeExpression } from '../locator/expression.ts';
 import { resolveSelected } from './resolve.ts';
 import {
   isNodeTarget,
@@ -369,6 +371,58 @@ async function openCacheFor(
     instruction: target,
     input: options.input,
   });
+}
+
+/**
+ * Brings a located node inside the viewport, so the caller's next action can
+ * dispatch against it.
+ *
+ * `scrollIntoView` is one gesture by contract (spec 16-mobile.md), and it is the
+ * runner that owns the loop. That split is invisible on a backend which scrolls
+ * as part of actionability, because such a backend never reports `offscreen` and
+ * one gesture is the whole story. On a profile that does report it the two rules
+ * compose badly: the observation deliberately carries nodes far below the fold,
+ * so the model can locate a target thousands of points away without the runner
+ * having scrolled at all, and `scrollTo` would then report success having moved
+ * a fraction of the distance, leaving the next action to fail `NOT_ACTIONABLE`
+ * on a node the test just asked for.
+ *
+ * The loop is deterministic: every round re-resolves the query the model already
+ * produced, so reaching a distant target costs no further model calls. A node
+ * the model could only address by reference cannot be re-resolved that way, and
+ * keeps the single gesture.
+ */
+export async function reachLocatedNode(
+  invocation: Invocation,
+  located: LocatedNode,
+  direction: ScrollDirection,
+): Promise<void> {
+  await invocation.commit('scrollIntoView', () =>
+    invocation.session.screen.perform(
+      located.ref,
+      { kind: 'scrollIntoView' },
+      invocation.operation(),
+    ),
+  );
+  const expression = located.expression;
+  if (expression === undefined || located.node.states?.offscreen !== true) return;
+
+  for (let round = 1; ; round += 1) {
+    invocation.recordPoll('scrollTo', round);
+    // A scroll invalidates every reference the observation handed out, so the
+    // target is re-resolved by query rather than by ref.
+    const { node } = await invocation.engine.tryRead(expression, invocation.deadline);
+    if (node !== null && node.states?.offscreen !== true) return;
+    if (invocation.deadline.expired()) {
+      throw new AgentError(
+        'LOCATOR_NOT_FOUND',
+        `scrollTo found ${describeExpression(expression)} but it did not come into view within its budget`,
+      );
+    }
+    await invocation.commit('scroll', () =>
+      invocation.session.actions.scroll(direction, {}, invocation.operation()),
+    );
+  }
 }
 
 /**

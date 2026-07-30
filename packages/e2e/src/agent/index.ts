@@ -34,6 +34,7 @@ import type { PromptInput } from './prompts.ts';
 import {
   locateOne,
   locateByScrolling,
+  reachLocatedNode,
   NODE_ONLY,
   type Located,
   type LocatedNode,
@@ -486,13 +487,7 @@ export function createAgent(runtime: AgentContext): Agent {
                 invocation.session.actions.scroll(direction, {}, invocation.operation()),
               ),
           );
-          await invocation.commit('scrollIntoView', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'scrollIntoView' },
-              invocation.operation(),
-            ),
-          );
+          await reachLocatedNode(invocation, located, direction);
         },
       );
     },

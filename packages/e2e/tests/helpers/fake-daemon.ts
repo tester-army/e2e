@@ -37,6 +37,12 @@ export interface NodeSpec {
 export interface FakeDaemonOptions {
   /** Screen returned by `snapshot`, re-read on every capture. */
   screen?: () => readonly NodeSpec[];
+  /**
+   * Points the content moves per scroll gesture. With it set, the daemon models
+   * a scrollable screen: geometry shifts so a node below the fold can actually
+   * be reached, which is what a scrolling loop needs in order to terminate.
+   */
+  scrollStep?: number;
 }
 
 export interface FakeDaemon {
@@ -44,12 +50,17 @@ export interface FakeDaemon {
   readonly calls: readonly DaemonCall[];
   /** Commands seen, in order, for concise assertions. */
   commands(): readonly string[];
+  /** How far the content has scrolled, in points. */
+  scrollOffset(): number;
 }
 
 /** iPhone-sized screen in points, matching a real iOS snapshot root rect. */
 const SCREEN_RECT = { x: 0, y: 0, width: 402, height: 874 } as const;
 
 const SCREENSHOT = { width: 750, height: 1334, logicalWidth: 375, logicalHeight: 667 } as const;
+
+/** Commands that move a scrollable screen's content. */
+const SCROLLERS: ReadonlySet<string> = new Set(['scroll', 'swipe', 'gesture']);
 
 /** Commands that change the UI, and therefore invalidate outstanding refs. */
 const MUTATORS: ReadonlySet<string> = new Set([
@@ -80,6 +91,7 @@ const PNG_BYTES = Buffer.from(
 function buildSnapshot(
   roots: readonly NodeSpec[],
   refsGeneration: number,
+  scrollOffset: number,
 ): Record<string, unknown> {
   const nodes: Record<string, unknown>[] = [];
   let next = 1;
@@ -91,7 +103,10 @@ function buildSnapshot(
     parentRect: { x: number; y: number; width: number; height: number },
   ): void => {
     const index = next++;
-    const rect = spec.rect ?? parentRect;
+    // The root is the device screen and does not move; its content does.
+    const own = spec.rect ?? parentRect;
+    const rect =
+      parentIndex === undefined ? own : { ...own, y: own.y - scrollOffset };
     nodes.push({
       index,
       ref: `@e${index}`,
@@ -120,6 +135,7 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
     },
   ];
   let refsGeneration = 1;
+  let scrolled = 0;
 
   const transport: AgentDeviceTransport = (request) => {
     const command = request.command;
@@ -145,7 +161,7 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
         });
       case 'snapshot':
         return ok({
-          ...buildSnapshot(options.screen?.() ?? fallbackScreen, refsGeneration),
+          ...buildSnapshot(options.screen?.() ?? fallbackScreen, refsGeneration, scrolled),
           appName: 'Example',
         });
       case 'screenshot': {
@@ -170,11 +186,19 @@ export function createFakeDaemon(options: FakeDaemonOptions = {}): FakeDaemon {
         // Every mutating command invalidates outstanding refs, exactly as a
         // real UI change would.
         if (MUTATORS.has(command)) refsGeneration += 1;
+        if (options.scrollStep !== undefined && SCROLLERS.has(command)) {
+          scrolled += options.scrollStep;
+        }
         return ok({ message: `${command} ok` });
     }
   };
 
-  return { transport, calls, commands: () => calls.map((call) => call.command) };
+  return {
+    transport,
+    calls,
+    commands: () => calls.map((call) => call.command),
+    scrollOffset: () => scrolled,
+  };
 }
 
 function ok(data: Record<string, unknown>) {

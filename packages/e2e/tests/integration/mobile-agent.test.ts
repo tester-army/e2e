@@ -147,6 +147,77 @@ test('observes once', async ({ app, agent }) => {
   );
 
   it(
+    'scrolls a distant target all the way into view before acting on it',
+    async () => {
+      // A mobile observation carries nodes far below the fold, so the model can
+      // locate this row without the runner having scrolled at all. One
+      // `scrollIntoView` gesture lands far short of 2,400 points, and the tap
+      // that follows would fail on a node the test just asked for.
+      const model = installFakeModel((call) => locateBestMatch(call));
+      const daemon = createFakeDaemon({
+        scrollStep: 400,
+        screen: () => [
+          {
+            type: 'XCUIElementTypeApplication',
+            rect: { x: 0, y: 0, width: 402, height: 874 },
+            children: [
+              {
+                // A scroll container imposes no bounds on its children, which
+                // is what lets a row below the fold keep real geometry.
+                type: 'XCUIElementTypeScrollView',
+                rect: { x: 0, y: 0, width: 402, height: 874 },
+                children: [
+                  {
+                    type: 'XCUIElementTypeButton',
+                    label: 'Development Overrides',
+                    rect: { x: 20, y: 2400, width: 280, height: 48 },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const { outcome, project } = await runProject(
+        {
+          'tests/reach.e2e.ts': `import { test } from 'e2e';
+
+test('reaches a row below the fold', async ({ app, agent }) => {
+  await app.open();
+  await agent.scrollTo('the Development Overrides row');
+  await agent.tap('the Development Overrides row');
+});
+`,
+        },
+        {
+          appUrl: '',
+          config: {
+            specVersion: '0.1',
+            targets: [
+              {
+                name: 'ios',
+                platform: 'ios',
+                driver: agentDevice({ transport: daemon.transport }),
+                app: 'com.example.app',
+              },
+            ],
+            artifacts: [],
+            agent: { model },
+          } as unknown as E2EConfig,
+        },
+      );
+
+      expect(resultByTitle(outcome, 'reaches a row below the fold').status).toBe('passed');
+      // It kept scrolling until the row was actually reachable, rather than
+      // reporting success after the single gesture the driver contract defines.
+      expect(daemon.scrollOffset()).toBeGreaterThanOrEqual(2400 - 874);
+      expect(daemon.commands()).toContain('click');
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'points at a viewport coordinate through the vision tier',
     async () => {
       const model = installFakeModel((call) =>

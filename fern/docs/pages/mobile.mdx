@@ -108,6 +108,26 @@ control. `setLocation` sets the simulated position.
 Declaring `requires: ['device']` keeps a mobile-only test in a shared file: it
 is reported skipped on web targets instead of failed.
 
+## Reaching what is below the fold
+
+A mobile app never scrolls implicitly before an action, so a node outside the
+viewport reports `offscreen` and refuses input until it is scrolled to. That is
+deliberate: it keeps "not rendered" distinct from "not reachable yet".
+
+The observation includes those nodes, so an agent step can name one that is
+thousands of points away. `agent.scrollTo` and `screen.scrollUntilVisible` both
+keep scrolling until the target is genuinely in view:
+
+```ts
+await agent.scrollTo('the Development Overrides row');
+await agent.tap('the Development Overrides row');
+
+await screen.getByText('Wireless Insights').scrollIntoView(); // one gesture
+```
+
+`scrollIntoView` on a locator is the single gesture the driver contract defines;
+reach for the loops above when the target may be far away.
+
 ## State isolation
 
 Each attempt clears the application's data container before it starts, so one

@@ -38,6 +38,21 @@ test('reaches a row below the fold by scrolling to it', async ({ app, agent, scr
   await expect(screen.getByText('Full Keyboard Access')).toBeVisible();
 });
 
+test('reaches a target thousands of points below the fold', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.scrollTo('the Developer row');
+  await agent.tap('the Developer row');
+  await expect(screen.getByText('Dark Appearance')).toBeVisible();
+
+  // Developer is a very long list: this row sits roughly 3,000 points down, far
+  // beyond what one gesture covers. The model locates it on its first judgment
+  // regardless, because the observation carries nodes below the fold, so this
+  // fails the moment `scrollTo` stops at "found" instead of "reachable".
+  await agent.scrollTo('the Development Overrides row');
+  await agent.tap('the Development Overrides row');
+  await expect(screen.getByText('URL Override')).toBeVisible();
+});
+
 test('types into the search field through the agent', async ({ app, agent, screen }) => {
   await app.open();
 

@@ -158,7 +158,14 @@ is present. `scrollTo` and `waitFor` are assisted polling operations rather than
 single-call instant actions:
 
 - `scrollTo` alternates deterministic scrolling and fresh locate judgments
-  until the node is found or the timeout/model-call budget expires.
+  until the node is found or the timeout/model-call budget expires. Found is not
+  the same as reachable on a profile whose observation carries nodes outside the
+  viewport: such a node is located on the first judgment without anything having
+  scrolled, so `scrollTo` completes only once the target no longer reports
+  `states.offscreen`. That tail is deterministic — the runner re-resolves the
+  query the model already produced — so reaching a distant target costs no
+  further model calls, and a profile whose backend scrolls as part of
+  actionability never enters it.
 - `waitFor` succeeds on the first true judgment. `intervalMs`, default 3,000 ms,
   is the shortest time between two judgments, not a pause added after each one:
   it is a rate limit on model calls, and a runner MUST NOT make the caller wait

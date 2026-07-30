@@ -127,7 +127,7 @@ predetermined action.
 | `dragTo(source, destination, options?)` | Two locate rounds, source first, then one committed drag | as `tap` |
 | `upload(target, paths, options?)` | Sets files on one file input. Paths come from test code, resolve from the project root, and never appear in a prompt. | `INVALID_ARGUMENT` for an empty list or a blank entry |
 | `scroll(options)` | One deterministic scroll. `options` is required because `direction` is. Without `within` it spends no model calls. | `INVALID_ARGUMENT` for an invalid `direction` or `momentum` |
-| `scrollTo(target, options?)` | Alternates one scroll and one fresh locate until found, then scrolls into view. `direction` defaults to `'down'`. | `LOCATOR_NOT_FOUND` when the deadline or budget runs out, carrying the last explanation |
+| `scrollTo(target, options?)` | Alternates one scroll and one fresh locate until the target is found, then keeps scrolling until it is actually inside the viewport. `direction` defaults to `'down'`. | `LOCATOR_NOT_FOUND` when the deadline or budget runs out, carrying the last explanation |
 
 A `Secret` passed to `type` is authorized on the host first: the credential must
 be registered, the current origin must be allowed by both `app.allowedOrigins`

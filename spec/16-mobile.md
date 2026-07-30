@@ -271,6 +271,12 @@ scroll container when it has one. A single gesture need not reach a distant
 target; `screen.scrollUntilVisible` is the loop, and it re-resolves the target
 each round because a scroll invalidates every node reference.
 
+`agent.scrollTo` owns the same loop, and for the same reason it is easy to miss:
+the observation carries nodes far below the fold, so a model locates the target
+on the first judgment without the runner having scrolled at all, and one gesture
+then lands short of a target thousands of points away. A runner MUST NOT report
+`scrollTo` complete while its target still carries `states.offscreen`.
+
 The stale/commit contract of 09-drivers.md applies unchanged: stale before
 dispatch is retryable `NODE_STALE`, and once input may have reached the
 application the failure is `ACTION_MAY_HAVE_COMMITTED` with `retryable: false`.
