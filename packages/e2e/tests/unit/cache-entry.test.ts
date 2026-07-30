@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { readCacheEntry } from '../../src/cache/index.ts';
+import { foldCacheInfo } from '../../src/run/steps.ts';
 import { specFixture } from '../helpers/cache-schema.ts';
 
 const valid = specFixture('cache-v1.valid.json') as Record<string, unknown>;
@@ -69,5 +70,42 @@ describe('only the replayable parts are required', () => {
     expect(readCacheEntry(mutated((d) => (d.vendorExtension = { anything: true })))).toBeDefined();
     expect(readCacheEntry(mutated((d) => delete d.createdAt))).toBeDefined();
     expect(readCacheEntry(mutated((d) => (d.createdAt = 'not a timestamp')))).toBeDefined();
+  });
+});
+
+describe('foldCacheInfo', () => {
+  const hit = { status: 'hit', keyHash: 'a'.repeat(64), bytes: 10, reason: 'replayed' } as const;
+  const miss = { status: 'miss', keyHash: 'b'.repeat(64), bytes: 20, reason: 'no entry' } as const;
+
+  it('keeps the least favourable locate whole, so status and key agree', () => {
+    // A step that replayed one node and paid the model for another did not hit.
+    // Taking the worse record entire is what keeps its keyHash the key that
+    // actually missed, rather than the other locate's.
+    expect(foldCacheInfo(hit, miss)).toEqual({
+      status: 'miss',
+      keyHash: miss.keyHash,
+      bytes: miss.bytes,
+      reason: 'replayed; no entry',
+    });
+    // Order must not matter: the source and destination of one dragTo are folded
+    // in call order, which is not a statement about which mattered.
+    expect(foldCacheInfo(miss, hit)).toMatchObject({ status: 'miss', keyHash: miss.keyHash });
+  });
+
+  it('ranks invalid over miss over bypassed over written over hit', () => {
+    const rank = ['hit', 'written', 'bypassed', 'miss', 'invalid'] as const;
+    for (const [index, worse] of rank.entries()) {
+      for (const better of rank.slice(0, index)) {
+        expect(foldCacheInfo({ status: better }, { status: worse }).status).toBe(worse);
+      }
+    }
+  });
+
+  it('reports two hits as a hit', () => {
+    expect(foldCacheInfo(hit, { ...hit, reason: 'replayed again' }).status).toBe('hit');
+  });
+
+  it('omits the reason when neither locate gave one', () => {
+    expect(foldCacheInfo({ status: 'hit' }, { status: 'hit' })).toEqual({ status: 'hit' });
   });
 });

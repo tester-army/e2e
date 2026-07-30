@@ -81,6 +81,49 @@ export interface StepCacheInfo {
   reason?: string;
 }
 
+/**
+ * How bad each cache status is for the step reporting it, so folding several
+ * locates into one step keeps the outcome that cost the most.
+ */
+const CACHE_STATUS_SEVERITY: Record<StepCacheInfo['status'], number> = {
+  hit: 0,
+  written: 1,
+  bypassed: 2,
+  miss: 3,
+  invalid: 4,
+};
+
+/**
+ * Folds a second locate's cache outcome into a step that already reported one.
+ *
+ * A step can locate more than once — `agent.dragTo` locates a source and a
+ * destination — while the report carries one cache object per step. The step
+ * takes the whole record of its least favourable locate, `keyHash` included, so
+ * its status and its key always describe the same locate. Both reasons are kept,
+ * because the point of folding is that one locate alone does not explain the
+ * step.
+ *
+ * A step that replayed one node but paid the model for the other did not hit,
+ * and reporting it as a hit would credit the cache with a call it never avoided
+ * — which is the number `--debug` prices its savings from.
+ */
+export function foldCacheInfo(previous: StepCacheInfo, next: StepCacheInfo): StepCacheInfo {
+  const [worse, better] =
+    CACHE_STATUS_SEVERITY[next.status] > CACHE_STATUS_SEVERITY[previous.status]
+      ? [next, previous]
+      : [previous, next];
+  return { ...worse, ...joinCacheReasons(better.reason, worse.reason) };
+}
+
+/** Concatenates two cache reasons, dropping the field when there is nothing to say. */
+export function joinCacheReasons(
+  previous: string | undefined,
+  next: string | undefined,
+): { reason: string } | undefined {
+  const reason = [previous, next].filter((part) => part !== undefined && part !== '').join('; ');
+  return reason === '' ? undefined : { reason };
+}
+
 /** Agent-specific step detail attached while the step is still running. */
 export interface StepAgentDetails {
   metrics?: StepMetrics;
