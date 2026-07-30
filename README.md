@@ -97,6 +97,18 @@ Mobile targets are rejected per the v0 boundary.
 Deferred mobile, resource, PR, service, and hosted-runner designs live under
 [`spec/roadmap/`](./spec/roadmap) and are nonnormative.
 
+## Releases
+
+Releases are cut with [changesets](https://github.com/changesets/changesets).
+While the surface stabilizes both packages publish under the `beta` dist-tag,
+so npm's `latest` is never moved:
+
+```bash
+pnpm add -D e2e@beta @e2edev/playwright@beta
+```
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the workflow.
+
 ---
 
 by [TesterArmy](https://tester.army)

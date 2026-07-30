@@ -114,3 +114,10 @@ pnpm --filter @e2edev/testbed run test:headed
   entry. Peer ranges point one way only (driver -> `e2e`, widened to `>=x <1`);
   making them mutual or narrow forces changesets to bump both packages to a
   major on every release.
+- The root `release` script publishes with `--tag beta`, so releases land on the
+  `beta` dist-tag and never move `latest`; `publishConfig.tag` alone does not
+  work because `pnpm publish` ignores it. Do not switch to changesets pre mode
+  to get there: a prerelease version is outside the driver's `e2e` peer range,
+  which majors `@e2edev/playwright` on every runner minor and rewrites the peer
+  range. Never hand-edit a package `version` or `CHANGELOG.md`;
+  `changesets/action` owns both.
