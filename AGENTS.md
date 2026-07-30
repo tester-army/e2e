@@ -17,6 +17,9 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   tests validate every generated report against `report-v1.schema.json`.
 - Per `PLAN.md`, a spec change touches declarations, schemas, prose, examples,
   and tests in one review. Implementation shortcuts never amend the spec.
+- `pnpm check:manifest` (`scripts/check-manifest-coupling.mjs`, run as its own
+  PR job) fails any diff that edits `spec/conformance/v0-requirements.json` or
+  `spec/schema/*` without bumping `suiteVersion`.
 - Behavior changes update the matching `fern/docs/pages/*.mdx` page in the same
   change, including "not implemented yet" callouts.
 
@@ -89,9 +92,11 @@ pnpm --filter @e2edev/testbed run test:headed
   `packages/e2e/tests/tmp-projects/` (gitignored) and import the runner from
   `dist/` via a non-literal specifier so the fixture's `e2e` self-reference
   shares one registry. Stale `dist` means confusing failures — rebuild.
-- Testbed suites beyond the default one are opt-in and **never** run in CI:
-  `test:public` (real websites), `test:agent` / `test:wakacje` (real model
-  calls, need `E2E_MODEL_API_KEY`, optional `E2E_MODEL=provider/model-id`).
+- Testbed suites beyond the default one never gate a PR: `test:public` (real
+  websites) runs in no workflow, and `test:agent` / `test:wakacje` (real model
+  calls, need `E2E_MODEL_API_KEY`, optional `E2E_MODEL=provider/model-id`) run
+  only on the weekly `.github/workflows/agent.yml` schedule or by manual
+  dispatch. `test:wakacje` is non-blocking there: the site is third-party.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 

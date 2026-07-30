@@ -1,0 +1,117 @@
+name: agent
+
+# The agent suites spend real model calls, so they cannot gate every PR. They
+# are the only thing that exercises `agent-protocol-1` against a real provider
+# instead of tests/helpers/fake-model.ts, so they run on a schedule instead of
+# never.
+on:
+  schedule:
+    # Mondays 04:17 UTC. Off the hour to avoid the scheduler's peak backlog.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Which suite to run'
+        required: false
+        default: all
+        type: choice
+        options: [all, agent, wakacje]
+      model:
+        description: 'Override E2E_MODEL (provider/model-id)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # A manual run picks one suite or all of them. Selecting here rather than
+  # skipping steps inside the matrix keeps unselected suites out of the run
+  # entirely, so the checks list shows what actually ran.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Select suites
+        id: select
+        env:
+          # Empty on schedule, which means every suite.
+          SUITE: ${{ inputs.suite }}
+        run: |
+          # Local playground: deterministic app, so a failure is ours.
+          # wakacje is a live third-party site that changes and rate-limits
+          # under us, so its failure is a signal to read, not a broken build.
+          all='[
+            {"suite":"agent","script":"test:agent","optional":false},
+            {"suite":"wakacje","script":"test:wakacje","optional":true}
+          ]'
+          if [ -z "$SUITE" ] || [ "$SUITE" = all ]; then
+            selected=$(echo "$all" | jq -c .)
+          else
+            selected=$(echo "$all" | jq -c --arg s "$SUITE" '[.[] | select(.suite == $s)]')
+          fi
+          if [ "$(echo "$selected" | jq 'length')" -eq 0 ]; then
+            echo "::error::unknown suite \"$SUITE\""
+            exit 1
+          fi
+          echo "matrix=$selected" >> "$GITHUB_OUTPUT"
+
+  agent:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      # One suite failing must not hide the other's result.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: ${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      # A missing credential fails every agent fixture with MODEL_UNAVAILABLE,
+      # which reads as a product defect. Say what is actually wrong instead.
+      - name: Require model credential
+        env:
+          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+        run: |
+          if [ -z "$E2E_MODEL_API_KEY" ]; then
+            echo "::error::E2E_MODEL_API_KEY is not set for this repository." \
+              "The agent suites need a real provider credential."
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - name: Install browsers
+        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+      - name: Build
+        run: pnpm run build
+      - name: Run ${{ matrix.script }}
+        continue-on-error: ${{ matrix.optional }}
+        env:
+          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          # Read through a variable, not interpolated into the script, and left
+          # unset when empty: the configs treat '' as a configured model id.
+          MODEL_INPUT: ${{ inputs.model }}
+        run: |
+          if [ -n "$MODEL_INPUT" ]; then
+            export E2E_MODEL="$MODEL_INPUT"
+          fi
+          pnpm --filter @e2edev/testbed run ${{ matrix.script }}
+      # The JSON report is the only durable evidence of a model-dependent run.
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-report-${{ matrix.suite }}
+          path: |
+            packages/testbed/.e2e/report.json
+            packages/testbed/.e2e/report.html
+          if-no-files-found: warn

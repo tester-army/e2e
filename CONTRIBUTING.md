@@ -44,6 +44,14 @@ implementation shortcuts never amend the spec. READMEs and the docs site describ
 user-facing behavior only; profile IDs, schema versions, and conformance status
 belong in `spec/`.
 
+Editing `spec/conformance/v0-requirements.json` or any `spec/schema/*` file also
+requires bumping `suiteVersion` in the manifest, because implementations key
+their conformance reports to it. CI enforces the coupling; check it locally with:
+
+```sh
+pnpm check:manifest   # compares the working tree against origin/main
+```
+
 Docs are part of the change, not a follow-up: a behavior change updates its guide
 page under `fern/` in the same review.
 

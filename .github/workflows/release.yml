@@ -32,8 +32,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Publishing an unbuildable or failing tree is worse than not publishing.
+      # `spec.yml` gates the merge, but `main` can go red between that run and
+      # this one, so the release re-runs the whole gate rather than trusting it.
       - name: Verify
         run: pnpm run check
+      - name: Install browsers
+        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Testbed
+        run: pnpm --filter @e2edev/testbed test
 
       # Opens or updates a release PR while changesets are pending; publishes
       # once that PR is merged and no changesets remain.
