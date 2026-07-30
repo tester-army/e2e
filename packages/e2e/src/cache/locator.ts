@@ -1,12 +1,22 @@
 /**
  * The cacheable locator shape (spec 10-determinism.md "Locate replay").
  *
- * `cache-1` admits only semantic locators: a query, a filter, or an index. A
- * locate entry never stores a node reference, coordinate, or CSS/XPath
- * selector. That restriction is the one real security boundary in the cache —
- * a semantic query can only ever address something a user could perceive,
- * while a raw selector could reach nodes the observation deliberately
- * withholds.
+ * `cache-1` admits a closed union: a semantic query, a filter, an index, a
+ * platform selector, and an iframe boundary. It never admits a node reference,
+ * a coordinate, model prose, an instruction, or a secret. So nothing an entry
+ * can express carries live state from the run that wrote it, and nothing it can
+ * express is ever shown to a model on the run that reads it — an entry is input
+ * to the locator engine and to nothing else.
+ *
+ * Within the union a semantic query is always preferred, and not only because it
+ * survives DOM churn: a query can address only something a user could perceive.
+ * A platform selector cannot make that promise. It is arbitrary CSS, and the
+ * identity check on replay constrains what the resolved node must *be*, not
+ * which nodes the selector may reach. It is admitted anyway because the node it
+ * exists for — a control the page repeats verbatim, where every twin is
+ * semantically identical — has no query that singles it out and would otherwise
+ * pay a model locate on every run. What that concedes against a hostile entry is
+ * stated in 10-determinism.md "Storage and concurrency".
  *
  * One function enforces it in both directions. `asCacheLocator` accepts
  * `unknown`, so the same code path checks an expression the runner just derived

@@ -232,17 +232,26 @@ Zero, multiple, stale, or incompatible results are a miss and permit one fresh
 model locate. The eventual action still uses normal actionability and policy.
 A successful fresh locate atomically replaces the entry in read-write mode.
 
-A positional target is never recorded. When the instruction identifies a node by
-where it sits rather than by what it says — "the first result", "the last row" —
-a stored locator is content-addressed and would keep resolving to whichever item
-occupied that position when it was recorded. That is a wrong answer rather than a
-miss, which the cache must never produce, so such a call reports a miss that was
-not recorded and pays for one model locate on every run. The runner learns that
-a target is positional from the optional `positional` field of `agent-locate-1`;
-the field is a caching hint only, defaults to false, and can never change what
-the runner executes. A selection the runner could only address by
-its observation reference (02-test-api.md) is likewise never recorded: a
-reference is not a locator, and there is nothing content-addressed to store.
+Only a content-addressed target is recordable. When the instruction identifies a
+node by where it sits rather than by what it says — "the first result", "the last
+row" — every locator the runner can derive still matches on content, so replay
+resolves whichever item now carries that content rather than whichever now
+occupies that position. That is a wrong answer rather than a miss, which the
+cache must never produce, so such a call reports a miss that was not recorded and
+pays for one model locate on every run.
+
+The runner learns how a target was identified from the `positional` field of
+`agent-locate-1`. A runner MUST treat an absent field as positional and MUST NOT
+default it to false. Absence is silence, not an assertion, and the two failure
+modes are not worth trading: declining to record costs one model locate per run,
+while recording a positional target wrongly costs a wrong action. A locator's
+shape is not a substitute for the report — derived queries never contain an index
+node — so this is the only signal available, and it is therefore given the safe
+default rather than the useful one.
+
+A selection the runner could only address by its observation reference
+(02-test-api.md) is likewise never recorded: a reference is not a locator, and
+there is nothing content-addressed to store.
 
 ## Path guidance
 
@@ -283,11 +292,21 @@ behind. No lock is required. Two writers collide on a key only when the same cal
 runs concurrently on the same route, and then they are writing the same locator,
 so last-write-wins is the correct outcome.
 
-Committed caches are repository input. They contain only strict JSON and no
-free-form instructions, and the strongest thing one can express is a semantic
-locator, which can address only what a user could perceive. CI defaults to
-read-only; untrusted PR jobs MUST NOT publish cache changes to a trusted branch
-or shared store.
+Committed caches are untrusted repository input, and the locator union is the
+whole of their authority. An entry is strict JSON containing no free-form
+instructions, and nothing in it is ever shown to a model, so it cannot inject an
+instruction, bias a judgment, or carry a secret.
+
+What it can do is aim a locator. A semantic query addresses only what a user
+could perceive; a stored platform selector does not, because it is arbitrary CSS
+and the identity check on replay constrains what the resolved node must be, not
+which nodes the selector may reach. A hostile entry can therefore point a cached
+action at a node the observation withholds, provided that node still carries the
+recorded role and name and still passes actionability. The blast radius is
+bounded — the action is the one the test already called, so an entry cannot add a
+step the test does not contain — but it is not nil. That is why cache review is
+review of untrusted input, why CI defaults to read-only, and why untrusted PR
+jobs MUST NOT publish cache changes to a trusted branch or shared store.
 
 ## Error ownership
 
