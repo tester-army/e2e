@@ -733,8 +733,12 @@ function explainActionFailure(
   }
   const reasoning =
     located.explanation === '' ? '' : ` The model explained: ${located.explanation}`;
+  const addressed =
+    located.expression === undefined
+      ? `by reference from observation ${located.observation.revision}`
+      : describeExpression(located.expression);
   const explanation =
-    `the model selected ${describeNode(located.node)} (${describeExpression(located.expression)}) ` +
+    `the model selected ${describeNode(located.node)} (${addressed}) ` +
     `as ${JSON.stringify(target)}, but that node rejected the action: ${driverReason(error.message)}.` +
     `${reasoning} Check that the current screen actually shows ${JSON.stringify(target)}.`;
   invocation.note({ explanation });

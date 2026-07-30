@@ -49,7 +49,14 @@ import { LOCATE_REQUESTS } from './prompts.ts';
 export interface LocatedNode {
   readonly kind: 'node';
   readonly ref: NodeRef;
-  readonly expression: LocatorExpression;
+  /**
+   * The portable query that re-found this node, or undefined when the node was
+   * addressed by the reference the observation itself handed out. A node the
+   * page repeats verbatim has no query that singles it out, and its reference
+   * is the only exact answer; nothing about it is storable, so a
+   * reference-addressed target is never cached.
+   */
+  readonly expression: LocatorExpression | undefined;
   /** Freshly read node behind the derived query. */
   readonly node: SemanticNode;
   readonly observation: AgentObservation;
@@ -567,7 +574,8 @@ function describeHit(node: SemanticNode): string {
 
 /**
  * Resolves a selected observation node through the first derived query that
- * matches exactly one node with the same semantics.
+ * addresses exactly one node with the same semantics, falling back to the
+ * observation's own reference for a node no query can separate from its twins.
  *
  * `poll: false` runs a single sweep instead of retrying to the deadline. The
  * node was observed a moment ago, so a sweep that resolves nothing right now is
@@ -597,44 +605,19 @@ export async function resolveSelected(
     const outcomes: string[] = [];
     let ambiguous = false;
     for (const expression of candidates) {
-      let refs: readonly NodeRef[];
-      try {
-        // The invocation deadline bounds the sweep, so a caller-supplied
-        // timeout is honored even while a driver error stays retryable.
-        refs = await engine.resolveAll(expression, invocation.deadline);
-      } catch (cause) {
-        throw toAgentError(cause);
-      }
-      if (refs.length === 0) {
-        outcomes.push(`${describeExpression(expression)} -> no matches`);
-        continue;
-      }
-      if (refs.length > 1) {
-        ambiguous = true;
-        outcomes.push(`${describeExpression(expression)} -> ${refs.length} matches`);
-        continue;
-      }
-      const ref = refs[0]!;
-      let node: SemanticNode;
-      try {
-        node = await engine.session.screen.read(ref, invocation.operation());
-      } catch {
-        outcomes.push(`${describeExpression(expression)} -> matched node became unreadable`);
-        continue;
-      }
-      if (!matchesSignature(selection.selected, node)) {
-        outcomes.push(
-          `${describeExpression(expression)} -> resolved a different node (${describe(node)})`,
-        );
+      const candidate = await matchCandidate(invocation, selection.selected, expression);
+      if (candidate.kind === 'rejected') {
+        outcomes.push(candidate.outcome);
+        ambiguous = ambiguous || candidate.ambiguous;
         continue;
       }
       invocation.recordPolicy('locate.identity', 'allowed');
       agentTrace(() => `locate: resolved via ${describeExpression(expression)}`);
       return {
         kind: 'node',
-        ref,
+        ref: candidate.ref,
         expression,
-        node,
+        node: candidate.node,
         observation: selection.observation,
         explanation: selection.explanation,
         origin: 'model',
@@ -643,6 +626,17 @@ export async function resolveSelected(
     }
 
     agentTrace(() => `locate: sweep failed\n  ${outcomes.join('\n  ')}`);
+    // A caller that can still escalate to pixels gets the miss instead: an
+    // unaddressable pick is that feature's signal, and pixels can tell twins
+    // apart that a reference can only take on trust from a tree-only answer.
+    if (options.poll !== false) {
+      // Otherwise the observation's own reference still points at exactly the
+      // node the model chose, and it is available now: a control the page
+      // repeats will not become unique by waiting, so this does not queue
+      // behind the poll loop.
+      const byReference = await addressByReference(invocation, selection);
+      if (byReference !== undefined) return byReference;
+    }
     if (options.poll === false || invocation.deadline.expired()) {
       invocation.recordPolicy('locate.identity', 'denied');
       // Each candidate's outcome names the exact query and why it was
@@ -650,12 +644,105 @@ export async function resolveSelected(
       const detail = outcomes.map((outcome) => `\n  ${outcome}`).join('');
       throw new AgentError(
         ambiguous ? 'LOCATOR_AMBIGUOUS' : 'LOCATOR_NOT_FOUND',
-        `no derived query uniquely resolved the selected node (${describe(selection.selected)}):${detail}`,
+        `neither a derived query nor the observed reference resolved the selected node (${describe(
+          selection.selected,
+        )}):${detail}`,
       );
     }
     await sleep(POLL_INTERVAL_MS, engine.signal);
   }
 }
+
+/**
+ * Acts on the node through the reference the observation handed out.
+ *
+ * Derived queries describe a node by what it says, so a page that repeats a
+ * control verbatim — one reservation button per departure date, the same label
+ * on each — has nodes no query can separate. The reference can: it is bound to
+ * the element the model was shown, in the revision it was shown in, which is a
+ * stricter identity than any locator. It is re-read first, so a node that has
+ * gone away is still a miss rather than a blind dispatch, and the read doubles
+ * as the identity check the query sweep would have done.
+ *
+ * What it cannot do is outlive the observation, so nothing is recorded: a
+ * reference is not a locator, and `cache-1` stores locators.
+ */
+async function addressByReference(
+  invocation: Invocation,
+  selection: Extract<Selection, { kind: 'node' }>,
+): Promise<LocatedNode | undefined> {
+  const selected = selection.selected;
+  const node = await readNode(invocation, selected.ref);
+  if (node === undefined || !matchesSignature(selected, node)) {
+    agentTrace(() => 'locate: the observed reference no longer reads as the selected node');
+    return undefined;
+  }
+  invocation.recordPolicy('locate.reference', 'allowed');
+  agentTrace(
+    () => `locate: no query separates ${describe(node)}; acting on its observed reference`,
+  );
+  return {
+    kind: 'node',
+    ref: selected.ref,
+    expression: undefined,
+    node,
+    observation: selection.observation,
+    explanation: selection.explanation,
+    origin: 'model',
+    positional: selection.positional,
+  };
+}
+
+/**
+ * What one derived query proved about the selected node on the live screen:
+ * either it addresses that node uniquely, or it does not and says why.
+ */
+type CandidateOutcome =
+  | { readonly kind: 'resolved'; readonly ref: NodeRef; readonly node: SemanticNode }
+  | { readonly kind: 'rejected'; readonly outcome: string; readonly ambiguous: boolean };
+
+function rejected(outcome: string, ambiguous: boolean): CandidateOutcome {
+  return { kind: 'rejected', outcome, ambiguous };
+}
+
+/** Resolves one derived query and checks it against the observed node. */
+async function matchCandidate(
+  invocation: Invocation,
+  selected: SemanticNode,
+  expression: LocatorExpression,
+): Promise<CandidateOutcome> {
+  const description = describeExpression(expression);
+  let refs: readonly NodeRef[];
+  try {
+    // The invocation deadline bounds the sweep, so a caller-supplied timeout is
+    // honored even while a driver error stays retryable.
+    refs = await invocation.engine.resolveAll(expression, invocation.deadline);
+  } catch (cause) {
+    throw toAgentError(cause);
+  }
+  if (refs.length === 0) return rejected(`${description} -> no matches`, false);
+  if (refs.length > 1) return rejected(`${description} -> ${refs.length} matches`, true);
+  const ref = refs[0]!;
+  const node = await readNode(invocation, ref);
+  if (node === undefined) return rejected(`${description} -> matched node became unreadable`, false);
+  if (!matchesSignature(selected, node)) {
+    return rejected(`${description} -> resolved a different node (${describe(node)})`, false);
+  }
+  return { kind: 'resolved', ref, node };
+}
+
+/** Reads one resolved node, or undefined when it is no longer readable. */
+async function readNode(
+  invocation: Invocation,
+  ref: NodeRef,
+): Promise<SemanticNode | undefined> {
+  try {
+    return await invocation.engine.session.screen.read(ref, invocation.operation());
+  } catch {
+    return undefined;
+  }
+}
+
 
 /**
  * Scopes one derived query to the observed node's enclosing frame chain, so a

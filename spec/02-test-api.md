@@ -135,6 +135,18 @@ runner validates that both identify the same unique node before acting. Zero
 matches rejects with `LOCATOR_NOT_FOUND`; multiple matches rejects with
 `LOCATOR_AMBIGUOUS`; actionability failure rejects with `ACTION_FAILED`.
 
+A page that repeats a control — one reservation button per row, the same label
+on each — has nodes no derived query can separate. The reference the observation
+handed out can: it is bound to the element the model was shown, in the revision
+it was shown in, which is a stricter identity than any locator. A runner MAY
+therefore act through that reference once no derived query resolves the
+selection, after re-reading it to confirm it is still the node the model chose.
+A reference cannot outlive its observation, so such a target is never recorded
+(10-determinism.md). A runner that also offers `vision: 'fallback'` MUST prefer
+the escalation: an unaddressable selection is that feature's signal, and pixels
+can tell repeated controls apart that a reference can only take on trust from a
+tree-only answer.
+
 `agent.type` replaces the target's current content and accepts plain strings or
 opaque `Secret` values. It never submits the field; submission is a separate
 tap/click/press step. A secret may be sent only to an authorized secure input

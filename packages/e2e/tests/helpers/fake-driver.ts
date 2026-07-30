@@ -53,6 +53,12 @@ export interface FakeDriverBehavior {
     operation: OperationContext,
     sessionIndex: number,
   ): void | Promise<void>;
+  /** Throw to fail observe; default returns one stable observation. */
+  observe?(operation: OperationContext, sessionIndex: number): void | Promise<void>;
+  /** Overrides the observed tree; default is one Submit button. */
+  tree?: SemanticNode;
+  /** Overrides screen.read; default echoes the one stable node. */
+  read?(ref: NodeRef, operation: OperationContext, sessionIndex: number): SemanticNode;
   /** Enables captureState/restoreState. */
   state?: boolean;
 }
@@ -135,8 +141,8 @@ export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverH
           return [NODE.ref];
         },
         async read(ref, operation) {
-          record('screen.read', sessionIndex, operation);
-          return { ...NODE, ref };
+          record(`screen.read(${ref.id})`, sessionIndex, operation);
+          return behavior.read?.(ref, operation, sessionIndex) ?? { ...NODE, ref };
         },
         async perform(ref, action, operation) {
           record(`screen.perform(${action.kind})`, sessionIndex, operation);
@@ -148,7 +154,7 @@ export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverH
       },
       actions: {
         async tap(target, operation) {
-          record('actions.tap', sessionIndex, operation);
+          record(`actions.tap(${'ref' in target ? target.ref.id : 'point'})`, sessionIndex, operation);
         },
         async longPress(target, durationMs, operation) {
           record('actions.longPress', sessionIndex, operation);
@@ -171,10 +177,11 @@ export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverH
       },
       async observe(operation) {
         record('observe', sessionIndex, operation);
+        await behavior.observe?.(operation, sessionIndex);
         const observation: Observation = {
           revision: 'rev-1',
           capturedAt: new Date().toISOString(),
-          tree: NODE,
+          tree: behavior.tree ?? NODE,
           viewport: { width: 1280, height: 720, scale: 1 },
           redaction: { secureNodeCount: 0, maskedRegionCount: 0, complete: true },
         };

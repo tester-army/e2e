@@ -6,8 +6,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { createFakeDriver, BuiltDriverError, type FakeDriverHandle } from '../helpers/fake-driver.ts';
+import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
+import type { SemanticNode } from '../../src/driver/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
 const APP_URL = 'http://127.0.0.1:4599';
@@ -27,6 +29,22 @@ const PASSING_TEST = `import { test } from 'e2e';
 test('taps a node', async ({ app, screen }) => {
   await app.open('/');
   await screen.getByRole('button', { name: 'Submit' }).tap();
+});
+`;
+
+const REPEATS_TEST = `import { test } from 'e2e';
+
+test('taps one of three identical controls', async ({ app, agent }) => {
+  await app.open('/');
+  await agent.tap('the second Reserve now button');
+});
+`;
+
+const OBSERVE_TEST = `import { test } from 'e2e';
+
+test('asserts a node', async ({ app, agent }) => {
+  await app.open('/');
+  await agent.assert('the Submit button is visible');
 });
 `;
 
@@ -427,6 +445,151 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     },
     60_000,
   );
+
+  it(
+    're-observes when a driver reports a retryable observation failure',
+    async () => {
+      let observeCalls = 0;
+      const fake = createFakeDriver({
+        observe() {
+          observeCalls += 1;
+          if (observeCalls === 1) {
+            throw new BuiltDriverError('NODE_STALE', 'execution context was destroyed', {
+              retryable: true,
+            });
+          }
+        },
+      });
+      const model = installFakeModel(() => judgment(true, 'the Submit button is visible'));
+      const { outcome, project } = await runProject(
+        { 'tests/observe-race.e2e.ts': OBSERVE_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+      );
+      expect(resultByTitle(outcome, 'asserts a node').status).toBe('passed');
+      expect(observeCalls).toBe(2);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'fails an agent call when a non-retryable observation failure repeats',
+    async () => {
+      const fake = createFakeDriver({
+        observe() {
+          throw new BuiltDriverError('DRIVER_FAILURE', 'observation is broken', {
+            retryable: false,
+          });
+        },
+      });
+      const model = installFakeModel(() => judgment(true, 'unreachable'));
+      const { outcome, project } = await runProject(
+        { 'tests/observe-broken.e2e.ts': OBSERVE_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+      );
+      const result = resultByTitle(outcome, 'asserts a node');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.at(-1)!.error?.code).toBe('APP_UNREACHABLE');
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  describe('a selection no derived query can separate', () => {
+    // Three controls with identical semantics, as a listing repeats one button
+    // per row. Every query derived from any of them matches all of them, so
+    // only the reference the observation handed out identifies the one chosen.
+    const button = (id: string, y: number): SemanticNode => ({
+      ref: { id, revision: 'rev-1' },
+      role: 'button',
+      name: 'Reserve now',
+      states: { hidden: false },
+      rect: { x: 0, y, width: 100, height: 40 },
+    });
+    const observed = [button('node-1', 0), button('node-2', 100), button('node-3', 200)];
+    const tree: SemanticNode = {
+      ref: { id: 'node-root', revision: 'rev-1' },
+      role: 'document',
+      children: observed,
+    };
+    // Query matches carry their own references, as a locator-backed resolve
+    // does, so a read can tell them from the observation's own handles.
+    const matchRefs = observed.map((_node, index) => ({
+      id: `match-${index}`,
+      revision: 'rev-1',
+    }));
+
+    /** Answers with the second Reserve now button in the observation. */
+    const locateSecondReserve = () =>
+      installFakeModel((call) => {
+        const lines = call.lines.filter((line) => line.includes('Reserve now'));
+        return {
+          protocolVersion: 'agent-locate-1',
+          target: { id: /#(\S+)/.exec(lines[1] ?? '')?.[1] ?? '', revision: call.revision },
+          explanation: 'the second Reserve now button in the observation',
+        };
+      });
+
+    async function runRepeats(
+      fake: FakeDriverHandle,
+    ): Promise<{ status: string; taps: string[]; cached: number }> {
+      const model = locateSecondReserve();
+      const { outcome, project } = await runProject(
+        { 'tests/repeats.e2e.ts': REPEATS_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+      );
+      const result = resultByTitle(outcome, 'taps one of three identical controls');
+      const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.tap');
+      project.cleanup();
+      return {
+        status: result.status,
+        taps: fake.operations
+          .filter((operation) => operation.method.startsWith('actions.tap'))
+          .map((operation) => operation.method),
+        cached: step?.cache?.status === 'written' ? 1 : 0,
+      };
+    }
+
+    it(
+      'acts on the observed reference, and never stores it',
+      async () => {
+        const fake = createFakeDriver({
+          tree,
+          resolve: () => matchRefs,
+          read: (ref) => ({ ...button(ref.id, 0), ref }),
+        });
+        const run = await runRepeats(fake);
+        expect(run.status).toBe('passed');
+        // The node the model named, not one of the query's matches, and only it.
+        expect(run.taps).toEqual(['actions.tap(node-2)']);
+        // A reference is not a locator, so there is nothing to record.
+        expect(run.cached).toBe(0);
+      },
+      60_000,
+    );
+
+    it(
+      'reports a miss when the observed reference no longer reads as that node',
+      async () => {
+        // A re-render replaced the element behind the reference. Acting anyway
+        // would dispatch at whatever took its place.
+        const fake = createFakeDriver({
+          tree,
+          resolve: () => matchRefs,
+          read: (ref) => {
+            if (ref.id.startsWith('node-')) {
+              throw new BuiltDriverError('NODE_STALE', 'replaced', { retryable: true });
+            }
+            return { ...button(ref.id, 0), ref };
+          },
+        });
+        const run = await runRepeats(fake);
+        expect(run.status).toBe('failed');
+        expect(run.taps).toEqual([]);
+      },
+      60_000,
+    );
+  });
 
   it(
     'surfaces UNSUPPORTED_ARTIFACT before any session launches when config demands more than the driver offers',

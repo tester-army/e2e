@@ -187,6 +187,26 @@ const PAGES: Record<string, string> = {
   </script>
 </body>
 </html>`,
+  // A control repeated per row, exactly as a listing repeats a reservation
+  // button: every query derived from any row matches all of them, so only the
+  // node's place in the observation tells them apart.
+  '/repeats': `<!doctype html>
+<html>
+<head><title>Repeats</title></head>
+<body style="margin:0">
+  <output id="picked" role="status" aria-label="Picked">none</output>
+  <ul style="list-style:none;padding:0">
+    <li><span>Offer A</span> <button data-testid="reserve" onclick="pick('A')">Reserve now</button></li>
+    <li><span>Offer B</span> <button data-testid="reserve" onclick="pick('B')">Reserve now</button></li>
+    <li><span>Offer C</span> <button data-testid="reserve" onclick="pick('C')">Reserve now</button></li>
+  </ul>
+  <script>
+    function pick(offer) {
+      document.getElementById('picked').textContent = offer;
+    }
+  </script>
+</body>
+</html>`,
   '/flags': `<!doctype html>
 <html>
 <head><title>Flags</title></head>

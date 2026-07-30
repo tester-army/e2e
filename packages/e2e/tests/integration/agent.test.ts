@@ -99,6 +99,23 @@ test('located actions reach nodes inside iframes', async ({ app, agent, web }) =
   await expect(web.frameLocator('#child').getByRole('button')).toHaveText('Frame clicked');
 });
 
+test('taps one control among identical repeats', async ({ agent, screen, web }) => {
+  await web.goto('/repeats');
+  await agent.tap(THIRD_REPEAT);
+  await expect(screen.getByRole('status')).toHaveText('C');
+});
+
+test('waits without re-judging a page that has not changed', async ({ app, agent }) => {
+  await app.open('/about');
+  // Budget for several judgments on purpose: the point is that a static page
+  // never spends the second one.
+  await agent.waitFor('a checkout button is on the About page', {
+    intervalMs: 100,
+    timeout: 3000,
+    maxModelCalls: 4,
+  });
+});
+
 test('an explicit no-match fails with the model explanation', async ({ app, agent }) => {
   await app.open();
   await agent.tap('the shopping cart icon');
@@ -107,7 +124,9 @@ test('an explicit no-match fails with the model explanation', async ({ app, agen
 
 const FALSE_ASSERTION = 'the checkout page is visible';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
+const NEVER_CONDITION = 'a checkout button is on the About page';
 const NO_MATCH_TARGET = 'the shopping cart icon';
+const THIRD_REPEAT = 'the Reserve now button of the third offer';
 const NO_MATCH_EXPLANATION = 'the observation shows a counter demo without any cart icon';
 
 /** Scripted responder: locate by best line match, judge from the observation. */
@@ -115,11 +134,23 @@ function respond(call: FakeCall): unknown {
   switch (call.schemaName) {
     case 'agent-locate-1':
       if (call.instruction === NO_MATCH_TARGET) return locateNotFound(NO_MATCH_EXPLANATION);
+      if (call.instruction === THIRD_REPEAT) {
+        // Three buttons the tree cannot tell apart. The model names the third
+        // one it was shown; only its place in the observation identifies it.
+        const lines = call.lines.filter((line) => line.includes('Reserve now'));
+        const id = /#(\S+)/.exec(lines.at(-1) ?? '')?.[1] ?? '';
+        return {
+          protocolVersion: 'agent-locate-1',
+          target: { id, revision: call.revision },
+          explanation: 'the third Reserve now button',
+        };
+      }
       return locateBestMatch(call);
     case 'agent-judgment-1': {
       if (call.instruction === FALSE_ASSERTION) {
         return judgment(false, 'the observation shows the Home page, not checkout');
       }
+      if (call.instruction === NEVER_CONDITION) return judgment(false, 'no checkout button here');
       if (call.instruction === LATE_BUTTON_CONDITION) {
         const present = call.observation.includes('Late arrival');
         return judgment(present, present ? 'Late arrival is present' : 'not rendered yet');
