@@ -2,7 +2,7 @@ import { test, expect } from 'e2e';
 
 /**
  * Deterministic checks against stable public pages. Opt-in via
- * `pnpm --filter @e2e/testbed test:public`; kept out of CI on purpose.
+ * `pnpm --filter @e2edev/testbed test:public`; kept out of CI on purpose.
  */
 
 test('example.com serves its reference page', async ({ app, screen, web }) => {

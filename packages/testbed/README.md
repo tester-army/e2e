@@ -1,4 +1,4 @@
-# @e2e/testbed
+# @e2edev/testbed
 
 Dogfood workspace for the [`e2e`](../e2e) runner: a real project consuming the
 `e2e` package exactly like a user would, with a growing suite of deterministic
@@ -25,11 +25,11 @@ tests.
 
 ```bash
 pnpm --filter e2e build            # the testbed runs the built runner
-pnpm --filter @e2e/testbed test    # typecheck + local suite (starts the app itself)
-pnpm --filter @e2e/testbed test:headed
-pnpm --filter @e2e/testbed test:public   # real websites, not in CI
-E2E_MODEL_API_KEY=... pnpm --filter @e2e/testbed test:agent   # real model calls, not in CI
-pnpm --filter @e2e/testbed app     # run the playground manually
+pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
+pnpm --filter @e2edev/testbed test:headed
+pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
+E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, not in CI
+pnpm --filter @e2edev/testbed app     # run the playground manually
 ```
 
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;
@@ -42,8 +42,8 @@ pins `google/gemini-3-flash` and honours `E2E_MODEL` so the same suite can be
 replayed across providers:
 
 ```bash
-E2E_MODEL_API_KEY=...  pnpm --filter @e2e/testbed test:agent
-E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... pnpm --filter @e2e/testbed test:agent
+E2E_MODEL_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
+E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent
 ```
 
 Agentic assertions are structurally comparable across models, not textually

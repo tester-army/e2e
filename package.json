@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter e2e build",
+    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build",
     "check": "pnpm run lint && pnpm run check:spec && pnpm run typecheck && pnpm run docs:check",
     "check:spec": "tsc --project tsconfig.spec.json",
     "docs:check": "fern check",
@@ -17,17 +17,21 @@
     "docs:publish": "fern generate --docs",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
+    "release": "pnpm run build && changeset publish",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm --filter e2e test",
-    "test:testbed": "pnpm run build && pnpm --filter @e2e/testbed test",
-    "test:public": "pnpm run build && pnpm --filter @e2e/testbed test:public",
-    "test:agent": "pnpm run build && pnpm --filter @e2e/testbed test:agent"
+    "test": "pnpm run build && pnpm --filter e2e --filter @e2edev/playwright run test",
+    "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
+    "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
+    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
   },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "devDependencies": {
+    "@changesets/cli": "2.31.1",
     "@types/node": "26.1.1",
     "fern-api": "5.80.4",
     "oxlint": "1.75.0",

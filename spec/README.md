@@ -55,7 +55,7 @@ Required conformance IDs:
 - npm package and CLI: `e2e`;
 - root SDK import: `e2e`;
 - driver authoring import: `e2e/driver`;
-- reference web driver: `e2e/playwright`;
+- reference web driver: `@e2edev/playwright`;
 - default tests: `tests/**/*.e2e.ts`;
 - config: `e2e.config.ts` or `e2e.config.mts`.
 

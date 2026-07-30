@@ -1,8 +1,16 @@
 /** Reference Playwright driver for web-0.1 (spec 09-drivers.md). */
 
-import { DriverError, defineDriver, type Driver, type DriverContext, type DriverSession } from '../driver/index.ts';
-import { packageVersion } from '../internal/package-version.ts';
+import {
+  DriverError,
+  defineDriver,
+  type Driver,
+  type DriverContext,
+  type DriverSession,
+  type Target,
+} from 'e2e/driver';
+import { packageVersion } from 'e2e/internal';
 import { BrowserPool } from './browser-pool.ts';
+import { ensureBrowsersInstalled } from './install.ts';
 import { PlaywrightSession, parseWebTarget } from './session.ts';
 import { message } from './support.ts';
 
@@ -11,13 +19,16 @@ export function playwright(): Driver {
   const pool = new BrowserPool();
   return defineDriver({
     id: 'playwright',
-    version: packageVersion(import.meta.url, 'playwright/package.json', 'unknown'),
+    version: packageVersion(import.meta.url, '../package.json', 'unknown'),
     platforms: ['web'],
     spiVersion: 1,
     capabilities: {
       fixtures: ['web'],
       artifacts: ['screenshot', 'trace'],
       state: true,
+    },
+    async prepare(targets: readonly Target[]): Promise<void> {
+      await ensureBrowsersInstalled(targets.map((target) => parseWebTarget(target).browser));
     },
     async launch(context: DriverContext): Promise<DriverSession> {
       const target = parseWebTarget(context.target);

@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { DriverError } from '../../src/driver/index.ts';
-import { navigationStaleOr, staleOr, translatePwError } from '../../src/playwright/support.ts';
+import { DriverError } from 'e2e/driver';
+import { navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {
   const error = new Error(text);

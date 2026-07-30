@@ -25,9 +25,8 @@ import {
   type SemanticNode,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
-} from '../driver/index.ts';
-import { matchesText } from '../internal/text.ts';
-import { withTimeout } from '../internal/time.ts';
+} from 'e2e/driver';
+import { matchesText, withTimeout } from 'e2e/internal';
 import { frameSelectors, projectExpression } from './locators.ts';
 import { capturePixels, type PixelCapture } from './observe.ts';
 import {

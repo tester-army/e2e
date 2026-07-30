@@ -123,6 +123,61 @@ describe('runner <-> driver contract', () => {
   );
 
   it(
+    'runs prepare once, before any launch, with every target the driver serves',
+    async () => {
+      const fake = createFakeDriver();
+      const { outcome, project } = await runProject(
+        { 'tests/prepare.e2e.ts': PASSING_TEST },
+        {
+          appUrl: APP_URL,
+          config: fakeConfig(fake, {
+            targets: [
+              { name: 'fake', platform: 'web', driver: fake.driver },
+              { name: 'fake2', platform: 'web', driver: fake.driver },
+            ],
+          } as Partial<E2EConfig>),
+        },
+      );
+      expect(outcome.exitCode).toBe(0);
+
+      // Once per driver, not once per target: provisioning is shared backend
+      // work, and repeating it per target would repeat the download.
+      expect(fake.prepares).toHaveLength(1);
+      expect(fake.prepares[0]!.map((entry) => entry.name).toSorted()).toEqual(['fake', 'fake2']);
+
+      // Provisioning that ran after a launch would defeat its whole purpose.
+      expect(fake.events[0]).toBe('prepare:2');
+      expect(fake.events.indexOf('prepare:2')).toBeLessThan(
+        fake.events.findIndex((event) => event.startsWith('launch:')),
+      );
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'aborts the run when prepare fails, before any session launches',
+    async () => {
+      const fake = createFakeDriver({
+        onPrepare: () => {
+          throw new Error('no browsers for you');
+        },
+      });
+      const { outcome, project } = await runProject(
+        { 'tests/prepare-fails.e2e.ts': PASSING_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake) },
+      );
+      expect(outcome.exitCode).toBe(3);
+      expect(fake.launches).toHaveLength(0);
+      const errors = outcome.report.run.errors ?? [];
+      expect(errors.some((entry) => entry.message.includes('no browsers for you'))).toBe(true);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'threads a consistent, live OperationContext through every driver call',
     async () => {
       const fake = createFakeDriver();
@@ -171,7 +226,7 @@ test('third test', async ({ app }) => {
       expect(stats.maxConcurrentSessions).toBe(1);
       expect(stats.sessionsOpened).toBe(3);
       expect(stats.closes).toBe(3);
-      expect(fake.events.filter((event) => event !== 'dispose')).toEqual([
+      expect(fake.events.filter((event) => event.startsWith('launch:') || event.startsWith('close:'))).toEqual([
         'launch:0',
         'close:0',
         'launch:1',
@@ -209,7 +264,7 @@ test('flaky against driver', { retries: 1 }, async ({ app }) => {
       );
       const result = resultByTitle(outcome, 'flaky against driver');
       expect(result.status).toBe('flaky');
-      expect(fake.events.filter((event) => event !== 'dispose')).toEqual([
+      expect(fake.events.filter((event) => event.startsWith('launch:') || event.startsWith('close:'))).toEqual([
         'launch:0',
         'close:0',
         'launch:1',

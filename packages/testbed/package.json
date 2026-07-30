@@ -1,5 +1,5 @@
 {
-  "name": "@e2e/testbed",
+  "name": "@e2edev/testbed",
   "version": "0.0.0",
   "private": true,
   "description": "Dogfood suite: runs the e2e runner against a local playground app and real websites",
@@ -14,6 +14,7 @@
     "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts"
   },
   "dependencies": {
+    "@e2edev/playwright": "workspace:*",
     "e2e": "workspace:*"
   },
   "devDependencies": {

@@ -5,7 +5,7 @@ import { defineConfig } from 'e2e';
  * heavy pages, cookie consent, autosuggest search, and a multi-step booking
  * funnel. Run manually:
  *
- *   E2E_MODEL_API_KEY=... pnpm --filter @e2e/testbed test:wakacje
+ *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:wakacje
  *
  * Not part of CI: the site changes, rate-limits, and every step spends real
  * model calls. Tests navigate the funnel but never submit a reservation.

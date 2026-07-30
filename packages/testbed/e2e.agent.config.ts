@@ -3,7 +3,7 @@ import { defineConfig } from 'e2e';
 /**
  * Opt-in agentic suite against the local playground. Run manually:
  *
- *   E2E_MODEL_API_KEY=... pnpm --filter @e2e/testbed test:agent
+ *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent
  *
  * Not part of CI: every test spends real model calls and the located-action and
  * judgment tiers are structurally comparable across models, not identical.

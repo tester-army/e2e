@@ -153,6 +153,20 @@ rather than with the terminal output.
     [Web capabilities](/web) and [Authentication](/authentication).
   </Accordion>
 
+  <Accordion title="DRIVER_NOT_INSTALLED">
+    **Symptom.** The run exits 2 before any test starts, naming the driver
+    package.
+
+    **Cause.** `e2e` ships without a driver. The default `driver: 'playwright'`
+    is loaded on demand from `@e2edev/playwright`, which is a separate package.
+
+    **Fix.**
+
+    ```bash
+    npm install --save-dev @e2edev/playwright
+    ```
+  </Accordion>
+
   <Accordion title="BROWSER_INSTALL_FAILED">
     **Symptom.** The run dies while provisioning a browser.
 

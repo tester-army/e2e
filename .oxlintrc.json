@@ -11,7 +11,11 @@
     "es2023": true,
     "node": true
   },
-  "ignorePatterns": ["**/dist/**", "packages/e2e/tests/fixtures/**", "packages/e2e/tests/tmp-projects/**"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "packages/*/tests/fixtures/**",
+    "packages/*/tests/tmp-projects/**"
+  ],
   "rules": {
     // Sequential execution is the contract of a test runner, not a perf bug.
     "eslint/no-await-in-loop": "off",

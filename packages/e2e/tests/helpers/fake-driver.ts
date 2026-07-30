@@ -15,6 +15,7 @@ import type {
   Observation,
   OperationContext,
   SemanticNode,
+  Target,
 } from '../../src/driver/index.ts';
 
 const builtDriverModule = '../../dist/driver/index.js';
@@ -34,6 +35,8 @@ export interface RecordedOperation {
 }
 
 export interface FakeDriverBehavior {
+  /** Throw to fail one-time provisioning. Called before any launch. */
+  onPrepare?(targets: readonly Target[]): void | Promise<void>;
   /** Throw or hang to fail launches. Called before the session is created. */
   onLaunch?(context: DriverContext, sessionIndex: number): void | Promise<void>;
   /** Throw to fail session close. */
@@ -68,6 +71,8 @@ export interface FakeDriverHandle {
   /** Ordered event names, e.g. 'launch:0', 'close:0', 'dispose'. */
   readonly events: string[];
   readonly launches: DriverContext[];
+  /** One entry per `prepare` call, holding the targets it received. */
+  readonly prepares: (readonly Target[])[];
   readonly operations: RecordedOperation[];
   readonly capturedStates: DriverState[];
   readonly restoredStates: DriverState[];
@@ -91,6 +96,7 @@ const NODE: SemanticNode = {
 export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverHandle {
   const events: string[] = [];
   const launches: DriverContext[] = [];
+  const prepares: (readonly Target[])[] = [];
   const operations: RecordedOperation[] = [];
   const capturedStates: DriverState[] = [];
   const restoredStates: DriverState[] = [];
@@ -233,6 +239,11 @@ export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverH
       artifacts: ['screenshot'],
       state: behavior.state === true,
     },
+    async prepare(targets) {
+      prepares.push(targets);
+      events.push(`prepare:${String(targets.length)}`);
+      await behavior.onPrepare?.(targets);
+    },
     async launch(context) {
       const sessionIndex = launches.length;
       launches.push(context);
@@ -253,6 +264,7 @@ export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverH
     driver,
     events,
     launches,
+    prepares,
     operations,
     capturedStates,
     restoredStates,

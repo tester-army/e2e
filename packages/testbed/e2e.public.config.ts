@@ -3,7 +3,7 @@ import { defineConfig } from 'e2e';
 /**
  * Opt-in suite against real public websites. Run manually:
  *
- *   pnpm --filter @e2e/testbed test:public
+ *   pnpm --filter @e2edev/testbed test:public
  *
  * Not part of CI: public sites change and rate-limit, and the point of this
  * config is dogfooding the production opt-in and multi-origin policy.

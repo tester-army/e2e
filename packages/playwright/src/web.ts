@@ -19,8 +19,8 @@ import {
   type JsonValue,
   type OperationContext,
   type TextPattern,
-} from '../driver/index.ts';
-import { routePatternMatches, routePatternsEqual } from '../internal/route-pattern.ts';
+} from 'e2e/driver';
+import { routePatternMatches, routePatternsEqual } from 'e2e/internal';
 import { invalidState, message, sanitizeFilename } from './support.ts';
 
 interface StoredRoute {

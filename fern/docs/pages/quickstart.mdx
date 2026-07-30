@@ -12,15 +12,19 @@ tests.
   <Step title="Install">
     <CodeBlocks>
       ```bash title="npm"
-      npm install --save-dev e2e
+      npm install --save-dev e2e @e2edev/playwright
       ```
       ```bash title="pnpm"
-      pnpm add -D e2e
+      pnpm add -D e2e @e2edev/playwright
       ```
       ```bash title="yarn"
-      yarn add -D e2e
+      yarn add -D e2e @e2edev/playwright
       ```
     </CodeBlocks>
+
+    `e2e` is the runner and SDK. `@e2edev/playwright` is the web driver it
+    uses by default; it ships separately so a project driving another backend
+    does not pay for a browser download.
   </Step>
 
   <Step title="Scaffold">

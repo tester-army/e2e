@@ -36,7 +36,7 @@ Web profile:
 - `web` navigation, routes, frames, evaluation, cookies, dialogs, downloads,
   keyboard/mouse;
 - screenshot/trace/video artifacts;
-- `e2e/playwright` behind `driver-1`.
+- `@e2edev/playwright` behind `driver-1`.
 
 Conformance:
 

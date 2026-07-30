@@ -60,6 +60,7 @@ These appear in terminal output and in the report as plain string codes.
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
 | `PLATFORM_UNSUPPORTED` | A target requested a platform other than `web`. Mobile platforms are rejected. | configuration | 2 |
+| `DRIVER_NOT_INSTALLED` | A target names a well-known driver whose package is not installed. `driver: 'playwright'` needs `@e2edev/playwright`. | configuration | 2 |
 | `UNSUPPORTED_ARTIFACT` | A configured artifact kind the driver cannot produce. `video` is not implemented yet. | configuration | 2 |
 | `UNSUPPORTED_CAPABILITY` | The `web` fixture on a target without the `web` capability, the `device` fixture, state restore without state capability, or `agent.act` and `agent.login` | configuration | 2 |
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. Suppress with `--pass-with-no-tests`. | configuration | 2 |

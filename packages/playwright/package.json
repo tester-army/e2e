@@ -1,0 +1,38 @@
+{
+  "name": "@e2edev/playwright",
+  "version": "0.1.0",
+  "description": "Reference Playwright web driver for the e2e agentic end-to-end testing standard",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "dependencies": {
+    "playwright": "1.61.1"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.1.0 <1"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

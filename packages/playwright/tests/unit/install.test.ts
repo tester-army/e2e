@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ensureBrowsersInstalled } from '../../src/playwright/install.ts';
-import type { BrowserName } from '../../src/playwright/browser-pool.ts';
+import { ensureBrowsersInstalled } from '../../src/install.ts';
+import type { BrowserName } from '../../src/browser-pool.ts';
 
 describe('ensureBrowsersInstalled', () => {
   it('does nothing when every browser is installed', async () => {

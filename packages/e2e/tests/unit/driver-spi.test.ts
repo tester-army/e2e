@@ -38,6 +38,20 @@ describe('defineDriver', () => {
     expect(defineDriver(manifest).dispose).toBeUndefined();
     expect(() => defineDriver({ ...manifest, dispose: 'nope' as never })).toThrow(/dispose/);
   });
+
+  it('passes an optional prepare through and rejects non-function prepare', async () => {
+    const received: unknown[] = [];
+    const driver = defineDriver({
+      ...manifest,
+      prepare: async (targets) => {
+        received.push(targets);
+      },
+    });
+    await driver.prepare?.([{ name: 'web', platform: 'web' }]);
+    expect(received).toEqual([[{ name: 'web', platform: 'web' }]]);
+    expect(defineDriver(manifest).prepare).toBeUndefined();
+    expect(() => defineDriver({ ...manifest, prepare: 'nope' as never })).toThrow(/prepare/);
+  });
 });
 
 describe('isDriverHandle', () => {

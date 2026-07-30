@@ -15,7 +15,7 @@ implements the deterministic subset of specification 0.1:
 - **web-0.1 (deterministic)** — runner-owned query polling/strictness, locator
   actions and reads, `app` lifecycle, `web` navigation/routes/cookies/dialogs/
   downloads/evaluation, and screenshot/trace artifacts through the
-  `e2e/playwright` reference driver.
+  `@e2edev/playwright` reference driver.
 - **agent-protocol-1 (located actions and judgments)** — atomic semantic
   observations, the closed `agent-locate-1`/`agent-judgment-1` grammars,
   runner-owned budgets, ledger, policy, and error classification behind

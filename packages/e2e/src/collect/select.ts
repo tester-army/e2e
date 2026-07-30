@@ -1,6 +1,7 @@
 /** Option resolution and test-target selection (spec 11-lifecycle.md). */
 
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
+import { WELL_KNOWN_DRIVERS } from '../config/drivers.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Capability, Platform } from '../types.ts';
 import type { Collection, CollectedTest } from './collect.ts';
@@ -121,7 +122,10 @@ function matchesTags(
 }
 
 function driverCapabilities(target: ResolvedTarget): readonly Capability[] {
-  if (target.driver === 'playwright') return ['web'];
+  // Selection runs before any driver is instantiated, so a well-known id is
+  // answered from its declared hint; the instance's real manifest is validated
+  // against it before the first launch.
+  if (typeof target.driver === 'string') return WELL_KNOWN_DRIVERS[target.driver]?.capabilities ?? [];
   return target.driver.capabilities.fixtures;
 }
 

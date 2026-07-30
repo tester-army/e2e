@@ -18,6 +18,7 @@ import {
   ConfigurationError,
   exitCodeForCategory,
   serializeError,
+  translateDriverError,
   type E2EError,
 } from '../internal/errors.ts';
 import { DebugTrace } from '../internal/debug.ts';
@@ -26,7 +27,6 @@ import { buildReport, type Report1Document, type TargetProvenance } from '../rep
 import { agentStepTable, cacheTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
-import { ensureBrowsersInstalled } from '../playwright/install.ts';
 import { AppProcess } from './app-process.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
@@ -35,7 +35,7 @@ import { runUnits } from './scheduler.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
-import type { E2EConfig } from '../types.ts';
+import type { E2EConfig, Target } from '../types.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -118,7 +118,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         runErrors.push({ error: serializeError(error, { phase: 'report' }) });
       }
     }
-    listReporter?.onRunEnd({ status, exitCode, reportPath: reportPath ?? '(not written)' });
+    listReporter?.onRunEnd({
+      status,
+      exitCode,
+      reportPath: reportPath ?? '(not written)',
+      errors: runErrors,
+    });
     if (options.reporters?.includes('json') === true) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
@@ -213,22 +218,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // for validation, for report provenance, and (in-process only) execution.
     const preflightDrivers = new Map<string, Driver>();
     for (const { target } of selection.perTarget) {
-      const driver = resolveDriver(target);
+      const driver = await resolveDriver(target);
       driversToDispose.add(driver);
       preflightDrivers.set(target.name, driver);
       targetProvenance.set(target.name, validateDriver(driver, target, resolvedConfig));
     }
 
-    // Pre-flight: provision browsers for the bundled driver before any
-    // session launches, so first-run downloads never eat launch timeouts.
-    // Worker processes launch their own browsers, so this must happen here,
-    // once, before any worker starts.
-    const bundledBrowsers = selection.perTarget
-      .filter(({ target }) => target.driver === 'playwright')
-      .map(({ target }) => target.browser);
-    if (bundledBrowsers.length > 0) {
-      await debug.time('browsers.install', () => ensureBrowsersInstalled(bundledBrowsers));
-    }
+    // Pre-flight: let each distinct driver provision its backend before any
+    // session launches, so first-run downloads and boots never eat launch
+    // timeouts. Workers build their own driver instances and launch their own
+    // backends, so this must happen here, once, before any worker starts.
+    await prepareDrivers(preflightDrivers, selection, debug);
 
     const externalSignal = options.interruptSignal;
     const onExternalAbort = () => interruptController.abort();
@@ -319,6 +319,41 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   }
   if (interruptController.signal.aborted) codes.push(130);
   return finish(combineExitCodes(codes));
+}
+
+/**
+ * Runs each distinct driver's optional `prepare` hook once, before any session
+ * launches (spec 09-drivers.md). Grouping is by driver id, not by instance:
+ * `prepare` provisions backend state shared by every instance of a driver — a
+ * browser download, a booted simulator — so running it per target would repeat
+ * the same work. A rejection propagates and aborts the run.
+ */
+async function prepareDrivers(
+  driversByTarget: ReadonlyMap<string, Driver>,
+  selection: Selection,
+  debug: DebugTrace,
+): Promise<void> {
+  const groups = new Map<string, { driver: Driver; targets: Target[] }>();
+  for (const { target } of selection.perTarget) {
+    const driver = driversByTarget.get(target.name);
+    if (driver?.prepare === undefined) continue;
+    const group = groups.get(driver.id);
+    if (group === undefined) {
+      groups.set(driver.id, { driver, targets: [target.driverTarget] });
+    } else {
+      group.targets.push(target.driverTarget);
+    }
+  }
+  for (const { driver, targets } of groups.values()) {
+    const prepare = driver.prepare!;
+    try {
+      await debug.time(`driver.prepare.${driver.id}`, () => prepare.call(driver, targets));
+    } catch (cause) {
+      // A provisioning failure is the backend's, not the test's: it must not be
+      // classified as a test failure or land on exit code 1.
+      throw translateDriverError(cause, ` while preparing driver ${driver.id}`);
+    }
+  }
 }
 
 /** Disposes driver-level shared resources; failures never affect the run outcome. */

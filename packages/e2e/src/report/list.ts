@@ -3,7 +3,7 @@
 import path from 'node:path';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import type { ResultRecord } from '../run/records.ts';
+import type { ResultRecord, RunError } from '../run/records.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import { LiveStatus } from './live-status.ts';
 
@@ -127,8 +127,24 @@ export class ListReporter {
     for (const line of codeFrame(frame)) this.output.write(`    ${line}`);
   }
 
-  onRunEnd(info: { status: string; exitCode: number; reportPath: string }): void {
+  onRunEnd(info: {
+    status: string;
+    exitCode: number;
+    reportPath: string;
+    errors?: readonly RunError[];
+  }): void {
     this.status.erase();
+    // Run-level errors never reach onResult: they abort before, between, or
+    // after test execution. Without this the console shows only a bare exit
+    // code and the reason lives solely in report.json.
+    for (const { error } of info.errors ?? []) {
+      this.output.write('');
+      const phase = error.phase === undefined ? '' : ` ${this.pc.dim(`(${error.phase})`)}`;
+      this.output.write(`${this.pc.red(`\u2717 ${error.category} error`)} ${this.pc.dim(error.code)}${phase}`);
+      for (const line of bounded(error.message).split('\n')) {
+        this.output.write(`    ${this.pc.red(line)}`);
+      }
+    }
     const parts = [
       this.passed > 0 ? this.pc.green(`${this.passed} passed`) : undefined,
       this.failed > 0 ? this.pc.red(`${this.failed} failed`) : undefined,

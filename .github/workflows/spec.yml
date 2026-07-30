@@ -30,8 +30,8 @@ jobs:
       - name: Typecheck packages
         run: pnpm typecheck
       - name: Install browsers
-        run: pnpm --filter e2e exec playwright install chromium --with-deps
+        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
       - name: Unit and integration tests
         run: pnpm test
       - name: Testbed
-        run: pnpm --filter @e2e/testbed test
+        run: pnpm --filter @e2edev/testbed test

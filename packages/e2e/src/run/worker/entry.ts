@@ -74,7 +74,7 @@ async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<T
   return {
     config,
     target,
-    driver: resolveDriver(target),
+    driver: await resolveDriver(target),
     sessionStore: SessionStore.forWorker(
       message.runId,
       message.sessionsRoot,

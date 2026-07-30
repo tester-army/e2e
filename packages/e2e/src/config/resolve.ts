@@ -7,6 +7,12 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
 import { isDriverHandle, type Driver } from '../driver/index.ts';
+import {
+  DEFAULT_DRIVER_ID,
+  isWellKnownDriverId,
+  wellKnownDriverIds,
+  type WellKnownDriverId,
+} from './drivers.ts';
 import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
 import {
   isModelInstance,
@@ -24,8 +30,8 @@ export interface ResolvedTarget {
   readonly platform: 'web';
   readonly browser: 'chromium' | 'firefox' | 'webkit';
   readonly viewport: { readonly width: number; readonly height: number } | undefined;
-  /** Bundled driver ID or an imported branded driver handle. */
-  readonly driver: 'playwright' | Driver;
+  /** Well-known driver id resolved on demand, or an imported branded handle. */
+  readonly driver: WellKnownDriverId | Driver;
   /** Wire-shaped target passed to the driver at launch. */
   readonly driverTarget: Target;
 }
@@ -332,7 +338,7 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
         platform: 'web',
         browser,
         viewport: undefined,
-        driver: 'playwright',
+        driver: DEFAULT_DRIVER_ID,
         driverTarget: { name: 'web', platform: 'web', browser },
       },
     ];
@@ -359,15 +365,17 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       );
     }
     const webTarget = target as WebTarget;
-    let driver: 'playwright' | Driver;
-    if (webTarget.driver === undefined || webTarget.driver === 'playwright') {
-      driver = 'playwright';
+    let driver: WellKnownDriverId | Driver;
+    if (webTarget.driver === undefined) {
+      driver = DEFAULT_DRIVER_ID;
+    } else if (isWellKnownDriverId(webTarget.driver)) {
+      driver = webTarget.driver;
     } else if (isDriverHandle(webTarget.driver)) {
       driver = webTarget.driver;
     } else {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" driver must be "playwright" or a defineDriver handle`,
+        `target "${target.name}" driver must be ${wellKnownDriverIds()} or a defineDriver handle`,
       );
     }
     const browser = webTarget.browser ?? 'chromium';

@@ -83,7 +83,9 @@ Phase 1 implementation is in progress in this repository, a pnpm monorepo:
 
 - [`packages/e2e`](./packages/e2e) - the `e2e` package: sdk-0.1 deterministic
   surface (`test`, `expect`, `screen`, `app`, `web`, sessions), the runner and
-  CLI, the `e2e/driver` SPI, and the `e2e/playwright` reference driver.
+  CLI, and the `e2e/driver` SPI.
+- [`packages/playwright`](./packages/playwright) - the `@e2edev/playwright`
+  package: the reference web driver, loaded on demand by `driver: 'playwright'`.
 
 The located-action and judgment tiers (`agent.tap`, `assert`, `extract`, and the
 rest) are implemented; the planning tier (`agent.act`, `agent.login`), caching,

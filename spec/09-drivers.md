@@ -6,9 +6,11 @@ that map e2e-owned semantics onto an automation backend.
 
 ## Packaging and selection
 
-`e2e/playwright` is the required reference driver for `web-0.1`. Community
-drivers use their own package names, conventionally `e2e-driver-*`, and create
-instances with `defineDriver` from `e2e/driver`.
+`@e2edev/playwright` is the required reference driver for `web-0.1`. It ships
+separately from the runner so that a project targeting another backend does not
+pay for a browser download. Community drivers use their own package names,
+conventionally `e2e-driver-*`, and create instances with `defineDriver` from
+`e2e/driver`.
 
 ```ts
 import { defineDriver } from 'e2e/driver';
@@ -30,8 +32,12 @@ export const hyperdrive = () =>
   });
 ```
 
-String IDs resolve only to drivers bundled by the runner. Third-party drivers
-are imported handles branded by `defineDriver`; metadata-only objects are not
+String IDs resolve only to the well-known driver names a runner documents. A
+runner MAY satisfy such a name from a package it does not bundle, provided
+resolution is deterministic and an uninstalled package is reported as a
+configuration error rather than a launch failure; the reference runner resolves
+`'playwright'` to `@e2edev/playwright`, loaded on demand. Every other driver is
+an imported handle branded by `defineDriver`; metadata-only objects are not
 accepted in target config. A multi-platform driver still requires an explicit
 target platform. Driver `id` is stable across releases and contains
 lowercase ASCII letters, numbers, `-`, `.`, or `/`.
@@ -58,6 +64,18 @@ process supplies an in-process proxy that performs serialization, callback
 delivery, cancellation, and teardown while preserving this contract.
 
 ## Lifecycle
+
+A driver that needs slow one-time provisioning — downloading browsers, booting
+a simulator, acquiring a device lease — implements the optional `prepare`
+method. The runner calls `prepare` at most once per driver id per run, before
+any session launches, passing every target in the run that resolves to that
+driver. Provisioning belongs here precisely so it is never charged against
+`config.launchTimeout`. `prepare` MUST be idempotent, MUST tolerate another
+process provisioning the same resource concurrently, and MUST report progress
+on stderr if at all, never stdout. A rejection aborts the run before any test
+executes; a `DriverError` is translated by the usual mapping below, and any
+other rejection becomes a non-retryable infrastructure `DRIVER_FAILURE`.
+Drivers with nothing to provision omit `prepare`.
 
 `launch` creates one logical test attempt or serial-group attempt. It receives
 stable run, attempt, target, resolved app/query policy, artifact, deadline, and

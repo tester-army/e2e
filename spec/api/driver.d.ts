@@ -495,6 +495,16 @@ export interface Driver extends DriverHandle {
    */
   launch(context: DriverContext): Promise<DriverSession>;
   /**
+   * Provisions backend prerequisites once per run, before any session
+   * launches. The runner calls it at most once per driver id, passing every
+   * target in the run that resolves to that driver. Slow first-run work
+   * (browser downloads, simulator boots, device leases) belongs here so it is
+   * never charged against a launch timeout. It MUST be idempotent, MUST be
+   * safe to run concurrently with the same driver in another process, and
+   * MUST throw DriverError on failure, which aborts the run.
+   */
+  prepare?(targets: readonly Target[]): Promise<void>;
+  /**
    * Releases backend resources retained between sessions (for example a
    * pooled browser process, booted simulator, or device lease). The runner
    * calls it at most once per driver instance, after every session is
@@ -507,6 +517,8 @@ export interface Driver extends DriverHandle {
 export interface DriverDefinition extends DriverManifest {
   /** Launches one logical test or serial-group attempt. */
   launch(context: DriverContext): Promise<DriverSession>;
+  /** Provisions backend prerequisites once per run. It MUST be idempotent. */
+  prepare?(targets: readonly Target[]): Promise<void>;
   /** Releases resources retained between sessions. It MUST be idempotent. */
   dispose?(): Promise<void>;
 }
