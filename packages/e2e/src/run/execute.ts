@@ -9,6 +9,7 @@ import {
   disabledCacheStore,
   projectIdentity,
   type CacheStore,
+  type CacheTargetIdentity,
 } from '../cache/index.ts';
 import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
@@ -84,6 +85,8 @@ export class TargetExecutor implements SerialHost {
 
   private readonly runErrors: RunError[] = [];
   private readonly sessionIdentity: SessionIdentity;
+  /** Session identity with the deployment-independent app identity of the cache. */
+  private readonly cacheTarget: CacheTargetIdentity;
   /**
    * One store per target. Entries are content-addressed by key, so concurrent
    * targets and workers write disjoint files and need no coordination beyond
@@ -117,6 +120,17 @@ export class TargetExecutor implements SerialHost {
         environment: options.config.app.environment,
       }),
     };
+    // The cache is deployment-independent on purpose: a preview URL, a staging
+    // host, and localhost on another port serve the same app, and keying on the
+    // origin cold-started every entry on every deploy. The declared environment
+    // still separates them, because that is a statement about the app, not
+    // about where it happens to be running. Session state keeps the strict
+    // identity above: cookies from one origin must never be restored onto
+    // another.
+    this.cacheTarget = {
+      ...this.sessionIdentity,
+      appIdentity: canonicalDigest({ environment: options.config.app.environment }),
+    };
     this.cacheStore = createCacheStore({
       mode: options.config.agent.cache,
       projectRoot: options.config.projectRoot,
@@ -141,7 +155,7 @@ export class TargetExecutor implements SerialHost {
           : disabledCacheStore('retry attempts never consult the cache'),
       project: this.cacheProject,
       testId,
-      target: this.sessionIdentity,
+      target: this.cacheTarget,
       policyVersion: POLICY_VERSION,
       nextCallIndex: createCallIndexer(),
     };

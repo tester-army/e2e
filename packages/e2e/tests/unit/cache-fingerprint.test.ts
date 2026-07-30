@@ -5,6 +5,7 @@ import { screenFingerprint } from '../../src/cache/index.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 const viewport = { width: 1280, height: 720, scale: 1 };
+const base = { origin: 'https://app.test', basePath: '/' };
 const noSecrets = createRedactor(new Map());
 
 function fingerprint(
@@ -12,11 +13,13 @@ function fingerprint(
     url?: string | undefined;
     secrets?: Map<string, string>;
     viewport?: typeof viewport;
+    base?: typeof base;
   } = {},
 ): string {
   return screenFingerprint({
     viewport: options.viewport ?? viewport,
     url: 'url' in options ? options.url : 'https://app.test/checkout',
+    base: options.base ?? base,
     redact: options.secrets === undefined ? noSecrets : createRedactor(options.secrets),
   });
 }
@@ -62,6 +65,89 @@ describe('route identity', () => {
   });
 });
 
+describe('deployment independence', () => {
+  // The failure this prevents: every Vercel preview, staging host, and new
+  // localhost port is a different origin, so keying on it cold-started the whole
+  // cache on every deploy.
+  it('keys one route the same across the hosts that serve the app', () => {
+    const preview = screenFingerprint({
+      viewport,
+      url: 'https://app-git-feat-cache.vercel.app/checkout',
+      base: { origin: 'https://app-git-feat-cache.vercel.app', basePath: '/' },
+      redact: noSecrets,
+    });
+    const staging = screenFingerprint({
+      viewport,
+      url: 'https://staging.app.test/checkout',
+      base: { origin: 'https://staging.app.test', basePath: '/' },
+      redact: noSecrets,
+    });
+    const local = screenFingerprint({
+      viewport,
+      url: 'http://localhost:4173/checkout',
+      base: { origin: 'http://localhost:4173', basePath: '/' },
+      redact: noSecrets,
+    });
+    expect(new Set([preview, staging, local, fingerprint()]).size).toBe(1);
+  });
+
+  it('expresses a route against the base path, however the app is mounted', () => {
+    const mounted = screenFingerprint({
+      viewport,
+      url: 'https://app.test/shop/checkout',
+      base: { origin: 'https://app.test', basePath: '/shop' },
+      redact: noSecrets,
+    });
+    expect(mounted).toBe(fingerprint());
+  });
+
+  it('keeps the origin of a page outside the app', () => {
+    // An identity provider's /checkout is not the app's /checkout, and its
+    // markup has nothing to do with it.
+    const offOrigin = fingerprint({ url: 'https://accounts.other.test/checkout' });
+    expect(offOrigin).not.toBe(fingerprint());
+    expect(offOrigin).not.toBe(fingerprint({ url: 'https://login.other.test/checkout' }));
+  });
+});
+
+describe('record identifiers in a path', () => {
+  // The failure this prevents: a checkout that mints a per-session order hash
+  // gave every run its own key, so nothing ever hit and the store grew one dead
+  // entry per run.
+  it('collapses a per-session identifier so the same place keys the same', () => {
+    const first = fingerprint({
+      url: 'https://app.test/rezerwacja/86e64cc4c76f2bb91199496cb9a58ac9/form',
+    });
+    const second = fingerprint({
+      url: 'https://app.test/rezerwacja/573a9aa54b73557b4c9f409c386b9521/form',
+    });
+    expect(second).toBe(first);
+  });
+
+  it('collapses UUIDs, numeric ids, and opaque tokens alike', () => {
+    const shapes = [
+      'https://app.test/orders/9f8e7d6c-5b4a-4321-8765-0a1b2c3d4e5f/pay',
+      'https://app.test/orders/1284/pay',
+      'https://app.test/orders/V1StGXR8Z5jdHi6BmyT/pay',
+    ];
+    const digests = new Set(shapes.map((url) => fingerprint({ url })));
+    expect(digests.size).toBe(1);
+  });
+
+  it('keeps every segment that names a place', () => {
+    const baseline = fingerprint({ url: 'https://app.test/orders/1284/pay' });
+    for (const url of [
+      'https://app.test/orders/1284/confirm',
+      'https://app.test/baskets/1284/pay',
+      'https://app.test/orders/1284/pay/extra',
+    ]) {
+      expect(fingerprint({ url })).not.toBe(baseline);
+    }
+    // Short words are places, not ids, even when they look terse.
+    expect(fingerprint({ url: 'https://app.test/orders/new/pay' })).not.toBe(baseline);
+  });
+});
+
 describe('rendered content does not contribute', () => {
   // This is the property the whole cache depends on. Hashing the semantic tree
   // meant a price or a review count invalidated every entry on the page, so a
@@ -77,9 +163,9 @@ describe('rendered content does not contribute', () => {
   it('depends on nothing but the route and the viewport', () => {
     // Guards against a future change quietly reintroducing tree input: the
     // digest must be reproducible from these two values alone.
-    expect(
-      screenFingerprint({ url: 'https://app.test/x', viewport, redact: noSecrets }),
-    ).toBe(screenFingerprint({ url: 'https://app.test/x', viewport, redact: noSecrets }));
+    expect(screenFingerprint({ url: 'https://app.test/x', viewport, base, redact: noSecrets })).toBe(
+      screenFingerprint({ url: 'https://app.test/x', viewport, base, redact: noSecrets }),
+    );
   });
 });
 

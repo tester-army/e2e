@@ -146,20 +146,36 @@ and a suite against a real application can never warm up. A non-cacheable call,
 a call that opted out with `cache: false`, and a call under a disabled cache all
 take no number.
 
-Project identity is SHA-256 of the resolved `projectId`. App identity is
-SHA-256/JCS of effective base origin, normalized base path, and declared
-environment. Driver identity uses manifest ID/SPI plus a compatibility version:
+Project identity is SHA-256 of the resolved `projectId`. App identity for a
+cache key is SHA-256/JCS of the declared environment alone. It deliberately
+excludes the base origin and base path: a preview deployment, a staging host, and
+`localhost` on another port serve the same app, and keying on where it runs
+cold-starts every entry on every deploy. Session state is bound by the stricter
+identity that does include origin and base path (11-lifecycle.md), because
+restoring cookies across origins is not the same question.
+
+Driver identity uses manifest ID/SPI plus a compatibility version:
 `major.minor`, with patch, prerelease, and build metadata dropped, because a
 driver patch release cannot change what a semantic query matches. A version that
 is not `major.minor[.patch]` is used unchanged. The key's explicit `cacheSchema`
 value is `cache-1`.
 
-The starting route fingerprint is SHA-256/JCS of the canonical URL and the exact
-`width x height @ scale` viewport. The canonical URL keeps origin, normalized
-path, and sorted query, and drops userinfo and fragment. Any exact registered
-secret in a query is replaced by its stable secret name before hashing; URLs
-containing other values classified sensitive by app policy are not cacheable. A
-driver that exposes no URL contributes no route. A mismatch is a cache miss.
+The starting route fingerprint is SHA-256/JCS of the canonical route and the
+exact `width x height @ scale` viewport. A route inside the app keeps its path
+relative to the configured base and its sorted query; a page on any other origin
+keeps that origin, because an identity provider's `/login` is not the app's
+`/login`. Userinfo and fragment are dropped. Path normalization replaces every
+segment that identifies a record rather than a place — a UUID, a
+long hex digest, a numeric id, an opaque token — with a fixed placeholder. A
+checkout at `/order/<per-session hash>/form` is the same place on every run, and
+hashing the raw path would give every visit its own key: nothing would ever hit
+and the store would grow one dead entry per run. Two places differing only by
+such a segment collapse, which is safe because a key is never a route alone.
+
+Any exact registered secret in a query is replaced by its stable secret name
+before hashing; URLs containing other values classified sensitive by app policy
+are not cacheable. A driver that exposes no URL contributes no route. A mismatch
+is a cache miss.
 
 The fingerprint MUST NOT hash the semantic tree. Rendered content on a real
 application changes continuously — prices, counts, ordering, advertising — so a

@@ -67,6 +67,7 @@ export async function openLocateCache(
   const fingerprint = screenFingerprint({
     viewport: observation.viewport,
     url: await currentUrl(invocation),
+    base: invocation.appBase,
     redact: observation.redact,
   });
 
