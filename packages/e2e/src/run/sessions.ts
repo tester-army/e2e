@@ -32,7 +32,7 @@ interface SessionEnvelope {
   state: {
     format: string;
     version: number;
-    algorithm: 'aes-256-gcm';
+    algorithm: 'A256GCM';
     iv: string;
     tag: string;
     ciphertext: string;
@@ -146,7 +146,7 @@ export class SessionStore {
       state: {
         format: state.format,
         version: state.version,
-        algorithm: 'aes-256-gcm' as const,
+        algorithm: 'A256GCM' as const,
         iv: ivBase64,
       },
     };
