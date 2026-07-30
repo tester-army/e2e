@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveQueries, matchesSignature } from '../../src/agent/locate.ts';
+import { deriveQueries, matchesSignature } from '../../src/agent/queries.ts';
 import { OBSERVED_NAME_LIMIT, type SemanticNode } from '../../src/driver/index.ts';
 import { describeExpression } from '../../src/locator/expression.ts';
 

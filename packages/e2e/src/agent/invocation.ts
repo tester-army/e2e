@@ -19,6 +19,8 @@ import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
 import {
   CACHE_REPLAY_EVENT,
+  foldCacheInfo,
+  joinCacheReasons,
   type StepCacheInfo,
   type StepEvent,
   type StepMetrics,
@@ -187,7 +189,12 @@ export class Invocation {
    * the model choice follow from a single value instead of each deriving the
    * tier for itself.
    */
-  private pixelTier: boolean;
+  /**
+   * Whether this invocation asks for pixel evidence. Readable so a caller can
+   * tell that comparing successive observation trees is meaningless here: an
+   * animation the tree cannot see is still a change a vision call must judge.
+   */
+  pixelTier: boolean;
   private visionEscalated = false;
 
   constructor(
@@ -238,9 +245,10 @@ export class Invocation {
     return this.runtime.cache.store.unusable;
   }
 
-  /** Records the cache outcome reported for the enclosing step. */
+  /** Records one locate's cache outcome against the enclosing step. */
   setCache(info: StepCacheInfo): void {
-    this.cacheInfo = info;
+    this.cacheInfo =
+      this.cacheInfo === undefined ? info : foldCacheInfo(this.cacheInfo, info);
   }
 
   /**
@@ -252,12 +260,11 @@ export class Invocation {
    * this key; recorded getByRole(...)" is the whole story.
    */
   mergeCache(info: Partial<StepCacheInfo> & { reason: string }): void {
-    const previous = this.cacheInfo ?? { status: 'bypassed' };
+    const previous: StepCacheInfo = this.cacheInfo ?? { status: 'bypassed' };
     this.cacheInfo = {
       ...previous,
       ...info,
-      reason:
-        previous.reason === undefined ? info.reason : `${previous.reason}; ${info.reason}`,
+      ...joinCacheReasons(previous.reason, info.reason),
     };
   }
 
@@ -299,11 +306,6 @@ export class Invocation {
    */
   get treeWithheld(): boolean {
     return this.options.vision === 'only';
-  }
-
-  /** Whether this invocation asks for pixel evidence at all. */
-  get pixelsRequired(): boolean {
-    return this.pixelTier;
   }
 
   /**

@@ -49,9 +49,13 @@ const MIN_STEP_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
 
 /**
- * How often `waitFor` looks at the page between judgments. One observation is
- * driver-only work — a fraction of a model call, and free — so it is cheap
- * enough to notice a change quickly and far cheaper than asking again.
+ * How often `waitFor` looks at the page between judgments.
+ *
+ * An observation is driver-only work, so it is far cheaper than a model call —
+ * but it is not free: it walks the document and swaps the session's reference
+ * generation, which invalidates any node reference taken from the previous one.
+ * That is safe here because a judgment reads only the observation text, and it
+ * is the reason this interval is not shorter.
  */
 const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
@@ -125,19 +129,20 @@ export function createAgent(runtime: AgentContext): Agent {
    * is what shows the model the pointing grammar in the first place, so a
    * method with no coordinate equivalent is never offered a coordinate.
    */
-  const instant = (
-    api: string,
-    target: string,
-    options: InstantActionOptions | undefined,
+  const instant = (spec: {
+    readonly api: string;
+    readonly target: string;
+    readonly options: InstantActionOptions | undefined;
     /**
-     * Non-secret call parameters that belong in the cache key. Required so that
-     * adding a located action forces a decision about what its cache key covers;
-     * pass `{}` only when the call really has no parameters.
+     * Non-secret call parameters that belong in the cache key. Required, so that
+     * adding a located action forces a decision about what its key covers; `{}`
+     * only when the call really has no parameters.
      */
-    input: Readonly<Record<string, unknown>>,
-    action: (invocation: Invocation, located: LocatedNode) => Promise<void>,
-    pointAction?: (invocation: Invocation, located: LocatedPoint) => Promise<void>,
-  ): Promise<void> => {
+    readonly input: Readonly<Record<string, unknown>>;
+    readonly action: (invocation: Invocation, located: LocatedNode) => Promise<void>;
+    readonly pointAction?: (invocation: Invocation, located: LocatedPoint) => Promise<void>;
+  }): Promise<void> => {
+    const { api, target, options, input, action, pointAction } = spec;
     const vision = resolveVision(options?.vision);
     const point: PointPolicy<null> =
       pointAction === undefined
@@ -186,17 +191,17 @@ export function createAgent(runtime: AgentContext): Agent {
   const tapVerb =
     (api: string) =>
     (target: string, options?: InstantActionOptions): Promise<void> =>
-      instant(
+      instant({
         api,
         target,
         options,
-        {},
-        (invocation, located) =>
+        input: {},
+        action: (invocation, located) =>
           invocation.commit('tap', () =>
             invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
           ),
-        (invocation, located) => tapAtPoint(invocation, api, located),
-      );
+        pointAction: (invocation, located) => tapAtPoint(invocation, api, located),
+      });
 
   /**
    * Taps a validated screenshot point. The dispatch is at the point itself:
@@ -238,102 +243,152 @@ export function createAgent(runtime: AgentContext): Agent {
       if (!sensitive && typeof value !== 'string') {
         throw new TestError('INVALID_ARGUMENT', 'agent.type value must be a string or a Secret');
       }
-      return instant(
-        'agent.type',
+      return instant({
+        api: 'agent.type',
         target,
         options,
         // A secret contributes only its stable name and purpose: its value must
         // never reach a cache key, not even through a digest.
-        sensitive
-          ? { sensitiveName: value.name, purpose: value.purpose }
-          : { value, sensitive: false },
-        async (invocation, located) => {
-        const plaintext = sensitive
-          ? await authorizeSecretFill(invocation, runtime, value, located.node)
-          : value;
-        await invocation.commit('type', () =>
-          invocation.session.actions.type(
-            { ref: located.ref },
-            plaintext,
-            sensitive,
-            invocation.operation(),
-          ),
-        );
+        input: sensitive ? { sensitiveName: value.name, purpose: value.purpose } : { value },
+        action: async (invocation, located) => {
+          const plaintext = sensitive
+            ? await authorizeSecretFill(invocation, runtime, value, located.node)
+            : value;
+          await invocation.commit('type', () =>
+            invocation.session.actions.type(
+              { ref: located.ref },
+              plaintext,
+              sensitive,
+              invocation.operation(),
+            ),
+          );
+        },
       });
     },
 
     longPress(target, options) {
       const durationMs = validateLongPress(options?.durationMs);
-      return instant('agent.longPress', target, options, { durationMs }, (invocation, located) =>
-        invocation.commit('longPress', () =>
-          invocation.session.actions.longPress(
-            { ref: located.ref },
-            durationMs,
-            invocation.operation(),
+      return instant({
+        api: 'agent.longPress',
+        target,
+        options,
+        input: { durationMs },
+        action: (invocation, located) =>
+          invocation.commit('longPress', () =>
+            invocation.session.actions.longPress(
+              { ref: located.ref },
+              durationMs,
+              invocation.operation(),
+            ),
           ),
-        ),
-      );
+      });
     },
 
     press(target, key, options) {
       if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
         throw new TestError('INVALID_ARGUMENT', 'agent.press key must be a short non-empty string');
       }
-      return instant('agent.press', target, options, { key }, (invocation, located) =>
-        invocation.commit('press', () =>
-          invocation.session.screen.perform(located.ref, { kind: 'press', key }, invocation.operation()),
-        ),
-      );
+      return instant({
+        api: 'agent.press',
+        target,
+        options,
+        input: { key },
+        action: (invocation, located) =>
+          invocation.commit('press', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'press', key },
+              invocation.operation(),
+            ),
+          ),
+      });
     },
 
     select(target, value, options) {
       validateSelectOption(value);
-      return instant('agent.select', target, options, { value }, (invocation, located) =>
-        invocation.commit('selectOption', () =>
-          invocation.session.screen.perform(
-            located.ref,
-            { kind: 'selectOption', value },
-            invocation.operation(),
+      return instant({
+        api: 'agent.select',
+        target,
+        options,
+        input: { value },
+        action: (invocation, located) =>
+          invocation.commit('selectOption', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'selectOption', value },
+              invocation.operation(),
+            ),
           ),
-        ),
-      );
+      });
     },
 
     hover(target, options) {
-      return instant('agent.hover', target, options, {}, (invocation, located) =>
-        invocation.commit('hover', () =>
-          invocation.session.screen.perform(located.ref, { kind: 'hover' }, invocation.operation()),
-        ),
-      );
+      return instant({
+        api: 'agent.hover',
+        target,
+        options,
+        input: {},
+        action: (invocation, located) =>
+          invocation.commit('hover', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'hover' },
+              invocation.operation(),
+            ),
+          ),
+      });
     },
 
     check(target, options) {
-      return instant('agent.check', target, options, {}, (invocation, located) =>
-        invocation.commit('check', () =>
-          invocation.session.screen.perform(located.ref, { kind: 'check' }, invocation.operation()),
-        ),
-      );
+      return instant({
+        api: 'agent.check',
+        target,
+        options,
+        input: {},
+        action: (invocation, located) =>
+          invocation.commit('check', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'check' },
+              invocation.operation(),
+            ),
+          ),
+      });
     },
 
     uncheck(target, options) {
-      return instant('agent.uncheck', target, options, {}, (invocation, located) =>
-        invocation.commit('uncheck', () =>
-          invocation.session.screen.perform(located.ref, { kind: 'uncheck' }, invocation.operation()),
-        ),
-      );
+      return instant({
+        api: 'agent.uncheck',
+        target,
+        options,
+        input: {},
+        action: (invocation, located) =>
+          invocation.commit('uncheck', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'uncheck' },
+              invocation.operation(),
+            ),
+          ),
+      });
     },
 
     upload(target, paths, options) {
       const resolved = validateUploadPaths(paths, runtime.config.projectRoot);
-      return instant('agent.upload', target, options, { paths: resolved }, (invocation, located) =>
-        invocation.commit('setInputFiles', () =>
-          invocation.session.screen.perform(
-            located.ref,
-            { kind: 'setInputFiles', paths: resolved },
-            invocation.operation(),
+      return instant({
+        api: 'agent.upload',
+        target,
+        options,
+        input: { paths: resolved },
+        action: (invocation, located) =>
+          invocation.commit('setInputFiles', () =>
+            invocation.session.screen.perform(
+              located.ref,
+              { kind: 'setInputFiles', paths: resolved },
+              invocation.operation(),
+            ),
           ),
-        ),
-      );
+      });
     },
 
     dragTo(source, destination, options) {
@@ -458,54 +513,18 @@ export function createAgent(runtime: AgentContext): Agent {
         },
         condition,
         async (invocation) => {
-          // Judgments are spent on changes, not on the clock. A judgment reads
-          // the observation and nothing else, so while the page looks the same
-          // the answer is the same, and asking again is a model call that can
-          // only repeat itself. So a false judgment is followed by cheap
-          // driver-only observations until the page actually changes, and then
-          // one judgment — which is also what makes a condition that came true
-          // two seconds ago cost two seconds instead of a full interval.
-          //
-          // `intervalMs` stays the rate limit it always was: at most one
-          // judgment per interval, so a page that changes continuously (a
-          // spinner, a countdown) cannot spend the budget in a second.
-          //
-          // Pixels are the exception: an animation the tree cannot see is a
-          // real change, so a vision call keeps judging on the interval alone.
-          const watchTree = !invocation.pixelsRequired;
-          const tickMs = Math.min(intervalMs, CHANGE_POLL_MS);
-          let lastExplanation = 'no judgment was produced';
           let observation = await invocation.observe();
           for (let round = 1; ; round += 1) {
             invocation.recordPoll('waitFor', round);
             const judgment = await askJudgment(invocation, condition, observation);
-            lastExplanation = judgment.explanation;
             invocation.note({ explanation: judgment.explanation });
             if (judgment.result) return;
-            const judgedAt = Date.now();
-            const judgedShape = observationShape(observation);
-            // The exhaustion checks live at the top of this wait — the only
-            // exit — so a timeout still reports the last judgment instead of a
-            // bare deadline error.
-            for (;;) {
-              if (invocation.deadline.expired()) {
-                throw new AgentError(
-                  'STEP_TIMEOUT',
-                  `waitFor timed out; last judgment: ${lastExplanation}`,
-                );
-              }
-              if (!invocation.canAsk()) {
-                throw new AgentError(
-                  'STEP_BUDGET_EXHAUSTED',
-                  `waitFor exhausted its model-call budget; last judgment: ${lastExplanation}`,
-                );
-              }
-              const remainder = Math.min(tickMs, invocation.deadline.remaining());
-              if (remainder > 0) await sleep(remainder, runtime.signal);
-              observation = await invocation.observe();
-              const due = Date.now() - judgedAt >= intervalMs;
-              if (due && (!watchTree || observationShape(observation) !== judgedShape)) break;
-            }
+            observation = await waitForNextJudgment(invocation, {
+              since: observation,
+              intervalMs,
+              lastExplanation: judgment.explanation,
+              signal: runtime.signal,
+            });
           }
         },
       );
@@ -614,6 +633,61 @@ export function createAgent(runtime: AgentContext): Agent {
   }
 
   return agent;
+}
+
+/**
+ * Waits until the next judgment is worth spending, and returns the observation
+ * to spend it on.
+ *
+ * A judgment reads the observation and nothing else, so while the page looks the
+ * same the answer is the same and re-asking is a model call that can only repeat
+ * itself. So a false judgment is followed by driver-only observations until the
+ * page actually changes, which is also what makes a condition that came true two
+ * seconds ago cost two seconds rather than a full interval.
+ *
+ * `intervalMs` stays the rate limit it always was: at most one judgment per
+ * interval, so a page that changes continuously — a spinner, a countdown —
+ * cannot spend the budget in a second.
+ *
+ * A vision call waits on the interval alone. An animation the tree cannot see is
+ * still a real change, so there is nothing to compare and nothing to gain.
+ *
+ * Throws rather than returning on exhaustion, and checks before every
+ * observation, so a timeout reports the caller's last judgment instead of a bare
+ * deadline error.
+ */
+async function waitForNextJudgment(
+  invocation: Invocation,
+  options: {
+    readonly since: AgentObservation;
+    readonly intervalMs: number;
+    readonly lastExplanation: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<AgentObservation> {
+  const watchTree = !invocation.pixelTier;
+  const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
+  const judgedAt = Date.now();
+  const judgedShape = observationShape(options.since);
+  for (;;) {
+    if (invocation.deadline.expired()) {
+      throw new AgentError(
+        'STEP_TIMEOUT',
+        `waitFor timed out; last judgment: ${options.lastExplanation}`,
+      );
+    }
+    if (!invocation.canAsk()) {
+      throw new AgentError(
+        'STEP_BUDGET_EXHAUSTED',
+        `waitFor exhausted its model-call budget; last judgment: ${options.lastExplanation}`,
+      );
+    }
+    const remainder = Math.min(tickMs, invocation.deadline.remaining());
+    if (remainder > 0) await sleep(remainder, options.signal);
+    const observation = await invocation.observe();
+    if (Date.now() - judgedAt < options.intervalMs) continue;
+    if (!watchTree || observationShape(observation) !== judgedShape) return observation;
+  }
 }
 
 function resolveTimeout(requested: number | undefined, fallback: number): number {

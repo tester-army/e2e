@@ -186,7 +186,6 @@
       "additionalProperties": false,
       "required": ["locator", "expected"],
       "properties": {
-        "type": { "const": "locate" },
         "locator": { "$ref": "#/$defs/locator" },
         "expected": { "$ref": "#/$defs/semanticIdentity" }
       }

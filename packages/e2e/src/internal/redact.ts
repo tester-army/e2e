@@ -4,11 +4,8 @@
  * Builds a redactor replacing every exact registered secret value with its
  * stable secret name.
  *
- * Longer values are substituted first, so a secret that contains another
- * secret is not left half-rewritten. One redactor is built per observation and
- * shared by everything derived from it — model text, traces, and cache digests
- * — because two independently built redactors could disagree about what counts
- * as a secret, and only one of them would be wrong.
+ * Longer values are substituted first, so a secret that contains another secret
+ * is not left half-rewritten.
  */
 export function createRedactor(secrets: ReadonlyMap<string, string>): (text: string) => string {
   const entries = [...secrets]

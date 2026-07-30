@@ -23,12 +23,6 @@ export interface AgentObservation {
   readonly text: string;
   readonly bytes: number;
   readonly nodes: ReadonlyMap<string, SemanticNode>;
-  /**
-   * Redaction applied to everything derived from this observation. It is built
-   * once here and shared, so text sent to the model and text folded into a
-   * cache digest can never disagree about what counts as a secret.
-   */
-  readonly redact: (text: string) => string;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
   /** Present only when the driver captured pixels and masking checks out. */
@@ -94,7 +88,6 @@ export function prepareObservation(
     text,
     bytes: encoder.encode(text).byteLength,
     nodes,
-    redact,
     viewport: observation.viewport,
     truncated,
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),

@@ -14,34 +14,25 @@
  */
 
 import { cacheMethodForApi } from '../cache/index.ts';
-import {
-  OBSERVED_NAME_LIMIT,
-  OBSERVED_TEXT_LIMIT,
-  type LocatorExpression,
-  type NodeRef,
-  type SemanticNode,
-  type ViewportPoint,
+import type {
+  LocatorExpression,
+  NodeRef,
+  SemanticNode,
+  ViewportPoint,
 } from '../driver/index.ts';
-import {
-  describeExpression,
-  filterExpression,
-  frameExpression,
-  roleQuery,
-  testIdQuery,
-  textQuery,
-} from '../locator/expression.ts';
-import { POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { agentTrace } from '../internal/trace.ts';
-import type { Role } from '../types.ts';
 import { AgentError } from './error.ts';
-import { Invocation, toAgentError } from './invocation.ts';
+import { Invocation } from './invocation.ts';
 import { openLocateCache, type OpenLocateCache } from './locate-cache.ts';
 import type { AgentObservation, AgentPixels } from './observation.ts';
+import { describeSignature, normalizeSignatureText } from './queries.ts';
+import { resolveSelected } from './resolve.ts';
 import {
   isNodeTarget,
   LOCATE_SCHEMAS,
   validateLocateResponse,
   type LocateGrammar,
+  type LocateResponse,
   type ProtocolValidation,
 } from './protocol.ts';
 import { LOCATE_REQUESTS } from './prompts.ts';
@@ -65,10 +56,10 @@ export interface LocatedNode {
   /** Whether a model chose this node or a cache entry replayed it. */
   readonly origin: 'model' | 'cache';
   /**
-   * True when the instruction picked this node out by position rather than by
-   * content, as reported by the model. Such a target is never recorded.
+   * How the instruction picked this node out, as reported by the model. Only a
+   * `content` target is recordable; see `LocateResponse.targeting`.
    */
-  readonly positional: boolean;
+  readonly targeting: LocateResponse['targeting'];
 }
 
 /**
@@ -103,8 +94,8 @@ export type Selection =
       readonly selected: SemanticNode;
       /** Why the node was selected. Untrusted prose. */
       readonly explanation: string;
-      /** The model's report that the instruction identified this node by position. */
-      readonly positional: boolean;
+      /** The model's report of how the instruction identified this node. */
+      readonly targeting: LocateResponse['targeting'];
     }
   | {
       readonly kind: 'point';
@@ -171,7 +162,7 @@ export async function observeAndSelect(
     agentTrace(
       () =>
         `locate ${JSON.stringify(target)}: model pointed at (${point.x}, ${point.y}) (${
-          hit === null ? 'no semantic node there' : describe(hit)
+          hit === null ? 'no semantic node there' : describeSignature(hit)
         }) — ${explanation}`,
     );
     return { kind: 'point', observation, point, hit, explanation };
@@ -180,14 +171,14 @@ export async function observeAndSelect(
   agentTrace(
     () =>
       `locate ${JSON.stringify(target)}: model selected #${answer.id} (${
-        selected === undefined ? 'not in observation' : describe(selected)
+        selected === undefined ? 'not in observation' : describeSignature(selected)
       }) — ${explanation}`,
   );
   if (selected === undefined) {
     invocation.recordPolicy('locate.node', 'denied', 'POLICY_DENIED');
     return { kind: 'absent', observation, explanation };
   }
-  return { kind: 'node', observation, selected, explanation, positional: answer.positional };
+  return { kind: 'node', observation, selected, explanation, targeting: answer.targeting };
 }
 
 /**
@@ -204,7 +195,7 @@ type LocateAnswer =
       readonly kind: 'node';
       readonly id: string;
       readonly explanation: string;
-      readonly positional: boolean;
+      readonly targeting: LocateResponse['targeting'];
     }
   | { readonly kind: 'point'; readonly point: ViewportPoint; readonly explanation: string }
   | { readonly kind: 'none'; readonly explanation: string };
@@ -226,7 +217,7 @@ function validateAgainstObservation(
 ): ProtocolValidation<LocateAnswer> {
   const validation = validateLocateResponse(value, grammar);
   if (!validation.ok) return validation;
-  const { target, explanation, positional } = validation.value;
+  const { target, explanation, targeting } = validation.value;
   if (target === null) return { ok: true, value: { kind: 'none', explanation } };
   if (target.revision !== observation.revision) {
     return {
@@ -241,7 +232,7 @@ function validateAgainstObservation(
         issue: `target.id "${target.id}" is not in the current observation; use a node id exactly as printed after "#", e.g. "n42"`,
       };
     }
-    return { ok: true, value: { kind: 'node', id: target.id, explanation, positional } };
+    return { ok: true, value: { kind: 'node', id: target.id, explanation, targeting } };
   }
   if (pixels === undefined) {
     return { ok: false, issue: 'no screenshot was attached; select a node from the observation' };
@@ -567,321 +558,7 @@ function acceptPoint(
 
 /** Node identity recorded for a pointed action, per spec 13-reporting.md. */
 function describeHit(node: SemanticNode): string {
-  const name = normalize(node.name ?? node.text);
+  const name = normalizeSignatureText(node.name ?? node.text);
   const role = node.role ?? 'node';
   return name === '' ? `a ${role}` : `the ${role} ${JSON.stringify(name)}`;
-}
-
-/**
- * Resolves a selected observation node through the first derived query that
- * addresses exactly one node with the same semantics, falling back to the
- * observation's own reference for a node no query can separate from its twins.
- *
- * `poll: false` runs a single sweep instead of retrying to the deadline. The
- * node was observed a moment ago, so a sweep that resolves nothing right now is
- * evidence about the derived queries, not about timing — which is enough for a
- * fallback caller to decide to escalate, and only ever worth spending the clock
- * on once there is no escalation left.
- */
-export async function resolveSelected(
-  invocation: Invocation,
-  selection: Extract<Selection, { kind: 'node' }>,
-  options: { testIdAttribute: string; poll?: boolean },
-): Promise<LocatedNode> {
-  const candidates = deriveQueries(selection.selected, options.testIdAttribute).map((query) =>
-    scopeToFrames(query, selection.selected.framePath),
-  );
-  if (candidates.length === 0) {
-    throw new AgentError(
-      'LOCATOR_NOT_FOUND',
-      'the selected node exposes no role, name, test ID, placeholder, or text to address it portably',
-    );
-  }
-  const engine = invocation.engine;
-
-  for (;;) {
-    // Outcomes are collected per sweep: a query that stopped matching several
-    // nodes must not keep reporting LOCATOR_AMBIGUOUS from an earlier round.
-    const outcomes: string[] = [];
-    let ambiguous = false;
-    for (const expression of candidates) {
-      const candidate = await matchCandidate(invocation, selection.selected, expression);
-      if (candidate.kind === 'rejected') {
-        outcomes.push(candidate.outcome);
-        ambiguous = ambiguous || candidate.ambiguous;
-        continue;
-      }
-      invocation.recordPolicy('locate.identity', 'allowed');
-      agentTrace(() => `locate: resolved via ${describeExpression(expression)}`);
-      return {
-        kind: 'node',
-        ref: candidate.ref,
-        expression,
-        node: candidate.node,
-        observation: selection.observation,
-        explanation: selection.explanation,
-        origin: 'model',
-        positional: selection.positional,
-      };
-    }
-
-    agentTrace(() => `locate: sweep failed\n  ${outcomes.join('\n  ')}`);
-    // A caller that can still escalate to pixels gets the miss instead: an
-    // unaddressable pick is that feature's signal, and pixels can tell twins
-    // apart that a reference can only take on trust from a tree-only answer.
-    if (options.poll !== false) {
-      // Otherwise the observation's own reference still points at exactly the
-      // node the model chose, and it is available now: a control the page
-      // repeats will not become unique by waiting, so this does not queue
-      // behind the poll loop.
-      const byReference = await addressByReference(invocation, selection);
-      if (byReference !== undefined) return byReference;
-    }
-    if (options.poll === false || invocation.deadline.expired()) {
-      invocation.recordPolicy('locate.identity', 'denied');
-      // Each candidate's outcome names the exact query and why it was
-      // rejected, so a locate failure explains itself.
-      const detail = outcomes.map((outcome) => `\n  ${outcome}`).join('');
-      throw new AgentError(
-        ambiguous ? 'LOCATOR_AMBIGUOUS' : 'LOCATOR_NOT_FOUND',
-        `neither a derived query nor the observed reference resolved the selected node (${describe(
-          selection.selected,
-        )}):${detail}`,
-      );
-    }
-    await sleep(POLL_INTERVAL_MS, engine.signal);
-  }
-}
-
-/**
- * Acts on the node through the reference the observation handed out.
- *
- * Derived queries describe a node by what it says, so a page that repeats a
- * control verbatim — one reservation button per departure date, the same label
- * on each — has nodes no query can separate. The reference can: it is bound to
- * the element the model was shown, in the revision it was shown in, which is a
- * stricter identity than any locator. It is re-read first, so a node that has
- * gone away is still a miss rather than a blind dispatch, and the read doubles
- * as the identity check the query sweep would have done.
- *
- * What it cannot do is outlive the observation, so nothing is recorded: a
- * reference is not a locator, and `cache-1` stores locators.
- */
-async function addressByReference(
-  invocation: Invocation,
-  selection: Extract<Selection, { kind: 'node' }>,
-): Promise<LocatedNode | undefined> {
-  const selected = selection.selected;
-  const node = await readNode(invocation, selected.ref);
-  if (node === undefined || !matchesSignature(selected, node)) {
-    agentTrace(() => 'locate: the observed reference no longer reads as the selected node');
-    return undefined;
-  }
-  invocation.recordPolicy('locate.reference', 'allowed');
-  agentTrace(
-    () => `locate: no query separates ${describe(node)}; acting on its observed reference`,
-  );
-  return {
-    kind: 'node',
-    ref: selected.ref,
-    expression: undefined,
-    node,
-    observation: selection.observation,
-    explanation: selection.explanation,
-    origin: 'model',
-    positional: selection.positional,
-  };
-}
-
-/**
- * What one derived query proved about the selected node on the live screen:
- * either it addresses that node uniquely, or it does not and says why.
- */
-type CandidateOutcome =
-  | { readonly kind: 'resolved'; readonly ref: NodeRef; readonly node: SemanticNode }
-  | { readonly kind: 'rejected'; readonly outcome: string; readonly ambiguous: boolean };
-
-function rejected(outcome: string, ambiguous: boolean): CandidateOutcome {
-  return { kind: 'rejected', outcome, ambiguous };
-}
-
-/** Resolves one derived query and checks it against the observed node. */
-async function matchCandidate(
-  invocation: Invocation,
-  selected: SemanticNode,
-  expression: LocatorExpression,
-): Promise<CandidateOutcome> {
-  const description = describeExpression(expression);
-  let refs: readonly NodeRef[];
-  try {
-    // The invocation deadline bounds the sweep, so a caller-supplied timeout is
-    // honored even while a driver error stays retryable.
-    refs = await invocation.engine.resolveAll(expression, invocation.deadline);
-  } catch (cause) {
-    throw toAgentError(cause);
-  }
-  if (refs.length === 0) return rejected(`${description} -> no matches`, false);
-  if (refs.length > 1) return rejected(`${description} -> ${refs.length} matches`, true);
-  const ref = refs[0]!;
-  const node = await readNode(invocation, ref);
-  if (node === undefined) return rejected(`${description} -> matched node became unreadable`, false);
-  if (!matchesSignature(selected, node)) {
-    return rejected(`${description} -> resolved a different node (${describe(node)})`, false);
-  }
-  return { kind: 'resolved', ref, node };
-}
-
-/** Reads one resolved node, or undefined when it is no longer readable. */
-async function readNode(
-  invocation: Invocation,
-  ref: NodeRef,
-): Promise<SemanticNode | undefined> {
-  try {
-    return await invocation.engine.session.screen.read(ref, invocation.operation());
-  } catch {
-    return undefined;
-  }
-}
-
-
-/**
- * Scopes one derived query to the observed node's enclosing frame chain, so a
- * node inside an iframe re-resolves through the same frames deterministically.
- */
-function scopeToFrames(
-  query: LocatorExpression,
-  framePath: readonly string[] | undefined,
-): LocatorExpression {
-  if (framePath === undefined || framePath.length === 0) return query;
-  return framePath.reduceRight((source, selector) => frameExpression(selector, source), query);
-}
-
-/**
- * Bounded prefix used to re-find nodes whose names aggregate a whole card of
- * text. Long names diverge between accessible-name computation and rendered
- * text (image alts, badges), so a role-scoped text-content prefix filter is
- * the reliable signal; the identity signature still checks the full name.
- */
-const NAME_PREFIX_LENGTH = 64;
-
-/**
- * True when an observed field was cut at the driver contract's observation
- * bound (`OBSERVED_NAME_LIMIT` / `OBSERVED_TEXT_LIMIT`). Checked on the raw
- * value — normalization only shrinks — so every value below the limit is
- * provably complete. Truncated values are matched as substrings and compared
- * as prefixes.
- */
-function truncatedAt(value: string | undefined, limit: number): boolean {
-  return (value ?? '').length >= limit;
-}
-
-/**
- * Matches an observed-text prefix regardless of whitespace differences. The
- * observed name comes from rendered text, which inserts spaces at element
- * boundaries that raw text content does not have (and vice versa), so every
- * space matches any amount of whitespace including none. Case-insensitive
- * because rendering may also apply text transforms.
- */
-function prefixPattern(value: string): RegExp {
-  const escaped = value
-    .slice(0, NAME_PREFIX_LENGTH)
-    .trim()
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/ /g, '\\s*');
-  return new RegExp(escaped, 'i');
-}
-
-/**
- * Derives candidate `screen` queries for one observed node, most portable
- * first. A candidate never contains a node reference, coordinate, or selector.
- */
-export function deriveQueries(
-  node: SemanticNode,
-  testIdAttribute: string,
-): readonly LocatorExpression[] {
-  const candidates: LocatorExpression[] = [];
-  const role = node.role;
-  const name = normalize(node.name);
-  const text = normalize(node.text);
-  const nameTruncated = truncatedAt(node.name, OBSERVED_NAME_LIMIT);
-  const textTruncated = truncatedAt(node.text, OBSERVED_TEXT_LIMIT);
-  const testId = node.attributes?.[testIdAttribute];
-  const placeholder = node.attributes?.['placeholder'];
-
-  if (role !== undefined && role !== '' && name !== '') {
-    candidates.push(roleQuery(role as Role, { name, exact: !nameTruncated }, undefined));
-    if (nameTruncated) {
-      candidates.push(
-        filterExpression(roleQuery(role as Role, undefined, undefined), {
-          hasText: prefixPattern(name),
-        }),
-      );
-    }
-  }
-  if (testId !== undefined && testId !== '') {
-    const byTestId = testIdQuery(testId, undefined);
-    const disambiguator = name !== '' ? name : text;
-    if (disambiguator !== '') {
-      candidates.push(filterExpression(byTestId, { hasText: disambiguator }));
-    }
-    candidates.push(byTestId);
-  }
-  if (placeholder !== undefined && placeholder !== '') {
-    candidates.push(textQuery('placeholder', placeholder, { exact: true }, undefined));
-  }
-  if (name !== '') {
-    candidates.push(textQuery('label', name, { exact: !nameTruncated }, undefined));
-    candidates.push(textQuery('text', name, { exact: !nameTruncated }, undefined));
-  }
-  if (text !== '' && text !== name) {
-    candidates.push(textQuery('text', text, { exact: !textTruncated }, undefined));
-  }
-  if (role !== undefined && role !== '' && text !== '') {
-    candidates.push(
-      filterExpression(roleQuery(role as Role, undefined, undefined), { hasText: text }),
-    );
-  }
-  return candidates;
-}
-
-/**
- * Compares the observed node with the node a derived query resolved to. Both
- * sides are produced by the same driver reader, so role, purpose, and name are
- * directly comparable.
- */
-export function matchesSignature(observed: SemanticNode, resolved: SemanticNode): boolean {
-  if (
-    observed.role !== undefined &&
-    observed.role !== 'document' &&
-    resolved.role !== observed.role
-  ) {
-    return false;
-  }
-  if (
-    observed.inputPurpose !== undefined &&
-    resolved.inputPurpose !== undefined &&
-    observed.inputPurpose !== resolved.inputPurpose
-  ) {
-    return false;
-  }
-  const observedName = normalize(observed.name);
-  if (observedName !== '') {
-    const resolvedName = normalize(resolved.name);
-    // A truncated observed name identifies its node by prefix; the re-read
-    // node comes from an unbounded single-node read and carries the full name.
-    return truncatedAt(observed.name, OBSERVED_NAME_LIMIT)
-      ? resolvedName.startsWith(observedName)
-      : resolvedName === observedName;
-  }
-  const observedText = normalize(observed.text);
-  if (observedText === '') return true;
-  return normalize(resolved.text).includes(observedText);
-}
-
-function describe(node: SemanticNode): string {
-  return `role=${node.role ?? 'none'} name=${JSON.stringify(normalize(node.name))}`;
-}
-
-function normalize(value: string | undefined): string {
-  return (value ?? '').replace(/\s+/g, ' ').trim();
 }

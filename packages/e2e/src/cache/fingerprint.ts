@@ -84,7 +84,18 @@ function relativeToBase(pathname: string, basePath: string): string {
   return rest.startsWith('/') ? rest : `/${rest}`;
 }
 
-/** Opaque record identifier: a UUID, a long hex digest, or an id-like token. */
+/**
+ * Opaque record identifier: a bare number, a long hex digest, or any long token
+ * containing a digit.
+ *
+ * The last alternative is deliberately broad and will also collapse a long
+ * human-readable slug that happens to carry a digit (`/produkty-2024-zima`).
+ * That is accepted rather than tuned: over-collapsing costs a shared route,
+ * which is safe because a route is never a key on its own and every replay
+ * re-resolves against the live page, while under-collapsing costs a key per
+ * session and a cache that never warms up. Precision here is not worth a
+ * per-site regex.
+ */
 const RECORD_ID = /^(?:\d+|[0-9a-f]{12,}|(?=[^/]*\d)[A-Za-z0-9._~-]{16,})$/i;
 
 /**
