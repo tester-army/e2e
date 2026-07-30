@@ -22,7 +22,7 @@ import type {
   StandardSchemaV1,
   VisionMode,
 } from '../types.ts';
-import { AgentError } from './error.ts';
+import { AgentError, isAgentError } from './error.ts';
 import { observationShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
@@ -669,13 +669,14 @@ async function waitForNextJudgment(
   const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
   const judgedAt = Date.now();
   const judgedShape = observationShape(options.since);
+  const timedOut = (cause?: unknown): AgentError =>
+    new AgentError(
+      'STEP_TIMEOUT',
+      `waitFor timed out; last judgment: ${options.lastExplanation}`,
+      cause === undefined ? {} : { cause },
+    );
   for (;;) {
-    if (invocation.deadline.expired()) {
-      throw new AgentError(
-        'STEP_TIMEOUT',
-        `waitFor timed out; last judgment: ${options.lastExplanation}`,
-      );
-    }
+    if (invocation.deadline.expired()) throw timedOut();
     if (!invocation.canAsk()) {
       throw new AgentError(
         'STEP_BUDGET_EXHAUSTED',
@@ -684,7 +685,14 @@ async function waitForNextJudgment(
     }
     const remainder = Math.min(tickMs, invocation.deadline.remaining());
     if (remainder > 0) await sleep(remainder, options.signal);
-    const observation = await invocation.observe();
+    // An observation can outlive the deadline it was bounded by, and the bare
+    // timeout it then reports would drop the judgment the author needs. The
+    // wait owns that message whether the clock runs out between rounds or
+    // during one.
+    const observation = await invocation.observe().catch((cause: unknown) => {
+      if (isAgentError(cause) && cause.code === 'STEP_TIMEOUT') throw timedOut(cause);
+      throw cause;
+    });
     if (Date.now() - judgedAt < options.intervalMs) continue;
     if (!watchTree || observationShape(observation) !== judgedShape) return observation;
   }

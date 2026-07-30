@@ -423,13 +423,19 @@ export class Invocation {
    * navigates as it is read (a redirect, a hydration swap, a form submit still
    * committing) makes the capture lose its document; that is a race, not a
    * broken app, so it is re-read rather than surfaced as a failed call.
+   *
+   * A capture is handed whatever remains of the invocation deadline, so one
+   * starting near the end cannot finish. That failure is the step running out
+   * of clock, and it reports the step's own `STEP_TIMEOUT` rather than
+   * whichever transport error the truncated budget happened to produce.
    */
   private async captureObservation(pixels: boolean): Promise<Observation> {
     for (let attempt = 1; ; attempt += 1) {
       try {
         return await this.session.observe(this.operation(), { pixels });
       } catch (cause) {
-        if (!(cause instanceof DriverError && cause.retryable) || this.deadline.expired()) {
+        this.checkDeadline(cause);
+        if (!(cause instanceof DriverError && cause.retryable)) {
           throw cause;
         }
         agentTrace(
@@ -632,15 +638,24 @@ export class Invocation {
     return this.runtime.engine.operation(Math.max(1, this.deadline.remaining()));
   }
 
-  /** Fails when the invocation deadline has elapsed. */
-  checkDeadline(): void {
+  /**
+   * Fails when the invocation deadline has elapsed.
+   *
+   * `cause` carries the failure that was being handled when the clock was found
+   * to be out, so a step that timed out mid-operation still says what the
+   * operation reported. Reporting the timeout without it would leave a driver
+   * failure that happened to land after the deadline entirely unrecorded.
+   */
+  checkDeadline(cause?: unknown): void {
+    const options = cause === undefined ? {} : { cause };
     if (this.runtime.signal.aborted) {
-      throw new AgentError('CANCELLED', `${this.options.api} was cancelled`);
+      throw new AgentError('CANCELLED', `${this.options.api} was cancelled`, options);
     }
     if (this.deadline.expired()) {
       throw new AgentError(
         'STEP_TIMEOUT',
         `${this.options.api} exceeded its ${this.options.timeoutMs} ms timeout`,
+        options,
       );
     }
   }

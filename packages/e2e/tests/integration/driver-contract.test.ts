@@ -82,6 +82,14 @@ test('asserts a node', async ({ app, agent }) => {
 });
 `;
 
+const WAIT_TEST = `import { test } from 'e2e';
+
+test('waits for a condition', async ({ app, agent }) => {
+  await app.open('/');
+  await agent.waitFor('the Submit button is enabled', { intervalMs: 100, timeout: 1500 });
+});
+`;
+
 describe('runner <-> driver contract', () => {
   it(
     'passes the documented launch context shape to the driver',
@@ -524,6 +532,41 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const result = resultByTitle(outcome, 'asserts a node');
       expect(result.status).toBe('failed');
       expect(result.attempts.at(-1)!.error?.code).toBe('APP_UNREACHABLE');
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'reports the step timeout when an observation outlives the deadline that bounded it',
+    async () => {
+      // An observation is handed whatever remains of the invocation deadline,
+      // so one starting near the end cannot finish. The driver failure that
+      // follows describes a truncated budget, not a broken app, and reporting
+      // it verbatim sent authors chasing infrastructure for a slow page.
+      let observeCalls = 0;
+      const fake = createFakeDriver({
+        async observe(operation) {
+          observeCalls += 1;
+          // The first capture succeeds so the wait owns a judgment to report;
+          // every later one outlives the shrinking budget it was handed.
+          if (observeCalls === 1) return;
+          await new Promise((resolve) => setTimeout(resolve, operation.timeoutMs + 50));
+          throw new BuiltDriverError('DRIVER_FAILURE', 'observation ran out of budget', {
+            retryable: false,
+          });
+        },
+      });
+      const model = installFakeModel(() => judgment(false, 'the Submit button is disabled'));
+      const { outcome, project } = await runProject(
+        { 'tests/observe-deadline.e2e.ts': WAIT_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+      );
+      const result = resultByTitle(outcome, 'waits for a condition');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.at(-1)!.error?.code).toBe('STEP_TIMEOUT');
+      // The wait still owns the message, so the last judgment survives.
+      expect(result.attempts.at(-1)!.error?.message).toContain('the Submit button is disabled');
       project.cleanup();
     },
     60_000,

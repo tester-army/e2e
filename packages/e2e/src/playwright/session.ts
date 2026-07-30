@@ -713,8 +713,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       // The losing evaluation may still settle later; a late handle must be
       // released and a late failure must not become an unhandled rejection.
       void evaluation.then((handle) => handle.dispose()).catch(() => undefined);
+      // Retryability is closed to NODE_STALE and FRAME_NOT_FOUND (spec
+      // 09-drivers.md), so asking for a retryable timeout here silently
+      // downgraded the code to DRIVER_FAILURE — reporting a broken backend for
+      // a capture that merely outlived the budget it was handed.
       return new DriverError('OPERATION_TIMEOUT', 'observation capture timed out', {
-        retryable: true,
+        retryable: false,
       });
     });
     let elementsHandle: JSHandle | undefined;
