@@ -24,9 +24,22 @@ const EXPRESSION: LocatorExpression = {
 };
 
 interface ScreenScript {
-  resolve?: Array<(() => readonly NodeRef[]) | 'stale' | 'frame' | 'failure'>;
-  read?: Array<(() => SemanticNode) | 'stale' | 'failure'>;
-  perform?: Array<(() => void) | 'stale' | 'committed' | 'not-actionable'>;
+  resolve?: Array<(() => readonly NodeRef[]) | 'stale' | 'frame' | 'failure' | 'foreign-stale'>;
+  read?: Array<(() => SemanticNode) | 'stale' | 'failure' | 'foreign-stale'>;
+  perform?: Array<(() => void) | 'stale' | 'committed' | 'not-actionable' | 'foreign-stale'>;
+}
+
+/**
+ * A `NODE_STALE` thrown by a driver loaded through another module registry, so
+ * it is not an instance of the runner's own `DriverError` class. The runner's
+ * staleness retries must recognize it structurally, or a recoverable race
+ * becomes an immediate test failure for every out-of-tree driver.
+ */
+function foreignStale(retryable: boolean): Error {
+  const error = new Error('stale');
+  error.name = 'DriverError';
+  Object.assign(error, { code: 'NODE_STALE', retryable });
+  return error;
 }
 
 function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = {}) {
@@ -42,6 +55,7 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
         const step = next(script.resolve, 'resolve');
         if (step === undefined || typeof step === 'function') return step?.() ?? [REF];
         if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: true });
+        if (step === 'foreign-stale') throw foreignStale(true);
         if (step === 'frame')
           throw new DriverError('FRAME_NOT_FOUND', 'frame missing', { retryable: true });
         throw new DriverError('DRIVER_FAILURE', 'backend died', { retryable: false });
@@ -50,12 +64,14 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
         const step = next(script.read, 'read');
         if (step === undefined || typeof step === 'function') return step?.() ?? NODE;
         if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: false });
+        if (step === 'foreign-stale') throw foreignStale(false);
         throw new DriverError('DRIVER_FAILURE', 'backend died', { retryable: false });
       },
       async perform() {
         const step = next(script.perform, 'perform');
         if (step === undefined || typeof step === 'function') return step?.();
         if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: true });
+        if (step === 'foreign-stale') throw foreignStale(true);
         if (step === 'committed')
           throw new DriverError('ACTION_MAY_HAVE_COMMITTED', 'maybe committed', {
             retryable: false,
@@ -253,5 +269,27 @@ describe('isNodeVisible', () => {
     expect(isNodeVisible({ ...NODE, states: { hidden: true } })).toBe(false);
     expect(isNodeVisible({ ...NODE, states: { hidden: false } })).toBe(true);
     expect(isNodeVisible({ ref: REF, role: 'button' })).toBe(true);
+  });
+});
+
+describe('LocatorEngine retries a cross-realm driver failure', () => {
+  it('retries a foreign retryable resolve failure', async () => {
+    const { engine, calls } = makeEngine({ resolve: ['foreign-stale', () => [REF]] });
+    await expect(engine.resolveForRead(EXPRESSION)).resolves.toEqual(REF);
+    expect(calls.resolve).toBe(2);
+  });
+
+  it('treats a foreign stale read as zero matches while polling', async () => {
+    const { engine } = makeEngine({ read: ['foreign-stale'] });
+    await expect(engine.tryRead(EXPRESSION, new Deadline(0))).resolves.toEqual({
+      node: null,
+      count: 0,
+    });
+  });
+
+  it('re-resolves after a foreign stale perform', async () => {
+    const { engine, calls } = makeEngine({ perform: ['foreign-stale', () => {}] });
+    await engine.perform(EXPRESSION, { kind: 'tap' });
+    expect(calls.perform).toBe(2);
   });
 });

@@ -2,6 +2,7 @@
 
 import type { ElementHandle, Locator as PwLocator, Page } from 'playwright';
 import { DriverError, type Momentum, type ScrollDirection } from 'e2e/driver';
+import { causeMessage as message, sanitizeFilename } from 'e2e/internal';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 
@@ -71,14 +72,9 @@ export function unsupportedDrag(): DriverError {
   });
 }
 
-/** Playwright colorizes call logs; escape codes are noise in reports. */
-// oxlint-disable-next-line no-control-regex -- intentionally matches the ESC control character
-const ANSI_PATTERN = /\u001b\[\d+(?:;\d+)*m/g;
-
-export function message(cause: unknown): string {
-  const text = cause instanceof Error ? cause.message : String(cause);
-  return text.replace(ANSI_PATTERN, '');
-}
+// Re-exported so the rest of the package keeps importing its text helpers from
+// one place, whether they are shared with other drivers or local to this one.
+export { message, sanitizeFilename };
 
 export function isPwTimeout(cause: unknown): boolean {
   return cause instanceof Error && cause.name === 'TimeoutError';
@@ -141,10 +137,6 @@ export function staleOr(cause: unknown, operation: string): DriverError {
     return new DriverError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
   }
   return translatePwError(cause, operation);
-}
-
-export function sanitizeFilename(name: string): string {
-  return name.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 64) || 'artifact';
 }
 
 export function performViewportSwipe(

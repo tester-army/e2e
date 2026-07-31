@@ -1,6 +1,6 @@
 /** Runner-owned error taxonomy and exit-code mapping (spec 06-cli.md). */
 
-import { DriverError } from '../driver/index.ts';
+import { DriverError, type DriverErrorCode } from '../driver/index.ts';
 
 /** Message of an arbitrary thrown value, for diagnostics that must not throw. */
 export function errorMessage(cause: unknown): string {
@@ -38,6 +38,41 @@ export interface SerializedError {
 
 /** Marks classified errors so instances survive isolated module realms. */
 const E2E_ERROR_MARKER = Symbol.for('e2e.error.v1');
+
+/** The closed driver-1 error code set, used to recognize a foreign instance. */
+const DRIVER_ERROR_CODES: ReadonlySet<string> = new Set([
+  'NODE_STALE',
+  'FRAME_NOT_FOUND',
+  'FRAME_AMBIGUOUS',
+  'NOT_ACTIONABLE',
+  'ACTION_MAY_HAVE_COMMITTED',
+  'OPERATION_TIMEOUT',
+  'CANCELLED',
+  'UNSUPPORTED_CAPABILITY',
+  'INVALID_STATE',
+  'DRIVER_FAILURE',
+]);
+
+/**
+ * Normalizes a driver failure, including one thrown by another copy of the
+ * driver module.
+ *
+ * A driver imported by a config file is loaded through a different module
+ * registry than the runner, so its `DriverError` is a different class and
+ * `instanceof` misses it. Detection is therefore structural, keyed on the
+ * closed code set: without this, every third-party driver's typed failures
+ * silently degrade to a generic error and lose their taxonomy.
+ */
+export function asDriverError(
+  value: unknown,
+): { code: DriverErrorCode; message: string; retryable: boolean } | undefined {
+  if (value instanceof DriverError) return value;
+  if (!(value instanceof Error) || value.name !== 'DriverError') return undefined;
+  const code = (value as unknown as { code?: unknown }).code;
+  if (typeof code !== 'string' || !DRIVER_ERROR_CODES.has(code)) return undefined;
+  const retryable = (value as unknown as { retryable?: unknown }).retryable;
+  return { code: code as DriverErrorCode, message: value.message, retryable: retryable === true };
+}
 
 /** Base class for every runner-classified error. */
 export class E2EError extends Error {
@@ -164,28 +199,29 @@ export function combineExitCodes(codes: readonly number[]): 0 | 1 | 2 | 3 | 4 | 
  */
 export function translateDriverError(cause: unknown, suffix = ''): E2EError {
   if (cause instanceof E2EError) return cause;
-  if (cause instanceof DriverError) {
-    switch (cause.code) {
+  const driverError = asDriverError(cause);
+  if (driverError !== undefined) {
+    switch (driverError.code) {
       case 'NODE_STALE':
         return new TestError('LOCATOR_NOT_FOUND', `node became stale${suffix}`, { cause });
       case 'FRAME_NOT_FOUND':
-        return new TestError('LOCATOR_NOT_FOUND', `${cause.message}${suffix}`, { cause });
+        return new TestError('LOCATOR_NOT_FOUND', `${driverError.message}${suffix}`, { cause });
       case 'FRAME_AMBIGUOUS':
-        return new TestError('LOCATOR_AMBIGUOUS', `${cause.message}${suffix}`, { cause });
+        return new TestError('LOCATOR_AMBIGUOUS', `${driverError.message}${suffix}`, { cause });
       case 'NOT_ACTIONABLE':
-        return new TestError('ACTION_FAILED', `${cause.message}${suffix}`, { cause });
+        return new TestError('ACTION_FAILED', `${driverError.message}${suffix}`, { cause });
       case 'ACTION_MAY_HAVE_COMMITTED':
-        return new TestError('ACTION_FAILED', `${cause.message}${suffix}`, { cause });
+        return new TestError('ACTION_FAILED', `${driverError.message}${suffix}`, { cause });
       case 'OPERATION_TIMEOUT':
         return new TestError('ACTION_FAILED', `operation timed out${suffix}`, { cause });
       case 'CANCELLED':
         return new E2EError('infrastructure', 'CANCELLED', 'operation cancelled', { cause });
       case 'UNSUPPORTED_CAPABILITY':
-        return new E2EError('configuration', 'UNSUPPORTED_CAPABILITY', cause.message, { cause });
+        return new E2EError('configuration', 'UNSUPPORTED_CAPABILITY', driverError.message, { cause });
       case 'INVALID_STATE':
-        return new TestError('APP_NOT_OPEN', cause.message, { cause });
+        return new TestError('APP_NOT_OPEN', driverError.message, { cause });
       case 'DRIVER_FAILURE':
-        return new E2EError('infrastructure', 'DRIVER_FAILURE', cause.message, { cause });
+        return new E2EError('infrastructure', 'DRIVER_FAILURE', driverError.message, { cause });
     }
   }
   return new E2EError('infrastructure', 'DRIVER_FAILURE', errorMessage(cause), { cause });
@@ -200,7 +236,7 @@ export function classifyError(value: unknown): E2EError {
       cause: value,
     });
   }
-  if (value instanceof DriverError) {
+  if (asDriverError(value) !== undefined) {
     return translateDriverError(value);
   }
   if (value instanceof Error) {

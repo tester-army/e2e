@@ -11,7 +11,7 @@
   ],
   "license": "MIT",
   "contributors": [
-    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Oskar Kwa\u015bniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "repository": {
@@ -50,7 +50,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit && pnpm run check:driver-drift",
     "check:driver-drift": "tsc --project tsconfig.driver-drift.json",
     "test": "vitest run",

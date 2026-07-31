@@ -1,7 +1,6 @@
 /** Runner-owned query polling, strictness, and action retry (spec 08-platforms.md). */
 
 import {
-  DriverError,
   type DriverSession,
   type LocatorAction,
   type LocatorExpression,
@@ -10,6 +9,7 @@ import {
   type SemanticNode,
 } from '../driver/index.ts';
 import {
+  asDriverError,
   E2EError,
   TestError,
   translateDriverError as translateDriverErrorCore,
@@ -86,7 +86,7 @@ export class LocatorEngine {
       try {
         return await this.session.screen.resolve(expression, this.operationWithin(deadline));
       } catch (cause) {
-        if (cause instanceof DriverError && cause.retryable && !deadline.expired()) {
+        if (asDriverError(cause)?.retryable === true && !deadline.expired()) {
           await sleep(POLL_INTERVAL_MS, this.options.signal);
           continue;
         }
@@ -159,7 +159,7 @@ export class LocatorEngine {
       const node = await this.session.screen.read(ref, this.operationWithin(deadline));
       return { node, count: 1 };
     } catch (cause) {
-      if (cause instanceof DriverError && cause.code === 'NODE_STALE') {
+      if (asDriverError(cause)?.code === 'NODE_STALE') {
         return { node: null, count: 0 };
       }
       throw translateDriverError(cause, expression);
@@ -183,10 +183,10 @@ export class LocatorEngine {
         await this.session.screen.perform(ref, action, this.operationWithin(deadline));
         return;
       } catch (cause) {
+        const driverError = asDriverError(cause);
         if (
-          cause instanceof DriverError &&
-          cause.code === 'NODE_STALE' &&
-          cause.retryable &&
+          driverError?.code === 'NODE_STALE' &&
+          driverError.retryable &&
           !deadline.expired()
         ) {
           continue;
