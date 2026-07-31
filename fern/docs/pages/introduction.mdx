@@ -105,7 +105,8 @@ This release executes web targets. An iOS or Android target is rejected rather
 than approximated, and the `device` fixture rejects with
 `UNSUPPORTED_CAPABILITY`. The portable API, the gesture model, and the runner are
 built for both, so tests written against the portable surface today are the tests
-that will run on device.
+that will run on device. The driver contract those platforms plug into is
+already platform-neutral - see [writing a driver](/writing-a-driver).
 </Callout>
 
 ## The runner owns the boring parts

@@ -134,7 +134,7 @@ export interface WebTarget {
 | --- | --- | --- | --- |
 | `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
 | `platform` | `'web'` | - | Required literal |
-| `driver` | `'playwright' \| DriverHandle` | `'playwright'` | `'playwright'` loads `@e2edev/playwright`, which must be installed; any other string is `INVALID_CONFIG` |
+| `driver` | `'playwright' \| DriverHandle` | `'playwright'` | `'playwright'` loads `@e2edev/playwright`, which must be installed; any other string is `INVALID_CONFIG`. A `DriverHandle` comes from [`defineDriver`](/writing-a-driver) |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Per-target |
 | `viewport` | `{ width: number; height: number }` | driver default | Initial viewport |
 

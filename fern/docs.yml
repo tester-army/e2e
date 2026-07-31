@@ -55,6 +55,12 @@ navigation:
           - page: Troubleshooting
             path: docs/pages/troubleshooting.mdx
             slug: troubleshooting
+      - section: Extend
+        skip-slug: true
+        contents:
+          - page: Writing a driver
+            path: docs/pages/writing-a-driver.mdx
+            slug: writing-a-driver
   - tab: reference
     layout:
       - section: API
@@ -88,7 +94,7 @@ navigation:
 navbar-links:
   - type: minimal
     text: GitHub
-    url: https://github.com/testerarmy/e2e
+    url: https://github.com/tester-army/e2e
   - type: filled
     text: Quickstart
     url: https://e2e.docs.buildwithfern.com/quickstart
