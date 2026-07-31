@@ -13,7 +13,7 @@
 
 import type { CacheLocator } from '../cache/index.ts';
 import type { SemanticNode } from '../driver/index.ts';
-import { asDriverError } from '../internal/errors.ts';
+import { asDriverError, TestError } from '../internal/errors.ts';
 import { isSecret } from '../locator/screen.ts';
 import type { AgentParam, AgentParams, Secret } from '../types.ts';
 import {
@@ -97,12 +97,25 @@ export async function runAct(
   runtime: AgentContext,
   request: {
     readonly instruction: string;
-    readonly params: AgentParams | undefined;
+    /** Already-disclosed parameters, validated before the step began. */
+    readonly disclosed: DisclosedParams;
     readonly testIdAttribute: string;
     readonly onData?: (value: unknown) => Promise<ProtocolValidation<unknown>>;
   },
 ): Promise<ActConclusion> {
-  const disclosed = discloseParams(request.params);
+  // `'only'` withholds the tree, and every action but scroll, press, and
+  // navigate has to name a node from it. A planning call under it could only
+  // ever propose targets the runner rejects, so it is refused before a model
+  // call rather than after the budget is gone. Same code the located methods
+  // that need a node use (spec/api/e2e.d.ts VisionMode).
+  if (invocation.treeWithheld) {
+    throw new AgentError(
+      'POLICY_DENIED',
+      "agent.act cannot run with vision: 'only': planning names nodes from the observation, " +
+        "which that mode withholds. Use vision: true to add a screenshot alongside the tree.",
+    );
+  }
+  const disclosed = request.disclosed;
   const context: ActionContext = {
     invocation,
     runtime,
@@ -192,7 +205,16 @@ export async function runAct(
         invocation.canAsk()
       ) {
         challenged = true;
-        agentTrace(() => `${progress()} gave up — asked to look again first`);
+        // The model reports the screen cannot do what was asked, which is the
+        // signal `'fallback'` waits for: the tree did not describe what it
+        // needed. Pixels join every later request in this invocation.
+        const escalated = invocation.canEscalateVision();
+        if (escalated) invocation.escalateVision();
+        agentTrace(
+          () =>
+            `${progress()} gave up — asked to look again first` +
+            `${escalated ? ', now with a screenshot' : ''}`,
+        );
         trail.note(`reported "${firstLine(call.explanation)}" and was asked to look again`);
         notice = [
           `You concluded that this cannot be done: "${firstLine(call.explanation)}".`,
@@ -202,6 +224,9 @@ export async function runAct(
           'the way, a control that only enables once something else is set, or content that',
           'needs scrolling into view. Disabled buttons in particular are usually a symptom, not',
           'the cause.',
+          ...(escalated
+            ? ['A screenshot of the screen is now attached; it may show what the tree did not.']
+            : []),
           'If you find something, act on it. If there is genuinely nothing, conclude "failure"',
           'again with the blocker named, and it will be reported as the result.',
         ].join('\n');
@@ -457,20 +482,28 @@ class Trail {
  * being named in `<parameters>` is exactly what authorizes a later fill, so the
  * disclosure and the authority come from one place and cannot disagree.
  */
-export function discloseParams(params: AgentParams | undefined): {
-  text: string | undefined;
+export interface DisclosedParams {
+  readonly text: string | undefined;
   /** The same redacted values, as the canonical cache-key input. */
-  key: Readonly<Record<string, unknown>>;
-  secrets: ReadonlyMap<string, Secret>;
-} {
+  readonly key: Readonly<Record<string, unknown>>;
+  readonly secrets: ReadonlyMap<string, Secret>;
+}
+
+/**
+ * Called before the step opens, so a malformed argument fails the test that wrote
+ * it rather than being reported as a policy denial. `POLICY_DENIED` is
+ * configuration-category and would change the run's exit code from 1 to 2, which
+ * CI reads as a misconfigured project rather than a failing test.
+ */
+export function discloseParams(params: AgentParams | undefined): DisclosedParams {
   const secrets = new Map<string, Secret>();
   if (params === undefined) return { text: undefined, key: {}, secrets };
   const redacted = walkParam(params, secrets, 0);
   const text = JSON.stringify(redacted, undefined, 2);
   const bytes = new TextEncoder().encode(text).byteLength;
   if (bytes > MAX_PARAM_BYTES) {
-    throw new AgentError(
-      'POLICY_DENIED',
+    throw new TestError(
+      'INVALID_ARGUMENT',
       `agent.act parameters are ${bytes} bytes, over the ${MAX_PARAM_BYTES} byte limit`,
     );
   }
@@ -479,8 +512,8 @@ export function discloseParams(params: AgentParams | undefined): {
 
 function walkParam(value: AgentParam, secrets: Map<string, Secret>, depth: number): unknown {
   if (depth > MAX_PARAM_DEPTH) {
-    throw new AgentError(
-      'POLICY_DENIED',
+    throw new TestError(
+      'INVALID_ARGUMENT',
       `agent.act parameters nest deeper than ${MAX_PARAM_DEPTH} levels`,
     );
   }
@@ -505,13 +538,13 @@ function walkParam(value: AgentParam, secrets: Map<string, Secret>, depth: numbe
 /** Normalizes and bounds one instruction, per 02-test-api.md. */
 export function normalizeInstruction(api: string, instruction: string): string {
   if (typeof instruction !== 'string') {
-    throw new AgentError('POLICY_DENIED', `${api} requires a string instruction`);
+    throw new TestError('INVALID_ARGUMENT', `${api} requires a string instruction`);
   }
   const normalized = instruction.normalize('NFC');
   const bytes = new TextEncoder().encode(normalized).byteLength;
   if (bytes < MIN_INSTRUCTION_BYTES || bytes > MAX_INSTRUCTION_BYTES) {
-    throw new AgentError(
-      'POLICY_DENIED',
+    throw new TestError(
+      'INVALID_ARGUMENT',
       `${api} instruction must be ${MIN_INSTRUCTION_BYTES} through ${MAX_INSTRUCTION_BYTES} bytes after NFC, got ${bytes}`,
     );
   }

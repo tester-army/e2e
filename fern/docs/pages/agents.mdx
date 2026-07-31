@@ -328,7 +328,9 @@ Every call is bounded, so a bad prompt cannot spend your budget in a loop.
 | `waitFor` | up to `agent.maxModelCalls`, default 25 | 30 s |
 
 `vision: true` changes no budget in this table; it makes each of those calls
-carry an image, which costs input tokens.
+carry an image, which costs input tokens. `act` refuses `vision: 'only'` — it has
+to name nodes from the tree that mode withholds — and treats `'fallback'` as
+"escalate once the model says it cannot do this from the tree".
 
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time raises
 `STEP_TIMEOUT`. Both are test failures you can see in the report.
@@ -378,6 +380,12 @@ Entries live in `.e2e/cache/`, one JSON file per key. They are meant to be
 committed: a teammate's checkout and CI then start warm. `e2e init` leaves the
 directory out of `.gitignore` for exactly that reason.
 
+Because they are committed, an entry holds no values. A recorded locator names a
+control by its role and accessible name, and a recorded fill names its target
+only — never the text it typed, which may have come from a parameter carrying an
+address or a contact detail. A secret contributes its name and purpose and never
+its value.
+
 A cache is never authority. A hit still goes through normal actionability and
 origin policy, a stale or corrupt entry falls back to one fresh model locate and
 replaces itself, and deleting the directory cannot change what a correct test
@@ -389,8 +397,8 @@ Only located actions are cached (`tap`, `click`, `type`, `scroll`, `scrollTo`,
 `bypassed`.
 
 `agent.act` uses path guidance instead of locate caching. A successful flow
-records the actions it took; the next run is offered each one as the route that
-worked last time. It is a hint, not a replay — the model still sees a fresh
+records the actions it took — each one's target, never the value it typed; the
+next run is offered each as the route that worked last time. It is a hint, not a replay — the model still sees a fresh
 observation every round and can reject it — so path guidance does **not** reduce
 model calls. It reduces wrong turns.
 

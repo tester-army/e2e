@@ -283,16 +283,24 @@ still addresses the same control after a reorder.
 A path entry is a sequence of normalized derivatives of successful
 `agent-tool-1` calls, restricted by the closed action-specific union in
 `cache-1`. Cache actions intentionally replace revision-bound node refs with
-semantic locators and omit the protocol envelope. They contain semantic targets and
-non-secret values, with no arbitrary options. Before each proposed replay
-action, the agent receives a fresh observation and decides whether the next
-recorded action is still applicable.
+semantic locators and omit the protocol envelope. They contain semantic targets
+and no values: a recorded fill names its target only, because the agent re-reads
+values from the invocation's parameters on every run and a path entry is stored
+where a project may commit it.
 
-If guidance diverges before any mutating action commits, the runner may discard
-it and continue full reasoning in the same invocation. After any mutating
-action commits, divergence rejects with `CACHE_REPLAY_DIVERGED`. It MUST NOT
-restart or replay from the beginning inside that attempt. A test-level retry
-starts from clean state and bypasses all agent caches.
+Guidance is advisory. Before each proposed action the agent receives a fresh
+observation and decides whether the next recorded action is still applicable, so
+declining it is an ordinary outcome: the runner discards the remaining guidance
+and continues full reasoning in the same invocation. Guidance MUST NOT be able
+to turn an otherwise passing invocation into a failing one.
+
+A runner that instead dispatches recorded actions without asking the model each
+time is replaying rather than being guided. Such a runner MUST NOT restart or
+replay from the beginning once a mutating action has committed, and rejects
+divergence past that point with `CACHE_REPLAY_DIVERGED`, because re-applying a
+committed mutation is not a cache hit. A runner that re-decides every action, as
+described above, cannot reach that state and never raises the code. A test-level
+retry starts from clean state and bypasses all agent caches.
 
 Only a completely successful non-retry invocation writes path guidance. Failed,
 timed-out, interrupted, policy-denied, or flaky attempts never update it.

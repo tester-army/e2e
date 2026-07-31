@@ -69,7 +69,7 @@ export async function openPathCache(
 ): Promise<OpenPathCache | undefined> {
   const context = invocation.cacheContext;
   const bypass = invocation.cacheBypass;
-  if (bypass !== undefined) return invocation.bypassCache(bypass);
+  if (bypass !== undefined) return invocation.bypassCache('path', bypass);
 
   // Order matters and is therefore explicit: the occurrence index is consumed
   // once per cacheable call that gets this far, so a bypassed call never takes
@@ -247,9 +247,9 @@ export function describeGuidance(action: PathAction): string {
     case 'tap':
       return `tap ${describeExpression(action.target)}`;
     case 'type':
-      return 'value' in action
-        ? `type ${JSON.stringify(action.value)} into ${describeExpression(action.target)}`
-        : `fill ${describeExpression(action.target)} with the secret "${action.sensitiveName}"`;
+      return 'sensitiveName' in action
+        ? `fill ${describeExpression(action.target)} with the secret "${action.sensitiveName}"`
+        : `type the value it needs into ${describeExpression(action.target)}`;
     case 'scroll':
       return action.target === undefined
         ? `scroll ${action.direction}`

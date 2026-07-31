@@ -109,6 +109,12 @@ test timeout.
 A budget of 2 on a single-locate method is one locate plus one repair round.
 `dragTo` locates twice, hence 4.
 
+`act` rejects `vision: 'only'` with `POLICY_DENIED`: planning names nodes from the
+observation, which that mode withholds. `vision: 'fallback'` escalates once, when
+the model reports it cannot do what was asked — the planning equivalent of a
+located action's missed locate — and pixels then travel with every later round of
+that call.
+
 `act` spends one model call per planning round, so its model-call budget bounds
 the number of rounds and its action-step budget bounds the actions it commits.
 An `observe` round and a rejected conclusion each cost a model call and no action

@@ -148,7 +148,9 @@ describe('agent.act path guidance', () => {
       // start, type, continue, digest, finish.
       expect(actions).toHaveLength(5);
       expect(actions[0]).toMatchObject({ kind: 'tap' });
-      expect(actions[1]).toMatchObject({ kind: 'type', value: 'Acme Inc' });
+      expect(actions[1]).toMatchObject({ kind: 'type' });
+      // The company name reached the page but never the committed entry.
+      expect(JSON.stringify(written[0])).not.toContain('Acme Inc');
 
       const warm = await runOnce(project, 'faithful');
       expect(warm.passed).toBe(true);
@@ -156,7 +158,10 @@ describe('agent.act path guidance', () => {
       // Every round after the first is offered the action that worked there.
       expect(warm.guided.length).toBeGreaterThanOrEqual(4);
       expect(warm.guided[0]).toContain('the next step here was');
-      expect(warm.guided[1]).toContain('Acme Inc');
+      // The suggestion names the field, not the text: the value comes from the
+      // invocation's parameters, so the entry never had to store it.
+      expect(warm.guided[1]).toContain('Company name');
+      expect(warm.guided[1]).not.toContain('Acme Inc');
     } finally {
       project.cleanup();
     }

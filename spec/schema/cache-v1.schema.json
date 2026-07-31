@@ -200,13 +200,13 @@
       }
     },
     "plainTypeAction": {
+      "description": "A recorded plain fill. The value is deliberately absent: guidance is advisory, the agent re-reads values from the invocation's parameters on every run, and persisting the literal would write whatever a test typed - names, addresses, contact details - into a cache directory projects are encouraged to commit.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target", "value"],
+      "required": ["kind", "target"],
       "properties": {
         "kind": { "const": "type" },
-        "target": { "$ref": "#/$defs/locator" },
-        "value": { "type": "string", "maxLength": 65536 }
+        "target": { "$ref": "#/$defs/locator" }
       }
     },
     "secretTypeAction": {

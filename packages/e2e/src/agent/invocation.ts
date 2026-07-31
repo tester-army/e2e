@@ -271,10 +271,15 @@ export class Invocation {
 
   /**
    * Reports that this call never consulted the cache, and why. Returns
-   * undefined so a bail-out site can `return invocation.bypassCache(reason)`.
+   * undefined so a bail-out site can `return invocation.bypassCache(kind, reason)`.
+   *
+   * The kind is required, not inferred. `--debug` prices a locate hit against the
+   * mean model call of the locates in the same run, and an untagged bypassed
+   * planning step fell into that mean carrying up to 25 planning rounds - which
+   * overstated the saving by exactly the amount the kind was added to prevent.
    */
-  bypassCache(reason: string): undefined {
-    this.cacheInfo = { status: 'bypassed', reason };
+  bypassCache(kind: 'locate' | 'path', reason: string): undefined {
+    this.cacheInfo = { kind, status: 'bypassed', reason };
     agentTrace(() => `cache: bypassed — ${reason}`);
     return undefined;
   }

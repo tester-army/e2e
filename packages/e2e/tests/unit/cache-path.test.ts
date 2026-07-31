@@ -37,7 +37,7 @@ const LOCATOR = {
 
 const ACTIONS: readonly Record<string, unknown>[] = [
   { kind: 'tap', target: LOCATOR },
-  { kind: 'type', target: LOCATOR, value: 'Acme Inc' },
+  { kind: 'type', target: LOCATOR },
   { kind: 'type', target: LOCATOR, sensitiveName: 'admin', purpose: 'password' },
   { kind: 'scroll', direction: 'down' },
   { kind: 'scroll', direction: 'up', momentum: 'slow', target: LOCATOR },
@@ -71,6 +71,9 @@ describe('cache-1 path actions', () => {
       { kind: 'navigate' },
       { kind: 'scroll', direction: 'sideways' },
       { kind: 'longPress', target: LOCATOR, durationMs: 50 },
+      // A recorded fill stores no value, so one carrying a literal is a stale or
+      // hand-edited entry rather than something this runner wrote.
+      { kind: 'type', target: LOCATOR, value: 'Acme Inc' },
       { kind: 'type', target: LOCATOR, value: 'x', sensitiveName: 'admin', purpose: 'password' },
       { kind: 'type', target: LOCATOR, sensitiveName: 'admin', purpose: 'root' },
       { kind: 'observe' },
@@ -153,6 +156,15 @@ describe('recording an action space derivative', () => {
     expect(JSON.stringify(recorded)).not.toContain('hunter');
     expect(recorded).toMatchObject({ sensitiveName: 'admin', purpose: 'password' });
     expect(recorded && 'value' in recorded).toBe(false);
+  });
+
+  // Entries are meant to be committed, and a typed value can be an address or a
+  // contact detail that came from a parameter. Guidance never needs it: the value
+  // comes from the invocation's parameters on every run.
+  it('records no typed value at all, not even a plain one', () => {
+    const recorded = ACTION_SPACE['type']?.record?.(ARGS['type'] as never, locate);
+    expect(recorded).toEqual({ kind: 'type', target: expect.anything() });
+    expect(JSON.stringify(recorded)).not.toContain('Acme Inc');
   });
 
   // A node with no role, name, or selector cannot be re-found, and storing

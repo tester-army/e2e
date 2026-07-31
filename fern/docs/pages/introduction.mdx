@@ -78,9 +78,11 @@ recorded click at coordinates. Planned flows keep the model in the loop on
 replay, because repeating a step that may already have charged a credit card is
 not a cache hit.
 
-<Callout intent="info" title="Scope in this release">
-Located actions are cached today. Planned flows (`agent.act`) arrive with the
-planning tier and bring their own entry kind.
+<Callout intent="info" title="What caching does for each level">
+A located action replays a stored locator and skips its model call outright. A
+planned flow records the route it took and is offered it next run as a hint, but
+still observes and decides every round — so it makes fewer wrong turns rather than
+fewer model calls.
 </Callout>
 
 ## Cross-platform by design

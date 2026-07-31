@@ -273,9 +273,13 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
       value: text('value', 'the text to enter', VALUE_MAX),
     },
     describe: (args, name) => `typed ${JSON.stringify(args.value)} into ${name(args.target)}`,
+    // The target only. Storing the literal would persist whatever a test typed —
+    // names, addresses, contact details — into a cache directory projects are
+    // encouraged to commit, and guidance never needs it: the value comes from
+    // `<parameters>` on every run.
     record: (args, locate) => {
       const target = locate(args.target);
-      return target === undefined ? undefined : { kind: 'type', target, value: args.value };
+      return target === undefined ? undefined : { kind: 'type', target };
     },
     perform: (context, args) =>
       context.invocation.commit('type', () =>

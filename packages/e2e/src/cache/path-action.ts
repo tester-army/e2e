@@ -20,7 +20,7 @@ export type PathActionKind = 'tap' | 'type' | 'scroll' | 'press' | 'longPress' |
 
 export type PathAction =
   | { readonly kind: 'tap'; readonly target: CacheLocator }
-  | { readonly kind: 'type'; readonly target: CacheLocator; readonly value: string }
+  | { readonly kind: 'type'; readonly target: CacheLocator }
   | {
       readonly kind: 'type';
       readonly target: CacheLocator;
@@ -44,7 +44,6 @@ export type PathAction =
 /** Recorded actions per entry, per the spec's `maxItems`. */
 export const MAX_PATH_ACTIONS = 100;
 
-const VALUE_MAX = 65_536;
 const SENSITIVE_NAME_MAX = 128;
 const KEY_MAX = 128;
 const URL_MAX = 8192;
@@ -88,12 +87,12 @@ export function asPathAction(value: unknown): PathAction | undefined {
 }
 
 function asTypeAction(raw: Record<string, unknown>): PathAction | undefined {
-  if (raw['value'] !== undefined) {
-    if (!closed(raw, ['kind', 'target', 'value'])) return undefined;
+  // A plain fill records only its target. The literal it typed is not stored, so
+  // the two fills are told apart by the secret's name rather than by a value.
+  if (raw['sensitiveName'] === undefined && raw['purpose'] === undefined) {
+    if (!closed(raw, ['kind', 'target'])) return undefined;
     const target = asCacheLocator(raw['target']);
-    const value = boundedString(raw['value'], 0, VALUE_MAX);
-    if (target === undefined || value === undefined) return undefined;
-    return { kind: 'type', target, value };
+    return target === undefined ? undefined : { kind: 'type', target };
   }
   if (!closed(raw, ['kind', 'target', 'sensitiveName', 'purpose'])) return undefined;
   const target = asCacheLocator(raw['target']);

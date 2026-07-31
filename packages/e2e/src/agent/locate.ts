@@ -355,10 +355,10 @@ async function openCacheFor(
 ): Promise<OpenLocateCache | undefined> {
   const method = cacheMethodForApi(invocation.api);
   if (method === undefined) {
-    return invocation.bypassCache(`${invocation.api} is not a cacheable cache-1 method`);
+    return invocation.bypassCache('locate', `${invocation.api} is not a cacheable cache-1 method`);
   }
   const bypass = invocation.cacheBypass;
-  if (bypass !== undefined) return invocation.bypassCache(bypass);
+  if (bypass !== undefined) return invocation.bypassCache('locate', bypass);
   // Observed only once it is known this call will be keyed, so a non-cacheable
   // or opted-out method never pays for it. A hit replays against this
   // observation; a miss re-observes inside the attempt, which is one extra

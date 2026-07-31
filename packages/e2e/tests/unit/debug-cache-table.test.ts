@@ -143,6 +143,25 @@ describe('cacheTable', () => {
   // Only a locate hit skips a model call. Path guidance just puts the recorded
   // route into the prompt and the model still decides, so counting its hits as
   // savings reported time that was never saved.
+  // A bypassed planning step used to land in the locate mean carrying up to 25
+  // planning rounds, overstating what one locate hit saved by that much.
+  it('excludes a bypassed planning step from the locate mean', () => {
+    const table = cacheTable(
+      results([
+        {
+          api: 'agent.act',
+          cache: { kind: 'path', status: 'bypassed' },
+          modelMs: 60_000,
+          modelCalls: 20,
+        },
+        { api: 'agent.tap', cache: { status: 'miss' }, modelMs: 900, modelCalls: 1 },
+        { api: 'agent.tap', cache: { status: 'hit' }, cacheMs: 5 },
+      ]),
+      [],
+    );
+    expect(table).toContain('est. 900ms model time avoided');
+  });
+
   it('does not price path guidance as avoided model time', () => {
     const table = cacheTable(
       results([

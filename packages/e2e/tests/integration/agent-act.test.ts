@@ -96,6 +96,23 @@ test('gives up on an unproductive repair loop', async ({ app, agent }) => {
   await agent.act('answer with something invalid forever');
 });
 
+test('escalates to a screenshot when the tree was not enough', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('increment, but only once you can see the page', undefined, { vision: 'fallback' });
+  await expect(screen.getByRole('status')).toHaveText('1');
+});
+
+test('refuses to plan from the screenshot alone', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('do anything', undefined, { vision: 'only' });
+});
+
+test('rejects an instruction that is not a string', async ({ app, agent }) => {
+  await app.open();
+  // @ts-expect-error the point is what a JavaScript caller can do
+  await agent.act(42);
+});
+
 test('survives a node the page replaced mid-dispatch', async ({ web, agent, screen }) => {
   await web.goto('/restage');
   await agent.act('continue', undefined, { maxSteps: 2 });
@@ -130,6 +147,7 @@ const CHALLENGE = 'Before that is accepted, look once more';
 const ROUTE_AROUND = 'increment the counter, working around a stale target';
 const UNTIDY = 'tap increment then finish untidily';
 const ALWAYS_INVALID = 'answer with something invalid forever';
+const ESCALATES = 'increment, but only once you can see the page';
 const RESTAGED = 'continue';
 const LOOP_FOREVER = 'tap the same inert heading forever';
 const NEVER_FINISH = 'keep incrementing and never finish';
@@ -204,6 +222,17 @@ function respond(call: FakeCall): unknown {
         : { ...(toolConclude('the counter reads 1') as object), value: '', key: 'Enter' };
     case ALWAYS_INVALID:
       return toolCall('conclude', { status: 'maybe', explanation: 'unsure' });
+    case ESCALATES:
+      // Gives up first, which is the signal `'fallback'` waits for. The challenge
+      // that follows should carry pixels the first attempt did not have.
+      if (attempt === 1) {
+        return toolConclude('the tree does not show whether the page rendered', {
+          status: 'failure',
+        });
+      }
+      return call.images.length > 0 && attempt === 2
+        ? toolOnMatch(call, /Increment/, 'tap')
+        : toolConclude('the counter reads 1');
     case RESTAGED:
       return call.observation.includes('"continued"')
         ? toolConclude('the state reads continued')
@@ -223,6 +252,8 @@ function respond(call: FakeCall): unknown {
         ? toolConclude('the counter moved but the flow was not finished', { status: 'failure' })
         : toolOnMatch(call, attempt % 2 === 1 ? /Increment/ : /Menu/, 'tap');
     default:
+      // Both the vision: 'only' and bad-argument tests fail before any model
+      // call, so reaching here for them would be the bug.
       throw new Error(`unscripted instruction ${JSON.stringify(call.instruction)}`);
   }
 }
@@ -408,6 +439,34 @@ describe('agent.act', () => {
     expect(resultByTitle(outcome, title).status).toBe('passed');
     // One tap landed. The refund is what keeps this inside a budget of 2.
     expect(actStep(title).metrics!.actionSteps).toBe(1);
+  });
+
+  // `'fallback'` used to be a silent no-op for planning: nothing in the loop ever
+  // escalated, so the option attached pixels only for located actions.
+  it("escalates vision: 'fallback' once the model reports the tree fell short", () => {
+    const title = 'escalates to a screenshot when the tree was not enough';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const asked = fakeCalls.filter((call) => call.instruction === ESCALATES);
+    expect(asked[0]?.images).toHaveLength(0);
+    expect(asked.slice(1).some((call) => call.images.length > 0)).toBe(true);
+    expect(actStep(title).visionEscalated).toBe(true);
+  });
+
+  // `'only'` withholds the tree, and planning has to name nodes from it. Allowed
+  // through, every proposal would be rejected until the budget was gone.
+  it("refuses vision: 'only' before spending a model call", () => {
+    const title = 'refuses to plan from the screenshot alone';
+    const test = resultByTitle(outcome, title);
+    expect(test.status).toBe('failed');
+    expect(test.attempts.at(-1)!.error?.code).toBe('POLICY_DENIED');
+    expect(actStep(title).metrics!.modelCalls).toBe(0);
+  });
+
+  // A malformed argument is the test author's mistake, so it fails that test
+  // rather than reporting a configuration problem and changing the exit code.
+  it('reports a bad argument as an argument error, not a policy denial', () => {
+    const attempt = resultByTitle(outcome, 'rejects an instruction that is not a string').attempts.at(-1)!;
+    expect(attempt.error?.code).toBe('INVALID_ARGUMENT');
   });
 
   it('refuses to repeat one action against an unchanged screen', () => {

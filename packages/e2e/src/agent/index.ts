@@ -51,7 +51,7 @@ import {
   type ProtocolValidation,
 } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
-import { normalizeInstruction, runAct } from './act.ts';
+import { discloseParams, normalizeInstruction, runAct } from './act.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 import { authorizeSecretFill } from './secrets.ts';
 
@@ -264,6 +264,9 @@ export function createAgent(runtime: AgentContext): Agent {
     options?: AgentOptions & { schema?: StandardSchemaV1 },
   ): Promise<AgentResult | AgentResultWithData<unknown>> => {
     const normalized = normalizeInstruction('agent.act', instruction);
+    // Arguments are checked before the step opens, so a malformed one fails as
+    // an argument rather than as something the agent did.
+    const disclosed = discloseParams(params);
     const schema = options?.schema;
     if (schema !== undefined) requireStandardSchema(schema);
     return step(
@@ -280,7 +283,7 @@ export function createAgent(runtime: AgentContext): Agent {
       async (invocation) => {
         const conclusion = await runAct(invocation, runtime, {
           instruction: normalized,
-          params,
+          disclosed,
           testIdAttribute,
           ...(schema === undefined
             ? {}

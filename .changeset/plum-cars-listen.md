@@ -26,9 +26,9 @@ and the security policy, then dispatches itself.
 Path guidance (`cache-1` `path` entries) records the actions a successful flow
 took and offers them to the next run as the route that worked. It is advisory:
 the model still observes and decides every round, so it reduces wrong turns
-rather than model calls. Diverging before any mutating action commits discards
-the guidance; diverging after one rejects with `CACHE_REPLAY_DIVERGED` rather
-than re-running a half-applied flow.
+rather than model calls, and declining it discards the remaining guidance rather
+than failing the flow. A recorded fill names its target and not the value it
+typed.
 
 `agent.login` still rejects with `UNSUPPORTED_CAPABILITY`; pass the credential to
 `agent.act` as a parameter instead.
@@ -62,14 +62,15 @@ a genuinely ambiguous `type` is still refused. A repair loop that produces the
 identical rejection twice is also abandoned rather than re-asked until the budget
 runs out.
 
-Never fail a flow for declining path guidance. `CACHE_REPLAY_DIVERGED` was raised
-when the model chose differently after a mutating action had committed, which made
-the cache turn passing tests red on any page whose content moves between runs —
-the one thing a cache must not do. The spec clause it came from governs blind
-replay, where a broken replay can leave a flow half-applied and restarting would
-re-apply it; nothing here ever replays, since every action is a fresh decision
-against a fresh observation, so the hazard cannot arise. Declining a suggestion
-now simply discards it. `CACHE_REPLAY_DIVERGED` is consequently unreachable.
+`spec/10-determinism.md` now states that guidance is advisory and MUST NOT be
+able to turn a passing invocation into a failing one, and scopes
+`CACHE_REPLAY_DIVERGED` to a runner that dispatches recorded actions without
+re-deciding. The previous wording required the code whenever the model chose
+differently after a mutating action had committed, which made the cache turn
+passing tests red on any page whose content moves between runs — the one thing a
+cache must not do. A runner that re-decides every action, as this one does, cannot
+reach that state, so the code is declared but unreachable here. `suiteVersion` is
+bumped for the `cache-1` schema change.
 
 Wind down instead of cutting off. An invocation with no action steps left is now
 offered only `observe` and `conclude`, and every round is told what budget
@@ -115,3 +116,22 @@ budget it is spending:
 [e2e agent] 5/8 done success - the summary confirms Acme
 [e2e agent] agent.act end - 5 action(s), 6 call(s), 720 tokens, $0.0186
 ```
+
+Fix `vision` on `agent.act`. `vision: 'only'` withholds the semantic tree, but
+planning has to name nodes from it, so every proposal was rejected until the
+budget ran out; it is now refused up front with `POLICY_DENIED`, like the located
+methods that need a node. `vision: 'fallback'` was a silent no-op for planning —
+nothing in the loop ever escalated — and now escalates once, when the model
+reports it cannot do what was asked, which is the planning equivalent of a missed
+locate.
+
+Report an `agent.act` argument mistake as one. An instruction that is not a string
+or falls outside 1..8 KiB, and parameters that are oversized or nested too deeply,
+raised `POLICY_DENIED` — a configuration error, which changed the run's exit code
+from 1 to 2 and made a typo in a test read as a misconfigured project. They now
+raise `INVALID_ARGUMENT` like every other argument check, and are validated before
+the step opens.
+
+`--debug` no longer lets a bypassed planning step inflate what the locate cache
+saved: `bypassCache` records its entry kind, so only genuine locate rounds price a
+locate hit.
