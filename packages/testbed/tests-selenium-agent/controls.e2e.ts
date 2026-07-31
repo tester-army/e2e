@@ -59,11 +59,15 @@ test.describe('demo page', () => {
     expect(data.progressPercent).toBe(50);
   });
 
-  test('a checkbox inside an embedded document', async ({ agent, web }) => {
-    // The frame is a `data:text/html` document. Its origin is `null`, so the
-    // observation walk stops at the iframe boundary node and the agent has no
-    // node to select — the deterministic path reaches it, the agent does not.
-    await agent.check('the CheckBox inside the iFrame');
-    await expect(web.frameLocator('#myFrame3').getByRole('checkbox')).toBeChecked();
-  });
+  test(
+    'a checkbox inside an embedded document',
+    { skip: 'spec 14-security.md denies the data: scheme, so this frame is never observed' },
+    async ({ agent, web }) => {
+      // The frame is a `data:text/html` document with an opaque origin. The
+      // observation walk stops at the boundary node, so the agent has no node to
+      // select: the deterministic path reaches this control and the agent cannot.
+      await agent.check('the CheckBox inside the iFrame');
+      await expect(web.frameLocator('#myFrame3').getByRole('checkbox')).toBeChecked();
+    },
+  );
 });

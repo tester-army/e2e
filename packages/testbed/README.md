@@ -64,7 +64,7 @@ Both suites are opt-in and never run in CI:
 
 ```bash
 pnpm --filter @e2edev/testbed test:selenium                                # 55 pass, 4 skip
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:selenium-agent    # 26 pass, 1 skip
+E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:selenium-agent    # 25 pass, 2 skip
 ```
 
 Every remaining `skip` is a pinned finding, not a flake, and names its cause at
@@ -84,19 +84,25 @@ the call site.
    query-addressable endpoint works; a page that gives neither does not (`skip`,
    agentic drag inside a frame). Retaining generations is a driver lifecycle
    decision, deliberately left for its own change.
-3. **`getAttribute` reads a whitelist**, returning `null` for `readonly`,
+3. **`data:` frames are outside the agent's view by contract.** `spec/14-security.md`
+   denies the scheme by name, so an inline frame stays a boundary node however it
+   got there. Admitting it for observation only — it has an opaque origin, and its
+   bytes come from a document that was already admitted — is a spec change with
+   its own review, not something an observation walk decides (`skip`, agentic
+   checkbox inside an embedded document).
+4. **`getAttribute` reads a whitelist**, returning `null` for `readonly`,
    `draggable`, `class`, `src` — indistinguishable from absent. There is no
    `toHaveAttribute`/`toHaveClass` either, so attribute checks fall to
    `web.evaluate`.
-4. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
+5. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
    cannot be opened at all (`skip`).
-5. **No page-level response/console feed.** "loaded with no 404s and no JS
+6. **No page-level response/console feed.** "loaded with no 404s and no JS
    errors" is reconstructed from `web.route` on the request side.
-6. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
+7. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
    `tabpanel`, so radio groups and selects need `web.locator`.
-7. **The reference driver is detected by anti-bot.** `/hobbit/login` redirects to
+8. **The reference driver is detected by anti-bot.** `/hobbit/login` redirects to
    a block page on load; the aspirational test is `skip`ped and the block pinned.
-8. **Agent steps record no resolved locator.** A step that resolves the *wrong*
+9. **Agent steps record no resolved locator.** A step that resolves the *wrong*
    node still reports `passed`; only the paired deterministic assertion catches
    it. `E2E_DEBUG=agent` shows the selection, the report does not.
 
@@ -110,9 +116,6 @@ the call site.
   reference-only. Covered by `packages/e2e/tests/integration/agent-unnamed.test.ts`.
 - **Open shadow roots are observed.** The walk descends into `shadowRoot`, so a
   control that exists only in a shadow tree is selectable.
-- **`data:` frames are observed.** They are the same trust class as
-  `about:srcdoc` — page-authored, no network origin — so an origin allowlist had
-  nothing to match and excluded the app's own markup.
 - **Empty painted rectangles are observed** with the role `box`, so a drop zone
   or a swatch can be named at all. An unpainted spacer of the same size stays
   out: a person cannot see it either.

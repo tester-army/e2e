@@ -25,17 +25,11 @@ Both paths re-read the live node and require its recorded identity before acting
 exactly as replay does, so a stale selection is still a miss rather than a blind
 dispatch. `poll: false` callers keep their early exit for escalation.
 
-Two observation gaps close alongside it in `@e2edev/playwright`:
-
-- **Open shadow roots are walked.** A control that exists only in a shadow tree
-  is now selectable. Slotted content is not double-counted: slotted elements are
-  light-DOM children, and the shadow tree holds `<slot>` placeholders rather than
-  copies. A closed root stays invisible, as it is to a person reading the page.
-- **`data:` documents are admitted to observations.** They are the same trust
-  class as `about:blank` and `about:srcdoc` — written by the embedding page, with
-  no network origin for an allowlist to match — so refusing them excluded the
-  app's own inline frames rather than any third party. The check still keeps out
-  ads, trackers, and cross-origin embeds, all of which have a real origin.
+One observation gap closes alongside it in `@e2edev/playwright`: **open shadow
+roots are walked**, so a control that exists only in a shadow tree is now
+selectable. Slotted content is not double-counted — slotted elements are
+light-DOM children, and the shadow tree holds `<slot>` placeholders rather than
+copies. A closed root stays invisible, as it is to a person reading the page.
 
 Empty painted rectangles are observed, and a drag can end on one.
 

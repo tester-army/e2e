@@ -812,16 +812,17 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
  *
  * `about:blank` and `srcdoc` documents inherit their parent's origin, so they
  * are the app's own content (consent managers, editors) and always allowed; the
- * parent frame was already admitted to be captured at all. A `data:` document
- * is the same trust class: its bytes are written by the page that embeds it and
- * it has no network origin to check, so refusing it excluded the app's own
- * markup — inline widgets and demo frames — rather than any third party. The
- * check exists to keep ads, trackers, and cross-origin embeds out of
- * observations, and all of those have a real origin.
+ * parent frame was already admitted to be captured at all.
+ *
+ * A `data:` document is *not* admitted, even though its bytes are written by the
+ * page that embeds it. It has an opaque origin rather than an inherited one, and
+ * 14-security.md denies the scheme by name alongside `file:` and `javascript:`.
+ * Admitting it would be a change to that contract, not an implementation detail,
+ * so a control inside an inline frame stays reachable deterministically and
+ * outside the agent's view.
  */
 function isAllowedFrameOrigin(url: string, allowedOrigins: readonly string[]): boolean {
   if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;
-  if (url.startsWith('data:')) return true;
   try {
     return allowedOrigins.includes(new URL(url).origin);
   } catch {

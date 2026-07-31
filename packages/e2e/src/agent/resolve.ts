@@ -18,11 +18,7 @@
  */
 
 import type { LocatorExpression, NodeRef, SemanticNode } from '../driver/index.ts';
-import {
-  describeExpression,
-  frameExpression,
-  webSelectorExpression,
-} from '../locator/expression.ts';
+import { describeExpression, webSelectorExpression } from '../locator/expression.ts';
 import { POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { agentTrace } from '../internal/trace.ts';
 import { AgentError } from './error.ts';
@@ -199,23 +195,30 @@ async function addressByReference(
   selection: Extract<Selection, { kind: 'node' }>,
 ): Promise<LocatedNode | undefined> {
   const selected = selection.selected;
-  let node: SemanticNode;
+  let read: SemanticNode;
   try {
-    node = await invocation.engine.session.screen.read(selected.ref, invocation.operation());
+    read = await invocation.engine.session.screen.read(selected.ref, invocation.operation());
   } catch {
     agentTrace(() => 'locate: the observed reference could not be read');
     return undefined;
   }
-  if (!matchesSignature(selected, node)) {
+  if (!matchesSignature(selected, read)) {
     agentTrace(() => 'locate: the observed reference no longer reads as the selected node');
     return undefined;
   }
+  // A single-node read describes one element and says nothing about which
+  // document it was read from, so the frame chain travels with the selection —
+  // only an observation node carries one. Attaching it here is what keeps a
+  // document-local selector scoped to its own document, both for the rung below
+  // and for the selector the cache stores from this node.
+  const framePath = selected.framePath ?? [];
+  const node: SemanticNode = framePath.length === 0 ? read : { ...read, framePath };
   // The driver's own selector for this node, when it has one, is a real locator:
   // it is document-local, anchored on a naming attribute, and re-resolved and
   // identity-checked here exactly as `storableLocator` promises for replay. A
   // node addressed this way is not reference-only, so it survives into the cache
   // and into `dragTo`, which cannot dispatch through an element handle.
-  const bySelector = await addressBySelector(invocation, node);
+  const bySelector = await addressBySelector(invocation, node, framePath);
   if (bySelector !== undefined) {
     invocation.recordPolicy('locate.selector', 'allowed');
     agentTrace(
@@ -265,13 +268,16 @@ async function addressByReference(
 async function addressBySelector(
   invocation: Invocation,
   node: SemanticNode,
+  framePath: readonly string[],
 ): Promise<{ ref: NodeRef; expression: LocatorExpression } | undefined> {
   const selector = node.selector;
   if (selector === undefined || selector === '') return undefined;
-  const expression = (node.framePath ?? []).reduceRight<LocatorExpression>(
-    (source, frame) => frameExpression(frame, source),
-    webSelectorExpression(selector),
-  );
+  // Scoped the same way a derived query is, and for the same reason: a CSS
+  // selector resolves against one document, and Playwright's does not pierce a
+  // frame boundary. Resolved unscoped, this would search the page *around* the
+  // frame — where a same-role element with no name passes the identity check,
+  // because there is no name or text left to compare.
+  const expression = scopeToFrames(webSelectorExpression(selector), framePath);
   let refs: readonly NodeRef[];
   try {
     refs = await invocation.engine.resolveAll(expression, invocation.deadline);

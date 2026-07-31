@@ -108,6 +108,61 @@ const PAGES: Record<string, string> = {
   <iframe id="child" src="/child" title="child"></iframe>
 </body>
 </html>`,
+  // The frame-scoping trap: the control the agent wants is inside the frame, and
+  // the outer document holds one element with the same role and the same `name`
+  // attribute. A selector derived for the inner control resolves against the
+  // outer document unless it is scoped to the frame, and the identity check
+  // cannot tell them apart — neither has a name or text to compare.
+  // Drag geometry. The near zone starts below the fold but can share a viewport
+  // with the source once something scrolls; the far zone never can. A pointer
+  // drag has to scroll for the first and refuse the second, because a pointer can
+  // only be put at a coordinate that is on screen.
+  '/drag-scroll': `<!doctype html>
+<html>
+<head><title>Drag scroll</title></head>
+<body style="margin:0">
+  <output id="drops" role="status" aria-label="Drops" style="position:fixed;right:0;top:0">none</output>
+  <img id="chip" data-testid="chip" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"
+       width="80" height="30" draggable="true" style="position:absolute;left:20px;top:200px"
+       ondragstart="event.dataTransfer.setData('text', 'chip')" />
+  <div id="near" style="position:absolute;left:20px;top:800px;width:200px;height:40px;border:1px solid #333"></div>
+  <div id="far" style="position:absolute;left:20px;top:5000px;width:200px;height:40px;border:1px solid #333"></div>
+  <div style="height:5200px"></div>
+  <script>
+    for (const id of ['near', 'far']) {
+      const zone = document.getElementById(id);
+      zone.addEventListener('dragover', (event) => event.preventDefault());
+      zone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        zone.appendChild(document.getElementById(event.dataTransfer.getData('text')));
+        document.getElementById('drops').textContent = 'dropped on ' + id;
+      });
+    }
+  </script>
+</body>
+</html>`,
+  '/frame-twin': `<!doctype html>
+<html>
+<head><title>Frame twin</title></head>
+<body>
+  <h1>Frame twin</h1>
+  <output id="outer" role="status" aria-label="Outer">untouched</output>
+  <table><tr><td>Decoy:</td><td>
+    <input name="pin" type="text" oninput="document.getElementById('outer').textContent = 'outer typed'" />
+  </td></tr></table>
+  <iframe id="inner" src="/frame-twin-child" title="inner"></iframe>
+</body>
+</html>`,
+  '/frame-twin-child': `<!doctype html>
+<html>
+<head><title>Frame twin child</title></head>
+<body>
+  <output id="inside" role="status" aria-label="Inside">untouched</output>
+  <table><tr><td>Pin:</td><td>
+    <input name="pin" type="text" oninput="document.getElementById('inside').textContent = 'inner typed'" />
+  </td></tr></table>
+</body>
+</html>`,
   '/child': `<!doctype html>
 <html>
 <head><title>Child frame</title></head>
