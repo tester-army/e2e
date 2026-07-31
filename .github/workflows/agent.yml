@@ -15,7 +15,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, agent, wakacje]
+        options: [all, agent, wakacje, selenium]
       model:
         description: 'Override E2E_MODEL (provider/model-id)'
         required: false
@@ -44,11 +44,13 @@ jobs:
           SUITE: ${{ inputs.suite }}
         run: |
           # Local playground: deterministic app, so a failure is ours.
-          # wakacje is a live third-party site that changes and rate-limits
-          # under us, so its failure is a signal to read, not a broken build.
+          # wakacje and selenium are live third-party sites that change and
+          # rate-limit under us, so their failure is a signal to read, not a
+          # broken build.
           all='[
             {"suite":"agent","script":"test:agent","optional":false},
-            {"suite":"wakacje","script":"test:wakacje","optional":true}
+            {"suite":"wakacje","script":"test:wakacje","optional":true},
+            {"suite":"selenium","script":"test:selenium-agent","optional":true}
           ]'
           if [ -z "$SUITE" ] || [ "$SUITE" = all ]; then
             selected=$(echo "$all" | jq -c .)

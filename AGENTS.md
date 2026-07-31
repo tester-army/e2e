@@ -92,11 +92,13 @@ pnpm --filter @e2edev/testbed run test:headed
   `packages/e2e/tests/tmp-projects/` (gitignored) and import the runner from
   `dist/` via a non-literal specifier so the fixture's `e2e` self-reference
   shares one registry. Stale `dist` means confusing failures — rebuild.
-- Testbed suites beyond the default one never gate a PR: `test:public` (real
-  websites) runs in no workflow, and `test:agent` / `test:wakacje` (real model
-  calls, need `E2E_MODEL_API_KEY`, optional `E2E_MODEL=provider/model-id`) run
-  only on the weekly `.github/workflows/agent.yml` schedule or by manual
-  dispatch. `test:wakacje` is non-blocking there: the site is third-party.
+- Testbed suites beyond the default one never gate a PR: `test:public` and
+  `test:selenium` (real websites) run in no workflow, and `test:agent` /
+  `test:wakacje` / `test:selenium-agent` (real model calls, need
+  `E2E_MODEL_API_KEY`, optional `E2E_MODEL=provider/model-id`) run only on the
+  weekly `.github/workflows/agent.yml` schedule or by manual dispatch.
+  `test:wakacje` and `test:selenium-agent` are non-blocking there: both sites
+  are third-party.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 
