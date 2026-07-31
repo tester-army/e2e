@@ -8,20 +8,29 @@
  * against the action space and the security policy, and only then dispatches.
  *
  * This file owns the loop and nothing else. The vocabulary lives in
- * `action-space.ts`, so adding an action never touches the loop.
+ * `action-space.ts` and the prose in `prompts.ts`, so adding an action or
+ * rewording a rule never touches the control flow.
  */
 
 import type { CacheLocator } from '../cache/index.ts';
 import type { SemanticNode } from '../driver/index.ts';
 import { asDriverError, TestError } from '../internal/errors.ts';
+import { agentTrace } from '../internal/trace.ts';
 import { isSecret } from '../locator/screen.ts';
-import type { AgentParam, AgentParams, Secret } from '../types.ts';
+import type {
+  AgentErrorCode,
+  AgentParam,
+  AgentParams,
+  Secret,
+  StandardSchemaV1,
+} from '../types.ts';
 import {
   actRequest,
   describeCall,
+  describeRecordedAction,
   dispatch,
+  offeredKinds,
   toolSchemaFor,
-  TOOL_SCHEMA,
   validateToolCall,
   type ActionContext,
   type ToolCall,
@@ -29,9 +38,14 @@ import {
 import { AgentError } from './error.ts';
 import type { AgentContext, Invocation } from './invocation.ts';
 import { toAgentError } from './invocation.ts';
-import { agentTrace } from '../internal/trace.ts';
 import { observationShape } from './observation.ts';
-import { describeGuidance, openPathCache, type OpenPathCache } from './path-cache.ts';
+import { openPathCache, type OpenPathCache } from './path-cache.ts';
+import {
+  challengeNotice,
+  describeBudget,
+  NAVIGATION_WITHDRAWN_NOTICE,
+  stalledNotice,
+} from './prompts.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { storableForNode } from './storable.ts';
 
@@ -53,10 +67,6 @@ const MAX_CONSECUTIVE_FAILURES = 3;
  * allowance is small; the model-call budget bounds it regardless.
  */
 const MAX_STALE_RETRIES = 3;
-
-/** What an invocation with no action steps left may still answer with. */
-const WIND_DOWN_KINDS = ['observe', 'conclude'] as const;
-const WIND_DOWN_SCHEMA = toolSchemaFor(WIND_DOWN_KINDS);
 
 /**
  * Actions remaining below which the model is told to start wrapping up.
@@ -122,201 +132,272 @@ export async function runAct(
     secrets: disclosed.secrets,
     operation: () => invocation.operation(),
   };
-  const trail = new Trail();
   const locate = (target: SemanticNode): CacheLocator | undefined =>
     storableForNode(target, request.testIdAttribute);
-  let cache: OpenPathCache | undefined;
-  let repair: { issue: string; rawText: string | undefined } | undefined;
-  let notice: string | undefined;
-  /** Whether a failure conclusion has already been questioned this invocation. */
-  let challenged = false;
-  let consecutiveFailures = 0;
-  /** Dispatches lost to a mid-flight re-render, which cost neither step nor blame. */
-  let staleRetries = 0;
-  /** Times the current proposal has repeated against an unchanged screen. */
-  let repeats = 0;
-  // What the previous round proposed against a page that looked the same.
-  // Observations mint a fresh revision every time, so sameness is the rendered
-  // shape of the page, not its identity.
-  let previous: { shape: string; action: string } | undefined;
+
+  const trail = new Trail();
+  const stalls = new StallGuard();
+  const failures = new FailureBudget();
   let round = 0;
   /** `used/limit` prefix, so every line says which budget it is spending. */
   const progress = (): string =>
     `${String(invocation.maxActionSteps - invocation.actionStepsRemaining)}/${String(invocation.maxActionSteps)}`;
 
+  // The first observation is taken outside the loop because the path cache key
+  // is screen-scoped and has to be built from it: the same instruction on a
+  // different screen is a different call, and keying it otherwise would offer a
+  // checkout path to a settings page. Opening once also keeps `cache` a constant
+  // — lazily assigning it inside the loop silently re-opened it every round for
+  // a bypassed cache, whose result is `undefined`.
+  let observation = await invocation.observe();
+  const cache: OpenPathCache | undefined = await openPathCache(invocation, observation, {
+    instruction: request.instruction,
+    input: disclosed.key,
+  });
+
+  let repair: { issue: string; rawText: string | undefined } | undefined;
+  let notice: string | undefined;
+  /** Whether a failure conclusion has already been questioned this invocation. */
+  let challenged = false;
+  /** Whether the model has been told navigation is gone; said once, not per round. */
+  let navigationExplained = false;
+
   // A planning loop that is not converging looks identical from outside to one
   // that is merely slow, so the deadline reports how far it actually got.
   try {
-    return await plan();
+    for (;;) {
+      round += 1;
+      // Round one already has one. Every later round re-reads the screen, which
+      // is what makes guidance advisory and a conclusion checkable.
+      if (round > 1) observation = await invocation.observe();
+
+      const offered = offeredKinds({
+        actionStepsRemaining: invocation.actionStepsRemaining,
+        committed: invocation.dispatched,
+      });
+      // Said once, and only when there is room to say it: a pending notice from
+      // the previous round is more urgent, and deferring keeps both.
+      if (
+        notice === undefined &&
+        !navigationExplained &&
+        invocation.dispatched &&
+        !offered.includes('navigate')
+      ) {
+        navigationExplained = true;
+        notice = NAVIGATION_WITHDRAWN_NOTICE;
+      }
+      const suggestion = cache?.next();
+      const guidance = suggestion === undefined ? undefined : describeRecordedAction(suggestion);
+      const startedMs = Date.now();
+      const call = await invocation.ask({
+        schemaName: 'agent-tool-1',
+        schema: toolSchemaFor(offered),
+        // The observation is part of the grammar for this one call: an id it does
+        // not contain is not a target, it is invalid output worth one repair.
+        validate: (value) => validateToolCall(value, observation, offered),
+        prompt: {
+          request: actRequest(offered),
+          budget: describeBudget({
+            actions: invocation.actionStepsRemaining,
+            calls: invocation.modelCallsRemaining,
+            windDownAt: WIND_DOWN_AT,
+          }),
+          instruction: request.instruction,
+          observation,
+          ...(disclosed.text === undefined ? {} : { params: disclosed.text }),
+          ...(trail.isEmpty() ? {} : { trail: trail.render() }),
+          ...(guidance === undefined ? {} : { guidance }),
+          ...(notice === undefined ? {} : { notice }),
+          ...(repair === undefined ? {} : { repair }),
+        },
+      });
+      repair = undefined;
+      notice = undefined;
+
+      if (call.control === 'conclude') {
+        agentTrace(() => `${progress()} done ${call.status} · ${firstLine(call.explanation)}`);
+        // A first failure with budget left is questioned once, never accepted
+        // silently. Bounded to a single challenge so a genuine dead end costs one
+        // extra round rather than the whole budget.
+        if (
+          call.status === 'failure' &&
+          !challenged &&
+          invocation.actionStepsRemaining > 0 &&
+          invocation.canAsk()
+        ) {
+          challenged = true;
+          // The model reports the screen cannot do what was asked, which is the
+          // signal `'fallback'` waits for: the tree did not describe what it
+          // needed. Pixels join every later request in this invocation.
+          const escalated = invocation.canEscalateVision();
+          if (escalated) invocation.escalateVision();
+          agentTrace(
+            () =>
+              `${progress()} gave up — asked to look again first` +
+              `${escalated ? ', now with a screenshot' : ''}`,
+          );
+          trail.note(`reported "${firstLine(call.explanation)}" and was asked to look again`);
+          notice = challengeNotice({
+            explanation: firstLine(call.explanation),
+            actionsRemaining: invocation.actionStepsRemaining,
+            screenshotAttached: escalated,
+          });
+          continue;
+        }
+        const conclusion = await concludeOrRepair(invocation, trail, call, request.onData);
+        if (conclusion.ok) {
+          // Only a completely successful invocation writes guidance.
+          await cache?.write();
+          return conclusion.value;
+        }
+        repair = conclusion.repair;
+        continue;
+      }
+
+      // An observation is driver-only work, so it costs a model call and the
+      // clock but never an action step. The next round observes anyway, so there
+      // is nothing further to do here.
+      if (call.control === 'observe') {
+        agentTrace(() => `${progress()} look again`);
+        trail.note('looked at the screen again');
+        continue;
+      }
+
+      const shape = observationShape(observation);
+      const signature = describeCall(call, observation);
+      const stall = stalls.check(shape, signature);
+      if (stall.decision === 'abort') {
+        throw new AgentError(
+          'STEP_NO_CONCLUSION',
+          `agent.act proposed ${signature} on an unchanged screen ${String(stall.seen)} times without concluding`,
+        );
+      }
+      if (stall.decision === 'skip') {
+        // Not dispatched. A control that produced no visible change may be doing
+        // async work, and repeating a submit or a purchase is exactly the mistake
+        // that must not be made on the caller's behalf. The model gets told what
+        // the runner sees and chooses again.
+        agentTrace(() => `${progress()} ${signature} — skipped, screen unchanged`);
+        trail.note(`proposed ${signature} again with the screen unchanged; not repeated`);
+        notice = stalledNotice(signature);
+        continue;
+      }
+
+      const derivative = call.action.path?.record(call.args as never, locate);
+      cache?.reconcile(derivative);
+
+      try {
+        await dispatch(context, call);
+        cache?.committed(derivative);
+        trail.succeeded(signature);
+        failures.landed();
+        agentTrace(() => `${progress()} ${signature} — ok ${Date.now() - startedMs}ms`);
+      } catch (cause) {
+        const error = toAgentError(cause);
+        // A denied action is a policy decision about what the model asked for,
+        // not a transient obstacle, so it ends the invocation rather than being
+        // handed back as something to route around.
+        if (TERMINAL_CODES.has(error.code)) throw error;
+        invocation.checkDeadline(cause);
+        // The page re-rendered between the observation and the dispatch, so the
+        // node the model named no longer exists. Nothing was performed and
+        // nothing was wrong with the decision: the next round reads the new
+        // document and asks again. Charging an action step for it would let a
+        // busy page spend the budget without ever acting, and telling the model
+        // to "try something different" would send it away from a correct target.
+        if (isStaleNode(cause) && failures.allowStale(MAX_STALE_RETRIES)) {
+          invocation.refundActionStep();
+          // The action never ran, so proposing it again is the right move rather
+          // than a repetition: forget the runner ever saw it.
+          stalls.forget(shape, signature);
+          trail.note(`${signature} did not run: the page changed first`);
+          agentTrace(() => `${progress()} ${signature} — page moved, re-reading`);
+          continue;
+        }
+        if (failures.failed(MAX_CONSECUTIVE_FAILURES)) throw error;
+        trail.failed(signature, error.message);
+        agentTrace(() => `${progress()} ${signature} — failed ${error.code}, rerouting`);
+      }
+    }
   } catch (cause) {
     throw explainProgress(invocation, cause, trail, round);
   }
+}
 
-  async function plan(): Promise<ActConclusion> {
-  for (;;) {
-    round += 1;
-    const observation = await invocation.observe();
-    // Opened against the first observation: the key is screen-scoped, so the
-    // same instruction on a different screen must not be offered this path.
-    cache ??= await openPathCache(invocation, observation, {
-      instruction: request.instruction,
-      input: disclosed.key,
-    });
-    // With no action steps left the only useful answer is a conclusion, so that
-    // is all the request offers. Throwing the budget error here instead would
-    // discard whatever the flow had learned and report nothing about it.
-    const windDown = invocation.actionStepsRemaining === 0;
-    const offered = windDown ? WIND_DOWN_KINDS : undefined;
-    const suggestion = windDown ? undefined : cache?.next();
-    const startedMs = Date.now();
-    const call = await invocation.ask({
-      schemaName: 'agent-tool-1',
-      schema: windDown ? WIND_DOWN_SCHEMA : TOOL_SCHEMA,
-      // The observation is part of the grammar for this one call: an id it does
-      // not contain is not a target, it is invalid output worth one repair.
-      validate: (value) => validateToolCall(value, observation, offered),
-      prompt: {
-        request: actRequest(offered),
-        budget: describeBudget(invocation, windDown),
-        instruction: request.instruction,
-        observation,
-        ...(disclosed.text === undefined ? {} : { params: disclosed.text }),
-        ...(trail.isEmpty() ? {} : { trail: trail.render() }),
-        ...(suggestion === undefined ? {} : { guidance: describeGuidance(suggestion) }),
-        ...(notice === undefined ? {} : { notice }),
-        ...(repair === undefined ? {} : { repair }),
-      },
-    });
-    repair = undefined;
-    notice = undefined;
+/**
+ * Whether the runner should perform a proposed action, given what it has already
+ * watched fail to move the screen.
+ *
+ * Every (screen shape, action) pair the invocation has proposed is remembered,
+ * not just the previous round's. A model that has lost the thread does not repeat
+ * itself back to back — it cycles: it taps something, looks, taps the same thing
+ * again from the other side of an `observe`, or alternates between two controls
+ * that both do nothing. Remembering only the last round meant every one of those
+ * loops ran to the end of the budget while the runner reported nothing unusual.
+ *
+ * A pair is a genuine repeat only when the *rendered* screen is identical, which
+ * already excludes any action that had a visible effect, so there is no
+ * legitimate flow this rejects: doing the same thing to the same screen twice
+ * cannot produce a different result the second time.
+ */
+type StallDecision = 'proceed' | 'skip' | 'abort';
 
-    if (call.control === 'conclude') {
-      agentTrace(() => `${progress()} done ${call.status} · ${firstLine(call.explanation)}`);
-      // A first failure with budget left is questioned once, never accepted
-      // silently. Most give-ups are one unblockable-looking obstacle away from
-      // working — a required field still empty, an overlay, a control that
-      // enables once something else is set — and the model has usually not
-      // looked for it. Bounded to a single challenge so a genuine dead end costs
-      // one extra round rather than the whole budget.
-      if (
-        call.status === 'failure' &&
-        !challenged &&
-        invocation.actionStepsRemaining > 0 &&
-        invocation.canAsk()
-      ) {
-        challenged = true;
-        // The model reports the screen cannot do what was asked, which is the
-        // signal `'fallback'` waits for: the tree did not describe what it
-        // needed. Pixels join every later request in this invocation.
-        const escalated = invocation.canEscalateVision();
-        if (escalated) invocation.escalateVision();
-        agentTrace(
-          () =>
-            `${progress()} gave up — asked to look again first` +
-            `${escalated ? ', now with a screenshot' : ''}`,
-        );
-        trail.note(`reported "${firstLine(call.explanation)}" and was asked to look again`);
-        notice = [
-          `You concluded that this cannot be done: "${firstLine(call.explanation)}".`,
-          `You still have ${String(invocation.actionStepsRemaining)} action(s).`,
-          'Before that is accepted, look once more for something you can act on: a required',
-          'field still empty or invalid, a consent still unticked, a dialog or cookie banner in',
-          'the way, a control that only enables once something else is set, or content that',
-          'needs scrolling into view. Disabled buttons in particular are usually a symptom, not',
-          'the cause.',
-          ...(escalated
-            ? ['A screenshot of the screen is now attached; it may show what the tree did not.']
-            : []),
-          'If you find something, act on it. If there is genuinely nothing, conclude "failure"',
-          'again with the blocker named, and it will be reported as the result.',
-        ].join('\n');
-        continue;
-      }
-      const conclusion = await concludeOrRepair(invocation, trail, call, request.onData);
-      if (conclusion.ok) {
-        // Only a completely successful invocation writes guidance.
-        await cache?.write();
-        return conclusion.value;
-      }
-      repair = conclusion.repair;
-      continue;
-    }
+class StallGuard {
+  private readonly counts = new Map<string, number>();
 
-    // An observation is driver-only work, so it costs a model call and the clock
-    // but never an action step. The next round observes anyway, so there is
-    // nothing further to do here.
-    if (call.control === 'observe') {
-      agentTrace(() => `${progress()} look again`);
-      trail.note('looked at the screen again');
-      continue;
-    }
-
-    const shape = observationShape(observation);
-    const signature = describeCall(call, observation);
-    if (previous !== undefined && previous.shape === shape && previous.action === signature) {
-      repeats += 1;
-      if (repeats > 1) {
-        throw new AgentError(
-          'STEP_NO_CONCLUSION',
-          `agent.act proposed ${signature} on an unchanged screen ${repeats + 1} times without concluding`,
-        );
-      }
-      // Not dispatched. A control that produced no visible change may be doing
-      // async work, and repeating a submit or a purchase is exactly the mistake
-      // that must not be made on the caller's behalf. The model gets told what
-      // the runner sees and chooses again.
-      agentTrace(() => `${progress()} ${signature} — skipped, screen unchanged`);
-      trail.note(`proposed ${signature} again with the screen unchanged; not repeated`);
-      notice = [
-        `The screen has not changed since you last chose ${JSON.stringify(signature)}, so it was`,
-        'not performed again: repeating a submit or a purchase is not safe. Either the control is',
-        'still working — answer with "observe" to look again — or it does nothing here, in which',
-        'case take a different route or conclude with "failure" explaining what is stuck.',
-      ].join('\n');
-      continue;
-    }
-    repeats = 0;
-    previous = { shape, action: signature };
-
-    const derivative = call.action.record?.(call.args as never, locate);
-    cache?.reconcile(derivative);
-
-    try {
-      await dispatch(context, call);
-      cache?.observed(derivative);
-      trail.succeeded(signature);
-      consecutiveFailures = 0;
-      staleRetries = 0;
-      agentTrace(() => `${progress()} ${signature} — ok ${Date.now() - startedMs}ms`);
-    } catch (cause) {
-      const error = toAgentError(cause);
-      // A denied action is a policy decision about what the model asked for, not
-      // a transient obstacle, so it ends the invocation rather than being handed
-      // back as something to route around.
-      if (TERMINAL_CODES.has(error.code)) throw error;
-      invocation.checkDeadline(cause);
-      // The page re-rendered between the observation and the dispatch, so the
-      // node the model named no longer exists. Nothing was performed and nothing
-      // was wrong with the decision: the next round reads the new document and
-      // asks again. Charging an action step for it would let a busy page spend
-      // the budget without ever acting, and telling the model to "try something
-      // different" would send it away from a target that was correct.
-      if (isStaleNode(cause) && staleRetries < MAX_STALE_RETRIES) {
-        staleRetries += 1;
-        invocation.refundActionStep();
-        // The action never ran, so proposing it again is the right move rather
-        // than a repetition: forget it happened.
-        previous = undefined;
-        trail.note(`${signature} did not run: the page changed first`);
-        agentTrace(() => `${progress()} ${signature} — page moved, re-reading`);
-        continue;
-      }
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) throw error;
-      trail.failed(signature, error.message);
-      agentTrace(() => `${progress()} ${signature} — failed ${error.code}, rerouting`);
-    }
+  /** Records a proposal and says what to do with it. */
+  check(shape: string, action: string): { decision: StallDecision; seen: number } {
+    const key = StallGuard.key(shape, action);
+    const seen = (this.counts.get(key) ?? 0) + 1;
+    this.counts.set(key, seen);
+    // The second proposal is answered rather than performed, because a control
+    // doing async work looks exactly like one doing nothing. A third is a loop.
+    const decision: StallDecision = seen === 1 ? 'proceed' : seen === 2 ? 'skip' : 'abort';
+    return { decision, seen };
   }
+
+  /** Drops a proposal that never reached the application. */
+  forget(shape: string, action: string): void {
+    const key = StallGuard.key(shape, action);
+    const seen = this.counts.get(key) ?? 0;
+    if (seen <= 1) this.counts.delete(key);
+    else this.counts.set(key, seen - 1);
+  }
+
+  private static key(shape: string, action: string): string {
+    return `${action}\u0000${shape}`;
+  }
+}
+
+/**
+ * How much failure one invocation tolerates before it stops.
+ *
+ * The two counters belong together because they are the same question asked of
+ * different evidence: a dispatch the driver reports as retryable proved nothing
+ * was sent and costs neither a step nor blame, while anything else is a real
+ * obstacle the model gets one chance to route around.
+ */
+class FailureBudget {
+  private consecutive = 0;
+  private stale = 0;
+
+  /** Notes a committed action, which clears everything before it. */
+  landed(): void {
+    this.consecutive = 0;
+    this.stale = 0;
+  }
+
+  /** True while a re-render may still be retried for free. */
+  allowStale(limit: number): boolean {
+    if (this.stale >= limit) return false;
+    this.stale += 1;
+    return true;
+  }
+
+  /** Records a real failure. True once the invocation should give up. */
+  failed(limit: number): boolean {
+    this.consecutive += 1;
+    return this.consecutive >= limit;
   }
 }
 
@@ -351,24 +432,8 @@ function explainProgress(
   });
 }
 
-/** Tells the model what it has left, and when to start finishing. */
-function describeBudget(invocation: Invocation, windDown: boolean): string {
-  if (windDown) {
-    return [
-      'You have no actions left. Conclude now: "success" if the instruction is already',
-      'satisfied by what the observation shows, "failure" otherwise, saying what remains.',
-    ].join('\n');
-  }
-  const actions = invocation.actionStepsRemaining;
-  const calls = invocation.modelCallsRemaining;
-  const line = `${actions} action(s) and ${calls} planning round(s) remain.`;
-  return actions > WIND_DOWN_AT
-    ? line
-    : `${line} Start wrapping up: finish the instruction with what is left, or conclude with "failure" and say what blocked you.`;
-}
-
 /** Failures that end the invocation instead of becoming trail feedback. */
-const TERMINAL_CODES = new Set([
+const TERMINAL_CODES: ReadonlySet<AgentErrorCode> = new Set<AgentErrorCode>([
   'POLICY_DENIED',
   'CANCELLED',
   'AUTH_CREDENTIAL_UNAVAILABLE',
@@ -549,6 +614,35 @@ export function normalizeInstruction(api: string, instruction: string): string {
     );
   }
   return normalized;
+}
+
+/** Bounds a caller's `maxSteps` against the resolved configuration limit. */
+export function resolveSteps(requested: number | undefined, limit: number): number {
+  if (requested === undefined) return limit;
+  if (!Number.isSafeInteger(requested) || requested <= 0) {
+    throw new TestError('INVALID_ARGUMENT', 'maxSteps must be a positive integer');
+  }
+  if (requested > limit) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `maxSteps ${requested} exceeds the resolved limit ${limit}`,
+    );
+  }
+  return requested;
+}
+
+/**
+ * Validates a proposed conclusion payload against the caller's schema, shaped as
+ * a protocol validation so `runAct` can feed the issue back as a repair round.
+ */
+export async function validateConclusionData(
+  schema: StandardSchemaV1,
+  value: unknown,
+  describeIssue: (issue: StandardSchemaV1.Issue) => string,
+): Promise<ProtocolValidation<unknown>> {
+  const validation = await schema['~standard'].validate(value);
+  if (validation.issues === undefined) return { ok: true, value: validation.value };
+  return { ok: false, issue: validation.issues.map(describeIssue).join('; ') };
 }
 
 /**

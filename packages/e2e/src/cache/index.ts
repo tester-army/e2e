@@ -13,8 +13,20 @@ export { MAX_CACHE_WIRE_BYTES, FileCacheStore, disabledCacheStore } from './stor
 export type { CacheStore, CacheReadResult } from './store.ts';
 export { readCacheEntry } from './entry.ts';
 export type { CacheEntry, CachePayload, LocatePayload, PathPayload } from './entry.ts';
-export { asPathAction, MAX_PATH_ACTIONS } from './path-action.ts';
-export type { PathAction, PathActionKind } from './path-action.ts';
+export {
+  asPathAction,
+  MAX_PATH_ACTIONS,
+  PATH_LIMITS,
+  SCROLL_DIRECTIONS,
+  SCROLL_MOMENTUMS,
+  SECRET_PURPOSES,
+} from './path-action.ts';
+export type {
+  PathAction,
+  PathActionKind,
+  ScrollPathDirection,
+  ScrollPathMomentum,
+} from './path-action.ts';
 export {
   CACHE_METHODS,
   buildCacheKey,

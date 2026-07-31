@@ -15,156 +15,39 @@
  */
 
 import type { JSONSchema7 } from 'ai';
-import type { CacheLocator, PathAction } from '../cache/index.ts';
+import {
+  PATH_LIMITS,
+  SCROLL_DIRECTIONS,
+  SCROLL_MOMENTUMS,
+  SECRET_PURPOSES,
+  type CacheLocator,
+  type PathAction,
+} from '../cache/index.ts';
 import type { OperationContext, SemanticNode } from '../driver/index.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { Momentum, ScrollDirection, Secret } from '../types.ts';
+import { describeExpression } from '../locator/expression.ts';
+import type { Secret } from '../types.ts';
+import {
+  anyJson,
+  EXPLANATION_MAX_LENGTH,
+  fail,
+  integer,
+  node,
+  ok,
+  oneOf,
+  optional,
+  shortText,
+  text,
+  type ArgSpec,
+} from './arg-spec.ts';
 import { AgentError } from './error.ts';
 import type { AgentContext, Invocation } from './invocation.ts';
 import { toAgentError } from './invocation.ts';
 import type { AgentObservation } from './observation.ts';
+import { planningRequest } from './prompts.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { authorizeSecretFill } from './secrets.ts';
 
-/* -------------------------------------------------------------------------- */
-/* Argument specs                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * One argument of one action: how it is declared to the provider, how it reads
- * in the prompt, and how a response value becomes a typed argument.
- *
- * An optional argument is an `ArgSpec<T | undefined>` whose `parse` accepts
- * absence, so the parsed type follows from the spec rather than from a second
- * flag the type system would have to reconcile.
- */
-export interface ArgSpec<T> {
-  readonly schema: JSONSchema7;
-  /** How this argument is described in the request text. */
-  readonly hint: string;
-  readonly required: boolean;
-  parse(value: unknown, observation: AgentObservation): ProtocolValidation<T>;
-}
-
-const REF_MAX_LENGTH = 256;
-const EXPLANATION_MAX_LENGTH = 8192;
-
-function ok<T>(value: T): ProtocolValidation<T> {
-  return { ok: true, value };
-}
-
-function fail(issue: string): { ok: false; issue: string } {
-  return { ok: false, issue };
-}
-
-/** Makes any spec optional, accepting absence as `undefined`. */
-function optional<T>(spec: ArgSpec<T>): ArgSpec<T | undefined> {
-  return {
-    ...spec,
-    required: false,
-    hint: `${spec.hint} (optional)`,
-    parse: (value, observation) =>
-      value === undefined ? ok(undefined) : spec.parse(value, observation),
-  };
-}
-
-/**
- * A node of the current observation.
- *
- * Validating the reference here rather than at dispatch is what stops a model
- * from naming something it was never shown: an invented id or a stale revision
- * is invalid output worth one repair round, and the alternative — acting on
- * whatever node happens to carry that id now — acts on the wrong thing.
- */
-const node = (purpose: string): ArgSpec<SemanticNode> => ({
-  required: true,
-  hint: `"target": { "id": <the node id exactly as printed after "#">, "revision": <observation revision> } — ${purpose}`,
-  schema: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['id', 'revision'],
-    properties: {
-      id: { type: 'string', minLength: 1, maxLength: REF_MAX_LENGTH },
-      revision: { type: 'string', minLength: 1, maxLength: REF_MAX_LENGTH },
-    },
-  },
-  parse: (value, observation) => {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      return fail('target must be an { id, revision } node reference');
-    }
-    const record = value as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key !== 'id' && key !== 'revision') return fail(`target has no "${key}" field`);
-    }
-    const id = boundedString(record['id'], 1, REF_MAX_LENGTH);
-    const revision = boundedString(record['revision'], 1, REF_MAX_LENGTH);
-    if (id === null || revision === null) return fail('target id/revision are invalid');
-    if (revision !== observation.revision) {
-      return fail(
-        `target revision "${revision}" is stale; the current observation is ` +
-          `"${observation.revision}". Quote the revision printed with the observation you are reading.`,
-      );
-    }
-    const found = observation.nodes.get(id);
-    if (found === undefined) {
-      return fail(`no node #${id} exists in observation "${observation.revision}"`);
-    }
-    return ok(found);
-  },
-});
-
-const text = (name: string, purpose: string, maxLength: number): ArgSpec<string> => ({
-  required: true,
-  hint: `"${name}": <${purpose}>`,
-  schema: { type: 'string', maxLength },
-  parse: (value) => {
-    const parsed = boundedString(value, 0, maxLength);
-    return parsed === null ? fail(`${name} must be a string of at most ${maxLength} characters`) : ok(parsed);
-  },
-});
-
-const shortText = (name: string, purpose: string, maxLength: number): ArgSpec<string> => ({
-  required: true,
-  hint: `"${name}": <${purpose}>`,
-  schema: { type: 'string', minLength: 1, maxLength },
-  parse: (value) => {
-    const parsed = boundedString(value, 1, maxLength);
-    return parsed === null ? fail(`${name} must be a non-empty string of at most ${maxLength} characters`) : ok(parsed);
-  },
-});
-
-const oneOf = <T extends string>(name: string, values: readonly T[]): ArgSpec<T> => ({
-  required: true,
-  hint: `"${name}": ${values.map((value) => `"${value}"`).join(' | ')}`,
-  schema: { type: 'string', enum: [...values] },
-  parse: (value) =>
-    typeof value === 'string' && (values as readonly string[]).includes(value)
-      ? ok(value as T)
-      : fail(`${name} must be one of: ${values.join(', ')}`),
-});
-
-const integer = (name: string, min: number, max: number): ArgSpec<number> => ({
-  required: true,
-  hint: `"${name}": <integer ${min}-${max}>`,
-  schema: { type: 'integer', minimum: min, maximum: max },
-  parse: (value) =>
-    typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
-      ? ok(value)
-      : fail(`${name} must be an integer from ${min} through ${max}`),
-});
-
-const anyJson = (name: string, purpose: string): ArgSpec<unknown> => ({
-  required: false,
-  hint: `"${name}": <${purpose}>`,
-  schema: {},
-  parse: (value) => ok(value),
-});
-
-function boundedString(value: unknown, min: number, max: number): string | null {
-  if (typeof value !== 'string') return null;
-  if (value.length < min || value.length > max) return null;
-  return value;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Actions                                                                    */
@@ -191,6 +74,43 @@ type ArgSpecs = Readonly<Record<string, ArgSpec<unknown>>>;
 /** The parsed arguments of one action, derived from its specs. */
 type Args<S> = { readonly [K in keyof S]: S[K] extends ArgSpec<infer T> ? T : never };
 
+/** Turns a node into the locator a cache entry can store it as. */
+type Locate = (node: SemanticNode) => CacheLocator | undefined;
+
+/**
+ * How one action appears in a recorded path, when it is recordable at all.
+ *
+ * The three parts are one member because they are one concept read three ways
+ * and are only correct together: `record` writes the shape, `owns` recognizes
+ * that shape coming back off disk, and `describe` renders it as the hint the
+ * model is shown. Splitting them into three optional members is what let the
+ * guidance renderer drift into a separate hand-written switch that silently
+ * mislabelled any kind it had not been taught.
+ */
+export interface PathRecording<S extends ArgSpecs, A extends PathAction> {
+  /**
+   * The `cache-1` derivative to record after this action succeeds, or undefined
+   * when this occurrence is not recordable. `locate` turns a node into a
+   * semantic locator; returning undefined for a node it cannot address keeps the
+   * path honest rather than storing something that would replay elsewhere.
+   */
+  record(args: Args<S>, locate: Locate): A | undefined;
+  /**
+   * Whether a recorded action came from this entry. Defaults to a `kind` match,
+   * so only entries sharing a wire kind — the plain and sensitive fills — need
+   * to say more.
+   */
+  owns?(action: PathAction): boolean;
+  /**
+   * The suggestion prose for one recorded action of this entry.
+   *
+   * Takes the shape this entry's own `record` produces, not the whole union, so
+   * a renderer reads its fields directly instead of re-narrowing a union it
+   * already knows the answer for.
+   */
+  describe(action: A): string;
+}
+
 /**
  * One dispatchable action.
  *
@@ -199,23 +119,25 @@ type Args<S> = { readonly [K in keyof S]: S[K] extends ArgSpec<infer T> ? T : ne
  * driver, and folding them together is what makes an `execute()`-style tool
  * unable to refuse (14-security.md).
  */
-export interface AgentAction<S extends ArgSpecs> {
+export interface AgentAction<S extends ArgSpecs, A extends PathAction = PathAction> {
   /** Wire `kind`, which two actions may share when a tiebreak distinguishes them. */
   readonly kind: string;
   /** One line for the request text: when to choose this action. */
   readonly when: string;
   readonly args: S;
+  /**
+   * Whether performing this action can change the application's state.
+   *
+   * The loop uses it to decide what stays on the menu: an action that only reads
+   * or repositions is always safe, while the set of actions offered narrows once
+   * something has been committed and can no longer be taken back.
+   */
+  readonly mutating: boolean;
   /** Runner-owned policy check. Throws before anything is dispatched. */
   authorize?(context: ActionContext, args: Args<S>): Promise<unknown>;
   /** Trail text, rendered from the observation rather than from model prose. */
   describe(args: Args<S>, name: (node: SemanticNode) => string): string;
-  /**
-   * The `cache-1` derivative to record after this action succeeds, or undefined
-   * when it is not recordable. `locate` turns a node into a semantic locator;
-   * returning undefined for a node it cannot address keeps the path honest
-   * rather than storing something that would replay elsewhere.
-   */
-  record?(args: Args<S>, locate: (node: SemanticNode) => CacheLocator | undefined): PathAction | undefined;
+  readonly path?: PathRecording<S, A>;
   /** Performs the action. Called only after `authorize` resolved. */
   perform(context: ActionContext, args: Args<S>, authorized: unknown): Promise<void>;
 }
@@ -233,31 +155,85 @@ export interface AnyAgentAction {
   readonly kind: string;
   readonly when: string;
   readonly args: ArgSpecs;
+  readonly mutating: boolean;
   authorize?(context: ActionContext, args: never): Promise<unknown>;
   describe(args: never, name: (node: SemanticNode) => string): string;
-  record?(args: never, locate: (node: SemanticNode) => CacheLocator | undefined): PathAction | undefined;
+  readonly path?: {
+    record(args: never, locate: Locate): PathAction | undefined;
+    owns?(action: PathAction): boolean;
+    describe(action: PathAction): string;
+  };
   perform(context: ActionContext, args: never, authorized: unknown): Promise<void>;
 }
 
-/** Declares one action, inferring its argument types from its specs. */
-function action<const S extends ArgSpecs>(definition: AgentAction<S>): AnyAgentAction {
+/** Declares one action, inferring its argument and recorded types from it. */
+function action<const S extends ArgSpecs, A extends PathAction>(
+  definition: AgentAction<S, A>,
+): AnyAgentAction {
   return definition as unknown as AnyAgentAction;
 }
 
-const VALUE_MAX = 65_536;
-const KEY_MAX = 128;
-const URL_MAX = 8192;
-const SENSITIVE_NAME_MAX = 128;
+/**
+ * The keys a planning call may ask for.
+ *
+ * An allowlist and not a bounded string, because in the planning tier the key
+ * comes from the model. Everywhere else in the API it comes from test code —
+ * 02-test-api.md is explicit that a `press` key is trusted input that never
+ * appears in a prompt — so this is the one place a key is untrusted, and the
+ * driver hands whatever it is straight to the keyboard.
+ *
+ * What that excludes is the point. `Alt+ArrowLeft`, `BrowserBack`, `F5`, and
+ * `Control+r` are all keys a real driver honours, and every one of them navigates
+ * or reloads: they would walk straight around the navigation withdrawal and
+ * discard the flow, which is the exact failure that withdrawal exists to prevent.
+ * So no modifier that reaches browser chrome is offered, and the set is limited to
+ * keys that act within the page.
+ *
+ * Declaring it as an enum also means a key outside the set is impossible to send
+ * rather than merely refused, so it costs no repair round.
+ */
+const PRESSABLE_KEYS = [
+  'Enter',
+  'Escape',
+  'Tab',
+  'Shift+Tab',
+  'Space',
+  'Backspace',
+  'Delete',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+] as const;
+
+/**
+ * Records a targeted action, or nothing when its node cannot be addressed.
+ *
+ * Every recordable action but `press` and `navigate` shares this shape, and
+ * spelling it out per entry is how the "returns undefined for an unaddressable
+ * node" rule would eventually be forgotten in one of them.
+ */
+function targeted<T extends PathAction>(
+  target: CacheLocator | undefined,
+  build: (target: CacheLocator) => T,
+): T | undefined {
+  return target === undefined ? undefined : build(target);
+}
 
 export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
   tap: action({
     kind: 'tap',
     when: 'press a button, link, checkbox, tab, or menu item once',
     args: { target: node('the control to press') },
+    mutating: true,
     describe: (args, name) => `tapped ${name(args.target)}`,
-    record: (args, locate) => {
-      const target = locate(args.target);
-      return target === undefined ? undefined : { kind: 'tap', target };
+    path: {
+      record: (args, locate) => targeted(locate(args.target), (target) => ({ kind: 'tap', target })),
+      describe: (recorded) => `tap ${describeExpression(recorded.target)}`,
     },
     perform: (context, args) =>
       context.invocation.commit('tap', () =>
@@ -270,16 +246,20 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
     when: 'enter text you were given, or that the instruction states literally',
     args: {
       target: node('the field to fill'),
-      value: text('value', 'the text to enter', VALUE_MAX),
+      value: text('value', 'the text to enter', PATH_LIMITS.value),
     },
+    mutating: true,
     describe: (args, name) => `typed ${JSON.stringify(args.value)} into ${name(args.target)}`,
-    // The target only. Storing the literal would persist whatever a test typed —
-    // names, addresses, contact details — into a cache directory projects are
-    // encouraged to commit, and guidance never needs it: the value comes from
-    // `<parameters>` on every run.
-    record: (args, locate) => {
-      const target = locate(args.target);
-      return target === undefined ? undefined : { kind: 'type', target };
+    path: {
+      // The target only. Storing the literal would persist whatever a test typed
+      // — names, addresses, contact details — into a cache directory projects
+      // are encouraged to commit, and guidance never needs it: the value comes
+      // from `<parameters>` on every run.
+      record: (args, locate) =>
+        targeted(locate(args.target), (target) => ({ kind: 'type', target })),
+      owns: (recorded) => recorded.kind === 'type' && !('sensitiveName' in recorded),
+      describe: (recorded) =>
+        `type the value it needs into ${describeExpression(recorded.target)}`,
     },
     perform: (context, args) =>
       context.invocation.commit('type', () =>
@@ -299,18 +279,29 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
       'and must never guess one or type it as plain text',
     args: {
       target: node('the field to fill'),
-      sensitiveName: shortText('sensitiveName', 'the secret name from <parameters>', SENSITIVE_NAME_MAX),
-      purpose: oneOf('purpose', ['password', 'one-time-code', 'generic-secret'] as const),
+      sensitiveName: shortText(
+        'sensitiveName',
+        'the secret name from <parameters>',
+        PATH_LIMITS.sensitiveName,
+      ),
+      purpose: oneOf('purpose', SECRET_PURPOSES),
     },
+    mutating: true,
     describe: (args, name) =>
       `filled ${name(args.target)} with the secret <secret:${args.sensitiveName}>`,
-    // Name and purpose only. The value is resolved host-side per run and must
-    // never reach the cache, not even through a digest.
-    record: (args, locate) => {
-      const target = locate(args.target);
-      return target === undefined
-        ? undefined
-        : { kind: 'type', target, sensitiveName: args.sensitiveName, purpose: args.purpose };
+    path: {
+      // Name and purpose only. The value is resolved host-side per run and must
+      // never reach the cache, not even through a digest.
+      record: (args, locate) =>
+        targeted(locate(args.target), (target) => ({
+          kind: 'type',
+          target,
+          sensitiveName: args.sensitiveName,
+          purpose: args.purpose,
+        })),
+      owns: (recorded) => recorded.kind === 'type' && 'sensitiveName' in recorded,
+      describe: (recorded) =>
+        `fill ${describeExpression(recorded.target)} with the secret "${recorded.sensitiveName}"`,
     },
     // Resolving the plaintext is the authorization: it happens only after every
     // check passes, and the value exists for exactly one handoff to the driver.
@@ -343,35 +334,45 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
       ),
   }),
 
+  // The one non-mutating driver action: it moves the viewport, so an agent that
+  // has already committed something can still look around without being able to
+  // undo it.
   scroll: action({
     kind: 'scroll',
     when: 'the thing you need is not in the observation and the screen can move to reveal it',
     args: {
-      direction: oneOf('direction', ['up', 'down', 'left', 'right'] as const),
-      momentum: optional(oneOf('momentum', ['none', 'slow', 'fast'] as const)),
+      direction: oneOf('direction', SCROLL_DIRECTIONS),
+      momentum: optional(oneOf('momentum', SCROLL_MOMENTUMS)),
       target: optional(node('a container to scroll inside instead of the viewport')),
     },
+    mutating: false,
     describe: (args, name) =>
       args.target === undefined
         ? `scrolled ${args.direction}`
         : `scrolled ${args.direction} within ${name(args.target)}`,
-    record: (args, locate) => {
-      const target = args.target === undefined ? undefined : locate(args.target);
-      if (args.target !== undefined && target === undefined) return undefined;
-      return {
-        kind: 'scroll',
-        direction: args.direction as ScrollDirection,
-        ...(args.momentum === undefined ? {} : { momentum: args.momentum as Momentum }),
-        ...(target === undefined ? {} : { target }),
-      };
+    path: {
+      record: (args, locate) => {
+        const target = args.target === undefined ? undefined : locate(args.target);
+        if (args.target !== undefined && target === undefined) return undefined;
+        return {
+          kind: 'scroll' as const,
+          direction: args.direction,
+          ...(args.momentum === undefined ? {} : { momentum: args.momentum }),
+          ...(target === undefined ? {} : { target }),
+        };
+      },
+      describe: (recorded) =>
+        recorded.target === undefined
+          ? `scroll ${recorded.direction}`
+          : `scroll ${recorded.direction} within ${describeExpression(recorded.target)}`,
     },
     perform: (context, args) =>
       context.invocation.commit('scroll', () =>
         context.invocation.session.actions.scroll(
-          args.direction as ScrollDirection,
+          args.direction,
           {
             ...(args.target === undefined ? {} : { target: args.target.ref }),
-            ...(args.momentum === undefined ? {} : { momentum: args.momentum as Momentum }),
+            ...(args.momentum === undefined ? {} : { momentum: args.momentum }),
           },
           context.operation(),
         ),
@@ -381,9 +382,13 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
   press: action({
     kind: 'press',
     when: 'submit with Enter, dismiss with Escape, or move focus with Tab',
-    args: { key: shortText('key', 'a single key name, e.g. "Enter" or "Escape"', KEY_MAX) },
+    args: { key: oneOf('key', PRESSABLE_KEYS) },
+    mutating: true,
     describe: (args) => `pressed ${args.key}`,
-    record: (args) => ({ kind: 'press', key: args.key }),
+    path: {
+      record: (args) => ({ kind: 'press' as const, key: args.key }),
+      describe: (recorded) => `press ${recorded.key}`,
+    },
     perform: (context, args) =>
       context.invocation.commit('press', () =>
         context.invocation.session.actions.press(args.key, context.operation()),
@@ -395,17 +400,20 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
     when: 'the control needs a sustained press rather than a tap',
     args: {
       target: node('the control to hold'),
-      durationMs: optional(integer('durationMs', 100, 10_000)),
+      durationMs: optional(
+        integer('durationMs', PATH_LIMITS.longPressMs.min, PATH_LIMITS.longPressMs.max),
+      ),
     },
+    mutating: true,
     describe: (args, name) => `long-pressed ${name(args.target)}`,
-    record: (args, locate) => {
-      const target = locate(args.target);
-      if (target === undefined) return undefined;
-      return {
-        kind: 'longPress',
-        target,
-        ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
-      };
+    path: {
+      record: (args, locate) =>
+        targeted(locate(args.target), (target) => ({
+          kind: 'longPress' as const,
+          target,
+          ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
+        })),
+      describe: (recorded) => `long-press ${describeExpression(recorded.target)}`,
     },
     perform: (context, args) =>
       context.invocation.commit('longPress', () =>
@@ -417,16 +425,23 @@ export const ACTION_SPACE: Readonly<Record<string, AnyAgentAction>> = {
       ),
   }),
 
+  // Withdrawn from the menu once anything has been committed. See
+  // `offeredKinds` in act.ts: this is the only action that can discard the whole
+  // flow, and a stuck agent reaches for it to start over.
   navigate: action({
     kind: 'navigate',
     when:
       'the instruction names a destination that cannot be reached from the current screen. ' +
       'Only origins the runner allows are permitted; anything else is refused',
-    args: { url: shortText('url', 'an absolute or app-relative URL', URL_MAX) },
+    args: { url: shortText('url', 'an absolute or app-relative URL', PATH_LIMITS.url) },
+    mutating: true,
     describe: (args) => `navigated to ${args.url}`,
-    // The requested URL, not the resolved one: the app base can differ between
-    // runs, and origin policy re-authorizes on replay regardless.
-    record: (args) => ({ kind: 'navigate', url: args.url }),
+    path: {
+      // The requested URL, not the resolved one: the app base can differ between
+      // runs, and origin policy re-authorizes on replay regardless.
+      record: (args) => ({ kind: 'navigate' as const, url: args.url }),
+      describe: (recorded) => `navigate to ${recorded.url}`,
+    },
     // The model proposes a destination; the allowed-origin policy decides. The
     // URL resolves against the app base, so an app-relative instruction does not
     // require the model to know the deployment's host.
@@ -479,7 +494,7 @@ export const CONTROL_KINDS = {
     when:
       'the screen is mid-transition and the observation does not yet show the result of ' +
       'what you just did',
-    args: {} as ArgSpecs,
+    args: {} satisfies ArgSpecs,
   },
   conclude: {
     kind: 'conclude',
@@ -497,6 +512,29 @@ export const CONTROL_KINDS = {
     } satisfies ArgSpecs,
   },
 } as const;
+
+/* -------------------------------------------------------------------------- */
+/* Derived: recorded paths                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Renders one recorded action as the suggestion the model is shown.
+ *
+ * Delegates to the entry that produced it, so the vocabulary has one owner in
+ * this direction too. Returns undefined for an action no entry claims, which
+ * only happens when an entry was removed while a cache file still names it: no
+ * hint is strictly better than a hint rendered by whichever renderer happened to
+ * fall through.
+ */
+export function describeRecordedAction(recorded: PathAction): string | undefined {
+  for (const entry of Object.values(ACTION_SPACE)) {
+    const path = entry.path;
+    if (path === undefined) continue;
+    const owns = path.owns?.(recorded) ?? entry.kind === recorded.kind;
+    if (owns) return path.describe(recorded as never);
+  }
+  return undefined;
+}
 
 /** Every entry the schema, prompt, and validator are built from. */
 interface Entry {
@@ -526,6 +564,44 @@ const ENTRIES: readonly Entry[] = [
 const BY_NAME = new Map(Object.entries(ACTION_SPACE));
 
 /* -------------------------------------------------------------------------- */
+/* Derived: the offered allowlist                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Every wire kind the table declares, in declaration order. */
+const ALL_KINDS: readonly string[] = [...new Set(ENTRIES.map((entry) => entry.kind))];
+
+/** What an invocation with no action steps left may still answer with. */
+export const WIND_DOWN_KINDS: readonly string[] = ['observe', 'conclude'];
+
+/**
+ * The action kinds still on the menu, given what the invocation has already done.
+ *
+ * Two narrowings, both expressed the same way rather than as branches at the
+ * dispatch site:
+ *
+ * - With no action steps left, only `observe` and `conclude` remain, so the model
+ *   reports what happened instead of being cut off by a thrown budget error.
+ * - Once any action has committed, every *mutating* action stays but `navigate`
+ *   goes. Navigating is how a stuck agent starts over, and starting over is the
+ *   one recovery that is strictly destructive here: it discards work the caller's
+ *   later steps depend on and cannot be undone. Before anything has committed it
+ *   is harmless — it is just getting to the right screen — so the offer is tied
+ *   to that fact rather than to a flag.
+ *
+ * 10-determinism.md describes an invocation as starting with "an allowlist of
+ * method-specific tools and remaining budgets"; this is that allowlist as the
+ * invocation progresses.
+ */
+export function offeredKinds(state: {
+  readonly actionStepsRemaining: number;
+  readonly committed: boolean;
+}): readonly string[] {
+  if (state.actionStepsRemaining === 0) return WIND_DOWN_KINDS;
+  if (!state.committed) return ALL_KINDS;
+  return ALL_KINDS.filter((kind) => kind !== 'navigate');
+}
+
+/* -------------------------------------------------------------------------- */
 /* Derived: request schema                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -540,17 +616,23 @@ const BY_NAME = new Map(Object.entries(ACTION_SPACE));
  */
 export const TOOL_SCHEMA: JSONSchema7 = buildToolSchema();
 
+/** Built schemas by offered kind set, so a loop does not rebuild one per round. */
+const SCHEMA_CACHE = new Map<string, JSONSchema7>();
+
 /**
- * The request schema narrowed to a subset of kinds.
+ * The request schema for one offered allowlist, as `offeredKinds` computed it.
  *
- * Used when a budget is spent: an invocation with no action steps left is offered
- * only `observe` and `conclude`, so the model reports what happened instead of
- * being cut off mid-thought by a thrown budget error. 10-determinism.md describes
- * an invocation as starting with "an allowlist of method-specific tools and
- * remaining budgets", and this is that allowlist narrowing as the budget drains.
+ * There are only ever a handful of distinct allowlists in a run, so they are
+ * memoized: a planning loop asks for one every round, and rebuilding the union
+ * each time would be work with no result that can differ.
  */
 export function toolSchemaFor(kinds: readonly string[]): JSONSchema7 {
-  return buildToolSchema(new Set(kinds));
+  const key = [...kinds].toSorted().join(',');
+  const cached = SCHEMA_CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const built = buildToolSchema(new Set(kinds));
+  SCHEMA_CACHE.set(key, built);
+  return built;
 }
 
 function buildToolSchema(allowed?: ReadonlySet<string>): JSONSchema7 {
@@ -597,9 +679,9 @@ function buildToolSchema(allowed?: ReadonlySet<string>): JSONSchema7 {
 /* -------------------------------------------------------------------------- */
 
 /** The action list of the planning request, derived from the same table. */
-export function describeActionSpace(kinds?: readonly string[]): readonly string[] {
-  const allowed = kinds === undefined ? undefined : new Set(kinds);
-  return ENTRIES.filter((entry) => allowed === undefined || allowed.has(entry.kind)).map((entry) => {
+export function describeActionSpace(kinds: readonly string[]): readonly string[] {
+  const allowed = new Set(kinds);
+  return ENTRIES.filter((entry) => allowed.has(entry.kind)).map((entry) => {
     const args = Object.values(entry.args).map((spec) => spec.hint);
     const shape = args.length === 0 ? 'no other fields' : args.join(', ');
     return `- kind "${entry.kind}" — ${entry.when}.\n  ${shape}`;
@@ -782,43 +864,6 @@ function describeNode(target: SemanticNode, observation: AgentObservation): stri
 }
 
 /** Request text for one planning step of `agent.act`. */
-export function actRequest(kinds?: readonly string[]): string {
-  return [
-  'Carry out the instruction one action at a time.',
-  '',
-  'Reply with exactly one JSON object: the single next action, chosen from the list below.',
-  'Every object includes "toolVersion": "agent-tool-1" and "kind".',
-  '',
-  'Send only the fields listed for the kind you choose, and leave every other field out.',
-  'The schema declares the fields of all kinds together, so it will accept fields that',
-  'do not belong to yours; they are ignored, and omitting them is cheaper and clearer.',
-  '',
-  'Available actions:',
-  ...describeActionSpace(kinds),
-  '',
-  'How to work:',
-  '- The <observation> is the screen right now. Node ids are minted per observation, so',
-  '  always quote the "revision" printed with the observation you are reading, and never',
-  '  reuse an id from an earlier one.',
-  '- <steps-already-taken> is what you have already done in this task. Do not repeat a step',
-  '  that already succeeded; read the observation to see its effect and continue from there.',
-  '- If a step there is marked failed, do not retry it unchanged. Try a different route, or',
-  '  conclude with "failure" explaining what blocked you.',
-  '- Take the shortest reliable path. Do nothing the instruction did not ask for: do not',
-  '  submit a form that was only meant to be filled, and do not explore other pages.',
-  '- Verify before concluding. A tap is not a result; the next observation is.',
-  '- Conclude the moment the instruction is satisfied. Zero deviation: the caller has its own',
-  '  steps for whatever comes after this one, and doing them here spends this budget on work',
-  '  nobody asked for and leaves the caller unable to check the part it did ask for.',
-  '  A multi-step form is finished when the step the instruction named is submitted. Do not',
-  '  continue into the next one, and never proceed to payment, purchase, or confirmation',
-  '  unless the instruction says so in those words.',
-  '- Never send both an action and a conclusion. One object, one kind.',
-  '- Do not give up at the first obstacle. A disabled button, a control that does nothing, or a',
-  '  field that will not accept input is usually a symptom: look for the empty required field,',
-  '  the unticked consent, the dialog in the way, or the thing that needs scrolling into view,',
-  '  and fix that instead. Conclude "failure" only once you can name a blocker that survives',
-  '  trying.',
-  '- Running out of steps is not success. If you cannot finish, conclude with "failure".',
-  ].join('\n');
+export function actRequest(kinds: readonly string[]): string {
+  return planningRequest(describeActionSpace(kinds));
 }

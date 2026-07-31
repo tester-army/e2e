@@ -44,14 +44,15 @@ import {
   type LocatedPoint,
   type PointPolicy,
 } from './locate.ts';
-import {
-  acceptAnyJson,
-  JUDGMENT_SCHEMA,
-  validateJudgmentResponse,
-  type ProtocolValidation,
-} from './protocol.ts';
+import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
-import { discloseParams, normalizeInstruction, runAct } from './act.ts';
+import {
+  discloseParams,
+  normalizeInstruction,
+  resolveSteps,
+  runAct,
+  validateConclusionData,
+} from './act.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 import { authorizeSecretFill } from './secrets.ts';
 
@@ -179,7 +180,7 @@ export function createAgent(runtime: AgentContext): Agent {
     return step(
       {
         api,
-        task: `select one node for ${api}`,
+        role: 'selection',
         timeoutMs: resolveTimeout(options?.timeout, runtime.config.actionTimeout),
         // One locate plus room for exactly one repair round: a hallucinated
         // node id or stale revision is invalid output, not a lost test.
@@ -272,7 +273,7 @@ export function createAgent(runtime: AgentContext): Agent {
     return step(
       {
         api: 'agent.act',
-        task: 'plan and perform the next action toward an instruction',
+        role: 'planning',
         timeoutMs: resolveTimeout(options?.timeout, ACT_TIMEOUT_MS),
         maxModelCalls: resolveModelCalls(options?.maxModelCalls, runtime.config.agent.maxModelCalls),
         maxActionSteps: resolveSteps(options?.maxSteps, runtime.config.agent.maxSteps),
@@ -287,7 +288,10 @@ export function createAgent(runtime: AgentContext): Agent {
           testIdAttribute,
           ...(schema === undefined
             ? {}
-            : { onData: (value: unknown) => validateWithSchema(schema, value) }),
+            : {
+                onData: (value: unknown) =>
+                  validateConclusionData(schema, value, describeIssue),
+              }),
         });
         return schema === undefined
           ? ({ ok: true } as const)
@@ -461,7 +465,7 @@ export function createAgent(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.dragTo',
-          task: 'select one drag source and one drop destination',
+          role: 'selection',
           timeoutMs: resolveTimeout(options?.timeout, runtime.config.actionTimeout),
           // Two locates, each with room for one repair round.
           maxModelCalls: locateCalls(4, dragVision),
@@ -496,7 +500,7 @@ export function createAgent(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.scroll',
-          task: 'select one scrollable container',
+          role: 'selection',
           timeoutMs: resolveTimeout(options.timeout, runtime.config.actionTimeout),
           maxModelCalls: within === undefined ? 0 : locateCalls(2, scrollVision),
           maxActionSteps: 1,
@@ -532,7 +536,7 @@ export function createAgent(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.scrollTo',
-          task: 'select one node while scrolling toward it',
+          role: 'selection',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: runtime.config.agent.maxModelCalls,
           maxActionSteps: runtime.config.agent.maxSteps,
@@ -566,7 +570,7 @@ export function createAgent(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.waitFor',
-          task: 'judge whether a condition holds',
+          role: 'judgment',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: resolveModelCalls(
             options?.maxModelCalls,
@@ -601,7 +605,7 @@ export function createAgent(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.extract',
-          task: 'extract structured data from the observation',
+          role: 'judgment',
           timeoutMs: resolveTimeout(options.timeout, stepTimeout),
           maxModelCalls: resolveModelCalls(options.maxModelCalls, EXTRACT_MODEL_CALLS),
           maxActionSteps: 0,
@@ -651,7 +655,7 @@ export function createAgent(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.assert',
-          task: 'judge whether an assertion holds',
+          role: 'judgment',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: 1,
           maxActionSteps: 0,
@@ -769,33 +773,6 @@ function resolveTimeout(requested: number | undefined, fallback: number): number
     throw new TestError('INVALID_ARGUMENT', 'timeout must be a positive integer');
   }
   return requested;
-}
-
-function resolveSteps(requested: number | undefined, limit: number): number {
-  if (requested === undefined) return limit;
-  if (!Number.isSafeInteger(requested) || requested <= 0) {
-    throw new TestError('INVALID_ARGUMENT', 'maxSteps must be a positive integer');
-  }
-  if (requested > limit) {
-    throw new TestError(
-      'INVALID_ARGUMENT',
-      `maxSteps ${requested} exceeds the resolved limit ${limit}`,
-    );
-  }
-  return requested;
-}
-
-/**
- * Validates a proposed conclusion payload against the caller's schema, shaped as
- * a protocol validation so `runAct` can feed the issue back as a repair round.
- */
-async function validateWithSchema(
-  schema: StandardSchemaV1,
-  value: unknown,
-): Promise<ProtocolValidation<unknown>> {
-  const validation = await schema['~standard'].validate(value);
-  if (validation.issues === undefined) return { ok: true, value: validation.value };
-  return { ok: false, issue: validation.issues.map(describeIssue).join('; ') };
 }
 
 function resolveModelCalls(requested: number | undefined, limit: number): number {

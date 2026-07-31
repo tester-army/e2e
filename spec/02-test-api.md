@@ -95,9 +95,30 @@ tools and the security policy in [14-security.md](./14-security.md).
 
 Any other response kind or tool is `POLICY_DENIED` before driver dispatch.
 
+The permitted set above is an upper bound, not a fixed menu. A runner MAY narrow
+what it offers within one invocation as the invocation's own state changes, and
+MUST reject a proposal outside the currently offered set as invalid output the
+model may correct. Two narrowings are normative for `act` and `login`:
+
+- Once the action-step budget is spent, only `observe` and `conclude` are
+  offered, so the invocation reports what it achieved instead of failing with a
+  bare budget error.
+- Once any action has committed, navigation is withdrawn. Before that point
+  navigating only positions the agent; afterwards it discards state the calling
+  test established and cannot restore, which is the one recovery a planning tier
+  must not be able to choose for the caller. A flow that cannot proceed from
+  where it is concludes `failure`.
+
 `upload` file paths and `press` keys come from trusted test code, resolve on
 the runner host (paths from the project root), and never appear in any model
 prompt: the model only ever selects the target node.
+
+The planning tier is the exception, and the only place a key is untrusted: `act`
+and `login` let the model choose one. A runner MUST therefore restrict the keys it
+offers there to keys that act within the page, and MUST NOT offer a key or chord
+that navigates, reloads, or reaches browser chrome. Such a key would otherwise
+bypass the navigation withdrawal above and discard the calling test's state
+through the keyboard instead.
 
 ## `agent.act`
 

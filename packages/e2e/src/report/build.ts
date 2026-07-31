@@ -270,9 +270,7 @@ function serializeStep(step: StepRecord): ReportStep {
  * published record.
  */
 function serializeCacheRecord(cache: StepCacheInfo): ReportCacheInfo {
-  const { reason, kind, ...report } = cache;
-  void reason;
-  void kind;
+  const { reason: _reason, kind: _kind, ...report } = cache;
   return report;
 }
 

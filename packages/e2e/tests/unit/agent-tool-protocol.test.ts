@@ -382,7 +382,7 @@ describe('the action space derivation', () => {
   });
 
   it('describes every entry in the request text', () => {
-    const described = describeActionSpace().join('\n');
+    const described = describeActionSpace(ALL.map((entry) => entry.kind)).join('\n');
     for (const entry of ALL) {
       expect(described, `${entry.kind} appears in the prompt`).toContain(`kind "${entry.kind}"`);
       // Unstated argument names cannot be supplied, leaving the schema field unused.

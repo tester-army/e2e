@@ -135,3 +135,54 @@ the step opens.
 `--debug` no longer lets a bypassed planning step inflate what the locate cache
 saved: `bypassCache` records its entry kind, so only genuine locate rounds price a
 locate hit.
+
+An `agent.act` flow can no longer start over. Navigation leaves the offered action
+set as soon as the flow commits its first action: before then, navigating only
+positions the agent, but afterwards it discards state the calling test built and
+cannot restore. A stuck flow was reaching for exactly that, which unwound whole
+funnels and left later steps asserting against the wrong screen. A proposal to
+navigate after a commit is now rejected as invalid output, and the model is told
+why rather than discovering it through a rejection. A flow that genuinely cannot
+continue concludes `failure`.
+
+Catch a planning flow that is going in circles, not just one that is stuck on the
+spot. Every (screen, action) pair the invocation has proposed is remembered, so a
+flow alternating between two controls that do nothing is caught after a couple of
+rounds with `STEP_NO_CONCLUSION` instead of spending the entire model-call budget
+while the runner reports nothing unusual.
+
+Fix path guidance skipping the step that failed. The guidance cursor advanced when
+the model *agreed* with the recorded action rather than when that action actually
+committed, so a dispatch that failed left the next round being guided past the one
+thing it had just been unable to do. Guidance now advances on commit only.
+
+Fix recorded-path comparison depending on JSON field order. A proposal built from a
+live call and an action read back from a cache file were compared with
+`JSON.stringify`, so equality held only while two object literals in two modules
+happened to list their fields in the same order; a divergence would have silently
+discarded valid guidance. Both sides are now serialized with sorted keys.
+
+Bound the keys a planned flow may press. The planning tier is the only place in
+the API where a `press` key comes from the model rather than from test code, and it
+reached the driver's keyboard unchecked — so `Alt+ArrowLeft`, `BrowserBack`, `F5`,
+or `Control+r` bypassed the navigation withdrawal and unwound the flow through the
+keyboard instead. The model now chooses from a fixed set of keys that act within
+the page, declared as an enum so anything else cannot be sent at all.
+
+Give the model a role instead of addressing it as a mechanism. The system message
+opened with "You are the response generator for the e2e test runner" followed by
+"You never act on the application" — a framing that described none of the three
+tiers and told the one tier that decides what happens next that it was not
+responsible for whether anything happened. It is now a QA-engineer role per tier:
+planning owns whether the instruction actually finished (verify before concluding,
+never start over to escape an obstacle, never call an unfinished flow a success),
+selection answers one question about one element, and judgment reports what is on
+screen rather than what the test hoped for. The security rules are unchanged in
+substance; the "the runner performs every action" fact now sits on the output rule,
+where it belongs, rather than leading the message as a disclaimer.
+
+This bumps the agent policy to `policy-0.4`. The policy version is part of the agent
+cache key, so every locate and path entry recorded under `policy-0.3` is retired: a
+different prompt is a different function, and replaying an entry across that change
+would replay a decision this runner would not make. The first run after upgrading is
+cold.

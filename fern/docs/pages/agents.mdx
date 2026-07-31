@@ -86,6 +86,31 @@ validates and performs itself — model output never reaches the driver directly
 The call succeeds only when the model explicitly concludes; exhausting `maxSteps`
 or `maxModelCalls` fails with `STEP_BUDGET_EXHAUSTED` rather than guessing.
 
+### The flow cannot start over
+
+An `agent.act` that gets stuck will, left to itself, try to recover the way a
+person would: go back to a page it understands and try again. That is the worst
+possible move inside a test, because the state it throws away is the state your
+earlier steps built and your later steps assert on.
+
+So navigation is only on the menu until the flow commits its first action. After
+that the runner stops offering it, and a proposal to navigate is rejected as
+invalid output rather than performed. A flow that genuinely cannot continue from
+where it is concludes `failure` and fails the step with `ACTION_FAILED`, naming
+the blocker — which is the outcome you can act on.
+
+The same reasoning bounds what the model may press. Everywhere else in the API a
+`press` key comes from your test code; in a planned flow the model picks it, so it
+picks from a fixed list — `Enter`, `Escape`, `Tab`, `Shift+Tab`, `Space`,
+`Backspace`, `Delete`, the arrows, and the paging keys. `Alt+ArrowLeft`, `F5`, and
+friends are not on it: they would leave the flow through the keyboard.
+
+The runner also watches for a flow going in circles. If the same action is
+proposed against a screen that has not changed, it is not repeated: repeating a
+submit or a purchase on your behalf is not safe. The model is told what the runner
+sees and chooses again, and a flow that keeps cycling fails with
+`STEP_NO_CONCLUSION` instead of spending the whole budget.
+
 <Callout intent="warning" title="agent.login is not implemented yet">
 `agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Pass the credential to
 `agent.act` as a parameter, or fill the form with described targets.

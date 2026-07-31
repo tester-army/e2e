@@ -27,10 +27,18 @@ same ambient OS authority as the runner.
 
 ## Policy authority
 
-The runner owns immutable agent policy `policy-0.3`. System policy precedes
+The runner owns immutable agent policy `policy-0.4`. System policy precedes
 project context, ledger data, app content, and model output. No lower-trust
 input can add tools, origins, credentials, budget, filesystem access, network
 destinations, or production permission.
+
+The system message states the model's role for the invoked tier before it states
+the rules. The role is runner-owned and drawn from a closed set; it is trusted
+input on the same footing as the rules, and no lower-trust input can change it.
+Because the policy version is part of the agent cache key
+([10-determinism.md](./10-determinism.md)), any change to that message — role text
+included — requires a new policy version, which retires every entry recorded under
+the previous one.
 
 Every proposed model tool call is parsed into a closed schema and authorized by
 the runner immediately before execution. Unknown tools/fields, malformed

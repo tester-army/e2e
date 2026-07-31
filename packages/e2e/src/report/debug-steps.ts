@@ -123,12 +123,12 @@ export function cacheTable(
   results: readonly ResultRecord[],
   serialGroups: readonly SerialGroupRecord[],
 ): string {
-  const located = collectAgentSteps(results, serialGroups).filter(
+  const consulted = collectAgentSteps(results, serialGroups).filter(
     (step): step is StepRecord & { cache: StepCacheInfo } => step.cache !== undefined,
   );
-  if (located.length === 0) return '';
+  if (consulted.length === 0) return '';
 
-  const rows = located.map((step) => [
+  const rows = consulted.map((step) => [
     truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 40),
     step.cache.kind ?? '-',
     step.cache.status,
@@ -140,7 +140,7 @@ export function cacheTable(
   ]);
 
   return table(
-    `[e2e debug] agent cache (${summary(located)})`,
+    `[e2e debug] agent cache (${summary(consulted)})`,
     ['step', 'kind', 'cache', 'key', 'bytes', 'cache time', 'model time', 'why'],
     rows,
     '(no cached calls recorded)',
@@ -173,28 +173,31 @@ function cacheMs(step: StepRecord): number {
  * number. With no locate model call to compare against there is no honest figure
  * and none is printed.
  */
-function summary(located: readonly (StepRecord & { cache: StepCacheInfo })[]): string {
+function summary(consulted: readonly (StepRecord & { cache: StepCacheInfo })[]): string {
   const counts = new Map<StepCacheInfo['status'], number>();
-  for (const step of located) {
+  for (const step of consulted) {
     counts.set(step.cache.status, (counts.get(step.cache.status) ?? 0) + 1);
   }
   const mix = [...counts.entries()]
     .toSorted((left, right) => right[1] - left[1])
     .map(([status, count]) => `${String(count)} ${status}`)
     .join(', ');
-  const scope = `${mix} of ${String(located.length)} cached call${
-    located.length === 1 ? '' : 's'
+  const scope = `${mix} of ${String(consulted.length)} cached call${
+    consulted.length === 1 ? '' : 's'
   }`;
 
-  const spent = located.reduce((total, step) => total + cacheMs(step), 0);
+  const spent = consulted.reduce((total, step) => total + cacheMs(step), 0);
   const cost = `cache time ${formatMs(spent)}`;
 
   // Guidance is advisory, so its hits are reported as what they are rather than
   // folded into a saving.
-  const guided = located.filter((step) => step.cache.kind === 'path' && step.cache.status === 'hit');
-  const guidance = guided.length === 0 ? '' : `, ${String(guided.length)} guided by a recorded path`;
+  const guided = consulted.filter(
+    (step) => step.cache.kind === 'path' && step.cache.status === 'hit',
+  );
+  const guidance =
+    guided.length === 0 ? '' : `, ${String(guided.length)} guided by a recorded path`;
 
-  const locates = located.filter((step) => step.cache.kind !== 'path');
+  const locates = consulted.filter((step) => step.cache.kind !== 'path');
   const hits = locates.filter((step) => step.cache.status === 'hit').length;
   const modelMs = locates.reduce((total, step) => total + eventMs(step, 'model'), 0);
   const modelCalls = locates.reduce((total, step) => total + (step.model?.calls ?? 0), 0);

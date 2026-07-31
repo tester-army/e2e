@@ -42,7 +42,13 @@ import {
 import type { ModelRouter } from './model/router.ts';
 import { prepareObservation, type AgentObservation } from './observation.ts';
 import type { ProtocolValidation } from './protocol.ts';
-import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
+import {
+  POLICY_VERSION,
+  buildPrompt,
+  buildSystem,
+  type AgentRole,
+  type PromptInput,
+} from './prompts.ts';
 
 /**
  * Attempt-scoped cache identity and storage. Every field except the store is a
@@ -97,8 +103,11 @@ export interface InvocationOptions {
   readonly api: string;
   /** Caller's instruction, e.g. the target phrase, used for debug step labels. */
   readonly label?: string;
-  /** Short task description placed in the system message. */
-  readonly task: string;
+  /**
+   * Which tier this call belongs to, which decides the identity and the standards
+   * the system message states. Not free-form: see `AgentRole`.
+   */
+  readonly role: AgentRole;
   readonly timeoutMs: number;
   readonly maxModelCalls: number;
   readonly maxActionSteps: number;
@@ -203,7 +212,7 @@ export class Invocation {
   ) {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
     this.pixelTier = options.vision === true || options.vision === 'only';
-    this.system = buildSystem(options.task, runtime.agentContext);
+    this.system = buildSystem(options.role, runtime.agentContext);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
       () =>
@@ -573,41 +582,26 @@ export class Invocation {
         this.recordUsage(result.usage);
         return result.value;
       } catch (cause) {
+        if (!(cause instanceof ModelOutputInvalidError)) throw cause;
+        this.recordSchemaRejection(request.schemaName);
         // A model that produces the identical rejection twice is not converging,
         // and re-asking only spends the remaining budget a few seconds at a time
         // before failing with the same message. One repeat is tolerated because a
         // transient blip can look the same twice; a second is evidence.
-        if (
-          cause instanceof ModelOutputInvalidError &&
-          !cause.empty &&
-          cause.explanation === lastIssue
-        ) {
-          this.recordSchemaRejection(request.schemaName);
+        if (!cause.empty && cause.explanation === lastIssue) {
           agentTrace(
-            () => `${this.options.api} abandoning repair: the same rejection twice — ${cause.explanation}`,
+            () =>
+              `${this.options.api} abandoning repair: the same rejection twice — ${cause.explanation}`,
           );
           throw cause;
         }
-        if (
-          cause instanceof ModelOutputInvalidError &&
-          this.metrics.modelCalls < this.options.maxModelCalls &&
-          !this.deadline.expired()
-        ) {
-          this.recordSchemaRejection(request.schemaName);
-          lastIssue = cause.explanation;
-          agentTrace(() => `${this.options.api} repair round: ${cause.explanation}`);
-          // Nothing came back, so there is nothing to feed back: re-send the
-          // request as it was rather than adding rejection feedback about a
-          // response that does not exist.
-          repair = cause.empty
-            ? undefined
-            : {
-                issue: cause.explanation,
-                rawText: cause.rawText,
-              };
-          continue;
-        }
-        throw cause;
+        if (!this.canAsk()) throw cause;
+        lastIssue = cause.explanation;
+        agentTrace(() => `${this.options.api} repair round: ${cause.explanation}`);
+        // Nothing came back, so there is nothing to feed back: re-send the request
+        // as it was rather than adding rejection feedback about a response that
+        // does not exist.
+        repair = cause.empty ? undefined : { issue: cause.explanation, rawText: cause.rawText };
       }
     }
   }
@@ -689,7 +683,14 @@ export class Invocation {
     }
   }
 
-  /** True once any driver action of this invocation has been dispatched. */
+  /**
+   * True once any driver action of this invocation has committed.
+   *
+   * Read off the refundable step count on purpose: a refund is only ever issued
+   * for a dispatch the driver proved never reached the application, so "steps
+   * charged" and "something has actually changed" are the same fact. What the
+   * planning tier still offers depends on it, so the two must not drift.
+   */
   get dispatched(): boolean {
     return this.metrics.actionSteps > 0;
   }

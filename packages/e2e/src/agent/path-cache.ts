@@ -28,7 +28,7 @@ import {
   type PathAction,
 } from '../cache/index.ts';
 import { errorMessage } from '../internal/errors.ts';
-import { describeExpression } from '../locator/expression.ts';
+import { stableStringify } from '../internal/json.ts';
 import { agentTrace } from '../internal/trace.ts';
 import type { AgentCacheContext, Invocation } from './invocation.ts';
 import type { AgentObservation } from './observation.ts';
@@ -46,10 +46,10 @@ export interface OpenPathCache {
   readonly keyHash: string;
   /** The next recorded action to suggest, or undefined once guidance is gone. */
   next(): PathAction | undefined;
-  /** Advances the recorded path, or drops it when the model chose otherwise. */
+  /** Drops the remaining guidance when the model chose something else. */
   reconcile(proposed: PathAction | undefined): void;
-  /** Notes that an action ran, so the recorded path reflects what happened. */
-  observed(action: PathAction | undefined): void;
+  /** Notes that an action committed, which records it and advances the guidance. */
+  committed(action: PathAction | undefined): void;
   /** Stores the path of a fully successful invocation. */
   write(): Promise<void>;
 }
@@ -95,9 +95,57 @@ export async function openPathCache(
   return new PathCache(invocation, context, key, keyHash, guidance);
 }
 
-class PathCache implements OpenPathCache {
+/**
+ * Where one invocation is along a recorded route.
+ *
+ * Separate from the store and report plumbing below because the two obey
+ * different rules and conflating them is what produced the bug this shape now
+ * makes hard to write: *agreeing* with the recorded step (`reconcile`) and
+ * *taking* it (`advance`) are different events, and only the second one moves.
+ *
+ * Advancing on agreement offered the next round step N+1 after step N had failed
+ * to dispatch, which guided the model straight past the one thing it had just
+ * been unable to do.
+ */
+export class Guidance {
   private cursor = 0;
-  private guidance: readonly PathAction[] | undefined;
+  private actions: readonly PathAction[] | undefined;
+
+  constructor(recorded: readonly PathAction[] | undefined) {
+    this.actions = recorded;
+  }
+
+  /** The step to suggest, or undefined when there is no guidance left. */
+  next(): PathAction | undefined {
+    return this.actions?.[this.cursor];
+  }
+
+  /**
+   * Compares a proposal against the current step.
+   *
+   * `abandoned` is reported on the transition only, so a caller can report the
+   * discard exactly once: every later round has no step left to compare and is
+   * simply `none`.
+   */
+  reconcile(proposed: PathAction | undefined): 'agreed' | 'abandoned' | 'none' {
+    const expected = this.next();
+    if (expected === undefined) return 'none';
+    if (proposed !== undefined && sameAction(expected, proposed)) return 'agreed';
+    // The page moved, or the model read it differently. Either way the recorded
+    // route no longer describes this run, so forget it and reason freely for the
+    // rest of the invocation.
+    this.actions = undefined;
+    return 'abandoned';
+  }
+
+  /** Moves to the next recorded step. Called only once an action has committed. */
+  advance(): void {
+    if (this.actions !== undefined) this.cursor += 1;
+  }
+}
+
+class PathCache implements OpenPathCache {
+  private readonly guidance: Guidance;
   /** What was offered, kept so an unchanged path is not rewritten. */
   private readonly offered: readonly PathAction[] | undefined;
   private readonly recorded: (PathAction | undefined)[] = [];
@@ -111,28 +159,22 @@ class PathCache implements OpenPathCache {
     readonly keyHash: string,
     guidance: readonly PathAction[] | undefined,
   ) {
-    this.guidance = guidance;
+    this.guidance = new Guidance(guidance);
     this.offered = guidance;
   }
 
   next(): PathAction | undefined {
-    return this.guidance?.[this.cursor];
+    return this.guidance.next();
   }
 
   reconcile(proposed: PathAction | undefined): void {
-    const expected = this.next();
-    if (expected === undefined) return;
-    if (proposed !== undefined && sameAction(expected, proposed)) {
-      this.cursor += 1;
-      return;
+    if (this.guidance.reconcile(proposed) === 'abandoned') {
+      this.discard('the model chose a different action');
     }
-    // The page moved, or the model read it differently. Either way the recorded
-    // route no longer describes this run, so forget it and reason freely for the
-    // rest of the invocation.
-    this.discard('the model chose a different action');
   }
 
-  observed(action: PathAction | undefined): void {
+  committed(action: PathAction | undefined): void {
+    this.guidance.advance();
     if (action === undefined && this.unrecordable === undefined) {
       this.unrecordable = 'an action exposed nothing storable to replay it by';
     }
@@ -179,8 +221,6 @@ class PathCache implements OpenPathCache {
   }
 
   private discard(reason: string): void {
-    if (this.guidance === undefined) return;
-    this.guidance = undefined;
     this.invocation.setCache({
       kind: 'path',
       status: 'miss',
@@ -236,46 +276,24 @@ async function read(
 }
 
 /**
- * Renders one recorded action as the suggestion the model is shown.
- *
- * Prose rather than JSON, and framed as the previous route rather than as an
- * instruction, because the model has to be free to reject it: the whole point of
- * re-observing is that the page may no longer support it.
- */
-export function describeGuidance(action: PathAction): string {
-  switch (action.kind) {
-    case 'tap':
-      return `tap ${describeExpression(action.target)}`;
-    case 'type':
-      return 'sensitiveName' in action
-        ? `fill ${describeExpression(action.target)} with the secret "${action.sensitiveName}"`
-        : `type the value it needs into ${describeExpression(action.target)}`;
-    case 'scroll':
-      return action.target === undefined
-        ? `scroll ${action.direction}`
-        : `scroll ${action.direction} within ${describeExpression(action.target)}`;
-    case 'press':
-      return `press ${action.key}`;
-    case 'longPress':
-      return `long-press ${describeExpression(action.target)}`;
-    default:
-      return `navigate to ${action.url}`;
-  }
-}
-
-/**
  * Whether a proposal is the recorded action.
  *
- * Compared on the kind and the arguments that decide what happens, with the
- * target compared structurally. A locator that changed shape is treated as
- * divergence, which before any commit is free — the guidance is simply dropped.
+ * Compared field by field with object keys in sorted order, because the two sides
+ * are built in different modules: one by the action space from a live call, the
+ * other by the cache reader from a file. Plain `JSON.stringify` would make them
+ * equal only for as long as both literals happened to list their fields in the
+ * same order, and the failure is silent — the guidance is quietly discarded and
+ * the run merely looks like a miss.
+ *
+ * A locator that changed shape is treated as divergence, which before any commit
+ * is free: the guidance is simply dropped.
  */
 function sameAction(expected: PathAction, proposed: PathAction): boolean {
-  return JSON.stringify(expected) === JSON.stringify(proposed);
+  return stableStringify(expected) === stableStringify(proposed);
 }
 
 function sameActions(expected: readonly PathAction[], actual: readonly PathAction[]): boolean {
-  return JSON.stringify(expected) === JSON.stringify(actual);
+  return stableStringify(expected) === stableStringify(actual);
 }
 
 /** Reads the current top-level URL, or undefined for a driver exposing none. */

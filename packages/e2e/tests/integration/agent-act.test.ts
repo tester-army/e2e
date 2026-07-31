@@ -519,7 +519,7 @@ describe('agent.act', () => {
     expect(step!.model).toMatchObject({
       provider: 'fake',
       model: 'scripted',
-      policyVersion: 'policy-0.3',
+      policyVersion: 'policy-0.4',
     });
   });
 

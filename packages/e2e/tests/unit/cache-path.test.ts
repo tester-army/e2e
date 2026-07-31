@@ -144,7 +144,7 @@ describe('recording an action space derivative', () => {
     for (const [name, action] of Object.entries(ACTION_SPACE)) {
       const args = ARGS[name];
       expect(args, `${name} has sample args`).toBeDefined();
-      const recorded = action.record?.(args as never, locate);
+      const recorded = action.path?.record(args as never, locate);
       expect(recorded, `${name} records something`).toBeDefined();
       expect(matchesSpec(entryOf([recorded])), `${name} is spec-legal`).toBe(true);
       expect(asPathAction(recorded), `${name} reads back`).toEqual(recorded);
@@ -152,7 +152,7 @@ describe('recording an action space derivative', () => {
   });
 
   it('never records a secret value, only its name and purpose', () => {
-    const recorded = ACTION_SPACE['secretType']?.record?.(ARGS['secretType'] as never, locate);
+    const recorded = ACTION_SPACE['secretType']?.path?.record(ARGS['secretType'] as never, locate);
     expect(JSON.stringify(recorded)).not.toContain('hunter');
     expect(recorded).toMatchObject({ sensitiveName: 'admin', purpose: 'password' });
     expect(recorded && 'value' in recorded).toBe(false);
@@ -162,7 +162,7 @@ describe('recording an action space derivative', () => {
   // contact detail that came from a parameter. Guidance never needs it: the value
   // comes from the invocation's parameters on every run.
   it('records no typed value at all, not even a plain one', () => {
-    const recorded = ACTION_SPACE['type']?.record?.(ARGS['type'] as never, locate);
+    const recorded = ACTION_SPACE['type']?.path?.record(ARGS['type'] as never, locate);
     expect(recorded).toEqual({ kind: 'type', target: expect.anything() });
     expect(JSON.stringify(recorded)).not.toContain('Acme Inc');
   });
@@ -172,6 +172,6 @@ describe('recording an action space derivative', () => {
   it('declines to record a node it cannot address', () => {
     const anonymous = { ref: { id: 'n9', revision: 'r1' } } as SemanticNode;
     expect(storableForNode(anonymous, 'data-testid')).toBeUndefined();
-    expect(ACTION_SPACE['tap']?.record?.({ target: anonymous } as never, locate)).toBeUndefined();
+    expect(ACTION_SPACE['tap']?.path?.record({ target: anonymous } as never, locate)).toBeUndefined();
   });
 });

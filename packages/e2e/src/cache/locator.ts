@@ -26,6 +26,7 @@
  */
 
 import type { QueryKind, SemanticNode, TextPattern } from '../driver/index.ts';
+import { asRecord } from '../internal/json.ts';
 import { normalizeRegexpFlags, normalizeText } from '../internal/text.ts';
 
 /** Regexp source ceiling in UTF-8 bytes, per 10-determinism.md. */
@@ -240,11 +241,6 @@ export function asSemanticIdentity(value: unknown): SemanticIdentity | undefined
     ...(role === undefined ? {} : { role: role as string }),
     ...(name === undefined ? {} : { name: name as string }),
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  return value as Record<string, unknown>;
 }
 
 /**
