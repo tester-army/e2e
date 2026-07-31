@@ -75,14 +75,52 @@ test.describe('Settings', () => {
     expect(relative).toMatch(/\.png$/);
   });
 
-  test('drives device controls', { requires: ['device'] }, async ({ app, screen, device }) => {
+  test('drives every device control', { requires: ['device'] }, async ({ app, screen, device }) => {
     await app.open();
 
-    await device.home();
+    // The whole `device` surface against a real simulator, so a method that
+    // only works against the in-memory daemon cannot pass unnoticed.
+    // `contacts` and `location` are the two of the four specified permissions
+    // that simctl can express. `camera` and `notifications` have no simctl
+    // privacy service at all, so iOS answers UNSUPPORTED_CAPABILITY for them;
+    // that is the specified outcome and it is pinned in its own test below.
+    await device.setPermission('contacts', 'allow');
+    await device.setPermission('location', 'unset');
+    await device.pushNotification({ aps: { alert: 'Delivered by the device fixture' } });
+    await device.setLocation({ latitude: 52.2297, longitude: 21.0122 });
+
+    // No keyboard is up, which the specification defines as a successful no-op.
+    // Dismissing a keyboard that has no native dismiss control is a documented
+    // iOS limitation and is covered in tests-mobile/settings-deep.e2e.ts.
     await device.hideKeyboard();
+
+    // A custom-scheme deep link, which skips origin checking because it cannot
+    // leave the device. Settings answers its own scheme.
+    await device.openUrl('App-prefs:root=General');
+    await device.home();
 
     // Reopening after home proves the session survives leaving the app.
     await app.open();
     await expect(screen.getByText('General')).toBeVisible();
   });
+
+  test(
+    'reports a permission iOS cannot express',
+    { requires: ['device'] },
+    async ({ app, device }) => {
+      await app.open();
+
+      // simctl has no privacy service for notifications, and the specification
+      // makes that UNSUPPORTED_CAPABILITY rather than a silent success. Pinned
+      // because the in-memory daemon accepts every permission, so nothing else
+      // would notice if this started passing quietly.
+      for (const permission of ['notifications', 'camera'] as const) {
+        const refused = await device
+          .setPermission(permission, 'allow')
+          .then(() => null)
+          .catch((cause: unknown) => cause);
+        expect(refused instanceof Error && refused.message).toContain(permission);
+      }
+    },
+  );
 });

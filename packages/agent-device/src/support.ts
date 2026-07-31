@@ -35,6 +35,19 @@ function isAbort(cause: unknown): boolean {
 }
 
 /**
+ * The backend's own recovery advice, when it sent any.
+ *
+ * agent-device answers some refusals with a hint that names the way forward —
+ * an iOS keyboard with no dismiss control is the common one, where the advice
+ * is to press the next target rather than retry. Dropping it leaves the test
+ * author with a dead end, so it travels with the message.
+ */
+function backendHint(cause: unknown): string {
+  const hint = (cause as { readonly hint?: unknown }).hint;
+  return typeof hint === 'string' && hint !== '' ? ` (${message(hint)})` : '';
+}
+
+/**
  * Translates a backend failure at the SPI boundary.
  *
  * `committed` marks a call site that may already have delivered input to the
@@ -69,10 +82,11 @@ export function translateAgentDeviceError(
       );
     }
     if (UNSUPPORTED_CODES.has(cause.code)) {
-      return new DriverError('UNSUPPORTED_CAPABILITY', `${operation}: ${message(cause)}`, {
-        retryable: false,
-        cause,
-      });
+      return new DriverError(
+        'UNSUPPORTED_CAPABILITY',
+        `${operation}: ${message(cause)}${backendHint(cause)}`,
+        { retryable: false, cause },
+      );
     }
     if (INVALID_STATE_CODES.has(cause.code)) {
       return new DriverError('INVALID_STATE', `${operation}: ${message(cause)}`, {

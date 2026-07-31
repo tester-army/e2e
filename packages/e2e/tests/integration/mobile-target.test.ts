@@ -138,8 +138,14 @@ test('opens the app', async ({ app }) => {
 
 test('drives device controls', { requires: ['device'] }, async ({ app, device }) => {
   await app.open();
-  await device.setPermission('notifications', 'allow');
+  // Every method on the device fixture, so adding one without wiring it to a
+  // backend command fails here rather than on someone's suite.
+  await device.setPermission('contacts', 'allow');
+  await device.setPermission('location', 'unset');
   await device.pushNotification({ aps: { alert: 'Hi' } });
+  await device.setLocation({ latitude: 52.2297, longitude: 21.0122 });
+  await device.openUrl('example-app://orders/42');
+  await device.hideKeyboard();
   await device.home();
 });
 `,
@@ -152,11 +158,18 @@ test('drives device controls', { requires: ['device'] }, async ({ app, device })
       const steps = result.attempts[0]!.steps.filter((step) => step.kind === 'device');
       expect(steps.map((step) => step.api)).toEqual([
         'device.setPermission',
+        'device.setPermission',
         'device.pushNotification',
+        'device.setLocation',
+        'device.openUrl',
+        'device.hideKeyboard',
         'device.home',
       ]);
-      expect(daemon.commands()).toContain('push');
-      expect(daemon.commands()).toContain('home');
+      // Each one reached the device as a real command rather than resolving
+      // quietly in the runner.
+      for (const command of ['settings', 'push', 'open', 'keyboard', 'home']) {
+        expect(daemon.commands()).toContain(command);
+      }
       assertValidReport(outcome.report);
       project.cleanup();
     },

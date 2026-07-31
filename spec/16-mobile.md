@@ -360,7 +360,12 @@ delivers one simulated notification to the target application.
 
 A permission or notification operation MUST be scoped to the target
 application. `setPermission` on a permission the platform does not expose is
-`UNSUPPORTED_CAPABILITY`.
+`UNSUPPORTED_CAPABILITY`, and a driver SHOULD reject it from its own knowledge of
+the platform rather than by forwarding a backend failure: the two are the same
+outcome for the test, but only the first can name what the platform does offer,
+and it costs no device round trip. The permissions in this profile are not
+uniformly available — a driver is expected to report a real platform gap rather
+than approximate one grant with another.
 
 ## Observation and redaction
 

@@ -99,11 +99,32 @@ test('permission prompt', { requires: ['device'] }, async ({ app, device }) => {
 });
 ```
 
-`setPermission` covers `camera`, `location`, `notifications`, and `contacts`,
-and is scoped to the target application. `unset` restores the platform default
-rather than denying. `hideKeyboard` is a successful no-op when no keyboard is
-shown, and reports `UNSUPPORTED_CAPABILITY` where the app exposes no dismiss
-control. `setLocation` sets the simulated position.
+`setPermission` is scoped to the target application, and `unset` restores the
+platform default rather than denying.
+
+The two platforms grant permissions through different mechanisms, and what they
+can express is nearly disjoint. iOS goes through `simctl privacy`, which has no
+service for `camera` or `notifications`. Android goes through `pm`, which has no
+permission target for `location` — there a simulated position is a setting, so
+use `setLocation`. Asking for one a platform cannot express fails immediately
+with `UNSUPPORTED_CAPABILITY`, before anything touches the device, and the error
+names what that platform does offer.
+
+| Permission | iOS simulator | Android emulator |
+| --- | --- | --- |
+| `contacts` | yes | yes |
+| `location` | yes | no — use `setLocation` |
+| `camera` | no | yes |
+| `notifications` | no | yes |
+
+Only `contacts` works on both, so a suite that runs against iOS and Android
+should gate the others with `platform` or keep them in platform-specific tests.
+
+`hideKeyboard` is a successful no-op when no keyboard is shown. When one *is*
+shown and the app offers no native dismiss control — an iOS text field with no
+Done or Return affordance — it reports `UNSUPPORTED_CAPABILITY` rather than
+tapping somewhere and hoping. The keyboard rarely blocks anything: act on the
+next target directly instead. `setLocation` sets the simulated position.
 
 Declaring `requires: ['device']` keeps a mobile-only test in a shared file: it
 is reported skipped on web targets instead of failed.

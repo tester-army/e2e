@@ -525,6 +525,41 @@ describe('screen', () => {
   });
 });
 
+describe('device permissions', () => {
+  it('rejects a permission the platform cannot express, before touching it', async () => {
+    const daemon = createFakeDaemon({ screen: () => LOGIN_SCREEN });
+    const { session, dispose } = await launch(daemon);
+    const device = session.device;
+    if (device === undefined) throw new Error('the mobile driver declares the device capability');
+
+    // iOS grants through simctl privacy, which has no camera or notifications
+    // service. Naming the platform and what it does express beats forwarding a
+    // backend message about its own internals.
+    for (const permission of ['camera', 'notifications'] as const) {
+      await expect(device.setPermission(permission, 'allow', context().operation)).rejects.toMatchObject(
+        { code: 'UNSUPPORTED_CAPABILITY' },
+      );
+    }
+    const refused = await device
+      .setPermission('camera', 'allow', context().operation)
+      .catch((cause: unknown) => cause);
+    expect((refused as Error).message).toContain('ios expresses contacts, location');
+
+    // A rejected permission costs no round trip, and the two iOS can express
+    // each cost exactly one. Counted as a delta because launch clears app state
+    // through the same command.
+    const settings = (): number =>
+      daemon.commands().filter((command) => command === 'settings').length;
+    const before = settings();
+    await device.setPermission('location', 'allow', context().operation);
+    await device.setPermission('contacts', 'unset', context().operation);
+    expect(settings() - before).toBe(2);
+
+    await session.close(cleanup);
+    await dispose();
+  });
+});
+
 describe('observe', () => {
   it('returns one revision with a tree and complete redaction', async () => {
     const daemon = createFakeDaemon({
@@ -645,10 +680,11 @@ describe('capabilities', () => {
     const { session, dispose } = await launch(daemon);
     const op = context().operation;
     await session.device?.home(op);
-    await session.device?.setPermission('camera', 'allow', op);
+    // `contacts` because this session is iOS, which cannot express camera.
+    await session.device?.setPermission('contacts', 'allow', op);
     await session.device?.pushNotification({ aps: { alert: 'Hi' } }, op);
     const permission = daemon.calls.find((call) => call.positionals[0] === 'permission');
-    expect(permission?.positionals).toEqual(['permission', 'grant', 'camera']);
+    expect(permission?.positionals).toEqual(['permission', 'grant', 'contacts']);
     const push = daemon.calls.find((call) => call.command === 'push');
     expect(push?.positionals[0]).toBe('com.example.app');
     expect(JSON.parse(String(push?.positionals[1]))).toEqual({ aps: { alert: 'Hi' } });

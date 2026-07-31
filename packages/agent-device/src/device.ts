@@ -4,17 +4,34 @@ import type { DriverDevice, OperationContext } from 'e2e/driver';
 import type { AgentDeviceClient } from './client.ts';
 import { translateAgentDeviceError, unsupported, withDeadline } from './support.ts';
 
-/**
- * Public permission names map to agent-device permission targets. `location`
- * differs: agent-device exposes it as a permission on Android and only as a
- * simulated-position setting on iOS, so both platforms use the permission
- * target and let the backend report an unsupported combination.
- */
+/** Public permission names map to agent-device permission targets. */
 const PERMISSION_STATES = {
   allow: 'grant',
   deny: 'deny',
   unset: 'reset',
 } as const;
+
+type Permission = Parameters<DriverDevice['setPermission']>[0];
+
+/**
+ * Which permissions each platform can actually express, measured rather than
+ * assumed. The two platforms grant through different mechanisms and the sets
+ * are nearly disjoint: iOS goes through `simctl privacy`, which has no service
+ * for `camera` or `notifications`, and Android goes through `pm`, which has no
+ * permission target for `location` — a simulated position is a setting there,
+ * not a grant, and `device.setLocation` is how a test reaches it. `contacts` is
+ * the only one both express.
+ *
+ * `spec/16-mobile.md` makes a permission the platform does not expose
+ * `UNSUPPORTED_CAPABILITY`, and this is where that is decided. Deciding it here
+ * rather than letting the call travel means the failure names the platform and
+ * the alternatives instead of quoting a backend's internals, and it costs no
+ * device round trip.
+ */
+const PLATFORM_PERMISSIONS: Readonly<Record<'ios' | 'android', ReadonlySet<Permission>>> = {
+  ios: new Set<Permission>(['location', 'contacts']),
+  android: new Set<Permission>(['camera', 'contacts', 'notifications']),
+};
 
 export interface DeviceScope {
   readonly platform: 'ios' | 'android';
@@ -64,9 +81,20 @@ export function createDriverDevice(
         }),
         operation,
       ),
-    setPermission: (permission, state, operation) => {
+    // Async so that a rejected combination arrives as a rejected promise. The
+    // SPI declares one, and a caller that only wrote `.catch` would otherwise
+    // miss a synchronous throw.
+    setPermission: async (permission, state, operation) => {
       const target = PERMISSION_STATES[state];
       if (target === undefined) throw unsupported(`permission state "${String(state)}"`);
+      const available = PLATFORM_PERMISSIONS[platform];
+      if (!available.has(permission)) {
+        throw unsupported(
+          `the "${permission}" permission on ${platform}; ` +
+            `${platform} expresses ${[...available].toSorted().join(', ')}` +
+            (permission === 'location' ? ', and device.setLocation sets the position' : ''),
+        );
+      }
       // Permission actions are scoped to the session's active application,
       // which is this target's app, satisfying the app-scoping requirement.
       return run(
