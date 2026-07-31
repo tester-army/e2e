@@ -91,9 +91,22 @@ Every agent operation is bounded by test timeout, operation timeout,
 
 The runner truncates or rejects observations over `maxObservationBytes` before
 provider submission. It MUST NOT silently omit the active target or security
-metadata. Repeating the same proposed action against the same observation
-revision twice is `STEP_NO_CONCLUSION`. Exhausted action/model budget is
-`STEP_BUDGET_EXHAUSTED`; elapsed deadline is `STEP_TIMEOUT`.
+metadata. Truncation therefore MUST NOT be ordered by document position alone: a
+dialog, drawer, or sheet is appended at the end of a document, which makes what
+the user is looking at the first thing dropped. A runner that reports node
+geometry MUST prefer content inside the viewport, with the ancestors that place it
+in the tree, and spend what remains of the budget on content outside the viewport.
+A runner whose driver reports no geometry cannot order by visibility and falls back
+to document order. A serialized observation MAY annotate a node with its position
+relative to the viewport, which is what lets a model choose between controls that
+are otherwise described identically. Such an annotation is advisory context for
+selection only: it is never an argument to an action, and it MUST NOT participate
+in whether two observations are considered to show the same screen, because it is
+viewport-relative and scrolling moves all of it.
+
+Repeating the same proposed action against the same observation revision twice is
+`STEP_NO_CONCLUSION`. Exhausted action/model budget is `STEP_BUDGET_EXHAUSTED`;
+elapsed deadline is `STEP_TIMEOUT`.
 
 ## Cache goals
 

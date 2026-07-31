@@ -186,3 +186,28 @@ cache key, so every locate and path entry recorded under `policy-0.3` is retired
 different prompt is a different function, and replaying an entry across that change
 would replay a decision this runner would not make. The first run after upgrading is
 cold.
+
+Serialize where a node is, so the agent can tell two identical controls apart. The
+driver reports a rect for every node and the observation serializer dropped all of
+them, so two controls in completely different places on the page produced
+byte-identical lines. A line now ends with `(off-screen above|below|left|right)`
+when the node is outside the viewport, and with `(at=x,y)` when it would otherwise
+read exactly like another line. Neither is an action argument, and neither takes
+part in deciding whether the screen changed — position is viewport-relative, and
+letting scrolling count as a change would break the runner's refusal to repeat a
+submit against an unchanged screen.
+
+Stop truncation dropping the content the flow needs. An observation over
+`agent.maxObservationBytes` was cut in document order, and a dialog, drawer, or
+sheet is appended at the end of the document — so the thing the user is looking at
+was the first thing dropped, while the observation reported only that it had been
+truncated. What is inside the viewport is now kept first, with the ancestors that
+place it in the tree, and the rest of the budget goes to what is scrolled out of
+view. A page that fits the budget is unaffected.
+
+Together these fix a flow that stalled in the same place every run. Tapping a
+booking button opened a reservation dialog, which pushed the original button 2350
+pixels above the fold and rendered the live one inside the dialog. The live button
+fell past the byte limit, and the dead one — identical line, first in document
+order — was the only candidate left, so the agent pressed it until the invocation
+gave up with `STEP_NO_CONCLUSION`.

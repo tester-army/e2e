@@ -105,6 +105,34 @@ picks from a fixed list — `Enter`, `Escape`, `Tab`, `Shift+Tab`, `Space`,
 `Backspace`, `Delete`, the arrows, and the paging keys. `Alt+ArrowLeft`, `F5`, and
 friends are not on it: they would leave the flow through the keyboard.
 
+### What the model can tell apart
+
+The snapshot the model reads is the accessibility tree, one line per node. Two
+lines that read identically are two nodes the model cannot choose between, so each
+line also carries where the node is when that changes the answer:
+
+```
+#n1076 button "Kup teraz" testid="crosssell-btn-reservation" [focused] (off-screen above at=871,-2350)
+#n1259 button "Kup teraz" testid="crosssell-btn-reservation" (at=677,491)
+```
+
+`(off-screen above|below|left|right)` means the node is outside the viewport right
+now — still real, still actionable, but usually not what the user is looking at.
+`(at=x,y)` appears only when a line is otherwise identical to another one, which is
+what makes "the first offer" answerable on a page with sixteen indistinguishable
+buttons. Neither is a coordinate to act on; both exist so the model can pick the
+right node.
+
+This matters more than it sounds. The two lines above are the same page after
+tapping a booking button: the tap opened a dialog and pushed the original button
+2350 pixels above the fold. Without the annotations both serialized to the same
+text, and the agent kept re-pressing the dead one.
+
+For the same reason, when a snapshot is too large for `agent.maxObservationBytes`,
+what gets dropped is chosen by visibility rather than by position in the document.
+A dialog is appended at the end of the page, so document order drops it first —
+exactly the content the flow needs.
+
 The runner also watches for a flow going in circles. If the same action is
 proposed against a screen that has not changed, it is not repeated: repeating a
 submit or a purchase on your behalf is not safe. The model is told what the runner

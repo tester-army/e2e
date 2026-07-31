@@ -292,6 +292,24 @@ const POINT_PLACEMENT = [
   '  position given in the instruction outranks a better text match elsewhere.',
 ];
 
+/**
+ * How to read the placement suffix on an observation line.
+ *
+ * Shared by every grammar that reads the tree, because the suffix is part of the
+ * tree's grammar rather than of any one request.
+ */
+const PLACEMENT_LEGEND = [
+  'Reading the observation: a line may end with a note in parentheses.',
+  '- "(off-screen above)" or "(off-screen below)" means the node is not in the viewport',
+  '  right now. It is still real and still actionable, but if two lines look the same and',
+  '  one is off-screen, the on-screen one is almost always the one the user is looking at.',
+  '  A node that has scrolled off the top is usually something already dealt with.',
+  '- "(at=x,y)" appears only when a line is identical to another one, and gives the pixel',
+  '  position that tells them apart. Smaller y is higher up the page, so "the first" of a',
+  '  repeated control is the one with the smallest y.',
+  '- These notes are for choosing between nodes. Never send them as an action argument.',
+].join('\n');
+
 /** Request text for node selection. */
 const LOCATE_REQUEST = [
   'Select exactly one node from the observation that the instruction refers to.',
@@ -305,6 +323,8 @@ const LOCATE_REQUEST = [
   'content or purpose, such as "the Save button" or "the email field". This only',
   'affects what the runner is allowed to remember; it never changes what runs.',
   'Omitting it is safe but wastes work, so answer it every time.',
+  '',
+  PLACEMENT_LEGEND,
 ].join('\n');
 
 /**
@@ -324,6 +344,8 @@ const LOCATE_NODE_OR_POINT_REQUEST = [
   'set "explanation" to a short reason grounded in what they actually show. Do not guess a close',
   'substitute and do not point at something that is merely nearby: reporting no match costs the',
   'test one clear failure, while a wrong point silently acts on the wrong thing.',
+  '',
+  PLACEMENT_LEGEND,
 ].join('\n');
 
 /**
@@ -409,10 +431,15 @@ export function planningRequest(actions: readonly string[]): string {
     '- Stay on the screen the instruction is about. Do not open a different page, a help article,',
     '  a login page, or a new tab looking for another way round.',
     '',
+    PLACEMENT_LEGEND,
+    '',
     'This screen and this budget:',
     '- The <observation> is the screen right now. Node ids are minted per observation, so',
     '  always quote the "revision" printed with the observation you are reading, and never',
     '  reuse an id from an earlier one.',
+    '- Prefer a control that is on screen. When the instruction is not finished and the only',
+    '  candidate left is off-screen above, you have probably already used it: look for what',
+    '  the page put in front of you instead, such as a dialog or a panel that just opened.',
     '- <steps-already-taken> is what you have already done in this task. Do not repeat a step',
     '  that already succeeded; read the observation to see its effect and continue from there.',
     '- If a step there is marked failed, do not retry it unchanged. Try a different route, or',
