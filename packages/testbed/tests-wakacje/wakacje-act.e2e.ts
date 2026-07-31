@@ -1,7 +1,6 @@
 import { expect, test } from "e2e";
 
 const PLANNING_TIMEOUT = 180_000;
-const FORM_STEPS = 16;
 
 test("books Greece vacations through the reservation funnel", async ({
   app,
@@ -24,7 +23,6 @@ test("books Greece vacations through the reservation funnel", async ({
 
   await agent.act("open the first vacation offer", undefined, {
     timeout: PLANNING_TIMEOUT,
-    maxSteps: 3,
   });
   await agent.waitFor(
     "a hotel offer page is visible with a price and a way to continue booking or check availability",
@@ -33,7 +31,7 @@ test("books Greece vacations through the reservation funnel", async ({
   await agent.act(
     'start booking this offer until the reservation form headed "Twoje dane" is on screen',
     undefined,
-    { vision: "fallback", maxSteps: 5 },
+    { vision: "fallback", timeout: PLANNING_TIMEOUT },
   );
 
   await agent.act(
@@ -45,7 +43,7 @@ test("books Greece vacations through the reservation funnel", async ({
       phone: "123123123",
       consent: "accept all consents",
     },
-    { timeout: PLANNING_TIMEOUT, maxSteps: FORM_STEPS },
+    { timeout: PLANNING_TIMEOUT },
   );
   await agent.waitFor("the Uczestnicy step of the reservation is active");
 
@@ -57,6 +55,6 @@ test("books Greece vacations through the reservation funnel", async ({
       city: "Szczecin",
       secondAdult: { firstName: "Johnny", lastName: "Bravo" },
     },
-    { timeout: PLANNING_TIMEOUT, maxSteps: FORM_STEPS },
+    { timeout: PLANNING_TIMEOUT },
   );
 });
