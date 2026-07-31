@@ -3,7 +3,11 @@ import { expect, test } from "e2e";
 const PLANNING_TIMEOUT = 180_000;
 const FORM_STEPS = 16;
 
-test("books Greece vacations through the reservation funnel", async ({app,agent,screen,}) => {
+test("books Greece vacations through the reservation funnel", async ({
+  app,
+  agent,
+  screen,
+}) => {
   await app.open("/");
   await agent.act(
     "accept the cookie consent dialog, or conclude if none is shown",
