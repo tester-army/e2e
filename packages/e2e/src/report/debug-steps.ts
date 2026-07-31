@@ -110,8 +110,8 @@ function formatUsd(value: number): string {
 }
 
 /**
- * Renders the locate cache's account of itself: what each locate did with the
- * cache, why, and what it cost or saved.
+ * Renders the agent cache's account of itself: what each call did with the cache,
+ * why, and what it cost or saved.
  *
  * Only steps that actually consulted the cache appear. A judgment or an
  * extraction never locates anything, so it has no cache dimension, and listing
@@ -129,7 +129,8 @@ export function cacheTable(
   if (located.length === 0) return '';
 
   const rows = located.map((step) => [
-    truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 44),
+    truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 40),
+    step.cache.kind ?? '-',
     step.cache.status,
     step.cache.keyHash === undefined ? '-' : step.cache.keyHash.slice(0, 12),
     step.cache.bytes === undefined ? '-' : String(step.cache.bytes),
@@ -139,11 +140,11 @@ export function cacheTable(
   ]);
 
   return table(
-    `[e2e debug] locate cache (${summary(located)})`,
-    ['step', 'cache', 'key', 'bytes', 'cache time', 'model time', 'why'],
+    `[e2e debug] agent cache (${summary(located)})`,
+    ['step', 'kind', 'cache', 'key', 'bytes', 'cache time', 'model time', 'why'],
     rows,
-    '(no locate calls recorded)',
-    new Set([1, 6]),
+    '(no cached calls recorded)',
+    new Set([2, 7]),
   );
 }
 
@@ -155,15 +156,22 @@ function cacheMs(step: StepRecord): number {
 }
 
 /**
- * One-line verdict: the status mix over locate calls, what consulting the cache
- * cost, and what the hits plausibly saved.
+ * One-line verdict: the status mix, what consulting the cache cost, and what the
+ * hits plausibly saved.
  *
- * The saving is an estimate and says so. A hit avoids exactly one locate model
- * call, but that call never happened, so it is priced at the mean model call the
- * locates in this same run actually measured. Judgments and extractions are
- * excluded from that mean — they are often far more expensive than a locate, and
- * including them would inflate the number. With no locate model call to compare
- * against there is no honest figure and none is printed.
+ * Only a *locate* hit is counted as a saving. A locate hit resolves a stored
+ * locator and skips a model call outright; a path hit only puts the recorded
+ * route into the prompt, and the model still observes and decides every round.
+ * Counting path hits the same way reported time that was never saved, which on a
+ * run whose only hit was guidance claimed several seconds of savings that did not
+ * exist.
+ *
+ * The locate saving is still an estimate and says so: the avoided call never
+ * happened, so it is priced at the mean model call the locates in this same run
+ * measured. Judgments and extractions are excluded from that mean — they are
+ * often far more expensive than a locate, and including them would inflate the
+ * number. With no locate model call to compare against there is no honest figure
+ * and none is printed.
  */
 function summary(located: readonly (StepRecord & { cache: StepCacheInfo })[]): string {
   const counts = new Map<StepCacheInfo['status'], number>();
@@ -174,18 +182,24 @@ function summary(located: readonly (StepRecord & { cache: StepCacheInfo })[]): s
     .toSorted((left, right) => right[1] - left[1])
     .map(([status, count]) => `${String(count)} ${status}`)
     .join(', ');
-  const scope = `${mix} of ${String(located.length)} locate call${
+  const scope = `${mix} of ${String(located.length)} cached call${
     located.length === 1 ? '' : 's'
   }`;
 
   const spent = located.reduce((total, step) => total + cacheMs(step), 0);
-  const modelMs = located.reduce((total, step) => total + eventMs(step, 'model'), 0);
-  const modelCalls = located.reduce((total, step) => total + (step.model?.calls ?? 0), 0);
-  const hits = counts.get('hit') ?? 0;
-
   const cost = `cache time ${formatMs(spent)}`;
-  if (hits === 0 || modelCalls === 0) return `${scope}, ${cost}`;
+
+  // Guidance is advisory, so its hits are reported as what they are rather than
+  // folded into a saving.
+  const guided = located.filter((step) => step.cache.kind === 'path' && step.cache.status === 'hit');
+  const guidance = guided.length === 0 ? '' : `, ${String(guided.length)} guided by a recorded path`;
+
+  const locates = located.filter((step) => step.cache.kind !== 'path');
+  const hits = locates.filter((step) => step.cache.status === 'hit').length;
+  const modelMs = locates.reduce((total, step) => total + eventMs(step, 'model'), 0);
+  const modelCalls = locates.reduce((total, step) => total + (step.model?.calls ?? 0), 0);
+  if (hits === 0 || modelCalls === 0) return `${scope}, ${cost}${guidance}`;
   const saved = hits * (modelMs / modelCalls);
   const net = `net ${formatMs(Math.abs(saved - spent))} ${saved >= spent ? 'faster' : 'slower'}`;
-  return `${scope}, ${cost}, est. ${formatMs(saved)} model time avoided, ${net}`;
+  return `${scope}, ${cost}${guidance}, est. ${formatMs(saved)} model time avoided, ${net}`;
 }

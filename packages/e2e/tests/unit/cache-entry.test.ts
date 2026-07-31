@@ -19,8 +19,10 @@ describe('the canonical fixture', () => {
     const entry = readCacheEntry(valid);
     expect(entry).toBeDefined();
     expect(entry!.schemaVersion).toBe('cache-1');
-    expect(entry!.payload.locator.kind).toBe('query');
-    expect(entry!.payload.expected).toEqual({ role: 'button', name: 'Save' });
+    expect(entry!.kind).toBe('locate');
+    if (entry?.kind !== 'locate') throw new Error('expected a locate entry');
+    expect(entry.payload.locator.kind).toBe('query');
+    expect(entry.payload.expected).toEqual({ role: 'button', name: 'Save' });
   });
 
   it('rejects the spec invalid fixture', () => {

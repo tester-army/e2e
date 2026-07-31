@@ -15,6 +15,10 @@ import { describeExpression } from '../locator/expression.ts';
 import { isSecret, validateLongPress } from '../locator/screen.ts';
 import type {
   Agent,
+  AgentOptions,
+  AgentParams,
+  AgentResult,
+  AgentResultWithData,
   InstantActionOptions,
   Momentum,
   ScrollDirection,
@@ -40,8 +44,14 @@ import {
   type LocatedPoint,
   type PointPolicy,
 } from './locate.ts';
-import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
+import {
+  acceptAnyJson,
+  JUDGMENT_SCHEMA,
+  validateJudgmentResponse,
+  type ProtocolValidation,
+} from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
+import { normalizeInstruction, runAct } from './act.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 import { authorizeSecretFill } from './secrets.ts';
 
@@ -59,6 +69,16 @@ const DEFAULT_WAIT_INTERVAL_MS = 3_000;
  */
 const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
+
+/**
+ * Default `agent.act` timeout (spec 02-test-api.md option table).
+ *
+ * Fixed at 60 s rather than derived from `actionTimeout`, because a planning
+ * call is many observations and model calls rather than one: the action timeout
+ * expresses the headroom for a single operation, and reusing it here would let a
+ * suite tuned for fast individual actions starve every flow.
+ */
+const ACT_TIMEOUT_MS = 60_000;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgent(runtime: AgentContext): Agent {
@@ -231,8 +251,50 @@ export function createAgent(runtime: AgentContext): Agent {
     );
   };
 
+  /**
+   * Plans and executes a bounded multi-action flow.
+   *
+   * One invocation, one deadline, one budget: the loop inside `runAct` re-observes
+   * and re-asks, but every action it commits is authorized by the runner first and
+   * counted against the same `maxSteps` the caller configured.
+   */
+  const act = (
+    instruction: string,
+    params?: AgentParams,
+    options?: AgentOptions & { schema?: StandardSchemaV1 },
+  ): Promise<AgentResult | AgentResultWithData<unknown>> => {
+    const normalized = normalizeInstruction('agent.act', instruction);
+    const schema = options?.schema;
+    if (schema !== undefined) requireStandardSchema(schema);
+    return step(
+      {
+        api: 'agent.act',
+        task: 'plan and perform the next action toward an instruction',
+        timeoutMs: resolveTimeout(options?.timeout, ACT_TIMEOUT_MS),
+        maxModelCalls: resolveModelCalls(options?.maxModelCalls, runtime.config.agent.maxModelCalls),
+        maxActionSteps: resolveSteps(options?.maxSteps, runtime.config.agent.maxSteps),
+        cache: options?.cache ?? true,
+        vision: resolveVision(options?.vision),
+      },
+      normalized,
+      async (invocation) => {
+        const conclusion = await runAct(invocation, runtime, {
+          instruction: normalized,
+          params,
+          testIdAttribute,
+          ...(schema === undefined
+            ? {}
+            : { onData: (value: unknown) => validateWithSchema(schema, value) }),
+        });
+        return schema === undefined
+          ? ({ ok: true } as const)
+          : ({ ok: true, data: conclusion.data } as const);
+      },
+    );
+  };
+
   const agent: Agent = {
-    act: ((): never => planningTierUnavailable('agent.act')) as Agent['act'],
+    act: act as Agent['act'],
     login: ((): never => planningTierUnavailable('agent.login')) as Agent['login'],
 
     tap: tapVerb('agent.tap'),
@@ -704,6 +766,33 @@ function resolveTimeout(requested: number | undefined, fallback: number): number
     throw new TestError('INVALID_ARGUMENT', 'timeout must be a positive integer');
   }
   return requested;
+}
+
+function resolveSteps(requested: number | undefined, limit: number): number {
+  if (requested === undefined) return limit;
+  if (!Number.isSafeInteger(requested) || requested <= 0) {
+    throw new TestError('INVALID_ARGUMENT', 'maxSteps must be a positive integer');
+  }
+  if (requested > limit) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `maxSteps ${requested} exceeds the resolved limit ${limit}`,
+    );
+  }
+  return requested;
+}
+
+/**
+ * Validates a proposed conclusion payload against the caller's schema, shaped as
+ * a protocol validation so `runAct` can feed the issue back as a repair round.
+ */
+async function validateWithSchema(
+  schema: StandardSchemaV1,
+  value: unknown,
+): Promise<ProtocolValidation<unknown>> {
+  const validation = await schema['~standard'].validate(value);
+  if (validation.issues === undefined) return { ok: true, value: validation.value };
+  return { ok: false, issue: validation.issues.map(describeIssue).join('; ') };
 }
 
 function resolveModelCalls(requested: number | undefined, limit: number): number {

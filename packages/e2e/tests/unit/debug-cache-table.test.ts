@@ -137,10 +137,30 @@ describe('cacheTable', () => {
     );
     expect(mixed).toContain('agent.tap');
     expect(mixed).not.toContain('agent.waitFor');
-    expect(mixed).toContain('1 hit of 1 locate call');
+    expect(mixed).toContain('1 hit of 1 cached call');
   });
 
-  it('counts the mix against locate calls, not against every agent step', () => {
+  // Only a locate hit skips a model call. Path guidance just puts the recorded
+  // route into the prompt and the model still decides, so counting its hits as
+  // savings reported time that was never saved.
+  it('does not price path guidance as avoided model time', () => {
+    const table = cacheTable(
+      results([
+        {
+          api: 'agent.act',
+          cache: { kind: 'path', status: 'hit' },
+          cacheMs: 5,
+          modelMs: 4_800,
+          modelCalls: 2,
+        },
+      ]),
+      [],
+    );
+    expect(table).toContain('1 guided by a recorded path');
+    expect(table).not.toContain('model time avoided');
+  });
+
+  it('counts the mix against cached calls, not against every agent step', () => {
     const table = cacheTable(
       results([
         { api: 'agent.waitFor', modelMs: 5_000 },
@@ -150,7 +170,7 @@ describe('cacheTable', () => {
       ]),
       [],
     );
-    expect(table).toContain('1 hit, 1 miss of 2 locate calls');
+    expect(table).toContain('1 hit, 1 miss of 2 cached calls');
   });
 
   it('prices a hit off locate model time only', () => {
@@ -178,7 +198,7 @@ describe('cacheTable', () => {
     );
     expect(table).toContain('2 hit');
     expect(table).toContain('1 miss');
-    expect(table).toContain('of 3 locate calls');
+    expect(table).toContain('of 3 cached calls');
     expect(table).toContain('cache time 15ms');
   });
 

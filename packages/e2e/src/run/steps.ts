@@ -71,6 +71,13 @@ export const CACHE_REPLAY_EVENT = 'cache.replay';
 
 export interface StepCacheInfo {
   status: 'miss' | 'hit' | 'invalid' | 'bypassed' | 'written';
+  /**
+   * Which `cache-1` entry kind this step used, for `--debug`. The two are
+   * accounted for separately because only a locate hit avoids a model call: path
+   * guidance is advisory, and counting its hits as savings reported time that was
+   * never saved. Dropped on serialization for the same reason as `reason`.
+   */
+  kind?: 'locate' | 'path';
   keyHash?: string;
   bytes?: number;
   /**

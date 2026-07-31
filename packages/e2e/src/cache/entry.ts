@@ -14,22 +14,36 @@
  */
 
 import { asCacheLocator, asSemanticIdentity, type CacheLocator, type SemanticIdentity } from './locator.ts';
+import { asPathAction, MAX_PATH_ACTIONS, type PathAction } from './path-action.ts';
 
 export interface LocatePayload {
   readonly locator: CacheLocator;
   readonly expected: SemanticIdentity;
 }
 
-export interface CacheEntry {
-  readonly schemaVersion: 'cache-1';
-  readonly createdAt: string;
-  readonly payload: LocatePayload;
+export interface PathPayload {
+  readonly type: 'path';
+  readonly actions: readonly PathAction[];
 }
 
 /**
- * Reads one document as a `cache-1` locate entry, or returns undefined when it
- * is not one this runner can replay. `path` entries are a valid `cache-1` shape
- * with no producer or consumer here yet, and are simply not locate entries.
+ * One entry's kind and its payload, together. The two travel as a pair because
+ * the kind is what says how to read the payload, and a key digest is only ever
+ * opened for the kind that computed it.
+ */
+export type CachePayload =
+  | { readonly kind: 'locate'; readonly payload: LocatePayload }
+  | { readonly kind: 'path'; readonly payload: PathPayload };
+
+export type CacheEntry = {
+  readonly schemaVersion: 'cache-1';
+  readonly createdAt: string;
+} & CachePayload;
+
+/**
+ * Reads one document as a `cache-1` entry, or returns undefined when it is not a
+ * shape this runner can replay. A missing `kind` reads as `locate`, which is what
+ * every entry written before path guidance existed looks like.
  */
 export function readCacheEntry(document: unknown): CacheEntry | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {
@@ -37,12 +51,18 @@ export function readCacheEntry(document: unknown): CacheEntry | undefined {
   }
   const raw = document as Record<string, unknown>;
   if (raw['schemaVersion'] !== 'cache-1') return undefined;
-  if (raw['kind'] !== undefined && raw['kind'] !== 'locate') return undefined;
-
   const payload = raw['payload'];
   if (typeof payload !== 'object' || payload === null) return undefined;
-  const { locator, expected } = payload as Record<string, unknown>;
+  const createdAt = typeof raw['createdAt'] === 'string' ? raw['createdAt'] : '';
 
+  if (raw['kind'] === 'path') {
+    const actions = readPathActions(payload as Record<string, unknown>);
+    if (actions === undefined) return undefined;
+    return { schemaVersion: 'cache-1', createdAt, kind: 'path', payload: { type: 'path', actions } };
+  }
+  if (raw['kind'] !== undefined && raw['kind'] !== 'locate') return undefined;
+
+  const { locator, expected } = payload as Record<string, unknown>;
   const validated = asCacheLocator(locator);
   if (validated === undefined) return undefined;
   const identity = asSemanticIdentity(expected);
@@ -50,7 +70,26 @@ export function readCacheEntry(document: unknown): CacheEntry | undefined {
 
   return {
     schemaVersion: 'cache-1',
-    createdAt: typeof raw['createdAt'] === 'string' ? raw['createdAt'] : '',
+    createdAt,
+    kind: 'locate',
     payload: { locator: validated, expected: identity },
   };
+}
+
+/**
+ * Reads a recorded action sequence. One malformed action rejects the whole
+ * entry: a path with a hole in it is not the path that succeeded, and following
+ * the remainder would run a different flow than the one that was recorded.
+ */
+function readPathActions(payload: Record<string, unknown>): readonly PathAction[] | undefined {
+  if (payload['type'] !== 'path') return undefined;
+  const raw = payload['actions'];
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_PATH_ACTIONS) return undefined;
+  const actions: PathAction[] = [];
+  for (const candidate of raw) {
+    const action = asPathAction(candidate);
+    if (action === undefined) return undefined;
+    actions.push(action);
+  }
+  return actions;
 }

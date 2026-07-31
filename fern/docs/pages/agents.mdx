@@ -79,10 +79,16 @@ const result = await agent.act('read the receipt', undefined, {
 });
 ```
 
-<Callout intent="warning" title="Not implemented yet">
-`agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY` in the current
-release. Described targets and judgments, below, are complete and cover the same
-ground one step at a time.
+Each round the model sees a fresh snapshot, the steps it has already taken, and
+one action vocabulary: tap, type, scroll, press, long-press, allowed navigation,
+observe, and conclude. It answers with exactly one action, which the runner
+validates and performs itself — model output never reaches the driver directly.
+The call succeeds only when the model explicitly concludes; exhausting `maxSteps`
+or `maxModelCalls` fails with `STEP_BUDGET_EXHAUSTED` rather than guessing.
+
+<Callout intent="warning" title="agent.login is not implemented yet">
+`agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Pass the credential to
+`agent.act` as a parameter, or fill the form with described targets.
 </Callout>
 
 ## Described targets
@@ -313,6 +319,7 @@ Every call is bounded, so a bad prompt cannot spend your budget in a loop.
 
 | Call | Model calls | Default timeout |
 | --- | --- | --- |
+| `act` | up to `agent.maxModelCalls`, default 25 | 60 s for the whole flow |
 | Located actions (`tap`, `type`, `select`, …) | 2 | `actionTimeout`, 30 s |
 | `dragTo` | 4 | `actionTimeout`, 30 s |
 | `scroll` without `within` | 0 | `actionTimeout`, 30 s |
@@ -329,6 +336,9 @@ Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time raises
 Keeping an agentic suite cheap:
 
 - Assert with `expect` when the check is mechanical. It is free.
+- Prefer a described target over `act` when you already know the step. One
+  `agent.tap` is one model call; the same tap inside `act` costs a planning
+  round plus the round that concludes.
 - Use a described target for the step that breaks, not for the whole test.
 - Give `actionTimeout` room when a provider is slow. Latency is not a defect.
 - Keep `waitFor` intervals coarse; each poll is a model call.
@@ -376,7 +386,22 @@ means.
 <Callout intent="info" title="Scope in this release">
 Only located actions are cached (`tap`, `click`, `type`, `scroll`, `scrollTo`,
 `longPress`). Other located verbs, and elements inside iframes, report
-`bypassed`. Path caching for `agent.act` arrives with the planning tier.
+`bypassed`.
+
+`agent.act` uses path guidance instead of locate caching. A successful flow
+records the actions it took; the next run is offered each one as the route that
+worked last time. It is a hint, not a replay — the model still sees a fresh
+observation every round and can reject it — so path guidance does **not** reduce
+model calls. It reduces wrong turns.
+
+If the model ignores the guidance, the path is discarded and the flow reasons on
+from there. That is a normal outcome, not a failure — declining a suggestion is
+exactly what re-observing is for — so guidance can never turn a passing flow into
+a failing one.
+
+Guidance helps most on a stable flow. On a page whose content moves between runs
+— a listing with rotating prices, a feed — the recorded locators stop matching and
+the path is simply dropped, costing a few prompt tokens and nothing else.
 </Callout>
 
 ### Positional targets are not cached

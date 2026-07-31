@@ -389,6 +389,90 @@ const PAGES: Record<string, string> = {
   <iframe id="inline" title="inline" src="data:text/html,<body><label for=%22ok%22>Confirm</label><input id=%22ok%22 type=%22checkbox%22 /></body>"></iframe>
 </body>
 </html>`,
+  // Replaces its own button the first time a pointer reaches it, which detaches
+  // the handle mid-dispatch exactly as a re-rendering app does. The replacement
+  // is identical, so the next observation names the same control and the second
+  // attempt lands.
+  '/restage': `<!doctype html>
+<html>
+<head><title>Restage</title></head>
+<body>
+  <h1>Restage</h1>
+  <button id="go">Continue</button>
+  <output id="state" role="status" aria-label="State">idle</output>
+  <script>
+    let swapped = false;
+    const attach = (button) => {
+      button.addEventListener('mouseover', () => {
+        if (swapped) return;
+        swapped = true;
+        const fresh = button.cloneNode(true);
+        button.replaceWith(fresh);
+        attach(fresh);
+      });
+      button.addEventListener('click', () => {
+        document.getElementById('state').textContent = 'continued';
+      });
+    };
+    attach(document.getElementById('go'));
+  </script>
+</body>
+</html>`,
+  // A flow no single action can finish: each step reveals the next only after
+  // the previous one commits.
+  '/onboarding': `<!doctype html>
+<html>
+<head><title>Onboarding</title></head>
+<body>
+  <h1>Onboarding</h1>
+  <output id="stage" role="status" aria-label="Stage">welcome</output>
+
+  <section id="step-welcome">
+    <p>Welcome aboard.</p>
+    <button id="start">Get started</button>
+  </section>
+
+  <section id="step-team" hidden>
+    <label for="company">Company name</label>
+    <input id="company" autocomplete="organization" />
+    <button id="save-team">Continue</button>
+  </section>
+
+  <section id="step-prefs" hidden>
+    <label for="digest">Email digest</label>
+    <input id="digest" type="checkbox" />
+    <button id="finish">Finish setup</button>
+  </section>
+
+  <section id="step-done" hidden>
+    <h2>You are all set</h2>
+    <p id="summary"></p>
+  </section>
+
+  <script>
+    const show = (id, stage) => {
+      for (const section of document.querySelectorAll('section')) section.hidden = true;
+      document.getElementById(id).hidden = false;
+      document.getElementById('stage').textContent = stage;
+    };
+    document.getElementById('start').onclick = () => show('step-team', 'team');
+    document.getElementById('save-team').onclick = () => {
+      // Refuses to advance unfilled, so tapping Continue without typing cannot
+      // fall through to success.
+      const name = document.getElementById('company').value.trim();
+      if (name === '') return;
+      show('step-prefs', 'prefs');
+    };
+    document.getElementById('finish').onclick = () => {
+      const company = document.getElementById('company').value.trim();
+      const digest = document.getElementById('digest').checked;
+      document.getElementById('summary').textContent =
+        company + ' / digest ' + (digest ? 'on' : 'off');
+      show('step-done', 'done');
+    };
+  </script>
+</body>
+</html>`,
   '/flags': `<!doctype html>
 <html>
 <head><title>Flags</title></head>

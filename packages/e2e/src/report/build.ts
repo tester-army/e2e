@@ -66,7 +66,7 @@ export interface ReportError {
 }
 
 /** Reported cache outcome: `StepCacheInfo` without its debug-only reason. */
-export type ReportCacheInfo = Omit<StepCacheInfo, 'reason'>;
+export type ReportCacheInfo = Omit<StepCacheInfo, 'reason' | 'kind'>;
 
 export interface ReportStep {
   id: string;
@@ -270,8 +270,9 @@ function serializeStep(step: StepRecord): ReportStep {
  * published record.
  */
 function serializeCacheRecord(cache: StepCacheInfo): ReportCacheInfo {
-  const { reason, ...report } = cache;
+  const { reason, kind, ...report } = cache;
   void reason;
+  void kind;
   return report;
 }
 

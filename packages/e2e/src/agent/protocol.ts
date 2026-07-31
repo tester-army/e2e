@@ -1,7 +1,8 @@
 /**
  * Closed `agent-protocol-1` response grammars. Mirrors
  * spec/schema/agent-locate-v1.schema.json and agent-judgment-v1.schema.json;
- * the spec files win on any divergence.
+ * the spec files win on any divergence. The planning tier's `agent-tool-1`
+ * grammar is derived from the action space in `action-space.ts`.
  *
  * Validation is runner-owned: a response that does not match exactly is a
  * policy error before any driver dispatch (14-security.md).

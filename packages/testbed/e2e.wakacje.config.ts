@@ -9,6 +9,12 @@ import { defineConfig } from 'e2e';
  *
  * Not part of CI: the site changes, rate-limits, and every step spends real
  * model calls. Tests navigate the funnel but never submit a reservation.
+ *
+ * Two suites cover the same journey on purpose. `wakacje.e2e.ts` spells out
+ * every interaction as a located action; `wakacje-act.e2e.ts` names six outcomes
+ * and lets `agent.act` plan the path. Running both is how we compare what the
+ * planning tier costs and what it buys — 27 steps against 9, at more model calls
+ * per step and less to read when one fails.
  */
 export default defineConfig({
   specVersion: '0.1',
@@ -24,8 +30,16 @@ export default defineConfig({
   // Every located action includes a model round trip (~3-8 s), so the
   // deterministic 30 s action budget is tight for a loaded provider. Latency
   // is not a product defect: give it room rather than reading it as failure.
-  timeout: 300_000,
+  // The agentic suite runs six planning flows in one test, each of which is many
+  // observations and model calls. Every agent deadline is additionally capped by
+  // whatever remains of this, so it has to cover the whole journey.
+  timeout: 900_000,
   actionTimeout: 60_000,
+  // Agentic steps are comparable, not identical, run to run: a model that took a
+  // wrong turn on a heavy page will often take the right one from clean state.
+  // Retries bypass every agent cache, so the second attempt is a genuine retry
+  // rather than a replay of the first one's route.
+  retries: 1,
   agent: {
     // gemini-3.6-flash measures ~2x faster wall-clock than gemini-3-flash
     // here (~3.7s vs ~8.9s per call); override with E2E_MODEL to compare.

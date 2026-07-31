@@ -26,7 +26,7 @@ const target: CacheTargetIdentity = {
   appIdentity: 'a'.repeat(64),
 };
 
-const payload: LocatePayload = {
+const locatePayload: LocatePayload = {
   locator: {
     kind: 'query',
     query: {
@@ -37,6 +37,9 @@ const payload: LocatePayload = {
   },
   expected: { role: 'button', name: 'Buy' },
 };
+
+/** The entry every write below stores: kind plus payload, as the store takes it. */
+const entry = { kind: 'locate', payload: locatePayload } as const;
 
 const keyHash = cacheKeyHash(
   buildCacheKey({
@@ -72,7 +75,7 @@ afterEach(() => {
 describe('round trip', () => {
   it('writes a schema-valid entry and reads it back', async () => {
     const { store: cache, directory } = await store();
-    const written = await cache.write(keyHash, payload);
+    const written = await cache.write(keyHash, entry);
     expect(written?.bytes).toBeGreaterThan(0);
 
     const document = JSON.parse(
@@ -85,7 +88,7 @@ describe('round trip', () => {
 
     const result = await cache.read(keyHash);
     expect(result.status).toBe('hit');
-    expect(result.status === 'hit' && result.entry.payload).toEqual(payload);
+    expect(result.status === 'hit' && result.entry.payload).toEqual(locatePayload);
   });
 
   it('reports a miss for an absent key', async () => {
@@ -95,8 +98,8 @@ describe('round trip', () => {
 
   it('keeps one file per key, and rewrites in place', async () => {
     const { store: cache, directory } = await store();
-    await cache.write(keyHash, payload);
-    await cache.write(keyHash, payload);
+    await cache.write(keyHash, entry);
+    await cache.write(keyHash, entry);
     // Two writers only ever collide on a key when they are writing the same
     // locator, so last-write-wins is the outcome rather than a hazard.
     expect((await readdir(directory)).filter((n) => n.endsWith('.json'))).toHaveLength(1);
@@ -107,7 +110,7 @@ describe('round trip', () => {
     // Regression: temporary names derived from pid and clock collided when two
     // writers raced within a millisecond, and the first rename removed the
     // second's file. Only a unique temporary name makes lock-free writing safe.
-    await Promise.all(Array.from({ length: 8 }, () => cache.write(keyHash, payload)));
+    await Promise.all(Array.from({ length: 8 }, () => cache.write(keyHash, entry)));
     expect((await readdir(directory)).filter((n) => !n.endsWith('.json'))).toEqual([]);
     expect((await cache.read(keyHash)).status).toBe('hit');
   });
@@ -165,7 +168,7 @@ describe('reads fail closed', () => {
     for (const bad of ['../escape', `${keyHash}/../x`, 'NOTHEX', '']) {
       const result = await cache.read(bad);
       expect(result.status).toBe('invalid');
-      expect(await cache.write(bad, payload)).toBeUndefined();
+      expect(await cache.write(bad, entry)).toBeUndefined();
     }
   });
 
@@ -177,7 +180,7 @@ describe('reads fail closed', () => {
 
   it('replaces a poisoned entry on the next write', async () => {
     const cache = await poison('{ not json');
-    await cache.write(keyHash, payload);
+    await cache.write(keyHash, entry);
     expect((await cache.read(keyHash)).status).toBe('hit');
   });
 });
@@ -185,17 +188,17 @@ describe('reads fail closed', () => {
 describe('write modes', () => {
   it('never writes when not writable', async () => {
     const { store: cache, directory } = await store({ writable: false });
-    expect(await cache.write(keyHash, payload)).toBeUndefined();
+    expect(await cache.write(keyHash, entry)).toBeUndefined();
     await expect(readdir(directory)).resolves.toEqual([]);
   });
 
   it('refuses to write an entry over the size limit', async () => {
     const { store: cache, directory } = await store({ maxBytes: 1_024 });
     const huge: LocatePayload = {
-      ...payload,
+      ...locatePayload,
       expected: { role: 'button', name: 'n'.repeat(4_096) },
     };
-    expect(await cache.write(keyHash, huge)).toBeUndefined();
+    expect(await cache.write(keyHash, { kind: 'locate', payload: huge })).toBeUndefined();
     await expect(readdir(directory)).resolves.toEqual([]);
   });
 });
@@ -208,7 +211,7 @@ describe('store selection', () => {
     expect(cache.unusable).toBe('agent.cache mode is off');
     expect(cache.writable).toBe(false);
     expect((await cache.read(keyHash)).status).toBe('miss');
-    expect(await cache.write(keyHash, payload)).toBeUndefined();
+    expect(await cache.write(keyHash, entry)).toBeUndefined();
   });
 
   it('reports the caller-supplied reason on a disabled store', async () => {

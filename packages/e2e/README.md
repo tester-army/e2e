@@ -68,7 +68,13 @@ repeat run replays the query instead of calling the model. Set the policy with
 
 ## Current limitations
 
-- `agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY`.
+- `agent.login` rejects with `UNSUPPORTED_CAPABILITY`; `agent.act` accepts a
+  `Secret` parameter and covers sign-in flows.
+- `agent.act` records path guidance, which is advisory: it reduces wrong turns,
+  not model calls, and declining it never fails a flow.
+- `CACHE_REPLAY_DIVERGED` and `AUTHENTICATION_FAILED` are in the error taxonomy
+  but unreachable: nothing replays cached actions blindly, and `agent.login` is
+  not implemented.
 - The HTML reporter and video artifacts are not available.
 - Reported steps carry no source locations.
 - iOS and Android targets are rejected.

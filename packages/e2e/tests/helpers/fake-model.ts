@@ -48,6 +48,10 @@ export interface FakeCall {
   readonly instruction: string;
   /** Content of the `<observation>` section. */
   readonly observation: string;
+  /** Content of the `<steps-already-taken>` section, for planning calls. */
+  readonly trail: string;
+  /** Content of the `<parameters>` section, for planning calls. */
+  readonly params: string;
   /** Observation revision advertised in the prompt. */
   readonly revision: string;
   /** Serialized observation lines, one per node. */
@@ -63,6 +67,13 @@ export interface FakeImage {
 }
 
 export type FakeResponder = (call: FakeCall) => unknown;
+
+/**
+ * Returned by a responder to emit no content at all, the way a provider does
+ * when a reasoning model spends its whole output budget without producing the
+ * object. The AI SDK then throws `NoOutputGeneratedError` from its own getter.
+ */
+export const NO_OUTPUT = Symbol('fake-model-no-output');
 
 /** Recorded calls, newest last. Cleared by every installFakeModel call. */
 export const fakeCalls: FakeCall[] = [];
@@ -121,15 +132,21 @@ export function createFakeModel(
         prompt,
         instruction: section(prompt, 'instruction').trim(),
         observation,
+        trail: section(prompt, 'steps-already-taken').trim(),
+        params: section(prompt, 'parameters').trim(),
         revision: promptRevision(prompt),
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
         images: promptImages(options.prompt),
       };
       fakeCalls.push(parsed);
-      const raw = enforceRequestSchema(responder(parsed), options.responseFormat?.schema);
+      const answer = responder(parsed);
+      const empty = answer === NO_OUTPUT;
+      const raw = empty ? undefined : enforceRequestSchema(answer, options.responseFormat?.schema);
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(raw) }],
-        finishReason: { unified: 'stop' as const, raw: 'stop' },
+        content: empty ? [] : [{ type: 'text' as const, text: JSON.stringify(raw) }],
+        finishReason: empty
+          ? { unified: 'length' as const, raw: 'length' }
+          : { unified: 'stop' as const, raw: 'stop' },
         usage: {
           inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
           outputTokens: { total: 20, text: 20, reasoning: 0 },
@@ -294,4 +311,50 @@ export function locateNotFound(explanation: string): unknown {
 /** Builds a valid agent-judgment-1 response. */
 export function judgment(result: boolean, explanation: string): unknown {
   return { protocolVersion: 'agent-judgment-1', result, explanation };
+}
+
+/** Builds a valid agent-tool-1 action call. */
+export function toolCall(kind: string, fields: Record<string, unknown> = {}): unknown {
+  return { toolVersion: 'agent-tool-1', kind, ...fields };
+}
+
+/** Builds an agent-tool-1 action naming the best-matching observed node. */
+export function toolOnBestMatch(
+  call: FakeCall,
+  kind: string,
+  fields: Record<string, unknown> = {},
+): unknown {
+  const match = bestMatch(call);
+  return toolCall(kind, { target: { id: match.id, revision: call.revision }, ...fields });
+}
+
+/** Builds an agent-tool-1 action naming the node whose line matches a pattern. */
+export function toolOnMatch(
+  call: FakeCall,
+  matches: RegExp,
+  kind: string,
+  fields: Record<string, unknown> = {},
+): unknown {
+  const line = call.lines.find((entry) => matches.test(entry));
+  const id = line === undefined ? undefined : /#(\S+)/.exec(line)?.[1];
+  if (id === undefined) {
+    throw new Error(`no observed node matching ${String(matches)} in:\n${call.observation}`);
+  }
+  return toolCall(kind, { target: { id, revision: call.revision }, ...fields });
+}
+
+/** Builds a valid agent-tool-1 conclusion. */
+export function toolConclude(
+  explanation: string,
+  options: { status?: 'success' | 'failure'; data?: unknown } = {},
+): unknown {
+  return toolCall('conclude', {
+    status: options.status ?? 'success',
+    explanation,
+    ...('data' in options ? { data: options.data } : {}),
+  });
+}
+
+export function trailSteps(call: FakeCall): string[] {
+  return call.trail === '' ? [] : call.trail.split('\n');
 }

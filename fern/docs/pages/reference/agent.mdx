@@ -7,8 +7,9 @@ Every `agent` call is one bounded invocation: a fresh observation, an explicit
 deadline, a model-call budget, and no shared transcript between calls. Acquiring
 the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 
-<Callout intent="warning" title="Not implemented yet">
-`act` and `login` reject with `UNSUPPORTED_CAPABILITY`.
+<Callout intent="warning" title="login is not implemented yet">
+`login` rejects with `UNSUPPORTED_CAPABILITY`. `act` accepts a `Secret` in its
+parameters, so a sign-in flow can go through it instead.
 </Callout>
 
 The `cache` option applies to the located actions `tap`, `click`, `type`,
@@ -88,6 +89,7 @@ test timeout.
 
 | Method | Model calls | Action steps | Default timeout |
 | --- | ---: | ---: | --- |
+| `act` | `config.agent.maxModelCalls`, 25 | `config.agent.maxSteps`, 25 | 60000 ms |
 | `tap`, `click` | 2 | 1 | `config.actionTimeout`, 30000 ms |
 | `type` | 2 | 1 | `config.actionTimeout` |
 | `longPress` | 2 | 1 | `config.actionTimeout` |
@@ -106,6 +108,12 @@ test timeout.
 
 A budget of 2 on a single-locate method is one locate plus one repair round.
 `dragTo` locates twice, hence 4.
+
+`act` spends one model call per planning round, so its model-call budget bounds
+the number of rounds and its action-step budget bounds the actions it commits.
+An `observe` round and a rejected conclusion each cost a model call and no action
+step. Its default timeout is a fixed 60 s rather than `actionTimeout`, because a
+planning call is many operations and the action timeout describes one.
 
 ## Located actions
 

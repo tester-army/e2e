@@ -13,7 +13,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError, classifyError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
-import { agentTrace, observationTrace } from '../internal/trace.ts';
+import { agentTrace, observationTrace, phaseTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
@@ -207,8 +207,9 @@ export class Invocation {
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
       () =>
-        `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
-        `(timeout ${options.timeoutMs}ms, budget ${options.maxModelCalls} calls, ledger ${this.ledger.bytes}B)`,
+        `${options.api} ${truncateLabel(options.label ?? '')} — up to ` +
+        `${options.maxActionSteps} action(s), ${options.maxModelCalls} call(s), ` +
+        `${Math.round(options.timeoutMs / 1000)}s`,
     );
   }
 
@@ -358,7 +359,7 @@ export class Invocation {
         ...(spec.name === undefined ? {} : { name: spec.name }),
         ...eventDetail,
       });
-      agentTrace(
+      phaseTrace(
         () =>
           `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
           `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
@@ -374,7 +375,7 @@ export class Invocation {
         ...(spec.name === undefined ? {} : { name: spec.name }),
         code: errorCode(cause),
       });
-      agentTrace(
+      phaseTrace(
         () =>
           `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
           `${errorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -528,6 +529,8 @@ export class Invocation {
     prompt: PromptInput;
   }): Promise<Value> {
     let repair: PromptInput['repair'] = request.prompt.repair;
+    /** The last rejection, so an unproductive repair loop stops early. */
+    let lastIssue: string | undefined;
     this.metrics.contextBytes = tokenUpperBound(this.runtime.agentContext ?? '');
     this.metrics.ledgerBytes = this.ledger.bytes;
     for (;;) {
@@ -565,17 +568,38 @@ export class Invocation {
         this.recordUsage(result.usage);
         return result.value;
       } catch (cause) {
+        // A model that produces the identical rejection twice is not converging,
+        // and re-asking only spends the remaining budget a few seconds at a time
+        // before failing with the same message. One repeat is tolerated because a
+        // transient blip can look the same twice; a second is evidence.
+        if (
+          cause instanceof ModelOutputInvalidError &&
+          !cause.empty &&
+          cause.explanation === lastIssue
+        ) {
+          this.recordSchemaRejection(request.schemaName);
+          agentTrace(
+            () => `${this.options.api} abandoning repair: the same rejection twice — ${cause.explanation}`,
+          );
+          throw cause;
+        }
         if (
           cause instanceof ModelOutputInvalidError &&
           this.metrics.modelCalls < this.options.maxModelCalls &&
           !this.deadline.expired()
         ) {
           this.recordSchemaRejection(request.schemaName);
+          lastIssue = cause.explanation;
           agentTrace(() => `${this.options.api} repair round: ${cause.explanation}`);
-          repair = {
-            issue: cause.explanation,
-            rawText: cause.rawText,
-          };
+          // Nothing came back, so there is nothing to feed back: re-send the
+          // request as it was rather than adding rejection feedback about a
+          // response that does not exist.
+          repair = cause.empty
+            ? undefined
+            : {
+                issue: cause.explanation,
+                rawText: cause.rawText,
+              };
           continue;
         }
         throw cause;
@@ -665,6 +689,34 @@ export class Invocation {
     return this.metrics.actionSteps > 0;
   }
 
+  /** Committed driver actions this invocation may still perform. */
+  get actionStepsRemaining(): number {
+    return Math.max(0, this.options.maxActionSteps - this.metrics.actionSteps);
+  }
+
+  /** The action-step budget this invocation was given. */
+  get maxActionSteps(): number {
+    return this.options.maxActionSteps;
+  }
+
+  /**
+   * Returns one action step to the budget.
+   *
+   * `commit` charges before dispatching, because a failure part-way through may
+   * still have taken effect. A driver that reports a retryable failure has proven
+   * the opposite — the node was gone before anything was sent — so the step was
+   * never spent, and keeping the charge would let a page that restages on every
+   * interaction exhaust `maxSteps` without ever acting.
+   */
+  refundActionStep(): void {
+    this.metrics.actionSteps = Math.max(0, this.metrics.actionSteps - 1);
+  }
+
+  /** Model requests this invocation may still make. */
+  get modelCallsRemaining(): number {
+    return Math.max(0, this.options.maxModelCalls - this.metrics.modelCalls);
+  }
+
   /** True while the model-call budget and deadline still allow one more call. */
   canAsk(): boolean {
     return this.metrics.modelCalls < this.options.maxModelCalls && !this.deadline.expired();
@@ -681,6 +733,15 @@ export class Invocation {
 
   /** Attaches metrics, provenance, and cache status to the enclosing step. */
   finish(): void {
+    agentTrace(() => {
+      const { actionSteps, modelCalls } = this.metrics;
+      const cost =
+        this.estimatedCostUsd === undefined ? '' : `, $${this.estimatedCostUsd.toFixed(4)}`;
+      return (
+        `${this.options.api} end — ${actionSteps} action(s), ${modelCalls} call(s), ` +
+        `${this.inputTokens + this.outputTokens} tokens${cost}`
+      );
+    });
     this.runtime.steps.attachAgentDetails({
       metrics: { ...this.metrics },
       ...(this.metrics.modelCalls > 0 ? { model: this.modelInfo() } : {}),
@@ -792,4 +853,10 @@ function imagesFor(observation: AgentObservation | undefined): readonly ModelIma
 function errorCode(cause: unknown): string {
   if (cause instanceof E2EError) return cause.code;
   return cause instanceof Error ? cause.name : 'ERROR';
+}
+
+/** Shortens a caller instruction for a one-line trace header. */
+function truncateLabel(label: string): string {
+  const collapsed = label.replace(/\s+/g, ' ').trim();
+  return JSON.stringify(collapsed.length > 60 ? `${collapsed.slice(0, 57)}...` : collapsed);
 }

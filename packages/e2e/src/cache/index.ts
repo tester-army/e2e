@@ -12,7 +12,9 @@ import { FileCacheStore, disabledCacheStore, type CacheStore } from './store.ts'
 export { MAX_CACHE_WIRE_BYTES, FileCacheStore, disabledCacheStore } from './store.ts';
 export type { CacheStore, CacheReadResult } from './store.ts';
 export { readCacheEntry } from './entry.ts';
-export type { CacheEntry, LocatePayload } from './entry.ts';
+export type { CacheEntry, CachePayload, LocatePayload, PathPayload } from './entry.ts';
+export { asPathAction, MAX_PATH_ACTIONS } from './path-action.ts';
+export type { PathAction, PathActionKind } from './path-action.ts';
 export {
   CACHE_METHODS,
   buildCacheKey,

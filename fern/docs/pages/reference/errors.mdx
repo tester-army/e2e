@@ -41,6 +41,7 @@ Check `code` rather than using `instanceof`.
 | `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
 | `STEP_BUDGET_EXHAUSTED` | The model-call or action-step budget ran out before a conclusion | test | 1 |
 | `STEP_TIMEOUT` | The invocation deadline expired. Carries the last judgment where one exists. | test | 1 |
+| `STEP_NO_CONCLUSION` | `agent.act` proposed the same action twice against an unchanged screen | test | 1 |
 | `ASSERTION_FAILED` | `agent.assert` judged false, or a locator, `web`, or value matcher failed | test | 1 |
 
 ## Runner codes
@@ -62,7 +63,7 @@ These appear in terminal output and in the report as plain string codes.
 | `PLATFORM_UNSUPPORTED` | A target requested a platform other than `web`. Mobile platforms are rejected. | configuration | 2 |
 | `DRIVER_NOT_INSTALLED` | A target names a well-known driver whose package is not installed. `driver: 'playwright'` needs `@e2edev/playwright`. | configuration | 2 |
 | `UNSUPPORTED_ARTIFACT` | A configured artifact kind the driver cannot produce. `video` is not implemented yet. | configuration | 2 |
-| `UNSUPPORTED_CAPABILITY` | The `web` fixture on a target without the `web` capability, the `device` fixture, state restore without state capability, or `agent.act` and `agent.login` | configuration | 2 |
+| `UNSUPPORTED_CAPABILITY` | The `web` fixture on a target without the `web` capability, the `device` fixture, state restore without state capability, or `agent.login` | configuration | 2 |
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. Suppress with `--pass-with-no-tests`. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
 | `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, or a positional path outside the project root | configuration | 2 |

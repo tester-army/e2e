@@ -76,10 +76,21 @@ export interface ModelAdapter {
  */
 export class ModelOutputInvalidError extends AgentError {
   readonly rawText: string | undefined;
+  /**
+   * True when the provider returned nothing to correct, rather than something
+   * wrong. The retry then re-sends the request unchanged: telling a model its
+   * previous response was rejected, when it never produced one, spends tokens on
+   * feedback about nothing and is the opposite of the nudge it needs.
+   */
+  readonly empty: boolean;
 
-  constructor(issue: string, options: { rawText?: string; cause?: unknown } = {}) {
+  constructor(
+    issue: string,
+    options: { rawText?: string; cause?: unknown; empty?: boolean } = {},
+  ) {
     super('MODEL_OUTPUT_INVALID', issue, options.cause === undefined ? {} : { cause: options.cause });
     this.rawText = options.rawText;
+    this.empty = options.empty ?? false;
   }
 }
 

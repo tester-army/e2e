@@ -14,25 +14,20 @@ import {
   cacheCallSignature,
   cacheKeyHash,
   screenFingerprint,
-  asCacheLocator,
   toSemanticIdentity,
   type CacheKey,
-  type CacheLocator,
   type CacheMethod,
   type SemanticIdentity,
 } from '../cache/index.ts';
-import type { LocatorExpression, SemanticNode } from '../driver/index.ts';
-import {
-  describeExpression,
-  frameExpression,
-  webSelectorExpression,
-} from '../locator/expression.ts';
+import type { SemanticNode } from '../driver/index.ts';
+import { describeExpression } from '../locator/expression.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { normalizeText } from '../internal/text.ts';
 import { agentTrace } from '../internal/trace.ts';
 import type { AgentObservation } from './observation.ts';
 import type { AgentCacheContext, Invocation } from './invocation.ts';
 import type { LocatedNode } from './locate.ts';
+import { storableExpression } from './storable.ts';
 
 /** Inputs that identify one locate call beyond its instruction. */
 export interface LocateCacheParams {
@@ -114,6 +109,7 @@ async function consult(
   const result = await context.store.read(keyHash);
   if (result.status === 'invalid') {
     invocation.setCache({
+      kind: 'locate',
       status: 'invalid',
       keyHash,
       reason: result.reason,
@@ -124,17 +120,20 @@ async function consult(
     return undefined;
   }
   if (result.status === 'miss') {
-    invocation.setCache({ status: 'miss', keyHash, reason: 'no entry for this key' });
+    invocation.setCache({ kind: 'locate', status: 'miss', keyHash, reason: 'no entry for this key' });
     return undefined;
   }
 
   const miss = (reason: string): undefined => {
-    invocation.setCache({ status: 'miss', keyHash, bytes: result.bytes, reason });
+    invocation.setCache({ kind: 'locate', status: 'miss', keyHash, bytes: result.bytes, reason });
     agentTrace(() => `cache: miss on ${keyHash.slice(0, 12)} — ${reason}`);
     return undefined;
   };
 
-  const locator = result.entry.payload.locator;
+  // A key digest is only opened for the kind that computed it, so a path entry
+  // here means a hash collision or a hand-edited file. Either way, not a hit.
+  if (result.entry.kind !== 'locate') return miss('the entry is not a locate entry');
+  const { locator, expected } = result.entry.payload;
   let refs;
   try {
     // Resolved once with no polling: a stale entry must not spend the caller's
@@ -152,11 +151,12 @@ async function consult(
   } catch {
     return miss('the matched node became unreadable');
   }
-  if (!matchesIdentity(result.entry.payload.expected, node)) {
+  if (!matchesIdentity(expected, node)) {
     return miss(`the matched node is ${describe(node)}, not the recorded identity`);
   }
 
   invocation.setCache({
+    kind: 'locate',
     status: 'hit',
     keyHash,
     bytes: result.bytes,
@@ -176,62 +176,6 @@ async function consult(
     origin: 'cache',
     targeting: 'content',
   };
-}
-
-/**
- * The locator to store for one located node.
- *
- * A semantic query comes first: it says what the node is, so it survives the DOM
- * churn — a new wrapper, a reordered container — that invalidates any structural
- * path, and it reads back in a report as something a human wrote.
- *
- * An index-bearing query is the exception, and must not be stored. `pinOne`
- * derives that index against the match set of the run that resolved it, which
- * makes it correct now and meaningless later: replaying `nth(2)` finds whatever
- * is third next run. Nothing catches that, either — an index is only ever needed
- * when the matches are semantically identical, so the recorded role and name
- * match every twin and the identity check passes on the wrong one. That is a
- * wrong action rather than a miss, which is the one thing the cache may not do.
- *
- * The driver's selector is the recordable answer for exactly that node. It is
- * anchored on an attribute that names the element — a test id, a form control's
- * `name` — so unlike an index it still points at the same control after a
- * reorder. Storing it is safe because it is never trusted: replay resolves it,
- * reads what it landed on, and requires the recorded identity before acting, so
- * a stale path costs a miss.
- */
-function storableLocator(located: LocatedNode): CacheLocator | undefined {
-  const expression = located.expression;
-  if (expression !== undefined && !isPositional(expression)) return asCacheLocator(expression);
-  const selector = located.node.selector;
-  if (selector === undefined) return undefined;
-  // A selector is document-local, so a node inside an iframe is stored behind
-  // the chain of frames that reaches its document.
-  const framePath = located.node.framePath ?? [];
-  const scoped = framePath.reduceRight<LocatorExpression>(
-    (source, frame) => frameExpression(frame, source),
-    webSelectorExpression(selector),
-  );
-  return asCacheLocator(scoped);
-}
-
-/**
- * True when an expression addresses its node by position anywhere along the way,
- * so what it resolves to depends on the order of the page rather than on the
- * content of the node.
- */
-function isPositional(expression: LocatorExpression): boolean {
-  switch (expression.kind) {
-    case 'index':
-      return true;
-    case 'filter':
-    case 'frame':
-      return isPositional(expression.source);
-    case 'query':
-      return expression.scope !== undefined && isPositional(expression.scope);
-    default:
-      return false;
-  }
 }
 
 /**
@@ -265,7 +209,7 @@ async function record(
   const declined = NOT_RECORDABLE[located.targeting];
   if (declined !== undefined) return notRecorded(invocation, keyHash, declined);
 
-  const locator = storableLocator(located);
+  const locator = storableExpression(located.expression, located.node);
   if (locator === undefined) {
     return notRecorded(invocation, keyHash, 'the node exposes nothing storable to re-find it by');
   }
@@ -274,12 +218,13 @@ async function record(
     return notRecorded(invocation, keyHash, 'the node exposes no role to identify it by');
   }
   try {
-    const written = await store.write(keyHash, { locator, expected });
+    const written = await store.write(keyHash, { kind: 'locate', payload: { locator, expected } });
     if (written === undefined) {
       notRecorded(invocation, keyHash, 'the entry exceeded the cache byte limit');
       return;
     }
     invocation.mergeCache({
+      kind: 'locate',
       status: 'written',
       keyHash,
       bytes: written.bytes,

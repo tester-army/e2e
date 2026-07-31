@@ -44,6 +44,32 @@ export interface PromptInput {
   readonly request: string;
   /** Untrusted test-author instruction or condition. */
   readonly instruction: string;
+  /**
+   * Serialized non-secret call parameters, for a planning call. A `Secret`
+   * appears here only as its name and purpose; the value is resolved host-side
+   * immediately before an authorized fill (04-resources.md).
+   */
+  readonly params?: string | undefined;
+  /**
+   * What this invocation has already done, newest last. Only a planning call
+   * has one: a single-action method cannot have a prior action to report.
+   *
+   * Without it the model has no memory inside one invocation — every call sees
+   * a fresh observation and would re-propose the action it just committed. The
+   * ledger cannot serve here because it is built from *completed steps*, and
+   * one `act` is one step that has not completed yet.
+   */
+  readonly trail?: string | undefined;
+  /**
+   * The action a previous successful run took at this point, offered as a hint.
+   * Advisory on purpose: the page may no longer support it, so the model has to
+   * be free to reject it (10-determinism.md).
+   */
+  readonly guidance?: string | undefined;
+  /** Remaining budget, so a flow can wind down instead of being cut off. */
+  readonly budget?: string | undefined;
+  /** A runner observation about the last round, such as a stalled action. */
+  readonly notice?: string | undefined;
   readonly observation?: AgentObservation | undefined;
   /**
    * Leaves the attached screenshot as the only evidence in the request, for
@@ -66,6 +92,9 @@ export interface PromptInput {
 /** Builds the user message: request first, then clearly fenced untrusted evidence. */
 export function buildPrompt(input: PromptInput): string {
   const sections: string[] = [input.request, '', '<instruction>', input.instruction, '</instruction>'];
+  if (input.params !== undefined && input.params !== '') {
+    sections.push('', '<parameters>', input.params, '</parameters>');
+  }
   const observation = input.observation;
   if (observation !== undefined) {
     if (input.withholdTree !== true) {
@@ -86,6 +115,27 @@ export function buildPrompt(input: PromptInput): string {
         describePixels(pixels, input.withholdTree === true, observation.revision),
       );
     }
+  }
+  // The trail sits below the observation and above the ledger: nearest context
+  // first, and both are data the same way the observation is.
+  if (input.trail !== undefined && input.trail !== '') {
+    sections.push('', '<steps-already-taken>', input.trail, '</steps-already-taken>');
+  }
+  if (input.notice !== undefined && input.notice !== '') {
+    sections.push('', '<notice>', input.notice, '</notice>');
+  }
+  if (input.budget !== undefined && input.budget !== '') {
+    sections.push('', '<budget>', input.budget, '</budget>');
+  }
+  if (input.guidance !== undefined && input.guidance !== '') {
+    sections.push(
+      '',
+      '<previous-successful-route>',
+      `Last time this worked, the next step here was: ${input.guidance}.`,
+      'Take it only if the observation still supports it. If it does not, ignore this',
+      'and choose what the screen actually allows.',
+      '</previous-successful-route>',
+    );
   }
   if (input.ledger !== undefined && input.ledger !== '') {
     sections.push('', '<ledger>', input.ledger, '</ledger>');

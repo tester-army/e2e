@@ -19,13 +19,19 @@ rather than with the terminal output.
     at all.
   </Accordion>
 
-  <Accordion title="UNSUPPORTED_CAPABILITY on agent.act or agent.login">
+  <Accordion title="UNSUPPORTED_CAPABILITY on agent.login">
     **Symptom.** The call throws the moment it runs.
 
-    **Cause.** Planned flows are not implemented yet.
+    **Cause.** `agent.login` is not implemented yet.
 
-    **Fix.** Compose described targets and judgments, which are one bounded step
-    each:
+    **Fix.** Hand the credential to `agent.act`, which accepts a `Secret` as a
+    parameter and fills it host-side:
+
+    ```ts
+    await agent.act('sign in', { password: credentials.user('admin').password });
+    ```
+
+    Or compose described targets, which are one bounded step each:
 
     ```ts
     await agent.type('the username field', 'admin');
@@ -33,6 +39,63 @@ rather than with the terminal output.
     await agent.tap('the sign in button');
     await agent.assert('the dashboard is visible');
     ```
+  </Accordion>
+
+  <Accordion title="agent.act times out without appearing to move">
+    **Symptom.** `STEP_TIMEOUT` after about a minute, and no sign the flow got
+    anywhere.
+
+    **Cause.** `agent.act` budgets 60 s for the *whole* flow, not per action.
+    Every planning round is one observation plus one model call, so on a heavy
+    page with a slow provider that is only a handful of rounds.
+
+    **Fix.** Watch what it is actually doing:
+
+    ```bash
+    e2e run --debug
+    ```
+
+    That streams each decision as it happens:
+
+    ```
+    [e2e agent] act round 1: observation r1 (412 nodes)
+    [e2e agent] act round 1: tapped the button "Get started"
+    [e2e agent] act round 1: committed
+    [e2e agent] act round 2: observation r2 (418 nodes)
+    ```
+
+    The failure itself also reports how far it got. If the rounds are sensible and
+    it simply ran out of clock, raise the per-call budget:
+
+    ```ts
+    await agent.act('complete the onboarding', undefined, { timeout: 180_000 });
+    ```
+
+    Every agent deadline is additionally capped by the remaining test timeout, so
+    raise `timeout` in config too when a test runs several flows.
+  </Accordion>
+
+  <Accordion title="STEP_NO_CONCLUSION from agent.act">
+    **Symptom.** The flow fails after a few actions with "proposed ... twice
+    against an unchanged screen".
+
+    **Cause.** The model repeated one action while the page did not change, which
+    means it is not making progress. The runner stops rather than spending the
+    rest of the budget.
+
+    **Fix.** Usually the instruction asks for something the screen cannot do.
+    Check that the step is reachable from where the test left off, and split a
+    goal that spans a navigation into two `act` calls.
+  </Accordion>
+
+  <Accordion title="STEP_BUDGET_EXHAUSTED from agent.act">
+    **Symptom.** The flow runs several actions, then fails.
+
+    **Cause.** It ran out of `maxSteps` (committed actions) or `maxModelCalls`
+    before the model concluded. Budget exhaustion is never reported as success.
+
+    **Fix.** Raise `agent.maxSteps` in config or per call, or narrow the
+    instruction. A flow needing more than ~25 actions is usually two flows.
   </Accordion>
 
   <Accordion title="UNSUPPORTED_CAPABILITY on the device fixture">

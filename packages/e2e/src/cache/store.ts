@@ -19,7 +19,7 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promis
 import { join } from 'node:path';
 import { errorMessage } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import { readCacheEntry, type CacheEntry, type LocatePayload } from './entry.ts';
+import { readCacheEntry, type CacheEntry, type CachePayload } from './entry.ts';
 
 /** Hard wire ceiling from 13-reporting.md; config may lower it, never raise it. */
 export const MAX_CACHE_WIRE_BYTES = 1_048_576;
@@ -42,7 +42,7 @@ export interface CacheStore {
   readonly writable: boolean;
   read(keyHash: string): Promise<CacheReadResult>;
   /** Persists one entry, returning its size, or undefined when not written. */
-  write(keyHash: string, payload: LocatePayload): Promise<{ bytes: number } | undefined>;
+  write(keyHash: string, entry: CachePayload): Promise<{ bytes: number } | undefined>;
 }
 
 /**
@@ -109,13 +109,13 @@ export class FileCacheStore implements CacheStore {
     return { status: 'hit', entry, bytes };
   }
 
-  async write(keyHash: string, payload: LocatePayload): Promise<{ bytes: number } | undefined> {
+  async write(keyHash: string, entry: CachePayload): Promise<{ bytes: number } | undefined> {
     if (!this.writable) return undefined;
     const path = this.entryPath(keyHash);
     if (path === undefined) return undefined;
 
-    const entry: CacheEntry = { schemaVersion: 'cache-1', createdAt: timestamp(), payload };
-    const serialized = `${JSON.stringify({ ...entry, kind: 'locate' }, null, 2)}\n`;
+    const document: CacheEntry = { schemaVersion: 'cache-1', createdAt: timestamp(), ...entry };
+    const serialized = `${JSON.stringify(document, null, 2)}\n`;
     const bytes = Buffer.byteLength(serialized, 'utf8');
     if (bytes > this.maxBytes) return undefined;
 

@@ -13,6 +13,7 @@ import {
   generateText,
   jsonSchema,
   NoObjectGeneratedError,
+  NoOutputGeneratedError,
   Output,
   RetryError,
   type ModelMessage,
@@ -123,11 +124,10 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
             name: call.schemaName,
           }),
         });
-        const output = result.output;
-        if (output === undefined) {
-          throw new ModelOutputInvalidError('provider returned no structured output');
-        }
-        return { value: output, usage: readUsage(result, inputBound) };
+        // `result.output` is a getter that throws when the provider produced
+        // no object, so there is nothing to test for here; the catch below
+        // classifies it.
+        return { value: result.output, usage: readUsage(result, inputBound) };
       } catch (cause) {
         throw translateModelError(cause, issue, call.signal);
       }
@@ -261,6 +261,18 @@ function translateModelError(rawCause: unknown, issue: string | undefined, signa
       'STEP_TIMEOUT',
       'model call exceeded the remaining step timeout',
       { cause },
+    );
+  }
+  // A call that returned no object at all. Usually transient — a reasoning model
+  // spending its whole output budget before emitting one, or a truncated
+  // response — so it is invalid output the runner may re-ask, not a provider
+  // outage. It is a separate AI SDK error class from a response that parsed and
+  // failed validation, and classifying it as infrastructure made a retryable
+  // blip fail the run outright.
+  if (NoOutputGeneratedError.isInstance(cause)) {
+    return new ModelOutputInvalidError(
+      'the provider returned no structured output for this request',
+      { cause, empty: true },
     );
   }
   if (NoObjectGeneratedError.isInstance(cause)) {

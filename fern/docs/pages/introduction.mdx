@@ -55,10 +55,9 @@ feature is still changing shape. Pin the steps that matter to `agent.tap`. Pin
 the assertions you care about to `expect`. The test keeps working the whole time,
 and you always know exactly which steps still depend on a model.
 
-<Callout intent="warning" title="Planned flows are not implemented yet">
-`agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY` in the current
-release. The located and deterministic levels are complete, and they cover the
-same ground one step at a time.
+<Callout intent="warning" title="agent.login is not implemented yet">
+`agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Pass the credential to
+`agent.act` as a parameter, or fill the sign-in form with described targets.
 </Callout>
 
 ## Built-in caching

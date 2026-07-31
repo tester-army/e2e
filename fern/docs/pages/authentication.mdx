@@ -159,7 +159,8 @@ await agent.login(credentials.user('admin'));
 ```
 
 <Callout intent="warning" title="Not implemented yet">
-`agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Fill the form
+`agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Hand the credential to
+`agent.act` as a parameter, or fill the form
 deterministically for now, as in the setup test above. A login form is the most
 addressable screen in your app, so this costs no model calls and cannot vary.
 </Callout>

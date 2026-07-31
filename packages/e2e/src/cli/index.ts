@@ -58,7 +58,7 @@ export function createProgram(): Command {
     .option('--artifacts <dir>', 'artifact root, default .e2e/artifacts')
     .option('--no-agent-cache', 'force agent cache mode off')
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')
-    .option('--debug', 'print aggregated phase timings to stderr after the run')
+    .option('--debug', 'stream agent decisions to stderr, and print phase timings after the run')
     .action(
       async (
         files: string[],

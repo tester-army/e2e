@@ -22,6 +22,7 @@ import {
   type E2EError,
 } from '../internal/errors.ts';
 import { DebugTrace } from '../internal/debug.ts';
+import { enableTraceFlags } from '../internal/trace.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable, cacheTable } from '../report/debug-steps.ts';
@@ -72,10 +73,18 @@ export interface RunOutcome {
 /** Executes one complete run and returns the outcome without exiting. */
 export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const cwd = options.cwd ?? process.cwd();
-  const env = options.env ?? process.env;
+  let env = options.env ?? process.env;
   const runId = uuidv7();
   const startedAt = timestamp();
   const debug = new DebugTrace(options.debug === true);
+  // `--debug` is what an author reaches for when a flow is not doing what they
+  // expect, so it streams the agent's decisions as they happen rather than only
+  // summing phase timings afterwards. Workers read it from the environment they
+  // are forked with; this process gets it directly.
+  if (debug.enabled) {
+    enableTraceFlags(['agent']);
+    env = { ...env, E2E_DEBUG: appendFlag(env['E2E_DEBUG'], 'agent') };
+  }
   const interruptController = new AbortController();
   const runErrors: RunError[] = [];
   const results: ResultRecord[] = [];
@@ -425,4 +434,13 @@ function resultExitCodes(results: readonly ResultRecord[]): number[] {
 function resolveArtifactsRoot(config: ResolvedConfig, override: string | undefined): string {
   if (override !== undefined) return path.resolve(config.projectRoot, override);
   return path.join(config.projectRoot, '.e2e', 'artifacts');
+}
+
+/** Adds one trace flag to an existing `E2E_DEBUG` value without dropping others. */
+function appendFlag(existing: string | undefined, flag: string): string {
+  const flags = (existing ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '');
+  return flags.includes(flag) ? flags.join(',') : [...flags, flag].join(',');
 }
