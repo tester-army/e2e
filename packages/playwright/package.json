@@ -27,7 +27,8 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
-    "provenance": true
+    "provenance": true,
+    "tag": "beta"
   },
   "type": "module",
   "exports": {

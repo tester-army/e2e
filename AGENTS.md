@@ -122,9 +122,18 @@ pnpm --filter @e2edev/testbed run test:headed
   making them mutual or narrow forces changesets to bump both packages to a
   major on every release.
 - The root `release` script publishes with `--tag beta`, so releases land on the
-  `beta` dist-tag and never move `latest`; `publishConfig.tag` alone does not
-  work because `pnpm publish` ignores it. Do not switch to changesets pre mode
-  to get there: a prerelease version is outside the driver's `e2e` peer range,
-  which majors `@e2edev/playwright` on every runner minor and rewrites the peer
-  range. Never hand-edit a package `version` or `CHANGELOG.md`;
-  `changesets/action` owns both.
+  `beta` dist-tag and never move an existing `latest`. That flag is what does the
+  work: `changeset publish` always passes `--tag` through to the publish tool, so
+  the matching `publishConfig.tag` on both packages is only a backstop for a
+  hand-run `npm publish` — `pnpm publish` ignores it. One leak is not fixable
+  here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
+  `--tag`, so a brand-new package lands on `latest` once regardless.
+  Do not switch to changesets pre mode to get a real prerelease version: it is
+  outside the driver's `e2e` peer range, which majors `@e2edev/playwright` on
+  every runner minor and rewrites the peer range. Widening the range does not
+  rescue it — node-semver only lets a prerelease satisfy a comparator set when a
+  comparator with the same `major.minor.patch` carries a prerelease, so
+  `0.3.0-beta.0` satisfies neither `>=0.1.0-0 <1` nor `*`. Never hand-edit a
+  package `version` or `CHANGELOG.md`; `changesets/action` owns both.
+- Private packages are skipped entirely by changesets (`privatePackages: false`),
+  so `@e2edev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.

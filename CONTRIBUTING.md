@@ -83,21 +83,36 @@ If your change affects `e2e` or `@e2edev/playwright`, add a changeset:
 pnpm changeset
 ```
 
-Changes limited to the testbed, docs, or CI don't need one.
+Changes limited to the testbed, docs, or CI don't need one. `@e2edev/testbed` is
+private and skipped entirely (`privatePackages: false`), so it never gets a
+version bump, a changelog, or a git tag.
 
 ### Publishing to npm
 
-The root `release` script publishes with `--tag beta`, so releases land on the
-`beta` dist-tag and npm's `latest` is never moved while the surface stabilizes.
-Versions themselves stay plain 0.x — changesets pre mode is deliberately not
-used, because a prerelease version falls outside the driver's `e2e` peer range
-and would force a major bump of `@e2edev/playwright` on every runner minor.
-Note `publishConfig.tag` is not enough on its own: `pnpm publish` ignores it.
+Everything ships to the `beta` dist-tag while the surface stabilizes, so npm's
+`latest` is not moved. The root `release` script passes `--tag beta`, and both
+publishable packages also carry `publishConfig.tag: "beta"`. The flag is what
+actually decides the channel — `changeset publish` always forwards `--tag` to the
+publish tool, and `pnpm publish` ignores `publishConfig.tag` — so the manifest
+field is a backstop for a hand-run `npm publish`, and a record of intent that
+travels with the package.
+
+Two caveats worth knowing:
+
+- npmjs auto-assigns `latest` on a package's **first** publish, in addition to
+  the tag you ask for. A brand-new package therefore lands on `latest` once no
+  matter what, and `latest` can only be moved afterwards, never removed.
+- Versions stay plain 0.x. Changesets pre mode is deliberately unused: a
+  prerelease version falls outside the driver's `e2e` peer range, forcing a major
+  bump of `@e2edev/playwright` on every runner minor. Widening the range does not
+  help — node-semver only lets a prerelease satisfy a comparator set when some
+  comparator with the same `major.minor.patch` also carries a prerelease, so
+  `0.3.0-beta.0` satisfies neither `>=0.1.0-0 <1` nor `*`.
 
 After a PR with a changeset lands on `main`, the release workflow opens a
 `chore: version packages` pull request that applies the pending changesets.
 Merging that PR runs `pnpm check`, publishes the new versions to npm with
 provenance, and creates the matching GitHub release.
 
-Going stable later is one step: drop `--tag beta` from the root `release`
-script.
+Going stable later: drop `--tag beta` from the root `release` script and the
+`tag` field from each package's `publishConfig`.
