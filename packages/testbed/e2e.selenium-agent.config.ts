@@ -24,11 +24,18 @@ export default defineConfig({
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
-    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
-    // Canvas is the whole reason this suite exists on this site: /canvas and
-    // /other/canvas draw everything, so pointing is the only way in and
-    // pointing needs a model that is good at visual grounding.
-    visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna',
+    // One model for every tier. Canvas is the whole reason this suite exists on
+    // this site: /canvas and /other/canvas draw everything, so pointing is the
+    // only way in and pointing needs a model that is good at visual grounding.
+    // That model now answers the tree-only calls too, so a canvas journey has
+    // one reader from start to finish.
+    //
+    // Override with E2E_MODEL. E2E_VISION_MODEL still splits the vision tier
+    // back out, which is how the two are compared.
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna',
+    ...(process.env.E2E_VISION_MODEL === undefined
+      ? {}
+      : { visionModel: process.env.E2E_VISION_MODEL }),
     // The practice pages are small, but /demo_page is one wide table of ~60
     // controls plus four iframes that all get stitched into one observation.
     maxObservationBytes: 32_768,

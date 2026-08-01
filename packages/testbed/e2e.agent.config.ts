@@ -29,12 +29,19 @@ export default defineConfig({
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
-    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
-    // Visual grounding is a much higher bar than accepting an image: the flash
-    // model above judges a drawn chart correctly and still points at a map pin
-    // ~1.6x off in y. The vision tier gets its own model rather than making
-    // every other call pay for the stronger one.
-    visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna',
+    // One model for every tier. Visual grounding is a much higher bar than
+    // accepting an image -- a flash model judges a drawn chart correctly and
+    // still points at a map pin ~1.6x off in y -- so this suite already pinned
+    // the stronger model for pixels. Running it everywhere costs more per run
+    // and buys one reader for the whole journey, so a failure is the product's
+    // or the flow's rather than a question of which model answered which step.
+    //
+    // Override with E2E_MODEL. E2E_VISION_MODEL still splits the vision tier
+    // back out, which is how the two are compared.
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna',
+    ...(process.env.E2E_VISION_MODEL === undefined
+      ? {}
+      : { visionModel: process.env.E2E_VISION_MODEL }),
     context: [
       'This is the e2e playground app: a small multi-page site with todos,',
       'forms, a sign-in flow, a workspace wizard, and release notes.',

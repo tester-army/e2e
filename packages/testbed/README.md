@@ -46,8 +46,9 @@ artifacts under `.e2e/artifacts/`.
 ## Agentic suite
 
 `test:agent` spends real model calls, so it is opt-in and never runs in CI. It
-pins `google/gemini-3-flash` and honours `E2E_MODEL` so the same suite can be
-replayed across providers:
+pins `openai/gpt-5.6-luna` for every tier and honours `E2E_MODEL` so the same
+suite can be replayed across providers; `E2E_VISION_MODEL` splits the vision tier
+back onto its own model:
 
 ```bash
 E2E_MODEL_API_KEY=...  pnpm --filter @e2edev/testbed test:agent

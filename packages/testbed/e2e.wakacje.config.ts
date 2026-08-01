@@ -41,24 +41,33 @@ export default defineConfig({
   // rather than a replay of the first one's route.
   retries: 1,
   agent: {
-    // gemini-3.6-flash measures ~2x faster wall-clock than gemini-3-flash
-    // here (~3.7s vs ~8.9s per call); override with E2E_MODEL to compare.
-    model: process.env.E2E_MODEL ?? 'google/gemini-3.6-flash',
-    // Reading a screenshot well is a much higher bar than accepting one: the
-    // flash model above describes this page correctly and still misplaces what
-    // it points at. The three steps that use pixels get the stronger model
-    // without making every tree-only step pay for it. Override with
-    // E2E_VISION_MODEL.
-    visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna',
-    // No project-wide default on purpose: `vision` is opted into per step, where
-    // the test can say why the tree is not enough. The suite does pass fully
-    // vision-driven (`vision: true` here, `'only'` on the judgments) if you want
-    // to measure that — it was ~65s against ~114s tree-driven — but most steps
-    // here are answered better and cheaper by the tree.
-    // Commercial pages carry a huge SEO footer after the content. The budget
-    // truncates the observation in DOM order, visibly to the model. 20 KiB is
-    // too tight here: the destination modal's confirm button falls past the
-    // cut. 32 KiB keeps every step's target in view.
+    // One model for every tier, and the one that was already trusted with this
+    // suite's hardest calls. The split it replaces kept tree-only calls on a
+    // cheap fast model and paid for the stronger one only where pixels were
+    // involved; that saves money and makes a failure ambiguous, because the
+    // planning rounds and the vision rounds of one journey were not answered by
+    // the same reader. This funnel is the thing under test, so it is worth more
+    // to know the flow failed than to know it failed cheaply.
+    //
+    // Override with E2E_MODEL. E2E_VISION_MODEL still splits the vision tier
+    // back out, which is how the two are compared.
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna',
+    ...(process.env.E2E_VISION_MODEL === undefined
+      ? {}
+      : { visionModel: process.env.E2E_VISION_MODEL }),
+    // There is no project-wide `vision` default on purpose: it is opted into per
+    // step, where the test can say why the tree is not enough. The suite does
+    // pass fully vision-driven (`vision: true` here, `'only'` on the judgments)
+    // if you want to measure that — ~65s against ~114s tree-driven, measured
+    // under the earlier two-model split — but most steps here are answered well
+    // by the tree.
+    //
+    // Commercial pages carry a huge SEO footer after the content, and this one
+    // is over budget either way: the reservation dialog alone pushes it past
+    // 32 KiB. What that costs is bounded now that the runner drops what is
+    // scrolled out of view before what is on screen, rather than cutting in
+    // document order — which used to drop the dialog, because a dialog is
+    // appended last. Raising this further mostly buys more SEO footer.
     maxObservationBytes: 32_768,
     context: [
       'This is wakacje.pl, a Polish vacation booking site; the UI is in Polish.',
