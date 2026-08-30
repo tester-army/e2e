@@ -34,7 +34,7 @@ test('member upgrades to Pro', { tags: ['billing'] }, async () => {
 
 Each `agent.*` call is one **step**, and the step kinds mirror the platform's
 existing vocabulary (`act`, `assert`, `login`, `files`, `screenshot`,
-`javascript`). Dashboard-native tests and code-native tests are the same
+`javascript`, `microphone`). Dashboard-native tests and code-native tests are the same
 program in two forms; neither is second-class.
 
 ```ts
@@ -89,15 +89,19 @@ const myBrain: StepExecutor = {
 
   async runStep(ctx) {
     // ctx.step        → { index, type: 'act' | 'assert' | ..., instruction, params }
-    // ctx.observe()   → Observation: a11y tree (+ screenshot on request), stable node refs
-    // ctx.tools       → the vocabulary + extensions, policy-wrapped and callable
+    // ctx.observe()   → Observation: a11y tree (+ screenshot on request); node refs are
+    //                   revision-bound to this observation, not stable across turns
+    // ctx.actions     → THE GRAMMAR: policed, budgeted, recorded primitives
+    //                   (click/type/press/scroll/navigate/upload; canonical target union)
+    // ctx.tools       → a toolset built over ctx.actions — the default lean pack, or
+    //                   whatever this agent shipped instead (replaceable wholesale)
     // ctx.ledger      → bounded summaries of prior steps (incl. "replayed from cache")
-    // ctx.budgets     → { remainingToolCalls, deadline }
+    // ctx.budgets     → { remainingActions, deadline }
     // ctx.secrets     → resolve-by-purpose handles; plaintext never passes through the brain
     // ctx.signal      → cancellation
 
     const obs = await ctx.observe();
-    await ctx.tools.ui_click({ target: { role: 'button', name: 'Upgrade' } });
+    await ctx.actions.click({ role: 'button', name: 'Upgrade' });
     return { status: 'passed', summary: 'Upgrade flow completed' };
     // or: { status: 'failed', errorCode: 'element_not_found', evidence: { ... } }
   },
@@ -105,10 +109,12 @@ const myBrain: StepExecutor = {
 ```
 
 **The load-bearing rule: the brain never touches the backend.** Every action
-flows through `ctx.tools`, where the harness validates policy, spends budget,
-dispatches to the device, appends the ledger, and records for the cache. That
-is why caching, security, and receipts behave identically under any brain —
-ours, a customer's, or the 150-line scaffold.
+bottoms out in `ctx.actions` — the grammar — where the harness validates
+policy, spends budget, dispatches to the device, appends the ledger, and
+records for the cache. Toolsets, including TesterArmy's private one, are
+sugar over the grammar and replaceable wholesale; that is why caching,
+security, and receipts behave identically under any brain — ours, a
+customer's, or the 150-line scaffold.
 
 ## 3. Extending
 
@@ -211,7 +217,7 @@ export default defineBackend({
         │                        │
    replay recorded          executor.runStep(ctx)     ← the socket; brain thinks here
    actions zero-model,           │
-   verifying each target    every ctx.tools call:
+   verifying each target    every grammar action:
         │                   policy check → budget spend → backend dispatch
    diverged? (target gone,       → ledger append → RECORD for cache
    state mismatch)               │
