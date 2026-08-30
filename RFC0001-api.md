@@ -134,6 +134,33 @@ export default createAgent({ model, system, tools: { seedCart } }); // merged wi
 The annotation is required: an extension that does not declare its semantics
 is cache-excluded and untrusted by default (RFC0001, Layer 2).
 
+### Custom tools reach every agent, not just the test runner
+
+A project-specific capability — put the phone in airplane mode, simulate
+physics, seed a tenant, flip a feature flag — is defined once and consumed
+three ways:
+
+1. **the testing agent**, during runs;
+2. **the coding agent**, during development — `e2e mcp` serves the project's
+   extension tools alongside the `ui_*` vocabulary, so the agent building the
+   feature has the same hands the test will later use;
+3. **the cache/replay layer**, per the tool's declared semantics.
+
+The `e2e/tools/` directory thereby becomes the app's *testability surface*: a
+versioned, in-repo definition of everything an agent — any agent — may do to
+this app. Running `e2e mcp` is effectively auto-generating a project-specific
+MCP server from your test setup.
+
+The annotations travel with the tool everywhere: a `mutates: true` tool is
+policy-checked, budgeted, and recorded identically in a test run and a
+dev-loop session. And because dev-loop tool calls are recorded through the
+same pipeline, a development session can seed tests and cache — what the
+coding agent did while building becomes what the test replays.
+
+(The built-in mobile vocabulary already carries device controls — network
+conditions, location — so "airplane mode" is nearly a built-in; extensions go
+beyond the device into the app: physics hooks, debug endpoints, data seeding.)
+
 ### Shape a turn — per-call gating and prompt control
 
 The production agent's prepare-step pattern, exposed:
