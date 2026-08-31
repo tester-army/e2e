@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/playwright",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reference Playwright web driver for the e2e agentic end-to-end testing standard",
   "keywords": [
     "e2e",
@@ -12,7 +12,7 @@
   ],
   "license": "MIT",
   "contributors": [
-    "Oskar Kwa\u015bniewski <oskar@tester.army>",
+    "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "repository": {
