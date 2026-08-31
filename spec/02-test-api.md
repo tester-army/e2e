@@ -106,6 +106,18 @@ driver actions. `maxModelCalls` counts every model request, including schema
 repair. Observations do not consume action steps but do consume model calls and
 the test timeout.
 
+The flow is dispatched through the step-executor socket (chapter 16): the
+runner owns observation, action dispatch, budgets, and recording, and the
+configured executor (`agent.executor`, defaulting to the built-in AI SDK
+tool-loop agent) owns only the thinking. The step concludes with a ternary
+verdict — `passed`, `failed`, or `blocked` — where `blocked` carries a
+blockable error code and classifies as configuration/infrastructure rather
+than test failure. Current release: structured output (`options.schema`) and
+`Secret` values in `params` are not implemented and reject with
+`UNSUPPORTED_CAPABILITY`; the current action vocabulary is `tap`, plain
+`type`, `press`, `select`, `scroll`, allowed `navigate`, `observe`, and
+`conclude` (secret type and long-press land with `agent.login`).
+
 Parameters are immutable structured values. Plain values are disclosed to the
 model. A `Secret` is represented to the model only by its name and purpose; its
 value is resolved immediately before an authorized sensitive input operation.

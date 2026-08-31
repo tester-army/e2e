@@ -71,19 +71,84 @@ Values come from your code through `params`, never from the model's imagination.
 The call is still bounded by a deadline, a step budget, and a model-call budget,
 and it is still one step in your test: it returns, and your next line runs.
 
-You can also ask a planned flow to hand data back:
+Under the hood, the harness owns the step — it captures redacted observations,
+performs every action, enforces budgets and origin policy, and records
+everything into the report — and hands only the *thinking* to a step executor.
+The built-in executor is a tool-loop agent over a small action vocabulary
+(`tap`, `type`, `press`, `select`, `scroll`, `navigate`, `observe`), and the
+only way for it to finish is an explicit verdict:
 
-```ts
-const result = await agent.act('read the receipt', undefined, {
-  schema: z.object({ total: z.number() }),
+- **passed** — the application behaved as the step required, verified on screen.
+- **failed** — the application did not.
+- **blocked** — credentials, the environment, or the agent's own budget
+  prevented a product verdict. Blocked says nothing about your app: it carries
+  an error code (`AUTH_CREDENTIAL_UNAVAILABLE`, `APP_UNREACHABLE`, …) and maps
+  to the configuration/infrastructure exit codes, not the test-failure exit.
+
+That last verdict is what makes agentic testing reliable in practice: a missing
+seed record or an expired credential reads as *blocked*, not as a red product
+failure, so trust in red survives.
+
+<Callout intent="warning" title="Not implemented yet">
+`agent.act` structured output (`options.schema`), `Secret` values in `params`,
+and `agent.login` are not part of this release and reject with
+`UNSUPPORTED_CAPABILITY`.
+</Callout>
+
+## Bring your own agent
+
+The executor behind `agent.act` is a socket, not a fixture of the runner. Three
+levels of customization, smallest first:
+
+**Add tools.** Project capabilities plug into the built-in agent as AI SDK
+tools with declared semantics:
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+import { createAgent, defineTool } from 'e2e/agent';
+import { tool } from 'ai';
+import { z } from 'zod';
+
+const seedCart = defineTool(
+  tool({
+    description: 'Seed the cart with a SKU via the store test API',
+    inputSchema: z.object({ sku: z.string() }),
+    execute: async ({ sku }) => fetch(`${process.env.APP_URL}/api/test/cart?sku=${sku}`).then((r) => r.text()),
+  }),
+  { replay: 'none', mutates: true, secrets: false },
+);
+
+export default defineConfig({
+  app: { url: process.env.APP_URL! },
+  agent: { executor: createAgent({ tools: { seedCart } }) },
 });
 ```
 
-<Callout intent="warning" title="Not implemented yet">
-`agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY` in the current
-release. Described targets and judgments, below, are complete and cover the same
-ground one step at a time.
-</Callout>
+**Tune the brain.** `createAgent` also takes `model` (any AI SDK language
+model, overriding `agent.model`), `system` (your prompt appended to the base
+execution rules), and `maxTurns`.
+
+**Replace it entirely.** `agent.executor` accepts anything implementing the
+`StepExecutor` interface — one step in, one verdict out — with no AI SDK
+involved at all:
+
+```ts
+import type { StepExecutor } from 'e2e';
+
+const myBrain: StepExecutor = {
+  name: 'my-brain',
+  version: '1',
+  async runStep(ctx) {
+    const screen = await ctx.observe();          // redacted semantic tree
+    await ctx.actions.tap({ id: 'n42' });        // policed, budgeted, recorded
+    return { status: 'passed', summary: 'did the thing and saw the result' };
+  },
+};
+```
+
+Everything the executor does bottoms out in `ctx.actions` and `ctx.observe()`,
+so swapping brains changes only the thinking — never safety, budgets, or the
+report. The full contract lives in the spec's executors chapter.
 
 ## Described targets
 
@@ -376,7 +441,11 @@ means.
 <Callout intent="info" title="Scope in this release">
 Only located actions are cached (`tap`, `click`, `type`, `scroll`, `scrollTo`,
 `longPress`). Other located verbs, and elements inside iframes, report
-`bypassed`. Path caching for `agent.act` arrives with the planning tier.
+`bypassed`. `agent.act` steps are not cached yet: their cache replays the
+step's recorded *action trace* zero-model and hands the step back to the
+executor mid-step when the page diverges. That trace cache shares this store
+and these rules — a located-action entry is simply the one-action case — so
+there is one cache mechanism, not two.
 </Callout>
 
 ### Positional targets are not cached

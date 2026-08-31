@@ -33,6 +33,7 @@ iOS and Android execution are not claimed until their conformance suites exist.
 | [13-reporting.md](./13-reporting.md) | report/cache/session wire semantics |
 | [14-security.md](./14-security.md) | trust, origins, secrets, CI, redaction |
 | [15-conformance-matrix.md](./15-conformance-matrix.md) | complete required-ID manifest |
+| [16-executors.md](./16-executors.md) | the step-executor socket behind `agent.act` |
 | [examples/](./examples/README.md) | canonical source examples |
 | [roadmap/](./roadmap/README.md) | nonnormative deferred designs |
 

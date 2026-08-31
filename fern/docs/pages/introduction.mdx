@@ -55,10 +55,17 @@ feature is still changing shape. Pin the steps that matter to `agent.tap`. Pin
 the assertions you care about to `expect`. The test keeps working the whole time,
 and you always know exactly which steps still depend on a model.
 
-<Callout intent="warning" title="Planned flows are not implemented yet">
-`agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY` in the current
-release. The located and deterministic levels are complete, and they cover the
-same ground one step at a time.
+Planned flows run on a pluggable **step executor**: the harness owns the step —
+observations, actions, budgets, recording — and hands only the thinking to the
+built-in tool-loop agent, to one you tune, or to one you write from scratch.
+Every step ends in a ternary verdict: **passed**, **failed**, or **blocked**
+(the environment or credentials prevented a product verdict — a different
+signal, with a different owner, than a red failure).
+
+<Callout intent="warning" title="Not implemented yet">
+`agent.login`, `agent.act` structured output (`options.schema`), and `Secret`
+values in `act` params reject with `UNSUPPORTED_CAPABILITY` in the current
+release.
 </Callout>
 
 ## Built-in caching
@@ -80,8 +87,9 @@ replay, because repeating a step that may already have charged a credit card is
 not a cache hit.
 
 <Callout intent="info" title="Scope in this release">
-Located actions are cached today. Planned flows (`agent.act`) arrive with the
-planning tier and bring their own entry kind.
+Located actions are cached today. Planned flows (`agent.act`) are not cached
+yet; their action-trace cache extends this same store and key discipline
+rather than adding a second mechanism.
 </Callout>
 
 ## Cross-platform by design
