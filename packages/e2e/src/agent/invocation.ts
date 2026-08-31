@@ -78,6 +78,12 @@ export interface AgentContext {
   readonly steps: StepRecorder;
   /** The step executor `agent.act()` dispatches to (RFC0001 layer 4). */
   readonly executor: StepExecutor;
+  /**
+   * True when the executor came from config rather than the built-in default.
+   * A custom executor also judges `agent.assert` through the socket; the
+   * default path keeps the optimized single-judgment tier.
+   */
+  readonly customExecutor: boolean;
   /** Chooses the model for a call; a vision call may use a pinned one. */
   readonly models: ModelRouter;
   readonly config: ResolvedConfig;

@@ -63,9 +63,10 @@ Every step ends in a ternary verdict: **passed**, **failed**, or **blocked**
 signal, with a different owner, than a red failure).
 
 <Callout intent="warning" title="Not implemented yet">
-`agent.login`, `agent.act` structured output (`options.schema`), and `Secret`
-values in `act` params reject with `UNSUPPORTED_CAPABILITY` in the current
-release.
+`agent.login` and `agent.act` structured output (`options.schema`) reject
+with `UNSUPPORTED_CAPABILITY` in the current release. `Secret` values in
+`act` params work: the model sees only the secret's name and purpose, and the
+fill runs through the same authorization policy as `agent.type`.
 </Callout>
 
 ## Built-in caching

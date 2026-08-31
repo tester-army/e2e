@@ -14,6 +14,8 @@ export {
 export { defineTool, type DefinedTool, type ToolAnnotations } from './tool.ts';
 export {
   BLOCKABLE_CODES,
+  blockedCategoryOf,
+  type BlockedCategory,
   type ExecutorActions,
   type ExecutorBudgets,
   type ExecutorModelCall,

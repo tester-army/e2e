@@ -11,13 +11,14 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DriverError, type NodeRef } from '../driver/index.ts';
+import { DriverError, type SemanticNode } from '../driver/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { StepMetrics, StepModelInfo } from '../run/steps.ts';
+import { isSecret } from '../locator/screen.ts';
 import type {
   AgentErrorCode,
   AgentOptions,
@@ -26,6 +27,7 @@ import type {
   JsonValue,
   ModelInstance,
   ScrollDirection,
+  Secret,
 } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
@@ -43,8 +45,7 @@ import { serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import { prepareObservation, type AgentObservation } from './observation.ts';
 import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
-
-const API = 'agent.act';
+import { authorizeSecretFill } from './secrets.ts';
 
 const MAX_SUMMARY_CHARS = 2_000;
 
@@ -55,6 +56,21 @@ const MAX_INSTRUCTION_BYTES = 8_192;
 const MAX_PARAMS_BYTES = 65_536;
 const MAX_PARAMS_DEPTH = 32;
 
+/** Everything one dispatched step is, resolved before the step opens. */
+interface DispatchSpec {
+  readonly api: 'agent.act' | 'agent.assert';
+  readonly kind: 'act' | 'assert';
+  readonly instruction: string;
+  readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  /** Secrets declared in the params, by stable name. */
+  readonly secrets: ReadonlyMap<string, Secret>;
+  /** The code a code-less non-passing verdict maps to. */
+  readonly defaultFailureCode: AgentErrorCode;
+  readonly timeout: number | undefined;
+  readonly maxSteps: number | undefined;
+  readonly maxModelCalls: number | undefined;
+}
+
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
 export async function runActStep(
   runtime: AgentContext,
@@ -62,11 +78,60 @@ export async function runActStep(
   params: AgentParams | undefined,
   options: AgentOptions | undefined,
 ): Promise<AgentResult> {
-  const normalized = validateInstruction(instruction);
-  rejectUnsupportedOptions(options);
-  const jsonParams = validateParams(params);
-  return runtime.steps.run('agent', API, normalized, async () => {
-    const dispatch = new ActDispatch(runtime, normalized, jsonParams, options);
+  const normalized = validateInstruction(instruction, 'agent.act');
+  rejectUnsupportedActOptions(options);
+  const { projected, secrets } = validateParams(params);
+  await dispatchAgentStep(runtime, {
+    api: 'agent.act',
+    kind: 'act',
+    instruction: normalized,
+    params: projected,
+    secrets,
+    defaultFailureCode: 'ACTION_FAILED',
+    timeout: options?.timeout,
+    maxSteps: options?.maxSteps,
+    maxModelCalls: options?.maxModelCalls,
+  });
+  return { ok: true };
+}
+
+/**
+ * Runs one `agent.assert()` call through the executor socket. Used when a
+ * custom executor is configured: the brain that plans flows also judges
+ * assertions, so swapping brains swaps all the thinking. The built-in
+ * single-judgment tier remains the default-path implementation.
+ */
+export async function runAssertStep(
+  runtime: AgentContext,
+  assertion: string,
+  options: { timeout?: number; vision?: unknown; screenshot?: boolean } | undefined,
+): Promise<void> {
+  const normalized = validateInstruction(assertion, 'agent.assert');
+  const unsupported = (name: string): never => {
+    throw new ConfigurationError(
+      'UNSUPPORTED_CAPABILITY',
+      `agent.assert ${name} is not supported with a custom executor`,
+    );
+  };
+  if (options?.vision !== undefined) unsupported('vision evidence (options.vision)');
+  if (options?.screenshot !== undefined) unsupported('screenshot evidence (options.screenshot)');
+  await dispatchAgentStep(runtime, {
+    api: 'agent.assert',
+    kind: 'assert',
+    instruction: normalized,
+    params: undefined,
+    secrets: new Map(),
+    defaultFailureCode: 'ASSERTION_FAILED',
+    timeout: options?.timeout,
+    maxSteps: undefined,
+    maxModelCalls: undefined,
+  });
+}
+
+/** Opens the step, delegates to the executor, and settles the verdict. */
+async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<void> {
+  await runtime.steps.run('agent', spec.api, spec.instruction, async () => {
+    const dispatch = new ActDispatch(runtime, spec);
     try {
       let verdict: StepVerdict;
       try {
@@ -74,7 +139,7 @@ export async function runActStep(
       } catch (cause) {
         throw dispatch.settleThrown(toAgentError(cause));
       }
-      return dispatch.settle(validateVerdict(verdict, runtime.executor.name));
+      dispatch.settle(validateVerdict(verdict, runtime.executor.name));
     } finally {
       dispatch.finish();
     }
@@ -82,23 +147,23 @@ export async function runActStep(
 }
 
 /** Normalizes and bounds the instruction per spec 02. */
-function validateInstruction(instruction: string): string {
+function validateInstruction(instruction: string, api: string): string {
   if (typeof instruction !== 'string' || instruction.trim() === '') {
-    throw new TestError('INVALID_ARGUMENT', 'agent.act requires a non-empty instruction');
+    throw new TestError('INVALID_ARGUMENT', `${api} requires a non-empty instruction`);
   }
   const normalized = instruction.normalize('NFC');
   const bytes = new TextEncoder().encode(normalized).byteLength;
   if (bytes > MAX_INSTRUCTION_BYTES) {
     throw new TestError(
       'INVALID_ARGUMENT',
-      `agent.act instruction is ${bytes} bytes; the maximum is ${MAX_INSTRUCTION_BYTES}`,
+      `${api} instruction is ${bytes} bytes; the maximum is ${MAX_INSTRUCTION_BYTES}`,
     );
   }
   return normalized;
 }
 
 /** Options the socket does not support yet fail loudly, like `schema` does. */
-function rejectUnsupportedOptions(options: AgentOptions | undefined): void {
+function rejectUnsupportedActOptions(options: AgentOptions | undefined): void {
   if (options === undefined) return;
   const unsupported = (name: string): never => {
     throw new ConfigurationError(
@@ -145,19 +210,17 @@ class ActDispatch {
 
   constructor(
     private readonly runtime: AgentContext,
-    private readonly instruction: string,
-    private readonly params: Readonly<Record<string, JsonValue>> | undefined,
-    options: AgentOptions | undefined,
+    private readonly spec: DispatchSpec,
   ) {
-    this.timeoutMs = resolveTimeout(options?.timeout, runtime.config.timeout);
+    this.timeoutMs = resolveTimeout(spec.timeout, runtime.config.timeout);
     this.deadline = runtime.engine.deadline(this.timeoutMs);
     this.maxActions = resolveBoundedBudget(
-      options?.maxSteps,
+      spec.maxSteps,
       runtime.config.agent.maxSteps,
       'maxSteps',
     );
     this.maxModelCalls = resolveBoundedBudget(
-      options?.maxModelCalls,
+      spec.maxModelCalls,
       runtime.config.agent.maxModelCalls,
       'maxModelCalls',
     );
@@ -176,9 +239,13 @@ class ActDispatch {
     this.metrics.ledgerBytes = ledger.bytes;
     return {
       step: {
-        kind: 'act',
-        instruction: this.instruction,
-        params: this.params,
+        kind: this.spec.kind,
+        instruction: this.spec.instruction,
+        params: this.spec.params,
+        secrets: [...this.spec.secrets.values()].map((secret) => ({
+          name: secret.name,
+          purpose: secret.purpose,
+        })),
       },
       signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
       // Resolved on first read, so executors that bring their own model (or
@@ -205,32 +272,33 @@ class ActDispatch {
       },
       actions: {
         tap: (target) =>
-          this.commitTargeted('tap', target, (ref) =>
-            this.session.actions.tap({ ref }, this.operation()),
+          this.commitTargeted('tap', target, (node) =>
+            this.session.actions.tap({ ref: node.ref }, this.operation()),
           ),
         type: (target, value) => {
           if (typeof value !== 'string') {
             throw new TestError('INVALID_ARGUMENT', 'type value must be a string');
           }
-          return this.commitTargeted('type', target, (ref) =>
-            this.session.actions.type({ ref }, value, false, this.operation()),
+          return this.commitTargeted('type', target, (node) =>
+            this.session.actions.type({ ref: node.ref }, value, false, this.operation()),
           );
         },
+        typeSecret: (target, name) => this.typeSecret(target, name),
         press: (target, key) => {
           if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
             throw new TestError('INVALID_ARGUMENT', 'press key must be a short non-empty string');
           }
-          return this.commitTargeted('press', target, (ref) =>
-            this.session.screen.perform(ref, { kind: 'press', key }, this.operation()),
+          return this.commitTargeted('press', target, (node) =>
+            this.session.screen.perform(node.ref, { kind: 'press', key }, this.operation()),
           );
         },
         select: (target, value) => {
           if (typeof value !== 'string' || value === '') {
             throw new TestError('INVALID_ARGUMENT', 'select value must be a non-empty option label');
           }
-          return this.commitTargeted('selectOption', target, (ref) =>
+          return this.commitTargeted('selectOption', target, (node) =>
             this.session.screen.perform(
-              ref,
+              node.ref,
               { kind: 'selectOption', value },
               this.operation(),
             ),
@@ -251,7 +319,7 @@ class ActDispatch {
   async runExecutor(): Promise<StepVerdict> {
     const timer = setTimeout(() => {
       this.fatalize(
-        new AgentError('STEP_TIMEOUT', `agent.act exceeded its ${this.timeoutMs} ms timeout`),
+        new AgentError('STEP_TIMEOUT', `${this.spec.api} exceeded its ${this.timeoutMs} ms timeout`),
       );
     }, Math.max(1, this.deadline.remaining()));
     try {
@@ -302,8 +370,8 @@ class ActDispatch {
     const code =
       settled.errorCode !== undefined && settled.errorCode in CATEGORY_BY_CODE
         ? settled.errorCode
-        : 'ACTION_FAILED';
-    throw new AgentError(code, `agent.act ${settled.status}: ${settled.summary}`, {
+        : this.spec.defaultFailureCode;
+    throw new AgentError(code, `${this.spec.api} ${settled.status}: ${settled.summary}`, {
       blocked: settled.status === 'blocked',
     });
   }
@@ -395,7 +463,7 @@ class ActDispatch {
       throw this.fatalize(
         new AgentError(
           'STEP_BUDGET_EXHAUSTED',
-          `agent.act exhausted its model-call budget of ${this.maxModelCalls}`,
+          `${this.spec.api} exhausted its model-call budget of ${this.maxModelCalls}`,
         ),
       );
     }
@@ -421,7 +489,7 @@ class ActDispatch {
       throw this.fatalize(
         new AgentError(
           'STEP_BUDGET_EXHAUSTED',
-          `agent.act exhausted its action budget of ${this.maxActions}`,
+          `${this.spec.api} exhausted its action budget of ${this.maxActions}`,
         ),
       );
     }
@@ -497,7 +565,7 @@ class ActDispatch {
       checkStepClock({
         signal: this.runtime.signal,
         deadline: this.deadline,
-        api: API,
+        api: this.spec.api,
         timeoutMs: this.timeoutMs,
         ...(cause === undefined ? {} : { cause }),
       });
@@ -511,14 +579,14 @@ class ActDispatch {
     this.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
-      { api: API, kind: 'observation', phase: 'agent.observe' },
+      { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
       async () => {
         const raw = await retryingObserve({
           observe: (operation) => this.session.observe(operation, { pixels: false }),
           operation: () => this.operation(),
           guard: (cause) => this.checkpoint(cause),
           signal: this.runtime.signal,
-          api: API,
+          api: this.spec.api,
         });
         return prepareObservation(raw, {
           secrets: this.runtime.secretValues,
@@ -539,7 +607,7 @@ class ActDispatch {
   }
 
   /** Resolves an executor target against the newest observation. */
-  private resolveTarget(target: ExecutorTarget): NodeRef {
+  private resolveTarget(target: ExecutorTarget): SemanticNode {
     if (typeof target?.id !== 'string' || target.id === '') {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
     }
@@ -558,7 +626,7 @@ class ActDispatch {
         `node #${id} is not part of observation ${latest.revision}; re-observe and use a current id`,
       );
     }
-    return node.ref;
+    return node;
   }
 
   /** Runs one grammar action against the action budget, recorded as a driver event. */
@@ -568,7 +636,7 @@ class ActDispatch {
       throw this.fatalize(
         new AgentError(
           'STEP_BUDGET_EXHAUSTED',
-          `agent.act exhausted its action budget of ${this.maxActions}`,
+          `${this.spec.api} exhausted its action budget of ${this.maxActions}`,
         ),
       );
     }
@@ -577,7 +645,7 @@ class ActDispatch {
     try {
       await instrumentPhase(
         this.runtime,
-        { api: API, kind: 'driver', phase: 'agent.action', name },
+        { api: this.spec.api, kind: 'driver', phase: 'agent.action', name },
         body,
       );
     } catch (cause) {
@@ -590,12 +658,12 @@ class ActDispatch {
   private commitTargeted(
     name: string,
     target: ExecutorTarget,
-    body: (ref: NodeRef) => Promise<void>,
+    body: (node: SemanticNode) => Promise<void>,
   ): Promise<void> {
     return this.runAction(name, async () => {
-      const ref = this.resolveTarget(target);
+      const node = this.resolveTarget(target);
       try {
-        await body(ref);
+        await body(node);
       } catch (cause) {
         if (cause instanceof DriverError && cause.code === 'NODE_STALE') {
           throw new AgentError(
@@ -619,9 +687,53 @@ class ActDispatch {
       );
       return;
     }
-    await this.commitTargeted('scroll', target, (ref) =>
-      this.session.actions.scroll(direction, { target: ref }, this.operation()),
+    await this.commitTargeted('scroll', target, (node) =>
+      this.session.actions.scroll(direction, { target: node.ref }, this.operation()),
     );
+  }
+
+  /**
+   * Fills one declared secret. The name must come from the step's own params
+   * — an executor can never fill a credential the test did not hand it — and
+   * the fill itself runs the same authorization policy as `agent.type` with a
+   * Secret: registered credential, origin allowlists, and an editable sink
+   * whose purpose matches. Pixel evidence is tainted from here on.
+   */
+  private async typeSecret(target: ExecutorTarget, name: string): Promise<void> {
+    const secret = this.spec.secrets.get(name);
+    if (secret === undefined) {
+      throw new AgentError(
+        'POLICY_DENIED',
+        `secret "${name}" was not declared in this step's params; only declared secrets can be filled`,
+      );
+    }
+    await this.commitTargeted('typeSecret', target, async (node) => {
+      const plaintext = await authorizeSecretFill(
+        {
+          session: this.session,
+          operation: () => this.operation(),
+          recordPolicy: (policy, decision, code) => this.recordPolicy(policy, decision, code),
+        },
+        this.runtime,
+        secret,
+        node,
+      );
+      await this.session.actions.type({ ref: node.ref }, plaintext, true, this.operation());
+      this.runtime.taint.value = true;
+    });
+  }
+
+  /** Records one policy decision as a child event, mirroring the locate tier. */
+  private recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void {
+    this.runtime.steps.recordEvent({
+      kind: 'policy',
+      startedAt: timestamp(),
+      durationMs: 0,
+      status: decision === 'allowed' ? 'passed' : 'failed',
+      name,
+      decision,
+      ...(code === undefined ? {} : { code }),
+    });
   }
 
   private async navigate(url: string): Promise<void> {
@@ -638,28 +750,26 @@ class ActDispatch {
 }
 
 /**
- * Rejects non-JSON parameters and returns an inert snapshot. The JSON
- * round-trip is deliberate: it bounds the canonical size (spec 02) and
- * freezes what the executor sees, so a getter or proxy cannot change values
- * — or run code — during later prompt serialization.
+ * Validates parameters and returns an inert, secret-free snapshot plus the
+ * declared secrets. A `Secret` value is projected to
+ * `{ kind: 'secret', name, purpose }` — its plaintext never enters the
+ * snapshot, the prompt, or any log — and is fillable only through
+ * `actions.typeSecret`. The JSON round-trip is deliberate: it bounds the
+ * canonical size (spec 02) and freezes what the executor sees, so a getter
+ * or proxy cannot change values — or run code — during later serialization.
  */
-function validateParams(
-  params: AgentParams | undefined,
-): Readonly<Record<string, JsonValue>> | undefined {
-  if (params === undefined) return undefined;
+function validateParams(params: AgentParams | undefined): {
+  projected: Readonly<Record<string, JsonValue>> | undefined;
+  secrets: ReadonlyMap<string, Secret>;
+} {
+  if (params === undefined) return { projected: undefined, secrets: new Map() };
   if (typeof params !== 'object' || params === null || Array.isArray(params)) {
     throw new TestError('INVALID_ARGUMENT', 'agent.act params must be a plain object');
   }
-  validateJsonValue(params, 'agent.act params', {
-    maxDepth: MAX_PARAMS_DEPTH,
-    onSecret: (label): never => {
-      throw new ConfigurationError(
-        'UNSUPPORTED_CAPABILITY',
-        `${label} must not contain a Secret; secret parameters land with agent.login`,
-      );
-    },
-  });
-  const canonical = JSON.stringify(params);
+  const secrets = new Map<string, Secret>();
+  const projectedRaw = projectSecrets(params, secrets, new Set());
+  validateJsonValue(projectedRaw, 'agent.act params', { maxDepth: MAX_PARAMS_DEPTH });
+  const canonical = JSON.stringify(projectedRaw);
   const bytes = new TextEncoder().encode(canonical).byteLength;
   if (bytes > MAX_PARAMS_BYTES) {
     throw new TestError(
@@ -667,7 +777,29 @@ function validateParams(
       `agent.act params are ${bytes} canonical bytes; the maximum is ${MAX_PARAMS_BYTES}`,
     );
   }
-  return JSON.parse(canonical) as Readonly<Record<string, JsonValue>>;
+  return {
+    projected: JSON.parse(canonical) as Readonly<Record<string, JsonValue>>,
+    secrets,
+  };
+}
+
+/** Replaces every Secret leaf with its placeholder, collecting the originals. */
+function projectSecrets(value: unknown, secrets: Map<string, Secret>, seen: Set<unknown>): unknown {
+  if (isSecret(value)) {
+    secrets.set(value.name, value);
+    return { kind: 'secret', name: value.name, purpose: value.purpose };
+  }
+  if (typeof value !== 'object' || value === null) return value;
+  if (seen.has(value)) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act params contains a cycle');
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => projectSecrets(entry, secrets, seen));
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, projectSecrets(entry, secrets, seen)]),
+  );
 }
 
 /** Closes the verdict grammar: the executor cannot invent statuses or codes. */

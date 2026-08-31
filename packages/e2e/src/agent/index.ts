@@ -24,7 +24,7 @@ import type {
 } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
-import { runActStep } from './act.ts';
+import { runActStep, runAssertStep } from './act.ts';
 import { observationShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
@@ -587,6 +587,12 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     },
 
     assert(assertion, options) {
+      // A custom executor judges assertions through the socket: swapping
+      // brains swaps all the thinking. The built-in path keeps the optimized
+      // single-judgment tier below (one model call, vision-capable).
+      if (runtime.customExecutor) {
+        return runAssertStep(runtime, assertion, options);
+      }
       return step(
         {
           api: 'agent.assert',

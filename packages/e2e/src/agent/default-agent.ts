@@ -57,7 +57,11 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     }),
     buildPrompt: async (context) => {
       const observation = await context.observe();
-      const parts = [`Execute this test step: ${context.step.instruction}`];
+      const parts = [
+        context.step.kind === 'assert'
+          ? `Judge whether this assertion holds; do not change application state: ${context.step.instruction}`
+          : `Execute this test step: ${context.step.instruction}`,
+      ];
       if (context.step.params !== undefined) {
         parts.push(`Step parameters:\n${JSON.stringify(context.step.params, null, 2)}`);
       }
@@ -147,6 +151,26 @@ function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelper
           return acted(`Navigated to ${url}.`);
         }),
     }),
+    // Offered only when the step declared secrets: an empty vocabulary is
+    // better than a tool the model can only be rejected on.
+    ...(context.step.secrets.length === 0
+      ? {}
+      : {
+          type_secret: tool({
+            description:
+              'Fill one declared secret credential into a secure input field; the plaintext never passes through you. Available: ' +
+              context.step.secrets
+                .map((secret) => `"${secret.name}" (${secret.purpose})`)
+                .join(', ') +
+              '.',
+            inputSchema: z.object({ target, name: z.string().min(1) }),
+            execute: ({ target: id, name }) =>
+              guard(async () => {
+                await context.actions.typeSecret({ id }, name);
+                return acted(`Filled secret "${name}" into #${id}.`);
+              }),
+          }),
+        }),
     observe: tool({
       description: 'Capture a fresh observation of the current screen without acting.',
       inputSchema: z.object({}),

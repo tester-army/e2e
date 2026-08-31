@@ -141,6 +141,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         engine,
         steps: environment.steps,
         executor: environment.config.agent.executor ?? lazyDefaultExecutor(),
+        customExecutor: environment.config.agent.executor !== undefined,
         models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
         priorSteps: environment.priorSteps,

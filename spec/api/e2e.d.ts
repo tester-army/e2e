@@ -157,7 +157,11 @@ export interface AgentResultWithData<Output> extends AgentResult {
 
 export type AgentErrorCode =
   | 'AUTH_CREDENTIAL_UNAVAILABLE'
+  | 'AUTH_CREDENTIAL_INVALID'
   | 'AUTHENTICATION_FAILED'
+  | 'ENVIRONMENT_UNAVAILABLE'
+  | 'SEED_DATA_MISSING'
+  | 'TEST_SETUP_FAILED'
   | 'MODEL_UNAVAILABLE'
   | 'MODEL_PROVIDER_FAILED'
   | 'MODEL_OUTPUT_INVALID'
@@ -891,12 +895,21 @@ export function defineConfig(config: E2EConfig): E2EConfig;
  * The socket never requires the AI SDK: a hand-rolled executor is valid.
  */
 
-/** One step handed to an executor: one `agent.act()` call. */
+/**
+ * One step handed to an executor. `act` plans and executes a flow; `assert`
+ * judges a condition and must not change application state.
+ */
 export interface ExecutorStep {
-  readonly kind: 'act';
+  readonly kind: 'act' | 'assert';
   readonly instruction: string;
-  /** JSON-safe call parameters; secrets are rejected before dispatch. */
+  /**
+   * JSON-safe call parameters. A `Secret` value is projected to
+   * `{ kind: 'secret', name, purpose }` — plaintext never reaches the
+   * executor; it fills fields only through `actions.typeSecret`.
+   */
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  /** Secrets declared in the params, fillable via `actions.typeSecret`. */
+  readonly secrets: readonly { readonly name: string; readonly purpose: Secret['purpose'] }[];
 }
 
 /** Redacted, size-bounded observation an executor may show its model. */
@@ -920,6 +933,13 @@ export interface ExecutorTarget {
 export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
+  /**
+   * Fills one secret declared in the step's params into a secure input. The
+   * harness authorizes the fill (registered credential, origin policy, an
+   * editable sink whose purpose matches); the plaintext never passes through
+   * the executor or any model.
+   */
+  typeSecret(target: ExecutorTarget, name: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;
   select(target: ExecutorTarget, value: string): Promise<void>;
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
@@ -999,5 +1019,20 @@ export interface StepExecutor {
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 
+/**
+ * What a `blocked` verdict names as the obstacle. The first four have
+ * external owners; `automation` means the executor ran out of room and says
+ * nothing about the product.
+ */
+export type BlockedCategory =
+  | 'credentials'
+  | 'environment'
+  | 'seed_data'
+  | 'test_setup'
+  | 'automation';
+
 /** The closed set of codes a `blocked` verdict may carry (chapter 16). */
 export const BLOCKABLE_CODES: ReadonlySet<AgentErrorCode>;
+
+/** The blocked category a code names, or undefined when it is not blockable. */
+export function blockedCategoryOf(code: AgentErrorCode): BlockedCategory | undefined;

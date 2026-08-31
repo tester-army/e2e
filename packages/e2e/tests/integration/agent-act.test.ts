@@ -299,6 +299,83 @@ describe('agent.act verdict mapping', () => {
     }
   }, 120_000);
 
+  it('routes agent.assert through a custom executor with assert semantics', async () => {
+    const seen: string[] = [];
+    const executor: StepExecutor = {
+      name: 'judging-executor',
+      async runStep(context: StepExecutorContext) {
+        seen.push(`${context.step.kind}:${context.step.instruction}`);
+        if (context.step.instruction.includes('checkout')) {
+          return { status: 'failed' as const, summary: 'no checkout page exists here' };
+        }
+        const observation = await context.observe();
+        return /status "Counter" text="0"|status.*"0"/.test(observation.text)
+          ? { status: 'passed' as const, summary: 'the counter reads 0' }
+          : { status: 'failed' as const, summary: 'the counter is not zero' };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/assert.e2e.ts': ASSERT_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'custom executor judges assertions');
+      expect(result.status).toBe('failed');
+      // The failed assertion maps to ASSERTION_FAILED, not ACTION_FAILED.
+      expect(result.attempts.at(-1)!.error?.code).toBe('ASSERTION_FAILED');
+      expect(seen[0]).toBe('assert:the counter shows zero');
+      const steps = result.attempts.at(-1)!.steps.filter((s) => s.api === 'agent.assert');
+      expect(steps[0]!.status).toBe('passed');
+      expect(steps[1]!.status).toBe('failed');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('fills a declared secret through typeSecret, never exposing the value', async () => {
+    const executor: StepExecutor = {
+      name: 'login-executor',
+      async runStep(context: StepExecutorContext) {
+        // The executor sees only the placeholder, never the plaintext.
+        const params = JSON.stringify(context.step.params);
+        if (params.includes('admin-pass')) {
+          return { status: 'failed' as const, summary: 'plaintext leaked into params' };
+        }
+        if (context.step.secrets[0]?.name !== 'admin') {
+          return { status: 'failed' as const, summary: 'secret was not declared' };
+        }
+        const observation = await context.observe();
+        const password = nodeIdFor(observation.text, /textbox "Password"/);
+        await context.actions.typeSecret({ id: password }, 'admin');
+        // Undeclared names are refused before any policy check runs.
+        try {
+          await context.actions.typeSecret({ id: password }, 'other');
+          return { status: 'failed' as const, summary: 'undeclared secret was accepted' };
+        } catch {
+          return { status: 'passed' as const, summary: 'filled the declared secret only' };
+        }
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/secret.e2e.ts': SECRET_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agent: { executor },
+          credentials: { admin: { username: 'admin', password: 'admin-pass' } },
+        },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'executor fills a declared secret');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
   it('rejects a verdict outside the closed grammar', async () => {
     const executor: StepExecutor = {
       name: 'rogue-executor',
@@ -319,6 +396,29 @@ describe('agent.act verdict mapping', () => {
     }
   }, 120_000);
 });
+
+const ASSERT_SUITE = `import { test } from 'e2e';
+
+test('custom executor judges assertions', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the counter shows zero');
+  await agent.assert('the checkout page is visible');
+});
+`;
+
+const SECRET_SUITE = `import { test, credentials, expect } from 'e2e';
+
+test('executor fills a declared secret', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('sign in with the given credentials', {
+    username: 'admin',
+    password: credentials.user('admin').password,
+  });
+  // Secure fields refuse value reads by design; visibility is the most a
+  // deterministic assertion may observe. The executor verified the fill.
+  await expect(screen.getByLabel('Password')).toBeVisible();
+});
+`;
 
 const LOOP_GUARD_SUITE = `import { test } from 'e2e';
 

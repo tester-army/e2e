@@ -33,9 +33,17 @@ interface StepExecutor {
 }
 ```
 
-One step in, one verdict out. The context provides:
+One step in, one verdict out. Two step kinds cross the socket: `act` (plan
+and execute a flow) and — when a custom executor is configured — `assert`
+(judge a condition without changing application state; a code-less failure
+maps to `ASSERTION_FAILED`). Deterministic kinds never cross it: screenshots
+and script evaluation are `app.screenshot` and `web.evaluate`, zero-model by
+construction. The context provides:
 
-- `step` — the instruction and JSON-safe params of one `agent.act` call.
+- `step` — the kind, instruction, JSON-safe params, and declared secrets. A
+  `Secret` param is projected to `{ kind: 'secret', name, purpose }`; the
+  plaintext is only ever reachable through `actions.typeSecret`, which runs
+  the same authorization policy as `agent.type` with a `Secret`.
 - `observe()` — a fresh, redacted, size-bounded semantic observation.
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
@@ -55,11 +63,21 @@ all is valid; the runner cannot tell the difference and does not care.
 `errorCode` from the closed agent code set.
 
 - `failed` — the application did not behave as the step required.
-- `blocked` — credentials, the environment, or the executor's own budget
-  prevented a *product* verdict. Blocked requires a blockable error code and
-  classifies as configuration/infrastructure, not as a test failure, so exit
-  codes and reports distinguish "the app is broken" from "the test could not
-  run".
+- `blocked` — something outside the product prevented a verdict. Blocked
+  requires a blockable error code, and every blockable code names one closed
+  category (`blockedCategoryOf(code)`), so a blocked step always has an
+  owner:
+
+  | Category | Owner | Codes |
+  |---|---|---|
+  | `credentials` | whoever holds the accounts | `AUTH_CREDENTIAL_UNAVAILABLE`, `AUTH_CREDENTIAL_INVALID` |
+  | `environment` | whoever runs the environment | `ENVIRONMENT_UNAVAILABLE`, `APP_UNREACHABLE` |
+  | `seed_data` | whoever seeds the data | `SEED_DATA_MISSING` |
+  | `test_setup` | whoever owns the test | `TEST_SETUP_FAILED`, `APP_NOT_OPEN`, `POLICY_DENIED` |
+  | `automation` | the executor ran out of room | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `MODEL_UNAVAILABLE` |
+
+  The table in `agent/error.ts` is the single owner: exit categories,
+  `BLOCKABLE_CODES`, and the categories all derive from it.
 
 Fail-closed invariants the runner enforces over every executor:
 

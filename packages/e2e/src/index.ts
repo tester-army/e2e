@@ -14,6 +14,7 @@ export function defineConfig(config: E2EConfig): E2EConfig {
 
 export type * from './types.ts';
 export type {
+  BlockedCategory,
   ExecutorActions,
   ExecutorBudgets,
   ExecutorModelCall,

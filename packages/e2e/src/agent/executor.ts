@@ -17,15 +17,28 @@
  * matter whose brain runs the step.
  */
 
-import type { AgentErrorCode, JsonValue, ModelInstance, ScrollDirection } from '../types.ts';
+import type { AgentErrorCode, JsonValue, ModelInstance, ScrollDirection, Secret } from '../types.ts';
+import { AGENT_CODE_TABLE } from './error.ts';
 
-/** One step handed to an executor: one `agent.act()` call. */
+export type { BlockedCategory } from './error.ts';
+export { blockedCategoryOf } from './error.ts';
+
+/**
+ * One step handed to an executor. `act` plans and executes a flow; `assert`
+ * judges a condition and must not change application state.
+ */
 export interface ExecutorStep {
-  readonly kind: 'act';
-  /** The natural-language instruction the test passed. */
+  readonly kind: 'act' | 'assert';
+  /** The natural-language instruction or assertion the test passed. */
   readonly instruction: string;
-  /** JSON-safe call parameters; secrets are rejected before dispatch in v0. */
+  /**
+   * JSON-safe call parameters. A `Secret` value in the caller's params is
+   * projected to `{ kind: 'secret', name, purpose }` — the plaintext never
+   * reaches the executor; it fills fields only through `actions.typeSecret`.
+   */
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  /** Secrets declared in the params, fillable via `actions.typeSecret`. */
+  readonly secrets: readonly { readonly name: string; readonly purpose: Secret['purpose'] }[];
 }
 
 /** Redacted, size-bounded observation an executor may show its model. */
@@ -51,6 +64,13 @@ export interface ExecutorTarget {
 export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
+  /**
+   * Fills one secret declared in the step's params into a secure input. The
+   * harness authorizes the fill (registered credential, origin policy, an
+   * editable sink whose purpose matches) and hands the plaintext straight to
+   * the driver — it never passes through the executor or any model.
+   */
+  typeSecret(target: ExecutorTarget, name: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;
   select(target: ExecutorTarget, value: string): Promise<void>;
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
@@ -154,20 +174,16 @@ export const RUNTIME_CODES: ReadonlySet<AgentErrorCode> = new Set<AgentErrorCode
 ]);
 
 /**
- * Codes a `blocked` verdict may carry. Budget and timeout codes mean the
- * executor ran out of room ("automation" blocks); the rest name environment
- * or setup problems. Everything else describes product behavior and belongs
- * to `failed`.
+ * Codes a `blocked` verdict may carry — every code the table assigns a
+ * blocked category: credentials, environment, seed data, or test setup have
+ * external owners; `automation` means the executor ran out of room.
+ * Everything else describes product behavior and belongs to `failed`.
  */
-export const BLOCKABLE_CODES: ReadonlySet<AgentErrorCode> = new Set<AgentErrorCode>([
-  'AUTH_CREDENTIAL_UNAVAILABLE',
-  'APP_UNREACHABLE',
-  'APP_NOT_OPEN',
-  'POLICY_DENIED',
-  'MODEL_UNAVAILABLE',
-  'STEP_BUDGET_EXHAUSTED',
-  'STEP_TIMEOUT',
-]);
+export const BLOCKABLE_CODES: ReadonlySet<AgentErrorCode> = new Set(
+  (Object.keys(AGENT_CODE_TABLE) as AgentErrorCode[]).filter(
+    (code) => AGENT_CODE_TABLE[code].blockedCategory !== undefined,
+  ),
+);
 
 /** Structural executor check, mirroring how model instances are detected. */
 export function isStepExecutor(value: unknown): value is StepExecutor {

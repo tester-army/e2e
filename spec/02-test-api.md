@@ -111,12 +111,19 @@ runner owns observation, action dispatch, budgets, and recording, and the
 configured executor (`agent.executor`, defaulting to the built-in AI SDK
 tool-loop agent) owns only the thinking. The step concludes with a ternary
 verdict — `passed`, `failed`, or `blocked` — where `blocked` carries a
-blockable error code and classifies as configuration/infrastructure rather
-than test failure. Current release: structured output (`options.schema`) and
-`Secret` values in `params` are not implemented and reject with
-`UNSUPPORTED_CAPABILITY`; the current action vocabulary is `tap`, plain
-`type`, `press`, `select`, `scroll`, allowed `navigate`, `observe`, and
-`conclude` (secret type and long-press land with `agent.login`).
+blockable error code naming a closed category (credentials, environment,
+seed_data, test_setup, automation) and classifies as
+configuration/infrastructure rather than test failure. A `Secret` in `params`
+reaches the executor only as `{ kind: 'secret', name, purpose }`; the fill
+runs through the authorized `typeSecret` action, so plaintext never enters a
+prompt. With a custom executor configured, `agent.assert` also dispatches
+through the socket as an `assert`-kind step (default failure code
+`ASSERTION_FAILED`); the built-in path keeps the single-judgment tier below.
+Current release: structured output (`options.schema`), `vision`, and `cache`
+are not implemented for `act` and reject with `UNSUPPORTED_CAPABILITY`; the
+action vocabulary is `tap`, `type`, `typeSecret`, `press`, `select`,
+`scroll`, allowed `navigate`, `observe`, and `conclude` (long-press lands
+with `agent.login`).
 
 Parameters are immutable structured values. Plain values are disclosed to the
 model. A `Secret` is represented to the model only by its name and purpose; its

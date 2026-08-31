@@ -3,7 +3,7 @@
  * by the default ToolLoopAgent executor, verified deterministically after.
  */
 
-import { test, expect } from 'e2e';
+import { test, expect, credentials } from 'e2e';
 
 test('act drives a multi-action todo flow', async ({ web, agent, screen }) => {
   await web.goto('/todos');
@@ -19,11 +19,13 @@ test('act completes the workspace wizard end to end', async ({ web, agent, scree
   await expect(screen.getByRole('status')).toHaveText('Created "Atlas" on the Pro plan');
 });
 
-test('act signs in with parameters', async ({ web, agent, screen }) => {
+test('act signs in with a secret credential', async ({ web, agent, screen }) => {
   await web.goto('/login');
+  // The password is a Secret: the model sees only its name and purpose, and
+  // the fill runs through the authorized type_secret tool.
   await agent.act('sign in with the given credentials', {
     username: 'admin',
-    password: 'admin-pass',
+    password: credentials.user('admin').password,
   });
   await expect(screen.getByRole('status')).toHaveText('Welcome back, admin!');
 });
