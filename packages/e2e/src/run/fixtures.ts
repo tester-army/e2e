@@ -9,6 +9,7 @@ import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/inde
 import type { DebugTrace } from '../internal/debug.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { validateJsonValue } from '../internal/json-value.ts';
 import { toRoutePattern } from '../internal/route-pattern.ts';
 import { resolveNavigationUrl, urlMatches } from '../internal/urls.ts';
 import { Deadline, sleep, withTimeout } from '../internal/time.ts';
@@ -18,7 +19,6 @@ import {
   createFrameScreen,
   createLocator,
   createScreen,
-  isSecret,
   type ScreenContext,
   type SecretResolver,
 } from '../locator/screen.ts';
@@ -510,41 +510,3 @@ function createWeb(
   return web;
 }
 
-function validateJsonValue(value: unknown, label: string): void {
-  if (value === undefined) return;
-  const seen = new Set<unknown>();
-  const visit = (item: unknown): void => {
-    if (item === null) return;
-    switch (typeof item) {
-      case 'string':
-      case 'boolean':
-        return;
-      case 'number':
-        if (!Number.isFinite(item)) {
-          throw new TestError('INVALID_ARGUMENT', `${label} contains a non-finite number`);
-        }
-        return;
-      case 'object': {
-        if (isSecret(item)) {
-          throw new ConfigurationError('POLICY_DENIED', `${label} must not contain a Secret`);
-        }
-        if (seen.has(item)) {
-          throw new TestError('INVALID_ARGUMENT', `${label} contains a cycle`);
-        }
-        seen.add(item);
-        if (Array.isArray(item)) {
-          for (const entry of item) visit(entry);
-          return;
-        }
-        if (Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) {
-          throw new TestError('INVALID_ARGUMENT', `${label} must be JSON-safe`);
-        }
-        for (const entry of Object.values(item)) visit(entry);
-        return;
-      }
-      default:
-        throw new TestError('INVALID_ARGUMENT', `${label} must be JSON-safe, found ${typeof item}`);
-    }
-  };
-  visit(value);
-}

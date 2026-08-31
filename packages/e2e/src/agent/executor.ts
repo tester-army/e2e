@@ -116,6 +116,17 @@ export interface StepExecutor {
 }
 
 /**
+ * Codes only the runtime may assign. An executor can carry them (they reach
+ * it through hard-stop errors raised by the context) but can never invent
+ * them: the harness rejects a runtime code it did not itself record.
+ */
+export const RUNTIME_CODES: ReadonlySet<AgentErrorCode> = new Set<AgentErrorCode>([
+  'STEP_BUDGET_EXHAUSTED',
+  'STEP_TIMEOUT',
+  'CANCELLED',
+]);
+
+/**
  * Codes a `blocked` verdict may carry. Budget and timeout codes mean the
  * executor ran out of room ("automation" blocks); the rest name environment
  * or setup problems. Everything else describes product behavior and belongs

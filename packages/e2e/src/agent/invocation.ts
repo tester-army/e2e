@@ -8,11 +8,10 @@
 import type { JSONSchema7 } from 'ai';
 import type { CacheCallSignature, CacheStore, CacheTargetIdentity } from '../cache/index.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
-import { DriverError, type DriverSession, type Observation } from '../driver/index.ts';
+import type { DriverSession, Observation } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { E2EError, classifyError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
+import { Deadline } from '../internal/time.ts';
 import { agentTrace, observationTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
@@ -29,9 +28,12 @@ import {
   type StepRecorder,
   type VisionDegradation,
 } from '../run/steps.ts';
-import type { AgentErrorCode, VisionMode } from '../types.ts';
-import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
+import type { VisionMode } from '../types.ts';
+import { AgentError, toAgentError } from './error.ts';
 import type { StepExecutor } from './executor.ts';
+import { checkStepClock, instrumentPhase, retryingObserve, type PhaseSpec } from './phases.ts';
+
+export { toAgentError };
 import { serializeLedger, type LedgerContext } from './ledger.ts';
 import {
   imageTokenUpperBound,
@@ -141,13 +143,6 @@ const INSTRUCTION_RESERVE = 4_096;
  * still safe for that reason: the pre-flight computes the real figure.
  */
 const PIXEL_RESERVE = imageTokenUpperBound({ width: 2_560, height: 1_440 });
-
-/** One instrumented phase: the event kind it records and the debug bucket it feeds. */
-interface PhaseSpec {
-  readonly kind: StepEvent['kind'];
-  readonly phase: 'agent.observe' | 'agent.model' | 'agent.action' | 'agent.cache';
-  readonly name?: string;
-}
 
 /** Model-call accounting plus observation/ledger metrics for one invocation. */
 export class Invocation {
@@ -336,56 +331,13 @@ export class Invocation {
     agentTrace(() => `${this.options.api} escalating to pixel evidence after a tree-only miss`);
   }
 
-  /**
-   * Runs one phase with uniform accounting: a child event on success and
-   * failure, one debug bucket, and translation onto the closed agent error
-   * set. Every observe/model/action phase goes through here so the records
-   * cannot drift apart.
-   */
-  private async instrument<Value>(
-    spec: PhaseSpec,
+  /** Runs one phase through the shared accounting core (see phases.ts). */
+  private instrument<Value>(
+    spec: Omit<PhaseSpec, 'api'>,
     body: () => Promise<Value>,
     detail?: (value: Value) => Partial<StepEvent>,
   ): Promise<Value> {
-    const startedAt = timestamp();
-    const startedMs = Date.now();
-    const label = spec.name === undefined ? spec.kind : `${spec.kind}:${spec.name}`;
-    try {
-      const value = await body();
-      const eventDetail = detail?.(value);
-      this.runtime.steps.recordEvent({
-        kind: spec.kind,
-        startedAt,
-        durationMs: Date.now() - startedMs,
-        status: 'passed',
-        ...(spec.name === undefined ? {} : { name: spec.name }),
-        ...eventDetail,
-      });
-      agentTrace(
-        () =>
-          `${this.options.api} ${label} passed ${Date.now() - startedMs}ms` +
-          `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
-          `${eventDetail?.bytes !== undefined ? ` bytes=${eventDetail.bytes}` : ''}`,
-      );
-      return value;
-    } catch (cause) {
-      this.runtime.steps.recordEvent({
-        kind: spec.kind,
-        startedAt,
-        durationMs: Date.now() - startedMs,
-        status: cause instanceof AgentError && cause.code === 'CANCELLED' ? 'cancelled' : 'failed',
-        ...(spec.name === undefined ? {} : { name: spec.name }),
-        code: errorCode(cause),
-      });
-      agentTrace(
-        () =>
-          `${this.options.api} ${label} failed ${Date.now() - startedMs}ms ` +
-          `${errorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
-      );
-      throw toAgentError(cause);
-    } finally {
-      this.runtime.debug?.record(spec.phase, Date.now() - startedMs);
-    }
+    return instrumentPhase(this.runtime, { ...spec, api: this.options.api }, body, detail);
   }
 
   /** Captures and redacts one fresh observation. */
@@ -420,33 +372,15 @@ export class Invocation {
     return observation;
   }
 
-  /**
-   * Captures one raw observation, re-capturing while the driver reports a
-   * retryable failure and the invocation deadline remains. A page that
-   * navigates as it is read (a redirect, a hydration swap, a form submit still
-   * committing) makes the capture lose its document; that is a race, not a
-   * broken app, so it is re-read rather than surfaced as a failed call.
-   *
-   * A capture is handed whatever remains of the invocation deadline, so one
-   * starting near the end cannot finish. That failure is the step running out
-   * of clock, and it reports the step's own `STEP_TIMEOUT` rather than
-   * whichever transport error the truncated budget happened to produce.
-   */
-  private async captureObservation(pixels: boolean): Promise<Observation> {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await this.session.observe(this.operation(), { pixels });
-      } catch (cause) {
-        this.checkDeadline(cause);
-        if (!(cause instanceof DriverError && cause.retryable)) {
-          throw cause;
-        }
-        agentTrace(
-          () => `${this.options.api} observation attempt ${attempt} raced the page: ${cause.code}`,
-        );
-        await sleep(POLL_INTERVAL_MS, this.runtime.signal);
-      }
-    }
+  /** Captures one raw observation through the shared race-hardened path. */
+  private captureObservation(pixels: boolean): Promise<Observation> {
+    return retryingObserve({
+      observe: (operation) => this.session.observe(operation, { pixels }),
+      operation: () => this.operation(),
+      guard: (cause) => this.checkDeadline(cause),
+      signal: this.runtime.signal,
+      api: this.options.api,
+    });
   }
 
   /**
@@ -641,26 +575,15 @@ export class Invocation {
     return this.runtime.engine.operation(Math.max(1, this.deadline.remaining()));
   }
 
-  /**
-   * Fails when the invocation deadline has elapsed.
-   *
-   * `cause` carries the failure that was being handled when the clock was found
-   * to be out, so a step that timed out mid-operation still says what the
-   * operation reported. Reporting the timeout without it would leave a driver
-   * failure that happened to land after the deadline entirely unrecorded.
-   */
+  /** Fails when the invocation deadline has elapsed (see checkStepClock). */
   checkDeadline(cause?: unknown): void {
-    const options = cause === undefined ? {} : { cause };
-    if (this.runtime.signal.aborted) {
-      throw new AgentError('CANCELLED', `${this.options.api} was cancelled`, options);
-    }
-    if (this.deadline.expired()) {
-      throw new AgentError(
-        'STEP_TIMEOUT',
-        `${this.options.api} exceeded its ${this.options.timeoutMs} ms timeout`,
-        options,
-      );
-    }
+    checkStepClock({
+      signal: this.runtime.signal,
+      deadline: this.deadline,
+      api: this.options.api,
+      timeoutMs: this.options.timeoutMs,
+      ...(cause === undefined ? {} : { cause }),
+    });
   }
 
   /** True once any driver action of this invocation has been dispatched. */
@@ -745,28 +668,6 @@ export class Invocation {
   }
 }
 
-/** The closed agent code set, derived from the one classification table. */
-const AGENT_CODES = new Set<string>(Object.keys(CATEGORY_BY_CODE));
-
-/**
- * Maps any runner error raised inside an invocation onto the closed agent code
- * set. Model prose can never select a code.
- */
-export function toAgentError(cause: unknown): AgentError {
-  if (isAgentError(cause)) return cause;
-  const classified = cause instanceof E2EError ? cause : classifyError(cause);
-  if (AGENT_CODES.has(classified.code)) {
-    return new AgentError(classified.code as AgentErrorCode, classified.message, { cause });
-  }
-  if (classified.code === 'UNSUPPORTED_CAPABILITY' || classified.code === 'INVALID_CONFIG') {
-    return new AgentError('POLICY_DENIED', classified.message, { cause });
-  }
-  if (classified.category === 'infrastructure') {
-    return new AgentError('APP_UNREACHABLE', classified.message, { cause });
-  }
-  return new AgentError('ACTION_FAILED', classified.message, { cause });
-}
-
 /** Trace fragment describing what pixel evidence an observation carried. */
 function describePixels(observation: AgentObservation): string {
   if (observation.pixels !== undefined) {
@@ -792,7 +693,3 @@ function imagesFor(observation: AgentObservation | undefined): readonly ModelIma
   ];
 }
 
-function errorCode(cause: unknown): string {
-  if (cause instanceof E2EError) return cause.code;
-  return cause instanceof Error ? cause.name : 'ERROR';
-}

@@ -19,13 +19,14 @@ rather than with the terminal output.
     at all.
   </Accordion>
 
-  <Accordion title="UNSUPPORTED_CAPABILITY on agent.act or agent.login">
+  <Accordion title="UNSUPPORTED_CAPABILITY on agent.login or an agent.act option">
     **Symptom.** The call throws the moment it runs.
 
-    **Cause.** Planned flows are not implemented yet.
+    **Cause.** `agent.login`, and the `agent.act` options `schema`, `vision`,
+    `cache`, and `Secret` values in `params`, are not implemented yet.
 
-    **Fix.** Compose described targets and judgments, which are one bounded step
-    each:
+    **Fix.** For sign-in flows today, compose described targets and judgments,
+    which are one bounded step each:
 
     ```ts
     await agent.type('the username field', 'admin');

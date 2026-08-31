@@ -6,10 +6,9 @@
  */
 
 export { createAgent, type CreateAgentOptions } from './default-agent.ts';
-export { defineTool, isDefinedTool, type DefinedTool, type ToolAnnotations } from './tool.ts';
+export { defineTool, type DefinedTool, type ToolAnnotations } from './tool.ts';
 export {
   BLOCKABLE_CODES,
-  isStepExecutor,
   type ExecutorActions,
   type ExecutorBudgets,
   type ExecutorModelCall,

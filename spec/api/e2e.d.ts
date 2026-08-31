@@ -982,3 +982,6 @@ export interface StepExecutor {
   readonly version?: string;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
+
+/** The closed set of codes a `blocked` verdict may carry (chapter 16). */
+export const BLOCKABLE_CODES: ReadonlySet<AgentErrorCode>;

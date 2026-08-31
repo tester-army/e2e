@@ -19,14 +19,17 @@ import {
   type ToolSet,
 } from 'ai';
 import { z } from 'zod';
-import type { SdkLanguageModel } from '../config/agent.ts';
+import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { AgentError, isAgentError } from './error.ts';
-import type { StepExecutor, StepExecutorContext, StepVerdict } from './executor.ts';
+import {
+  BLOCKABLE_CODES,
+  RUNTIME_CODES,
+  type StepExecutor,
+  type StepExecutorContext,
+  type StepVerdict,
+} from './executor.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool } from './tool.ts';
-
-/** Codes that end the loop immediately; the model never talks past them. */
-const HARD_STOP_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'CANCELLED']);
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
 const MODEL_ERROR_CODES = [
@@ -38,6 +41,9 @@ const MODEL_ERROR_CODES = [
   'APP_NOT_OPEN',
   'POLICY_DENIED',
 ] as const;
+
+/** The model-pickable codes a blocked verdict accepts; derived, never restated. */
+const MODEL_BLOCKABLE_CODES = MODEL_ERROR_CODES.filter((code) => BLOCKABLE_CODES.has(code));
 
 const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
 
@@ -67,7 +73,8 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     name: 'e2e-default-agent',
     version: '1',
     async runStep(context: StepExecutorContext): Promise<StepVerdict> {
-      const model = (options.model ?? context.model) as LanguageModel | undefined;
+      const configured = context.model === undefined ? undefined : asSdkLanguageModel(context.model);
+      const model: LanguageModel | undefined = options.model ?? configured;
       if (model === undefined) {
         throw new AgentError(
           'MODEL_UNAVAILABLE',
@@ -90,34 +97,11 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
           stepCountIs(maxTurns),
         ],
         prepareStep: ({ messages, stepNumber }) => {
-          let prepared = compactSnapshotHistory(messages);
-          const turnsLeft = maxTurns - stepNumber;
-          // The two final turns take the verdict and nothing else: a model
-          // that wanders never concludes on its own, and STEP_NO_CONCLUSION
-          // after a full budget is strictly worse than a forced verdict. Two
-          // turns, not one, so a rejected verdict (blocked without a code)
-          // can be repaired.
-          if (turnsLeft <= 2) {
-            return {
-              ...(prepared === messages ? {} : { messages: prepared }),
-              activeTools: ['complete_step'],
-              toolChoice: { type: 'tool', toolName: 'complete_step' },
-            };
-          }
-          if (turnsLeft === WIND_DOWN_TURNS) {
-            prepared = [
-              ...prepared,
-              {
-                role: 'user',
-                content:
-                  `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +
-                  'Finish the remaining work now, or call complete_step with your ' +
-                  'best verdict: failed if the application misbehaved, blocked ' +
-                  '(with errorCode) if something outside the application stopped you.',
-              },
-            ];
-          }
-          return prepared === messages ? {} : { messages: prepared };
+          const prepared = withWindDownNotice(compactSnapshotHistory(messages), maxTurns - stepNumber);
+          return {
+            ...(prepared === messages ? {} : { messages: prepared }),
+            ...forcedConclusion(maxTurns - stepNumber),
+          };
         },
       });
       const identity = model as { provider?: string; modelId?: string };
@@ -189,7 +173,7 @@ function buildDefaultTools(context: StepExecutorContext, state: LoopState): Tool
     try {
       return await body();
     } catch (cause) {
-      if (isAgentError(cause) && HARD_STOP_CODES.has(cause.code)) {
+      if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
         state.hardStop = cause;
         return `HARD STOP (${cause.code}): ${cause.message}`;
       }
@@ -290,19 +274,14 @@ function buildDefaultTools(context: StepExecutorContext, state: LoopState): Tool
       }),
       execute: async (input): Promise<string> => {
         if (state.verdict !== undefined) return 'The step already concluded.';
-        const blockable = new Set([
-          'AUTH_CREDENTIAL_UNAVAILABLE',
-          'APP_UNREACHABLE',
-          'APP_NOT_OPEN',
-          'POLICY_DENIED',
-        ]);
         if (
           input.status === 'blocked' &&
-          (input.errorCode === undefined || !blockable.has(input.errorCode))
+          (input.errorCode === undefined ||
+            !MODEL_BLOCKABLE_CODES.includes(input.errorCode as (typeof MODEL_BLOCKABLE_CODES)[number]))
         ) {
           return (
             'Rejected: a blocked verdict requires errorCode naming what blocked you ' +
-            '(AUTH_CREDENTIAL_UNAVAILABLE, APP_UNREACHABLE, APP_NOT_OPEN, or POLICY_DENIED). ' +
+            `(one of ${MODEL_BLOCKABLE_CODES.join(', ')}). ` +
             'If the application itself misbehaved, use status "failed" instead.'
           );
         }
@@ -326,6 +305,36 @@ const WIND_DOWN_TURNS = 5;
 const SNAPSHOT_PATTERN = /(?:Updated|Current) screen \(revision /;
 
 /**
+ * The two final turns take the verdict and nothing else: a model that wanders
+ * never concludes on its own, and STEP_NO_CONCLUSION after a full budget is
+ * strictly worse than a forced verdict. Two turns, not one, so a rejected
+ * verdict (blocked without a code) can be repaired.
+ */
+function forcedConclusion(turnsLeft: number): { activeTools: string[]; toolChoice: { type: 'tool'; toolName: string } } | Record<string, never> {
+  if (turnsLeft > 2) return {};
+  return {
+    activeTools: ['complete_step'],
+    toolChoice: { type: 'tool', toolName: 'complete_step' },
+  };
+}
+
+/** Warns the model once, a few turns before the conclusion is forced. */
+function withWindDownNotice(messages: ModelMessage[], turnsLeft: number): ModelMessage[] {
+  if (turnsLeft !== WIND_DOWN_TURNS) return messages;
+  return [
+    ...messages,
+    {
+      role: 'user',
+      content:
+        `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +
+        'Finish the remaining work now, or call complete_step with your ' +
+        'best verdict: failed if the application misbehaved, blocked ' +
+        '(with errorCode) if something outside the application stopped you.',
+    },
+  ];
+}
+
+/**
  * Compacts stale screen snapshots out of the tool-result history.
  *
  * Only the newest observations describe the page the model is acting on;
@@ -335,55 +344,42 @@ const SNAPSHOT_PATTERN = /(?:Updated|Current) screen \(revision /;
  * to compact, so the caller can skip the messages override entirely.
  */
 function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
-  const snapshotSites: { message: number; part: number }[] = [];
-  for (const [messageIndex, message] of messages.entries()) {
-    if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
-    for (const [partIndex, part] of message.content.entries()) {
-      if (snapshotText(part) !== undefined) {
-        snapshotSites.push({ message: messageIndex, part: partIndex });
-      }
-    }
-  }
-  const stale = snapshotSites.slice(0, Math.max(0, snapshotSites.length - SNAPSHOT_PRESERVE_COUNT));
-  if (stale.length === 0) return messages;
-  const staleByMessage = new Map<number, Set<number>>();
-  for (const site of stale) {
-    const parts = staleByMessage.get(site.message) ?? new Set<number>();
-    parts.add(site.part);
-    staleByMessage.set(site.message, parts);
-  }
-  return messages.map((message, messageIndex) => {
-    const parts = staleByMessage.get(messageIndex);
-    if (parts === undefined || message.role !== 'tool' || !Array.isArray(message.content)) {
-      return message;
-    }
-    return {
-      ...message,
-      content: message.content.map((part, partIndex) => {
-        if (!parts.has(partIndex)) return part;
-        const text = snapshotText(part);
-        if (text === undefined) return part;
-        const firstLine = text.split('\n', 1)[0] ?? '';
-        return {
-          ...part,
-          output: {
-            type: 'text' as const,
-            value: `${firstLine}\n[stale screen snapshot elided; act on the newest observation]`,
-          },
-        };
-      }),
-    } as ModelMessage;
+  const total = messages.reduce(
+    (count, message) => count + snapshotParts(message).filter((text) => text !== undefined).length,
+    0,
+  );
+  let stale = total - SNAPSHOT_PRESERVE_COUNT;
+  if (stale <= 0) return messages;
+  return messages.map((message) => {
+    if (stale <= 0 || message.role !== 'tool') return message;
+    const texts = snapshotParts(message);
+    if (!texts.some((text) => text !== undefined)) return message;
+    const content = message.content.map((part, index) => {
+      const text = texts[index];
+      if (text === undefined || stale <= 0) return part;
+      stale -= 1;
+      const firstLine = text.split('\n', 1)[0] ?? '';
+      return {
+        ...part,
+        output: {
+          type: 'text' as const,
+          value: `${firstLine}\n[stale screen snapshot elided; act on the newest observation]`,
+        },
+      };
+    });
+    return { ...message, content };
   });
 }
 
-/** The text of a snapshot-bearing tool-result part, or undefined. */
-function snapshotText(part: unknown): string | undefined {
-  if (typeof part !== 'object' || part === null) return undefined;
-  const candidate = part as { type?: string; output?: { type?: string; value?: unknown } };
-  if (candidate.type !== 'tool-result') return undefined;
-  const output = candidate.output;
-  if (output?.type !== 'text' || typeof output.value !== 'string') return undefined;
-  return SNAPSHOT_PATTERN.test(output.value) ? output.value : undefined;
+/** Per-part snapshot text of one message; undefined for non-snapshot parts. */
+function snapshotParts(message: ModelMessage): (string | undefined)[] {
+  if (message.role !== 'tool') return [];
+  return message.content.map((part) => {
+    if (part.type !== 'tool-result') return undefined;
+    const output = part.output;
+    if (output.type !== 'text' || typeof output.value !== 'string') return undefined;
+    return SNAPSHOT_PATTERN.test(output.value) ? output.value : undefined;
+  });
 }
 
 function buildInstructions(context: StepExecutorContext, system: string | undefined): string {

@@ -159,16 +159,6 @@ function formatNode(
 }
 
 /**
- * True when a rendered observation line carries a role token: a bare
- * lowercase word right after the node id. Role-less text holders jump
- * straight to a quoted name or `key="value"` attribute. Lives next to
- * `formatNode` so the line grammar has exactly one owner.
- */
-export function observedLineHasRole(line: string): boolean {
-  return /^\s*#\S+ [a-z][a-z-]*(\s|$)/.test(line);
-}
-
-/**
  * What the page looks like, independent of which observation looked at it.
  *
  * Two things are dropped. Node ids, because they are minted per observation, so

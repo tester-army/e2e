@@ -242,6 +242,20 @@ export function isVisionMode(value: unknown): value is VisionMode {
   return typeof value === 'boolean' || value === 'fallback' || value === 'only';
 }
 
+/**
+ * Narrows a structurally verified model instance to the SDK model type. The
+ * one place this cast lives; everything downstream takes the checked type.
+ */
+export function asSdkLanguageModel(instance: ModelInstance): SdkLanguageModel {
+  if (!isModelInstance(instance)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'value is not an AI SDK language model instance',
+    );
+  }
+  return instance as SdkLanguageModel;
+}
+
 export function isModelInstance(value: unknown): value is ModelInstance {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;

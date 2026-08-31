@@ -1,6 +1,6 @@
 /** Runner-owned agent error classification (spec 02-test-api.md, 06-cli.md). */
 
-import { E2EError, type ErrorCategory } from '../internal/errors.ts';
+import { classifyError, E2EError, type ErrorCategory } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
 
 /**
@@ -53,6 +53,28 @@ export class AgentError extends E2EError {
     this.explanation = explanation;
     if (options.screenshot !== undefined) this.screenshot = options.screenshot;
   }
+}
+
+/** The closed agent code set, derived from the one classification table. */
+const AGENT_CODES = new Set<string>(Object.keys(CATEGORY_BY_CODE));
+
+/**
+ * Maps any runner error raised inside an invocation onto the closed agent code
+ * set. Model prose can never select a code.
+ */
+export function toAgentError(cause: unknown): AgentError {
+  if (isAgentError(cause)) return cause;
+  const classified = cause instanceof E2EError ? cause : classifyError(cause);
+  if (AGENT_CODES.has(classified.code)) {
+    return new AgentError(classified.code as AgentErrorCode, classified.message, { cause });
+  }
+  if (classified.code === 'UNSUPPORTED_CAPABILITY' || classified.code === 'INVALID_CONFIG') {
+    return new AgentError('POLICY_DENIED', classified.message, { cause });
+  }
+  if (classified.category === 'infrastructure') {
+    return new AgentError('APP_UNREACHABLE', classified.message, { cause });
+  }
+  return new AgentError('ACTION_FAILED', classified.message, { cause });
 }
 
 /**

@@ -138,13 +138,6 @@ export class InfrastructureError extends E2EError {
   }
 }
 
-export class InternalError extends E2EError {
-  constructor(message: string, options: { cause?: unknown } = {}) {
-    super('internal', 'INTERNAL_ERROR', message, options);
-    this.name = 'InternalError';
-  }
-}
-
 export class TestError extends E2EError {
   constructor(code: string, message: string, options: { retryable?: boolean; cause?: unknown } = {}) {
     super('test', code, message, options);
@@ -156,13 +149,6 @@ export class TestTimeoutError extends TestError {
   constructor(message: string) {
     super('TEST_TIMEOUT', message);
     this.name = 'TestTimeoutError';
-  }
-}
-
-export class InterruptedError extends E2EError {
-  constructor(message = 'Run interrupted') {
-    super('interrupted', 'INTERRUPTED', message);
-    this.name = 'InterruptedError';
   }
 }
 

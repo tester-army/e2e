@@ -1,0 +1,149 @@
+/**
+ * Shared per-phase machinery for agent step execution. `Invocation` (the
+ * locate/judgment tier) and `ActDispatch` (the executor socket) both compose
+ * these, so event recording, `--debug` buckets, tracing, deadline semantics,
+ * and observation race-hardening cannot drift between the two paths.
+ */
+
+import { DriverError, type Observation, type OperationContext } from '../driver/index.ts';
+import type { DebugTrace } from '../internal/debug.ts';
+import { E2EError } from '../internal/errors.ts';
+import { timestamp } from '../internal/ids.ts';
+import { POLL_INTERVAL_MS, sleep, type Deadline } from '../internal/time.ts';
+import { agentTrace } from '../internal/trace.ts';
+import type { StepEvent, StepRecorder } from '../run/steps.ts';
+import { AgentError, toAgentError } from './error.ts';
+
+/** The step recorder and optional debug trace a phase reports into. */
+export interface PhaseHost {
+  readonly steps: StepRecorder;
+  readonly debug?: DebugTrace | undefined;
+}
+
+/** One instrumented phase: the event kind it records and the debug bucket it feeds. */
+export interface PhaseSpec {
+  /** Public API name of the enclosing step, e.g. `agent.tap`. */
+  readonly api: string;
+  readonly kind: StepEvent['kind'];
+  readonly phase: 'agent.observe' | 'agent.model' | 'agent.action' | 'agent.cache';
+  readonly name?: string;
+}
+
+/**
+ * Runs one phase with uniform accounting: a child event on success and
+ * failure, one debug bucket, and translation onto the closed agent error set.
+ * Every observe/model/action phase of every agent step goes through here so
+ * the records cannot drift apart.
+ */
+export async function instrumentPhase<Value>(
+  host: PhaseHost,
+  spec: PhaseSpec,
+  body: () => Promise<Value>,
+  detail?: (value: Value) => Partial<StepEvent>,
+): Promise<Value> {
+  const startedAt = timestamp();
+  const startedMs = Date.now();
+  const label = spec.name === undefined ? spec.kind : `${spec.kind}:${spec.name}`;
+  try {
+    const value = await body();
+    const eventDetail = detail?.(value);
+    host.steps.recordEvent({
+      kind: spec.kind,
+      startedAt,
+      durationMs: Date.now() - startedMs,
+      status: 'passed',
+      ...(spec.name === undefined ? {} : { name: spec.name }),
+      ...eventDetail,
+    });
+    agentTrace(
+      () =>
+        `${spec.api} ${label} passed ${Date.now() - startedMs}ms` +
+        `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
+        `${eventDetail?.bytes !== undefined ? ` bytes=${eventDetail.bytes}` : ''}`,
+    );
+    return value;
+  } catch (cause) {
+    const error = toAgentError(cause);
+    host.steps.recordEvent({
+      kind: spec.kind,
+      startedAt,
+      durationMs: Date.now() - startedMs,
+      status: error.code === 'CANCELLED' ? 'cancelled' : 'failed',
+      ...(spec.name === undefined ? {} : { name: spec.name }),
+      code: phaseErrorCode(cause),
+    });
+    agentTrace(
+      () =>
+        `${spec.api} ${label} failed ${Date.now() - startedMs}ms ` +
+        `${phaseErrorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+    throw error;
+  } finally {
+    host.debug?.record(spec.phase, Date.now() - startedMs);
+  }
+}
+
+/**
+ * Fails when the step clock has run out.
+ *
+ * `cause` carries the failure that was being handled when the clock was found
+ * to be out, so a step that timed out mid-operation still says what the
+ * operation reported.
+ */
+export function checkStepClock(options: {
+  readonly signal: AbortSignal;
+  readonly deadline: Deadline;
+  readonly api: string;
+  readonly timeoutMs: number;
+  readonly cause?: unknown;
+}): void {
+  const detail = options.cause === undefined ? {} : { cause: options.cause };
+  if (options.signal.aborted) {
+    throw new AgentError('CANCELLED', `${options.api} was cancelled`, detail);
+  }
+  if (options.deadline.expired()) {
+    throw new AgentError(
+      'STEP_TIMEOUT',
+      `${options.api} exceeded its ${options.timeoutMs} ms timeout`,
+      detail,
+    );
+  }
+}
+
+/**
+ * Captures one raw observation, re-capturing while the driver reports a
+ * retryable failure and the step clock allows. A page that navigates as it is
+ * read (a redirect, a hydration swap, a form submit still committing) makes
+ * the capture lose its document; that is a race, not a broken app, so it is
+ * re-read rather than surfaced as a failed call. `guard` is the caller's
+ * clock check, so a capture that outlives the deadline reports the step's own
+ * timeout rather than whichever transport error the truncated budget produced.
+ */
+export async function retryingObserve(options: {
+  readonly observe: (operation: OperationContext) => Promise<Observation>;
+  readonly operation: () => OperationContext;
+  readonly guard: (cause?: unknown) => void;
+  readonly signal: AbortSignal;
+  readonly api: string;
+}): Promise<Observation> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await options.observe(options.operation());
+    } catch (cause) {
+      options.guard(cause);
+      if (!(cause instanceof DriverError && cause.retryable)) {
+        throw cause;
+      }
+      agentTrace(
+        () => `${options.api} observation attempt ${attempt} raced the page: ${cause.code}`,
+      );
+      await sleep(POLL_INTERVAL_MS, options.signal);
+    }
+  }
+}
+
+/** Event code for a failed phase: the runner code, or the error's name. */
+function phaseErrorCode(cause: unknown): string {
+  if (cause instanceof E2EError) return cause.code;
+  return cause instanceof Error ? cause.name : 'ERROR';
+}

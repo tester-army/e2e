@@ -23,6 +23,7 @@ import type {
   VisionMode,
 } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
+import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep } from './act.ts';
 import { observationShape, type AgentObservation } from './observation.ts';
 import {
@@ -505,9 +506,10 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.waitFor',
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
-          maxModelCalls: resolveModelCalls(
+          maxModelCalls: resolveBoundedBudget(
             options?.maxModelCalls,
             runtime.config.agent.maxModelCalls,
+            'maxModelCalls',
           ),
           maxActionSteps: 0,
           cache: false,
@@ -540,7 +542,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.extract',
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, stepTimeout),
-          maxModelCalls: resolveModelCalls(options.maxModelCalls, EXTRACT_MODEL_CALLS),
+          maxModelCalls: resolveBoundedBudget(options.maxModelCalls, EXTRACT_MODEL_CALLS, 'maxModelCalls'),
           maxActionSteps: 0,
           cache: false,
           vision: resolveVision(options.vision),
@@ -698,28 +700,6 @@ async function waitForNextJudgment(
     if (Date.now() - judgedAt < options.intervalMs) continue;
     if (!watchTree || observationShape(observation) !== judgedShape) return observation;
   }
-}
-
-function resolveTimeout(requested: number | undefined, fallback: number): number {
-  if (requested === undefined) return fallback;
-  if (!Number.isSafeInteger(requested) || requested <= 0) {
-    throw new TestError('INVALID_ARGUMENT', 'timeout must be a positive integer');
-  }
-  return requested;
-}
-
-function resolveModelCalls(requested: number | undefined, limit: number): number {
-  if (requested === undefined) return limit;
-  if (!Number.isSafeInteger(requested) || requested <= 0) {
-    throw new TestError('INVALID_ARGUMENT', 'maxModelCalls must be a positive integer');
-  }
-  if (requested > limit) {
-    throw new TestError(
-      'INVALID_ARGUMENT',
-      `maxModelCalls ${requested} exceeds the resolved limit ${limit}`,
-    );
-  }
-  return requested;
 }
 
 function validateInterval(intervalMs: number | undefined): number {

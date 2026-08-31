@@ -7,8 +7,18 @@
  * works across the src/dist realm boundary.
  */
 
-import { observedLineHasRole } from '../../src/agent/observation.ts';
 import type { ModelInstance } from '../../src/types.ts';
+import { createScriptedInstance, scriptedResult } from './scripted-model.ts';
+
+/**
+ * True when a rendered observation line carries a role token: a bare
+ * lowercase word right after the node id. Mirrors the line grammar of
+ * `formatNode` in src/agent/observation.ts; lives here because only the
+ * scripted responder needs to re-parse rendered lines.
+ */
+function observedLineHasRole(line: string): boolean {
+  return /^\s*#\S+ [a-z][a-z-]*(\s|$)/.test(line);
+}
 
 /**
  * Applies the request schema to a scripted answer the way a strict provider
@@ -102,15 +112,13 @@ export function createFakeModel(
   instance: { modelId?: string } = {},
 ): ModelInstance {
   const modelId = instance.modelId ?? 'scripted';
-  return {
-    specificationVersion: 'v4',
-    provider: 'fake',
+  return createScriptedInstance(
+    'fake',
     modelId,
-    supportedUrls: {},
-    async doGenerate(options: {
+    async (options: {
       prompt: FakePrompt;
       responseFormat?: { type: string; name?: string; schema?: unknown } | undefined;
-    }) {
+    }) => {
       const system = promptText(options.prompt, 'system');
       const prompt = promptText(options.prompt, 'user');
       const observation = section(prompt, 'observation');
@@ -127,23 +135,9 @@ export function createFakeModel(
       };
       fakeCalls.push(parsed);
       const raw = enforceRequestSchema(responder(parsed), options.responseFormat?.schema);
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(raw) }],
-        finishReason: { unified: 'stop' as const, raw: 'stop' },
-        usage: {
-          inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: { total: 20, text: 20, reasoning: 0 },
-          totalTokens: 120,
-        },
-        warnings: [],
-      };
+      return scriptedResult([{ type: 'text' as const, text: JSON.stringify(raw) }], 'stop');
     },
-    async doStream(): Promise<never> {
-      throw new Error('the scripted fake model does not stream');
-    },
-    // The runner duck-types model instances exactly like the AI SDK does; the
-    // structural fields above are the whole contract this fake relies on.
-  } as ModelInstance;
+  );
 }
 
 /** Concatenates the text of every prompt message with the given role. */

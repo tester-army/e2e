@@ -2,7 +2,9 @@
 
 Status: informative for `sdk-0.1` (the socket ships; conformance IDs land with
 a later suite version). Canonical types: the executor section of
-[api/e2e.d.ts](./api/e2e.d.ts). Direction: RFC0001.
+[api/e2e.d.ts](./api/e2e.d.ts), including `BLOCKABLE_CODES`. The `e2e/agent`
+value exports (`createAgent`, `defineTool`) are package API documented in the
+product docs; they are not spec-canonical in this version. Direction: RFC0001.
 
 ## Philosophy
 

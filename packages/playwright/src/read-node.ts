@@ -73,11 +73,6 @@ export type SemanticMode =
       textLimit: number;
     };
 
-export interface SemanticOptions {
-  testIdAttribute: string;
-  mode: SemanticMode;
-}
-
 /** Result of one read, selected by the mode discriminant. */
 export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'node' }
   ? RawNodeData

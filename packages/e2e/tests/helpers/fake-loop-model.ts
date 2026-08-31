@@ -7,6 +7,7 @@
  */
 
 import type { ModelInstance } from '../../src/types.ts';
+import { createScriptedInstance, scriptedResult } from './scripted-model.ts';
 
 export interface LoopCall {
   /** One-based generate round within the step. */
@@ -53,43 +54,25 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
   loopCalls.length = 0;
   let turn = 0;
   let callCounter = 0;
-  return {
-    specificationVersion: 'v4',
-    provider: 'fake-loop',
-    modelId: 'scripted-loop',
-    supportedUrls: {},
-    async doGenerate(options: RawOptions) {
-      turn += 1;
-      const toolResults = collectToolResults(options.prompt);
-      const call: LoopCall = {
-        turn,
-        toolNames: (options.tools ?? []).map((tool) => tool.name).toSorted(),
-        prompt: firstUserText(options.prompt),
-        toolResults,
-        lastToolResult: toolResults[toolResults.length - 1] ?? '',
-      };
-      loopCalls.push(call);
-      const content = respond(call).map((toolCall) => ({
-        type: 'tool-call' as const,
-        toolCallId: `scripted_${(callCounter += 1)}`,
-        toolName: toolCall.toolName,
-        input: JSON.stringify(toolCall.input),
-      }));
-      return {
-        content,
-        finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' },
-        usage: {
-          inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: { total: 20, text: 20, reasoning: 0 },
-          totalTokens: 120,
-        },
-        warnings: [],
-      };
-    },
-    async doStream(): Promise<never> {
-      throw new Error('the scripted loop model does not stream');
-    },
-  } as ModelInstance;
+  return createScriptedInstance('fake-loop', 'scripted-loop', async (options: RawOptions) => {
+    turn += 1;
+    const toolResults = collectToolResults(options.prompt);
+    const call: LoopCall = {
+      turn,
+      toolNames: (options.tools ?? []).map((tool) => tool.name).toSorted(),
+      prompt: firstUserText(options.prompt),
+      toolResults,
+      lastToolResult: toolResults[toolResults.length - 1] ?? '',
+    };
+    loopCalls.push(call);
+    const content = respond(call).map((toolCall) => ({
+      type: 'tool-call' as const,
+      toolCallId: `scripted_${(callCounter += 1)}`,
+      toolName: toolCall.toolName,
+      input: JSON.stringify(toolCall.input),
+    }));
+    return scriptedResult(content, 'tool-calls');
+  });
 }
 
 function firstUserText(prompt: readonly RawMessage[]): string {
