@@ -15,8 +15,8 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   `pnpm --filter e2e run check:driver-drift` (already inside `typecheck`).
 - Wire output must validate against `spec/schema/*.schema.json`; integration
   tests validate every generated report against `report-v1.schema.json`.
-- Per `PLAN.md`, a spec change touches declarations, schemas, prose, examples,
-  and tests in one review. Implementation shortcuts never amend the spec.
+- A spec change touches declarations, schemas, prose, examples, and tests in
+  one review. Implementation shortcuts never amend the spec.
 - `pnpm check:manifest` (`scripts/check-manifest-coupling.mjs`, run as its own
   PR job) fails any diff that edits `spec/conformance/v0-requirements.json` or
   `spec/schema/*` without bumping `suiteVersion`.
@@ -36,7 +36,8 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   is the one place that maps a well-known driver id to its package.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
-- `spec/`, `fern/` (docs site), `PLAN.md` (phase ordering only).
+- `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the
+  TesterArmy engine).
 
 ## Commands
 
