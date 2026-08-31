@@ -66,7 +66,8 @@ test('repairs an extraction that fails the caller schema', async ({ app, agent }
 
 const NO_MODEL_SUITE = `import { test } from 'e2e';
 
-test('requires model configuration', async ({ agent }) => {
+test('requires model configuration', async ({ app, agent }) => {
+  await app.open();
   await agent.assert('anything');
 });
 `;
@@ -221,7 +222,7 @@ describe('agent policy and error classification', () => {
     expect(step.metrics!.modelCalls).toBe(2);
   });
 
-  it('fails acquisition with MODEL_UNAVAILABLE when no model is configured', () => {
+  it('fails the first model call with MODEL_UNAVAILABLE when no model is configured', () => {
     const result = resultByTitle(unconfigured, 'requires model configuration');
     expect(result.status).toBe('failed');
     const error = result.attempts.at(-1)!.error!;

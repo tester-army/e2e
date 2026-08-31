@@ -1,6 +1,7 @@
 /** Agent, model, and resource-limit resolution (spec 05-config.md, 14-security.md). */
 
 import type { LanguageModel } from 'ai';
+import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
 import type { E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
@@ -33,7 +34,7 @@ export type ResolvedModel =
       /** Absolute endpoint override, or undefined for the gateway default. */
       readonly endpoint: string | undefined;
       readonly apiKeyEnv: string;
-      /** Resolved credential; absence fails at fixture acquisition, not here. */
+      /** Resolved credential; absence fails at the first model call, not here. */
       readonly apiKey: string | undefined;
     }
   | {
@@ -44,6 +45,12 @@ export type ResolvedModel =
     };
 
 export interface ResolvedAgentConfig {
+  /**
+   * The step executor `agent.act()` dispatches to; undefined selects the
+   * default AI SDK executor at fixture time. Like model instances, an executor
+   * never crosses a process boundary: workers re-resolve the config module.
+   */
+  readonly executor: StepExecutor | undefined;
   /** Undefined until a model is configured; acquiring `agent` then fails. */
   readonly model: ResolvedModel | undefined;
   /**
@@ -84,6 +91,7 @@ export interface ResolvedLimits {
 export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 
 const AGENT_KEYS = new Set([
+  'executor',
   'model',
   'visionModel',
   'maxSteps',
@@ -166,6 +174,7 @@ export function resolveAgentConfig(
   }
 
   return {
+    executor: resolveExecutor(agent?.executor),
     model: resolveModel(agent?.model, env),
     visionModel: resolveModel(agent?.visionModel, env, 'agent.visionModel', 'E2E_VISION_MODEL'),
     maxSteps,
@@ -175,6 +184,18 @@ export function resolveAgentConfig(
     context,
     vision,
   };
+}
+
+/** Validates a configured step executor structurally, like a model instance. */
+function resolveExecutor(executor: StepExecutor | undefined): StepExecutor | undefined {
+  if (executor === undefined) return undefined;
+  if (!isStepExecutor(executor)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'agent.executor must be a step executor: { name: string, runStep(context) }',
+    );
+  }
+  return executor;
 }
 
 /** Resolves the `limits` block. The observation budget is attached by the caller. */
@@ -238,7 +259,7 @@ export function isModelInstance(value: unknown): value is ModelInstance {
  * `label` and `envName` are parameters because the same grammar serves
  * `agent.model` and `agent.visionModel`; every diagnostic then names the key the
  * author actually wrote. There is no implicit default model; an unconfigured
- * agent fails at fixture acquisition.
+ * model fails at its first model call, so a custom-executor run needs none.
  */
 function resolveModel(
   model: string | ModelConfig | ModelInstance | undefined,

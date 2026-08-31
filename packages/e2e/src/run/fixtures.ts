@@ -1,6 +1,7 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
-import { createAgent } from '../agent/index.ts';
+import { createAgentFixture } from '../agent/index.ts';
+import { createAgent as createDefaultExecutor } from '../agent/default-agent.ts';
 import type { AgentCacheContext } from '../agent/invocation.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
@@ -131,9 +132,10 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
 
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
-      agent ??= createAgent({
+      agent ??= createAgentFixture({
         engine,
         steps: environment.steps,
+        executor: environment.config.agent.executor ?? createDefaultExecutor(),
         models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
         priorSteps: environment.priorSteps,

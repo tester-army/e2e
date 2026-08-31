@@ -35,6 +35,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./agent": {
+      "types": "./dist/agent/public.d.ts",
+      "default": "./dist/agent/public.js"
+    },
     "./driver": {
       "types": "./dist/driver/index.d.ts",
       "default": "./dist/driver/index.js"

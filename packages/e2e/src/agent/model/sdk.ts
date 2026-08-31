@@ -155,6 +155,15 @@ function userMessage(prompt: string, images: readonly ModelImage[]): ModelMessag
   };
 }
 
+/**
+ * Builds the bare AI SDK language model for one resolved model reference, for
+ * callers that drive the SDK directly (the default step executor) rather than
+ * through the adapter. Fails with MODEL_UNAVAILABLE exactly like the adapter.
+ */
+export function instantiateLanguageModel(model: ResolvedModel): SdkLanguageModel {
+  return instantiate(model).languageModel;
+}
+
 /** Builds the AI SDK language model plus report provenance for one resolved model. */
 function instantiate(model: ResolvedModel): {
   languageModel: SdkLanguageModel;

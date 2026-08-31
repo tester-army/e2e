@@ -838,6 +838,13 @@ export interface E2EConfig {
     testIdAttribute?: string;
   };
   agent?: {
+    /**
+     * The step executor `agent.act()` dispatches to (RFC0001 layer 4).
+     * Undefined selects the built-in AI SDK executor. Executors never cross a
+     * process boundary: workers re-resolve the config module and construct
+     * their own, exactly like model instances.
+     */
+    executor?: StepExecutor;
     model?: string | ModelConfig | ModelInstance;
     /** Model used by calls with `vision`; falls back to `model`. */
     visionModel?: string | ModelConfig | ModelInstance;
@@ -880,3 +887,87 @@ export interface E2EConfig {
 
 /** Type-checks and returns an e2e configuration object. */
 export function defineConfig(config: E2EConfig): E2EConfig;
+
+/*
+ * The step-executor socket (RFC0001, layer 4). The harness owns each
+ * `agent.act()` step — observation, action dispatch, budgets, recording, and
+ * verdict mapping — and delegates only the thinking to a pluggable executor.
+ * The socket never requires the AI SDK: a hand-rolled executor is valid.
+ */
+
+/** One step handed to an executor: one `agent.act()` call. */
+export interface ExecutorStep {
+  readonly kind: 'act';
+  readonly instruction: string;
+  /** JSON-safe call parameters; secrets are rejected before dispatch. */
+  readonly params: Readonly<Record<string, JsonValue>> | undefined;
+}
+
+/** Redacted, size-bounded observation an executor may show its model. */
+export interface ExecutorObservation {
+  readonly revision: string;
+  readonly text: string;
+  readonly truncated: boolean;
+  readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+}
+
+/** A node named by its id from the newest observation. */
+export interface ExecutorTarget {
+  readonly id: string;
+}
+
+/**
+ * The action grammar. Every executor action bottoms out here, where the
+ * harness enforces the deadline, the action budget, origin policy, and
+ * recording. Node ids are only valid against the newest observation.
+ */
+export interface ExecutorActions {
+  tap(target: ExecutorTarget): Promise<void>;
+  type(target: ExecutorTarget, value: string): Promise<void>;
+  press(target: ExecutorTarget, key: string): Promise<void>;
+  scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
+  navigate(url: string): Promise<void>;
+}
+
+/** Step budgets, read and reported by the executor, enforced by the harness. */
+export interface ExecutorBudgets {
+  readonly maxActions: number;
+  readonly maxModelCalls: number;
+  actionsUsed(): number;
+  remainingMs(): number;
+  recordModelCall(usage?: { inputTokens?: number; outputTokens?: number }): void;
+}
+
+export interface StepExecutorContext {
+  readonly step: ExecutorStep;
+  readonly signal: AbortSignal;
+  /** The config-resolved AI SDK model, when one is configured. */
+  readonly model: ModelInstance | undefined;
+  /** Completed prior steps serialized for prompt context; `''` when none. */
+  readonly ledger: string;
+  readonly agentContext: string | undefined;
+  readonly budgets: ExecutorBudgets;
+  observe(): Promise<ExecutorObservation>;
+  readonly actions: ExecutorActions;
+}
+
+export type StepVerdictStatus = 'passed' | 'failed' | 'blocked';
+
+/**
+ * The ternary step verdict. `failed` means the application did not behave as
+ * the step required; `blocked` means the environment, credentials, or the
+ * executor's own budget prevented a product verdict, and always carries a
+ * blockable error code.
+ */
+export interface StepVerdict {
+  readonly status: StepVerdictStatus;
+  readonly summary: string;
+  readonly errorCode?: AgentErrorCode;
+}
+
+/** The brain socket: one step in, one verdict out. */
+export interface StepExecutor {
+  readonly name: string;
+  readonly version?: string;
+  runStep(context: StepExecutorContext): Promise<StepVerdict>;
+}

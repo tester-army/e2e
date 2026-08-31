@@ -170,8 +170,9 @@ remain active after opt-in.
 
 ## Model configuration
 
-There is no implicit or mutable default model. Agent fixture acquisition
-requires one of:
+There is no implicit or mutable default model. The first agent model call of a
+run requires one of (a run whose steps all go to a custom `agent.executor` may
+configure no model at all):
 
 - `agent.model: 'provider/model-id'`;
 - `agent.model: { provider, id, endpoint?, apiKeyEnv? }`;

@@ -31,6 +31,7 @@ import {
 } from '../run/steps.ts';
 import type { AgentErrorCode, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError } from './error.ts';
+import type { StepExecutor } from './executor.ts';
 import { serializeLedger, type LedgerContext } from './ledger.ts';
 import {
   imageTokenUpperBound,
@@ -73,6 +74,8 @@ export interface AgentCacheContext {
 export interface AgentContext {
   readonly engine: LocatorEngine;
   readonly steps: StepRecorder;
+  /** The step executor `agent.act()` dispatches to (RFC0001 layer 4). */
+  readonly executor: StepExecutor;
   /** Chooses the model for a call; a vision call may use a pinned one. */
   readonly models: ModelRouter;
   readonly config: ResolvedConfig;

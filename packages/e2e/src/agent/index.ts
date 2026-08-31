@@ -23,6 +23,7 @@ import type {
   VisionMode,
 } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
+import { runActStep } from './act.ts';
 import { observationShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
@@ -61,7 +62,7 @@ const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
 
 /** Builds the agent fixture for one attempt. */
-export function createAgent(runtime: AgentContext): Agent {
+export function createAgentFixture(runtime: AgentContext): Agent {
   const testIdAttribute = runtime.config.testIdAttribute;
   /**
    * Default budget for polling, judgment, and extraction steps: the action
@@ -232,7 +233,8 @@ export function createAgent(runtime: AgentContext): Agent {
   };
 
   const agent: Agent = {
-    act: ((): never => planningTierUnavailable('agent.act')) as Agent['act'],
+    act: ((instruction: string, params?: Parameters<Agent['act']>[1], options?: Parameters<Agent['act']>[2]) =>
+      runActStep(runtime, instruction, params, options)) as Agent['act'],
     login: ((): never => planningTierUnavailable('agent.login')) as Agent['login'],
 
     tap: tapVerb('agent.tap'),

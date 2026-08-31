@@ -13,3 +13,14 @@ export function defineConfig(config: E2EConfig): E2EConfig {
 }
 
 export type * from './types.ts';
+export type {
+  ExecutorActions,
+  ExecutorBudgets,
+  ExecutorObservation,
+  ExecutorStep,
+  ExecutorTarget,
+  StepExecutor,
+  StepExecutorContext,
+  StepVerdict,
+  StepVerdictStatus,
+} from './agent/executor.ts';

@@ -9,6 +9,7 @@ import type {
   secretBrand,
   testCaseBrand,
 } from './internal/brands.ts';
+import type { StepExecutor } from './agent/executor.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -809,6 +810,13 @@ export interface E2EConfig {
     testIdAttribute?: string;
   };
   agent?: {
+    /**
+     * The step executor `agent.act()` dispatches to (RFC0001 layer 4).
+     * Undefined selects the built-in AI SDK executor. Executors never cross a
+     * process boundary: workers re-resolve the config module and construct
+     * their own, exactly like model instances.
+     */
+    executor?: StepExecutor;
     model?: string | ModelConfig | ModelInstance;
     /** Model used by calls with `vision`; falls back to `model`. */
     visionModel?: string | ModelConfig | ModelInstance;

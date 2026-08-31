@@ -14,10 +14,11 @@ import type { ModelAdapter } from './adapter.ts';
  * this environment.
  */
 export class ModelRouter {
+  private baseAdapter: ModelAdapter | undefined;
   private visionAdapter: ModelAdapter | undefined;
 
   constructor(
-    private readonly base: ModelAdapter,
+    private readonly buildBase: () => ModelAdapter,
     private readonly buildVision: (() => ModelAdapter) | undefined,
   ) {}
 
@@ -27,19 +28,28 @@ export class ModelRouter {
    * withheld, so a polling method never switches models between rounds.
    */
   select(vision: boolean): ModelAdapter {
-    if (!vision || this.buildVision === undefined) return this.base;
+    if (!vision || this.buildVision === undefined) {
+      return (this.baseAdapter ??= this.buildBase());
+    }
     return (this.visionAdapter ??= this.buildVision());
   }
 }
 
-/** Builds the router for one attempt from resolved agent config. */
+/**
+ * Builds the router for one attempt from resolved agent config.
+ *
+ * The base adapter is built on first use, like the vision adapter: a run whose
+ * `agent.act()` steps go to a custom executor may legitimately have no model at
+ * all, and must not fail on a MODEL_UNAVAILABLE it would never hit. Judgment
+ * and locate methods still fail with MODEL_UNAVAILABLE on their first call.
+ */
 export function createModelRouter(
   agent: ResolvedAgentConfig,
   build: (model: ResolvedAgentConfig['model']) => ModelAdapter,
 ): ModelRouter {
   const visionModel = agent.visionModel;
   return new ModelRouter(
-    build(agent.model),
+    () => build(agent.model),
     visionModel === undefined ? undefined : () => build(visionModel),
   );
 }
