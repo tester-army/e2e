@@ -6,6 +6,7 @@ export { test } from './collect/registry.ts';
 export { expect } from './expect/index.ts';
 export { credentials } from './credentials.ts';
 export { AgentError } from './agent/error.ts';
+export { BLOCKABLE_CODES, blockedCategoryOf } from './agent/executor.ts';
 
 /** Type-checks and returns an e2e configuration object. */
 export function defineConfig(config: E2EConfig): E2EConfig {
