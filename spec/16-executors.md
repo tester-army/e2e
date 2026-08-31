@@ -74,7 +74,7 @@ all is valid; the runner cannot tell the difference and does not care.
   | `environment` | whoever runs the environment | `ENVIRONMENT_UNAVAILABLE`, `APP_UNREACHABLE` |
   | `seed_data` | whoever seeds the data | `SEED_DATA_MISSING` |
   | `test_setup` | whoever owns the test | `TEST_SETUP_FAILED`, `APP_NOT_OPEN`, `POLICY_DENIED` |
-  | `automation` | the executor ran out of room | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `MODEL_UNAVAILABLE` |
+  | `automation` | the executor ran out of room or lacks the capability | `AUTOMATION_UNSUPPORTED`, `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `MODEL_UNAVAILABLE` |
 
   The table in `agent/error.ts` is the single owner: exit categories,
   `BLOCKABLE_CODES`, and the categories all derive from it.

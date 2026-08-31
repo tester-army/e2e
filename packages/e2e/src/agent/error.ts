@@ -34,6 +34,7 @@ export const AGENT_CODE_TABLE: Readonly<
   APP_NOT_OPEN: { category: 'test', blockedCategory: 'test_setup' },
   POLICY_DENIED: { category: 'configuration', blockedCategory: 'test_setup' },
   MODEL_UNAVAILABLE: { category: 'configuration', blockedCategory: 'automation' },
+  AUTOMATION_UNSUPPORTED: { category: 'test', blockedCategory: 'automation' },
   STEP_BUDGET_EXHAUSTED: { category: 'test', blockedCategory: 'automation' },
   STEP_TIMEOUT: { category: 'test', blockedCategory: 'automation' },
   MODEL_PROVIDER_FAILED: { category: 'infrastructure' },

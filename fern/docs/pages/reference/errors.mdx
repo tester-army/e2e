@@ -33,6 +33,7 @@ Check `code` rather than using `instanceof`.
 | `ENVIRONMENT_UNAVAILABLE` | The environment under test is down or unreachable beyond the app itself (blocked: environment) | infrastructure | 3 |
 | `SEED_DATA_MISSING` | Data the step depends on does not exist in the environment (blocked: seed_data) | configuration | 2 |
 | `TEST_SETUP_FAILED` | Test prerequisites outside the product failed to arrange (blocked: test_setup) | configuration | 2 |
+| `AUTOMATION_UNSUPPORTED` | The step needs an interaction the available toolset cannot perform, e.g. drag-and-drop (blocked: automation) | test | 1 |
 | `MODEL_UNAVAILABLE` | No model configured, an unknown provider, or a missing provider credential. Raised when the `agent` fixture is acquired. | configuration | 2 |
 | `POLICY_DENIED` | Origin, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
 | `APP_UNREACHABLE` | The app process or URL did not respond | infrastructure | 3 |

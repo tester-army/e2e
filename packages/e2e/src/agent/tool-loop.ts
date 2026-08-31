@@ -28,6 +28,7 @@ import { checkLoopGuards, extractGuardCalls } from './loop-guards.ts';
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
 const MODEL_ERROR_CODES = [
   'ACTION_FAILED',
+  'AUTOMATION_UNSUPPORTED',
   'ASSERTION_FAILED',
   'AUTHENTICATION_FAILED',
   'AUTH_CREDENTIAL_UNAVAILABLE',
