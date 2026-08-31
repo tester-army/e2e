@@ -108,7 +108,7 @@ the test timeout.
 
 The flow is dispatched through the step-executor socket (chapter 16): the
 runner owns observation, action dispatch, budgets, and recording, and the
-configured executor (`agent.executor`, defaulting to the built-in AI SDK
+configured executor (the `agent` config value, defaulting to the built-in AI SDK
 tool-loop agent) owns only the thinking. The step concludes with a ternary
 verdict — `passed`, `failed`, or `blocked` — where `blocked` carries a
 blockable error code naming a closed category (credentials, environment,

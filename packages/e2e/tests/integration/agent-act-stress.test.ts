@@ -39,7 +39,7 @@ describe('secret fill policy under a hostile executor', () => {
       { 'tests/secret.e2e.ts': SECRET_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { executor }, credentials: CREDS },
+        config: { tests: 'tests/**/*.e2e.ts', agent: executor, credentials: CREDS },
       },
     );
 
@@ -80,7 +80,7 @@ describe('secret fill policy under a hostile executor', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: { executor },
+          agent: executor,
           credentials: {
             admin: { ...CREDS.admin, allowedOrigins: ['https://elsewhere.example'] },
           },
@@ -175,7 +175,7 @@ test('too-deep params', async ({ app, agent }) => {
     };
     const { outcome, project } = await runProject(
       { 'tests/bounds.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       expect(resultByTitle(outcome, 'oversized params').attempts.at(-1)!.error?.message).toContain(
@@ -244,7 +244,7 @@ ${calls}
 `;
     const { outcome, project } = await runProject(
       { 'tests/ten.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'ten steps');
@@ -307,7 +307,7 @@ test('genuinely broken', async ({ app, agent }) => {
     };
     const { outcome, project } = await runProject(
       { 'tests/mixed.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const blocked = resultByTitle(outcome, 'blocked by seed data');
@@ -353,7 +353,7 @@ const executor: StepExecutor = {
 export default defineConfig({
   app: { url: process.env.APP_URL! },
   workers: 2,
-  agent: { executor },
+  agent: executor,
 });
 `;
     const testFile = (name: string) => `import { test } from 'e2e';

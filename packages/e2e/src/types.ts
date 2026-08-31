@@ -795,6 +795,20 @@ export interface ModelInstance {
   readonly modelId: string;
 }
 
+/** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
+export interface AgentConfig {
+  model?: string | ModelConfig | ModelInstance;
+  /** Model used by calls with `vision`; falls back to `model`. */
+  visionModel?: string | ModelConfig | ModelInstance;
+  maxSteps?: number;
+  maxModelCalls?: number;
+  maxObservationBytes?: number;
+  cache?: 'off' | 'read-only' | 'read-write';
+  context?: string;
+  /** Project-wide default for the per-call `vision` option. */
+  vision?: VisionMode;
+}
+
 export interface E2EConfig {
   specVersion?: '0.1';
   projectId?: string;
@@ -814,25 +828,15 @@ export interface E2EConfig {
   screen?: {
     testIdAttribute?: string;
   };
-  agent?: {
-    /**
-     * The step executor `agent.act()` dispatches to (RFC0001 layer 4).
-     * Undefined selects the built-in AI SDK executor. Executors never cross a
-     * process boundary: workers re-resolve the config module and construct
-     * their own, exactly like model instances.
-     */
-    executor?: StepExecutor;
-    model?: string | ModelConfig | ModelInstance;
-    /** Model used by calls with `vision`; falls back to `model`. */
-    visionModel?: string | ModelConfig | ModelInstance;
-    maxSteps?: number;
-    maxModelCalls?: number;
-    maxObservationBytes?: number;
-    cache?: 'off' | 'read-only' | 'read-write';
-    context?: string;
-    /** Project-wide default for the per-call `vision` option. */
-    vision?: VisionMode;
-  };
+  /**
+   * Either the agent options block, or the agent itself: `createAgent(...)`
+   * from `e2e/agent`, or any hand-rolled `StepExecutor` (RFC0001 layer 4).
+   * With an agent value, the model falls back to `E2E_MODEL` and every other
+   * option keeps its default. Agents never cross a process boundary: workers
+   * re-resolve the config module and construct their own, exactly like model
+   * instances.
+   */
+  agent?: AgentConfig | StepExecutor;
   /**
    * Enforced resource ceilings only. A limit exists here exactly when the
    * runner has an enforcement site for it; aspirational knobs are not

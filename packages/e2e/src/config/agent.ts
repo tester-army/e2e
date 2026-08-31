@@ -4,7 +4,7 @@ import type { LanguageModel } from 'ai';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
+import type { AgentConfig, E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
 
 /** Default environment variable holding the provider credential. */
 export const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
@@ -46,9 +46,11 @@ export type ResolvedModel =
 
 export interface ResolvedAgentConfig {
   /**
-   * The step executor `agent.act()` dispatches to; undefined selects the
-   * default AI SDK executor at fixture time. Like model instances, an executor
-   * never crosses a process boundary: workers re-resolve the config module.
+   * The step executor `agent.act()` dispatches to, configured as the `agent`
+   * value itself (`agent: createAgent(...)` or any StepExecutor); undefined
+   * selects the default AI SDK executor at fixture time. Like model
+   * instances, an executor never crosses a process boundary: workers
+   * re-resolve the config module.
    */
   readonly executor: StepExecutor | undefined;
   /** Undefined until a model is configured; acquiring `agent` then fails. */
@@ -81,7 +83,6 @@ export interface ResolvedLimits {
 export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 
 const AGENT_KEYS = new Set([
-  'executor',
   'model',
   'visionModel',
   'maxSteps',
@@ -121,13 +122,24 @@ export function resolveAgentConfig(
   cacheOverride: 'off' | undefined,
   limits: ResolvedBaseLimits,
 ): ResolvedAgentConfig {
-  const agent = raw.agent;
+  const value = raw.agent;
+  const executor = value !== undefined && isStepExecutor(value) ? value : undefined;
+  const agent = executor === undefined ? (value as AgentConfig | undefined) : undefined;
   if (agent !== undefined) {
     if (typeof agent !== 'object' || agent === null || Array.isArray(agent)) {
-      throw new ConfigurationError('INVALID_CONFIG', 'agent must be an object');
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'agent must be an options object or the agent itself: createAgent(...) or any { name, runStep(context) }',
+      );
     }
     for (const key of Object.keys(agent)) {
       if (!AGENT_KEYS.has(key)) {
+        if (key === 'executor') {
+          throw new ConfigurationError(
+            'INVALID_CONFIG',
+            'agent.executor was removed: pass the agent itself, e.g. agent: createAgent(...)',
+          );
+        }
         throw new ConfigurationError('INVALID_CONFIG', `unknown agent config key "${key}"`);
       }
     }
@@ -155,7 +167,7 @@ export function resolveAgentConfig(
   }
 
   return {
-    executor: resolveExecutor(agent?.executor),
+    executor,
     model: resolveModel(agent?.model, env),
     visionModel: resolveModel(agent?.visionModel, env, 'agent.visionModel', 'E2E_VISION_MODEL'),
     maxSteps,
@@ -165,18 +177,6 @@ export function resolveAgentConfig(
     context,
     vision,
   };
-}
-
-/** Validates a configured step executor structurally, like a model instance. */
-function resolveExecutor(executor: StepExecutor | undefined): StepExecutor | undefined {
-  if (executor === undefined) return undefined;
-  if (!isStepExecutor(executor)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'agent.executor must be a step executor: { name: string, runStep(context) }',
-    );
-  }
-  return executor;
 }
 
 /** Resolves the `limits` block. The observation budget is attached by the caller. */

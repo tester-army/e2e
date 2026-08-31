@@ -86,5 +86,5 @@ export default defineConfig({
   tests: 'tests-dogfood-brain/**/*.e2e.ts',
   targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
   timeout: 120_000,
-  agent: { executor: mathBrain },
+  agent: mathBrain,
 });

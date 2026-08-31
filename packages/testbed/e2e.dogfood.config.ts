@@ -1,13 +1,13 @@
 /**
- * Dogfood config: the default ToolLoopAgent executor extended with project
- * tools (seed/reset over the app's test API) via defineTool. Run manually:
+ * Dogfood config: the built-in agent extended with project tools (seed/reset
+ * over the app's test API), passed as the `agent` value itself. Run manually:
  *
  *   AI_GATEWAY_API_KEY=... node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts
  */
 
 import { defineConfig } from 'e2e';
 import { createAgent, defineTool } from 'e2e/agent';
-import { tool } from 'ai';
+import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
 const APP_URL = 'http://127.0.0.1:4310';
@@ -55,13 +55,11 @@ export default defineConfig({
   targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
   timeout: 300_000,
   actionTimeout: 90_000,
-  agent: {
-    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
-    executor: createAgent({
-      tools: { seed_expenses: seedExpenses, reset_expenses: resetExpenses },
-      system:
-        'The app under test is a small expense-claims tool. Saves are asynchronous: ' +
-        'after submitting, a "Saving…" indicator shows until the save lands.',
-    }),
-  },
+  agent: createAgent({
+    model: gateway(process.env.E2E_MODEL ?? 'google/gemini-3-flash'),
+    tools: { seed_expenses: seedExpenses, reset_expenses: resetExpenses },
+    system:
+      'The app under test is a small expense-claims tool. Saves are asynchronous: ' +
+      'after submitting, a "Saving…" indicator shows until the save lands.',
+  }),
 });

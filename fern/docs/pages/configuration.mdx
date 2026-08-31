@@ -151,6 +151,11 @@ behavior locally.
 | `agent.maxModelCalls` | `number` | `25` | Model calls per agent call, 1 to 100 |
 | `agent.maxObservationBytes` | `number` | `1048576` | 1 KiB to 16 MiB |
 
+The `agent` key also accepts the agent itself instead of the options block:
+`agent: createAgent({...})` from `e2e/agent`, or any hand-rolled
+`StepExecutor`. Options then keep their defaults, and the model still resolves
+from `E2E_MODEL`. See [Agents](/agents).
+
 ## credentials
 
 | Key | Type | Note |

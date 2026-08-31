@@ -13,7 +13,8 @@ import {
   wellKnownDriverIds,
   type WellKnownDriverId,
 } from './drivers.ts';
-import type { CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
+import { isStepExecutor } from '../agent/executor.ts';
+import type { AgentConfig, CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
 import {
   isModelInstance,
   resolveAgentConfig,
@@ -453,12 +454,15 @@ function resolveCredentials(
  * make it nondeterministic across processes.
  */
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
-  const rawModel = raw.agent?.model;
-  const forClone = isModelInstance(rawModel)
+  // `agent` may be the executor itself; its digest identity is name/version,
+  // which is exactly what survives the function-stripping JSON clone below.
+  const rawAgent = raw.agent;
+  const rawModel = rawAgent === undefined || isStepExecutor(rawAgent) ? undefined : rawAgent.model;
+  const forClone: E2EConfig = isModelInstance(rawModel)
     ? {
         ...raw,
         agent: {
-          ...raw.agent,
+          ...(rawAgent as AgentConfig),
           model: {
             provider: rawModel.provider,
             modelId: rawModel.modelId,

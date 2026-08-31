@@ -63,7 +63,7 @@ function missing(cause: Error): AgentError {
   return new AgentError(
     'MODEL_UNAVAILABLE',
     'the "ai" package is not installed; model-backed agent calls require the optional ' +
-      'peer dependency ai@^7 — install it, or configure an agent.executor that brings ' +
+      'peer dependency ai@^7 — install it, or configure an agent that brings ' +
       'its own model transport',
     { cause },
   );

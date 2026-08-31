@@ -95,6 +95,41 @@ describe('agent config defaults', () => {
   });
 });
 
+describe('agent as the executor itself', () => {
+  it('accepts a step executor as the agent value, options staying at defaults', () => {
+    const config = resolve({ agent: brain() });
+    expect(config.agent.executor).toMatchObject({ name: 'custom-brain' });
+    expect(config.agent.model).toBeUndefined();
+    expect(config.agent.maxSteps).toBe(25);
+    expect(config.agent.cache).toBe('read-write');
+  });
+
+  it('still resolves the model from E2E_MODEL alongside a custom agent', () => {
+    const config = resolve({ agent: brain() }, { ...BASE_ENV, E2E_MODEL: 'openai/gpt-5.4-mini' });
+    expect(config.agent.model).toMatchObject({ provider: 'openai', id: 'gpt-5.4-mini' });
+  });
+
+  it('digests a custom agent by name and version, deterministically', () => {
+    const first = resolve({ agent: brain() });
+    const again = resolve({ agent: brain() });
+    expect(again.configDigest).toBe(first.configDigest);
+    const renamed = resolve({ agent: { ...brain(), name: 'other-brain' } });
+    expect(renamed.configDigest).not.toBe(first.configDigest);
+  });
+
+  it('rejects the removed executor key with the migration in the message', () => {
+    expect(() => resolve({ agent: { executor: brain() } } as never)).toThrow(
+      /agent\.executor was removed: pass the agent itself/,
+    );
+  });
+
+  it('rejects an agent value that is neither options nor an executor', () => {
+    expect(() => resolve({ agent: { runStep: 'nope' } } as never)).toThrow(
+      /unknown agent config key/,
+    );
+  });
+});
+
 describe('model resolution', () => {
   it('splits "provider/model-id" at the first slash', () => {
     const config = resolve({ agent: { model: 'anthropic/claude-sonnet-4.5' } });
@@ -351,6 +386,15 @@ function scriptedFailure(options: { statusCode: number; isRetryable: boolean }) 
       },
       doStream: () => Promise.reject(new Error('not called')),
     },
+  };
+}
+
+/** A minimal hand-rolled step executor; each call constructs a fresh one. */
+function brain() {
+  return {
+    name: 'custom-brain',
+    version: '1',
+    runStep: () => Promise.reject(new Error('not called')),
   };
 }
 

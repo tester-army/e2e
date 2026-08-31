@@ -101,23 +101,26 @@ level: step, run, and process.
 
 ## The golden path: `createAgent`
 
-`e2e/agent` ships the built-in executor as a constructor:
+The `agent` config value accepts the agent itself. The built-in one is a
+constructor from `e2e/agent`:
 
 ```ts
 import { createAgent, defineTool } from 'e2e/agent';
 
 export default defineConfig({
-  agent: {
-    executor: createAgent({
-      model: anthropic('claude-sonnet-4-5'),  // any AI SDK LanguageModel
-      system: 'Prefer keyboard interactions.',
-      tools: { seedCart },                    // defineTool values, merged in
-    }),
-  },
+  agent: createAgent({
+    model: gateway('anthropic/claude-sonnet-4-5'), // any AI SDK LanguageModel
+    system: 'Prefer keyboard interactions.',
+    tools: { seedCart },                           // defineTool values, merged in
+  }),
 });
 ```
 
-It is an AI SDK tool loop over the action grammar: mutating tools return the
+Every option is optional: `createAgent()` with no arguments is exactly the
+default the runner constructs when `agent` is an options block (or absent),
+with the model resolved from `agent.model`/`E2E_MODEL`.
+
+The built-in executor is an AI SDK tool loop over the action grammar: mutating tools return the
 updated screen, stale screen snapshots are compacted out of the transcript, a
 wind-down notice fires near the turn budget and near the step clock, and the
 final turns offer only the `complete_step` verdict tool — a wandering model

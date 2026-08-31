@@ -169,10 +169,20 @@ When `environment` is omitted, it defaults to `test` only for loopback,
 `allowProduction: true`; this opt-in is recorded in the report. Security rules
 remain active after opt-in.
 
+## The agent value
+
+`agent` accepts either the options block or the agent itself: any value
+implementing `StepExecutor` (16-executors.md), such as the package's
+`createAgent(...)`. An executor is recognized structurally (`name` plus
+`runStep`), so the two shapes cannot collide. With an agent value the options
+keep their defaults and the model still resolves from `E2E_MODEL`, so the
+located verbs keep working beside a custom agent. There is no `executor` key;
+the config digest records an agent value by its `name` and `version` only.
+
 ## Model configuration
 
 There is no implicit or mutable default model. The first agent model call of a
-run requires one of (a run whose steps all go to a custom `agent.executor` may
+run requires one of (a run whose steps all go to a custom agent value may
 configure no model at all):
 
 - `agent.model: 'provider/model-id'`;

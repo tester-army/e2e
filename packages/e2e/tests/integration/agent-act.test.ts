@@ -105,7 +105,7 @@ describe('agent.act with a hand-rolled step executor', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { executor: scriptedExecutor() },
+          agent: scriptedExecutor(),
         },
       },
     );
@@ -174,7 +174,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/blocked.e2e.ts': BLOCKED_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'executor reports a blocked step');
@@ -215,7 +215,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/budget.e2e.ts': BUDGET_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'executor overruns the action budget');
@@ -233,7 +233,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/hang.e2e.ts': HANG_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'executor hangs past the step timeout');
@@ -258,7 +258,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/overspend.e2e.ts': OVERSPEND_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'executor overspends the model-call budget');
@@ -286,7 +286,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/inherit.e2e.ts': INHERIT_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'failed verdict inherits the runtime code');
@@ -316,7 +316,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/assert.e2e.ts': ASSERT_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'custom executor judges assertions');
@@ -362,7 +362,7 @@ describe('agent.act verdict mapping', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: { executor },
+          agent: executor,
           credentials: { admin: { username: 'admin', password: 'admin-pass' } },
         },
       },
@@ -385,7 +385,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/blocked.e2e.ts': BLOCKED_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
     );
     try {
       const result = resultByTitle(outcome, 'executor reports a blocked step');

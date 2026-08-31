@@ -114,8 +114,10 @@ and `agent.login` are not part of this release and reject with
 The executor behind `agent.act` is a socket, not a fixture of the runner. Three
 levels of customization, smallest first:
 
-**Add tools.** Project capabilities plug into the built-in agent as AI SDK
-tools with declared semantics:
+**Extend the built-in agent.** The `agent` config value accepts the agent
+itself. `createAgent` from `e2e/agent` builds the built-in one, extended with
+your tools (AI SDK tools with declared semantics), `system` prompt, or `model`
+(any AI SDK language model):
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
@@ -134,17 +136,17 @@ const seedCart = defineTool(
 
 export default defineConfig({
   app: { url: process.env.APP_URL! },
-  agent: { executor: createAgent({ tools: { seedCart } }) },
+  agent: createAgent({ tools: { seedCart } }),
 });
 ```
 
-**Tune the brain.** `createAgent` also takes `model` (any AI SDK language
-model, overriding `agent.model`), `system` (your prompt appended to the base
-execution rules), and `maxTurns`.
+`createAgent()` with no arguments is exactly what runs when `agent` is an
+options block or absent; unset options fall back to config (`agent.model`,
+`E2E_MODEL`) and the base execution rules.
 
-**Replace it entirely.** `agent.executor` accepts anything implementing the
+**Replace it entirely.** `agent` also accepts anything implementing the
 `StepExecutor` interface — one step in, one verdict out — with no AI SDK
-involved at all:
+involved at all (`agent: myBrain`):
 
 ```ts
 import type { StepExecutor } from 'e2e';
