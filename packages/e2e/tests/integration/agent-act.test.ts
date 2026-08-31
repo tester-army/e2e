@@ -276,6 +276,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'observe',
       'press',
       'scroll',
+      'select',
       'tap',
       'type',
     ]);
@@ -283,12 +284,22 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
     expect(loopCalls[1]!.lastToolResult).toContain('Updated screen');
   });
 
-  it('accounts executor model calls in the step metrics', () => {
+  it('accounts executor model calls in the step metrics and provenance', () => {
     const attempt = resultByTitle(outcome, 'default agent increments the counter').attempts.at(
       -1,
     )!;
     const step = attempt.steps.find((candidate) => candidate.api === 'agent.act');
     expect(step!.metrics!.modelCalls).toBeGreaterThanOrEqual(2);
     expect(step!.metrics!.actionSteps).toBe(1);
+    expect(step!.model).toMatchObject({
+      provider: 'fake-loop',
+      model: 'scripted-loop',
+      tokenAccounting: 'provider',
+      calls: step!.metrics!.modelCalls,
+    });
+    expect(step!.model!.inputTokens).toBeGreaterThan(0);
+    expect(step!.events.filter((event) => event.kind === 'model')).toHaveLength(
+      step!.metrics!.modelCalls,
+    );
   });
 });

@@ -14,7 +14,7 @@ import { timestamp } from '../internal/ids.ts';
 import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { isSecret } from '../locator/screen.ts';
-import type { StepMetrics } from '../run/steps.ts';
+import type { StepMetrics, StepModelInfo } from '../run/steps.ts';
 import type {
   AgentErrorCode,
   AgentOptions,
@@ -26,6 +26,7 @@ import type {
 import { AgentError, CATEGORY_BY_CODE } from './error.ts';
 import {
   BLOCKABLE_CODES,
+  type ExecutorModelCall,
   type ExecutorObservation,
   type ExecutorTarget,
   type StepExecutorContext,
@@ -97,6 +98,12 @@ class ActDispatch {
   private explanation: string | undefined;
   /** First budget/timeout/cancel failure; runtime truth outranks the verdict. */
   private hardStop: AgentError | undefined;
+  private inputTokens = 0;
+  private outputTokens = 0;
+  private peakTokensPerCall = 0;
+  private providerReportedUsage = false;
+  private modelProvider: string | undefined;
+  private modelId: string | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -113,6 +120,7 @@ class ActDispatch {
       runtime.config.agent.maxModelCalls,
       'maxModelCalls',
     );
+    this.metrics.contextBytes = new TextEncoder().encode(runtime.agentContext ?? '').byteLength;
   }
 
   /** Builds the executor-facing context. */
@@ -143,10 +151,7 @@ class ActDispatch {
         maxModelCalls: this.maxModelCalls,
         actionsUsed: () => this.metrics.actionSteps,
         remainingMs: () => this.deadline.remaining(),
-        recordModelCall: (usage) => {
-          this.metrics.modelCalls += 1;
-          void usage;
-        },
+        recordModelCall: (usage) => this.recordModelCall(usage),
       },
       observe: () => this.observe(),
       actions: {
@@ -168,6 +173,18 @@ class ActDispatch {
           }
           return this.commit('press', target, (ref) =>
             this.session.screen.perform(ref as NodeRef, { kind: 'press', key }, this.operation()),
+          );
+        },
+        select: (target, value) => {
+          if (typeof value !== 'string' || value === '') {
+            throw new TestError('INVALID_ARGUMENT', 'select value must be a non-empty option label');
+          }
+          return this.commit('selectOption', target, (ref) =>
+            this.session.screen.perform(
+              ref as NodeRef,
+              { kind: 'selectOption', value },
+              this.operation(),
+            ),
           );
         },
         scroll: (direction, target) => this.scroll(direction, target),
@@ -206,13 +223,59 @@ class ActDispatch {
     return error;
   }
 
-  /** Attaches metrics and the verdict explanation to the enclosing step. */
+  /** Counts and accounts one executor-made model call. */
+  private recordModelCall(usage: ExecutorModelCall | undefined): void {
+    this.metrics.modelCalls += 1;
+    const inputTokens = usage?.inputTokens ?? 0;
+    const outputTokens = usage?.outputTokens ?? 0;
+    if (usage?.inputTokens !== undefined || usage?.outputTokens !== undefined) {
+      this.providerReportedUsage = true;
+      this.inputTokens += inputTokens;
+      this.outputTokens += outputTokens;
+      this.peakTokensPerCall = Math.max(this.peakTokensPerCall, inputTokens + outputTokens);
+    }
+    if (usage?.provider !== undefined) this.modelProvider = usage.provider;
+    if (usage?.modelId !== undefined) this.modelId = usage.modelId;
+    this.runtime.steps.recordEvent({
+      kind: 'model',
+      startedAt: timestamp(),
+      durationMs: Math.max(0, Math.round(usage?.durationMs ?? 0)),
+      status: 'passed',
+      name: 'executor',
+      count: inputTokens + outputTokens,
+    });
+  }
+
+  /** Attaches metrics, model provenance, and the verdict explanation to the step. */
   finish(): void {
     this.runtime.steps.attachAgentDetails({
       metrics: { ...this.metrics },
+      ...(this.metrics.modelCalls > 0 ? { model: this.modelInfo() } : {}),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.latest !== undefined ? { observationRevision: this.latest.revision } : {}),
     });
+  }
+
+  /**
+   * Model provenance for the report. The executor is the authority on which
+   * model answered; an executor that reports nothing is still identified, so a
+   * step's model calls are never attributed to the wrong tier.
+   */
+  private modelInfo(): StepModelInfo {
+    const executor = this.runtime.executor;
+    const executorVersion = executor.version ?? '0';
+    return {
+      provider: this.modelProvider ?? executor.name,
+      model: this.modelId ?? executor.name,
+      endpoint: 'provider-default',
+      adapterVersion: `executor/${executor.name}@${executorVersion}`,
+      policyVersion: `${executor.name}/${executorVersion}`,
+      calls: this.metrics.modelCalls,
+      tokenAccounting: this.providerReportedUsage ? 'provider' : 'adapter-upper-bound',
+      peakTokensPerCall: this.peakTokensPerCall,
+      inputTokens: this.inputTokens,
+      outputTokens: this.outputTokens,
+    };
   }
 
   private get session() {

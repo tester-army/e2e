@@ -12,6 +12,7 @@ export {
   isStepExecutor,
   type ExecutorActions,
   type ExecutorBudgets,
+  type ExecutorModelCall,
   type ExecutorObservation,
   type ExecutorStep,
   type ExecutorTarget,

@@ -925,8 +925,18 @@ export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;
+  select(target: ExecutorTarget, value: string): Promise<void>;
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
   navigate(url: string): Promise<void>;
+}
+
+/** Usage detail of one executor-made model call, all fields optional. */
+export interface ExecutorModelCall {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly durationMs?: number;
+  readonly provider?: string;
+  readonly modelId?: string;
 }
 
 /** Step budgets, read and reported by the executor, enforced by the harness. */
@@ -935,7 +945,8 @@ export interface ExecutorBudgets {
   readonly maxModelCalls: number;
   actionsUsed(): number;
   remainingMs(): number;
-  recordModelCall(usage?: { inputTokens?: number; outputTokens?: number }): void;
+  /** Records one executor-made model call; usage feeds metrics and the report. */
+  recordModelCall(usage?: ExecutorModelCall): void;
 }
 
 export interface StepExecutorContext {

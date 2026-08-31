@@ -10,7 +10,14 @@
  * own exhaustion.
  */
 
-import { stepCountIs, tool, ToolLoopAgent, type LanguageModel, type ToolSet } from 'ai';
+import {
+  stepCountIs,
+  tool,
+  ToolLoopAgent,
+  type LanguageModel,
+  type ModelMessage,
+  type ToolSet,
+} from 'ai';
 import { z } from 'zod';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import { AgentError, isAgentError } from './error.ts';
@@ -82,16 +89,54 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
           () => state.verdict !== undefined || state.hardStop !== undefined,
           stepCountIs(maxTurns),
         ],
+        prepareStep: ({ messages, stepNumber }) => {
+          let prepared = compactSnapshotHistory(messages);
+          const turnsLeft = maxTurns - stepNumber;
+          // The two final turns take the verdict and nothing else: a model
+          // that wanders never concludes on its own, and STEP_NO_CONCLUSION
+          // after a full budget is strictly worse than a forced verdict. Two
+          // turns, not one, so a rejected verdict (blocked without a code)
+          // can be repaired.
+          if (turnsLeft <= 2) {
+            return {
+              ...(prepared === messages ? {} : { messages: prepared }),
+              activeTools: ['complete_step'],
+              toolChoice: { type: 'tool', toolName: 'complete_step' },
+            };
+          }
+          if (turnsLeft === WIND_DOWN_TURNS) {
+            prepared = [
+              ...prepared,
+              {
+                role: 'user',
+                content:
+                  `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +
+                  'Finish the remaining work now, or call complete_step with your ' +
+                  'best verdict: failed if the application misbehaved, blocked ' +
+                  '(with errorCode) if something outside the application stopped you.',
+              },
+            ];
+          }
+          return prepared === messages ? {} : { messages: prepared };
+        },
       });
+      const identity = model as { provider?: string; modelId?: string };
       const observation = await context.observe();
+      let turnStartedMs = Date.now();
       try {
         await loop.generate({
           prompt: buildPrompt(context, observation),
           abortSignal: context.signal,
+          onStepStart: () => {
+            turnStartedMs = Date.now();
+          },
           onStepEnd: ({ usage }) => {
             context.budgets.recordModelCall({
               ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
               ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+              durationMs: Date.now() - turnStartedMs,
+              ...(typeof identity.provider === 'string' ? { provider: identity.provider } : {}),
+              ...(typeof identity.modelId === 'string' ? { modelId: identity.modelId } : {}),
             });
           },
         });
@@ -192,6 +237,15 @@ function buildDefaultTools(context: StepExecutorContext, state: LoopState): Tool
           return acted(`Pressed ${key} on #${id}.`);
         }),
     }),
+    select: tool({
+      description: 'Pick one option from a select-like control by its visible label.',
+      inputSchema: z.object({ target, value: z.string().min(1) }),
+      execute: ({ target: id, value }) =>
+        guard(async () => {
+          await context.actions.select({ id }, value);
+          return acted(`Selected "${value}" in #${id}.`);
+        }),
+    }),
     scroll: tool({
       description: 'Scroll the viewport, or one scrollable node when target is given.',
       inputSchema: z.object({
@@ -261,6 +315,75 @@ function buildDefaultTools(context: StepExecutorContext, state: LoopState): Tool
       },
     }),
   };
+}
+
+/** How many trailing screen snapshots stay verbatim in the transcript. */
+const SNAPSHOT_PRESERVE_COUNT = 2;
+
+/** Turns remaining when the loop warns the model to wrap up. */
+const WIND_DOWN_TURNS = 5;
+
+const SNAPSHOT_PATTERN = /(?:Updated|Current) screen \(revision /;
+
+/**
+ * Compacts stale screen snapshots out of the tool-result history.
+ *
+ * Only the newest observations describe the page the model is acting on;
+ * every older tree is dead weight that grows the prompt linearly with turn
+ * count. Stale snapshot results keep their first line (what the action did)
+ * and lose the tree. Returns the input array unchanged when there is nothing
+ * to compact, so the caller can skip the messages override entirely.
+ */
+function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
+  const snapshotSites: { message: number; part: number }[] = [];
+  for (const [messageIndex, message] of messages.entries()) {
+    if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
+    for (const [partIndex, part] of message.content.entries()) {
+      if (snapshotText(part) !== undefined) {
+        snapshotSites.push({ message: messageIndex, part: partIndex });
+      }
+    }
+  }
+  const stale = snapshotSites.slice(0, Math.max(0, snapshotSites.length - SNAPSHOT_PRESERVE_COUNT));
+  if (stale.length === 0) return messages;
+  const staleByMessage = new Map<number, Set<number>>();
+  for (const site of stale) {
+    const parts = staleByMessage.get(site.message) ?? new Set<number>();
+    parts.add(site.part);
+    staleByMessage.set(site.message, parts);
+  }
+  return messages.map((message, messageIndex) => {
+    const parts = staleByMessage.get(messageIndex);
+    if (parts === undefined || message.role !== 'tool' || !Array.isArray(message.content)) {
+      return message;
+    }
+    return {
+      ...message,
+      content: message.content.map((part, partIndex) => {
+        if (!parts.has(partIndex)) return part;
+        const text = snapshotText(part);
+        if (text === undefined) return part;
+        const firstLine = text.split('\n', 1)[0] ?? '';
+        return {
+          ...part,
+          output: {
+            type: 'text' as const,
+            value: `${firstLine}\n[stale screen snapshot elided; act on the newest observation]`,
+          },
+        };
+      }),
+    } as ModelMessage;
+  });
+}
+
+/** The text of a snapshot-bearing tool-result part, or undefined. */
+function snapshotText(part: unknown): string | undefined {
+  if (typeof part !== 'object' || part === null) return undefined;
+  const candidate = part as { type?: string; output?: { type?: string; value?: unknown } };
+  if (candidate.type !== 'tool-result') return undefined;
+  const output = candidate.output;
+  if (output?.type !== 'text' || typeof output.value !== 'string') return undefined;
+  return SNAPSHOT_PATTERN.test(output.value) ? output.value : undefined;
 }
 
 function buildInstructions(context: StepExecutorContext, system: string | undefined): string {

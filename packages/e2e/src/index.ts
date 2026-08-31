@@ -16,6 +16,7 @@ export type * from './types.ts';
 export type {
   ExecutorActions,
   ExecutorBudgets,
+  ExecutorModelCall,
   ExecutorObservation,
   ExecutorStep,
   ExecutorTarget,
