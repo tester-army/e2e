@@ -1,0 +1,67 @@
+/**
+ * Dogfood config: the default ToolLoopAgent executor extended with project
+ * tools (seed/reset over the app's test API) via defineTool. Run manually:
+ *
+ *   AI_GATEWAY_API_KEY=... node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts
+ */
+
+import { defineConfig } from 'e2e';
+import { createAgent, defineTool } from 'e2e/agent';
+import { tool } from 'ai';
+import { z } from 'zod';
+
+const APP_URL = 'http://127.0.0.1:4310';
+
+const seedExpenses = defineTool(
+  tool({
+    description: 'Seed N expenses through the test API. Reload the page afterwards to see them.',
+    inputSchema: z.object({ count: z.number().int().min(1).max(10) }),
+    execute: async ({ count }) => {
+      const response = await fetch(`${APP_URL}/api/seed`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ count }),
+      });
+      return `Seeded: ${await response.text()}`;
+    },
+  }),
+  { replay: 'none', mutates: true, secrets: false },
+);
+
+const resetExpenses = defineTool(
+  tool({
+    description: 'Delete every expense through the test API. Reload the page afterwards.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      await fetch(`${APP_URL}/api/reset`, { method: 'POST' });
+      return 'All expenses deleted.';
+    },
+  }),
+  { replay: 'none', mutates: true, secrets: false },
+);
+
+export default defineConfig({
+  specVersion: '0.1',
+  projectId: 'dev.e2e.testbed-dogfood',
+  app: {
+    url: APP_URL,
+    command: {
+      executable: 'node',
+      args: ['dogfood/server.mjs'],
+      env: { PORT: '4310' },
+    },
+  },
+  tests: 'tests-dogfood/**/*.e2e.ts',
+  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  timeout: 300_000,
+  actionTimeout: 90_000,
+  agent: {
+    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+    executor: createAgent({
+      tools: { seed_expenses: seedExpenses, reset_expenses: resetExpenses },
+      system:
+        'The app under test is a small expense-claims tool. Saves are asynchronous: ' +
+        'after submitting, a "Saving…" indicator shows until the save lands.',
+    }),
+  },
+});

@@ -107,6 +107,9 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
+      ai:
+        specifier: 7.0.37
+        version: 7.0.37(zod@4.4.3)
       typescript:
         specifier: 7.0.2
         version: 7.0.2
