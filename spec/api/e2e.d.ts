@@ -945,12 +945,27 @@ export interface ExecutorBudgets {
   readonly maxModelCalls: number;
   actionsUsed(): number;
   remainingMs(): number;
-  /** Records one executor-made model call; usage feeds metrics and the report. */
+  /**
+   * Records one executor-made model call; usage feeds metrics and the report.
+   * Throws STEP_BUDGET_EXHAUSTED past `maxModelCalls`: enforced, not advisory.
+   */
   recordModelCall(usage?: ExecutorModelCall): void;
+  /**
+   * Records one executor tool call that did not go through `actions`. A
+   * mutating tool consumes an action-budget slot and may throw
+   * STEP_BUDGET_EXHAUSTED; every call is recorded as a step event.
+   */
+  recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void;
 }
 
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
+  /**
+   * Aborts when the test is cancelled, when the step deadline expires, or on
+   * any other hard stop. The harness settles the step at the hard stop either
+   * way; a late verdict from an executor that ignored the signal is never
+   * trusted over it.
+   */
   readonly signal: AbortSignal;
   /** The config-resolved AI SDK model, when one is configured. */
   readonly model: ModelInstance | undefined;

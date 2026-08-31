@@ -68,7 +68,7 @@ export interface CreateAgentOptions {
 
 /** Builds the default AI SDK step executor. */
 export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
-  const userTools = normalizeUserTools(options.tools);
+  const userTools = validateUserTools(options.tools);
   return {
     name: 'e2e-default-agent',
     version: '1',
@@ -83,10 +83,15 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       }
       const state: LoopState = { verdict: undefined, hardStop: undefined };
       const tools: ToolSet = {
-        ...userTools,
+        ...wrapUserTools(context, state, userTools),
         ...buildDefaultTools(context, state),
       };
-      const maxTurns = options.maxTurns ?? context.budgets.maxModelCalls;
+      // Capped, never raised: the harness budget is the ceiling for any turns
+      // setting, so the loop cannot spend past what the step was given.
+      const maxTurns = Math.min(
+        options.maxTurns ?? context.budgets.maxModelCalls,
+        context.budgets.maxModelCalls,
+      );
       const loop = new ToolLoopAgent({
         model,
         instructions: buildInstructions(context, options.system),
@@ -288,7 +293,11 @@ function buildDefaultTools(context: StepExecutorContext, state: LoopState): Tool
         state.verdict = {
           status: input.status,
           summary: input.summary,
-          ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+          // A passed verdict never carries a code; a redundant one from the
+          // model is dropped rather than failing the step.
+          ...(input.errorCode === undefined || input.status === 'passed'
+            ? {}
+            : { errorCode: input.errorCode }),
         };
         return 'Step concluded.';
       },
@@ -406,12 +415,11 @@ function buildPrompt(
   return parts.join('\n\n');
 }
 
-/** Unwraps `defineTool` values into the AI SDK toolset, guarding reserved names. */
-function normalizeUserTools(
+/** Validates `defineTool` values and reserved names once, at construction. */
+function validateUserTools(
   tools: Readonly<Record<string, DefinedTool>> | undefined,
-): ToolSet {
+): Readonly<Record<string, DefinedTool>> {
   if (tools === undefined) return {};
-  const normalized: Record<string, ToolSet[string]> = {};
   for (const [name, defined] of Object.entries(tools)) {
     if (!isDefinedTool(defined)) {
       throw new AgentError(
@@ -422,7 +430,52 @@ function normalizeUserTools(
     if (name === 'complete_step') {
       throw new AgentError('POLICY_DENIED', 'the complete_step tool name is reserved');
     }
-    normalized[name] = defined.tool;
   }
-  return normalized;
+  return tools;
+}
+
+/**
+ * Wraps project tools so they run the same accounting pipeline as the
+ * grammar: every call is recorded, a mutating tool consumes an action-budget
+ * slot, and a budget hard stop ends the loop instead of leaking as a tool
+ * error the model talks past.
+ */
+function wrapUserTools(
+  context: StepExecutorContext,
+  state: LoopState,
+  tools: Readonly<Record<string, DefinedTool>>,
+): ToolSet {
+  const wrapped: Record<string, ToolSet[string]> = {};
+  for (const [name, defined] of Object.entries(tools)) {
+    const execute = defined.tool.execute?.bind(defined.tool);
+    if (execute === undefined) {
+      wrapped[name] = defined.tool;
+      continue;
+    }
+    wrapped[name] = {
+      ...defined.tool,
+      execute: async (input: never, executionOptions: never) => {
+        if (state.hardStop !== undefined || state.verdict !== undefined) {
+          return 'The step is already concluding; no further actions run.';
+        }
+        const startedMs = Date.now();
+        try {
+          const result = await execute(input, executionOptions);
+          context.budgets.recordToolCall({
+            name,
+            mutates: defined.annotations.mutates,
+            durationMs: Date.now() - startedMs,
+          });
+          return result;
+        } catch (cause) {
+          if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
+            state.hardStop = cause;
+            return `HARD STOP (${cause.code}): ${cause.message}`;
+          }
+          throw cause;
+        }
+      },
+    } as ToolSet[string];
+  }
+  return wrapped;
 }

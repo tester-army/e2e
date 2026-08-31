@@ -11,6 +11,8 @@ import { ConfigurationError, TestError } from './errors.ts';
 export interface JsonValueRules {
   /** Raised on a Secret value; the default denies with POLICY_DENIED. */
   readonly onSecret?: (label: string) => never;
+  /** Maximum object/array nesting depth; unlimited when omitted. */
+  readonly maxDepth?: number;
 }
 
 /** Validates that a value is JSON-safe, throwing a labeled TestError otherwise. */
@@ -22,7 +24,13 @@ export function validateJsonValue(value: unknown, label: string, rules: JsonValu
       throw new ConfigurationError('POLICY_DENIED', `${at} must not contain a Secret`);
     });
   const seen = new Set<unknown>();
-  const visit = (item: unknown): void => {
+  const visit = (item: unknown, depth = 0): void => {
+    if (rules.maxDepth !== undefined && depth > rules.maxDepth) {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        `${label} exceeds ${rules.maxDepth} levels of nesting`,
+      );
+    }
     if (item === null) return;
     switch (typeof item) {
       case 'string':
@@ -42,7 +50,7 @@ export function validateJsonValue(value: unknown, label: string, rules: JsonValu
         }
         seen.add(item);
         if (Array.isArray(item)) {
-          for (const entry of item) visit(entry);
+          for (const entry of item) visit(entry, depth + 1);
           return;
         }
         if (
@@ -51,7 +59,7 @@ export function validateJsonValue(value: unknown, label: string, rules: JsonValu
         ) {
           throw new TestError('INVALID_ARGUMENT', `${label} must be JSON-safe`);
         }
-        for (const entry of Object.values(item)) visit(entry);
+        for (const entry of Object.values(item)) visit(entry, depth + 1);
         return;
       }
       default:

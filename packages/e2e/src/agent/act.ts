@@ -46,6 +46,13 @@ const API = 'agent.act';
 
 const MAX_SUMMARY_CHARS = 2_000;
 
+/** Spec 02: instructions are 1 through 8 KiB UTF-8 after NFC. */
+const MAX_INSTRUCTION_BYTES = 8_192;
+
+/** Spec 02: canonical non-secret parameters are capped at 64 KiB, 32 levels. */
+const MAX_PARAMS_BYTES = 65_536;
+const MAX_PARAMS_DEPTH = 32;
+
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
 export async function runActStep(
   runtime: AgentContext,
@@ -53,17 +60,15 @@ export async function runActStep(
   params: AgentParams | undefined,
   options: AgentOptions | undefined,
 ): Promise<AgentResult> {
-  if (typeof instruction !== 'string' || instruction.trim() === '') {
-    throw new TestError('INVALID_ARGUMENT', 'agent.act requires a non-empty instruction');
-  }
+  const normalized = validateInstruction(instruction);
   rejectUnsupportedOptions(options);
   const jsonParams = validateParams(params);
-  return runtime.steps.run('agent', API, instruction, async () => {
-    const dispatch = new ActDispatch(runtime, instruction, jsonParams, options);
+  return runtime.steps.run('agent', API, normalized, async () => {
+    const dispatch = new ActDispatch(runtime, normalized, jsonParams, options);
     try {
       let verdict: StepVerdict;
       try {
-        verdict = await runtime.executor.runStep(dispatch.context());
+        verdict = await dispatch.runExecutor();
       } catch (cause) {
         throw dispatch.settleThrown(toAgentError(cause));
       }
@@ -72,6 +77,22 @@ export async function runActStep(
       dispatch.finish();
     }
   });
+}
+
+/** Normalizes and bounds the instruction per spec 02. */
+function validateInstruction(instruction: string): string {
+  if (typeof instruction !== 'string' || instruction.trim() === '') {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act requires a non-empty instruction');
+  }
+  const normalized = instruction.normalize('NFC');
+  const bytes = new TextEncoder().encode(normalized).byteLength;
+  if (bytes > MAX_INSTRUCTION_BYTES) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `agent.act instruction is ${bytes} bytes; the maximum is ${MAX_INSTRUCTION_BYTES}`,
+    );
+  }
+  return normalized;
 }
 
 /** Options the socket does not support yet fail loudly, like `schema` does. */
@@ -108,6 +129,8 @@ class ActDispatch {
   private explanation: string | undefined;
   /** First budget/timeout/cancel failure; runtime truth outranks the verdict. */
   private hardStop: AgentError | undefined;
+  /** Aborts the executor on any hard stop, so a step never outlives its clock. */
+  private readonly stepAbort = new AbortController();
   private sdkModel: ModelInstance | undefined;
   private sdkModelResolved = false;
   private inputTokens = 0;
@@ -154,7 +177,7 @@ class ActDispatch {
         instruction: this.instruction,
         params: this.params,
       },
-      signal: this.runtime.signal,
+      signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
       // Resolved on first read, so executors that bring their own model (or
       // none) never pay for — or fail on — config model resolution.
       get model() {
@@ -168,6 +191,7 @@ class ActDispatch {
         actionsUsed: () => this.metrics.actionSteps,
         remainingMs: () => this.deadline.remaining(),
         recordModelCall: (usage) => this.recordModelCall(usage),
+        recordToolCall: (call) => this.recordToolCall(call),
       },
       observe: () => this.observe(),
       actions: {
@@ -209,6 +233,35 @@ class ActDispatch {
     };
   }
 
+  /**
+   * Races the executor against the step deadline. An executor that ignores
+   * every context call still cannot outlive the clock: the timer records the
+   * timeout as the hard stop, aborts the step signal, and settles the step —
+   * the executor's promise is abandoned, never awaited past the deadline.
+   */
+  async runExecutor(): Promise<StepVerdict> {
+    const timer = setTimeout(() => {
+      this.fatalize(
+        new AgentError('STEP_TIMEOUT', `agent.act exceeded its ${this.timeoutMs} ms timeout`),
+      );
+    }, Math.max(1, this.deadline.remaining()));
+    try {
+      return await Promise.race([
+        this.runtime.executor.runStep(this.context()),
+        new Promise<never>((_, reject) => {
+          const signal = this.stepAbort.signal;
+          if (signal.aborted) {
+            reject(signal.reason as Error);
+            return;
+          }
+          signal.addEventListener('abort', () => reject(signal.reason as Error), { once: true });
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** Maps the executor's verdict onto the runner outcome. Fail-closed on hard stops. */
   settle(verdict: StepVerdict): AgentResult {
     let settled = verdict;
@@ -222,6 +275,10 @@ class ActDispatch {
           summary: this.hardStop.message,
           errorCode: this.hardStop.code,
         };
+      } else if (settled.errorCode === undefined) {
+        // The executor's analysis stands, but runtime exhaustion is never
+        // hidden from the report: a code-less failure inherits the hard stop.
+        settled = { ...settled, errorCode: this.hardStop.code };
       }
     }
     if (
@@ -283,7 +340,25 @@ class ActDispatch {
     );
   }
 
-  /** Counts and accounts one executor-made model call. */
+  /**
+   * Records the first hard stop. Timeout and cancellation also abort the step
+   * signal — there is nothing left for the executor to say. Budget exhaustion
+   * does not: the executor may still catch it and conclude with its own
+   * analysis (which `settle` stamps with the runtime code), bounded by the
+   * deadline either way.
+   */
+  private fatalize(error: AgentError): AgentError {
+    this.hardStop ??= error;
+    if (error.code !== 'STEP_BUDGET_EXHAUSTED' && !this.stepAbort.signal.aborted) {
+      this.stepAbort.abort(this.hardStop);
+    }
+    return error;
+  }
+
+  /**
+   * Counts and accounts one executor-made model call. The budget is enforced:
+   * the call past the limit records, then hard-stops the step.
+   */
   private recordModelCall(usage: ExecutorModelCall | undefined): void {
     this.metrics.modelCalls += 1;
     const inputTokens = usage?.inputTokens ?? 0;
@@ -305,6 +380,40 @@ class ActDispatch {
       count: inputTokens + outputTokens,
     });
     this.runtime.debug?.record('agent.model', Math.max(0, Math.round(usage?.durationMs ?? 0)));
+    if (this.metrics.modelCalls > this.maxModelCalls) {
+      throw this.fatalize(
+        new AgentError(
+          'STEP_BUDGET_EXHAUSTED',
+          `agent.act exhausted its model-call budget of ${this.maxModelCalls}`,
+        ),
+      );
+    }
+  }
+
+  /**
+   * Records one executor tool call that bypassed the grammar. Mutating tools
+   * consume an action-budget slot, so a project tool cannot spend past the
+   * ceiling the grammar enforces.
+   */
+  private recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void {
+    this.checkpoint();
+    this.runtime.steps.recordEvent({
+      kind: 'driver',
+      startedAt: timestamp(),
+      durationMs: Math.max(0, Math.round(call.durationMs ?? 0)),
+      status: 'passed',
+      name: `tool:${call.name}`,
+    });
+    if (!call.mutates) return;
+    this.metrics.actionSteps += 1;
+    if (this.metrics.actionSteps > this.maxActions) {
+      throw this.fatalize(
+        new AgentError(
+          'STEP_BUDGET_EXHAUSTED',
+          `agent.act exhausted its action budget of ${this.maxActions}`,
+        ),
+      );
+    }
   }
 
   /** Attaches metrics, model provenance, and the verdict explanation to the step. */
@@ -368,7 +477,7 @@ class ActDispatch {
         ...(cause === undefined ? {} : { cause }),
       });
     } catch (error) {
-      if (isAgentError(error)) this.hardStop ??= error;
+      if (isAgentError(error)) this.fatalize(error);
       throw error;
     }
   }
@@ -431,12 +540,12 @@ class ActDispatch {
   private async runAction(name: string, body: () => Promise<void>): Promise<void> {
     this.checkpoint();
     if (this.metrics.actionSteps >= this.maxActions) {
-      const exhausted = new AgentError(
-        'STEP_BUDGET_EXHAUSTED',
-        `agent.act exhausted its action budget of ${this.maxActions}`,
+      throw this.fatalize(
+        new AgentError(
+          'STEP_BUDGET_EXHAUSTED',
+          `agent.act exhausted its action budget of ${this.maxActions}`,
+        ),
       );
-      this.hardStop ??= exhausted;
-      throw exhausted;
     }
     // The budget slot is consumed either way: a failed dispatch was an attempt.
     this.metrics.actionSteps += 1;
@@ -503,7 +612,12 @@ class ActDispatch {
   }
 }
 
-/** Rejects non-JSON parameters. Secrets in `act` params land with `login`. */
+/**
+ * Rejects non-JSON parameters and returns an inert snapshot. The JSON
+ * round-trip is deliberate: it bounds the canonical size (spec 02) and
+ * freezes what the executor sees, so a getter or proxy cannot change values
+ * — or run code — during later prompt serialization.
+ */
 function validateParams(
   params: AgentParams | undefined,
 ): Readonly<Record<string, JsonValue>> | undefined {
@@ -512,6 +626,7 @@ function validateParams(
     throw new TestError('INVALID_ARGUMENT', 'agent.act params must be a plain object');
   }
   validateJsonValue(params, 'agent.act params', {
+    maxDepth: MAX_PARAMS_DEPTH,
     onSecret: (label): never => {
       throw new ConfigurationError(
         'UNSUPPORTED_CAPABILITY',
@@ -519,7 +634,15 @@ function validateParams(
       );
     },
   });
-  return params as Readonly<Record<string, JsonValue>>;
+  const canonical = JSON.stringify(params);
+  const bytes = new TextEncoder().encode(canonical).byteLength;
+  if (bytes > MAX_PARAMS_BYTES) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `agent.act params are ${bytes} canonical bytes; the maximum is ${MAX_PARAMS_BYTES}`,
+    );
+  }
+  return JSON.parse(canonical) as Readonly<Record<string, JsonValue>>;
 }
 
 /** Closes the verdict grammar: the executor cannot invent statuses or codes. */
@@ -547,6 +670,9 @@ function validateVerdict(verdict: unknown, executorName: string): StepVerdict {
     }
   }
   const code = errorCode as AgentErrorCode | undefined;
+  if (status === 'passed' && code !== undefined) {
+    return invalid('a passed verdict cannot carry an errorCode');
+  }
   if (status === 'blocked' && (code === undefined || !BLOCKABLE_CODES.has(code))) {
     return invalid(
       `blocked requires a blockable errorCode (one of ${[...BLOCKABLE_CODES].join(', ')})`,

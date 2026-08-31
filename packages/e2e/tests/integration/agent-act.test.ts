@@ -40,6 +40,30 @@ test('executor overruns the action budget', async ({ app, agent }) => {
 });
 `;
 
+const HANG_SUITE = `import { test } from 'e2e';
+
+test('executor hangs past the step timeout', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('do something eventually', undefined, { timeout: 500 });
+});
+`;
+
+const OVERSPEND_SUITE = `import { test } from 'e2e';
+
+test('executor overspends the model-call budget', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('think very hard', undefined, { maxModelCalls: 2 });
+});
+`;
+
+const INHERIT_SUITE = `import { test } from 'e2e';
+
+test('failed verdict inherits the runtime code', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('tap twice', undefined, { maxSteps: 1 });
+});
+`;
+
 const LOOP_SUITE = `import { test, expect } from 'e2e';
 
 test('default agent increments the counter', async ({ app, agent, screen }) => {
@@ -192,6 +216,79 @@ describe('agent.act verdict mapping', () => {
       const result = resultByTitle(outcome, 'executor overruns the action budget');
       expect(result.status).toBe('failed');
       expect(result.attempts.at(-1)!.error?.code).toBe('STEP_BUDGET_EXHAUSTED');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('cuts a hanging executor at the step timeout', async () => {
+    const executor: StepExecutor = {
+      name: 'hanging-executor',
+      runStep: () => new Promise(() => undefined),
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/hang.e2e.ts': HANG_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'executor hangs past the step timeout');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.at(-1)!.error?.code).toBe('STEP_TIMEOUT');
+      // The step settled at its own 500 ms deadline, not the test timeout.
+      expect(result.attempts.at(-1)!.durationMs).toBeLessThan(30_000);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('hard-stops an executor that overspends the model-call budget', async () => {
+    const executor: StepExecutor = {
+      name: 'overspending-executor',
+      async runStep(context: StepExecutorContext) {
+        for (let call = 0; call < 10; call += 1) {
+          context.budgets.recordModelCall({ inputTokens: 1, outputTokens: 1 });
+        }
+        return { status: 'passed' as const, summary: 'thought about it a lot' };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/overspend.e2e.ts': OVERSPEND_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'executor overspends the model-call budget');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.at(-1)!.error?.code).toBe('STEP_BUDGET_EXHAUSTED');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('stamps the runtime code onto a code-less failed verdict after a hard stop', async () => {
+    const executor: StepExecutor = {
+      name: 'code-less-executor',
+      async runStep(context: StepExecutorContext) {
+        const observation = await context.observe();
+        const id = nodeIdFor(observation.text, /button "Increment"/);
+        try {
+          await context.actions.tap({ id });
+          await context.actions.tap({ id });
+        } catch {
+          // Swallow the budget error and report a bare product failure.
+        }
+        return { status: 'failed' as const, summary: 'the counter looked wrong' };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/inherit.e2e.ts': INHERIT_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'failed verdict inherits the runtime code');
+      expect(result.status).toBe('failed');
+      const error = result.attempts.at(-1)!.error;
+      expect(error?.code).toBe('STEP_BUDGET_EXHAUSTED');
+      expect(error?.message).toContain('the counter looked wrong');
     } finally {
       project.cleanup();
     }

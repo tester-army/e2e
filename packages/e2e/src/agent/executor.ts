@@ -9,6 +9,12 @@
  * This module never imports the AI SDK: a hand-rolled executor with no AI SDK
  * is a valid implementation. The AI-SDK golden path lives in
  * `default-agent.ts` behind the same interface.
+ *
+ * Trust model: an executor is trusted project code, in the same trust domain
+ * as the config module that constructed it — it may hold its own model and
+ * credentials. What the harness enforces against it is not secrecy but
+ * accounting: budgets, deadlines, recording, and the verdict grammar hold no
+ * matter whose brain runs the step.
  */
 
 import type { AgentErrorCode, JsonValue, ModelInstance, ScrollDirection } from '../types.ts';
@@ -69,14 +75,29 @@ export interface ExecutorBudgets {
   remainingMs(): number;
   /**
    * Records one executor-made model call. Reported usage feeds the step
-   * metrics, the report's model provenance, and `--debug` accounting; an
-   * executor that reports nothing still counts the call.
+   * metrics, the report's model provenance, and `--debug` accounting.
+   * Throws `STEP_BUDGET_EXHAUSTED` once the call count exceeds
+   * `maxModelCalls`: the budget is enforced, not advisory.
    */
   recordModelCall(usage?: ExecutorModelCall): void;
+  /**
+   * Records one executor tool call that did not go through `actions` — a
+   * project tool from `defineTool`. A mutating tool consumes an action-budget
+   * slot and may throw `STEP_BUDGET_EXHAUSTED`; every call is recorded as a
+   * step event, so extensions run the same accounting pipeline as the
+   * grammar.
+   */
+  recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void;
 }
 
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
+  /**
+   * Aborts when the test is cancelled, when the step deadline expires, or on
+   * any other hard stop. An executor must stop promptly on abort; the harness
+   * settles the step at the hard stop either way, so a late verdict from an
+   * executor that ignored the signal is never trusted over it.
+   */
   readonly signal: AbortSignal;
   /**
    * The config-resolved AI SDK language model, when one is configured. An
