@@ -71,6 +71,16 @@ Fail-closed invariants the runner enforces over every executor:
 3. An executor that returns without concluding fails the step with
    `STEP_NO_CONCLUSION` — never a guessed success.
 
+## Verdicts in the report
+
+`blocked` is first-class end to end: the step record carries `status:
+"blocked"`, and the run derives `status: "blocked"` when it did not pass and
+*every* non-passing result carries a blockable error code — positive evidence,
+never absence of it. One genuine failure keeps the run failed. Exit codes
+continue to follow the error categories (configuration/infrastructure), so
+CI distinguishes "the app is broken" from "the test could not run" at every
+level: step, run, and process.
+
 ## The golden path: `createAgent`
 
 `e2e/agent` ships the built-in executor as a constructor:
@@ -91,9 +101,24 @@ export default defineConfig({
 
 It is an AI SDK tool loop over the action grammar: mutating tools return the
 updated screen, stale screen snapshots are compacted out of the transcript, a
-wind-down notice fires near the turn budget, and the final turns offer only
-the `complete_step` verdict tool — a wandering model produces a real verdict,
-not a burned budget.
+wind-down notice fires near the turn budget and near the step clock, and the
+final turns offer only the `complete_step` verdict tool — a wandering model
+produces a real verdict, not a burned budget. Loop guards watch the tool-call
+transcript: literally re-issuing the same call, or cycling through the same
+short call sequence with identical inputs, first earns a notice and then
+forces the conclusion. A guard never invents a verdict — the model still
+writes its own summary; guards only stop it from spending further.
+
+Under `--debug`, every planned step persists its executor transcript — turns,
+tool calls, truncated results — as a step-attributed `log` artifact, so a
+wandering step is diagnosed by reading, not guessing.
+
+The chassis behind `createAgent` is exported as **`createToolLoopExecutor`**:
+verdict tool, hard stops, loop guards, wind-down, forced conclusion, model
+accounting, and the transcript, with the tool vocabulary and prompt supplied
+by the caller. An executor for a different modality (a device toolkit, an API
+surface) is `createToolLoopExecutor({ name, system, tools, buildPrompt })` —
+`createAgent` itself is exactly that plus the web grammar toolset.
 
 `defineTool(tool, { replay, mutates, secrets })` attaches required semantics
 to an AI SDK tool. Undeclared semantics are not trusted: plain tools are

@@ -6,6 +6,11 @@
  */
 
 export { createAgent, type CreateAgentOptions } from './default-agent.ts';
+export {
+  createToolLoopExecutor,
+  type ToolLoopExecutorOptions,
+  type ToolLoopHelpers,
+} from './tool-loop.ts';
 export { defineTool, type DefinedTool, type ToolAnnotations } from './tool.ts';
 export {
   BLOCKABLE_CODES,

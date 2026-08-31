@@ -9,6 +9,8 @@
  * locate/judgment tier runs on.
  */
 
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DriverError, type NodeRef } from '../driver/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -133,6 +135,7 @@ class ActDispatch {
   private readonly stepAbort = new AbortController();
   private sdkModel: ModelInstance | undefined;
   private sdkModelResolved = false;
+  private transcript: string | undefined;
   private inputTokens = 0;
   private outputTokens = 0;
   private peakTokensPerCall = 0;
@@ -194,6 +197,12 @@ class ActDispatch {
         recordToolCall: (call) => this.recordToolCall(call),
       },
       observe: () => this.observe(),
+      attachTranscript: (text) => {
+        // Debug detail only: transcripts are model prose and can be large.
+        if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {
+          this.transcript = text;
+        }
+      },
       actions: {
         tap: (target) =>
           this.commitTargeted('tap', target, (ref) =>
@@ -294,7 +303,9 @@ class ActDispatch {
       settled.errorCode !== undefined && settled.errorCode in CATEGORY_BY_CODE
         ? settled.errorCode
         : 'ACTION_FAILED';
-    throw new AgentError(code, `agent.act ${settled.status}: ${settled.summary}`);
+    throw new AgentError(code, `agent.act ${settled.status}: ${settled.summary}`, {
+      blocked: settled.status === 'blocked',
+    });
   }
 
   /**
@@ -424,6 +435,20 @@ class ActDispatch {
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.latest !== undefined ? { observationRevision: this.latest.revision } : {}),
     });
+    this.writeTranscript();
+  }
+
+  /** Persists the executor transcript as a step-attributed `log` artifact. */
+  private writeTranscript(): void {
+    if (this.transcript === undefined) return;
+    const stepId = this.runtime.steps.currentStepId ?? 'act';
+    const name = `transcript-${stepId.replace(/[^A-Za-z0-9_-]+/g, '-')}.txt`;
+    try {
+      writeFileSync(join(this.runtime.artifacts.dir, name), this.transcript, 'utf8');
+      this.runtime.steps.attachArtifact(this.runtime.artifacts.register('log', name));
+    } catch {
+      // The transcript is best-effort debug detail; never fail the step for it.
+    }
   }
 
   /**

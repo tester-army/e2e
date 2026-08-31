@@ -31,6 +31,7 @@ export function createAttemptArtifacts(options: {
   const records: ArtifactRecord[] = [];
 
   const sink: ArtifactSink = {
+    dir,
     register: (kind, relativePath) => {
       const id = `${options.attemptId}:artifact:${records.length}`;
       const absolute = path.join(dir, relativePath);
@@ -69,5 +70,6 @@ function mediaTypeFor(relativePath: string): string {
   if (relativePath.endsWith('.png')) return 'image/png';
   if (relativePath.endsWith('.zip')) return 'application/zip';
   if (relativePath.endsWith('.webm')) return 'video/webm';
+  if (relativePath.endsWith('.txt')) return 'text/plain';
   return 'application/octet-stream';
 }

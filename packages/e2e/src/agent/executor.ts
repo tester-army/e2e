@@ -113,6 +113,12 @@ export interface StepExecutorContext {
   /** Captures one fresh, redacted observation. */
   observe(): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
+  /**
+   * Attaches the executor's model transcript to the step. Persisted as a
+   * `log` artifact when the run collects debug detail (`--debug`); a no-op
+   * otherwise. Call once, at conclusion.
+   */
+  attachTranscript(text: string): void;
 }
 
 export type StepVerdictStatus = 'passed' | 'failed' | 'blocked';

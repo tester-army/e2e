@@ -178,6 +178,8 @@ export class AgentError extends Error {
   readonly code: AgentErrorCode;
   readonly explanation: string;
   readonly screenshot?: string;
+  /** True when this failure reports a blocked step, not a product failure. */
+  readonly blocked: boolean;
 }
 
 export interface InstantActionOptions extends VisionOption {
@@ -969,6 +971,11 @@ export interface StepExecutorContext {
   readonly budgets: ExecutorBudgets;
   observe(): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
+  /**
+   * Attaches the executor's model transcript to the step. Persisted as a
+   * `log` artifact when the run collects debug detail; a no-op otherwise.
+   */
+  attachTranscript(text: string): void;
 }
 
 export type StepVerdictStatus = 'passed' | 'failed' | 'blocked';

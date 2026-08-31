@@ -40,17 +40,20 @@ export class AgentError extends E2EError {
   readonly code: AgentErrorCode;
   readonly explanation: string;
   readonly screenshot?: string;
+  /** True when this failure reports a blocked step, not a product failure. */
+  readonly blocked: boolean;
 
   constructor(
     code: AgentErrorCode,
     explanation: string,
-    options: { screenshot?: string; cause?: unknown } = {},
+    options: { screenshot?: string; cause?: unknown; blocked?: boolean } = {},
   ) {
     super(CATEGORY_BY_CODE[code], code, explanation, options);
     this.name = new.target.name;
     Object.defineProperty(this, AGENT_ERROR_MARKER, { value: true });
     this.code = code;
     this.explanation = explanation;
+    this.blocked = options.blocked === true;
     if (options.screenshot !== undefined) this.screenshot = options.screenshot;
   }
 }

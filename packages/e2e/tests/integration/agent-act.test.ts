@@ -185,6 +185,11 @@ describe('agent.act verdict mapping', () => {
       // Blocked-for-configuration is distinguishable from a product failure at
       // the process boundary: exit 2, not the test-failure exit 1.
       expect(outcome.exitCode).toBe(2);
+      // ...and blocked is first-class in the report: the step says blocked,
+      // and a run whose every non-passing result is blockable says blocked.
+      const step = result.attempts.at(-1)!.steps.find((s) => s.api === 'agent.act');
+      expect(step?.status).toBe('blocked');
+      expect(outcome.report.run.status).toBe('blocked');
     } finally {
       project.cleanup();
     }
@@ -309,6 +314,72 @@ describe('agent.act verdict mapping', () => {
       const result = resultByTitle(outcome, 'executor reports a blocked step');
       expect(result.status).toBe('failed');
       expect(result.attempts.at(-1)!.error?.code).toBe('MODEL_OUTPUT_INVALID');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+});
+
+const LOOP_GUARD_SUITE = `import { test } from 'e2e';
+
+test('agent goes in circles', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('keep poking the same thing forever');
+});
+`;
+
+describe('loop guards and transcripts', () => {
+  let app: FixtureApp;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('forces a verdict when the model repeats itself, and persists the transcript', async () => {
+    const model = installFakeLoopModel((call) => {
+      if (call.toolNames.length === 1 && call.toolNames[0] === 'complete_step') {
+        return [
+          {
+            toolName: 'complete_step',
+            input: { status: 'failed', summary: 'stuck repeating the same tap' },
+          },
+        ];
+      }
+      const id = nodeIdFor(call.prompt, /button "Increment"/);
+      return [{ toolName: 'tap', input: { target: id } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/loop-guard.e2e.ts': LOOP_GUARD_SUITE },
+      {
+        appUrl: app.url,
+        config: { tests: 'tests/**/*.e2e.ts', agent: { model } },
+        runOptions: { debug: true },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'agent goes in circles');
+      expect(result.status).toBe('failed');
+      const attempt = result.attempts.at(-1)!;
+      expect(attempt.error?.message).toContain('stuck repeating the same tap');
+      const step = attempt.steps.find((candidate) => candidate.api === 'agent.act')!;
+      // Five identical calls trip the stop; the forced turn concludes. Without
+      // the guard this model would burn the whole 25-turn budget.
+      expect(step.metrics!.modelCalls).toBeLessThanOrEqual(8);
+      // --debug persists the executor transcript as a step-attributed log artifact.
+      const log = attempt.artifacts.find((artifact) => artifact.kind === 'log');
+      expect(log).toBeDefined();
+      expect(log!.producer).toEqual({ kind: 'step', stepId: step.id });
+      expect(log!.path).toBeDefined();
+      const text = readFileSync(
+        path.join(project.dir, '.e2e', 'artifacts', ...log!.path!.split('/')),
+        'utf8',
+      );
+      expect(text).toContain('tool call: tap');
+      expect(text).toContain('--- turn 1 ---');
     } finally {
       project.cleanup();
     }

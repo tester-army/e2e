@@ -10,7 +10,7 @@ export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attem
 
 export interface ArtifactRecord {
   id: string;
-  kind: 'screenshot' | 'trace' | 'video' | 'download';
+  kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
   mediaType: string;
   path?: string;
   size?: number;

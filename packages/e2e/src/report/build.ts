@@ -1,7 +1,9 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
 import os from 'node:os';
+import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
+import type { AgentErrorCode } from '../types.ts';
 import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -211,7 +213,7 @@ export interface Report1Document {
     id: string;
     specVersion: '0.1';
     runner: { name: 'e2e'; version: string };
-    status: BuildReportOptions['status'];
+    status: BuildReportOptions['status'] | 'blocked';
     exitCode: BuildReportOptions['exitCode'];
     startedAt: string;
     finishedAt: string;
@@ -411,6 +413,32 @@ export function computeSummary(results: readonly ResultRecord[]): ReportSummary 
   return { discovered: results.length, selected, executed, passed, failed, flaky, skipped };
 }
 
+/**
+ * A run is `blocked` — not failed — when it did not pass and *every*
+ * non-passing result carries a blockable error code: credentials, the
+ * environment, or the agent's own budget prevented a product verdict, and
+ * nothing contradicts that. One genuine failure keeps the run failed;
+ * derivation requires positive evidence, never absence of it.
+ */
+function deriveRunStatus(
+  status: BuildReportOptions['status'],
+  results: readonly ResultRecord[],
+): BuildReportOptions['status'] | 'blocked' {
+  if (status !== 'failed' && status !== 'error') return status;
+  const notPassed = results.filter(
+    (result) =>
+      result.status === 'failed' ||
+      result.status === 'timed-out' ||
+      result.status === 'interrupted',
+  );
+  if (notPassed.length === 0) return status;
+  const blockable = notPassed.every((result) => {
+    const code = result.attempts.at(-1)?.error?.code;
+    return code !== undefined && BLOCKABLE_CODES.has(code as AgentErrorCode);
+  });
+  return blockable ? 'blocked' : status;
+}
+
 /** Fallback limits used when the run failed before config resolution. */
 const DEFAULT_LIMITS: ReportLimits = {
   maxCacheBytes: 262_144,
@@ -522,7 +550,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         name: 'e2e',
         version: packageVersion(import.meta.url, '../../package.json', '0.0.0'),
       },
-      status: options.status,
+      status: deriveRunStatus(options.status, options.results),
       exitCode: options.exitCode,
       startedAt: options.startedAt,
       finishedAt: timestamp(),

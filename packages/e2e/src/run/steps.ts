@@ -1,5 +1,6 @@
 /** Attempt-scoped step timeline (spec 10-determinism.md, 13-reporting.md). */
 
+import { isAgentError } from '../agent/error.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 
@@ -154,7 +155,7 @@ export interface StepRecord {
   kind: StepKind;
   api: string;
   label: string;
-  status: 'passed' | 'failed' | 'timed-out' | 'cancelled';
+  status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
   startedAt: string;
   durationMs: number;
   observationRevision?: string;
@@ -224,7 +225,14 @@ export class StepRecorder {
     } catch (cause) {
       record.durationMs = Date.now() - startedMs;
       const error = classifyError(cause);
-      record.status = error.code === 'CANCELLED' ? 'cancelled' : 'failed';
+      // A blocked verdict is a distinct outcome, not a product failure: the
+      // step's error names what stood in the way, and the report says so.
+      record.status =
+        error.code === 'CANCELLED'
+          ? 'cancelled'
+          : isAgentError(cause) && cause.blocked
+            ? 'blocked'
+            : 'failed';
       record.error = serializeError(error);
       throw cause;
     } finally {

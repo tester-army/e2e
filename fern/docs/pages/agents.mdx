@@ -92,7 +92,16 @@ only way for it to finish is an explicit verdict:
 
 That last verdict is what makes agentic testing reliable in practice: a missing
 seed record or an expired credential reads as *blocked*, not as a red product
-failure, so trust in red survives.
+failure, so trust in red survives. Blocked is first-class in the report too:
+the step records `status: "blocked"`, and a run whose every non-passing test
+was blocked reports `run.status: "blocked"`.
+
+The loop also polices itself: guards detect a model literally repeating the
+same call (or cycling the same short sequence) and force a verdict instead of
+burning budget; a wind-down fires near the turn budget *and* near the step
+clock, so slow providers conclude rather than time out. Run with `--debug`
+and every planned step saves its full model transcript as a `log` artifact —
+when a step wanders, you read what happened instead of guessing.
 
 <Callout intent="warning" title="Not implemented yet">
 `agent.act` structured output (`options.schema`), `Secret` values in `params`,
@@ -154,6 +163,13 @@ const myBrain: StepExecutor = {
 Everything the executor does bottoms out in `ctx.actions` and `ctx.observe()`,
 so swapping brains changes only the thinking — never safety, budgets, or the
 report. The full contract lives in the spec's executors chapter.
+
+**The middle path.** If your executor is still a tool loop — just with a
+different tool vocabulary (a device toolkit, an internal API) — build it on
+`createToolLoopExecutor` from `e2e/agent`: it ships the verdict tool, hard
+stops, loop guards, wind-down, model accounting, and the `--debug` transcript,
+and takes your `tools`, `system`, and `buildPrompt`. The built-in agent is
+exactly this chassis plus the web grammar toolset.
 
 ## Described targets
 

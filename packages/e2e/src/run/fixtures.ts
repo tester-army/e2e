@@ -41,8 +41,13 @@ import type {
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
+  /** Absolute attempt artifact directory, for runner-written artifacts. */
+  readonly dir: string;
   /** Registers a produced artifact and returns its report artifact ID. */
-  register(kind: 'screenshot' | 'trace' | 'video' | 'download', relativePath: string): string;
+  register(
+    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    relativePath: string,
+  ): string;
 }
 
 export interface AttemptEnvironment {
