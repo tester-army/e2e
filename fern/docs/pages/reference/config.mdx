@@ -54,16 +54,16 @@ APP_URL=http://localhost:3000 npx --no-install e2e run
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024 |
 | `artifacts` | `readonly ('trace' \| 'screenshot' \| 'video')[]` | `['screenshot', 'trace']` | those three kinds |
-| `reporters` | `readonly ('list' \| 'json' \| 'html')[]` | `['list', 'html']` | those three IDs; `json` cannot be combined with `list` |
+| `reporters` | `readonly ('list' \| 'json')[]` | `['list']` | those two IDs; `json` cannot be combined with `list` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object | see [agent](#agent) | - |
 | `limits` | object | see [limits](#limits) | - |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
 
-Every numeric value except `limits.maxEstimatedCostUsd` must be a safe integer.
+Every numeric value must be a safe integer.
 
 `video` is not a supported artifact: requesting it fails before collection with
-`UNSUPPORTED_ARTIFACT`. There is no HTML reporter, so `html` writes nothing.
+`UNSUPPORTED_ARTIFACT`.
 Every run writes `.e2e/report.json` regardless of the selected reporters.
 
 ## app
@@ -273,23 +273,16 @@ export default defineConfig({
 
 Resolved limits are immutable for a run. Per-call options may only lower them.
 
+Every limit is enforced: a key exists here exactly when the runner has an
+enforcement site for it, so a configured limit is never a silent no-op.
+
 | Key | Type | Default | Range | Description |
 | --- | --- | ---: | --- | --- |
-| `maxDiscoveredResults` | `number` | `100000` | 1-1000000 | Discovered test-target pairs |
 | `maxCacheBytes` | `number` | `262144` | 1024-1048576 | Bytes per cache entry |
-| `maxTerminalFieldBytes` | `number` | `8192` | 1024-65536 | Untrusted text per terminal field |
 | `maxAgentContextBytes` | `number` | `16384` | 1024-65536 | Trusted agent context |
 | `maxLedgerBytes` | `number` | `8192` | 1024-65536 | Prior-step ledger |
-| `maxArtifactBytes` | `number` | `104857600` | 1-1073741824 | Bytes per artifact |
-| `maxArtifactTotalBytes` | `number` | `1073741824` | 1-10737418240 | Total artifact bytes |
-| `maxDownloadBytes` | `number` | `104857600` | 1-1073741824 | Bytes per download |
-| `maxDownloads` | `number` | `10` | 0-100 | Downloads per attempt |
-| `maxReportBytes` | `number` | `52428800` | 1-104857600 | Report document bytes |
 | `maxEventsPerStep` | `number` | `1000` | 1-10000 | Events recorded per step |
 | `maxModelTokensPerCall` | `number` | `64000` | 1-1000000 | Tokens per model request |
-| `maxModelCallsPerStep` | `number` | `25` | 1-100 | Ceiling on model calls per step |
-| `maxActionStepsPerStep` | `number` | `25` | 1-100 | Ceiling on committed actions per agent call |
-| `maxEstimatedCostUsd` | `number` | unset | finite, greater than 0 | Estimated run cost ceiling. The only non-integer numeric value. |
 
 ## Environment variables
 

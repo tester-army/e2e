@@ -106,9 +106,10 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.visionModel` | `agent.model` | `agent.model` |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
-`0`, or `false`. Numeric config values except `maxEstimatedCostUsd` MUST be safe
-integers. Cost is a finite positive number. Workers must be 1 or greater;
-retries must be 0 through 10; timeouts must be positive.
+`0`, or `false`. Numeric config values MUST be safe integers. Workers must be
+1 or greater; retries must be 0 through 10; timeouts must be positive. Every
+`limits` key is enforced: a key exists exactly when the runner has an
+enforcement site for it, so a configured limit is never a silent no-op.
 Every run writes the canonical JSON report regardless of renderer selection.
 `agent.maxSteps` and `agent.maxModelCalls` are 1 through 100.
 `agent.maxObservationBytes` is 1 KiB through 16 MiB.

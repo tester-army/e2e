@@ -525,39 +525,3 @@ export interface DriverDefinition extends DriverManifest {
 
 /** Type-checks and returns a driver-1 implementation. */
 export function defineDriver(driver: DriverDefinition): Driver;
-
-export type DriverProfile = 'driver-1' | 'core-0.1' | 'web-0.1';
-
-export interface DriverConformanceResult {
-  readonly requirementId: string;
-  readonly status: 'passed' | 'failed';
-  readonly message?: string;
-  readonly evidence: readonly {
-    readonly path: string;
-    readonly sha256: string;
-  }[];
-}
-
-export interface DriverConformanceReport {
-  readonly schemaVersion: 'conformance-1';
-  readonly profile: DriverProfile;
-  readonly suiteVersion: string;
-  readonly manifestSha256: string;
-  readonly implementation: {
-    readonly name: string;
-    readonly version: string;
-    readonly artifactSha256: string;
-  };
-  readonly startedAt: string;
-  readonly finishedAt: string;
-  readonly status: 'passed' | 'failed';
-  readonly results: readonly DriverConformanceResult[];
-}
-
-/** Runs the reference application and machine-executable driver vectors. */
-export function verifyDriver(options: {
-  driver: Driver;
-  profiles: readonly DriverProfile[];
-  artifactSha256: string;
-  createTarget(referenceAppUrl: string): Target | Promise<Target>;
-}): Promise<readonly DriverConformanceReport[]>;

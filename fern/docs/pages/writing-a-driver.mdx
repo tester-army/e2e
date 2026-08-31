@@ -447,12 +447,13 @@ app you control. `@e2edev/playwright` is laid out for exactly this split, and is
 worth reading as the reference: `locators.ts` is expression projection in 127
 lines, `support.ts` is the error taxonomy, `session.ts` is everything else.
 
-<Callout intent="warning" title="verifyDriver is not implemented yet">
+<Callout intent="info" title="The conformance harness lands later">
 `spec/conformance/v0-requirements.json` defines the requirement ids a driver
-must satisfy - 8 for `driver-1`, 10 for `core-0.1`, 13 for `web-0.1` - but
-`verifyDriver` from `e2e/driver` currently rejects: the machine-executable
-harness and its reference application land in a later milestone. Until then,
-treat the requirement manifest as the checklist and write the vectors yourself.
+must satisfy - 8 for `driver-1`, 10 for `core-0.1`, 13 for `web-0.1`. The
+machine-executable harness and its reference application land in a later
+milestone; there is no `verifyDriver` API until it can actually run vectors.
+Until then, treat the requirement manifest as the checklist and write the
+vectors yourself.
 </Callout>
 
 ## Trust

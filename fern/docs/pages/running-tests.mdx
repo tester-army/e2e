@@ -146,12 +146,11 @@ For a machine-readable stream, print the same document to stdout:
 npx e2e run --reporter json > report.json
 ```
 
-<Callout intent="warning" title="The HTML report is not implemented yet">
-`--reporter html` is accepted and `html` is part of the default `reporters`
-value, but nothing is written to `.e2e/report.html` yet. Until it lands,
-`.e2e/report.json` and `--reporter json` are the two ways to consume results.
-Reporter selection also only takes effect through `--reporter`, not through
-`reporters` in config.
+<Callout intent="info" title="Two reporters">
+`list` renders progress to the terminal; `json` streams the report document
+instead. `.e2e/report.json` is written either way, so it is always the
+canonical machine-readable result. An HTML report may come later; until it
+exists, `html` is not an accepted reporter value.
 </Callout>
 
 A report never contains environment values, authorization headers, cookies,

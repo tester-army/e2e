@@ -7,21 +7,13 @@
  * translation — is provider-independent.
  */
 
-import {
-  APICallError,
-  createGateway,
-  generateText,
-  jsonSchema,
-  NoObjectGeneratedError,
-  Output,
-  RetryError,
-  type ModelMessage,
-} from 'ai';
+import type { ModelMessage } from 'ai';
 import {
   GATEWAY_API_KEY_ENV,
   type ResolvedModel,
   type SdkLanguageModel,
 } from '../../config/agent.ts';
+import { aiSdk, loadAiSdk } from '../ai-sdk.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
 import {
@@ -60,8 +52,11 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       'the agent fixture requires model configuration: set agent.model or E2E_MODEL',
     );
   }
-  const { languageModel, endpoint, flavor } = instantiate(model);
+  const { endpoint, flavor } = validateModel(model);
   const adapterVersion = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
+  // The AI SDK is an optional peer: the language model is constructed on the
+  // first call, after the loader has resolved (or clearly refused) it.
+  let languageModel: SdkLanguageModel | undefined;
 
   return {
     provenance: {
@@ -71,6 +66,8 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       adapterVersion: `${flavor}/${adapterVersion}`,
     },
     async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
+      const { generateText, jsonSchema, Output } = await loadAiSdk();
+      languageModel ??= instantiate(model).languageModel;
       const images = call.images ?? [];
       const inputBound =
         tokenUpperBound(call.system) +
@@ -159,21 +156,23 @@ function userMessage(prompt: string, images: readonly ModelImage[]): ModelMessag
  * Builds the bare AI SDK language model for one resolved model reference, for
  * callers that drive the SDK directly (the default step executor) rather than
  * through the adapter. Fails with MODEL_UNAVAILABLE exactly like the adapter.
+ * Gateway references require the AI SDK to be loaded (loadAiSdk) first; model
+ * instances never touch it.
  */
 export function instantiateLanguageModel(model: ResolvedModel): SdkLanguageModel {
   return instantiate(model).languageModel;
 }
 
-/** Builds the AI SDK language model plus report provenance for one resolved model. */
-function instantiate(model: ResolvedModel): {
-  languageModel: SdkLanguageModel;
-  endpoint: string;
-  flavor: string;
-} {
+/**
+ * Validates one resolved model and derives its report provenance without
+ * touching the AI SDK, so an adapter can be constructed — and refuse clearly —
+ * before the optional peer dependency is ever loaded.
+ */
+function validateModel(model: ResolvedModel): { endpoint: string; flavor: string } {
   if (model.kind === 'instance') {
     // The instance owns its transport; the report records that the endpoint is
     // whatever the provider package defaults to.
-    return { languageModel: model.model, endpoint: 'provider-default', flavor: 'ai-sdk' };
+    return { endpoint: 'provider-default', flavor: 'ai-sdk' };
   }
   if (!PROVIDER_PATTERN.test(model.provider)) {
     throw new AgentError(
@@ -187,13 +186,15 @@ function instantiate(model: ResolvedModel): {
       `no model credential: set ${model.apiKeyEnv} or ${GATEWAY_API_KEY_ENV}`,
     );
   }
-  const endpoint = model.endpoint ?? DEFAULT_GATEWAY_ENDPOINT;
-  const gateway = createGateway({ apiKey: model.apiKey, baseURL: endpoint });
-  return {
-    languageModel: gateway.languageModel(`${model.provider}/${model.id}`),
-    endpoint,
-    flavor: 'ai-gateway',
-  };
+  return { endpoint: model.endpoint ?? DEFAULT_GATEWAY_ENDPOINT, flavor: 'ai-gateway' };
+}
+
+/** Builds the AI SDK language model for one validated resolved model. */
+function instantiate(model: ResolvedModel): { languageModel: SdkLanguageModel } {
+  if (model.kind === 'instance') return { languageModel: model.model };
+  const { endpoint } = validateModel(model);
+  const gateway = aiSdk().createGateway({ apiKey: model.apiKey as string, baseURL: endpoint });
+  return { languageModel: gateway.languageModel(`${model.provider}/${model.id}`) };
 }
 
 interface UsageCarrier {
@@ -256,8 +257,13 @@ function parseCost(raw: unknown): number | undefined {
   return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : undefined;
 }
 
-/** Maps adapter and provider failures onto the closed agent error set. */
+/**
+ * Maps adapter and provider failures onto the closed agent error set. Runs
+ * only after `generate` loaded the SDK, so the cached module is available for
+ * the error-class checks.
+ */
 function translateModelError(rawCause: unknown, issue: string | undefined, signal: AbortSignal): Error {
+  const { APICallError, NoObjectGeneratedError } = aiSdk();
   const cause = unwrapRetry(rawCause);
   if (cause instanceof AgentError) return cause;
   // Only an aborted attempt is a cancellation. A request that exceeded the
@@ -296,11 +302,13 @@ function translateModelError(rawCause: unknown, issue: string | undefined, signa
  * A chain cut short by the deadline stays wrapped so it classifies as an abort.
  */
 function unwrapRetry(cause: unknown): unknown {
+  const { RetryError } = aiSdk();
   if (!RetryError.isInstance(cause) || cause.reason === 'abort') return cause;
   return cause.lastError ?? cause;
 }
 
 function isAbort(cause: unknown): boolean {
+  const { RetryError } = aiSdk();
   if (RetryError.isInstance(cause) && cause.reason === 'abort') return true;
   return cause instanceof Error && (cause.name === 'AbortError' || cause.name === 'TimeoutError');
 }

@@ -19,7 +19,7 @@ function parseList(value: string): string[] {
     .filter((item) => item !== '');
 }
 
-const REPORTERS = ['list', 'json', 'html'] as const;
+const REPORTERS = ['list', 'json'] as const;
 type Reporter = (typeof REPORTERS)[number];
 
 function isReporter(value: string): value is Reporter {
@@ -54,7 +54,7 @@ export function createProgram(): Command {
     .option('--headed', 'request visible UI when the driver supports it')
     .option('--retries <n>', 'replace resolved retry count', parsePositiveInt)
     .option('--workers <n>', 'replace worker count', parsePositiveInt)
-    .option('--reporter <ids>', 'comma-separated reporters: list, json, html', parseList)
+    .option('--reporter <ids>', 'comma-separated reporters: list, json', parseList)
     .option('--artifacts <dir>', 'artifact root, default .e2e/artifacts')
     .option('--no-agent-cache', 'force agent cache mode off')
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')

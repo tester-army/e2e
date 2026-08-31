@@ -1,7 +1,7 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
 import { createAgentFixture } from '../agent/index.ts';
-import { createAgent as createDefaultExecutor } from '../agent/default-agent.ts';
+import type { StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../agent/invocation.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
@@ -135,7 +135,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
       agent ??= createAgentFixture({
         engine,
         steps: environment.steps,
-        executor: environment.config.agent.executor ?? createDefaultExecutor(),
+        executor: environment.config.agent.executor ?? lazyDefaultExecutor(),
         models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
         priorSteps: environment.priorSteps,
@@ -178,6 +178,26 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
   };
 
   return { fixtures, engine };
+}
+
+/**
+ * The built-in executor behind a dynamic import, so the optional `ai` peer
+ * dependency loads only if an `agent.act()` step actually runs. Deterministic
+ * suites and custom-executor projects never pay for — or fail on — it.
+ */
+function lazyDefaultExecutor(): StepExecutor {
+  let executor: StepExecutor | undefined;
+  return {
+    name: 'e2e-default-agent',
+    version: '1',
+    async runStep(context) {
+      if (executor === undefined) {
+        const { createAgent } = await import('../agent/default-agent.ts');
+        executor = createAgent();
+      }
+      return executor.runStep(context);
+    },
+  };
 }
 
 /** Trusted config context first, then test/group context. */

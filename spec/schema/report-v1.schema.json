@@ -520,40 +520,28 @@
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxDiscoveredResults", "maxCacheBytes", "maxTerminalFieldBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "maxArtifactBytes", "maxArtifactTotalBytes", "maxDownloadBytes", "maxDownloads", "maxReportBytes", "maxEventsPerStep", "maxModelTokensPerCall", "maxModelCallsPerStep", "maxActionStepsPerStep"],
+      "required": ["maxCacheBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "maxEventsPerStep", "maxModelTokensPerCall"],
       "properties": {
-        "maxDiscoveredResults": { "type": "integer", "minimum": 1, "maximum": 1000000 },
         "maxCacheBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
-        "maxTerminalFieldBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
         "maxAgentContextBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
         "maxLedgerBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
         "maxObservationBytes": { "type": "integer", "minimum": 1024, "maximum": 16777216 },
-        "maxArtifactBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
-        "maxArtifactTotalBytes": { "type": "integer", "minimum": 1, "maximum": 10737418240 },
-        "maxDownloadBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
-        "maxDownloads": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "maxReportBytes": { "type": "integer", "minimum": 1, "maximum": 104857600 },
         "maxEventsPerStep": { "type": "integer", "minimum": 1, "maximum": 10000 },
-        "maxModelTokensPerCall": { "type": "integer", "minimum": 1, "maximum": 1000000 },
-        "maxModelCallsPerStep": { "type": "integer", "minimum": 1, "maximum": 100 },
-        "maxActionStepsPerStep": { "type": "integer", "minimum": 1, "maximum": 100 },
-        "maxEstimatedCostUsd": { "type": "number", "exclusiveMinimum": 0 }
+        "maxModelTokensPerCall": { "type": "integer", "minimum": 1, "maximum": 1000000 }
       }
     },
     "usage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["discoveredResults", "maxCacheEntryBytes", "maxTerminalFieldBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "downloads", "reportBytes", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
+      "required": ["discoveredResults", "maxCacheEntryBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "downloads", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
       "properties": {
         "discoveredResults": { "type": "integer", "minimum": 0 },
         "maxCacheEntryBytes": { "type": "integer", "minimum": 0 },
-        "maxTerminalFieldBytes": { "type": "integer", "minimum": 0 },
         "maxAgentContextBytes": { "type": "integer", "minimum": 0 },
         "maxLedgerBytes": { "type": "integer", "minimum": 0 },
         "maxObservationBytes": { "type": "integer", "minimum": 0 },
         "artifactBytes": { "type": "integer", "minimum": 0 },
         "downloads": { "type": "integer", "minimum": 0 },
-        "reportBytes": { "type": "integer", "minimum": 0 },
         "events": { "type": "integer", "minimum": 0 },
         "modelTokens": { "type": "integer", "minimum": 0 },
         "maxModelCallsInStep": { "type": "integer", "minimum": 0 },

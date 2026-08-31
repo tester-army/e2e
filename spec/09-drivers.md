@@ -52,8 +52,9 @@ after launch.
 
 An in-process driver has the same authority as test and config code: it can
 read environment variables, repository files, browser state, and raw values it
-is asked to type. `verifyDriver` is compatibility testing, not security
-certification. Users MUST treat installed drivers as trusted dependencies.
+is asked to type. Conformance verification is compatibility testing, not
+security certification. Users MUST treat installed drivers as trusted
+dependencies.
 
 A runner MAY support out-of-process sandboxed drivers, but that is not a v0
 portability guarantee. Package provenance and sandbox claims are implementation
@@ -282,9 +283,12 @@ operation deadline remains; it MUST NOT retry another driver error in place.
 
 ## Conformance
 
-`verifyDriver` is async and boots the versioned reference application. The
-caller supplies a target factory; the verifier supplies its URL and fixtures.
-It returns a machine-readable report rather than registering tests implicitly.
+The conformance harness is planned and not part of the shipped `e2e/driver`
+API: no stub is published, and the verifier function appears in the SPI only
+when it can actually run vectors. When it lands, the harness boots the
+versioned reference application — the caller supplies a target factory; the
+verifier supplies its URL and fixtures — and returns a machine-readable
+report rather than registering tests implicitly.
 
 The `core-0.1` vectors cover:
 
@@ -298,7 +302,7 @@ The `core-0.1` vectors cover:
 
 The `driver-1` vectors cover manifest branding/versioning, launch rollback,
 operation/cleanup contexts, legal error combinations, capability consistency,
-event bridges, and conformance-report artifact binding. `verifyDriver` emits a
+event bridges, and conformance-report artifact binding. The harness emits a
 separate `conformance-1` document for `driver-1`, `core-0.1`, and `web-0.1` when
 all three are requested.
 
@@ -312,7 +316,7 @@ exact released driver artifact. The report uses `conformance-1`, includes the
 driver package version and artifact digest, and requires evidence references for
 every failed vector.
 
-Consumers verify a driver claim by running `verifyDriver` themselves against
+Consumers verify a driver claim by running the harness themselves against
 the digest-pinned artifact in a trusted environment. The verifier does not
 accept a package-provided report as proof.
 

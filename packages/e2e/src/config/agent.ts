@@ -69,22 +69,12 @@ export interface ResolvedAgentConfig {
 }
 
 export interface ResolvedLimits {
-  readonly maxDiscoveredResults: number;
   readonly maxCacheBytes: number;
-  readonly maxTerminalFieldBytes: number;
   readonly maxAgentContextBytes: number;
   readonly maxLedgerBytes: number;
   readonly maxObservationBytes: number;
-  readonly maxArtifactBytes: number;
-  readonly maxArtifactTotalBytes: number;
-  readonly maxDownloadBytes: number;
-  readonly maxDownloads: number;
-  readonly maxReportBytes: number;
   readonly maxEventsPerStep: number;
   readonly maxModelTokensPerCall: number;
-  readonly maxModelCallsPerStep: number;
-  readonly maxActionStepsPerStep: number;
-  readonly maxEstimatedCostUsd: number | undefined;
 }
 
 /** `ResolvedLimits` before the agent-owned observation budget is attached. */
@@ -110,20 +100,11 @@ const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Hard ceilings mirroring spec/schema/report-v1.schema.json `limits`. */
 const LIMIT_BOUNDS = {
-  maxDiscoveredResults: [1, 1_000_000, 100_000],
   maxCacheBytes: [1_024, 1_048_576, 262_144],
-  maxTerminalFieldBytes: [1_024, 65_536, 8_192],
   maxAgentContextBytes: [1_024, 65_536, 16_384],
   maxLedgerBytes: [1_024, 65_536, 8_192],
-  maxArtifactBytes: [1, 1_073_741_824, 104_857_600],
-  maxArtifactTotalBytes: [1, 10_737_418_240, 1_073_741_824],
-  maxDownloadBytes: [1, 1_073_741_824, 104_857_600],
-  maxDownloads: [0, 100, 10],
-  maxReportBytes: [1, 104_857_600, 52_428_800],
   maxEventsPerStep: [1, 10_000, 1_000],
   maxModelTokensPerCall: [1, 1_000_000, 64_000],
-  maxModelCallsPerStep: [1, 100, 25],
-  maxActionStepsPerStep: [1, 100, 25],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 type LimitKey = keyof typeof LIMIT_BOUNDS;
@@ -206,7 +187,7 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
       throw new ConfigurationError('INVALID_CONFIG', 'limits must be an object');
     }
     for (const key of Object.keys(limits)) {
-      if (!(key in LIMIT_BOUNDS) && key !== 'maxEstimatedCostUsd') {
+      if (!(key in LIMIT_BOUNDS)) {
         throw new ConfigurationError('INVALID_CONFIG', `unknown limits key "${key}"`);
       }
     }
@@ -218,18 +199,7 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
     resolved[key] = boundedInt(limits?.[key], `limits.${key}`, min, max) ?? fallback;
   }
 
-  const cost = limits?.maxEstimatedCostUsd;
-  if (cost !== undefined && (!Number.isFinite(cost) || cost <= 0)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'limits.maxEstimatedCostUsd must be a finite positive number',
-    );
-  }
-
-  return {
-    ...(resolved as unknown as Omit<ResolvedBaseLimits, 'maxEstimatedCostUsd'>),
-    maxEstimatedCostUsd: cost,
-  };
+  return resolved as unknown as ResolvedBaseLimits;
 }
 
 /**

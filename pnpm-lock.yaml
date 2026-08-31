@@ -38,9 +38,6 @@ importers:
       '@vitest/expect':
         specifier: 4.1.10
         version: 4.1.10
-      ai:
-        specifier: 7.0.37
-        version: 7.0.37(zod@4.4.3)
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -63,6 +60,9 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
+      ai:
+        specifier: 7.0.37
+        version: 7.0.37(zod@4.4.3)
       ajv:
         specifier: 8.20.0
         version: 8.20.0

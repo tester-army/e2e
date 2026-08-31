@@ -14,7 +14,7 @@ SDK and runner:
 - deterministic selection, targets, workers, retries, timeouts, cancellation,
   teardown, and exit codes;
 - strict TypeScript/ESM loading behavior;
-- list, `report-1` JSON, and local HTML reporters.
+- list and `report-1` JSON reporters.
 
 Agent:
 

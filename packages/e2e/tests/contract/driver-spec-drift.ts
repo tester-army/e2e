@@ -48,7 +48,4 @@ export type Cases = [
   Expect<Equals<Spec.DriverArtifacts, Src.DriverArtifacts>>,
   Expect<Equals<Spec.DriverRuntime, Src.DriverRuntime>>,
   Expect<Equals<Spec.DriverSession, Src.DriverSession>>,
-  Expect<Equals<Spec.DriverProfile, Src.DriverProfile>>,
-  Expect<Equals<Spec.DriverConformanceResult, Src.DriverConformanceResult>>,
-  Expect<Equals<Spec.DriverConformanceReport, Src.DriverConformanceReport>>,
 ];

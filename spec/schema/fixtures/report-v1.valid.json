@@ -91,32 +91,21 @@
       "skipped": 0
     },
     "limits": {
-      "maxDiscoveredResults": 100000,
       "maxCacheBytes": 262144,
-      "maxTerminalFieldBytes": 8192,
       "maxAgentContextBytes": 16384,
       "maxLedgerBytes": 8192,
       "maxObservationBytes": 1048576,
-      "maxArtifactBytes": 104857600,
-      "maxArtifactTotalBytes": 1073741824,
-      "maxDownloadBytes": 104857600,
-      "maxDownloads": 10,
-      "maxReportBytes": 52428800,
       "maxEventsPerStep": 1000,
-      "maxModelTokensPerCall": 64000,
-      "maxModelCallsPerStep": 25,
-      "maxActionStepsPerStep": 25
+      "maxModelTokensPerCall": 64000
     },
     "usage": {
       "discoveredResults": 1,
       "maxCacheEntryBytes": 0,
-      "maxTerminalFieldBytes": 0,
       "maxAgentContextBytes": 0,
       "maxLedgerBytes": 0,
       "maxObservationBytes": 0,
       "artifactBytes": 0,
       "downloads": 0,
-      "reportBytes": 3345,
       "events": 0,
       "modelTokens": 0,
       "maxModelCallsInStep": 0,

@@ -16,6 +16,11 @@ const data = await agent.extract('the invoice total', { schema }); // return dat
 
 ## Configure a model
 
+The AI SDK (`ai`) is an **optional peer dependency**: deterministic suites and
+custom executors never load it, and installing `e2e` does not pull it in. Add
+`ai` to your project to use models — the built-in agent, gateway model
+references, and the located/judgment tiers all require it.
+
 There is no default model. Set one in config:
 
 ```ts title="e2e.config.ts"

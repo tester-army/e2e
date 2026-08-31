@@ -34,7 +34,7 @@ npx --no-install e2e run tests/signup.e2e.ts --tag smoke
 | `--headed` | request visible UI when the driver supports it |
 | `--retries <n>` | replace resolved retry count |
 | `--workers <n>` | replace worker count |
-| `--reporter <ids>` | comma-separated `list`, `json`, `html`; replaces config |
+| `--reporter <ids>` | comma-separated `list`, `json`; replaces config |
 | `--artifacts <dir>` | artifact root, default `.e2e/artifacts` |
 | `--no-agent-cache` | cache mode `off` |
 | `--pass-with-no-tests` | allow zero runnable ordinary test-target pairs |
@@ -47,9 +47,8 @@ project root is an error. Selection and setup dependency rules are in
 ## Output
 
 The list reporter writes human-readable progress to the terminal. It strips
-control characters from app, model, and driver text and limits each untrusted
-field to resolved `maxTerminalFieldBytes`, default 8 KiB, before linking to the
-complete sanitized artifact.
+control characters from app, model, and driver text and caps each untrusted
+field at 8 KiB before linking to the complete sanitized artifact.
 
 Every run atomically writes `.e2e/report.json` under the artifact parent. The
 `json` renderer additionally emits that document to standard output and cannot

@@ -183,13 +183,11 @@ export type ReportLimits = ResolvedLimits;
 export interface ReportUsage {
   discoveredResults: number;
   maxCacheEntryBytes: number;
-  maxTerminalFieldBytes: number;
   maxAgentContextBytes: number;
   maxLedgerBytes: number;
   maxObservationBytes: number;
   artifactBytes: number;
   downloads: number;
-  reportBytes: number;
   events: number;
   modelTokens: number;
   maxModelCallsInStep: number;
@@ -415,22 +413,12 @@ export function computeSummary(results: readonly ResultRecord[]): ReportSummary 
 
 /** Fallback limits used when the run failed before config resolution. */
 const DEFAULT_LIMITS: ReportLimits = {
-  maxDiscoveredResults: 100_000,
   maxCacheBytes: 262_144,
-  maxTerminalFieldBytes: 8_192,
   maxAgentContextBytes: 16_384,
   maxLedgerBytes: 8_192,
   maxObservationBytes: 1_048_576,
-  maxArtifactBytes: 104_857_600,
-  maxArtifactTotalBytes: 1_073_741_824,
-  maxDownloadBytes: 104_857_600,
-  maxDownloads: 10,
-  maxReportBytes: 52_428_800,
   maxEventsPerStep: 1_000,
   maxModelTokensPerCall: 64_000,
-  maxModelCallsPerStep: 25,
-  maxActionStepsPerStep: 25,
-  maxEstimatedCostUsd: undefined,
 };
 
 /** Aggregates observed usage against the resolved limits (13-reporting.md). */
@@ -442,13 +430,11 @@ function computeUsage(options: {
   const usage: ReportUsage = {
     discoveredResults: options.discovered,
     maxCacheEntryBytes: 0,
-    maxTerminalFieldBytes: 0,
     maxAgentContextBytes: 0,
     maxLedgerBytes: 0,
     maxObservationBytes: 0,
     artifactBytes: 0,
     downloads: 0,
-    reportBytes: 0,
     events: 0,
     modelTokens: 0,
     maxModelCallsInStep: 0,

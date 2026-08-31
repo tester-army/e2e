@@ -10,15 +10,9 @@
  * own exhaustion.
  */
 
-import {
-  stepCountIs,
-  tool,
-  ToolLoopAgent,
-  type LanguageModel,
-  type ModelMessage,
-  type ToolSet,
-} from 'ai';
+import type { LanguageModel, ModelMessage, ToolSet } from 'ai';
 import { z } from 'zod';
+import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
 import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
@@ -73,6 +67,9 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     name: 'e2e-default-agent',
     version: '1',
     async runStep(context: StepExecutorContext): Promise<StepVerdict> {
+      // The AI SDK is an optional peer; load it before anything touches it —
+      // including the context's gateway-model getter below.
+      const ai = await loadAiSdk();
       const configured = context.model === undefined ? undefined : asSdkLanguageModel(context.model);
       const model: LanguageModel | undefined = options.model ?? configured;
       if (model === undefined) {
@@ -84,7 +81,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       const state: LoopState = { verdict: undefined, hardStop: undefined };
       const tools: ToolSet = {
         ...wrapUserTools(context, state, userTools),
-        ...buildDefaultTools(context, state),
+        ...buildDefaultTools(ai, context, state),
       };
       // Capped, never raised: the harness budget is the ceiling for any turns
       // setting, so the loop cannot spend past what the step was given.
@@ -92,14 +89,14 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
         options.maxTurns ?? context.budgets.maxModelCalls,
         context.budgets.maxModelCalls,
       );
-      const loop = new ToolLoopAgent({
+      const loop = new ai.ToolLoopAgent({
         model,
         instructions: buildInstructions(context, options.system),
         tools,
         toolChoice: 'required',
         stopWhen: [
           () => state.verdict !== undefined || state.hardStop !== undefined,
-          stepCountIs(maxTurns),
+          ai.stepCountIs(maxTurns),
         ],
         prepareStep: ({ messages, stepNumber }) => {
           const prepared = withWindDownNotice(compactSnapshotHistory(messages), maxTurns - stepNumber);
@@ -165,7 +162,8 @@ interface LoopState {
 }
 
 /** The default toolset: thin AI SDK tools over the harness action grammar. */
-function buildDefaultTools(context: StepExecutorContext, state: LoopState): ToolSet {
+function buildDefaultTools(ai: AiSdk, context: StepExecutorContext, state: LoopState): ToolSet {
+  const { tool } = ai;
   /**
    * Runs one tool body under loop policy: after a hard stop nothing else
    * executes, a fatal error ends the loop through `state`, and every other

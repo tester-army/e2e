@@ -833,7 +833,7 @@ export interface E2EConfig {
   retries?: number;
   workers?: number;
   artifacts?: readonly ('trace' | 'screenshot' | 'video')[];
-  reporters?: readonly ('list' | 'json' | 'html')[];
+  reporters?: readonly ('list' | 'json')[];
   screen?: {
     testIdAttribute?: string;
   };
@@ -856,22 +856,16 @@ export interface E2EConfig {
     /** Project-wide default for the per-call `vision` option. */
     vision?: VisionMode;
   };
+  /**
+   * Enforced resource ceilings only. A limit exists here exactly when the
+   * runner has an enforcement site for it.
+   */
   limits?: {
-    maxDiscoveredResults?: number;
     maxCacheBytes?: number;
-    maxTerminalFieldBytes?: number;
     maxAgentContextBytes?: number;
     maxLedgerBytes?: number;
-    maxArtifactBytes?: number;
-    maxArtifactTotalBytes?: number;
-    maxDownloadBytes?: number;
-    maxDownloads?: number;
-    maxReportBytes?: number;
     maxEventsPerStep?: number;
     maxModelTokensPerCall?: number;
-    maxModelCallsPerStep?: number;
-    maxActionStepsPerStep?: number;
-    maxEstimatedCostUsd?: number;
   };
   credentials?: Readonly<
     Record<

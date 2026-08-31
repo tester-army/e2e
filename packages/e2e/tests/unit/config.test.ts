@@ -31,7 +31,7 @@ describe('resolveConfig', () => {
     expect(config.retries).toBe(0);
     expect(config.tests).toEqual(['tests/**/*.e2e.ts']);
     expect(config.artifacts).toEqual(['screenshot', 'trace']);
-    expect(config.reporters).toEqual(['list', 'html']);
+    expect(config.reporters).toEqual(['list']);
     expect(config.testIdAttribute).toBe('data-testid');
   });
 

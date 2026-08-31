@@ -47,7 +47,7 @@ export interface RunOptions {
   headed?: boolean | undefined;
   retries?: number | undefined;
   workers?: number | undefined;
-  reporters?: readonly ('list' | 'json' | 'html')[] | undefined;
+  reporters?: readonly ('list' | 'json')[] | undefined;
   artifactsDir?: string | undefined;
   /** `--no-agent-cache`: false forces agent cache mode off. */
   agentCache?: boolean | undefined;

@@ -11,13 +11,17 @@
  * remains the sole authority over the extracted value.
  */
 
-import { asSchema, type JSONSchema7 } from 'ai';
+import type { JSONSchema7 } from 'ai';
 import type { StandardSchemaV1 } from '../../types.ts';
+import { loadAiSdk } from '../ai-sdk.ts';
 
 export async function deriveJsonSchema(
   schema: StandardSchemaV1,
 ): Promise<JSONSchema7 | undefined> {
   try {
+    // The projection is best-effort by contract, so a missing optional AI SDK
+    // degrades to text mode here; the model call itself reports it properly.
+    const { asSchema } = await loadAiSdk();
     const projected = await asSchema(schema as never).jsonSchema;
     return isUsable(projected) ? (projected as JSONSchema7) : undefined;
   } catch {

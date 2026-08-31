@@ -67,7 +67,7 @@ export interface ResolvedConfig {
   readonly retries: number;
   readonly workers: number;
   readonly artifacts: readonly ('trace' | 'screenshot' | 'video')[];
-  readonly reporters: readonly ('list' | 'json' | 'html')[];
+  readonly reporters: readonly ('list' | 'json')[];
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
   readonly limits: ResolvedLimits;
@@ -78,7 +78,7 @@ export interface ResolvedConfig {
 export interface CliOverrides {
   retries?: number;
   workers?: number;
-  reporters?: readonly ('list' | 'json' | 'html')[];
+  reporters?: readonly ('list' | 'json')[];
   headed?: boolean;
   artifactsDir?: string;
   /** `--no-agent-cache` forces cache mode off. */
@@ -177,9 +177,9 @@ export function resolveConfig(
       throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${artifact}"`);
     }
   }
-  const reporters = cli.reporters ?? raw.reporters ?? (['list', 'html'] as const);
+  const reporters = cli.reporters ?? raw.reporters ?? (['list'] as const);
   for (const reporter of reporters) {
-    if (!['list', 'json', 'html'].includes(reporter)) {
+    if (!['list', 'json'].includes(reporter)) {
       throw new ConfigurationError('INVALID_CONFIG', `unknown reporter "${reporter}"`);
     }
   }

@@ -217,9 +217,8 @@ describe('resource limits', () => {
     expect(config.limits.maxLedgerBytes).toBe(8_192);
     expect(config.limits.maxAgentContextBytes).toBe(16_384);
     expect(config.limits.maxCacheBytes).toBe(262_144);
-    expect(config.limits.maxTerminalFieldBytes).toBe(8_192);
-    expect(config.limits.maxModelCallsPerStep).toBe(25);
-    expect(config.limits.maxEstimatedCostUsd).toBeUndefined();
+    expect(config.limits.maxEventsPerStep).toBe(1_000);
+    expect(config.limits.maxModelTokensPerCall).toBe(64_000);
   });
 
   it('accepts overrides inside the hard ceilings and rejects the rest', () => {
@@ -232,12 +231,14 @@ describe('resource limits', () => {
     expect(() => resolve({ limits: { unknown: 1 } } as never)).toThrow(/unknown limits key/);
   });
 
-  it('requires a finite positive cost ceiling', () => {
-    expect(resolve({ limits: { maxEstimatedCostUsd: 0.5 } }).limits.maxEstimatedCostUsd).toBe(0.5);
-    expect(() => resolve({ limits: { maxEstimatedCostUsd: 0 } })).toThrow(/maxEstimatedCostUsd/);
-    expect(() =>
-      resolve({ limits: { maxEstimatedCostUsd: Number.POSITIVE_INFINITY } }),
-    ).toThrow(/maxEstimatedCostUsd/);
+  it('rejects retired limits keys instead of silently ignoring them', () => {
+    // These keys were validated-but-unenforced; a limit that exists must bind.
+    expect(() => resolve({ limits: { maxEstimatedCostUsd: 0.5 } } as never)).toThrow(
+      /unknown limits key/,
+    );
+    expect(() => resolve({ limits: { maxReportBytes: 1_024 } } as never)).toThrow(
+      /unknown limits key/,
+    );
   });
 });
 
