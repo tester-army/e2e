@@ -34,14 +34,17 @@ Requires Node.js 20.19 or newer.
 
     export default defineConfig({
       app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-      agent: createAgent(),
+      agent: createAgent({
+        system: 'You are a meticulous QA agent. Verify every outcome on screen.',
+      }),
     });
     ```
 
     This is the central decision in e2e: the runner does not come with an
-    agent baked in — you construct one and pass it. `createAgent()` is the
-    built-in tool-loop agent. Later you can hand it your own tools, or replace
-    it with a custom executor; [Your own agent](/agents) covers both.
+    agent baked in — you construct one and pass it. `createAgent` builds the
+    built-in tool-loop agent; `system` shapes how it works. Later you can hand
+    it your own tools, or replace it with a custom executor;
+    [Your own agent](/agents) covers both.
 
     The model comes from the `E2E_MODEL` environment variable as a
     `provider/model-id` string, routed through the Vercel AI Gateway so one

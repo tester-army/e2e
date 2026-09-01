@@ -14,7 +14,9 @@ import { createAgent } from 'e2e/agent';
 
 export default defineConfig({
   app: { url: 'http://localhost:3000' },
-  agent: createAgent(), // the built-in agent; swap in your own tools or executor
+  agent: createAgent({
+    system: 'You are a meticulous QA agent. Verify every outcome on screen.',
+  }),
 });
 ```
 
@@ -56,21 +58,19 @@ and `expect` do exactly what they say, for free.
 **You control the agent.** `createAgent()` is the built-in one. Give it your
 own tools, keep its loop with a different tool vocabulary (a device toolkit, an
 internal API), or replace it with anything that takes a step and returns a
-verdict. None of that changes what the agent is allowed to do — observations
-stay redacted, actions stay policed, budgets stay enforced.
+verdict. None of that changes the runner's side of the contract: observations
+stay redacted, harness actions stay policed, and model budgets and the step
+deadline stay enforced.
 
 **Every call is bounded.** An `agent.*` call has a deadline and a model-call
 budget. A planned step ends in one of three verdicts: **passed**, **failed**,
-or **blocked** — the environment or credentials prevented a verdict about your
-app. Blocked exits as infrastructure, not as a failing test.
+or **blocked** — something prevented a verdict about your app. A credential,
+environment, or seed-data block exits as configuration or infrastructure
+rather than as a failing test, so red keeps meaning "the product misbehaved".
 
 **Secrets never reach a model.** A password is an opaque handle. Pass it to
 `agent.act` and the model sees its name only; the runner fills the field
 itself.
-
-**No service.** `npx e2e run` works the same on your laptop and in CI. The
-report is a JSON file on disk. A suite that never calls `agent.*` needs no
-model at all.
 
 <Callout intent="note" title="Web today">
 This release executes web targets. The API is platform-neutral, and native

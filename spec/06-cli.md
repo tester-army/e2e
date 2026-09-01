@@ -51,9 +51,7 @@ field at 8 KiB before linking to the complete sanitized artifact.
 
 Every run atomically writes `.e2e/report.json` under the artifact parent. The
 `json` renderer additionally emits that document to standard output and cannot
-be combined with `list`. The HTML reporter writes `.e2e/report.html`, uses no
-remote resources, escapes all values contextually, and applies a restrictive
-Content Security Policy. `--artifacts` relocates the complete report/artifact
+be combined with `list`. `--artifacts` relocates the complete report/artifact
 tree.
 
 Every reporter consumes the same `report-1` document. A reporter cannot change

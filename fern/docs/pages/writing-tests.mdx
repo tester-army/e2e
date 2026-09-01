@@ -48,11 +48,13 @@ per call — the flow inside it is the model's job, the order of goals is yours.
 </Tip>
 
 Every planned step ends in a ternary verdict: **passed**, **failed**, or
-**blocked** — the environment, credentials, or seed data prevented a product
-verdict. Blocked carries an error code (`AUTH_CREDENTIAL_UNAVAILABLE`,
-`APP_UNREACHABLE`, …) and exits as configuration or infrastructure, never as a
-red product failure. Run with `--debug` and every planned step saves its full
-model transcript as an artifact.
+**blocked** — something prevented a product verdict. Blocked carries an error
+code naming the cause: a credential, environment, or seed-data block
+(`AUTH_CREDENTIAL_UNAVAILABLE`, `APP_UNREACHABLE`, `SEED_DATA_MISSING`) exits
+as configuration or infrastructure, while a step that exhausted its budget or
+clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`) is still a test failure. Run
+with `--debug` and every planned step saves its full model transcript as an
+artifact.
 
 ## Checks: `assert`, `waitFor`, `extract`
 

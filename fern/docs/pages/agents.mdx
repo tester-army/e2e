@@ -92,20 +92,33 @@ export default defineConfig({
       screenshot: tool({
         description: 'Look at the device screen',
         inputSchema: z.object({}),
-        execute: () => guard(() => device.describeScreen()),
+        execute: () =>
+          guard(async () => {
+            ctx.budgets.recordToolCall({ name: 'screenshot', mutates: false });
+            return device.describeScreen();
+          }),
       }),
       tap: tool({
         description: 'Tap an element by label',
         inputSchema: z.object({ label: z.string() }),
-        execute: ({ label }) => guard(() => device.tap(label)),
+        execute: ({ label }) =>
+          guard(async () => {
+            ctx.budgets.recordToolCall({ name: 'tap', mutates: true });
+            return device.tap(label);
+          }),
       }),
     }),
   }),
 });
 ```
 
-Wrap each tool body in `guard()` so budget stops and cancellation end the loop
-cleanly instead of leaking work past the verdict.
+`guard()` stops a tool from running once the step is concluding and turns
+budget and timeout stops into a clean end of the loop; `recordToolCall` is
+what counts your tool against the step's action budget — the chassis cannot
+see inside a foreign tool, so an unrecorded call is an unbudgeted one. The
+step deadline still settles the verdict either way, but a device operation
+that ignores cancellation finishes on its own time, so keep tool bodies
+short and interruptible.
 
 ## Replace the executor
 
@@ -142,8 +155,9 @@ Whatever the executor, a step ends one of three ways:
 - **passed** — the app behaved as the step required, verified on screen.
 - **failed** — it did not. An ordinary test failure.
 - **blocked** — credentials, the environment, seed data, or budget prevented a
-  product verdict. Carries an error code and exits as configuration or
-  infrastructure, never as a red product failure.
+  product verdict. The error code decides the exit: credential, environment,
+  and seed-data blocks exit as configuration or infrastructure; budget and
+  timeout blocks remain test failures.
 
 The loop chassis also polices itself: guards catch a model repeating the same
 call or cycling, and a wind-down forces a conclusion near the turn budget and

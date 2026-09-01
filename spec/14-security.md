@@ -210,12 +210,11 @@ infrastructure or budget error; it never silently drops required evidence.
 Model adapters enforce token limits using provider counts or conservative
 adapter upper bounds; unavailable accounting fails before the request.
 
-## Reports, HTML, and paths
+## Reports and paths
 
 Reports apply contextual escaping, strip terminal controls, use generated
-artifact names, canonicalize paths, reject symlink traversal, and impose a
-Content Security Policy with no remote scripts/styles. Model/app strings are
-always rendered as text. Artifact labels never become path components.
+artifact names, canonicalize paths, and reject symlink traversal. Model/app
+strings are always rendered as text. Artifact labels never become path components.
 
 Reports contain sanitized origin and model provenance but no query parameters
 known to contain secrets. Implementations SHOULD support additional user-defined
@@ -233,4 +232,4 @@ chain trust signal.
 Required vectors cover prompt-injection resistance, tool schema rejection,
 origin/redirect/frame enforcement, credential purpose/origin checks, semantic
 and pixel masking, trace filtering, session isolation, path
-traversal, terminal/HTML injection, cancellation, and untrusted-CI defaults.
+traversal, terminal injection, cancellation, and untrusted-CI defaults.
