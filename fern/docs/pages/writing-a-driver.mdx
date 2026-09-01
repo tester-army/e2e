@@ -110,7 +110,7 @@ tests a target can even run.
 | Field | Meaning |
 | --- | --- |
 | `id` | Stable across releases. Lowercase ASCII letters, numbers, `-`, `.`, `/`. |
-| `version` | The driver package version. Lands in report provenance and the agent cache key. |
+| `version` | The driver package version. Lands in report provenance. |
 | `platforms` | Every platform this driver can drive, e.g. `['ios', 'android']`. |
 | `spiVersion` | Exactly `1`. Any other value is rejected before launch. |
 | `capabilities.fixtures` | Capability ids this driver serves. A test declaring `requires: ['web']` is only selected on a target whose driver lists `'web'`. |
@@ -418,8 +418,7 @@ you must honour in logs and traces.
 Optional, and gated on what you declared:
 
 - **`actions.tapPoint?`** - dispatch at a runner-validated viewport point.
-  Without it, the vision pointing tier fails instead of dispatching, so a
-  backend with no coordinate input simply omits it.
+  Optional, so a backend with no coordinate input simply omits it.
 - **`captureState?` / `restoreState?`** - required together by
   `capabilities.state`. Capture returns opaque JSON-safe `DriverState`
   (`{ format, version, data }`) and must not write shared files. Restore

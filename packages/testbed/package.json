@@ -11,9 +11,7 @@
     "test:public": "node node_modules/e2e/dist/cli/bin.js run --config e2e.public.config.ts",
     "app": "node app/server.mjs",
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
-    "test:wakacje": "node node_modules/e2e/dist/cli/bin.js run --config e2e.wakacje.config.ts",
-    "test:selenium": "node node_modules/e2e/dist/cli/bin.js run --config e2e.selenium.config.ts",
-    "test:selenium-agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.selenium-agent.config.ts"
+    "test:selenium": "node node_modules/e2e/dist/cli/bin.js run --config e2e.selenium.config.ts"
   },
   "dependencies": {
     "@e2edev/playwright": "workspace:*",

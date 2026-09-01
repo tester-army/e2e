@@ -21,19 +21,19 @@ describe('serializeLedger', () => {
     const { text } = serializeLedger(
       [
         step({ api: 'app.open', label: '/', kind: 'app' }),
-        step({ api: 'agent.tap', label: 'the buy button' }),
+        step({ api: 'agent.act', label: 'the buy button' }),
       ],
       8_192,
     );
-    expect(text.indexOf('app.open')).toBeLessThan(text.indexOf('agent.tap'));
+    expect(text.indexOf('app.open')).toBeLessThan(text.indexOf('agent.act'));
     expect(text).toContain('1. app.open passed :: /');
-    expect(text).toContain('2. agent.tap passed :: the buy button');
+    expect(text).toContain('2. agent.act passed :: the buy button');
   });
 
   it('drops the oldest entries and reports how many were omitted', () => {
     const steps: StepRecord[] = [];
     for (let index = 0; index < 40; index += 1) {
-      steps.push(step({ api: 'agent.tap', label: `target-${index}` }));
+      steps.push(step({ api: 'agent.act', label: `target-${index}` }));
     }
     const { text, bytes } = serializeLedger(steps, 200);
     expect(bytes).toBeLessThanOrEqual(200 + text.split('\n')[0]!.length);

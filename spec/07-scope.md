@@ -18,11 +18,9 @@ SDK and runner:
 
 Agent:
 
-- planning with `act`, login, extraction, and one-shot assertion;
-- located actions and assisted `scrollTo`/`waitFor`;
+- planning with `act`, extraction, assisted `waitFor`, and one-shot assertion;
 - explicit model configuration, action/model/observation budgets, bounded
   ledger, typed runner-owned errors;
-- `cache-1` locate optimization and structured path guidance;
 - origin, secret, observation, artifact, and prompt-injection policy from
   14-security.md.
 
@@ -40,14 +38,14 @@ Resources and tooling:
 - named host-side credentials with origin-scoped opaque secrets;
 - strict config, implicit single-web-target path, structured app process;
 - `e2e init` and `e2e run`;
-- versioned report, cache, session, and conformance formats;
+- versioned report, session, and conformance formats;
 - secure GitHub Actions guidance.
 
 ## Explicitly excluded
 
 - iOS and Android execution profiles;
 - cloud/hosted runners and hosted or dynamic resource extensions;
-- cross-run session reuse or shared cache writes;
+- cross-run session reuse;
 - email, webhook, file, phone, and service-emulator extensions;
 - `test.each`, conditional/expected-failure modifiers, and `test.extend`;
 - global hooks, sharding, watch mode, inspector, custom reporters/matchers;
@@ -78,7 +76,7 @@ An implementation may identify itself as v0 conforming only when:
    versions shipped by that implementation's web driver.
 3. Fault-injection vectors pass for cancellation, forced realm termination,
    partial launch rollback, action commit ambiguity, session corruption,
-   hostile reports/caches, redaction, origin policy, and process cleanup.
+   hostile reports, redaction, origin policy, and process cleanup.
 4. There is no known normative spec/implementation mismatch, unresolved v0
    decision, or skipped required conformance assertion.
 

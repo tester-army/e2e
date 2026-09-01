@@ -19,7 +19,6 @@ export type ProtocolValidation<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly issue: string };
 
-const REF_MAX_LENGTH = 256;
 const EXPLANATION_MAX_LENGTH = 8192;
 
 export const JUDGMENT_SCHEMA: JSONSchema7 = {

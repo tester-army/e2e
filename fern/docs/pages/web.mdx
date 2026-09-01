@@ -50,10 +50,10 @@ assert against a blank tab and pass by accident.
 
 ## Allowed origins
 
-An agentic step is given a goal, not a route. Without a boundary, a described
-target that happens to be an outbound link takes the run somewhere you never
-meant to automate. `app.allowedOrigins` is the allowlist, and nothing
-lower-trust can extend it.
+An agentic step is given a goal, not a route. Without a boundary, a planned
+step that follows an outbound link takes the run somewhere you never meant to
+automate. `app.allowedOrigins` is the allowlist, and nothing lower-trust can
+extend it.
 
 ```ts title="e2e.config.ts"
 app: {

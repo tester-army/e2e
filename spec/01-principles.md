@@ -24,8 +24,8 @@ requirements in this specification. Examples never define behavior by accident.
 
 ### Control is per step
 
-Planning, located actions, and deterministic locators interleave in one test.
-Use planning when the goal is known, located actions when the step is known,
+Planning and deterministic locators interleave in one test.
+Use planning when the goal is known
 and locators when the semantic element is known.
 
 ### Code drives, agents are bounded
@@ -65,7 +65,7 @@ model instruction.
 
 ### Machine-legible by default
 
-Stable IDs, typed errors, versioned JSON reports, strict cache/session formats,
+Stable IDs, typed errors, versioned JSON reports, strict session formats,
 and derived source-linked steps serve humans, CI, coding agents, and future
 hosted systems from one execution model.
 

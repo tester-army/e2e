@@ -5,8 +5,8 @@ import { defineConfig } from 'e2e';
  *
  *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent
  *
- * Not part of CI: every test spends real model calls and the located-action and
- * judgment tiers are structurally comparable across models, not identical.
+ * Not part of CI: every test spends real model calls, and act flows and
+ * judgments are structurally comparable across models, not identical.
  * `E2E_MODEL` overrides the pinned model so one suite dogfoods several
  * providers.
  */
@@ -23,7 +23,7 @@ export default defineConfig({
   },
   tests: 'tests-agent/**/*.e2e.ts',
   targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
-  // Every located action includes a model round trip, so the deterministic
+  // Every agent step includes model round trips, so the deterministic
   // 30 s action budget is too tight for a loaded provider. Latency is not a
   // product defect: give it room rather than reading timeouts as failures.
   timeout: 300_000,

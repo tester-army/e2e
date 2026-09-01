@@ -4,14 +4,11 @@
  * guarantees third-party drivers rely on can never silently regress.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createFakeDriver, BuiltDriverError, type FakeDriverHandle } from '../helpers/fake-driver.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
-import type { SemanticNode } from '../../src/driver/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
 const APP_URL = 'http://127.0.0.1:4599';

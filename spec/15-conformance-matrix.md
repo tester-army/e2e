@@ -23,12 +23,11 @@ The matrix covers:
 - launch, cancellation, commit, cleanup, artifact, and capability SPI behavior;
 - the closed model tool grammar and runner policy boundary;
 - report schema plus semantic validation;
-- cache identity, safe replay, locking, and poisoning behavior;
 - encrypted per-run sessions;
 - conformance report identity, completeness, and evidence.
 
-Security vectors use hostile app text, frames, redirects, model output, cache
-documents, report documents, paths, terminal strings, screenshots, traces, and
+Security vectors use hostile app text, frames, redirects, model output,
+report documents, paths, terminal strings, screenshots, traces, and
 forced cancellation. Passing happy-path API tests alone cannot satisfy a
 profile.
 

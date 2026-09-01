@@ -11,7 +11,7 @@ existing conflict, and makes no partial changes after a conflict is found. It:
 - creates `tests/example.e2e.ts` containing a deterministic app-open smoke
   test, not an app-specific signup assumption;
 - adds `.e2e/artifacts/`, `.e2e/sessions/`, and generated reports to
-  `.gitignore`, while leaving `.e2e/cache/` committable;
+  `.gitignore`;
 - prints the exact next command.
 
 Browser provisioning uses the locked driver/backend version installed with the
@@ -36,7 +36,6 @@ npx --no-install e2e run tests/signup.e2e.ts --tag smoke
 | `--workers <n>` | replace worker count |
 | `--reporter <ids>` | comma-separated `list`, `json`; replaces config |
 | `--artifacts <dir>` | artifact root, default `.e2e/artifacts` |
-| `--no-agent-cache` | cache mode `off` |
 | `--pass-with-no-tests` | allow zero runnable ordinary test-target pairs |
 
 Positional file arguments resolve from project root and intersect config globs,

@@ -29,7 +29,11 @@ static `sessions` list:
 ```ts
 test.setup('authenticate', { sessions: ['member'] }, async fixtures => {
   await fixtures.app.open();
-  await fixtures.agent.login(credentials.user('member'));
+  const member = credentials.user('member');
+  await fixtures.agent.act('sign in', {
+    user: member.username,
+    password: member.password,
+  });
   await fixtures.session.save('member');
 });
 ```
@@ -83,21 +87,11 @@ tools and the security policy in [14-security.md](./14-security.md).
 
 | Method | Accepted model response | Permitted model tools |
 |---|---|---|
-| `act` | `agent-tool-1` sequence | tap, plain/secret type, scroll, press, long-press, allowed navigation, observe, conclude |
-| `login` | `agent-tool-1` sequence | tap, pinned username/password type, scroll, press, allowed navigation, observe, conclude |
-| `tap`, `click`, `type`, `longPress`, `press`, `select`, `hover`, `check`, `uncheck`, `upload` | one `agent-locate-1` response | none; runner performs the predetermined action |
-| `dragTo` | two `agent-locate-1` responses (source, then destination) | none; runner performs the predetermined drag |
-| `scroll` without `within` | no model response | none |
-| `scroll` with `within` | one `agent-locate-1` response | none; runner scrolls deterministically |
-| `scrollTo` | repeated bounded `agent-locate-1` responses | none; runner scrolls deterministically |
+| `act` | `agent-tool-1` sequence | tap, plain/secret type, select, scroll, press, allowed navigation, observe, conclude |
 | `waitFor`, `assert` | `agent-judgment-1` response | none |
 | `extract` | user-supplied Standard Schema output | none |
 
 Any other response kind or tool is `POLICY_DENIED` before driver dispatch.
-
-`upload` file paths and `press` keys come from trusted test code, resolve on
-the runner host (paths from the project root), and never appear in any model
-prompt: the model only ever selects the target node.
 
 ## `agent.act`
 
@@ -116,14 +110,15 @@ seed_data, test_setup, automation) and classifies as
 configuration/infrastructure rather than test failure. A `Secret` in `params`
 reaches the executor only as `{ kind: 'secret', name, purpose }`; the fill
 runs through the authorized `typeSecret` action, so plaintext never enters a
-prompt. With a custom executor configured, `agent.assert` also dispatches
+prompt. Sign-in is an ordinary `act` flow with `Secret` params; setup
+sessions (11-lifecycle.md) provide the authentication fast path. With a
+custom executor configured, `agent.assert` also dispatches
 through the socket as an `assert`-kind step (default failure code
 `ASSERTION_FAILED`); the built-in path keeps the single-judgment tier below.
-Current release: structured output (`options.schema`), `vision`, and `cache`
+Current release: structured output (`options.schema`) and `vision`
 are not implemented for `act` and reject with `UNSUPPORTED_CAPABILITY`; the
 action vocabulary is `tap`, `type`, `typeSecret`, `press`, `select`,
-`scroll`, allowed `navigate`, `observe`, and `conclude` (long-press lands
-with `agent.login`).
+`scroll`, allowed `navigate`, `observe`, and `conclude`.
 
 Parameters are immutable structured values. Plain values are disclosed to the
 model. A `Secret` is represented to the model only by its name and purpose; its
@@ -142,69 +137,21 @@ An invocation succeeds only after the agent explicitly concludes and all
 requested schema output validates. Budget exhaustion never becomes a guessed
 success.
 
-## Instant actions
+## `agent.waitFor`
 
-`tap`, `click`, `type`, and `longPress` use the model only to select exactly one
-node from one fresh observation. On a valid locate-cache hit they use zero model
-calls. On a miss they use exactly one model call and then execute exactly one
-driver action. They never replan, navigate, or choose an alternate action.
-
-The model returns a semantic node reference plus a runner-generated query. The
-runner validates that both identify the same unique node before acting. Zero
-matches rejects with `LOCATOR_NOT_FOUND`; multiple matches rejects with
-`LOCATOR_AMBIGUOUS`; actionability failure rejects with `ACTION_FAILED`.
-
-A page that repeats a control — one reservation button per row, the same label
-on each — has nodes no derived query can separate. The reference the observation
-handed out can: it is bound to the element the model was shown, in the revision
-it was shown in, which is a stricter identity than any locator. A runner MAY
-therefore act through that reference once no derived query resolves the
-selection, after re-reading it to confirm it is still the node the model chose.
-A reference cannot outlive its observation, so such a target is never recorded
-(10-determinism.md). A runner that also offers `vision: 'fallback'` MUST prefer
-the escalation: an unaddressable selection is that feature's signal, and pixels
-can tell repeated controls apart that a reference can only take on trust from a
-tree-only answer.
-
-`agent.type` replaces the target's current content and accepts plain strings or
-opaque `Secret` values. It never submits the field; submission is a separate
-tap/click/press step. A secret may be sent only to an authorized secure input
-sink and is never included in a model request, cache key, ledger, report, or
-artifact.
-
-`agent.scroll` uses no model when `within` is absent and one locate call when it
-is present. `scrollTo` and `waitFor` are assisted polling operations rather than
-single-call instant actions:
-
-- `scrollTo` alternates deterministic scrolling and fresh locate judgments
-  until the node is found or the timeout/model-call budget expires.
-- `waitFor` succeeds on the first true judgment. `intervalMs`, default 3,000 ms,
-  is the shortest time between two judgments, not a pause added after each one:
-  it is a rate limit on model calls, and a runner MUST NOT make the caller wait
-  it out after a judgment that already took longer. A judgment reads the
-  observation, so while the observation is unchanged the answer cannot change; a
-  runner MAY therefore keep observing — driver-only work — and spend the next
-  judgment when the page changes rather than when the clock says so. A call that
-  sends pixels judges on the interval alone, because an animation the tree cannot
-  see is still a change. The interval is an integer from 100 through 60,000 ms.
+`agent.waitFor` is an assisted polling operation: it succeeds on the first
+true judgment. `intervalMs`, default 3,000 ms,
+is the shortest time between two judgments, not a pause added after each one:
+it is a rate limit on model calls, and a runner MUST NOT make the caller wait
+it out after a judgment that already took longer. A judgment reads the
+observation, so while the observation is unchanged the answer cannot change; a
+runner MAY therefore keep observing — driver-only work — and spend the next
+judgment when the page changes rather than when the clock says so. A call that
+sends pixels judges on the interval alone, because an animation the tree cannot
+see is still a change. The interval is an integer from 100 through 60,000 ms.
 
 Every polling method is bounded by both its timeout and the resolved
 `maxModelCalls` limit.
-
-Long-press `durationMs` defaults to 500 ms and must be an integer from 100
-through 10,000 ms on both agent and locator surfaces.
-
-## `agent.login`
-
-`agent.login(credential)` is a planning invocation with one pinned credential.
-The model may request username or password fills only for that credential. The
-runner authorizes each destination origin and field purpose independently. A
-rejected login is `AUTHENTICATION_FAILED`; missing material is
-`AUTH_CREDENTIAL_UNAVAILABLE`.
-
-The method does not implicitly open the app. Calling it before `app.open()` or
-equivalent navigation fails with the test error `APP_NOT_OPEN`.
-Login is never path-cached; setup sessions provide the authentication fast path.
 
 ## `agent.extract`
 
@@ -236,8 +183,6 @@ one of four modes, which select what evidence the model is given:
 ```ts
 agent.assert('the chart trends upward', { vision: true });
 agent.assert('the search form is not covered by an overlay', { vision: 'only' });
-agent.tap('the red pin on the map', { vision: true });
-agent.tap('the first offer card', { vision: 'fallback' });
 ```
 
 `"only"` exists because a tree sent alongside pixels is a cheaper path to an
@@ -254,12 +199,9 @@ condition about what is on screen, and a caller that needs to judge content
 further down MUST bring it into view first.
 
 Under `"only"` the runner MUST still capture the observation, because it
-hit-tests and reports against it; it MUST NOT include the tree serialization in
+reports against it; it MUST NOT include the tree serialization in
 the model request, and the step MUST record that the tree was withheld
-(13-reporting.md). Because there are then no node identifiers the model has seen,
-a locate under `"only"` MUST be sent the point-only response grammar, and a
-method with no coordinate equivalent MUST reject `"only"` with `POLICY_DENIED`
-before its first model call rather than spending one on an unsatisfiable request.
+(13-reporting.md).
 
 In every mode that sends the tree as well, pixel evidence degrades rather than
 failing the call: when it is withheld the tree is still sent and the step records
@@ -267,65 +209,23 @@ why. `"only"` has nothing to degrade to, so unavailable pixel evidence MUST fail
 the call with `POLICY_DENIED` instead of answering from the tree the caller
 excluded.
 
-`"fallback"` requires a signal that the tree was insufficient, and a locate is
-the only operation that produces one without guessing: the model reports no
-match, or no derived query resolves the node it chose. A method that locates a
-single target MUST escalate on exactly those outcomes, at most once per
-invocation, and MUST NOT escalate after any action has been dispatched.
-
-A judgment always produces an answer from the tree, so there is no such signal
-for `assert`, `waitFor`, and `extract`; under `"fallback"` they stay tree-only.
-`agent.scrollTo` also stays tree-only, because inside its polling loop a
-tree-only miss is indistinguishable from "the target has not been scrolled to
-yet". Those methods need `vision: true` to be shown pixels.
-
-Because escalation runs the locate a second time, a `"fallback"` invocation's
-model-call budget MUST cover both tiers.
+`"fallback"` requires a signal that the tree was insufficient, and a judgment
+never produces one: it always answers from the tree. Under `"fallback"`,
+`assert`, `waitFor`, and `extract` therefore stay tree-only — the mode behaves
+like `false` — and need `vision: true` or `"only"` to be shown pixels.
 
 The screenshot and the tree MUST describe the same observation revision. The
 reported image dimensions MUST be the true dimensions of the image bytes, and
-the image MUST record its scale relative to CSS pixels, because every
-coordinate the model reads off it is relative to those dimensions.
+the image MUST record its scale relative to CSS pixels.
 
 Every mode that can send pixels requires a model that accepts image input. A model that does not fails
 the call with `MODEL_PROVIDER_FAILED`. Vision calls use `agent.visionModel` when
-one is configured and `agent.model` otherwise (05-config.md); visual grounding
-is a materially higher bar than accepting an image, and a model may judge pixels
-well while pointing at them badly. Pixel policy is defined in
-[14-security.md](./14-security.md).
+one is configured and `agent.model` otherwise (05-config.md). Pixel policy is
+defined in [14-security.md](./14-security.md).
 
 Vision is also the only tier that may send pixel evidence *to* the model.
 `assert.screenshot` is unrelated: it controls failure evidence attached to the
 report after the judgment.
-
-### Visual pointing
-
-Under `vision`, and only under it, a locate response may answer with a point in
-the attached screenshot instead of a node id. It exists for surfaces the tree
-cannot describe, such as canvas, WebGL, and custom-drawn widgets.
-
-Whether pointing is offered is decided by the calling method, before the model
-is asked. A method with no coordinate equivalent MUST be sent the node-only
-response grammar and the node-only request text even when pixels are attached,
-so a point can never be returned to a caller that cannot act on one.
-
-The runner owns everything about that point:
-
-- it is bounded to the reported image dimensions; an out-of-bounds point is
-  invalid model output and spends one repair round rather than being clamped;
-- it is converted to CSS pixels, rounded, and clamped once before dispatch;
-- it is hit-tested against the same observation, and the innermost node found —
-  role and name, or the absence of any node — is recorded on the step;
-- the action itself remains predetermined by the API call. The model still
-  never names an action or an error code.
-
-Dispatch happens at the point, not at the center of the hit-tested node:
-retargeting would leave the pixels the model chose, which on a canvas is the
-whole surface. Only `tap` and `click` offer a point, because every other method
-needs a semantic node to act on; those methods still receive the screenshot,
-which is what lets the model choose a better node. A point answered to a
-node-only call is invalid model output. A driver without coordinate input
-cannot serve pointing at all.
 
 ## Errors
 
@@ -336,43 +236,23 @@ timeouts, cancellations, and product assertions remain distinguishable.
 
 ## Option defaults
 
-| Method | Default timeout | Model calls | Action steps | Cache |
-|---|---:|---:|---:|---|
-| `act` | 60 s | config limit | config `maxSteps` | inherited mode |
-| `login` | 60 s | config limit | config `maxSteps` | off |
-| `tap/click/type/longPress/press/select/hover/check/uncheck/upload` | action timeout | up to 2 on miss (one repair) | exactly 1 | inherited mode |
-| `dragTo` | action timeout | up to 4 (one repair per locate) | exactly 1 | inherited mode |
-| `scroll` | action timeout | 0, or up to 2 with `within` | exactly 1 | locate only |
-| `scrollTo`, `waitFor` | action timeout, at least 30 s | config limit | bounded by calls | locate only/off |
-| `extract` | action timeout, at least 30 s | 2 | 0 | off |
-| `assert` | action timeout, at least 30 s | exactly 1 | 0 | off |
+| Method | Default timeout | Model calls | Action steps |
+|---|---:|---:|---:|
+| `act` | 60 s | config limit | config `maxSteps` |
+| `waitFor` | action timeout, at least 30 s | config limit | 0 |
+| `extract` | action timeout, at least 30 s | 2 | 0 |
+| `assert` | action timeout, at least 30 s | exactly 1 | 0 |
 
-Every timeout is capped by the remaining test timeout. `cache: false` disables
-cache for that call; `cache: true` uses the resolved run mode and cannot upgrade
-read-only to read-write. `assert.screenshot` defaults to true unless pixel
+Every timeout is capped by the remaining test timeout. `assert.screenshot`
+defaults to true unless pixel
 evidence is security-tainted. `vision` defaults to `agent.vision`, itself
 `false`, and does not change any budget in the table above. Per-call budgets
 MUST be positive integers and cannot exceed config or hard security limits.
 
 The closed model response grammars are
-[`schema/agent-locate-v1.schema.json`](./schema/agent-locate-v1.schema.json),
-[`schema/agent-judgment-v1.schema.json`](./schema/agent-judgment-v1.schema.json),
+[`schema/agent-judgment-v1.schema.json`](./schema/agent-judgment-v1.schema.json)
 and [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json).
 Unknown or method-incompatible responses are policy errors.
-
-A locate response naming a node id, observation revision, or screenshot point
-outside the current observation is invalid model output: the runner rejects it
-before any driver dispatch and spends remaining model-call budget on one repair
-round instead of failing the step outright. A point is offered only by the
-vision variant of the locate grammar; a point answered to a tree-only call is
-invalid output, never an accepted coordinate.
-
-A locate response always carries a short `explanation`: why the selected node
-matches, or, with `target: null`, why nothing in the observation does. An
-explicit `target: null` is a valid response, not a policy error: the runner
-raises `LOCATOR_NOT_FOUND` carrying the model's explanation (`scrollTo` keeps
-scrolling and reports the last explanation on budget exhaustion). The model
-never selects an error code; explanations are bounded untrusted prose.
 
 ## Steps
 

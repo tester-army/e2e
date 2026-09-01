@@ -177,7 +177,10 @@ test.setup(
   { sessions: ['admin'] },
   async ({ app, agent, session }) => {
     await app.open();
-    await agent.login(credentials.user('admin'));
+    await agent.act('Sign in', {
+      user: credentials.user('admin').username,
+      password: credentials.user('admin').password,
+    });
     await session.save('admin');
   },
 );
@@ -276,7 +279,7 @@ result references it, has the same skip cause, and has zero attempts.
 ## Retry and result rules
 
 A retry always reruns fixture acquisition, session restore, hooks, and the
-test body in a clean logical attempt. Agent caches are bypassed on every retry.
+test body in a clean logical attempt.
 A timed-out or cancelled attempt is never reused.
 
 | Failure phase/category | Test retry eligible | Realm action |

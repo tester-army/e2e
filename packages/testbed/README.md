@@ -17,17 +17,13 @@ tests.
   websites (example.com, iana.org, playwright.dev), dogfooding the production
   opt-in and multi-origin policy.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the same
-  playground: located actions, assisted polling, judgments, schema-validated
-  extraction with zod, host-side secret fills, and mixed agentic/deterministic
-  flows in a serial group.
-- `e2e.selenium.config.ts` + `tests-selenium/` and
-  `e2e.selenium-agent.config.ts` + `tests-selenium-agent/` — opt-in suites
-  against seleniumbase.io, the community practice site. Deliberately adversarial
+  playground: `agent.act` flows, assisted polling, judgments, and
+  schema-validated extraction with zod.
+- `e2e.selenium.config.ts` + `tests-selenium/` — opt-in suite against
+  seleniumbase.io, the community practice site. Deliberately adversarial
   surfaces: shadow roots, frames written into `about:blank`, nested frames,
   HTML5 drag-and-drop, canvas, native dialogs, TinyMCE, an anti-bot page, and
-  pages whose controls have no accessible name. The two configs drive the same
-  pages deterministically and agentically so a gap in one tier is
-  distinguishable from a gap in the other. See "Known gaps" below.
+  pages whose controls have no accessible name. See "Known gaps" below.
 
 ## Commands
 
@@ -58,13 +54,12 @@ Agentic assertions are structurally comparable across models, not textually
 identical, so these tests assert on meaning (`toContain`) and pair every
 agentic step with a deterministic locator check.
 
-## Known gaps (seleniumbase.io suites)
+## Known gaps (seleniumbase.io suite)
 
-Both suites are opt-in and never run in CI:
+The suite is opt-in and never runs in CI:
 
 ```bash
-pnpm --filter @e2edev/testbed test:selenium                                # 55 pass, 4 skip
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:selenium-agent    # 25 pass, 2 skip
+pnpm --filter @e2edev/testbed test:selenium    # 55 pass, 4 skip
 ```
 
 Every remaining `skip` is a pinned finding, not a flake, and names its cause at
@@ -78,49 +73,26 @@ the call site.
    inexpressible. Costs three deterministic tests (`skip`) and forces
    `web.evaluate` for the nested document. The locator AST already supports
    `frame` + `web-selector`; only the public surface is missing.
-2. **`dragTo` cannot hold two reference-only endpoints.** It locates twice, each
-   locate takes two observations, and every observation disposes the generation
-   before it — so the source handle is gone by dispatch. A drag with one
-   query-addressable endpoint works; a page that gives neither does not (`skip`,
-   agentic drag inside a frame). Retaining generations is a driver lifecycle
-   decision, deliberately left for its own change.
-3. **`data:` frames are outside the agent's view by contract.** `spec/14-security.md`
-   denies the scheme by name, so an inline frame stays a boundary node however it
-   got there. Admitting it for observation only — it has an opaque origin, and its
-   bytes come from a document that was already admitted — is a spec change with
-   its own review, not something an observation walk decides (`skip`, agentic
-   checkbox inside an embedded document).
-4. **`getAttribute` reads a whitelist**, returning `null` for `readonly`,
+2. **`getAttribute` reads a whitelist**, returning `null` for `readonly`,
    `draggable`, `class`, `src` — indistinguishable from absent. There is no
    `toHaveAttribute`/`toHaveClass` either, so attribute checks fall to
    `web.evaluate`.
-5. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
+3. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
    cannot be opened at all (`skip`).
-6. **No page-level response/console feed.** "loaded with no 404s and no JS
+4. **No page-level response/console feed.** "loaded with no 404s and no JS
    errors" is reconstructed from `web.route` on the request side.
-7. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
+5. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
    `tabpanel`, so radio groups and selects need `web.locator`.
-8. **The reference driver is detected by anti-bot.** `/hobbit/login` redirects to
+6. **The reference driver is detected by anti-bot.** `/hobbit/login` redirects to
    a block page on load; the aspirational test is `skip`ped and the block pinned.
-9. **Agent steps record no resolved locator.** A step that resolves the *wrong*
-   node still reports `passed`; only the paired deterministic assertion catches
-   it. `E2E_DEBUG=agent` shows the selection, the report does not.
 
 ### Closed
 
-- **Unnamed controls are reachable.** `deriveQueries` returning nothing used to
-  throw before the reference and selector paths could run, so the agent tier
-  failed hardest on exactly the controls that have no deterministic address
-  either. It now falls through, and a node with an anchored platform selector
-  becomes a first-class located node (`locate.selector`) rather than
-  reference-only. Covered by `packages/e2e/tests/integration/agent-unnamed.test.ts`.
 - **Open shadow roots are observed.** The walk descends into `shadowRoot`, so a
   control that exists only in a shadow tree is selectable.
 - **Empty painted rectangles are observed** with the role `box`, so a drop zone
   or a swatch can be named at all. An unpainted spacer of the same size stays
   out: a person cannot see it either.
-- **A drag can end on a reference-only node.** The pointer path accepts an
-  element handle, which `Locator.dragTo` cannot.
 
 ### Hazards worth knowing, neither an SDK defect
 

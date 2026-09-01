@@ -1,6 +1,6 @@
 ---
 title: agent
-subtitle: Planned flows, located actions, judgments, extraction, and their budgets.
+subtitle: Planned flows, judgments, extraction, and their budgets.
 ---
 
 Every `agent` call is one bounded invocation: a fresh observation, an explicit
@@ -8,13 +8,9 @@ deadline, a model-call budget, and no shared transcript between calls. Acquiring
 the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 
 <Callout intent="warning" title="Not implemented yet">
-`act` and `login` reject with `UNSUPPORTED_CAPABILITY`.
+The `act` options `schema` (structured output) and `vision` reject with
+`UNSUPPORTED_CAPABILITY`.
 </Callout>
-
-The `cache` option applies to the located actions `tap`, `click`, `type`,
-`scroll`, `scrollTo`, and `longPress`. Other located verbs are not cacheable
-and always report `bypassed`. `cache: false` disables the
-cache for one call; it cannot upgrade the resolved run mode.
 
 ```ts
 export interface Agent {
@@ -28,44 +24,10 @@ export interface Agent {
     params?: AgentParams,
     options?: AgentOptions,
   ): Promise<AgentResult>;
-  tap(target: string, options?: InstantActionOptions): Promise<void>;
-  click(target: string, options?: InstantActionOptions): Promise<void>;
-  type(
-    target: string,
-    value: string | Secret,
-    options?: InstantActionOptions,
-  ): Promise<void>;
-  scroll(
-    options: InstantActionOptions & {
-      direction: ScrollDirection;
-      momentum?: Momentum;
-      within?: string;
-    },
-  ): Promise<void>;
-  scrollTo(
-    target: string,
-    options?: InstantActionOptions & { direction?: ScrollDirection },
-  ): Promise<void>;
-  longPress(
-    target: string,
-    options?: InstantActionOptions & { durationMs?: number },
-  ): Promise<void>;
-  press(target: string, key: string, options?: InstantActionOptions): Promise<void>;
-  select(target: string, value: SelectOption, options?: InstantActionOptions): Promise<void>;
-  hover(target: string, options?: InstantActionOptions): Promise<void>;
-  check(target: string, options?: InstantActionOptions): Promise<void>;
-  uncheck(target: string, options?: InstantActionOptions): Promise<void>;
-  dragTo(source: string, destination: string, options?: InstantActionOptions): Promise<void>;
-  upload(
-    target: string,
-    paths: string | readonly string[],
-    options?: InstantActionOptions,
-  ): Promise<void>;
   waitFor(
     condition: string,
     options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
   ): Promise<void>;
-  login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
     options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
@@ -88,69 +50,69 @@ test timeout.
 
 | Method | Model calls | Action steps | Default timeout |
 | --- | ---: | ---: | --- |
-| `tap`, `click` | 2 | 1 | `config.actionTimeout`, 30000 ms |
-| `type` | 2 | 1 | `config.actionTimeout` |
-| `longPress` | 2 | 1 | `config.actionTimeout` |
-| `press` | 2 | 1 | `config.actionTimeout` |
-| `select` | 2 | 1 | `config.actionTimeout` |
-| `hover` | 2 | 1 | `config.actionTimeout` |
-| `check`, `uncheck` | 2 | 1 | `config.actionTimeout` |
-| `upload` | 2 | 1 | `config.actionTimeout` |
-| `dragTo` | 4 | 1 | `config.actionTimeout` |
-| `scroll` without `within` | 0 | 1 | `config.actionTimeout` |
-| `scroll` with `within` | 2 | 1 | `config.actionTimeout` |
-| `scrollTo` | `config.agent.maxModelCalls`, 25 | `config.agent.maxSteps`, 25 | 30000 ms |
+| `act` | `config.agent.maxModelCalls`, 25 | `config.agent.maxSteps`, 25 | `config.timeout`, 120000 ms |
 | `waitFor` | `config.agent.maxModelCalls`, 25 | 0 | 30000 ms |
 | `extract` | 2 | 0 | 30000 ms |
 | `assert` | 1 | 0 | 30000 ms |
 
-A budget of 2 on a single-locate method is one locate plus one repair round.
-`dragTo` locates twice, hence 4.
-
-## Located actions
-
-The model names one node in one observation. The runner derives the query,
-verifies both identify the same unique node, checks policy, and performs one
-predetermined action.
-
-| Method | Behavior | Throws |
-| --- | --- | --- |
-| `tap(target, options?)` | Locates one node and taps it | `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, `MODEL_OUTPUT_INVALID`, `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED`, `MODEL_PROVIDER_FAILED` |
-| `click(target, options?)` | Alias of `tap` | as `tap` |
-| `type(target, value, options?)` | Replaces the target's content. Never submits. | `INVALID_ARGUMENT` when `value` is neither a string nor a `Secret`, `AUTH_CREDENTIAL_UNAVAILABLE`, `POLICY_DENIED` |
-| `press(target, key, options?)` | Sends one key. The key comes from test code and never appears in a prompt. | `INVALID_ARGUMENT` when `key` is empty, whitespace only, or longer than 64 characters |
-| `select(target, value, options?)` | Picks one option on a select-like control | `INVALID_ARGUMENT` for an empty string, or an object with neither a non-empty `label` nor a non-negative integer `index` |
-| `longPress(target, options?)` | `durationMs` defaults to 500, integer 100 through 10000 | `INVALID_ARGUMENT` out of range |
-| `hover(target, options?)` | Hovers one node | as `tap` |
-| `check(target, options?)` | Checks one node | as `tap` |
-| `uncheck(target, options?)` | Unchecks one node | as `tap` |
-| `dragTo(source, destination, options?)` | Two locate rounds, source first, then one committed drag | as `tap` |
-| `upload(target, paths, options?)` | Sets files on one file input. Paths come from test code, resolve from the project root, and never appear in a prompt. | `INVALID_ARGUMENT` for an empty list or a blank entry |
-| `scroll(options)` | One deterministic scroll. `options` is required because `direction` is. Without `within` it spends no model calls. | `INVALID_ARGUMENT` for an invalid `direction` or `momentum` |
-| `scrollTo(target, options?)` | Alternates one scroll and one fresh locate until found, then scrolls into view. `direction` defaults to `'down'`. | `LOCATOR_NOT_FOUND` when the deadline or budget runs out, carrying the last explanation |
-
-A `Secret` passed to `type` is authorized on the host first: the credential must
-be registered, the current origin must be allowed by both `app.allowedOrigins`
-and the credential's own `allowedOrigins`, the node must be an enabled `textbox`,
-`searchbox`, or `combobox`, and the node's input purpose must equal the secret's
-purpose.
+## agent.act
 
 ```ts
-await agent.tap('the Pro plan card');
-await agent.type('the Password field', credentials.user('admin').password);
-await agent.scroll({ direction: 'down', within: 'the results list' });
+act(
+  instruction: string,
+  params?: AgentParams,
+  options?: AgentOptions,
+): Promise<AgentResult>;
 ```
+
+Plans and executes one bounded multi-action flow. The harness owns the step —
+observations, actions, budgets, origin policy, recording — and hands only the
+thinking to the configured step executor. The call ends in an explicit verdict:
+a passing one returns `{ ok: true }`; a failing or blocked one throws an
+`AgentError` whose `code` and `blocked` flag say why.
+
+| Name | Type | Default | Valid |
+| --- | --- | --- | --- |
+| `instruction` | `string` | - | 1 through 8192 UTF-8 bytes after NFC |
+| `params` | `AgentParams` | `undefined` | JSON-safe values plus `Secret`, at most 64 KiB and 32 levels deep |
+| `options.timeout` | `number` | `config.timeout` | positive safe integer |
+| `options.maxSteps` | `number` | `config.agent.maxSteps` | positive integer, at most the resolved limit |
+| `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
+
+Values come from your code through `params`, never from the model. A `Secret`
+in `params` is projected before the model sees anything: the model receives the
+secret's name and purpose, and the harness fills the value host-side, subject
+to the same authorization as `locator.fill` — the credential must be
+registered, the current origin must be allowed by both `app.allowedOrigins`
+and the credential's own `allowedOrigins`, the field must be an enabled secure
+input whose purpose equals the secret's purpose.
+
+```ts
+await agent.act('invite {email} as an editor', { email: 'ada@example.test' });
+
+const member = credentials.user('member');
+await agent.act('Sign in', {
+  username: member.username,
+  password: member.password,
+});
+```
+
+Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
+blocked code such as `AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
+`SEED_DATA_MISSING`, `TEST_SETUP_FAILED`, or `AUTOMATION_UNSUPPORTED` when the
+step could not reach a product verdict; `STEP_BUDGET_EXHAUSTED` and
+`STEP_TIMEOUT` when a budget or the deadline ran out; and `INVALID_ARGUMENT`
+for a malformed instruction or oversized `params`.
 
 ## Vision
 
-Every model-backed method accepts `vision`. It adds a masked screenshot of the
-current observation to the model input, on top of the semantic tree, and needs a
-model that accepts images.
+`assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
+the model is shown: the semantic tree, a masked screenshot of the current
+observation, or both. Sending pixels needs a model that accepts images.
 
 ```ts
 await agent.assert('the chart trends upward', { vision: true });
-await agent.tap('the red pin on the map', { vision: true });
-await agent.tap('the first offer card', { vision: 'fallback' });
+await agent.assert('the search form is visible and not covered', { vision: 'only' });
 ```
 
 | Name | Type | Default |
@@ -161,13 +123,21 @@ await agent.tap('the first offer card', { vision: 'fallback' });
 | --- | --- | --- |
 | `false` | the tree | no image tokens |
 | `true` | the tree and a screenshot, every call | image tokens on every call |
-| `'fallback'` | the tree, then a screenshot only after the tree missed | image tokens only when the tree was not enough |
+| `'fallback'` | the tree — behaves like `false` for `assert`, `waitFor`, and `extract` | no image tokens |
 | `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
 
 Set `agent.vision` in config to make a mode the project default; a per-call value
 always wins. Images are billed as input tokens, so `true` costs more than the
-same call without it on every call, and `'fallback'` costs nothing extra until
-something actually fails on the tree.
+same call without it on every call.
+
+<Callout intent="warn" title="'fallback' behaves like false">
+`'fallback'` exists for calls that can discover mid-flight that the tree was
+not enough. A judgment never does: `assert`, `waitFor`, and `extract` always
+produce an answer from the tree, so there is no miss to escalate on —
+escalating on a `false` judgment would just bias it toward `true`. Under
+`'fallback'` they run tree-only, exactly like `false`. Use `vision: true` or
+`'only'` when you need pixels judged.
+</Callout>
 
 ### Judging pixels and nothing else
 
@@ -191,8 +161,8 @@ of the answer (`'the submit button is disabled'` is in the tree and often not
 visible at all).
 
 `'only'` is cheaper than `true`, not more expensive: you drop the observation
-bytes. The runner still captures the observation — it hit-tests points and reports
-against it — it just isn't sent. The step records `visionOnly: true` and zero
+bytes. The runner still captures the observation — it reports against it — it
+just isn't sent. The step records `visionOnly: true` and zero
 `observationBytes`.
 
 <Callout intent="warn" title="Pixels are viewport-scoped, the tree is document-scoped">
@@ -206,63 +176,23 @@ means `'only'` cannot see below the fold.
 await agent.waitFor('a list of offers with hotel names and prices is visible', { vision: 'only' });
 ```
 
-Write `'only'` conditions about what is on screen, and scroll first when you want
-to ask about something further down.
-
-```ts
-await agent.waitFor('a list of offers with hotel names is visible', { vision: 'only' });
-await agent.scroll({ direction: 'down' });
-await agent.waitFor('an offer card showing a hotel name and a price is visible', { vision: 'only' });
-```
+Write `'only'` conditions about what is on screen, and let the flow scroll first
+when you want to ask about something further down.
 </Callout>
 
-Two consequences worth knowing:
-
-- **A locate under `'only'` can only point.** There are no node identifiers the
-  model has seen, so the point-only grammar is the only thing it can answer in.
-  `tap` and `click` work. `type`, `select`, `upload`, `scrollTo`, and `dragTo`
-  reject `'only'` with `POLICY_DENIED` before spending a model call, rather than
-  blind-clicking a coordinate on a node they could have addressed properly.
-- **No pixels means no answer.** If the viewport is pixel-tainted by a secret fill,
-  or masking cannot be proven complete, `'only'` fails with `POLICY_DENIED`. Every
-  other mode degrades to the tree; `'only'` will not answer a question about
-  pixels from the tree instead.
-
-### Fallback
-
-`'fallback'` needs a signal that the accessibility tree was not enough, and a
-locate is the only operation that produces one without guessing:
-
-- the model reports that no node matches, or
-- no derived query resolves the node it chose — the common real-world case being
-  a control whose accessible name aggregates a whole card, which nothing can
-  re-find.
-
-On either outcome the runner re-observes with pixels attached and asks once more,
-using `agent.visionModel` if one is pinned. It escalates at most once per call
-and never after an action has been dispatched, and the step records
-`visionEscalated: true`.
-
-<Callout intent="warn" title="Judgments stay tree-only under fallback">
-`assert`, `waitFor`, and `extract` always produce an answer from the tree, so
-there is nothing to detect as a miss — escalating on a `false` judgment would
-just bias it toward `true`. `scrollTo` is tree-only for the same reason: inside
-its polling loop, "not in the tree" and "not scrolled there yet" look identical.
-Use `vision: true` when you need pixels judged.
-</Callout>
-
-Escalation runs the locate twice, so a `'fallback'` call gets twice the
-model-call budget of the same call without it.
+One consequence worth knowing: **no pixels means no answer.** If the viewport is
+pixel-tainted by a secret fill, or masking cannot be proven complete, `'only'`
+fails with `POLICY_DENIED`. Every other mode degrades to the tree; `'only'` will
+not answer a question about pixels from the tree instead.
 
 Calls that send pixels use `agent.visionModel` when it is set, and `agent.model`
 otherwise, and keep it for the rest of the invocation — including polling rounds
 whose pixels were withheld — so a polling method never switches models between
-rounds. A `'fallback'` call that escalates switches model once, at the
-escalation; its step reports the model that answered plus `visionEscalated`.
+rounds.
 
 <Callout intent="info" title="Additive, never pixels-only">
-The tree is always sent. It is byte-budgeted and cheap, and its node references
-are what keep an action auditable, so there is no pixels-only mode.
+In every mode but `'only'`, the tree is always sent. It is byte-budgeted and
+cheap, and its node references are what keep a step auditable.
 </Callout>
 
 Pixel evidence degrades instead of failing the call. It is withheld, and the tree
@@ -276,33 +206,6 @@ pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
 controls failure evidence attached to the report after the judgment, `vision`
 controls what the model is shown before it.
 
-### Visual pointing
-
-Under `vision`, `tap` and `click` can reach targets the tree cannot describe,
-such as canvas, WebGL, and custom-drawn widgets: the model may answer with a
-point in the screenshot instead of a node.
-
-The runner keeps ownership of it. The point is bounded to the image it was read
-off (an out-of-bounds answer is invalid output, worth one repair round, never
-clamped), converted to CSS pixels, hit-tested against the same observation, and
-recorded on the step together with whatever node was found under it. The action
-stays predetermined by the method you called.
-
-```ts
-// Reachable only through pixels: nothing in the tree names the pin.
-await agent.tap('the red pin on the map', { vision: true });
-```
-
-Dispatch happens at the point, not at the center of the node under it, so a tap
-on a canvas lands where the model looked.
-
-Only `tap` and `click` are ever offered a point. Every other method needs a
-semantic node, so `type`, `select`, `upload`, `scrollTo`, `dragTo`, and friends
-are asked for a node even under `vision`: the pointing grammar is not part of
-their request, and the model cannot spend the call on an answer they would have
-to reject. They still receive the screenshot, which is what lets the model pick
-a better node.
-
 ## Judgments and extraction
 
 ### agent.assert
@@ -310,7 +213,7 @@ a better node.
 ```ts
 assert(
   assertion: string,
-  options?: { timeout?: number; screenshot?: boolean; vision?: boolean },
+  options?: { timeout?: number; screenshot?: boolean; vision?: VisionMode },
 ): Promise<void>;
 ```
 
@@ -321,7 +224,7 @@ One fresh observation, exactly one judgment. It does not poll.
 | `assertion` | `string` | - |
 | `options.timeout` | `number` | `30000` |
 | `options.screenshot` | `boolean` | `true` |
-| `options.vision` | `boolean` | `config.agent.vision`, `false` |
+| `options.vision` | `VisionMode` | `config.agent.vision`, `false` |
 
 Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and, when
 permitted, a screenshot path. Evidence is skipped with `screenshot: false` and
@@ -336,7 +239,7 @@ await agent.assert('the dashboard shows a trial badge');
 ```ts
 waitFor(
   condition: string,
-  options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number },
+  options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number; vision?: VisionMode },
 ): Promise<void>;
 ```
 
@@ -363,7 +266,7 @@ await agent.waitFor('the upload progress reports completion', { intervalMs: 500 
 ```ts
 extract<Schema extends StandardSchemaV1>(
   instruction: string,
-  options: { schema: Schema; timeout?: number; maxModelCalls?: number },
+  options: { schema: Schema; timeout?: number; maxModelCalls?: number; vision?: VisionMode },
 ): Promise<StandardSchemaV1.InferOutput<Schema>>;
 ```
 
@@ -391,27 +294,21 @@ const summary = await agent.extract('the workspace name and plan', {
 
 ```ts
 export interface VisionOption {
-  vision?: boolean;
+  vision?: VisionMode;
 }
 
-export interface InstantActionOptions extends VisionOption {
-  timeout?: number;
-  cache?: boolean;
-}
+export type VisionMode = boolean | 'fallback' | 'only';
 
 export interface AgentOptions extends VisionOption {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
-  cache?: boolean;
 }
 
 export interface AgentSchemaOptions<Schema extends StandardSchemaV1>
   extends AgentOptions {
   schema: Schema;
 }
-
-export type LoginOptions = Omit<AgentOptions, 'cache'>;
 
 export type AgentParam =
   | JsonPrimitive
@@ -432,10 +329,9 @@ export interface AgentResultWithData<Output> extends AgentResult {
 Per-call budgets must be positive integers and can only lower the resolved
 configuration limits.
 
-`AgentOptions`, `AgentSchemaOptions`, `LoginOptions`, `AgentParams`,
-`AgentResult`, and `AgentResultWithData` are consumed by `act` and `login`.
-Located actions and judgments return `void`; `extract` returns the validated
-value directly.
+`AgentOptions`, `AgentSchemaOptions`, `AgentParams`, `AgentResult`, and
+`AgentResultWithData` are consumed by `act`. Judgments return `void`;
+`extract` returns the validated value directly.
 
 ## AgentError
 
@@ -444,6 +340,7 @@ export class AgentError extends Error {
   readonly code: AgentErrorCode;
   readonly explanation: string;
   readonly screenshot?: string;
+  readonly blocked: boolean;
 }
 ```
 
@@ -452,6 +349,7 @@ export class AgentError extends Error {
 | `code` | `AgentErrorCode` | Closed union, assigned by the runner, never taken from model text |
 | `explanation` | `string` | Sanitized, bounded prose. Same value as `message`. |
 | `screenshot` | `string \| undefined` | Artifact path, present only when evidence was captured and permitted |
+| `blocked` | `boolean` | True when the failure reports a blocked step — credentials, environment, or budget — not a product failure |
 
 Check `code` rather than using `instanceof`. Every code, its class, and its exit
 code are in [Errors](/reference/errors).

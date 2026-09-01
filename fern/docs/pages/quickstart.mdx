@@ -122,14 +122,14 @@ Every run also writes `.e2e/report.json` with the full result set. See
 
 ## Add an agent
 
-Describe a target instead of selecting it:
+Describe a goal instead of scripting it:
 
 ```bash
 E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx e2e run
 ```
 
 ```ts
-await agent.tap('the Pro plan card');
+await agent.act('upgrade the workspace to the Pro plan');
 await agent.assert('the invoice preview shows a prorated amount');
 ```
 
@@ -138,7 +138,7 @@ await agent.assert('the invoice preview shows a prorated amount');
     Locators, actions, assertions, hooks, and options.
   </Card>
   <Card title="Agents" icon="robot" href="/agents">
-    Model setup, described targets, judgments, extraction.
+    Model setup, planned flows, judgments, extraction.
   </Card>
   <Card title="Authentication" icon="key" href="/authentication">
     Sign in once, reuse the session everywhere.

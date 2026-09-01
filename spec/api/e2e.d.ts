@@ -130,10 +130,7 @@ export interface AgentOptions extends VisionOption {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
-  cache?: boolean;
 }
-
-export type LoginOptions = Omit<AgentOptions, 'cache'>;
 
 export interface AgentSchemaOptions<Schema extends StandardSchemaV1>
   extends AgentOptions {
@@ -197,8 +194,6 @@ export interface Agent {
     condition: string,
     options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
   ): Promise<void>;
-  /** Authenticates with a pinned credential. */
-  login(user: Credential, options?: LoginOptions): Promise<AgentResult>;
   /** Extracts and validates structured screen data. */
   extract<Schema extends StandardSchemaV1>(
     instruction: string,

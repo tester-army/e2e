@@ -36,7 +36,6 @@ independently testable profiles:
 | Driver SPI | `driver-1` | yes |
 | Agent protocol | `agent-protocol-1` | yes |
 | Report format | `report-1` | yes |
-| Cache format | `cache-1` | yes |
 | Session format | `session-1` | yes |
 | Conformance format | `conformance-1` | yes |
 | iOS execution | not assigned | no, future |
@@ -72,7 +71,7 @@ The standard defines three different guarantees:
   same model plan or judgment across providers or model versions.
 
 An implementation MUST NOT describe agentic execution as deterministic. A
-report MUST identify the model, agent-policy version, driver, cache provenance,
+report MUST identify the model, agent-policy version, driver,
 and target needed to compare two runs.
 
 ## Conformance suites

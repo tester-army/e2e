@@ -64,13 +64,12 @@ export default defineConfig({
 ```
 
 Explicit target names are REQUIRED, unique, nonempty, and limited to ASCII
-letters, numbers, `_`, `-`, and `.`. `--target`, reports, sessions, caches,
+letters, numbers, `_`, `-`, and `.`. `--target`, reports, sessions,
 and artifact directories all use this stable ID.
 
-`projectId` is the stable cache/report project identity. It defaults to the
+`projectId` is the stable report project identity. It defaults to the
 nearest `package.json` name. If neither exists, the runner hashes the project
-root real path and marks caches nonportable. Projects committing caches SHOULD
-set an ASCII reverse-DNS or scoped-package-style `projectId` explicitly.
+root real path.
 
 ## Test globs
 
@@ -98,7 +97,6 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `workers` | logical CPU based | 1 |
 | `artifacts` | screenshot, trace | screenshot, trace |
 | `reporters` | list, HTML | list, HTML |
-| `agent.cache` | read-write | read-only |
 | `agent.maxSteps` | 25 | 25 |
 | `agent.maxModelCalls` | 25 | 25 |
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
@@ -176,7 +174,7 @@ implementing `StepExecutor` (16-executors.md), such as the package's
 `createAgent(...)`. An executor is recognized structurally (`name` plus
 `runStep`), so the two shapes cannot collide. With an agent value the options
 keep their defaults and the model still resolves from `E2E_MODEL`, so the
-located verbs keep working beside a custom agent. There is no `executor` key;
+judgment methods keep working beside a custom agent. There is no `executor` key;
 the config digest records an agent value by its `name` and `version` only.
 
 ## Model configuration
@@ -205,10 +203,7 @@ exists because visual grounding is a materially higher bar than accepting an
 image, so the tier that needs it is pinnable without changing the model every
 other call uses. An invocation that is sending pixels uses that model for the
 rest of its lifetime, including rounds whose pixel evidence was withheld, so a
-polling method never switches models between rounds. A `"fallback"` invocation
-that escalates therefore changes model once, at the escalation, and the step
-records that it escalated (13-reporting.md) so its reported provenance is not
-read as covering the tree-only calls that preceded it. Both models are disclosed before first agent use (14-security.md), and
+polling method never switches models between rounds. Both models are disclosed before first agent use (14-security.md), and
 each step records the model it actually used (13-reporting.md).
 
 A model instance owns its own transport and credentials; the runner passes it
@@ -227,7 +222,7 @@ String references resolve through the runner's documented default routing
 `MODEL_UNAVAILABLE`. A v0 runner MUST ship at least one adapter and report its
 exact version, but specification 0.1 does not require a particular commercial
 provider. This affects config portability, not test-source portability.
-Adapters consume the closed locate, judgment, and tool message families of
+Adapters consume the closed judgment and tool message families of
 `agent-protocol-1`, honor cancellation/usage reporting, and cannot expand
 policy.
 
@@ -235,13 +230,6 @@ The report records provider, model ID, resolved endpoint (`provider-default`
 when a caller-supplied instance owns the transport), and adapter/policy
 versions. It never records provider credentials. Model input disclosure and
 offline behavior are specified in 14-security.md.
-
-## Agent cache mode
-
-`off` neither reads nor writes. `read-only` validates and replays existing
-entries but never modifies them. `read-write` performs atomic local updates.
-`--no-agent-cache` forces `off`. CI defaults to read-only so untrusted changes
-cannot create durable trusted guidance.
 
 ## Resource limits
 
@@ -251,7 +239,6 @@ them. Defaults and hard maxima:
 | Limit | Default | Hard maximum |
 |---|---:|---:|
 | discovered test-target results | 100,000 | 1,000,000 |
-| cache entry bytes | 256 KiB | 1 MiB |
 | terminal field bytes | 8 KiB | 64 KiB |
 | agent context bytes | 16 KiB | 64 KiB |
 | ledger bytes | 8 KiB | 64 KiB |

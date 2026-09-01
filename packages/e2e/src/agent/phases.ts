@@ -22,7 +22,7 @@ export interface PhaseHost {
 
 /** One instrumented phase: the event kind it records and the debug bucket it feeds. */
 export interface PhaseSpec {
-  /** Public API name of the enclosing step, e.g. `agent.tap`. */
+  /** Public API name of the enclosing step, e.g. `agent.assert`. */
   readonly api: string;
   readonly kind: StepEvent['kind'];
   readonly phase: 'agent.observe' | 'agent.model' | 'agent.action' | 'agent.cache';

@@ -1,7 +1,7 @@
 # 13 - Reports and Wire Formats
 
 The JSON Schemas under [`schema/`](./schema/) are normative for `report-1`,
-`cache-1`, `session-1`, the `agent-protocol-1` locate/judgment/tool messages,
+`session-1`, the `agent-protocol-1` judgment/tool messages,
 and `conformance-1`. This document defines semantics not expressible in JSON
 Schema.
 
@@ -22,8 +22,8 @@ Dates, `BigInt`, functions, symbols, cycles, class instances, and non-finite
 numbers are invalid unless a schema defines an explicit string representation.
 
 Hard document ceilings before read are 100 MiB for report, 64 MiB for session,
-10 MiB for conformance, 1 MiB for cache, and 256 KiB for each agent protocol
-message. Config may lower report/cache ceilings but cannot raise these values.
+10 MiB for conformance, and 256 KiB for each agent protocol
+message. Config may lower the report ceiling but cannot raise these values.
 
 Writers MUST emit only schema-defined fields. Extensions live under an
 `extensions` object keyed by a reverse-DNS or npm-package namespace. Readers
@@ -119,21 +119,14 @@ and code fields defined by the schema.
 A step whose model input included pixel evidence records that pixels were model
 input, not merely an artifact, plus the largest image sent in bytes. A step that
 asked for pixels and did not send them records why they were withheld:
-`PIXEL_TAINTED`, `MASKING_UNPROVEN`, or `UNSUPPORTED_CAPABILITY`. A step that
-escalated from the tree to pixels under `vision: "fallback"` records that it
-escalated; its model provenance is the model that answered after the escalation,
-not a claim about every call of the step. A step run under `vision: "only"`
+`PIXEL_TAINTED`, `MASKING_UNPROVEN`, or `UNSUPPORTED_CAPABILITY`. A step run under `vision: "only"`
 records that the semantic tree was withheld, and reports zero observation bytes,
-because the observation contributed nothing to the request. A step that dispatched at a
-model-supplied point records the point and the node hit-tested under it, or the
-absence of one.
+because the observation contributed nothing to the request.
 
 Every model-backed step identifies provider, model ID, resolved endpoint (`local`
 or URL),
 adapter version, agent-policy version, call count, and token/cost usage when
-reported by the provider. Every cacheable step identifies `miss`, `hit`,
-`invalid`, `bypassed`, or `written`; every status except bypassed includes the
-cache key hash.
+reported by the provider.
 
 ### Artifacts
 
@@ -171,24 +164,6 @@ A schema-valid document that fails semantic validation is untrusted and cannot
 be rendered by a privileged reporting job. The validator is part of the future
 runner implementation, not a standalone specification-repository script.
 
-## `cache-1`
-
-One `cache-v1.schema.json` document represents one key. The key itself is not
-part of the document: its SHA-256/JCS digest is the entry's file name, and that
-is what binds an entry to a call.
-
-Locate payloads contain only normalized locator expressions and expected
-semantic identity. Path payloads contain only normalized allowed tool calls.
-Neither form may contain model instructions, handoff prose, node references,
-coordinates, raw secrets, provider payloads, executable source, or absolute
-paths.
-
-Schema validity is necessary but not sufficient: readers also validate key
-digest, project/app/target/driver identity, policy version, starting screen
-fingerprint, file size, and security policy before replay.
-The file-size limit is resolved `maxCacheBytes`, default 256 KiB and never above
-the 1 MiB wire ceiling.
-
 ## `session-1`
 
 `session-v1.schema.json` wraps AES-256-GCM encrypted driver state with run,
@@ -201,7 +176,7 @@ envelope excluding `state.tag` and `state.ciphertext`, while retaining
 `state.format`, `state.version`, `state.algorithm`, `state.iv`, and extensions.
 The runner tracks IVs for the key lifetime and rejects reuse.
 
-Session payloads are bearer credentials. They never enter reports, caches,
+Session payloads are bearer credentials. They never enter reports,
 model context, or artifacts. v0 stores them only for one runner invocation,
 with verified owner-only permissions; inability to enforce those permissions
 fails before capture. The runner then deletes them during cleanup.

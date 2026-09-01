@@ -63,7 +63,7 @@ not make a v0 web runner mobile-conformant.
 |---|---|---|
 | launch/stop/clear state | `app.open/restart/clearState` | future mobile |
 | open link | `app.deepLink` | future mobile |
-| text/id tap | `screen` locator or located agent action | future mobile |
+| text/id tap | `screen` locator or `agent.act` | future mobile |
 | raw point tap | intentionally driver-internal | no |
 | double tap/long press | `Locator` actions | future mobile |
 | input/erase text | `fill/clear` | future mobile |

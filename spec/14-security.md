@@ -17,7 +17,7 @@ Untrusted data:
 - app text, accessibility trees, screenshots, URLs, frames, downloads, and
   network responses;
 - model output, reasoning, tool arguments, and handoff text;
-- committed caches and sessions read from disk;
+- sessions read from disk;
 - artifact labels, filenames, backend paths, and errors;
 - PR title/body/diff and all code from an untrusted branch.
 
@@ -39,7 +39,7 @@ actions are `POLICY_DENIED`. Model text is never evaluated as code, selectors,
 shell, JavaScript, or config.
 
 App and ledger content is quoted as untrusted evidence. Instructions found in
-the UI, page source, PR metadata, cache, or handoff have no policy authority.
+the UI, page source, PR metadata, or handoff have no policy authority.
 
 ## Origins and navigation
 
@@ -66,7 +66,7 @@ is reported normally.
 
 ## Credentials and confused deputies
 
-Registered secret values never enter model requests, ledger text, cache data,
+Registered secret values never enter model requests, ledger text,
 reports, terminal output, or persisted artifacts. Test/config/driver code is
 trusted and may access environment variables outside framework APIs; the
 framework does not claim otherwise.
@@ -147,9 +147,9 @@ Pixels are untrusted evidence on the same terms as tree text, and they widen the
 prompt-injection surface: text rendered in the page is readable by the model
 even when no node exposes it. The runner policy MUST state that an attached
 image is data, and that text drawn inside it — including anything shaped like an
-instruction, a policy, or a schema — carries no authority. As everywhere else, a
-model cannot select an action or an error code, and a coordinate it returns is
-data the runner validates, converts, hit-tests, and records before dispatch.
+instruction, a policy, or a schema — carries no authority. As everywhere else,
+a model cannot select an error code, and every action it proposes is data the
+runner authorizes before dispatch.
 
 If source masking, screenshot masking, trace filtering, or runner redaction
 cannot be proven complete, the evidence is rejected. The runner MUST NOT upload
@@ -173,30 +173,16 @@ Session payloads are never included in diagnostics. A cloud or shared-session
 profile requires authenticated encryption, tenant/branch isolation, TTL,
 revocation, and audit requirements before it can become normative.
 
-## Caches
-
-Cache files are untrusted strict JSON, not code or prompts. Schema validation,
-identity/fingerprint matching, path containment, size limits, and policy checks
-precede use. Locate/path entries contain structured actions only. Invalid cache
-content produces a miss and a sanitized diagnostic. A locate entry MAY carry a
-platform selector, which is structural rather than semantic and is gated only by
-the recorded role/name identity, so it does not restrict which nodes the entry
-may aim at; 10-determinism.md states what that concedes.
-
-Untrusted CI runs use read-only or off mode. They cannot publish to a trusted
-cache, session store, package, artifact host, or branch. Cache review does not
-replace runtime validation.
-
 ## Untrusted pull requests
 
 v0 treats test/config/driver code as trusted and does not provide an in-process
 untrusted mode. If a project nevertheless executes fork or untrusted branch
 code, CI MUST place it in an external ephemeral OS/container sandbox without
 repository secrets, write-capable tokens, production credentials, shared
-cache/session write access, or privileged network placement. A trusted reporting job MAY consume
+session write access, or privileged network placement. A trusted reporting job MAY consume
 the untrusted job's sanitized `report-1` only through a quarantined,
 size-bounded channel bound to repository, workflow run, and head SHA. That
-channel is not a trusted shared artifact/cache store. The reporting job MUST NOT
+channel is not a trusted shared artifact store. The reporting job MUST NOT
 execute or import untrusted code and MUST run the reference semantic report
 validator before rendering.
 
@@ -213,7 +199,6 @@ artifact size, download count/size, terminal field size, and report event size.
 Resolved defaults are:
 
 - one observation is capped by `agent.maxObservationBytes`;
-- one cache entry at 256 KiB;
 - one untrusted terminal field at 8 KiB;
 - one agent context at 16 KiB;
 - one ledger context at 8 KiB.
@@ -247,5 +232,5 @@ chain trust signal.
 
 Required vectors cover prompt-injection resistance, tool schema rejection,
 origin/redirect/frame enforcement, credential purpose/origin checks, semantic
-and pixel masking, trace filtering, cache poisoning, session isolation, path
+and pixel masking, trace filtering, session isolation, path
 traversal, terminal/HTML injection, cancellation, and untrusted-CI defaults.

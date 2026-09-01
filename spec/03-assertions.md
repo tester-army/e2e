@@ -27,7 +27,7 @@ absence from passing immediately.
 On timeout, the failure includes the normalized locator expression, final
 match count, relevant semantic subtree, last observed value, target, elapsed
 time, and an artifact reference. The runner MAY suggest a higher-priority query
-but MUST NOT execute or cache the suggestion automatically.
+but MUST NOT execute the suggestion automatically.
 
 ## Matching rules
 

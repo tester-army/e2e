@@ -19,21 +19,15 @@ rather than with the terminal output.
     at all.
   </Accordion>
 
-  <Accordion title="UNSUPPORTED_CAPABILITY on agent.login or an agent.act option">
+  <Accordion title="UNSUPPORTED_CAPABILITY on an agent.act option">
     **Symptom.** The call throws the moment it runs.
 
-    **Cause.** `agent.login`, and the `agent.act` options `schema`, `vision`,
-    `cache`, and `Secret` values in `params`, are not implemented yet.
+    **Cause.** The `agent.act` options `schema` (structured output) and `vision`
+    are not implemented yet.
 
-    **Fix.** For sign-in flows today, compose described targets and judgments,
-    which are one bounded step each:
-
-    ```ts
-    await agent.type('the username field', 'admin');
-    await agent.type('the password field', credentials.user('admin').password);
-    await agent.tap('the sign in button');
-    await agent.assert('the dashboard is visible');
-    ```
+    **Fix.** Drop the option. To pull structured data off the screen, use
+    `agent.extract`, which supports `schema` today; to judge pixels, put the
+    `vision` option on `agent.assert` or `agent.waitFor` instead.
   </Accordion>
 
   <Accordion title="UNSUPPORTED_CAPABILITY on the device fixture">

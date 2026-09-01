@@ -10,7 +10,7 @@
  */
 
 import { isVisionMode } from '../config/agent.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { TestError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
@@ -88,18 +88,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       prompt: { request: JUDGMENT_REQUEST, instruction, observation },
     });
 
-  const planningTierUnavailable = (api: string): never => {
-    throw new ConfigurationError(
-      'UNSUPPORTED_CAPABILITY',
-      `${api} is not implemented yet; sign in with agent.act and Secret params instead`,
-    );
-  };
-
   const agent: Agent = {
     act: ((instruction: string, params?: Parameters<Agent['act']>[1], options?: Parameters<Agent['act']>[2]) =>
       runActStep(runtime, instruction, params, options)) as Agent['act'],
-    login: ((): never => planningTierUnavailable('agent.login')) as Agent['login'],
-
     waitFor(condition, options) {
       const intervalMs = validateInterval(options?.intervalMs);
       return step(

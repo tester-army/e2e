@@ -27,10 +27,10 @@ iOS and Android execution are not claimed until their conformance suites exist.
 | [07-scope.md](./07-scope.md) | frozen v0 release boundary |
 | [08-platforms.md](./08-platforms.md) | web profile, queries, app/web behavior |
 | [09-drivers.md](./09-drivers.md) | versioned driver SPI and conformance |
-| [10-determinism.md](./10-determinism.md) | control gradient, ledger, caches |
+| [10-determinism.md](./10-determinism.md) | control gradient and ledger |
 | [11-lifecycle.md](./11-lifecycle.md) | collection, hooks, attempts, sessions |
 | [12-migration.md](./12-migration.md) | informative migration coverage |
-| [13-reporting.md](./13-reporting.md) | report/cache/session wire semantics |
+| [13-reporting.md](./13-reporting.md) | report/session wire semantics |
 | [14-security.md](./14-security.md) | trust, origins, secrets, CI, redaction |
 | [15-conformance-matrix.md](./15-conformance-matrix.md) | complete required-ID manifest |
 | [16-executors.md](./16-executors.md) | the step-executor socket behind `agent.act` |
@@ -45,9 +45,7 @@ Canonical declarations:
 Canonical wire schemas:
 
 - [`schema/report-v1.schema.json`](./schema/report-v1.schema.json);
-- [`schema/cache-v1.schema.json`](./schema/cache-v1.schema.json);
 - [`schema/session-v1.schema.json`](./schema/session-v1.schema.json);
-- [`schema/agent-locate-v1.schema.json`](./schema/agent-locate-v1.schema.json);
 - [`schema/agent-judgment-v1.schema.json`](./schema/agent-judgment-v1.schema.json);
 - [`schema/agent-tool-v1.schema.json`](./schema/agent-tool-v1.schema.json);
 - [`schema/conformance-v1.schema.json`](./schema/conformance-v1.schema.json).
@@ -85,6 +83,6 @@ Normative precedence and BCP 14 language are defined only in
 00-conformance.md. Root documents, examples, migration guidance, and roadmap
 designs are informative and must be checked against the canonical contracts.
 Canonical declarations and examples are type-checked in CI, and the reference
-implementation validates the `report-1` and `cache-1` documents it writes
+implementation validates the `report-1` documents it writes
 against the schemas here. Full semantic validation lands with the
 implementation conformance suites before release.

@@ -21,7 +21,7 @@ export default defineConfig({
 ```
 
 Each test-target pair has an independent result. Target names are stable IDs
-in reports, caches, sessions, and artifact paths.
+in reports, sessions, and artifact paths.
 
 Platform IDs and capabilities are separate. `platforms: ['web']` filters by
 platform. `requires: ['web']` filters by the web capability and can therefore
@@ -45,12 +45,10 @@ unless standardized here; for example `acme.tv`, not `tv`.
 Creating a locator performs no I/O. Each locator is an immutable expression
 containing a query, scope, filters, and optional index. The runner sends the
 complete expression to the driver; it never persists a node reference as a
-locator or cache entry.
+locator.
 
 The query vocabulary is closed in `sdk-0.1`: role, label, placeholder, text,
-display value, and test ID. Cached query selection prefers role, label,
-placeholder, text, display value, then test ID. Priority affects cache
-generation only; all query methods are equally valid.
+display value, and test ID. All query methods are equally valid.
 
 ### Text
 

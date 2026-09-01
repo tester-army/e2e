@@ -13,7 +13,6 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
   await app.open('/settings/billing');
 
   await agent.act('start an upgrade to the Pro plan');          // agent drives
-  await agent.tap('the annual billing toggle');                 // agent finds, you act
   await screen.getByRole('button', { name: 'Confirm' }).tap();  // you do both
 
   await expect(screen.getByRole('status')).toContainText('Pro');
@@ -21,7 +20,7 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 });
 ```
 
-That is the whole idea. Three lines, three different amounts of model authority,
+That is the whole idea. Two lines, two different amounts of model authority,
 one ordinary TypeScript function deciding the order.
 
 <CardGroup cols={2}>
@@ -29,7 +28,7 @@ one ordinary TypeScript function deciding the order.
     Install, scaffold, and run your first test in two minutes.
   </Card>
   <Card title="Agents" icon="robot" href="/agents">
-    Plan flows, describe targets, judge screens, extract data.
+    Plan flows, judge screens, extract data.
   </Card>
   <Card title="Writing tests" icon="pen" href="/writing-tests">
     Locators, actions, assertions, and test options.
@@ -46,14 +45,13 @@ or fully autonomous and unreviewable. e2e makes it a per-step decision.
 
 | Level | Example | The model | Cost |
 | --- | --- | --- | --- |
-| Planned | `agent.act('complete checkout with the test card')` | plans and executes the flow | highest |
-| Located | `agent.tap('the Pro plan card')` | picks one node, you choose the verb | one call |
+| Planned | `agent.act('complete checkout with the test card')` | plans and executes the flow | bounded model calls |
 | Deterministic | `screen.getByRole('button', { name: 'Save' }).tap()` | nothing | free |
 
 The useful part is moving between them. Draft a flow with `agent.act` while the
-feature is still changing shape. Pin the steps that matter to `agent.tap`. Pin
-the assertions you care about to `expect`. The test keeps working the whole time,
-and you always know exactly which steps still depend on a model.
+feature is still changing shape. Pin the steps that matter to `screen.getBy*`.
+Pin the assertions you care about to `expect`. The test keeps working the whole
+time, and you always know exactly which steps still depend on a model.
 
 Planned flows run on a pluggable **step executor**: the harness owns the step —
 observations, actions, budgets, recording — and hands only the thinking to the
@@ -63,34 +61,10 @@ Every step ends in a ternary verdict: **passed**, **failed**, or **blocked**
 signal, with a different owner, than a red failure).
 
 <Callout intent="warning" title="Not implemented yet">
-`agent.login` and `agent.act` structured output (`options.schema`) reject
-with `UNSUPPORTED_CAPABILITY` in the current release. `Secret` values in
+`agent.act` structured output (`options.schema`) rejects with
+`UNSUPPORTED_CAPABILITY` in the current release. `Secret` values in
 `act` params work: the model sees only the secret's name and purpose, and the
-fill runs through the same authorization policy as `agent.type`.
-</Callout>
-
-## Built-in caching
-
-Agentic steps are slow and cost money on every run. e2e caches the outcome of
-resolution work, so a second run replays a readable, semantic query instead of
-asking the model again.
-
-```text
-first run   agent.tap('the Pro plan card')  ->  model call  ->  getByRole('button', { name: 'Pro' })
-later runs  agent.tap('the Pro plan card')  ->  cache hit   ->  getByRole('button', { name: 'Pro' })
-```
-
-Caches are keyed on the test, the target, the instruction, the screen, and your
-configuration, so a UI change invalidates them instead of replaying something
-stale. What lands in the cache is a query you can read in a diff, never a
-recorded click at coordinates. Planned flows keep the model in the loop on
-replay, because repeating a step that may already have charged a credit card is
-not a cache hit.
-
-<Callout intent="info" title="Scope in this release">
-Located actions are cached today. Planned flows (`agent.act`) are not cached
-yet; their action-trace cache extends this same store and key discipline
-rather than adding a second mechanism.
+fill runs through the same authorization policy as `locator.fill`.
 </Callout>
 
 ## Cross-platform by design
@@ -131,7 +105,7 @@ already platform-neutral - see [writing a driver](/writing-a-driver).
   </Accordion>
   <Accordion title="Budgets, so an agentic suite stays affordable">
     Every `agent.*` call is one bounded operation with a deadline and a model-call
-    budget. A located action costs at most two calls. Nothing loops forever.
+    budget. A judgment costs one call. Nothing loops forever.
   </Accordion>
   <Accordion title="Secrets that stay secret">
     A password is an opaque handle, accepted only by input fields and authorized

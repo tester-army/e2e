@@ -132,7 +132,7 @@ record the operation's resulting runtime state.
 | agent planning, prompts, budgets, ledger | runner |
 | tool authorization and secret resolution | runner |
 | backend process/page/device mechanics | driver |
-| step/report/cache schemas | runner |
+| step/report schemas | runner |
 | source masking of secure observations | driver |
 | defense-in-depth redaction | runner |
 

@@ -120,7 +120,10 @@ sinks accept one:
 await screen.getByLabel('Password').fill(admin.password);
 ```
 ```ts title="Agentic"
-await agent.type('the Password field', admin.password);
+await agent.act('Sign in', {
+  username: admin.username,
+  password: admin.password,
+});
 ```
 </CodeBlocks>
 
@@ -151,17 +154,16 @@ can never widen it. Use it when a credential belongs to exactly one of several
 allowed origins, so a page that steers the flow elsewhere cannot collect the
 password when it arrives.
 
-`agent.login(user)` hands the whole sign-in to the model, with the credential
-pinned so the password is still resolved host-side:
+Passing a `Secret` in `agent.act` params hands the whole sign-in to the model
+while the password stays resolved host-side: the model sees only the secret's
+name and purpose, plans the flow, and the runner fills the field itself, through
+the same authorization policy as `locator.fill`.
 
-```ts
-await agent.login(credentials.user('admin'));
-```
-
-<Callout intent="warning" title="Not implemented yet">
-`agent.login` rejects with `UNSUPPORTED_CAPABILITY`. Fill the form
-deterministically for now, as in the setup test above. A login form is the most
-addressable screen in your app, so this costs no model calls and cannot vary.
+<Callout intent="note" title="Prefer the deterministic path for setup tests">
+A login form is the most addressable screen in your app, so filling it with
+`screen.getByLabel(...)` costs no model calls and cannot vary. Reach for
+`agent.act` when the sign-in flow itself is what varies — an IdP redirect, a
+consent screen, a first-run wizard.
 </Callout>
 
 One more consequence worth knowing: once a secret is filled, `agent.assert`

@@ -40,8 +40,7 @@ export interface WorkerBootstrap {
   /**
    * The runner's command-line overrides. A worker re-resolves the config from
    * the same file, so without these it would silently disagree with the runner
-   * about anything a flag changed — `--no-agent-cache` and `--retries` among
-   * them. The config digest covers only the file, so the mismatch check cannot
+   * about anything a flag changed — `--retries` among them. The config digest covers only the file, so the mismatch check cannot
    * catch it.
    */
   readonly cli: CliOverrides;

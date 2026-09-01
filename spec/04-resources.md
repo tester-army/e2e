@@ -20,18 +20,15 @@ underlying value outside the test module's object graph.
 
 Accepted secret sinks are closed:
 
-- `agent.login(credential)`;
-- `agent.type(target, secret)`;
-- `locator.fill(secret)`.
-
-`agent.act` parameters MAY contain a `Secret`; the model receives a placeholder
-containing its non-sensitive name, while the runner authorizes and performs the
-eventual fill. `Credential` itself is accepted only by `agent.login`.
+- `locator.fill(secret)`;
+- an `agent.act` parameter. The model receives a placeholder containing the
+  secret's non-sensitive name, while the runner authorizes and performs the
+  eventual fill.
 
 This is not a sandbox from trusted project code. Config files, test modules,
 model adapters, and in-process drivers are executable code and can read process
 environment variables or deliberately inspect the app through `web.evaluate`.
-The guarantee protects against disclosure to models, caches, ledgers, reports,
+The guarantee protects against disclosure to models, ledgers, reports,
 logs, and persisted artifacts, not against trusted test code. The complete
 trust boundary is defined in [14-security.md](./14-security.md).
 

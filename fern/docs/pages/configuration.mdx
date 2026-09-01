@@ -146,7 +146,7 @@ behavior locally.
 | Key | Type | Default | Note |
 | --- | --- | --- | --- |
 | `agent.model` | `string \| ModelConfig \| ModelInstance` | `E2E_MODEL` | No implicit default; acquiring `agent` without one fails |
-| `agent.context` | `string` | unset | Suite-wide grounding prose for described targets |
+| `agent.context` | `string` | unset | Suite-wide grounding prose for agent calls |
 | `agent.maxSteps` | `number` | `25` | Action steps per agent call, 1 to 100 |
 | `agent.maxModelCalls` | `number` | `25` | Model calls per agent call, 1 to 100 |
 | `agent.maxObservationBytes` | `number` | `1048576` | 1 KiB to 16 MiB |
@@ -169,9 +169,9 @@ Passwords reach your test as an opaque handle, never a string. See
 
 ## Advanced limits
 
-A `limits` block exists for byte ceilings — cache entries, agent context, the
-prior-step ledger, events per step, and model tokens per call. Every key is
-enforced; the defaults are listed in the
+A `limits` block exists for byte ceilings — agent context, the prior-step
+ledger, events per step, and model tokens per call. Every key is enforced; the
+defaults are listed in the
 [defineConfig reference](/reference/config).
 
 <CardGroup cols={2}>

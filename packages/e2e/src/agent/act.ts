@@ -173,7 +173,6 @@ function rejectUnsupportedActOptions(options: AgentOptions | undefined): void {
   };
   if ('schema' in options && options.schema !== undefined) unsupported('structured output (options.schema)');
   if (options.vision !== undefined) unsupported('vision evidence (options.vision)');
-  if (options.cache !== undefined) unsupported('caching (options.cache)');
 }
 
 /**
@@ -695,8 +694,7 @@ class ActDispatch {
   /**
    * Fills one declared secret. The name must come from the step's own params
    * — an executor can never fill a credential the test did not hand it — and
-   * the fill itself runs the same authorization policy as `agent.type` with a
-   * Secret: registered credential, origin allowlists, and an editable sink
+   * the fill itself runs the full secret authorization policy: registered credential, origin allowlists, and an editable sink
    * whose purpose matches. Pixel evidence is tainted from here on.
    */
   private async typeSecret(target: ExecutorTarget, name: string): Promise<void> {

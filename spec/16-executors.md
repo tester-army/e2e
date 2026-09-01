@@ -43,7 +43,7 @@ construction. The context provides:
 - `step` — the kind, instruction, JSON-safe params, and declared secrets. A
   `Secret` param is projected to `{ kind: 'secret', name, purpose }`; the
   plaintext is only ever reachable through `actions.typeSecret`, which runs
-  the same authorization policy as `agent.type` with a `Secret`.
+  the full secret authorization policy of 14-security.md.
 - `observe()` — a fresh, redacted, size-bounded semantic observation.
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
@@ -143,8 +143,7 @@ surface) is `createToolLoopExecutor({ name, system, tools, buildPrompt })` —
 
 `defineTool(tool, { replay, mutates, secrets })` attaches required semantics
 to an AI SDK tool. Undeclared semantics are not trusted: plain tools are
-rejected, and the annotations are what the cache and policy layers key on as
-they grow.
+rejected, and the annotations are what the policy layer keys on as it grows.
 
 ## Replacing the toolset wholesale
 
@@ -191,19 +190,10 @@ This works without any change to the runner. Two honest caveats:
   annotations exist to close — a production integration should wrap foreign
   tools in `defineTool` and, where possible, route device actions through a
   driver so the whole safety story applies.
-- Only the planned tier moves this way. The located verbs, `screen`, and
-  `expect` are bound to the configured driver; testing a different device
+- Only the planned tier moves this way. `screen` and `expect` are bound to
+  the configured driver; testing a different device
   end-to-end wants a driver for it (chapter 09), not just an executor.
 
 Deriving a trustworthy verdict from free text is the executor author's
 problem; the built-in loop solves it with an explicit `complete_step` tool,
 and that pattern is recommended over parsing `result.text`.
-
-## Caching
-
-Planned steps are not cached in this release. The planned mechanism replays a
-step's recorded *action-trace* zero-model and hands the step back to the
-executor mid-step on divergence. It extends the `cache-1` store, keying, and
-fail-closed validity rules (chapter 10) rather than adding a second cache: a
-located-action entry is the one-action degenerate case of a trace entry, and
-consolidation converges the two on a single mechanism.

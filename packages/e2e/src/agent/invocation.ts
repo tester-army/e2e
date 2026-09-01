@@ -73,7 +73,7 @@ export interface AgentContext {
 }
 
 export interface InvocationOptions {
-  /** Public API name, e.g. `agent.tap`. */
+  /** Public API name, e.g. `agent.assert`. */
   readonly api: string;
   /** Caller's instruction, e.g. the target phrase, used for debug step labels. */
   readonly label?: string;
@@ -175,7 +175,7 @@ export class Invocation {
     );
   }
 
-  /** Public API name of the method being run, e.g. `agent.tap`. */
+  /** Public API name of the method being run, e.g. `agent.assert`. */
   get api(): string {
     return this.options.api;
   }

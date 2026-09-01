@@ -12,12 +12,12 @@ mobile example that is filtered out of the v0 target matrix.
 
 | File | Demonstrates |
 |---|---|
-| `e2e.config.ts` | web target, structured app process, credentials, model/cache config |
+| `e2e.config.ts` | web target, structured app process, credentials, model config |
 | `auth.setup.e2e.ts` | static setup outputs and per-target sessions |
 | `signup.e2e.ts` | planning plus deterministic assertion |
 | `onboarding.e2e.ts` | whole-group serial state, typed extraction, code data flow |
 | `tasks/task-crud.e2e.ts` | independent deterministic tests and locator refinement |
-| `billing/checkout.e2e.ts` | all three control tiers |
+| `billing/checkout.e2e.ts` | both control tiers in one test |
 | `notifications.e2e.ts` | platform branch and reserved mobile capability |
 | `flags.web.e2e.ts` | explicit web capability, routes, dialogs, URL waits |
 
