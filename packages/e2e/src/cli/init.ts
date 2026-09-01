@@ -23,7 +23,7 @@ test('app opens', async ({ app, web }) => {
 });
 `;
 
-const GITIGNORE_ENTRIES = ['.e2e/artifacts/', '.e2e/sessions/', '.e2e/report.json', '.e2e/report.html'];
+const GITIGNORE_ENTRIES = ['.e2e/artifacts/', '.e2e/sessions/', '.e2e/report.json'];
 
 interface PlannedFile {
   readonly relative: string;

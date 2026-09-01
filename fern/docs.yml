@@ -28,7 +28,7 @@ navigation:
           - page: Writing tests
             path: docs/pages/writing-tests.mdx
             slug: writing-tests
-          - page: Agents
+          - page: Your own agent
             path: docs/pages/agents.mdx
             slug: agents
       - section: Guides
@@ -37,24 +37,9 @@ navigation:
           - page: Authentication
             path: docs/pages/authentication.mdx
             slug: authentication
-          - page: Web capabilities
-            path: docs/pages/web.mdx
-            slug: web
-          - page: Running tests
-            path: docs/pages/running-tests.mdx
-            slug: running-tests
-          - page: Configuration
-            path: docs/pages/configuration.mdx
-            slug: configuration
           - page: Continuous integration
             path: docs/pages/ci.mdx
             slug: ci
-          - page: Coming from Playwright
-            path: docs/pages/from-playwright.mdx
-            slug: from-playwright
-          - page: Troubleshooting
-            path: docs/pages/troubleshooting.mdx
-            slug: troubleshooting
       - section: Extend
         skip-slug: true
         contents:
@@ -111,3 +96,15 @@ layout:
   page-width: full
   tabs-placement: header
   searchbar-placement: header
+
+redirects:
+  - source: /web
+    destination: /reference/app-web
+  - source: /running-tests
+    destination: /reference/cli
+  - source: /configuration
+    destination: /reference/config
+  - source: /from-playwright
+    destination: /writing-tests
+  - source: /troubleshooting
+    destination: /reference/errors

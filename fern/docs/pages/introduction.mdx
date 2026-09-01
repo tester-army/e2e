@@ -1,10 +1,10 @@
 ---
 title: e2e
-subtitle: The cross-platform agentic test runner.
+subtitle: Agentic end-to-end testing. Describe the flow; pin down what matters.
 ---
 
-e2e runs one end-to-end suite against web, iOS, and Android. You decide, step by
-step, how much of the test the agent drives and how much is pinned down in code.
+Write a test as goals and checks. An agent drives the app; your code stays in
+charge of what counts as passing.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
@@ -12,122 +12,63 @@ import { test, expect } from 'e2e';
 test('a member upgrades to Pro', async ({ app, agent, screen }) => {
   await app.open('/settings/billing');
 
-  await agent.act('start an upgrade to the Pro plan');          // agent drives
-  await screen.getByRole('button', { name: 'Confirm' }).tap();  // you do both
-
-  await expect(screen.getByRole('status')).toContainText('Pro');
+  await agent.act('upgrade the workspace to the Pro plan');
   await agent.assert('the invoice preview shows a prorated amount');
+
+  // Pin the check that must never drift:
+  await expect(screen.getByRole('status')).toContainText('Pro');
 });
 ```
 
-That is the whole idea. Two lines, two different amounts of model authority,
-one ordinary TypeScript function deciding the order.
+That is the whole framework. `agent.act` plans and executes a flow.
+`agent.assert` answers one question about the screen. `expect` and
+`screen.getBy*` are the escape hatch when a step is too important to leave to
+a model — same test, same file, your choice per line.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="bolt" href="/quickstart">
-    Install, scaffold, and run your first test in two minutes.
-  </Card>
-  <Card title="Agents" icon="robot" href="/agents">
-    Plan flows, judge screens, extract data.
+    Install, point at your app, run your first test.
   </Card>
   <Card title="Writing tests" icon="pen" href="/writing-tests">
-    Locators, actions, assertions, and test options.
+    Goals, checks, extraction, and the escape hatches.
+  </Card>
+  <Card title="Your own agent" icon="robot" href="/agents">
+    Models, project tools, and custom executors.
   </Card>
   <Card title="Reference" icon="code" href="/reference/test">
     Every function, option, and error code.
   </Card>
 </CardGroup>
 
-## Turn the dial
+## Why this shape
 
-Most tools make you choose once, for the whole suite: fully scripted and brittle,
-or fully autonomous and unreviewable. e2e makes it a per-step decision.
+**Resilient by default, exact where you say so.** A scripted suite breaks when
+the UI moves; an autonomous one passes for reasons you can't review. Here every
+line picks its own point on that dial: draft with `agent.act` while the feature
+changes shape, then pin the steps and assertions that matter to `screen` and
+`expect` — free, deterministic, and model-independent.
 
-| Level | Example | The model | Cost |
-| --- | --- | --- | --- |
-| Planned | `agent.act('complete checkout with the test card')` | plans and executes the flow | bounded model calls |
-| Deterministic | `screen.getByRole('button', { name: 'Save' }).tap()` | nothing | free |
+**Bounded and honest.** Every `agent.*` call has a deadline and a model-call
+budget; nothing loops forever. Each planned step ends in a ternary verdict —
+**passed**, **failed**, or **blocked**. Blocked means credentials, seed data,
+or the environment prevented a product verdict: it exits as an
+infrastructure signal, not a red test, so trust in red survives.
 
-The useful part is moving between them. Draft a flow with `agent.act` while the
-feature is still changing shape. Pin the steps that matter to `screen.getBy*`.
-Pin the assertions you care about to `expect`. The test keeps working the whole
-time, and you always know exactly which steps still depend on a model.
+**Secrets never meet the model.** A password is an opaque handle. Hand it to
+`agent.act` and the model sees only its name; the runner fills the field
+itself, under the same policy as a deterministic `fill`.
 
-Planned flows run on a pluggable **step executor**: the harness owns the step —
-observations, actions, budgets, recording — and hands only the thinking to the
-built-in tool-loop agent, to one you tune, or to one you write from scratch.
-Every step ends in a ternary verdict: **passed**, **failed**, or **blocked**
-(the environment or credentials prevented a product verdict — a different
-signal, with a different owner, than a red failure).
+**Yours to extend.** The brain behind `agent.act` is a socket. Add project
+tools to the built-in agent, keep its loop with your own tool vocabulary — a
+device toolkit, an internal API — or replace it with anything that takes a step
+and returns a verdict. Budgets, redaction, and the report don't change.
 
-<Callout intent="warning" title="Not implemented yet">
-`agent.act` structured output (`options.schema`) rejects with
-`UNSUPPORTED_CAPABILITY` in the current release. `Secret` values in
-`act` params work: the model sees only the secret's name and purpose, and the
-fill runs through the same authorization policy as `locator.fill`.
+**Local first.** No account, no hosted service. `npx e2e run` is the same code
+path on your laptop and in CI, the report is a JSON file, and a suite with no
+`agent.*` calls needs no model at all.
+
+<Callout intent="note" title="Web today, device-shaped by design">
+This release executes web targets. The API is platform-neutral — semantic
+queries, gestures, app lifecycle — and native targets are rejected rather than
+approximated. Backends plug in as [drivers](/writing-a-driver).
 </Callout>
-
-## Cross-platform by design
-
-The portable surface has no CSS and no DOM in it. Queries are semantic, actions
-are gestures, and lifecycle is app-shaped:
-
-```ts
-await app.open('/settings');
-await screen.getByRole('link', { name: 'Billing' }).tap();
-await screen.swipe({ direction: 'up', momentum: 'fast' });
-await screen.getByTestId('card').longPress({ durationMs: 800 });
-```
-
-Platform-specific power is quarantined behind a named fixture. `web` gives you
-URLs, routes, cookies, and frames; `device` gives you permissions, location, and
-push. A glance at a test tells you whether it can run on more than one platform.
-
-<Callout intent="warning" title="Native platforms are not implemented yet">
-This release executes web targets. An iOS or Android target is rejected rather
-than approximated, and the `device` fixture rejects with
-`UNSUPPORTED_CAPABILITY`. The portable API, the gesture model, and the runner are
-built for both, so tests written against the portable surface today are the tests
-that will run on device. The driver contract those platforms plug into is
-already platform-neutral - see [writing a driver](/writing-a-driver).
-</Callout>
-
-## The runner owns the boring parts
-
-<AccordionGroup>
-  <Accordion title="Waiting, so you never write a sleep">
-    Queries poll, actions wait for actionability, assertions retry. There is no
-    `waitForSelector` and no arbitrary delay.
-  </Accordion>
-  <Accordion title="Strictness, so tests fail loudly instead of silently">
-    A query matching two nodes is an error, not a first-match guess. Narrow it
-    with `.filter()`, `.first()`, or `.nth()`.
-  </Accordion>
-  <Accordion title="Budgets, so an agentic suite stays affordable">
-    Every `agent.*` call is one bounded operation with a deadline and a model-call
-    budget. A judgment costs one call. Nothing loops forever.
-  </Accordion>
-  <Accordion title="Secrets that stay secret">
-    A password is an opaque handle, accepted only by input fields and authorized
-    per credential and origin before it is resolved. It never reaches a model, a
-    log, a report, or a trace.
-  </Accordion>
-  <Accordion title="Sessions, retries, and parallelism">
-    Sign in once in a setup test and reuse the state. Retries start from clean
-    state. Files run across worker processes, each with its own browser.
-  </Accordion>
-  <Accordion title="Results you can build on">
-    Every run writes `.e2e/report.json` with results, attempts, steps, artifacts,
-    and model usage, whether it passed, failed, or was interrupted.
-  </Accordion>
-</AccordionGroup>
-
-## Local first
-
-No account, no hosted service, no vendor in the request path. `npx e2e run` on
-your laptop and in CI is the same code path, and a suite with no `agent.*` calls
-needs no model at all.
-
-<Card title="Get started" icon="bolt" href="/quickstart">
-  Install e2e and run your first test.
-</Card>
