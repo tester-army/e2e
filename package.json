@@ -25,7 +25,8 @@
     "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
-    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
+    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",
+    "test:device": "pnpm run build && pnpm --filter @e2edev/testbed test:device"
   },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",
