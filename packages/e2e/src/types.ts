@@ -662,9 +662,19 @@ export interface E2EConfig {
       string,
       {
         username: string;
-        password: string;
+        password: string | SecretProvider;
         allowedOrigins?: readonly string[];
       }
     >
   >;
 }
+
+/**
+ * Resolves a secret's plaintext at fill time — a vault lookup, a freshly
+ * computed TOTP — instead of a value baked at config load. Called on every
+ * fill after the full authorization policy passes; the resolved value goes
+ * straight to the trusted driver, joins runner-side redaction, and is never
+ * logged, cached, or sent to a model. Like executors and stores, a provider
+ * never crosses a process boundary: workers re-resolve the config module.
+ */
+export type SecretProvider = () => string | Promise<string>;

@@ -45,7 +45,9 @@ export default defineConfig({
   credentials: {
     member: {
       username: 'member',
-      password: 'bench-password-1',
+      // A fill-time provider (vault lookup / TOTP shape): resolved on every
+      // authorized fill — including replayed ones — never baked at load.
+      password: () => Promise.resolve('bench-password-1'),
     },
   },
 });

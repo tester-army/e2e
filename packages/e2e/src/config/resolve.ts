@@ -13,6 +13,7 @@ import type {
   CommandConfig,
   E2EConfig,
   Platform,
+  SecretProvider,
   TraceCacheStore,
 } from '../types.ts';
 import { isBackendHandle, type BackendHandle } from '../backend/index.ts';
@@ -37,7 +38,8 @@ export interface ResolvedTarget {
 export interface ResolvedCredential {
   readonly name: string;
   readonly username: string;
-  readonly password: string;
+  /** A static value, or a provider resolved fresh on every authorized fill. */
+  readonly password: string | SecretProvider;
   readonly allowedOrigins: readonly string[] | undefined;
 }
 
@@ -548,7 +550,15 @@ function resolveCredentials(
   for (const [name, credential] of Object.entries(raw.credentials ?? {})) {
     const envPrefix = `E2E_USER_${name.toUpperCase().replaceAll(/[^A-Z0-9]/g, '_')}`;
     const username = env[`${envPrefix}_USERNAME`] ?? credential.username;
+    // An env override always wins, including over a provider: the operator
+    // rotating a credential must not need to know how it was configured.
     const password = env[`${envPrefix}_PASSWORD`] ?? credential.password;
+    if (typeof password !== 'string' && typeof password !== 'function') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `credential "${name}" password must be a string or a provider function`,
+      );
+    }
     resolved.set(name, {
       name,
       username,

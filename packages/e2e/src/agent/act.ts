@@ -15,7 +15,6 @@ import { join } from 'node:path';
 import { BackendError, type SemanticNode } from '../backend/surface.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import { createRedactor } from '../internal/redact.ts';
 import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { StepMetrics, StepModelInfo } from '../run/steps.ts';
@@ -232,7 +231,7 @@ class ActDispatch {
       'maxModelCalls',
     );
     this.metrics.contextBytes = new TextEncoder().encode(runtime.agentContext ?? '').byteLength;
-    this.redact = createRedactor(runtime.secretValues);
+    this.redact = runtime.redact;
     // Only act steps are cacheable: an assert must not change state, so its
     // trace would be empty — nothing to replay, nothing worth a read. The
     // dispatch always runs inside a recorded step; a missing index would mean
@@ -765,7 +764,7 @@ class ActDispatch {
       api: this.spec.api,
     });
     return prepareObservation(raw, {
-      secrets: this.runtime.secretValues,
+      redact: this.runtime.redact,
       maxBytes: this.runtime.config.agent.maxObservationBytes,
       testIdAttribute: this.runtime.config.testIdAttribute,
     });
