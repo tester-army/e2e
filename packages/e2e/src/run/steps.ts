@@ -30,6 +30,13 @@ export interface StepEvent {
   bytes?: number;
   decision?: 'allowed' | 'denied';
   code?: string;
+  /**
+   * Redacted human prose for what the event did — `tap button "Approve"`,
+   * `fill secret "password" into textbox "Password"`. Driver action events
+   * carry one so a live reporter can render the act without a side lookup;
+   * secret values never appear (the name stands in), and the text is bounded.
+   */
+  detail?: string;
 }
 
 /** Required accounting for every agent step. */

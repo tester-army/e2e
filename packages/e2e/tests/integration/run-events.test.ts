@@ -83,6 +83,16 @@ describe('run events', () => {
     }
   });
 
+  it('carries redacted prose detail on backend action events', () => {
+    const backendEvents = events.flatMap((event) =>
+      event.type === 'step' && event.progress.phase === 'event' && event.progress.event.kind === 'backend'
+        ? [event.progress.event]
+        : [],
+    );
+    expect(backendEvents.length).toBeGreaterThan(0);
+    expect(backendEvents[0]?.detail).toBe('tap button "Increment"');
+  });
+
   it('streams step phases for the agent step', () => {
     const stepEvents = events.filter(
       (event) => event.type === 'step' && event.progress.api === 'agent.act',
