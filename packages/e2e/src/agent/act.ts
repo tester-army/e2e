@@ -49,6 +49,7 @@ import {
 import type { AgentContext } from './invocation.ts';
 import { serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
+import { agentTrace } from '../internal/trace.ts';
 import { observationShape, prepareObservation, type AgentObservation } from './observation.ts';
 import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
 import { authorizeSecretFill } from './secrets.ts';
@@ -590,6 +591,11 @@ class ActDispatch {
       status: 'passed',
       name: `tool:${call.name}`,
     });
+    agentTrace(
+      () =>
+        `${this.spec.api} tool ${call.name} ${Math.max(0, Math.round(call.durationMs ?? 0))}ms` +
+        `${call.mutates ? '' : ' (read-only)'}`,
+    );
     if (!call.mutates) return;
     this.metrics.actionSteps += 1;
     // A project-tool mutation is a gap: the grammar cannot reproduce it, so a
