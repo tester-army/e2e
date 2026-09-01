@@ -450,7 +450,13 @@ class ActDispatch {
     }
     if (usage?.provider !== undefined) this.modelProvider = usage.provider;
     if (usage?.modelId !== undefined) this.modelId = usage.modelId;
-    if (usage?.estimatedCostUsd !== undefined) {
+    // Executors are trusted, but the report schema requires a finite,
+    // non-negative cost; a bogus value must not invalidate the whole report.
+    if (
+      usage?.estimatedCostUsd !== undefined &&
+      Number.isFinite(usage.estimatedCostUsd) &&
+      usage.estimatedCostUsd >= 0
+    ) {
       this.estimatedCostUsd = (this.estimatedCostUsd ?? 0) + usage.estimatedCostUsd;
     }
     this.runtime.steps.recordEvent({

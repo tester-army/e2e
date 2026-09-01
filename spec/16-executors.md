@@ -50,7 +50,8 @@ construction. The context provides:
   is checkpointed against the deadline and the action budget, policed, and
   recorded as a step event.
 - `budgets` — limits plus `recordModelCall(usage?)`, which feeds step metrics
-  and model provenance in the report.
+  and model provenance in the report, including `estimatedCostUsd` when the
+  provider bills per request.
 - `model` — the config-resolved AI SDK model, which an executor may ignore.
 - `ledger`, `agentContext`, `signal`.
 

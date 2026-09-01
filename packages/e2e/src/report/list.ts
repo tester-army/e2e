@@ -3,8 +3,8 @@
 import path from 'node:path';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import type { ResultRecord, RunError } from '../run/records.ts';
-import type { StepEvent, StepProgress } from '../run/steps.ts';
+import type { ResultRecord, RunError, SerialGroupRecord } from '../run/records.ts';
+import type { StepEvent, StepProgress, StepRecord } from '../run/steps.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import { LiveStatus } from './live-status.ts';
 
@@ -52,22 +52,27 @@ interface AiUsage {
   costUsd: number | undefined;
 }
 
-/** Sums model usage across every step of every attempt of one result. */
-function aiUsage(result: ResultRecord): AiUsage {
-  let calls = 0;
-  let tokens = 0;
-  let costUsd: number | undefined;
-  for (const attempt of result.attempts) {
-    for (const step of attempt.steps) {
-      if (step.model === undefined) continue;
-      calls += step.model.calls;
-      tokens += step.model.inputTokens + step.model.outputTokens;
-      if (step.model.estimatedCostUsd !== undefined) {
-        costUsd = (costUsd ?? 0) + step.model.estimatedCostUsd;
-      }
+/** Accumulates the model usage of one step list into a running total. */
+function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
+  for (const step of steps) {
+    if (step.model === undefined) continue;
+    usage.calls += step.model.calls;
+    usage.tokens += step.model.inputTokens + step.model.outputTokens;
+    if (step.model.estimatedCostUsd !== undefined) {
+      usage.costUsd = (usage.costUsd ?? 0) + step.model.estimatedCostUsd;
     }
   }
-  return { calls, tokens, costUsd };
+}
+
+/**
+ * Sums model usage across every step of every attempt of one result. Serial
+ * members carry no attempts of their own; their usage arrives once per group
+ * through `onSerialGroup`.
+ */
+function aiUsage(result: ResultRecord): AiUsage {
+  const usage: AiUsage = { calls: 0, tokens: 0, costUsd: undefined };
+  for (const attempt of result.attempts) addStepsUsage(usage, attempt.steps);
+  return usage;
 }
 
 /** One dim `ai …` segment, or undefined when the test used no model. */
@@ -208,6 +213,19 @@ export class ListReporter {
             this.pc.dim(`${formatDuration(progress.durationMs)}${calls}${outcome}`),
         );
         break;
+      }
+    }
+  }
+
+  /**
+   * Adds one serial group's model usage to the run totals. Member result
+   * records intentionally carry no attempts, so the group record is the one
+   * place their steps exist; summing here counts each member exactly once.
+   */
+  onSerialGroup(group: SerialGroupRecord): void {
+    for (const attempt of group.attempts) {
+      for (const member of attempt.members) {
+        addStepsUsage(this.runAi, member.steps);
       }
     }
   }
