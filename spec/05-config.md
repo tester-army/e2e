@@ -117,6 +117,10 @@ Every run writes the canonical JSON report regardless of renderer selection.
 (02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
 that can send pixels requires a model that accepts image input.
 
+`actionTimeout` bounds every driver operation, including each observation and
+action inside an agent step (16-executors.md): the step deadline caps the
+whole step, `actionTimeout` caps each call within it.
+
 `cache` is `'off'`, `'read-only'`, `'read-write'`, or an options object
 `{ mode, store, dir }` (10-determinism.md). A string is shorthand for
 `{ mode }`. The cache is opt-out: an unset key or mode means `read-write`,

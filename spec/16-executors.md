@@ -48,7 +48,10 @@ construction. The context provides:
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
   is checkpointed against the deadline and the action budget, policed, and
-  recorded as a step event. Actions and observations are serialized in call
+  recorded as a step event. Each underlying driver operation — actions and
+  observations alike — is additionally bounded by `actionTimeout`, so a
+  single page that never settles costs one action timeout and a clearly
+  attributed failure, never the step's whole clock. Actions and observations are serialized in call
   order: a call issued while another is in flight queues behind it, so a
   batch of parallel tool calls cannot race two mutations against one stale
   observation — the second resolves against the newest one and a stale id

@@ -655,8 +655,16 @@ class ActDispatch {
     return this.runtime.engine.session;
   }
 
+  /**
+   * One driver operation's budget: `actionTimeout`, capped by the step clock.
+   * Bounding each call independently is what keeps a single page that never
+   * settles from consuming the whole step — the hang costs one action
+   * timeout and a clearly attributed failure, not the test budget.
+   */
   private operation() {
-    return this.runtime.engine.operation(Math.max(1, this.deadline.remaining()));
+    return this.runtime.engine.operation(
+      Math.max(1, Math.min(this.runtime.config.actionTimeout, this.deadline.remaining())),
+    );
   }
 
   /** Resolves the configured model once; executors that never read it never pay. */

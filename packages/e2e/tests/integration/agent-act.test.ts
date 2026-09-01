@@ -48,6 +48,14 @@ test('executor hangs past the step timeout', async ({ app, agent }) => {
 });
 `;
 
+const HANGING_PAGE_SUITE = `import { test } from 'e2e';
+
+test('a page that never settles costs one action timeout', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('open the hanging page', undefined, { timeout: 60_000 });
+});
+`;
+
 const OVERSPEND_SUITE = `import { test } from 'e2e';
 
 test('executor overspends the model-call budget', async ({ app, agent }) => {
@@ -393,6 +401,52 @@ describe('agent.act verdict mapping', () => {
       expect(result.attempts.at(-1)!.error?.code).toBe('MODEL_OUTPUT_INVALID');
     } finally {
       project.cleanup();
+    }
+  }, 120_000);
+});
+
+describe('agent.act driver operations are bounded by actionTimeout', () => {
+  it('a page that never settles costs one action timeout, not the step budget', async () => {
+    const app = await startFixtureApp();
+    const executor: StepExecutor = {
+      name: 'hang-navigator',
+      version: 'test',
+      async runStep(context: StepExecutorContext) {
+        try {
+          await context.actions.navigate('/hang');
+        } catch (cause) {
+          return {
+            status: 'failed' as const,
+            summary: `navigation gave up: ${cause instanceof Error ? cause.message : String(cause)}`,
+          };
+        }
+        return { status: 'failed' as const, summary: 'the hanging page unexpectedly loaded' };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/hang.e2e.ts': HANGING_PAGE_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agent: executor,
+          actionTimeout: 1_000,
+        },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'a page that never settles costs one action timeout');
+      expect(result.status).toBe('failed');
+      const attempt = result.attempts.at(-1)!;
+      const step = attempt.steps.find((candidate) => candidate.api === 'agent.act')!;
+      // The 60s act budget is untouched: the hung navigation fails within its
+      // own operation bound and the executor concludes, well under the clock.
+      expect(step.error?.code).not.toBe('STEP_TIMEOUT');
+      expect(step.durationMs).toBeLessThan(15_000);
+      expect(step.explanation).toContain('navigation gave up');
+    } finally {
+      project.cleanup();
+      await app.close();
     }
   }, 120_000);
 });

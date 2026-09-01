@@ -437,9 +437,15 @@ export class Invocation {
     });
   }
 
-  /** Builds a driver operation context bounded by this invocation's deadline. */
+  /**
+   * Builds a driver operation context: `actionTimeout`, capped by this
+   * invocation's deadline. Each driver call is bounded independently so one
+   * hung observation cannot consume the invocation's whole clock.
+   */
   operation(): ReturnType<LocatorEngine['operation']> {
-    return this.runtime.engine.operation(Math.max(1, this.deadline.remaining()));
+    return this.runtime.engine.operation(
+      Math.max(1, Math.min(this.runtime.config.actionTimeout, this.deadline.remaining())),
+    );
   }
 
   /** Fails when the invocation deadline has elapsed (see checkStepClock). */

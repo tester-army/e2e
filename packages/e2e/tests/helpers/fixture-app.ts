@@ -536,6 +536,11 @@ export async function startFixtureApp(): Promise<FixtureApp> {
       response.end(JSON.stringify({ betaBoard: false }));
       return;
     }
+    if (pathname === '/hang') {
+      // Never responds: exercises operation timeouts on a page that never
+      // settles. The socket stays open until the client gives up.
+      return;
+    }
     if (pathname === '/feed') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(renderFeed());

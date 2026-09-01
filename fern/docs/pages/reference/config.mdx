@@ -48,7 +48,7 @@ APP_URL=http://localhost:3000 npx --no-install e2e run
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
 | `timeout` | `number` | `120000` | positive safe integer |
 | `launchTimeout` | `number` | `60000` | positive safe integer |
-| `actionTimeout` | `number` | `30000` | positive safe integer |
+| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every driver operation, including each observation and action inside an agent step |
 | `assertionTimeout` | `number` | `5000` | positive safe integer |
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
