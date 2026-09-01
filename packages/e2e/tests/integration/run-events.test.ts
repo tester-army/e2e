@@ -83,6 +83,16 @@ describe('run events', () => {
     }
   });
 
+  it('carries redacted prose detail on driver action events', () => {
+    const driverEvents = events.flatMap((event) =>
+      event.type === 'step' && event.progress.phase === 'event' && event.progress.event.kind === 'driver'
+        ? [event.progress.event]
+        : [],
+    );
+    expect(driverEvents.length).toBeGreaterThan(0);
+    expect(driverEvents[0]?.detail).toBe('tap button "Increment"');
+  });
+
   it('streams step phases for the agent step', () => {
     const stepEvents = events.filter(
       (event) => event.type === 'step' && event.progress.api === 'agent.act',

@@ -1,6 +1,6 @@
 {
   "specVersion": "0.1",
-  "suiteVersion": "0.5.0",
+  "suiteVersion": "0.6.0",
   "profiles": {
     "sdk-0.1": [
       { "id": "SDK-TYPES-001", "source": "api/e2e.d.ts", "requirement": "Canonical SDK declarations compile in strict TypeScript." },

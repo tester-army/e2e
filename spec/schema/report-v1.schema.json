@@ -162,6 +162,7 @@
         "bytes": { "type": "integer", "minimum": 0 },
         "decision": { "enum": ["allowed", "denied"] },
         "code": { "type": "string", "maxLength": 128 },
+        "detail": { "type": "string", "maxLength": 300 },
         "extensions": { "$ref": "#/$defs/extensions" }
       }
     },

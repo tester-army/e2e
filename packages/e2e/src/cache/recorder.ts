@@ -238,6 +238,43 @@ export function describeTarget(
   return Object.keys(descriptor).length === 0 ? undefined : descriptor;
 }
 
+/**
+ * Redacted, bounded prose for one grammar action, independent of any
+ * recorder: step events carry it as `detail` so a live reporter can render
+ * the act without a side lookup. Wording mirrors the recorded trace
+ * summaries; secret values never appear (the stable name stands in).
+ */
+export function summarizeAction(
+  action: RecordableAction,
+  redact: (text: string) => string,
+  testIdAttribute: string,
+): string {
+  const node = 'node' in action ? action.node : undefined;
+  const where = describeForSummary(
+    node === undefined ? undefined : describeTarget(node, redact, testIdAttribute),
+  );
+  const safe = (value: string) => quote(redact(sanitizeText(value)));
+  const prose = (() => {
+    switch (action.name) {
+      case 'tap':
+        return `tap ${where}`;
+      case 'type':
+        return `type ${safe(action.value)} into ${where}`;
+      case 'typeSecret':
+        return `fill secret ${quote(action.secret)} into ${where}`;
+      case 'press':
+        return `press ${safe(action.key)} on ${where}`;
+      case 'select':
+        return `select ${safe(action.value)} in ${where}`;
+      case 'scroll':
+        return node === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
+      case 'navigate':
+        return `navigate to ${safe(action.url)}`;
+    }
+  })();
+  return bound(prose, MAX_TRACE_SUMMARY_CHARS);
+}
+
 function describeForSummary(target: TraceTargetDescriptor | undefined): string {
   if (target === undefined) return 'the page';
   const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';

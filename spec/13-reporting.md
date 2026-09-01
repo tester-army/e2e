@@ -114,7 +114,14 @@ Top-level step boundaries follow 10-determinism.md. Polls, model calls,
 observations, tool proposals, policy decisions, driver operations, and schema
 validation are child events. Events record metadata and counts, not sensitive
 payloads. Core event metadata is limited to bounded name, count, byte, decision,
-and code fields defined by the schema.
+code, and detail fields defined by the schema.
+
+A committed driver action's event carries `detail`: bounded, redacted prose
+for what the action did — `tap button "Approve"`, `fill secret "password"
+into textbox "Password"` — with the same wording as the recorded trace
+summaries (10-determinism.md), so a live reporter can render the act without
+a side lookup. Secret values never appear; the secret's stable name stands
+in. Every string passes the run's redactor before it can reach the event.
 
 A step whose model input included pixel evidence records that pixels were model
 input, not merely an artifact, plus the largest image sent in bytes. A step that
