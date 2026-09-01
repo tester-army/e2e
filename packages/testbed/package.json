@@ -11,6 +11,7 @@
     "test:public": "node node_modules/e2e/dist/cli/bin.js run --config e2e.public.config.ts",
     "app": "node app/server.mjs",
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
+    "test:dogfood": "node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts",
     "test:selenium": "node node_modules/e2e/dist/cli/bin.js run --config e2e.selenium.config.ts"
   },
   "dependencies": {

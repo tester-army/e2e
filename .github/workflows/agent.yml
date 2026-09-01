@@ -15,7 +15,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, agent, wakacje, selenium]
+        options: [all, agent, dogfood]
       model:
         description: 'Override E2E_MODEL (provider/model-id)'
         required: false
@@ -43,14 +43,12 @@ jobs:
           # Empty on schedule, which means every suite.
           SUITE: ${{ inputs.suite }}
         run: |
-          # Local playground: deterministic app, so a failure is ours.
-          # wakacje and selenium are live third-party sites that change and
-          # rate-limit under us, so their failure is a signal to read, not a
-          # broken build.
+          # Both suites run against local deterministic apps, so a failure
+          # is ours: the playground (act flows + judgments) and the dogfood
+          # expense app (custom executor tools through the config).
           all='[
             {"suite":"agent","script":"test:agent","optional":false},
-            {"suite":"wakacje","script":"test:wakacje","optional":true},
-            {"suite":"selenium","script":"test:selenium-agent","optional":true}
+            {"suite":"dogfood","script":"test:dogfood","optional":false}
           ]'
           if [ -z "$SUITE" ] || [ "$SUITE" = all ]; then
             selected=$(echo "$all" | jq -c .)
@@ -99,6 +97,9 @@ jobs:
         continue-on-error: ${{ matrix.optional }}
         env:
           E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          # The dogfood config builds its model with the AI SDK's gateway()
+          # directly, which reads this name; same credential either way.
+          AI_GATEWAY_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
           # Read through a variable, not interpolated into the script, and left
           # unset when empty: the configs treat '' as a configured model id.
           MODEL_INPUT: ${{ inputs.model }}
@@ -113,7 +114,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-report-${{ matrix.suite }}
-          path: |
-            packages/testbed/.e2e/report.json
-            packages/testbed/.e2e/report.html
+          path: packages/testbed/.e2e/report.json
           if-no-files-found: warn

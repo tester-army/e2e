@@ -96,11 +96,10 @@ pnpm --filter @e2edev/testbed run test:headed
   shares one registry. Stale `dist` means confusing failures — rebuild.
 - Testbed suites beyond the default one never gate a PR: `test:public` and
   `test:selenium` (real websites) run in no workflow, and `test:agent` /
-  `test:wakacje` / `test:selenium-agent` (real model calls, need
-  `E2E_MODEL_API_KEY`, optional `E2E_MODEL=provider/model-id`) run only on the
-  weekly `.github/workflows/agent.yml` schedule or by manual dispatch.
-  `test:wakacje` and `test:selenium-agent` are non-blocking there: both sites
-  are third-party.
+  `test:dogfood` (real model calls, need `E2E_MODEL_API_KEY`, optional
+  `E2E_MODEL=provider/model-id`) run only on the weekly
+  `.github/workflows/agent.yml` schedule or by manual dispatch. Both run
+  against local deterministic apps, so a failure there is ours.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 
