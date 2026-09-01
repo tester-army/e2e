@@ -11,16 +11,6 @@ import type { ModelInstance } from '../../src/types.ts';
 import { createScriptedInstance, scriptedResult } from './scripted-model.ts';
 
 /**
- * True when a rendered observation line carries a role token: a bare
- * lowercase word right after the node id. Mirrors the line grammar of
- * `formatNode` in src/agent/observation.ts; lives here because only the
- * scripted responder needs to re-parse rendered lines.
- */
-function observedLineHasRole(line: string): boolean {
-  return /^\s*#\S+ [a-z][a-z-]*(\s|$)/.test(line);
-}
-
-/**
  * Applies the request schema to a scripted answer the way a strict provider
  * does: a property the schema does not declare is dropped, because
  * `additionalProperties` is false.
@@ -210,82 +200,8 @@ function section(prompt: string, name: string): string {
   return pattern.exec(prompt)?.[1] ?? '';
 }
 
-/** Picks the observed node whose serialized line best matches the instruction. */
-export function bestMatch(call: FakeCall): { id: string; line: string } {
-  const words = call.instruction
-    .toLowerCase()
-    .split(/[^a-z0-9@.]+/)
-    .filter((word) => word.length > 2);
-  let best: { id: string; line: string; score: number } | undefined;
-  for (const line of call.lines) {
-    const id = /#(\S+)/.exec(line)?.[1];
-    if (id === undefined) continue;
-    const haystack = line.toLowerCase();
-    let score = words.reduce((total, word) => total + (haystack.includes(word) ? 1 : 0), 0);
-    // Prefer semantic controls over plain text holders on equal word overlap.
-    if (score > 0 && observedLineHasRole(line)) score += 0.5;
-    if (best === undefined || score > best.score) best = { id, line, score };
-  }
-  if (best === undefined) throw new Error(`no observed nodes in prompt:\n${call.prompt}`);
-  return { id: best.id, line: best.line };
-}
-
-/**
- * Builds a valid agent-locate-1 response for the best-matching node.
- *
- * `positional` is always reported, like a compliant model: the runner treats an
- * absent field as positional and declines to record, so a fake that omitted it
- * would silently exercise only the not-recordable path.
- */
-export function locateBestMatch(call: FakeCall, positional = false): unknown {
-  const match = bestMatch(call);
-  return {
-    protocolVersion: 'agent-locate-1',
-    target: { id: match.id, revision: call.revision },
-    explanation: `best line match: ${match.line.trim()}`,
-    positional,
-  };
-}
-
-/**
- * Builds a locate response naming the nth observed node matching a predicate, for
- * pages where several nodes are identical and the choice has to be deliberate.
- */
-export function locateNth(call: FakeCall, matches: RegExp, nth: number): unknown {
-  const ids = call.lines
-    .filter((line) => matches.test(line))
-    .map((line) => /#(\S+)/.exec(line)?.[1])
-    .filter((id): id is string => id !== undefined);
-  const id = ids[nth];
-  if (id === undefined) {
-    throw new Error(`no node ${nth} matching ${String(matches)} among ${ids.length}`);
-  }
-  return {
-    protocolVersion: 'agent-locate-1',
-    target: { id, revision: call.revision },
-    explanation: `deliberately the node at index ${nth}`,
-  };
-}
-
-/** Builds a valid agent-locate-1 point response in the attached image space. */
-export function locatePoint(
-  call: FakeCall,
-  point: { x: number; y: number },
-  explanation = 'drawn there in the screenshot',
-): unknown {
-  return {
-    protocolVersion: 'agent-locate-1',
-    target: { point, revision: call.revision },
-    explanation,
-  };
-}
-
-/** Builds a valid agent-locate-1 explicit no-match response. */
-export function locateNotFound(explanation: string): unknown {
-  return { protocolVersion: 'agent-locate-1', target: null, explanation };
-}
-
 /** Builds a valid agent-judgment-1 response. */
 export function judgment(result: boolean, explanation: string): unknown {
   return { protocolVersion: 'agent-judgment-1', result, explanation };
 }
+

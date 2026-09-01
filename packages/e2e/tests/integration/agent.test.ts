@@ -1,45 +1,24 @@
 /**
- * Agent integration coverage: real Playwright observation, runner-owned locate
- * validation, real driver actions, and report-1 agent step fields. The model is
- * a scripted adapter so the assertions stay deterministic.
+ * Judgment-tier integration coverage: real Playwright observation, judgments,
+ * polling, extraction, and report-1 agent step fields. The model is a
+ * scripted adapter so the assertions stay deterministic. Planned flows
+ * (`agent.act`) are covered by agent-act.test.ts.
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import {
-  fakeCalls,
-  installFakeModel,
-  judgment,
-  locateBestMatch,
-  locateNotFound,
-  type FakeCall,
-} from '../helpers/fake-model.ts';
+import { fakeCalls, installFakeModel, judgment, type FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
-import type { ReportStep } from '../../src/report/build.ts';
 
 const AGENT_SUITE = `import { test, expect } from 'e2e';
 
-test('located actions and judgments', async ({ app, agent, screen }) => {
+test('judgments and polling', async ({ app, agent, screen }) => {
   await app.open();
-
-  await agent.tap('the Increment button');
-  await expect(screen.getByRole('status')).toHaveText('1');
-
-  await agent.click('the Increment button');
-  await expect(screen.getByRole('status')).toHaveText('2');
-
-  await agent.type('the Email field', 'user@example.test');
-  await expect(screen.getByLabel('Email')).toHaveValue('user@example.test');
-
-  await agent.longPress('the Menu button', { durationMs: 150 });
-
-  await agent.scroll({ direction: 'down' });
-  await agent.scrollTo('the Item Gamma list item');
-
+  await expect(screen.getByRole('status')).toHaveText('0');
   await agent.assert('the Home heading is visible');
   await agent.waitFor('the Late arrival button exists', { intervalMs: 100 });
 });
@@ -66,45 +45,6 @@ test('a false judgment fails the assertion', async ({ app, agent }) => {
   await agent.assert('the checkout page is visible');
 });
 
-test('located verbs drive the verbs playground', async ({ app, agent, screen }) => {
-  await app.open('/verbs');
-
-  await agent.type('the Search field', 'quarterly report');
-  await agent.press('the Search field', 'Enter');
-  await expect(screen.getByLabel('Submitted')).toHaveText('submitted:quarterly report');
-
-  await agent.hover('the Hover zone');
-  await expect(screen.getByRole('button', { name: 'Revealed action' })).toBeVisible();
-
-  await agent.dragTo('the Card One item', 'the Drop zone');
-  await expect(screen.getByLabel('Drop state')).toHaveText('dropped');
-
-  await agent.upload('the Avatar upload field', 'avatar.txt');
-  await expect(screen.getByLabel('File name')).toHaveText('avatar.txt');
-});
-
-test('select and check drive native form controls', async ({ app, agent, screen }) => {
-  await app.open();
-  await agent.select('the Plan dropdown', 'Pro');
-  await expect(screen.getByLabel('Plan')).toHaveValue('pro');
-  await agent.check('the Notifications checkbox');
-  await expect(screen.getByLabel('Notifications')).toBeChecked();
-  await agent.uncheck('the Notifications checkbox');
-  await expect(screen.getByLabel('Notifications')).not.toBeChecked();
-});
-
-test('located actions reach nodes inside iframes', async ({ app, agent, web }) => {
-  await app.open('/frame');
-  await agent.tap('the Frame button');
-  await expect(web.frameLocator('#child').getByRole('button')).toHaveText('Frame clicked');
-});
-
-test('taps one control among identical repeats', async ({ agent, screen, web }) => {
-  await web.goto('/repeats');
-  await agent.tap(THIRD_REPEAT);
-  await expect(screen.getByRole('status')).toHaveText('C');
-});
-
 test('waits without re-judging a page that has not changed', async ({
   app,
   agent,
@@ -125,36 +65,19 @@ test('waits without re-judging a page that has not changed', async ({
   });
 });
 
-test('an explicit no-match fails with the model explanation', async ({ app, agent }) => {
+test('observes the token link page', async ({ app, agent }) => {
   await app.open();
-  await agent.tap('the shopping cart icon');
+  await agent.assert('the About with token link is present');
 });
 `;
 
 const FALSE_ASSERTION = 'the checkout page is visible';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
 const NEVER_CONDITION = 'a checkout button is on the About page';
-const NO_MATCH_TARGET = 'the shopping cart icon';
-const THIRD_REPEAT = 'the Reserve now button of the third offer';
-const NO_MATCH_EXPLANATION = 'the observation shows a counter demo without any cart icon';
 
-/** Scripted responder: locate by best line match, judge from the observation. */
+/** Scripted responder: judge and extract from the observation. */
 function respond(call: FakeCall): unknown {
   switch (call.schemaName) {
-    case 'agent-locate-1':
-      if (call.instruction === NO_MATCH_TARGET) return locateNotFound(NO_MATCH_EXPLANATION);
-      if (call.instruction === THIRD_REPEAT) {
-        // Three buttons the tree cannot tell apart. The model names the third
-        // one it was shown; only its place in the observation identifies it.
-        const lines = call.lines.filter((line) => line.includes('Reserve now'));
-        const id = /#(\S+)/.exec(lines.at(-1) ?? '')?.[1] ?? '';
-        return {
-          protocolVersion: 'agent-locate-1',
-          target: { id, revision: call.revision },
-          explanation: 'the third Reserve now button',
-        };
-      }
-      return locateBestMatch(call);
     case 'agent-judgment-1': {
       if (call.instruction === FALSE_ASSERTION) {
         return judgment(false, 'the observation shows the Home page, not checkout');
@@ -176,17 +99,19 @@ function respond(call: FakeCall): unknown {
   }
 }
 
-describe('agent fixture', () => {
+describe('agent judgment tier', () => {
   let app: FixtureApp;
   let outcome: RunOutcome;
   let project: FixtureProject;
-  let report: { run: { results: { attempts: { steps: ReportStep[] }[] }[]; usage: Record<string, number> } };
+  let report: Parameters<typeof assertValidReport>[0] & {
+    run: { results: { attempts: { steps: import('../../src/report/build.ts').ReportStep[] }[] }[] };
+  };
 
   beforeAll(async () => {
     app = await startFixtureApp();
     const model = installFakeModel(respond);
     const result = await runProject(
-      { 'tests/agent.e2e.ts': AGENT_SUITE, 'avatar.txt': 'fixture upload payload' },
+      { 'tests/agent.e2e.ts': AGENT_SUITE },
       {
         appUrl: app.url,
         config: {
@@ -208,15 +133,8 @@ describe('agent fixture', () => {
     await app?.close();
   });
 
-  const stepOf = (title: string, api: string) => {
-    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
-    const step = attempt.steps.find((candidate) => candidate.api === api);
-    if (step === undefined) throw new Error(`no ${api} step in "${title}"`);
-    return step;
-  };
-
-  it('runs located actions, polling, and judgments against the real driver', () => {
-    expect(resultByTitle(outcome, 'located actions and judgments').status).toBe('passed');
+  it('runs judgments and polling against the real driver', () => {
+    expect(resultByTitle(outcome, 'judgments and polling').status).toBe('passed');
   });
 
   it('spends one judgment while the page it is waiting on does not change', () => {
@@ -227,7 +145,8 @@ describe('agent fixture', () => {
     const result = resultByTitle(outcome, title);
     expect(result.status).toBe('failed');
     expect(result.attempts.at(-1)!.error?.code).toBe('STEP_TIMEOUT');
-    const step = stepOf(title, 'agent.waitFor');
+    const attempt = result.attempts.at(-1)!;
+    const step = attempt.steps.find((candidate) => candidate.api === 'agent.waitFor')!;
     expect(step.metrics!.modelCalls).toBe(1);
     // It kept looking, though: observations are driver-only and cost nothing.
     const observations = step.events.filter((event) => event.kind === 'observation').length;
@@ -238,41 +157,12 @@ describe('agent fixture', () => {
     expect(resultByTitle(outcome, 'structured extraction').status).toBe('passed');
   });
 
-  it('drives press, hover, dragTo, and upload through located verbs', () => {
-    expect(resultByTitle(outcome, 'located verbs drive the verbs playground').status).toBe(
-      'passed',
-    );
-  });
-
-  it('drives native select and checkbox controls', () => {
-    expect(resultByTitle(outcome, 'select and check drive native form controls').status).toBe(
-      'passed',
-    );
-  });
-
-  it('locates and acts on nodes inside iframes', () => {
-    expect(resultByTitle(outcome, 'located actions reach nodes inside iframes').status).toBe(
-      'passed',
-    );
-  });
-
   it('fails the test with ASSERTION_FAILED on a false judgment', () => {
     const result = resultByTitle(outcome, 'a false judgment fails the assertion');
     expect(result.status).toBe('failed');
-    const attempt = result.attempts.at(-1)!;
-    expect(attempt.error?.code).toBe('ASSERTION_FAILED');
-    expect(attempt.error?.category).toBe('test');
-    expect(attempt.error?.message).toContain('not checkout');
-  });
-
-  it('surfaces the model explanation when it reports an explicit no-match', () => {
-    const result = resultByTitle(outcome, 'an explicit no-match fails with the model explanation');
-    expect(result.status).toBe('failed');
-    const attempt = result.attempts.at(-1)!;
-    expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
-    expect(attempt.error?.category).toBe('test');
-    expect(attempt.error?.message).toContain(NO_MATCH_TARGET);
-    expect(attempt.error?.message).toContain(NO_MATCH_EXPLANATION);
+    const error = result.attempts.at(-1)!.error!;
+    expect(error.code).toBe('ASSERTION_FAILED');
+    expect(error.message).toContain('Home page, not checkout');
   });
 
   it('never exposes application-authored instructions as policy', () => {
@@ -285,11 +175,11 @@ describe('agent fixture', () => {
   });
 
   it('sends the semantic tree with node references and no secret values', () => {
-    const locate = fakeCalls.find((call) => call.schemaName === 'agent-locate-1')!;
-    expect(locate.observation).toContain('#n');
-    expect(locate.observation).toContain('button "Increment"');
-    expect(locate.observation).toContain('value=<secure>');
-    expect(locate.revision).toMatch(/^r\d+$/);
+    const judged = fakeCalls.find((call) => call.schemaName === 'agent-judgment-1')!;
+    expect(judged.observation).toContain('#n');
+    expect(judged.observation).toContain('button "Increment"');
+    expect(judged.observation).toContain('value=<secure>');
+    expect(judged.revision).toMatch(/^r\d+$/);
   });
 
   it('discloses href origin and path only, never query strings or fragments', () => {
@@ -308,25 +198,14 @@ describe('agent fixture', () => {
       .flatMap((result) => result.attempts)
       .flatMap((attempt) => attempt.steps);
     const agentSteps = steps.filter((step) => step.kind === 'agent');
-    expect(agentSteps.length).toBeGreaterThan(8);
+    expect(agentSteps.length).toBeGreaterThan(4);
     for (const step of agentSteps) {
       expect(step.metrics).toBeDefined();
-      // A step that never located anything carries no cache field: it has no
-      // cache dimension to report. Where there is one, every status but a bypass
-      // carries the key hash.
-      if (step.cache !== undefined) {
-        if (step.cache.status === 'bypassed') {
-          expect(step.cache.keyHash).toBeUndefined();
-        } else {
-          expect(step.cache.keyHash).toMatch(/^[a-f0-9]{64}$/);
-        }
-      }
     }
-
-    const tap = agentSteps.find((step) => step.api === 'agent.tap')!;
-    expect(tap.metrics).toMatchObject({ modelCalls: 1, actionSteps: 1 });
-    expect(tap.metrics!.observationBytes).toBeGreaterThan(0);
-    expect(tap.model).toMatchObject({
+    const judged = agentSteps.find((step) => step.api === 'agent.assert')!;
+    expect(judged.metrics).toMatchObject({ modelCalls: 1, actionSteps: 0 });
+    expect(judged.metrics!.observationBytes).toBeGreaterThan(0);
+    expect(judged.model).toMatchObject({
       provider: 'fake',
       model: 'scripted',
       endpoint: 'provider-default',
@@ -334,22 +213,7 @@ describe('agent fixture', () => {
       calls: 1,
       tokenAccounting: 'provider',
     });
-    expect(tap.events.some((event) => event.kind === 'observation')).toBe(true);
-    expect(tap.events.some((event) => event.kind === 'model')).toBe(true);
-    expect(tap.events.some((event) => event.kind === 'driver')).toBe(true);
-
-    const scroll = agentSteps.find((step) => step.api === 'agent.scroll')!;
-    expect(scroll.metrics).toMatchObject({ modelCalls: 0, actionSteps: 1 });
-    expect(scroll.model).toBeUndefined();
-
-    const assertion = agentSteps.find((step) => step.api === 'agent.assert')!;
-    expect(assertion.observationRevision).toBeDefined();
-    expect(assertion.explanation).toBeDefined();
-    expect(assertion.artifacts).toHaveLength(1);
-
-    expect(report.run.usage.maxModelCallsInStep).toBeGreaterThan(0);
-    expect(report.run.usage.modelTokens).toBeGreaterThan(0);
-    expect(report.run.usage.events).toBeGreaterThan(0);
-    expect(report.run.usage.maxAgentContextBytes).toBeGreaterThan(0);
+    expect(judged.events.some((event) => event.kind === 'observation')).toBe(true);
+    expect(judged.events.some((event) => event.kind === 'model')).toBe(true);
   });
 });

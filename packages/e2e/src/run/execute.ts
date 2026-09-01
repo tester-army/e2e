@@ -1,16 +1,6 @@
 /** Test-target execution engine (spec 11-lifecycle.md). */
 
 import path from 'node:path';
-import type { AgentCacheContext } from '../agent/invocation.ts';
-import { POLICY_VERSION } from '../agent/prompts.ts';
-import {
-  createCacheStore,
-  createCallIndexer,
-  disabledCacheStore,
-  projectIdentity,
-  type CacheStore,
-  type CacheTargetIdentity,
-} from '../cache/index.ts';
 import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
@@ -85,15 +75,6 @@ export class TargetExecutor implements SerialHost {
 
   private readonly runErrors: RunError[] = [];
   private readonly sessionIdentity: SessionIdentity;
-  /** Session identity with the deployment-independent app identity of the cache. */
-  private readonly cacheTarget: CacheTargetIdentity;
-  /**
-   * One store per target. Entries are content-addressed by key, so concurrent
-   * targets and workers write disjoint files and need no coordination beyond
-   * the store's own per-key lock.
-   */
-  private readonly cacheStore: CacheStore;
-  private readonly cacheProject: string;
 
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
@@ -119,45 +100,6 @@ export class TargetExecutor implements SerialHost {
         basePath: options.config.app.base.basePath,
         environment: options.config.app.environment,
       }),
-    };
-    // The cache is deployment-independent on purpose: a preview URL, a staging
-    // host, and localhost on another port serve the same app, and keying on the
-    // origin cold-started every entry on every deploy. The declared environment
-    // still separates them, because that is a statement about the app, not
-    // about where it happens to be running. Session state keeps the strict
-    // identity above: cookies from one origin must never be restored onto
-    // another.
-    this.cacheTarget = {
-      ...this.sessionIdentity,
-      appIdentity: canonicalDigest({ environment: options.config.app.environment }),
-    };
-    this.cacheStore = createCacheStore({
-      mode: options.config.agent.cache,
-      projectRoot: options.config.projectRoot,
-      maxBytes: options.config.limits.maxCacheBytes,
-    });
-    this.cacheProject = projectIdentity(options.config.projectId);
-  }
-
-  /**
-   * Cache context for one attempt.
-   *
-   * A retry starts from clean state, so it gets the disabled store: a cached
-   * locator can never be blamed for a flake the retry was supposed to clear.
-   * That is a true bypass, not a suppressed hit — no key is built and no
-   * screen is fingerprinted, so a bypassed cache costs nothing.
-   */
-  private cacheContext(testId: string, attemptIndex: number): AgentCacheContext {
-    return {
-      store:
-        attemptIndex === 0
-          ? this.cacheStore
-          : disabledCacheStore('retry attempts never consult the cache'),
-      project: this.cacheProject,
-      testId,
-      target: this.cacheTarget,
-      policyVersion: POLICY_VERSION,
-      nextCallIndex: createCallIndexer(),
     };
   }
 
@@ -496,7 +438,6 @@ export class TargetExecutor implements SerialHost {
         testDeadline,
         artifacts: artifacts.sink,
         priorSteps,
-        cache: this.cacheContext(pair.test.id, attemptIndex),
         agentContext: pair.options.agentContext,
         opened: shared?.opened ?? { value: false },
         saveSession,

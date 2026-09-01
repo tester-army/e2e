@@ -56,7 +56,6 @@ export function createProgram(): Command {
     .option('--workers <n>', 'replace worker count', parsePositiveInt)
     .option('--reporter <ids>', 'comma-separated reporters: list, json', parseList)
     .option('--artifacts <dir>', 'artifact root, default .e2e/artifacts')
-    .option('--no-agent-cache', 'force agent cache mode off')
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')
     .option('--debug', 'print aggregated phase timings to stderr after the run')
     .action(
@@ -72,7 +71,6 @@ export function createProgram(): Command {
           workers?: number;
           reporter?: string[];
           artifacts?: string;
-          agentCache?: boolean;
           passWithNoTests?: boolean;
           debug?: boolean;
         },
@@ -100,7 +98,6 @@ export function createProgram(): Command {
           workers: options.workers,
           reporters: reporter?.filter(isReporter),
           artifactsDir: options.artifacts,
-          agentCache: options.agentCache,
           passWithNoTests: options.passWithNoTests,
           debug: options.debug,
         });

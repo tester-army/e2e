@@ -24,7 +24,7 @@ import {
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
-import { agentStepTable, cacheTable } from '../report/debug-steps.ts';
+import { agentStepTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { AppProcess } from './app-process.ts';
@@ -49,8 +49,6 @@ export interface RunOptions {
   workers?: number | undefined;
   reporters?: readonly ('list' | 'json')[] | undefined;
   artifactsDir?: string | undefined;
-  /** `--no-agent-cache`: false forces agent cache mode off. */
-  agentCache?: boolean | undefined;
   passWithNoTests?: boolean | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
@@ -130,7 +128,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (debug.enabled) {
       process.stderr.write(debug.summary());
       process.stderr.write(agentStepTable(results, serialGroups));
-      process.stderr.write(cacheTable(results, serialGroups));
     }
     return { exitCode, status, report, reportPath, results };
   };
@@ -145,7 +142,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.retries !== undefined) cli.retries = options.retries;
   if (options.workers !== undefined) cli.workers = options.workers;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
-  if (options.agentCache === false) cli.agentCache = 'off';
 
   try {
 

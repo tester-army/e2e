@@ -18,7 +18,6 @@ import type {
   SerialMemberRecord,
 } from '../run/records.ts';
 import type {
-  StepCacheInfo,
   StepEvent,
   StepMetrics,
   StepModelInfo,
@@ -67,9 +66,6 @@ export interface ReportError {
   scopeId?: string | undefined;
 }
 
-/** Reported cache outcome: `StepCacheInfo` without its debug-only reason. */
-export type ReportCacheInfo = Omit<StepCacheInfo, 'reason'>;
-
 export interface ReportStep {
   id: string;
   index: number;
@@ -84,13 +80,11 @@ export interface ReportStep {
   explanation?: string | undefined;
   visionInput?: boolean | undefined;
   visionDegraded?: VisionDegradation | undefined;
-  visionEscalated?: boolean | undefined;
   visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
   events: readonly StepEvent[];
   model?: StepModelInfo | undefined;
-  cache?: ReportCacheInfo | undefined;
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }
@@ -184,7 +178,6 @@ export type ReportLimits = ResolvedLimits;
 
 export interface ReportUsage {
   discoveredResults: number;
-  maxCacheEntryBytes: number;
   maxAgentContextBytes: number;
   maxLedgerBytes: number;
   maxObservationBytes: number;
@@ -255,26 +248,15 @@ function relativeSource(
 const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
 
 function serializeStep(step: StepRecord): ReportStep {
-  const { error, cache, ...rest } = step;
+  const { error, ...rest } = step;
   return {
     ...rest,
     source: UNIMPLEMENTED_STEP_SOURCE,
-    cache: cache === undefined ? undefined : serializeCacheRecord(cache),
     error: error === undefined ? undefined : serializeErrorRecord(error),
   };
 }
 
-/**
- * Drops the debug-only `reason`. `spec/schema/report-v1` closes the cache
- * object, and the reason is diagnostic prose for `--debug`, not part of the
- * published record.
- */
-function serializeCacheRecord(cache: StepCacheInfo): ReportCacheInfo {
-  const { reason, ...report } = cache;
-  void reason;
-  return report;
-}
-
+/** SerializedError minus the stack, which never enters the report. */
 function serializeErrorRecord(error: SerializedError): ReportError {
   const { stack, ...report } = error;
   void stack;
@@ -441,7 +423,6 @@ function deriveRunStatus(
 
 /** Fallback limits used when the run failed before config resolution. */
 const DEFAULT_LIMITS: ReportLimits = {
-  maxCacheBytes: 262_144,
   maxAgentContextBytes: 16_384,
   maxLedgerBytes: 8_192,
   maxObservationBytes: 1_048_576,
@@ -457,7 +438,6 @@ function computeUsage(options: {
 }): ReportUsage {
   const usage: ReportUsage = {
     discoveredResults: options.discovered,
-    maxCacheEntryBytes: 0,
     maxAgentContextBytes: 0,
     maxLedgerBytes: 0,
     maxObservationBytes: 0,
@@ -488,9 +468,6 @@ function computeUsage(options: {
         cost += model.estimatedCostUsd;
         costSeen = true;
       }
-    }
-    if (step.cache?.bytes !== undefined) {
-      usage.maxCacheEntryBytes = Math.max(usage.maxCacheEntryBytes, step.cache.bytes);
     }
   };
 

@@ -1,8 +1,0 @@
-{
-  "protocolVersion": "agent-locate-1",
-  "target": {
-    "point": { "x": 412, "y": 268 },
-    "revision": "revision-1"
-  },
-  "explanation": "the red map pin is drawn there and no node represents it"
-}

@@ -82,8 +82,6 @@ export interface CliOverrides {
   reporters?: readonly ('list' | 'json')[];
   headed?: boolean;
   artifactsDir?: string;
-  /** `--no-agent-cache` forces cache mode off. */
-  agentCache?: 'off';
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -197,7 +195,7 @@ export function resolveConfig(
   // Limits first: the agent context budget is a limits key, and the resolved
   // observation budget is agent-owned, so the dependency runs one way.
   const baseLimits = resolveLimits(raw);
-  const agent = resolveAgentConfig(raw, env, ci, cli.agentCache, baseLimits);
+  const agent = resolveAgentConfig(raw, env, ci, baseLimits);
   const limits: ResolvedLimits = { ...baseLimits, maxObservationBytes: agent.maxObservationBytes };
 
   const resolved: ResolvedConfig = {

@@ -23,7 +23,6 @@ describe('agent config defaults', () => {
     expect(config.agent.maxSteps).toBe(25);
     expect(config.agent.maxModelCalls).toBe(25);
     expect(config.agent.maxObservationBytes).toBe(1_048_576);
-    expect(config.agent.cache).toBe('read-write');
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.context).toBeUndefined();
     expect(config.agent.vision).toBe(false);
@@ -61,15 +60,7 @@ describe('agent config defaults', () => {
     );
   });
 
-  it('defaults the cache to read-only in CI so untrusted runs cannot publish guidance', () => {
-    const config = resolve({}, { ...BASE_ENV, CI: '1' } as NodeJS.ProcessEnv);
-    expect(config.agent.cache).toBe('read-only');
-  });
 
-  it('forces the cache off for --no-agent-cache', () => {
-    const config = resolve({ agent: { cache: 'read-write' } }, BASE_ENV, { agentCache: 'off' });
-    expect(config.agent.cache).toBe('off');
-  });
 
   it('bounds budgets to 1 through 100 and observation bytes to 1 KiB through 16 MiB', () => {
     expect(() => resolve({ agent: { maxSteps: 0 } })).toThrow(/maxSteps/);
@@ -81,9 +72,11 @@ describe('agent config defaults', () => {
     );
   });
 
-  it('rejects unknown agent keys and invalid cache modes', () => {
+  it('rejects unknown agent keys, including the removed cache mode', () => {
     expect(() => resolve({ agent: { retries: 2 } } as never)).toThrow(/unknown agent config key/);
-    expect(() => resolve({ agent: { cache: 'always' } } as never)).toThrow(/invalid agent.cache/);
+    expect(() => resolve({ agent: { cache: 'always' } } as never)).toThrow(
+      /unknown agent config key/,
+    );
   });
 
   it('rejects context larger than the resolved agent-context limit', () => {
@@ -101,7 +94,6 @@ describe('agent as the executor itself', () => {
     expect(config.agent.executor).toMatchObject({ name: 'custom-brain' });
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.maxSteps).toBe(25);
-    expect(config.agent.cache).toBe('read-write');
   });
 
   it('still resolves the model from E2E_MODEL alongside a custom agent', () => {
@@ -251,7 +243,6 @@ describe('resource limits', () => {
     expect(config.limits.maxObservationBytes).toBe(4_096);
     expect(config.limits.maxLedgerBytes).toBe(8_192);
     expect(config.limits.maxAgentContextBytes).toBe(16_384);
-    expect(config.limits.maxCacheBytes).toBe(262_144);
     expect(config.limits.maxEventsPerStep).toBe(1_000);
     expect(config.limits.maxModelTokensPerCall).toBe(64_000);
   });

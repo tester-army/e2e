@@ -91,7 +91,6 @@
       "skipped": 0
     },
     "limits": {
-      "maxCacheBytes": 262144,
       "maxAgentContextBytes": 16384,
       "maxLedgerBytes": 8192,
       "maxObservationBytes": 1048576,
@@ -100,7 +99,6 @@
     },
     "usage": {
       "discoveredResults": 1,
-      "maxCacheEntryBytes": 0,
       "maxAgentContextBytes": 0,
       "maxLedgerBytes": 0,
       "maxObservationBytes": 0,

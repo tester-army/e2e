@@ -44,7 +44,6 @@ export const AGENT_CODE_TABLE: Readonly<
   LOCATOR_NOT_FOUND: { category: 'test' },
   LOCATOR_AMBIGUOUS: { category: 'test' },
   ACTION_FAILED: { category: 'test' },
-  CACHE_REPLAY_DIVERGED: { category: 'test' },
   STEP_NO_CONCLUSION: { category: 'test' },
   ASSERTION_FAILED: { category: 'test' },
 };

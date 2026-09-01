@@ -111,16 +111,9 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * what the page presents, the tree is a distractor, so the mode that means it
  * removes it. It also costs fewer input tokens than `true`, not more.
  *
- * A locate under `'only'` can only answer with a screenshot point, since there
- * are no node identifiers to choose from. Methods that need a semantic node to
- * hand the driver — `type`, `select`, `upload`, `scrollTo`, `dragTo` — therefore
- * reject `'only'` with `POLICY_DENIED` rather than acting on a coordinate.
- *
- * `'fallback'` needs a signal that the tree was insufficient, which only a
- * method that locates a target has: the model reporting no match, or no derived
- * query resolving the node it chose. A judgment always produces an answer from
- * the tree, so `'fallback'` leaves `assert`, `waitFor`, and `extract` tree-only;
- * use `true` or `'only'` to have pixels judged.
+ * A judgment always produces an answer from the tree, so `'fallback'` behaves
+ * like `false` for `assert`, `waitFor`, and `extract`; use `true` or `'only'`
+ * to have pixels judged.
  *
  * In every mode that sends pixels but also the tree, pixel evidence degrades
  * away rather than failing the call when it cannot be proven redacted. `'only'`
@@ -171,7 +164,6 @@ export type AgentErrorCode =
   | 'LOCATOR_AMBIGUOUS'
   | 'ACTION_FAILED'
   | 'AUTOMATION_UNSUPPORTED'
-  | 'CACHE_REPLAY_DIVERGED'
   | 'POLICY_DENIED'
   | 'STEP_BUDGET_EXHAUSTED'
   | 'STEP_TIMEOUT'
@@ -187,11 +179,6 @@ export class AgentError extends Error {
   readonly blocked: boolean;
 }
 
-export interface InstantActionOptions extends VisionOption {
-  timeout?: number;
-  cache?: boolean;
-}
-
 export interface Agent {
   /** Plans a flow and validates its structured result with Standard Schema v1. */
   act<Schema extends StandardSchemaV1>(
@@ -205,55 +192,6 @@ export interface Agent {
     params?: AgentParams,
     options?: AgentOptions,
   ): Promise<AgentResult>;
-  /** Locates one target and taps it once. */
-  tap(target: string, options?: InstantActionOptions): Promise<void>;
-  /** Alias of tap. */
-  click(target: string, options?: InstantActionOptions): Promise<void>;
-  /** Locates one target and types a plain or host-side secret value. */
-  type(
-    target: string,
-    value: string | Secret,
-    options?: InstantActionOptions,
-  ): Promise<void>;
-  /** Performs one deterministic scroll, optionally inside a located target. */
-  scroll(
-    options: InstantActionOptions & {
-      direction: ScrollDirection;
-      momentum?: Momentum;
-      within?: string;
-    },
-  ): Promise<void>;
-  /** Locates a target by scrolling toward it. */
-  scrollTo(
-    target: string,
-    options?: InstantActionOptions & { direction?: ScrollDirection },
-  ): Promise<void>;
-  /** Locates one target and long-presses it once. */
-  longPress(
-    target: string,
-    options?: InstantActionOptions & { durationMs?: number },
-  ): Promise<void>;
-  /** Locates one target and sends it one key, e.g. `Enter`. */
-  press(target: string, key: string, options?: InstantActionOptions): Promise<void>;
-  /** Locates one select-like control and picks one option. */
-  select(target: string, value: SelectOption, options?: InstantActionOptions): Promise<void>;
-  /** Locates one target and hovers over it. */
-  hover(target: string, options?: InstantActionOptions): Promise<void>;
-  /** Locates one checkable target and checks it. */
-  check(target: string, options?: InstantActionOptions): Promise<void>;
-  /** Locates one checkable target and unchecks it. */
-  uncheck(target: string, options?: InstantActionOptions): Promise<void>;
-  /** Locates a source and a destination, then drags source onto destination. */
-  dragTo(source: string, destination: string, options?: InstantActionOptions): Promise<void>;
-  /**
-   * Locates one file input and sets its files. Paths come from test code and
-   * resolve from the project root; the model never chooses a path.
-   */
-  upload(
-    target: string,
-    paths: string | readonly string[],
-    options?: InstantActionOptions,
-  ): Promise<void>;
   /** Polls a natural-language condition until true or timed out. */
   waitFor(
     condition: string,
@@ -833,7 +771,6 @@ export interface AgentConfig {
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;
-  cache?: 'off' | 'read-only' | 'read-write';
   context?: string;
   /** Project-wide default for the per-call `vision` option. */
   vision?: VisionMode;
@@ -872,7 +809,6 @@ export interface E2EConfig {
    * runner has an enforcement site for it.
    */
   limits?: {
-    maxCacheBytes?: number;
     maxAgentContextBytes?: number;
     maxLedgerBytes?: number;
     maxEventsPerStep?: number;

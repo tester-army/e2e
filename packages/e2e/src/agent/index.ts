@@ -1,27 +1,18 @@
 /**
  * The `agent` fixture (spec 02-test-api.md).
  *
- * Test code drives execution: each method below is one bounded invocation with
- * a fresh observation, an explicit deadline, and a model-call budget. The
- * planning tier (`act`, `login`) is not part of this milestone.
+ * Two tiers, deliberately few methods. `act` plans and executes a flow on the
+ * executor socket; `assert`, `waitFor`, and `extract` are the judgment tier —
+ * each one bounded invocation with a fresh observation, an explicit deadline,
+ * and a model-call budget. The located action verbs of v1 were retired: an
+ * action either has an exact deterministic address (`screen.*`) or it is part
+ * of a planned flow (`agent.act`), and one cache design serves the latter.
  */
 
-import path from 'node:path';
 import { isVisionMode } from '../config/agent.ts';
-import type { SemanticNode } from '../driver/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
-import { describeExpression } from '../locator/expression.ts';
-import { isSecret, validateLongPress } from '../locator/screen.ts';
-import type {
-  Agent,
-  InstantActionOptions,
-  Momentum,
-  ScrollDirection,
-  SelectOption,
-  StandardSchemaV1,
-  VisionMode,
-} from '../types.ts';
+import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
@@ -33,19 +24,9 @@ import {
   type InvocationOptions,
 } from './invocation.ts';
 import type { PromptInput } from './prompts.ts';
-import {
-  locateOne,
-  locateByScrolling,
-  NODE_ONLY,
-  type Located,
-  type LocatedNode,
-  type LocatedPoint,
-  type PointPolicy,
-} from './locate.ts';
 import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
-import { authorizeSecretFill } from './secrets.ts';
 
 const MIN_STEP_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
@@ -64,7 +45,6 @@ const EXTRACT_MODEL_CALLS = 2;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
-  const testIdAttribute = runtime.config.testIdAttribute;
   /**
    * Default budget for polling, judgment, and extraction steps: the action
    * timeout expresses the suite's model-latency headroom in one place, with a
@@ -81,16 +61,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     }
     return requested;
   };
-
-  /**
-   * The model-call budget of a locating method under one vision mode.
-   *
-   * `'fallback'` can run the locate twice — once on the tree, once on pixels —
-   * so it needs room for both tiers. It is a doubling rather than a separate
-   * number because each tier is the same locate with the same repair round.
-   */
-  const locateCalls = (perTier: number, vision: VisionMode): number =>
-    vision === 'fallback' ? perTier * 2 : perTier;
 
   /** Runs one agent method as a top-level step carrying agent metrics. */
   const step = async <Value>(
@@ -109,77 +79,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       }
     });
 
-  /** Runs one action, translating a driver failure into agent prose. */
-  const dispatch = async (
-    invocation: Invocation,
-    api: string,
-    target: string,
-    located: Located,
-    body: () => Promise<void>,
-  ): Promise<void> => {
-    try {
-      await body();
-    } catch (cause) {
-      throw explainActionFailure(invocation, api, target, located, cause);
-    }
-  };
-
-  /**
-   * Locates one node and performs exactly one predetermined driver action.
-   *
-   * `pointAction` opts the method into the vision pointing tier. Supplying it
-   * is what shows the model the pointing grammar in the first place, so a
-   * method with no coordinate equivalent is never offered a coordinate.
-   */
-  const instant = (spec: {
-    readonly api: string;
-    readonly target: string;
-    readonly options: InstantActionOptions | undefined;
-    /**
-     * Non-secret call parameters that belong in the cache key. Required, so that
-     * adding a located action forces a decision about what its key covers; `{}`
-     * only when the call really has no parameters.
-     */
-    readonly input: Readonly<Record<string, unknown>>;
-    readonly action: (invocation: Invocation, located: LocatedNode) => Promise<void>;
-    readonly pointAction?: (invocation: Invocation, located: LocatedPoint) => Promise<void>;
-  }): Promise<void> => {
-    const { api, target, options, input, action, pointAction } = spec;
-    const vision = resolveVision(options?.vision);
-    const point: PointPolicy<null> =
-      pointAction === undefined
-        ? NODE_ONLY
-        : {
-            allowed: true,
-            perform: async (invocation, located) => {
-              await dispatch(invocation, api, target, located, () =>
-                pointAction(invocation, located),
-              );
-              return null;
-            },
-          };
-    return step(
-      {
-        api,
-        task: `select one node for ${api}`,
-        timeoutMs: resolveTimeout(options?.timeout, runtime.config.actionTimeout),
-        // One locate plus room for exactly one repair round: a hallucinated
-        // node id or stale revision is invalid output, not a lost test.
-        maxModelCalls: locateCalls(2, vision),
-        maxActionSteps: 1,
-        cache: options?.cache ?? true,
-        vision,
-      },
-      target,
-      async (invocation) => {
-        const located = await locateOne(invocation, target, { testIdAttribute, input, point });
-        // Null means the model pointed and the policy already dispatched.
-        if (located === null) return;
-        await dispatch(invocation, api, target, located, () => action(invocation, located));
-      },
-    );
-  };
-
   /** One judgment call against a fresh observation. */
   const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
     invocation.ask({
@@ -189,47 +88,10 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       prompt: { request: JUDGMENT_REQUEST, instruction, observation },
     });
 
-  /** `tap` and `click` are the same located action under two spec names. */
-  const tapVerb =
-    (api: string) =>
-    (target: string, options?: InstantActionOptions): Promise<void> =>
-      instant({
-        api,
-        target,
-        options,
-        input: {},
-        action: (invocation, located) =>
-          invocation.commit('tap', () =>
-            invocation.session.actions.tap({ ref: located.ref }, invocation.operation()),
-          ),
-        pointAction: (invocation, located) => tapAtPoint(invocation, api, located),
-      });
-
-  /**
-   * Taps a validated screenshot point. The dispatch is at the point itself:
-   * moving to the center of the hit-tested node would leave the pixels the
-   * model chose, which on a canvas is the whole surface.
-   */
-  const tapAtPoint = (
-    invocation: Invocation,
-    api: string,
-    located: LocatedPoint,
-  ): Promise<void> => {
-    const tapPoint = invocation.session.actions.tapPoint;
-    if (tapPoint === undefined) {
-      throw new ConfigurationError(
-        'UNSUPPORTED_CAPABILITY',
-        `${api} received a screenshot point, but the driver has no coordinate input; ` +
-          'vision pointing requires a driver implementing tapPoint',
-      );
-    }
-    return invocation.commit('tapPoint', () => tapPoint(located.point, invocation.operation()));
-  };
-
   const planningTierUnavailable = (api: string): never => {
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
-      `${api} is the planning tier and is not implemented yet; use the located-action and judgment methods`,
+      `${api} is not implemented yet; sign in with agent.act and Secret params instead`,
     );
   };
 
@@ -237,267 +99,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     act: ((instruction: string, params?: Parameters<Agent['act']>[1], options?: Parameters<Agent['act']>[2]) =>
       runActStep(runtime, instruction, params, options)) as Agent['act'],
     login: ((): never => planningTierUnavailable('agent.login')) as Agent['login'],
-
-    tap: tapVerb('agent.tap'),
-    click: tapVerb('agent.click'),
-
-    type(target, value, options) {
-      const sensitive = isSecret(value);
-      if (!sensitive && typeof value !== 'string') {
-        throw new TestError('INVALID_ARGUMENT', 'agent.type value must be a string or a Secret');
-      }
-      return instant({
-        api: 'agent.type',
-        target,
-        options,
-        // A secret contributes only its stable name and purpose: its value must
-        // never reach a cache key, not even through a digest.
-        input: sensitive ? { sensitiveName: value.name, purpose: value.purpose } : { value },
-        action: async (invocation, located) => {
-          const plaintext = sensitive
-            ? await authorizeSecretFill(invocation, runtime, value, located.node)
-            : value;
-          await invocation.commit('type', () =>
-            invocation.session.actions.type(
-              { ref: located.ref },
-              plaintext,
-              sensitive,
-              invocation.operation(),
-            ),
-          );
-        },
-      });
-    },
-
-    longPress(target, options) {
-      const durationMs = validateLongPress(options?.durationMs);
-      return instant({
-        api: 'agent.longPress',
-        target,
-        options,
-        input: { durationMs },
-        action: (invocation, located) =>
-          invocation.commit('longPress', () =>
-            invocation.session.actions.longPress(
-              { ref: located.ref },
-              durationMs,
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    press(target, key, options) {
-      if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
-        throw new TestError('INVALID_ARGUMENT', 'agent.press key must be a short non-empty string');
-      }
-      return instant({
-        api: 'agent.press',
-        target,
-        options,
-        input: { key },
-        action: (invocation, located) =>
-          invocation.commit('press', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'press', key },
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    select(target, value, options) {
-      validateSelectOption(value);
-      return instant({
-        api: 'agent.select',
-        target,
-        options,
-        input: { value },
-        action: (invocation, located) =>
-          invocation.commit('selectOption', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'selectOption', value },
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    hover(target, options) {
-      return instant({
-        api: 'agent.hover',
-        target,
-        options,
-        input: {},
-        action: (invocation, located) =>
-          invocation.commit('hover', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'hover' },
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    check(target, options) {
-      return instant({
-        api: 'agent.check',
-        target,
-        options,
-        input: {},
-        action: (invocation, located) =>
-          invocation.commit('check', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'check' },
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    uncheck(target, options) {
-      return instant({
-        api: 'agent.uncheck',
-        target,
-        options,
-        input: {},
-        action: (invocation, located) =>
-          invocation.commit('uncheck', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'uncheck' },
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    upload(target, paths, options) {
-      const resolved = validateUploadPaths(paths, runtime.config.projectRoot);
-      return instant({
-        api: 'agent.upload',
-        target,
-        options,
-        input: { paths: resolved },
-        action: (invocation, located) =>
-          invocation.commit('setInputFiles', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'setInputFiles', paths: resolved },
-              invocation.operation(),
-            ),
-          ),
-      });
-    },
-
-    dragTo(source, destination, options) {
-      const dragVision = resolveVision(options?.vision);
-      return step(
-        {
-          api: 'agent.dragTo',
-          task: 'select one drag source and one drop destination',
-          timeoutMs: resolveTimeout(options?.timeout, runtime.config.actionTimeout),
-          // Two locates, each with room for one repair round.
-          maxModelCalls: locateCalls(4, dragVision),
-          maxActionSteps: 1,
-          cache: options?.cache ?? true,
-          vision: dragVision,
-        },
-        `${source} \u2192 ${destination}`,
-        async (invocation) => {
-          const from = await locateOne(invocation, source, { testIdAttribute, input: {} });
-          const to = await locateOne(invocation, destination, { testIdAttribute, input: {} });
-          try {
-            await invocation.commit('dragTo', () =>
-              invocation.session.screen.perform(
-                from.ref,
-                { kind: 'dragTo', target: to.ref },
-                invocation.operation(),
-              ),
-            );
-          } catch (cause) {
-            throw explainActionFailure(invocation, 'agent.dragTo', source, from, cause);
-          }
-        },
-      );
-    },
-
-    scroll(options) {
-      const direction = validateDirection(options.direction);
-      const momentum = validateMomentum(options.momentum);
-      const within = options.within;
-      const scrollVision = resolveVision(options.vision);
-      return step(
-        {
-          api: 'agent.scroll',
-          task: 'select one scrollable container',
-          timeoutMs: resolveTimeout(options.timeout, runtime.config.actionTimeout),
-          maxModelCalls: within === undefined ? 0 : locateCalls(2, scrollVision),
-          maxActionSteps: 1,
-          cache: options.cache ?? true,
-          vision: scrollVision,
-        },
-        within === undefined ? direction : `${direction} within ${within}`,
-        async (invocation) => {
-          const momentumOption = momentum === undefined ? {} : { momentum };
-          if (within === undefined) {
-            await invocation.commit('scroll', () =>
-              invocation.session.actions.scroll(direction, momentumOption, invocation.operation()),
-            );
-            return;
-          }
-          const located = await locateOne(invocation, within, {
-            testIdAttribute,
-            input: { direction, ...(momentum === undefined ? {} : { momentum }) },
-          });
-          await invocation.commit('scroll', () =>
-            invocation.session.actions.scroll(
-              direction,
-              { target: located.ref, ...momentumOption },
-              invocation.operation(),
-            ),
-          );
-        },
-      );
-    },
-
-    scrollTo(target, options) {
-      const direction = validateDirection(options?.direction ?? 'down');
-      return step(
-        {
-          api: 'agent.scrollTo',
-          task: 'select one node while scrolling toward it',
-          timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
-          maxModelCalls: runtime.config.agent.maxModelCalls,
-          maxActionSteps: runtime.config.agent.maxSteps,
-          cache: options?.cache ?? true,
-          vision: resolveVision(options?.vision),
-        },
-        target,
-        async (invocation) => {
-          const located = await locateByScrolling(
-            invocation,
-            target,
-            { testIdAttribute, input: { direction } },
-            () =>
-              invocation.commit('scroll', () =>
-                invocation.session.actions.scroll(direction, {}, invocation.operation()),
-              ),
-          );
-          await invocation.commit('scrollIntoView', () =>
-            invocation.session.screen.perform(
-              located.ref,
-              { kind: 'scrollIntoView' },
-              invocation.operation(),
-            ),
-          );
-        },
-      );
-    },
 
     waitFor(condition, options) {
       const intervalMs = validateInterval(options?.intervalMs);
@@ -511,8 +112,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
             runtime.config.agent.maxModelCalls,
             'maxModelCalls',
           ),
-          maxActionSteps: 0,
-          cache: false,
           vision: resolveVision(options?.vision),
         },
         condition,
@@ -543,8 +142,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, stepTimeout),
           maxModelCalls: resolveBoundedBudget(options.maxModelCalls, EXTRACT_MODEL_CALLS, 'maxModelCalls'),
-          maxActionSteps: 0,
-          cache: false,
           vision: resolveVision(options.vision),
         },
         instruction,
@@ -599,8 +196,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: 1,
-          maxActionSteps: 0,
-          cache: false,
           vision: resolveVision(options?.vision),
         },
         assertion,
@@ -719,53 +314,6 @@ function validateInterval(intervalMs: number | undefined): number {
   return value;
 }
 
-function validateDirection(direction: ScrollDirection): ScrollDirection {
-  if (!['up', 'down', 'left', 'right'].includes(direction)) {
-    throw new TestError('INVALID_ARGUMENT', `invalid scroll direction "${direction}"`);
-  }
-  return direction;
-}
-
-function validateSelectOption(value: SelectOption): void {
-  if (typeof value === 'string') {
-    if (value !== '') return;
-    throw new TestError('INVALID_ARGUMENT', 'agent.select value must not be empty');
-  }
-  if (typeof value === 'object' && value !== null) {
-    if (typeof value.label === 'string' && value.label !== '') return;
-    if (typeof value.index === 'number' && Number.isInteger(value.index) && value.index >= 0) {
-      return;
-    }
-  }
-  throw new TestError(
-    'INVALID_ARGUMENT',
-    'agent.select value must be an option label or { label } or { index }',
-  );
-}
-
-/**
- * Upload paths come from trusted test code and resolve from the project root.
- * They never transit the model: the instruction carries only the target text.
- */
-function validateUploadPaths(paths: string | readonly string[], projectRoot: string): string[] {
-  const list = typeof paths === 'string' ? [paths] : [...paths];
-  if (list.length === 0 || list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
-    throw new TestError(
-      'INVALID_ARGUMENT',
-      'agent.upload requires one or more non-empty file paths',
-    );
-  }
-  return list.map((entry) => path.resolve(projectRoot, entry));
-}
-
-function validateMomentum(momentum: Momentum | undefined): Momentum | undefined {
-  if (momentum === undefined) return undefined;
-  if (!['none', 'slow', 'fast'].includes(momentum)) {
-    throw new TestError('INVALID_ARGUMENT', `invalid momentum "${momentum}"`);
-  }
-  return momentum;
-}
-
 function requireStandardSchema(schema: unknown): void {
   const props = (schema as StandardSchemaV1 | undefined)?.['~standard'];
   if (props === undefined || props.version !== 1 || typeof props.validate !== 'function') {
@@ -803,51 +351,4 @@ function describeIssue(issue: StandardSchemaV1.Issue): string {
     .map((segment) => (typeof segment === 'object' ? String(segment.key) : String(segment)))
     .join('.');
   return fieldPath === '' ? issue.message : `${fieldPath}: ${issue.message}`;
-}
-
-/**
- * An action that fails on the node the model selected usually means the
- * instruction matched nothing on screen and the model picked the closest
- * candidate. Naming that node makes the failure explain itself instead of
- * surfacing a bare driver error.
- */
-function explainActionFailure(
-  invocation: Invocation,
-  api: string,
-  target: string,
-  located: Located,
-  cause: unknown,
-): AgentError {
-  const error = toAgentError(cause);
-  if (error.code !== 'ACTION_FAILED') return error;
-  if (located.kind === 'point') {
-    const explanation =
-      `the model pointed at (${located.point.x}, ${located.point.y}) as ${JSON.stringify(target)}, ` +
-      `but dispatching there failed: ${driverReason(error.message)}.`;
-    invocation.note({ explanation });
-    return new AgentError('ACTION_FAILED', `${api} failed: ${explanation}`, { cause: error });
-  }
-  const reasoning =
-    located.explanation === '' ? '' : ` The model explained: ${located.explanation}`;
-  const addressed =
-    located.expression === undefined
-      ? `by reference from observation ${located.observation.revision}`
-      : describeExpression(located.expression);
-  const explanation =
-    `the model selected ${describeNode(located.node)} (${addressed}) ` +
-    `as ${JSON.stringify(target)}, but that node rejected the action: ${driverReason(error.message)}.` +
-    `${reasoning} Check that the current screen actually shows ${JSON.stringify(target)}.`;
-  invocation.note({ explanation });
-  return new AgentError('ACTION_FAILED', `${api} failed: ${explanation}`, { cause: error });
-}
-
-function describeNode(node: SemanticNode): string {
-  const name = (node.name ?? node.text ?? '').replace(/\s+/g, ' ').trim();
-  const role = node.role ?? 'node';
-  return name === '' ? `a ${role}` : `the ${role} "${name}"`;
-}
-
-/** Keeps the driver's one-line reason and drops the multi-line call log. */
-function driverReason(text: string): string {
-  return (text.split(/\n\s*Call log:/i)[0] ?? text).trim();
 }

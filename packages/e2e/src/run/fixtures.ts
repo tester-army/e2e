@@ -2,7 +2,6 @@
 
 import { createAgentFixture } from '../agent/index.ts';
 import type { StepExecutor } from '../agent/executor.ts';
-import type { AgentCacheContext } from '../agent/invocation.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
@@ -58,8 +57,6 @@ export interface AttemptEnvironment {
   readonly signal: AbortSignal;
   readonly runId: string;
   readonly attemptId: string;
-  /** Cache identity and storage for this attempt. */
-  readonly cache: AgentCacheContext;
   readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
@@ -154,7 +151,6 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         taint,
         artifacts: environment.artifacts,
         signal: environment.signal,
-        cache: environment.cache,
         ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
       });
       return agent;

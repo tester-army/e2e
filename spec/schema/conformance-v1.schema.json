@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "const": "conformance-1" },
     "profile": {
-      "enum": ["sdk-0.1", "runner-0.1", "core-0.1", "web-0.1", "driver-1", "agent-protocol-1", "report-1", "cache-1", "session-1", "conformance-1"]
+      "enum": ["sdk-0.1", "runner-0.1", "core-0.1", "web-0.1", "driver-1", "agent-protocol-1", "report-1", "session-1", "conformance-1"]
     },
     "suiteVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
     "manifestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },

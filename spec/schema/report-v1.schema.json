@@ -146,26 +146,6 @@
         "estimatedCostUsd": { "type": "number", "minimum": 0 }
       }
     },
-    "cache": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["status"],
-      "properties": {
-        "status": { "enum": ["miss", "hit", "invalid", "bypassed", "written"] },
-        "keyHash": { "$ref": "#/$defs/sha256" },
-        "bytes": { "type": "integer", "minimum": 0 }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "status": { "const": "bypassed" } } },
-          "then": { "properties": { "keyHash": false } },
-          "else": {
-            "properties": { "keyHash": { "$ref": "#/$defs/sha256" } },
-            "required": ["keyHash"]
-          }
-        }
-      ]
-    },
     "event": {
       "type": "object",
       "additionalProperties": false,
@@ -216,7 +196,6 @@
         "explanation": { "type": "string", "maxLength": 8192 },
         "visionInput": { "type": "boolean" },
         "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"] },
-        "visionEscalated": { "type": "boolean" },
         "visionOnly": { "type": "boolean" },
         "viewport": {
           "type": "object",
@@ -231,7 +210,6 @@
         "metrics": { "$ref": "#/$defs/stepMetrics" },
         "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
         "model": { "$ref": "#/$defs/model" },
-        "cache": { "$ref": "#/$defs/cache" },
         "error": { "$ref": "#/$defs/error" },
         "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "extensions": { "$ref": "#/$defs/extensions" }
@@ -520,9 +498,8 @@
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxCacheBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "maxEventsPerStep", "maxModelTokensPerCall"],
+      "required": ["maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "maxEventsPerStep", "maxModelTokensPerCall"],
       "properties": {
-        "maxCacheBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
         "maxAgentContextBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
         "maxLedgerBytes": { "type": "integer", "minimum": 1024, "maximum": 65536 },
         "maxObservationBytes": { "type": "integer", "minimum": 1024, "maximum": 16777216 },
@@ -533,10 +510,9 @@
     "usage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["discoveredResults", "maxCacheEntryBytes", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "downloads", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
+      "required": ["discoveredResults", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "downloads", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
       "properties": {
         "discoveredResults": { "type": "integer", "minimum": 0 },
-        "maxCacheEntryBytes": { "type": "integer", "minimum": 0 },
         "maxAgentContextBytes": { "type": "integer", "minimum": 0 },
         "maxLedgerBytes": { "type": "integer", "minimum": 0 },
         "maxObservationBytes": { "type": "integer", "minimum": 0 },

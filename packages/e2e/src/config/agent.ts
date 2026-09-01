@@ -64,14 +64,12 @@ export interface ResolvedAgentConfig {
   readonly maxSteps: number;
   readonly maxModelCalls: number;
   readonly maxObservationBytes: number;
-  readonly cache: 'off' | 'read-only' | 'read-write';
   readonly context: string | undefined;
   /** Default for the per-call `vision` option; a per-call value always wins. */
   readonly vision: VisionMode;
 }
 
 export interface ResolvedLimits {
-  readonly maxCacheBytes: number;
   readonly maxAgentContextBytes: number;
   readonly maxLedgerBytes: number;
   readonly maxObservationBytes: number;
@@ -88,20 +86,16 @@ const AGENT_KEYS = new Set([
   'maxSteps',
   'maxModelCalls',
   'maxObservationBytes',
-  'cache',
   'context',
   'vision',
 ]);
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
 
-const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
-
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Hard ceilings mirroring spec/schema/report-v1.schema.json `limits`. */
 const LIMIT_BOUNDS = {
-  maxCacheBytes: [1_024, 1_048_576, 262_144],
   maxAgentContextBytes: [1_024, 65_536, 16_384],
   maxLedgerBytes: [1_024, 65_536, 8_192],
   maxEventsPerStep: [1, 10_000, 1_000],
@@ -119,7 +113,6 @@ export function resolveAgentConfig(
   raw: E2EConfig,
   env: NodeJS.ProcessEnv,
   ci: boolean,
-  cacheOverride: 'off' | undefined,
   limits: ResolvedBaseLimits,
 ): ResolvedAgentConfig {
   const value = raw.agent;
@@ -151,11 +144,6 @@ export function resolveAgentConfig(
     boundedInt(agent?.maxObservationBytes, 'agent.maxObservationBytes', 1_024, 16_777_216) ??
     1_048_576;
 
-  let cache = agent?.cache ?? (ci ? 'read-only' : 'read-write');
-  if (!CACHE_MODES.has(cache)) {
-    throw new ConfigurationError('INVALID_CONFIG', `invalid agent.cache mode "${cache}"`);
-  }
-  if (cacheOverride === 'off') cache = 'off';
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
   const vision = agent?.vision ?? false;
@@ -173,7 +161,6 @@ export function resolveAgentConfig(
     maxSteps,
     maxModelCalls,
     maxObservationBytes,
-    cache,
     context,
     vision,
   };
