@@ -1,0 +1,132 @@
+/**
+ * Per-attempt cache context (RFC0001 layer 3, cache-in decision).
+ *
+ * Built by the runner once per attempt and handed to the agent tier: the
+ * resolved store, key derivation over the attempt's fixed identity, and the
+ * staging ground for trace writes. Replay is eligible only on a first attempt
+ * — a retry exists because something already went wrong, so it runs fresh and
+ * re-records.
+ */
+
+import type { ResolvedCacheConfig } from '../config/resolve.ts';
+import { REPLAY_POLICY_VERSION } from './relocate.ts';
+import {
+  buildTraceCacheKey,
+  createCallIndexer,
+  projectIdentity,
+  traceCacheKeyHash,
+  traceCallSignature,
+  type CacheTargetIdentity,
+  type TraceCacheKind,
+} from './identity.ts';
+import { FileTraceCacheStore, MAX_CACHE_WIRE_BYTES, type TraceCacheStore } from './store.ts';
+import type { ActionTrace } from './trace.ts';
+import type { JsonValue } from '../types.ts';
+
+/** One trace write held back until the attempt confirms or implicates it. */
+export interface StagedTraceWrite {
+  readonly keyHash: string;
+  readonly trace: ActionTrace;
+  /** Index of the recording step in the attempt's step timeline. */
+  readonly stepIndex: number;
+}
+
+export interface AgentCacheContext {
+  readonly mode: 'read-only' | 'read-write';
+  readonly store: TraceCacheStore;
+  /** Whether this attempt may replay; writes are governed by `mode` alone. */
+  readonly replayEligible: boolean;
+  /**
+   * Derives one step's key hash. Owns the whole key vocabulary — identity,
+   * digests, per-attempt occurrence indexing, policy version — so callers
+   * never learn what a key is made of. Call exactly once per step, in
+   * execution order: the occurrence index advances per call.
+   */
+  keyHashFor(
+    kind: TraceCacheKind,
+    instruction: string,
+    params: Readonly<Record<string, JsonValue>> | undefined,
+  ): string;
+  /**
+   * Trace writes staged during the attempt. A trace is not trusted the moment
+   * its own step passes — the deterministic assertion right after it is what
+   * proves the flow reached the right state. The runner settles at attempt
+   * end via `flushStagedTraces`.
+   */
+  readonly staged: StagedTraceWrite[];
+}
+
+/** How the attempt ended, as the write-settlement rule sees it. */
+export type AttemptCacheOutcome = 'passed' | 'failed' | 'interrupted';
+
+/**
+ * Settles the attempt's staged trace writes. A staged trace is confirmed when
+ * the attempt passed, or when any later step passed after it (the test aborts
+ * at its first failure, so everything before the last passed step was
+ * verified by what followed). On a failed attempt the unconfirmed trace is
+ * not merely withheld: its entry is evicted, so a cached flow implicated in a
+ * failure re-records on the next pass instead of replaying a poisoned state
+ * forever. An interrupted attempt implicates nothing — it writes nothing and
+ * evicts nothing.
+ */
+export async function flushStagedTraces(
+  context: AgentCacheContext,
+  lastPassedStepIndex: number,
+  outcome: AttemptCacheOutcome,
+): Promise<void> {
+  const staged = context.staged.splice(0);
+  if (context.mode !== 'read-write' || outcome === 'interrupted') return;
+  for (const write of staged) {
+    const confirmed = outcome === 'passed' || write.stepIndex < lastPassedStepIndex;
+    try {
+      if (confirmed) await context.store.write(write.keyHash, write.trace);
+      else await context.store.delete?.(write.keyHash);
+    } catch {
+      // The cache is disposable; a failed flush is a slower next run only.
+    }
+  }
+}
+
+/**
+ * Builds one attempt's cache context, or undefined when the cache is off.
+ * A configured custom store replaces the file store wholesale — that is the
+ * seam a cloud-shared store (Redis, an API) plugs into.
+ */
+export function createAgentCacheContext(options: {
+  readonly cache: ResolvedCacheConfig;
+  readonly projectId: string;
+  readonly testId: string;
+  readonly target: CacheTargetIdentity;
+  readonly attemptIndex: number;
+}): AgentCacheContext | undefined {
+  const mode = options.cache.mode;
+  if (mode === 'off') return undefined;
+  const store =
+    options.cache.store ??
+    new FileTraceCacheStore({
+      directory: options.cache.dir,
+      maxBytes: MAX_CACHE_WIRE_BYTES,
+      writable: mode === 'read-write',
+    });
+  const project = projectIdentity(options.projectId);
+  const nextCallIndex = createCallIndexer();
+  return {
+    mode,
+    store,
+    replayEligible: options.attemptIndex === 0,
+    keyHashFor: (kind, instruction, params) => {
+      const signature = traceCallSignature(kind, instruction, params);
+      return traceCacheKeyHash(
+        buildTraceCacheKey({
+          project,
+          testId: options.testId,
+          target: options.target,
+          signature,
+          callIndex: nextCallIndex(signature),
+          policyVersion: REPLAY_POLICY_VERSION,
+        }),
+      );
+    },
+    staged: [],
+  };
+}

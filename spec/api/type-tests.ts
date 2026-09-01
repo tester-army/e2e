@@ -1,7 +1,13 @@
 import { z } from 'zod';
-import { test, type Agent } from 'e2e';
+import { defineConfig, test, type Agent, type TraceCacheStore } from 'e2e';
 
 declare const agent: Agent;
+declare const remoteStore: TraceCacheStore;
+
+defineConfig({ cache: 'read-write' });
+defineConfig({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } });
+// @ts-expect-error cache mode is a closed union
+defineConfig({ cache: 'sometimes' });
 
 const schemaOptions = {
   schema: z.object({ total: z.number() }),

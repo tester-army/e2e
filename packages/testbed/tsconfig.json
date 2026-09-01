@@ -6,9 +6,11 @@
   },
   "include": [
     "e2e.config.ts",
+    "e2e.bench.config.ts",
     "e2e.public.config.ts",
     "e2e.selenium.config.ts",
     "tests/**/*.ts",
+    "tests-bench/**/*.ts",
     "tests-public/**/*.ts",
     "tests-selenium/**/*.ts"
   ]

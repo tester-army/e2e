@@ -102,6 +102,8 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
 | `agent.vision` | false | false |
 | `agent.visionModel` | `agent.model` | `agent.model` |
+| `cache` | read-write | read-only (read-write is forced down) |
+| `cache.dir` | `.e2e/cache` | same |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
 `0`, or `false`. Numeric config values MUST be safe integers. Workers must be
@@ -114,6 +116,14 @@ Every run writes the canonical JSON report regardless of renderer selection.
 `agent.vision` is the project-wide default for the per-call `vision` option
 (02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
 that can send pixels requires a model that accepts image input.
+
+`cache` is `'off'`, `'read-only'`, `'read-write'`, or an options object
+`{ mode, store, dir }` (10-determinism.md). A string is shorthand for
+`{ mode }`. The cache is opt-out: an unset key or mode means `read-write`,
+and `--no-cache` (06-cli.md) overrides whatever the config says. `store` is a
+custom `TraceCacheStore` replacing the default file store; like agents and
+model instances, it never crosses a process boundary. In CI, `read-write` is
+forced to `read-only`.
 
 ## Targets and capabilities
 

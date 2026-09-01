@@ -10,6 +10,15 @@ import type {
   testCaseBrand,
 } from './internal/brands.ts';
 import type { StepExecutor } from './agent/executor.ts';
+import type { TraceCacheStore } from './cache/store.ts';
+
+export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
+export type {
+  ActionTrace,
+  RecordedAction,
+  TraceEntry,
+  TraceTargetDescriptor,
+} from './cache/trace.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -728,6 +737,25 @@ export interface ModelInstance {
   readonly modelId: string;
 }
 
+/** Trace cache posture. In CI, `read-write` is forced down to `read-only`. */
+export type CacheMode = 'off' | 'read-only' | 'read-write';
+
+/**
+ * Trace cache configuration. The store abstraction is the cloud seam: the
+ * default file store keeps entries under `.e2e/cache/`, and a custom
+ * `TraceCacheStore` (Redis, an API — anything implementing read/write over
+ * key digests) replaces it wholesale. Like agents and model instances, a
+ * store never crosses a process boundary: workers re-resolve the config
+ * module and construct their own.
+ */
+export interface CacheConfig {
+  mode?: CacheMode;
+  /** Custom entry store; undefined selects the file store at `dir`. */
+  store?: TraceCacheStore;
+  /** File store directory, resolved against the project root. */
+  dir?: string;
+}
+
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   model?: string | ModelConfig | ModelInstance;
@@ -769,6 +797,14 @@ export interface E2EConfig {
    * instances.
    */
   agent?: AgentConfig | StepExecutor;
+  /**
+   * The adaptive trace cache (spec 10-determinism.md). Opt-out: unset means
+   * `read-write`, and `'off'` — or the `--no-cache` flag, which wins over the
+   * config — disables it. A string is shorthand for `{ mode }`. In CI,
+   * `read-write` is forced down to `read-only`: committed caches are
+   * untrusted input, and a CI run never publishes what it learned.
+   */
+  cache?: CacheMode | CacheConfig;
   /**
    * Enforced resource ceilings only. A limit exists here exactly when the
    * runner has an enforcement site for it; aspirational knobs are not

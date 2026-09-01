@@ -758,6 +758,132 @@ export interface ModelInstance {
   readonly modelId: string;
 }
 
+/*
+ * The trace cache (chapter 10, "The trace cache"). Mechanism public, judgment
+ * private: the entry format, key scheme, store interface, and adaptive flow
+ * are normative; relocation tactics beyond the conservative default are an
+ * executor-market concern.
+ */
+
+/** Trace cache posture. In CI, `read-write` is forced down to `read-only`. */
+export type CacheMode = 'off' | 'read-only' | 'read-write';
+
+/**
+ * How a recorded action addressed its node, independent of observation ids.
+ * Replay re-finds the node from the semantic fields against a fresh
+ * observation, and whatever they resolve to is still checked before use. The
+ * structural `selector` is captured as provenance for tuned replay policies;
+ * the conservative policy ignores it.
+ */
+export interface TraceTargetDescriptor {
+  readonly role?: string;
+  readonly name?: string;
+  readonly text?: string;
+  readonly testId?: string;
+  readonly placeholder?: string;
+  readonly selector?: string;
+  readonly inputPurpose?: string;
+}
+
+/**
+ * One recorded action: a discriminated union whose variants carry exactly the
+ * typed, secret-free, verbatim input their grammar action needs. `tool` marks
+ * a project-tool mutation the grammar cannot reproduce — a gap that ends any
+ * replay rather than silently skipping a state change. Every variant's
+ * `summary` is a one-line prose rendering — the only view a mid-step hand-off
+ * notice shows.
+ */
+export type RecordedAction =
+  | { readonly name: 'tap'; readonly summary: string; readonly target: TraceTargetDescriptor }
+  | {
+      readonly name: 'type';
+      readonly summary: string;
+      readonly target: TraceTargetDescriptor;
+      readonly value: string;
+    }
+  | {
+      readonly name: 'typeSecret';
+      readonly summary: string;
+      readonly target: TraceTargetDescriptor;
+      /** The secret's stable name — never the plaintext. */
+      readonly secret: string;
+    }
+  | {
+      readonly name: 'press';
+      readonly summary: string;
+      readonly target: TraceTargetDescriptor;
+      readonly key: string;
+    }
+  | {
+      readonly name: 'select';
+      readonly summary: string;
+      readonly target: TraceTargetDescriptor;
+      readonly value: string;
+    }
+  | {
+      readonly name: 'scroll';
+      readonly summary: string;
+      readonly direction: ScrollDirection;
+      readonly target?: TraceTargetDescriptor;
+    }
+  | { readonly name: 'navigate'; readonly summary: string; readonly url: string }
+  | { readonly name: 'tool'; readonly summary: string };
+
+/** The ordered actions one passing step performed, with provenance. */
+export interface ActionTrace {
+  readonly actions: readonly RecordedAction[];
+  /** Executor that produced the trace — provenance, never part of the key. */
+  readonly executor: { readonly name: string; readonly version?: string };
+  /** The recorded run's verdict summary. */
+  readonly summary: string;
+  /** Page path when the step began; a precondition unless the trace opens with navigate. */
+  readonly startPath?: string;
+  /** Set when recording overflowed a cap; the trace documents, never replays. */
+  readonly truncated?: boolean;
+}
+
+/** One stored `trace-1` entry. */
+export interface TraceEntry {
+  readonly schemaVersion: 'trace-1';
+  readonly createdAt: string;
+  readonly payload: ActionTrace;
+}
+
+export type CacheReadResult =
+  | { readonly status: 'hit'; readonly entry: TraceEntry; readonly bytes: number }
+  | { readonly status: 'miss' }
+  | { readonly status: 'invalid'; readonly reason: string; readonly bytes?: number };
+
+/**
+ * The entry store. The default is one file per key digest under
+ * `.e2e/cache/`; a custom implementation (a shared remote cache) replaces it
+ * wholesale. Reads fail to miss, never to error; writes are best-effort.
+ */
+export interface TraceCacheStore {
+  readonly writable: boolean;
+  read(keyHash: string): Promise<CacheReadResult>;
+  /** Persists one trace, returning its size, or undefined when not written. */
+  write(keyHash: string, payload: ActionTrace): Promise<{ bytes: number } | undefined>;
+  /**
+   * Evicts one entry, best-effort — called when a cached flow is implicated
+   * in a failed attempt. Optional: a store without eviction merely stays
+   * stale until the next confirmed write.
+   */
+  delete?(keyHash: string): Promise<void>;
+}
+
+/**
+ * Trace cache configuration. Like agents and model instances, a store never
+ * crosses a process boundary: workers re-resolve the config module.
+ */
+export interface CacheConfig {
+  mode?: CacheMode;
+  /** Custom entry store; undefined selects the file store at `dir`. */
+  store?: TraceCacheStore;
+  /** File store directory, resolved against the project root. */
+  dir?: string;
+}
+
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   model?: string | ModelConfig | ModelInstance;
@@ -799,6 +925,14 @@ export interface E2EConfig {
    * instances.
    */
   agent?: AgentConfig | StepExecutor;
+  /**
+   * The adaptive trace cache (chapter 10). Opt-out: unset means `read-write`,
+   * and `'off'` — or the `--no-cache` flag, which wins over the config —
+   * disables it. A string is shorthand for `{ mode }`. In CI, `read-write` is
+   * forced down to `read-only`: committed caches are untrusted input, and a
+   * CI run never publishes what it learned.
+   */
+  cache?: CacheMode | CacheConfig;
   /**
    * Enforced resource ceilings only. A limit exists here exactly when the
    * runner has an enforcement site for it.
@@ -864,7 +998,11 @@ export interface ExecutorTarget {
 /**
  * The action grammar. Every executor action bottoms out here, where the
  * harness enforces the deadline, the action budget, origin policy, and
- * recording. Node ids are only valid against the newest observation.
+ * recording. Node ids are only valid against the newest observation; a stale
+ * id fails the action rather than acting on the wrong node. Actions and
+ * observations are serialized in call order: a call issued while another is
+ * in flight queues behind it and resolves its target against the newest
+ * observation, so concurrency can never soften the staleness rule.
  */
 export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
@@ -912,8 +1050,37 @@ export interface ExecutorBudgets {
   recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void;
 }
 
+/**
+ * Why a cached replay stopped before finishing its trace. A closed union: the
+ * executor sees a reason token and prose summaries, never descriptors,
+ * outputs, or error objects.
+ */
+export type ReplayHandOffReason =
+  | 'gap'
+  | 'target-not-found'
+  | 'target-ambiguous'
+  | 'action-failed';
+
+/**
+ * The mid-step hand-off from a diverged cache replay. The replayed actions
+ * already ran against the live app under the same budgets and recording as
+ * the executor's own; the executor continues from the current application
+ * state and must not redo them.
+ */
+export interface ReplayedPrefix {
+  /** Prose summaries of the actions replay performed, in order. */
+  readonly replayedActions: readonly string[];
+  readonly totalActions: number;
+  readonly stopReason: ReplayHandOffReason;
+}
+
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
+  /**
+   * Present when a cached replay ran part of this step before handing it
+   * over. Absent on a cache miss or when caching is off.
+   */
+  readonly replayedPrefix?: ReplayedPrefix;
   /**
    * Aborts when the test is cancelled, when the step deadline expires, or on
    * any other hard stop. The harness settles the step at the hard stop either

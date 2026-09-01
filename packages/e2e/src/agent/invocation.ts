@@ -6,6 +6,7 @@
  */
 
 import type { JSONSchema7 } from 'ai';
+import type { AgentCacheContext } from '../cache/context.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { DriverSession, Observation } from '../driver/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
@@ -68,6 +69,8 @@ export interface AgentContext {
   readonly taint: { value: boolean };
   readonly artifacts: ArtifactSink;
   readonly signal: AbortSignal;
+  /** The attempt's trace cache, or undefined when caching is off. */
+  readonly cache?: AgentCacheContext;
   /** `--debug` phase timings; absent when the caller collects none. */
   readonly debug?: DebugTrace;
 }

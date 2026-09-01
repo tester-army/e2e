@@ -1,0 +1,15 @@
+/**
+ * Bench: the canonical login flow. The password is a Secret — the model sees
+ * only its name and purpose, the fill runs through the authorized secret tool.
+ */
+
+import { test, expect, credentials } from 'e2e';
+
+test('signs in with the member credential', async ({ web, agent, screen }) => {
+  await web.goto('/login');
+  await agent.act('sign in with the given credentials', {
+    username: 'member',
+    password: credentials.user('member').password,
+  });
+  await expect(screen.getByText('Welcome, member')).toBeVisible();
+});

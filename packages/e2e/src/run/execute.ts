@@ -15,6 +15,7 @@ import {
 import { DebugTrace } from '../internal/debug.ts';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import { Deadline, withTimeout } from '../internal/time.ts';
+import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import type { CollectedFile } from '../collect/collect.ts';
 import type { RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
@@ -410,6 +411,13 @@ export class TargetExecutor implements SerialHost {
     let failurePhase: AttemptPhase | undefined;
     let phase: AttemptPhase = 'launch';
     let timedOut = false;
+    const cache = createAgentCacheContext({
+      cache: this.config.cache,
+      projectId: this.config.projectId,
+      testId: pair.test.id,
+      target: this.sessionIdentity,
+      attemptIndex,
+    });
 
     try {
       const session =
@@ -447,6 +455,7 @@ export class TargetExecutor implements SerialHost {
         agentContext: pair.options.agentContext,
         opened: shared?.opened ?? { value: false },
         saveSession,
+        ...(cache === undefined ? {} : { cache }),
         debug: this.debug,
       });
 
@@ -520,6 +529,20 @@ export class TargetExecutor implements SerialHost {
         record.status = 'failed';
       }
       record.error = serializeError(failure, { phase: reportPhase });
+    }
+
+    if (cache !== undefined) {
+      // Settled only after the status is classified: an interrupted attempt
+      // implicates nothing, so Ctrl-C can never evict a good entry.
+      const lastPassed = record.steps.reduce(
+        (max, step) => (step.status === 'passed' && step.index > max ? step.index : max),
+        -1,
+      );
+      await flushStagedTraces(
+        cache,
+        lastPassed,
+        record.status === 'passed' ? 'passed' : record.status === 'interrupted' ? 'interrupted' : 'failed',
+      );
     }
     return record;
   }

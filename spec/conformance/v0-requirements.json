@@ -1,6 +1,6 @@
 {
   "specVersion": "0.1",
-  "suiteVersion": "0.4.0",
+  "suiteVersion": "0.5.0",
   "profiles": {
     "sdk-0.1": [
       { "id": "SDK-TYPES-001", "source": "api/e2e.d.ts", "requirement": "Canonical SDK declarations compile in strict TypeScript." },
@@ -85,6 +85,14 @@
       { "id": "REPORT-ARTIFACT-001", "source": "13-reporting.md", "requirement": "Artifact producer, digest, size, redaction, and incomplete-evidence rules are exact." },
       { "id": "REPORT-PARTIAL-001", "source": "13-reporting.md", "requirement": "Interrupted/error runs atomically produce valid bounded partial reports." },
       { "id": "REPORT-HOSTILE-001", "source": "14-security.md", "requirement": "Hostile schema-valid reports cannot bypass semantic validation or renderer escaping." }
+    ],
+    "trace-1": [
+      { "id": "TRACE-ENTRY-001", "source": "10-determinism.md", "requirement": "Entries validate strictly on read; any malformed, oversized, or truncated entry is a miss, never an error or a repair." },
+      { "id": "TRACE-SECRET-001", "source": "10-determinism.md", "requirement": "No secret plaintext ever enters an entry: fills are recorded by stable name and all recorded strings pass the run's redactor." },
+      { "id": "TRACE-KEY-001", "source": "10-determinism.md", "requirement": "Keys bind project, test, target/driver/app identity, kind, instruction and params digests, occurrence index, and policy version." },
+      { "id": "TRACE-REPLAY-001", "source": "10-determinism.md", "requirement": "Replay runs through the step's own grammar under identical deadline, budget, policy, and recording; a full replay self-finalizes as passed." },
+      { "id": "TRACE-DIVERGE-001", "source": "16-executors.md", "requirement": "Any divergence hands the step to the executor mid-step with the replayedPrefix notice; a divergence is never a step failure, runtime hard stops are never divergence, and a consumed replay whose step settles non-passed evicts its entry." },
+      { "id": "TRACE-WRITE-001", "source": "10-determinism.md", "requirement": "Passing steps stage; staged traces settle at attempt end — confirmed when the attempt passed or a later step passed, evicted when implicated by a failure, untouched by interruption — and CI is forced read-only." }
     ],
     "session-1": [
       { "id": "SESSION-SCHEMA-001", "source": "schema/session-v1.schema.json", "requirement": "Session envelope and positive/hostile fixtures satisfy strict schema and expiry semantics." },

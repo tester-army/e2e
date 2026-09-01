@@ -57,6 +57,7 @@ APP_URL=http://localhost:3000 npx --no-install e2e run
 | `reporters` | `readonly ('list' \| 'json')[]` | `['list']` | those two IDs; `json` cannot be combined with `list` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object | see [agent](#agent) | - |
+| `cache` | string or object | `'read-write'` (`'read-only'` in CI) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | - |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
 
@@ -266,6 +267,28 @@ export default defineConfig({
   },
 });
 ```
+
+## cache
+
+The adaptive trace cache: each passing `agent.act()` step records the grammar
+actions it performed, and the next run replays them zero-turn — diverging to
+the live agent mid-step whenever the app no longer matches the recording.
+Judgments (`assert`, `waitFor`, `extract`) are never cached.
+
+The cache is **on by default** (`read-write`; CI is forced to `read-only`).
+Opt out per project with `cache: 'off'`, or per run with `e2e run --no-cache`
+— the quickest way to check whether a failure is cache-related.
+
+| Key | Type | Default | Description |
+| --- | --- | ---: | --- |
+| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. CI forces `read-write` down to `read-only`; `--no-cache` wins over both. |
+| `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Never crosses a process boundary; workers re-resolve the config module. |
+| `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root. |
+
+Entries are disposable: deleting `.e2e/cache/` slows the next run and changes
+nothing else. Every agent step's report records how the cache participated
+(`step.cache`: `self-finalized`, `agent-concluded`, or `missed`, with a
+reason).
 
 ## limits
 

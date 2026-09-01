@@ -2,6 +2,7 @@
 
 import { createAgentFixture } from '../agent/index.ts';
 import type { StepExecutor } from '../agent/executor.ts';
+import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
 import type { DriverDialog, DriverSession, DriverWebRoute } from '../driver/index.ts';
@@ -65,6 +66,8 @@ export interface AttemptEnvironment {
   readonly agentContext: string | undefined;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
+  /** The attempt's trace cache context, or undefined when caching is off. */
+  readonly cache?: AgentCacheContext;
   /**
    * Whether the app was opened in the owning driver session. Serial-group
    * members share one session and therefore one open state.
@@ -151,6 +154,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         taint,
         artifacts: environment.artifacts,
         signal: environment.signal,
+        ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
         ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
       });
       return agent;

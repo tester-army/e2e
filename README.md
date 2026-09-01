@@ -29,14 +29,16 @@ diagnostics. Every agent call is a bounded operation you can interleave with
 deterministic steps:
 
 ```ts
-await agent.tap('the Pro plan card');
+await agent.act('choose the Pro plan');
 await screen.getByRole('button', { name: 'Confirm' }).tap();
 ```
 
 - Your code owns order and values; agent steps stay bounded.
 - Waiting, retries, and reports are handled for you.
-- Resolved agent steps are cached as readable queries, so repeat runs are fast
-  and cheap.
+- Each passing `agent.act()` records its action trace and the next run
+  replays it zero-turn — no model calls — diverging to the live agent
+  whenever the app no longer matches. On by default; opt out with
+  `cache: 'off'` or `--no-cache`. Judgments are never cached.
 - Credentials never reach the model or the report.
 - Runs locally. No account, no hosted runner.
 

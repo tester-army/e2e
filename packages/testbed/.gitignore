@@ -7,3 +7,4 @@
 .e2e/sessions/
 .e2e/report.json
 .e2e/report.html
+bench/.next/

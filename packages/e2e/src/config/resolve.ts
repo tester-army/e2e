@@ -14,7 +14,15 @@ import {
   type WellKnownDriverId,
 } from './drivers.ts';
 import { isStepExecutor } from '../agent/executor.ts';
-import type { AgentConfig, CommandConfig, E2EConfig, Target, WebTarget } from '../types.ts';
+import type {
+  AgentConfig,
+  CacheMode,
+  CommandConfig,
+  E2EConfig,
+  Target,
+  TraceCacheStore,
+  WebTarget,
+} from '../types.ts';
 import {
   isModelInstance,
   resolveAgentConfig,
@@ -71,9 +79,23 @@ export interface ResolvedConfig {
   readonly reporters: readonly ('list' | 'json')[];
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
+  readonly cache: ResolvedCacheConfig;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   readonly configDigest: string;
+}
+
+/**
+ * The resolved trace cache posture. Like executors and model instances, a
+ * custom store never crosses a process boundary: workers re-resolve the
+ * config module and construct their own.
+ */
+export interface ResolvedCacheConfig {
+  readonly mode: CacheMode;
+  /** Custom entry store; undefined selects the file store at `dir`. */
+  readonly store: TraceCacheStore | undefined;
+  /** Absolute file store directory. */
+  readonly dir: string;
 }
 
 export interface CliOverrides {
@@ -82,6 +104,8 @@ export interface CliOverrides {
   reporters?: readonly ('list' | 'json')[];
   headed?: boolean;
   artifactsDir?: string;
+  /** Trace cache mode override; `--no-cache` maps to `'off'`. */
+  cache?: CacheMode;
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -104,9 +128,13 @@ const TOP_LEVEL_KEYS = new Set([
   'reporters',
   'screen',
   'agent',
+  'cache',
   'limits',
   'credentials',
 ]);
+
+const CACHE_KEYS = new Set(['mode', 'store', 'dir']);
+const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
 const APP_KEYS = new Set([
   'url',
@@ -197,6 +225,7 @@ export function resolveConfig(
   const baseLimits = resolveLimits(raw);
   const agent = resolveAgentConfig(raw, env, ci, baseLimits);
   const limits: ResolvedLimits = { ...baseLimits, maxObservationBytes: agent.maxObservationBytes };
+  const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache);
 
   const resolved: ResolvedConfig = {
     specVersion: '0.1',
@@ -218,11 +247,85 @@ export function resolveConfig(
     reporters,
     testIdAttribute,
     agent,
+    cache,
     limits,
     credentials,
     configDigest: computeConfigDigest(raw, projectId),
   };
   return resolved;
+}
+
+/**
+ * Resolves the `cache` key. The cache is opt-out: an unset key means
+ * `read-write`, so a project earns replay speed without asking for it, and
+ * `cache: 'off'` or `--no-cache` (which wins over the config) turns it off.
+ * CI forces read-only whatever the config or flag chose short of off:
+ * committed caches are untrusted input, and a CI run never publishes what it
+ * learned (spec 10-determinism.md).
+ */
+function resolveCacheConfig(
+  raw: E2EConfig,
+  ci: boolean,
+  projectRoot: string,
+  cliMode: CacheMode | undefined,
+): ResolvedCacheConfig {
+  const value = raw.cache;
+  let mode: CacheMode = 'read-write';
+  let store: TraceCacheStore | undefined;
+  let dir: string | undefined;
+  if (typeof value === 'string') {
+    mode = value;
+  } else if (value !== undefined) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        "cache must be 'off', 'read-only', 'read-write', or an options object",
+      );
+    }
+    for (const key of Object.keys(value)) {
+      if (!CACHE_KEYS.has(key)) {
+        throw new ConfigurationError('INVALID_CONFIG', `unknown cache config key "${key}"`);
+      }
+    }
+    mode = value.mode ?? 'read-write';
+    store = value.store;
+    if (store !== undefined && !isTraceCacheStore(store)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'cache.store must implement TraceCacheStore: { writable, read(keyHash), write(keyHash, payload) }',
+      );
+    }
+    if (value.dir !== undefined) {
+      if (typeof value.dir !== 'string' || value.dir.trim() === '') {
+        throw new ConfigurationError('INVALID_CONFIG', 'cache.dir must be a non-empty path');
+      }
+      dir = value.dir;
+    }
+  }
+  if (!CACHE_MODES.has(mode)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `cache mode must be 'off', 'read-only', or 'read-write', got ${JSON.stringify(mode)}`,
+    );
+  }
+  if (cliMode !== undefined) mode = cliMode;
+  if (ci && mode === 'read-write') mode = 'read-only';
+  return {
+    mode,
+    store,
+    dir: path.resolve(projectRoot, dir ?? path.join('.e2e', 'cache')),
+  };
+}
+
+/** Structural store check, mirroring how executors and models are detected. */
+function isTraceCacheStore(value: unknown): value is TraceCacheStore {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['writable'] === 'boolean' &&
+    typeof candidate['read'] === 'function' &&
+    typeof candidate['write'] === 'function'
+  );
 }
 
 function positiveInt(value: number | undefined, label: string): number | undefined {

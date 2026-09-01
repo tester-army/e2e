@@ -56,6 +56,7 @@ export function createProgram(): Command {
     .option('--workers <n>', 'replace worker count', parsePositiveInt)
     .option('--reporter <ids>', 'comma-separated reporters: list, json', parseList)
     .option('--artifacts <dir>', 'artifact root, default .e2e/artifacts')
+    .option('--no-cache', 'run without the trace cache, overriding the config')
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')
     .option('--debug', 'print aggregated phase timings to stderr after the run')
     .action(
@@ -71,6 +72,8 @@ export function createProgram(): Command {
           workers?: number;
           reporter?: string[];
           artifacts?: string;
+          /** Commander negation: `--no-cache` parses as `cache: false`. */
+          cache?: boolean;
           passWithNoTests?: boolean;
           debug?: boolean;
         },
@@ -98,6 +101,7 @@ export function createProgram(): Command {
           workers: options.workers,
           reporters: reporter?.filter(isReporter),
           artifactsDir: options.artifacts,
+          noCache: options.cache === false,
           passWithNoTests: options.passWithNoTests,
           debug: options.debug,
         });

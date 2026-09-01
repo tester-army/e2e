@@ -22,6 +22,8 @@ export type {
   ExecutorObservation,
   ExecutorStep,
   ExecutorTarget,
+  ReplayedPrefix,
+  ReplayHandOffReason,
   StepExecutor,
   StepExecutorContext,
   StepVerdict,

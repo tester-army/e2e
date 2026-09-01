@@ -54,6 +54,7 @@ selection, they do not bypass it. A path outside the project root is
 | `--workers <n>` | nonnegative integer | resolved config value | Replaces the worker count |
 | `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree |
+| `--no-cache` | boolean | `false` | Runs with the trace cache off, overriding `config.cache` — the quickest way to check whether a failure is cache-related |
 | `--pass-with-no-tests` | boolean | `false` | Allows zero runnable ordinary test-target pairs instead of failing with `NO_TESTS` |
 | `--debug` | boolean | `false` | Prints aggregated phase timings and an agent step table to stderr after the run |
 

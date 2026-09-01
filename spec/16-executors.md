@@ -48,12 +48,24 @@ construction. The context provides:
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
   is checkpointed against the deadline and the action budget, policed, and
-  recorded as a step event.
+  recorded as a step event. Actions and observations are serialized in call
+  order: a call issued while another is in flight queues behind it, so a
+  batch of parallel tool calls cannot race two mutations against one stale
+  observation — the second resolves against the newest one and a stale id
+  fails loud.
 - `budgets` — limits plus `recordModelCall(usage?)`, which feeds step metrics
   and model provenance in the report, including `estimatedCostUsd` when the
   provider bills per request.
 - `model` — the config-resolved AI SDK model, which an executor may ignore.
 - `ledger`, `agentContext`, `signal`.
+- `replayedPrefix` — present exactly when a cached replay ran part of this
+  step before diverging (10-determinism.md). Prose in, not structs in: the
+  executor sees ordered action summaries, the counts, and one closed
+  `stopReason` token — never descriptors, outputs, or error objects. The
+  replayed actions already ran against the live app under this step's own
+  budgets and recording; the executor MUST continue from current application
+  state and MUST NOT redo them. On a miss, or with caching off, the field is
+  absent and the step is indistinguishable from an uncached one.
 
 The interface never requires the AI SDK. A `StepExecutor` with no model at
 all is valid; the runner cannot tell the difference and does not care.

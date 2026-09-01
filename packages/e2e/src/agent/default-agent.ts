@@ -10,7 +10,12 @@ import { z } from 'zod';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import { aiSdk } from './ai-sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
-import { RUNTIME_CODES, type StepExecutor, type StepExecutorContext } from './executor.ts';
+import {
+  RUNTIME_CODES,
+  type ReplayedPrefix,
+  type StepExecutor,
+  type StepExecutorContext,
+} from './executor.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool } from './tool.ts';
@@ -20,6 +25,7 @@ const WEB_RULES = `You are an autonomous end-to-end testing agent executing exac
 Rules:
 - Work only toward the given step; do not start the next step or explore beyond it.
 - Use the tools to inspect and act. Node ids like "n42" are valid only for the newest observation; after any action, use ids from the latest "Updated screen" snapshot.
+- Issue at most ONE mutating tool call per turn: every mutation refreshes the screen and invalidates all earlier node ids, so a second action batched in the same turn targets a stale page and fails.
 - Never invent node ids. If the target is not on screen, scroll or navigate to find it, or conclude.`;
 
 /** How many trailing screen snapshots stay verbatim in the transcript. */
@@ -65,6 +71,9 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       if (context.step.params !== undefined) {
         parts.push(`Step parameters:\n${JSON.stringify(context.step.params, null, 2)}`);
       }
+      if (context.replayedPrefix !== undefined) {
+        parts.push(formatReplayedPrefix(context.replayedPrefix));
+      }
       if (context.ledger !== '') {
         parts.push(`Previously completed steps:\n${context.ledger}`);
       }
@@ -72,6 +81,21 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       return parts.join('\n\n');
     },
   });
+}
+
+/**
+ * The mid-step hand-off notice (RFC0001 layer 4): prose summaries and a reason
+ * token, replacing any ordinary prior-run hint. The agent continues from live
+ * state; redoing a replayed action would double-commit a mutation.
+ */
+function formatReplayedPrefix(prefix: ReplayedPrefix): string {
+  const lines = prefix.replayedActions.map((summary, index) => `${index + 1}. ${summary}`);
+  return [
+    'Cached replay already performed these recorded actions for this step:',
+    ...lines,
+    `Replay stopped (${prefix.stopReason}) after ${prefix.replayedActions.length} of ${prefix.totalActions} recorded actions.`,
+    'Continue the step from the CURRENT page state shown below — do NOT redo the actions above.',
+  ].join('\n');
 }
 
 /** The default toolset: thin AI SDK tools over the harness action grammar. */

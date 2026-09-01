@@ -18,6 +18,7 @@ import type {
   SerialMemberRecord,
 } from '../run/records.ts';
 import type {
+  StepCacheInfo,
   StepEvent,
   StepMetrics,
   StepModelInfo,
@@ -83,6 +84,7 @@ export interface ReportStep {
   visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
+  cache?: StepCacheInfo | undefined;
   events: readonly StepEvent[];
   model?: StepModelInfo | undefined;
   error?: ReportError | undefined;

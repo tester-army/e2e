@@ -1,6 +1,8 @@
 /** Attempt-scoped step timeline (spec 10-determinism.md, 13-reporting.md). */
 
 import { isAgentError } from '../agent/error.ts';
+import type { ReplayHandOffReason } from '../agent/executor.ts';
+import type { TraceReplayMissReason } from '../cache/decide.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 
@@ -63,10 +65,25 @@ export interface StepModelInfo {
   estimatedCostUsd?: number;
 }
 
+/**
+ * How the trace cache participated in one agent step. `self-finalized` means
+ * the full trace replayed and the step passed with zero model calls;
+ * `agent-concluded` means a replayed prefix handed the step to the executor;
+ * `missed` means the executor ran the step from the top.
+ */
+export interface StepCacheInfo {
+  mode: 'self-finalized' | 'agent-concluded' | 'missed';
+  /** The miss or hand-off reason token; absent on `self-finalized`. */
+  reason?: TraceReplayMissReason | ReplayHandOffReason;
+  replayedActions: number;
+  totalActions: number;
+}
+
 /** Agent-specific step detail attached while the step is still running. */
 export interface StepAgentDetails {
   metrics?: StepMetrics;
   model?: StepModelInfo;
+  cache?: StepCacheInfo;
   observationRevision?: string;
   explanation?: string;
   /** True when masked pixel evidence was model input, not just an artifact. */
@@ -96,6 +113,7 @@ export interface StepRecord {
   visionOnly?: boolean;
   viewport?: { width: number; height: number; scale: number };
   metrics?: StepMetrics;
+  cache?: StepCacheInfo;
   events: StepEvent[];
   model?: StepModelInfo;
   error?: SerializedError;
@@ -146,6 +164,11 @@ export class StepRecorder {
   /** The step currently executing, when inside StepRecorder.run. */
   get currentStepId(): string | undefined {
     return this.activeStep?.id;
+  }
+
+  /** Timeline index of the currently executing step. */
+  get currentStepIndex(): number | undefined {
+    return this.activeStep?.index;
   }
 
   /** Runs one public API call as a recorded top-level step. */
@@ -223,6 +246,7 @@ export class StepRecorder {
     if (current === undefined) return;
     if (details.metrics !== undefined) current.metrics = details.metrics;
     if (details.model !== undefined) current.model = details.model;
+    if (details.cache !== undefined) current.cache = details.cache;
     if (details.observationRevision !== undefined) {
       current.observationRevision = details.observationRevision;
     }

@@ -61,14 +61,19 @@ export default defineConfig({
 Screenshots, raw HTML, cookies, headers, and registered secret values are never
 sent to the model.
 
-Resolved agent steps are cached under `.e2e/cache/` as readable queries, so a
-repeat run replays the query instead of calling the model. Set the policy with
-`agent.cache` (`off`, `read-only`, `read-write`) or per call with
-`{ cache: false }`.
+The adaptive trace cache (`trace-1`) replays a passing `agent.act()` step's
+recorded actions zero-turn on the next run, diverging to the live agent
+mid-step whenever the app no longer matches the recording. It is on by
+default (`read-write`; CI is forced to `read-only`) — opt out with
+`cache: 'off'` or per run with `--no-cache`. Entries live under
+`.e2e/cache/` or in any custom `TraceCacheStore`. Judgments (`assert`,
+`waitFor`, `extract`) are never cached — every judgment is made fresh, per
+run, from a fresh observation.
 
 ## Current limitations
 
-- `agent.act` and `agent.login` reject with `UNSUPPORTED_CAPABILITY`.
+- `agent.act` structured output (`options.schema`) and vision evidence
+  (`options.vision`) reject with `UNSUPPORTED_CAPABILITY`.
 - The HTML reporter and video artifacts are not available.
 - Reported steps carry no source locations.
 - iOS and Android targets are rejected.

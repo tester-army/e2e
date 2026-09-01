@@ -20,6 +20,7 @@ export default defineConfig({
 
   timeout: 120_000,
   artifacts: ['trace', 'screenshot', 'video'],
+  cache: process.env.CI ? 'read-only' : 'read-write',
 
   credentials: {
     member: { username: 'member@orbit.test', password: process.env.MEMBER_PASSWORD! },

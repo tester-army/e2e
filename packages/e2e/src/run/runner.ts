@@ -50,6 +50,8 @@ export interface RunOptions {
   reporters?: readonly ('list' | 'json')[] | undefined;
   artifactsDir?: string | undefined;
   passWithNoTests?: boolean | undefined;
+  /** Runs with the trace cache off (`--no-cache`), overriding the config. */
+  noCache?: boolean | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
   /** Preloaded raw config (bypasses discovery); intended for tests. */
@@ -142,6 +144,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.retries !== undefined) cli.retries = options.retries;
   if (options.workers !== undefined) cli.workers = options.workers;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
+  if (options.noCache === true) cli.cache = 'off';
 
   try {
 

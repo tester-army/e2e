@@ -59,7 +59,10 @@ export interface ExecutorTarget {
  * The action grammar. Every executor action bottoms out here, where the
  * harness enforces the deadline, the action budget, origin policy, and
  * recording. Node ids are only valid against the newest observation; a stale
- * id fails the action rather than acting on the wrong node.
+ * id fails the action rather than acting on the wrong node. Actions and
+ * observations are serialized in call order: a call issued while another is
+ * in flight queues behind it and resolves its target against the newest
+ * observation, so concurrency can never soften the staleness rule.
  */
 export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
@@ -112,8 +115,37 @@ export interface ExecutorBudgets {
   recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void;
 }
 
+/**
+ * Why a cached replay stopped before finishing its trace. A closed union: the
+ * executor sees a reason token and prose summaries, never descriptors,
+ * outputs, or error objects.
+ */
+export type ReplayHandOffReason =
+  | 'gap'
+  | 'target-not-found'
+  | 'target-ambiguous'
+  | 'action-failed';
+
+/**
+ * The mid-step hand-off from a diverged cache replay (RFC0001 layer 4). The
+ * replayed actions already ran against the live app under the same budgets
+ * and recording as the executor's own; the executor continues the step from
+ * the current application state and must not redo them.
+ */
+export interface ReplayedPrefix {
+  /** Prose summaries of the actions replay performed, in order. */
+  readonly replayedActions: readonly string[];
+  readonly totalActions: number;
+  readonly stopReason: ReplayHandOffReason;
+}
+
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
+  /**
+   * Present when a cached replay ran part of this step before handing it
+   * over. Absent on a cache miss or when caching is off.
+   */
+  readonly replayedPrefix?: ReplayedPrefix;
   /**
    * Aborts when the test is cancelled, when the step deadline expires, or on
    * any other hard stop. An executor must stop promptly on abort; the harness
