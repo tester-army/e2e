@@ -75,6 +75,7 @@ export interface AppConfig {
   allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
   allowProduction?: boolean;
+  identity?: string;
 }
 ```
 
@@ -86,6 +87,7 @@ export interface AppConfig {
 | `allowedOrigins` | `readonly string[]` | the origin of `url` | Each entry must be a serialized origin |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts, otherwise required | Any other host without an explicit value is `ENVIRONMENT_REQUIRED` |
 | `allowProduction` | `boolean` | `false` | `environment: 'production'` without it is `PRODUCTION_NOT_ALLOWED` |
+| `identity` | `string` | derived from the base URL's origin | Stable logical app identity for cache/session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one identity across genuinely different apps. The environment always joins the derived identity. |
 
 ### app.command
 
@@ -291,8 +293,8 @@ Opt out per project with `cache: 'off'`, or per run with `e2e run --no-cache`
 
 | Key | Type | Default | Description |
 | --- | --- | ---: | --- |
-| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. CI forces `read-write` down to `read-only`; `--no-cache` wins over both. |
-| `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Never crosses a process boundary; workers re-resolve the config module. |
+| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. CI forces `read-write` on the default file store down to `read-only`; `--no-cache` wins over both. |
+| `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Exempt from the CI clamp — it is not a committed file cache, and states its own trust through `writable`. Never crosses a process boundary; workers re-resolve the config module. |
 | `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root. |
 
 Entries are disposable: deleting `.e2e/cache/` slows the next run and changes

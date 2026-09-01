@@ -530,6 +530,15 @@ export interface AppConfig {
   allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
   allowProduction?: boolean;
+  /**
+   * Stable logical identity of the app under test. By default cache and
+   * session identity derive from the base URL's origin, so an ephemeral
+   * per-deploy origin (a PR preview) cold-starts every entry. Setting an
+   * explicit identity keys them by what the app *is* instead of where it
+   * happens to be served this run. Never set one identity across genuinely
+   * different apps or environments — recorded traces would replay across them.
+   */
+  identity?: string;
 }
 
 /**

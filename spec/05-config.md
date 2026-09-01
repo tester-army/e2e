@@ -49,6 +49,15 @@ userinfo, query, or fragment. Host uses IDNA ASCII form and default ports are
 removed. Its pathname is normalized for dot segments and retained as the app
 base path.
 
+`app.identity` is an optional stable logical identity for the app under test.
+Cache and session identity derive from the base URL's origin by default, so
+an ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
+explicit identity keys them by what the app *is* instead of where it happens
+to be served this run. The environment always joins the derived identity —
+an identity never bleeds entries across environments. It MUST be a non-empty
+string, and it MUST NOT be shared across genuinely different apps: recorded
+traces would replay across them.
+
 A fuller config:
 
 ```ts
@@ -109,7 +118,7 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
 | `agent.vision` | false | false |
 | `agent.visionModel` | `agent.model` | `agent.model` |
-| `cache` | read-write | read-only (read-write is forced down) |
+| `cache` | read-write | read-only (read-write on the file store is forced down) |
 | `cache.dir` | `.e2e/cache` | same |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
@@ -133,8 +142,10 @@ whole step, `actionTimeout` caps each call within it.
 `{ mode }`. The cache is opt-out: an unset key or mode means `read-write`,
 and `--no-cache` (06-cli.md) overrides whatever the config says. `store` is a
 custom `TraceCacheStore` replacing the default file store; like agents and
-model instances, it never crosses a process boundary. In CI, `read-write` is
-forced to `read-only`.
+model instances, it never crosses a process boundary. In CI, `read-write` on
+the default file store is forced to `read-only`; a custom `store` is exempt,
+because it is not a committed file cache and states its own trust through its
+`writable` flag (10-determinism.md).
 
 ## Targets and capabilities
 

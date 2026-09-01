@@ -107,11 +107,22 @@ export class TargetExecutor implements SerialHost {
       backendVersion: options.target.backend?.version ?? 'unversioned',
       spiVersion: options.target.backend?.spiVersion ?? BACKEND_SPI_VERSION,
       platform: options.target.platform,
-      appIdentity: canonicalDigest({
-        origin: options.config.app.base.origin,
-        basePath: options.config.app.base.basePath,
-        environment: options.config.app.environment,
-      }),
+      // An explicit `app.identity` replaces the origin, so an ephemeral
+      // per-deploy origin (a PR preview) shares cache and session identity
+      // with the app it is a deployment of. The environment always joins the
+      // digest: an identity must never bleed entries across environments.
+      appIdentity: canonicalDigest(
+        options.config.app.identity === undefined
+          ? {
+              origin: options.config.app.base.origin,
+              basePath: options.config.app.base.basePath,
+              environment: options.config.app.environment,
+            }
+          : {
+              identity: options.config.app.identity,
+              environment: options.config.app.environment,
+            },
+      ),
     };
   }
 

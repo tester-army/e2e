@@ -129,6 +129,16 @@ describe('resolveConfig', () => {
     ).toBe('staging');
   });
 
+  it('accepts a stable app.identity and rejects an empty one', () => {
+    expect(resolve({ app: { url: 'https://app.test', identity: 'checkout-app' } }).app.identity).toBe(
+      'checkout-app',
+    );
+    expect(resolve({ app: { url: 'https://app.test' } }).app.identity).toBeUndefined();
+    expect(() => resolve({ app: { url: 'https://app.test', identity: '  ' } })).toThrow(
+      /app.identity must be a non-empty string/,
+    );
+  });
+
   it('rejects production without allowProduction', () => {
     expect(() =>
       resolve({ app: { url: 'https://app.example.com', environment: 'production' } }),
