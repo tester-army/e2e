@@ -15,7 +15,7 @@ export default defineConfig({
   // The runner ships no intelligence: you construct the agent and pass it in.
   // createAgent builds the built-in one; its model comes from E2E_MODEL.
   agent: createAgent({
-    system: 'You are a meticulous QA agent. Verify every outcome on screen.',
+    system: 'You are a thorough QA agent. Verify every outcome on screen.',
   }),
   targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
 });
