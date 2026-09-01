@@ -7,12 +7,21 @@
  */
 
 import type { AgentCacheContext } from '../cache/context.ts';
-import { decideTraceReplay, type TraceReplayMissReason } from '../cache/decide.ts';
+import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { TraceRecorder, type RecordableAction } from '../cache/recorder.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { ReplayedPrefix, StepVerdict } from './executor.ts';
 import { replayTrace, type ReplayHost } from './replay.ts';
+
+/**
+ * The replay host plus the one session-level probe replay itself never
+ * needs: the current page path, read once per step for the start-anchor
+ * precondition.
+ */
+export interface StepCacheHost extends ReplayHost {
+  currentPath(): Promise<string | undefined>;
+}
 
 /** What the session needs from the dispatch beyond the replay host itself. */
 export interface StepCacheOptions {
@@ -23,8 +32,8 @@ export interface StepCacheOptions {
   readonly redact: (text: string) => string;
   readonly testIdAttribute: string;
   readonly maxActions: number;
-  /** Timeline index of the step being dispatched; undefined withholds staging. */
-  readonly stepIndex: number | undefined;
+  /** Timeline index of the step being dispatched. */
+  readonly stepIndex: number;
 }
 
 export class StepTraceSession {
@@ -43,7 +52,7 @@ export class StepTraceSession {
   constructor(options: StepCacheOptions) {
     this.options = options;
     this.cache = options.cache;
-    this.keyHash = options.cache.keyHashFor('act', options.instruction, options.params);
+    this.keyHash = options.cache.claimKeyHash('act', options.instruction, options.params);
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
         redact: options.redact,
@@ -79,7 +88,7 @@ export class StepTraceSession {
    * after a divergence mid-step with `replayedPrefix` set. Every failure to
    * replay is a miss, never an error; only runtime hard stops propagate.
    */
-  async tryReplay(host: ReplayHost & { currentPath(): Promise<string | undefined> }): Promise<StepVerdict | undefined> {
+  async tryReplay(host: StepCacheHost): Promise<StepVerdict | undefined> {
     // Captured before any action for the write's start-path precondition, and
     // doubling as the replay decision's current path.
     this.startPath = await host.currentPath();
@@ -147,13 +156,17 @@ export class StepTraceSession {
    * own entry with fresh descriptors, which is how staleness self-heals.
    */
   stage(verdictSummary: string | undefined): void {
-    if (this.recorder === undefined || this.options.stepIndex === undefined) return;
+    if (this.recorder === undefined) return;
     const trace = this.recorder.finalize({
       executor: this.replaySource ?? this.options.executor,
       summary: verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
     });
     if (trace === undefined) return;
+    // A trace with no start anchor — no recorded path (a non-web session)
+    // and no opening navigate — could never replay: `wrong-context` forever.
+    // Writing it would be pure store traffic, so it is not written at all.
+    if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
     this.cache.staged.push({ keyHash: this.keyHash, trace, stepIndex: this.options.stepIndex });
   }
 

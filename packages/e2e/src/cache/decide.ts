@@ -8,7 +8,16 @@
  * entry alone cannot: is it whole, and is the page where the recording began?
  */
 
-import type { TraceEntry } from './trace.ts';
+import type { ActionTrace, TraceEntry } from './trace.ts';
+
+/**
+ * Whether a trace establishes its own starting point by navigating first.
+ * Such a trace needs no start-path precondition — and a trace with neither
+ * anchor can never replay at all, so it is not worth writing.
+ */
+export function opensWithNavigate(trace: ActionTrace): boolean {
+  return trace.actions.find((action) => action.name !== 'tool')?.name === 'navigate';
+}
 
 /**
  * The full miss vocabulary of the report. `no-entry` and `invalid-entry` are
@@ -31,8 +40,7 @@ export function decideTraceReplay(
   currentPath: string | undefined,
 ): TraceReplayDecision {
   if (entry.payload.truncated === true) return { action: 'miss', reason: 'truncated' };
-  const firstReplayable = entry.payload.actions.find((action) => action.name !== 'tool');
-  if (firstReplayable?.name !== 'navigate') {
+  if (!opensWithNavigate(entry.payload)) {
     const startPath = entry.payload.startPath;
     if (startPath === undefined || currentPath === undefined || startPath !== currentPath) {
       return { action: 'miss', reason: 'wrong-context' };

@@ -37,12 +37,14 @@ export interface AgentCacheContext {
   /** Whether this attempt may replay; writes are governed by `mode` alone. */
   readonly replayEligible: boolean;
   /**
-   * Derives one step's key hash. Owns the whole key vocabulary — identity,
-   * digests, per-attempt occurrence indexing, policy version — so callers
-   * never learn what a key is made of. Call exactly once per step, in
-   * execution order: the occurrence index advances per call.
+   * Claims one step's key hash. Not a pure derivation: each claim advances
+   * the per-attempt occurrence index for its signature, which is what lets a
+   * test repeat the same instruction and cache each occurrence separately.
+   * Exactly one claim per dispatched step, in execution order — the
+   * `StepTraceSession` constructor is the sole caller and owns that
+   * invariant structurally.
    */
-  keyHashFor(
+  claimKeyHash(
     kind: TraceCacheKind,
     instruction: string,
     params: Readonly<Record<string, JsonValue>> | undefined,
@@ -114,7 +116,7 @@ export function createAgentCacheContext(options: {
     mode,
     store,
     replayEligible: options.attemptIndex === 0,
-    keyHashFor: (kind, instruction, params) => {
+    claimKeyHash: (kind, instruction, params) => {
       const signature = traceCallSignature(kind, instruction, params);
       return traceCacheKeyHash(
         buildTraceCacheKey({

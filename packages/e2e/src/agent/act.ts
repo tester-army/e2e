@@ -51,9 +51,8 @@ import { serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import { observationShape, prepareObservation, type AgentObservation } from './observation.ts';
 import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
-import type { ReplayHost } from './replay.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { StepTraceSession } from './step-cache.ts';
+import { StepTraceSession, type StepCacheHost } from './step-cache.ts';
 
 /** Everything one dispatched step is, resolved before the step opens. */
 interface DispatchSpec {
@@ -229,10 +228,14 @@ class ActDispatch {
     this.metrics.contextBytes = new TextEncoder().encode(runtime.agentContext ?? '').byteLength;
     this.redact = createRedactor(runtime.secretValues);
     // Only act steps are cacheable: an assert must not change state, so its
-    // trace would be empty — nothing to replay, nothing worth a read.
+    // trace would be empty — nothing to replay, nothing worth a read. The
+    // dispatch always runs inside a recorded step; a missing index would mean
+    // that invariant broke, and withholding the whole session is the safe
+    // answer.
     const cache = spec.kind === 'act' ? runtime.cache : undefined;
+    const stepIndex = runtime.steps.currentStepIndex;
     this.stepCache =
-      cache === undefined
+      cache === undefined || stepIndex === undefined
         ? undefined
         : new StepTraceSession({
             cache,
@@ -247,7 +250,7 @@ class ActDispatch {
             redact: this.redact,
             testIdAttribute: runtime.config.testIdAttribute,
             maxActions: this.maxActions,
-            stepIndex: runtime.steps.currentStepIndex,
+            stepIndex,
           });
   }
 
@@ -396,12 +399,9 @@ class ActDispatch {
   }
 
   /** The replay engine's narrow view of this dispatch. */
-  private replayHost(): ReplayHost & { currentPath(): Promise<string | undefined> } {
+  private replayHost(): StepCacheHost {
     return {
-      observeNodes: async () => {
-        await this.observe();
-        return this.latest!.nodes;
-      },
+      observeNodes: async () => (await this.observeLatest()).nodes,
       latestShape: () => (this.latest === undefined ? undefined : observationShape(this.latest)),
       actions: this.buildActions(),
       signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
@@ -435,7 +435,7 @@ class ActDispatch {
   }
 
   /** Maps the executor's verdict onto the runner outcome. Fail-closed on hard stops. */
-  settle(verdict: StepVerdict): AgentResult {
+  settle(verdict: StepVerdict): void {
     let settled = verdict;
     if (this.hardStop !== undefined) {
       if (this.hardStop.code === 'CANCELLED') throw this.hardStop;
@@ -461,7 +461,7 @@ class ActDispatch {
       throw this.invented(settled.errorCode);
     }
     this.explanation = settled.summary;
-    if (settled.status === 'passed') return { ok: true };
+    if (settled.status === 'passed') return;
     const code =
       settled.errorCode !== undefined && settled.errorCode in CATEGORY_BY_CODE
         ? settled.errorCode
@@ -705,11 +705,21 @@ class ActDispatch {
     return run;
   }
 
-  private observe(): Promise<ExecutorObservation> {
+  private async observe(): Promise<ExecutorObservation> {
+    const observation = await this.observeLatest();
+    return {
+      revision: observation.revision,
+      text: observation.text,
+      truncated: observation.truncated,
+      viewport: observation.viewport,
+    };
+  }
+
+  private observeLatest(): Promise<AgentObservation> {
     return this.serialized(() => this.observeNow());
   }
 
-  private async observeNow(): Promise<ExecutorObservation> {
+  private async observeNow(): Promise<AgentObservation> {
     this.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
@@ -732,12 +742,7 @@ class ActDispatch {
     );
     this.latest = observation;
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
-    return {
-      revision: observation.revision,
-      text: observation.text,
-      truncated: observation.truncated,
-      viewport: observation.viewport,
-    };
+    return observation;
   }
 
   /** Resolves an executor target against the newest observation. */

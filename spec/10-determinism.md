@@ -131,7 +131,11 @@ context) is deliberately not part of the key either: a trace records a flow
 that verifiably worked, the deterministic assertions after each step own
 semantic drift, and an implicated entry is evicted — keying on prose would
 cold-start the cache on every wording tweak while proving nothing about the
-flow. Every reason an entry cannot be used — absent,
+flow.
+
+A trace with no start anchor — no recorded start path (a session without a
+page URL) and no opening navigate — is never written: it could only ever miss
+with `wrong-context`, and an unreplayable entry is pure store traffic. Every reason an entry cannot be used — absent,
 malformed, oversized, truncated, recorded on a different page — is a miss
 that dispatches the executor, never an error and never a step failure.
 

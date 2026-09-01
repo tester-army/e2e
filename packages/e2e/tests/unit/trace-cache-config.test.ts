@@ -147,11 +147,11 @@ describe('flushStagedTraces', () => {
     expect(context.staged).toHaveLength(0);
   });
 
-  it('derives distinct key hashes per occurrence of the same signature', () => {
+  it('claims distinct key hashes per occurrence of the same signature', () => {
     const context = contextWith(memoryStore());
-    const first = context.keyHashFor('act', 'open billing', undefined);
-    const repeat = context.keyHashFor('act', 'open billing', undefined);
-    const other = context.keyHashFor('act', 'open billing', { fast: true });
+    const first = context.claimKeyHash('act', 'open billing', undefined);
+    const repeat = context.claimKeyHash('act', 'open billing', undefined);
+    const other = context.claimKeyHash('act', 'open billing', { fast: true });
     expect(first).toMatch(/^[a-f0-9]{64}$/);
     expect(repeat).not.toBe(first);
     expect(other).not.toBe(first);
