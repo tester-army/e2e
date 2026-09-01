@@ -3,10 +3,9 @@ title: e2e
 subtitle: End-to-end tests in plain TypeScript, driven by an agent you define.
 ---
 
-An e2e test is an ordinary TypeScript function. The agent that executes it is
-one you construct in your config and pass to the runner. e2e ships no
-intelligence of its own: the runner owns safety, budgets, secrets, and the
-report; you decide what does the thinking.
+You write tests in simple TypeScript, and you define the agent that executes
+them. e2e ships no intelligence of its own: the runner owns safety, budgets,
+secrets, and the report — the thinking is yours to control.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
