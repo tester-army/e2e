@@ -4,10 +4,14 @@ import path from 'node:path';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultRecord, RunError } from '../run/records.ts';
+import type { StepEvent, StepProgress } from '../run/steps.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import { LiveStatus } from './live-status.ts';
 
 const MAX_FIELD_BYTES = 8192;
+
+/** Step labels stay one glanceable line; the report holds the full text. */
+const MAX_STEP_LABEL_CHARS = 72;
 
 export interface ListReporterOutput {
   write(line: string): void;
@@ -17,6 +21,79 @@ export interface ListReporterOutput {
 
 function bounded(text: string): string {
   return truncateUtf8(sanitizeText(text), MAX_FIELD_BYTES);
+}
+
+/** One-line, quoted step label bounded for the live view. */
+function stepLabel(label: string): string {
+  const flat = sanitizeText(label).replace(/\s+/g, ' ').trim();
+  return `"${truncateUtf8(flat, MAX_STEP_LABEL_CHARS)}${flat.length > MAX_STEP_LABEL_CHARS ? '…' : ''}"`;
+}
+
+/** Human duration: milliseconds under a second, one decimal above. */
+function formatDuration(ms: number): string {
+  return ms < 1_000 ? `${ms}ms` : `${(ms / 1_000).toFixed(1)}s`;
+}
+
+/** Compact token count: plain under a thousand, `12.4k`, then `4.2M`. */
+function formatTokens(count: number): string {
+  if (count < 1_000) return `${count}`;
+  if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
+}
+
+/** USD with enough precision for sub-cent model calls. */
+function formatCost(costUsd: number): string {
+  return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`;
+}
+
+interface AiUsage {
+  calls: number;
+  tokens: number;
+  costUsd: number | undefined;
+}
+
+/** Sums model usage across every step of every attempt of one result. */
+function aiUsage(result: ResultRecord): AiUsage {
+  let calls = 0;
+  let tokens = 0;
+  let costUsd: number | undefined;
+  for (const attempt of result.attempts) {
+    for (const step of attempt.steps) {
+      if (step.model === undefined) continue;
+      calls += step.model.calls;
+      tokens += step.model.inputTokens + step.model.outputTokens;
+      if (step.model.estimatedCostUsd !== undefined) {
+        costUsd = (costUsd ?? 0) + step.model.estimatedCostUsd;
+      }
+    }
+  }
+  return { calls, tokens, costUsd };
+}
+
+/** One dim `ai …` segment, or undefined when the test used no model. */
+function aiSegment(usage: AiUsage): string | undefined {
+  if (usage.calls === 0) return undefined;
+  const cost = usage.costUsd === undefined ? '' : ` · ${formatCost(usage.costUsd)}`;
+  return `ai ${formatTokens(usage.tokens)} tokens${cost}`;
+}
+
+/**
+ * Live tail for one step event. Model and driver calls are the ones worth a
+ * glance (`tool:` prefixes come from executor tool accounting); polls and
+ * policy decisions stay quiet.
+ */
+function eventTail(event: StepEvent): string | undefined {
+  if (event.kind === 'model') {
+    const tokens =
+      event.count !== undefined && event.count > 0 ? ` · ${formatTokens(event.count)} tokens` : '';
+    return `model turn ${formatDuration(event.durationMs)}${tokens}`;
+  }
+  if (event.kind === 'driver') {
+    const name = sanitizeText(event.name ?? 'driver').replace(/^tool:/, '');
+    const failed = event.status === 'passed' ? '' : ' ✗';
+    return `${truncateUtf8(name, 40)} ${formatDuration(event.durationMs)}${failed}`;
+  }
+  return undefined;
 }
 
 const DEFAULT_OUTPUT: ListReporterOutput = {
@@ -31,6 +108,16 @@ export class ListReporter {
   private skipped = 0;
   private projectRoot: string | undefined;
   private readonly status: LiveStatus;
+  /** Base live-status text of each running pair, keyed `${testId}@${target}`. */
+  private readonly liveBase = new Map<string, string>();
+  /** Current step line of each running pair, rendered under its header. */
+  private readonly liveStep = new Map<string, string>();
+  /** Rolling window of the running step's latest model and driver calls. */
+  private readonly liveEvents = new Map<string, string[]>();
+  /** Pairs whose permanent header line has been written. */
+  private readonly headerPrinted = new Set<string>();
+  /** Run-wide model usage, summed from every reported result. */
+  private readonly runAi: AiUsage = { calls: 0, tokens: 0, costUsd: undefined };
   /** Colors follow live rendering: non-interactive sinks get plain text. */
   private readonly pc: ReturnType<typeof picocolors.createColors>;
 
@@ -64,10 +151,104 @@ export class ListReporter {
 
   /** A worker began one test-target pair: show it in the live status block. */
   onTestStart(info: { id: string; title: string; target: string }): void {
-    this.status.start(
-      `${info.id}@${info.target}`,
-      `${bounded(info.title)} ${this.pc.dim(`[${info.target}]`)}`,
-    );
+    const key = `${info.id}@${info.target}`;
+    const base = `${bounded(info.title)} ${this.pc.dim(`[${info.target}]`)}`;
+    this.liveBase.set(key, base);
+    this.status.start(key, base);
+    // A second concurrent pair ends permanent streaming: entries the stream
+    // had hidden come back as block rows.
+    if (this.liveBase.size > 1) {
+      for (const [other, otherBase] of this.liveBase) this.redrawLive(other, otherBase);
+    }
+  }
+
+  /**
+   * Streams step progress of a running pair. With a single test running, the
+   * whole story prints permanently and chronologically: a test header, one
+   * line per step, one line per model or driver call, and a step summary -
+   * the scrollback of a run reads without `--debug`. With parallel tests the
+   * stream would interleave, so each pair instead shows its current step and
+   * latest calls transiently in the live block.
+   */
+  onProgress(info: { testId: string; target: string; progress: StepProgress }): void {
+    const key = `${info.testId}@${info.target}`;
+    const base = this.liveBase.get(key);
+    if (base === undefined) return;
+    const { progress } = info;
+    switch (progress.phase) {
+      case 'start': {
+        this.liveStep.set(key, `${progress.api} ${stepLabel(progress.label)}`);
+        this.liveEvents.delete(key);
+        if (this.liveBase.size === 1) this.ensureHeader(key, base);
+        this.redrawLive(key, base);
+        break;
+      }
+      case 'event': {
+        const tail = eventTail(progress.event);
+        if (!this.liveStep.has(key) || tail === undefined) break;
+        const recent = this.liveEvents.get(key) ?? [];
+        recent.push(tail);
+        this.liveEvents.set(key, recent.slice(-4));
+        this.redrawLive(key, base);
+        break;
+      }
+      case 'end': {
+        this.liveStep.delete(key);
+        this.liveEvents.delete(key);
+        this.redrawLive(key, base);
+        if (progress.kind !== 'agent') break;
+        const glyph = progress.status === 'passed' ? this.pc.green('✓') : this.pc.red('✗');
+        const calls =
+          progress.modelCalls > 0
+            ? ` · ${progress.modelCalls} model call${progress.modelCalls === 1 ? '' : 's'}`
+            : '';
+        const outcome = progress.status === 'passed' ? '' : ` ${progress.status}`;
+        this.writeAboveStatus(
+          `  ${glyph} ${this.pc.dim(progress.api)} ${stepLabel(progress.label)} ` +
+            this.pc.dim(`${formatDuration(progress.durationMs)}${calls}${outcome}`),
+        );
+        break;
+      }
+    }
+  }
+
+  /** Writes one permanent line without disturbing the live block. */
+  private writeAboveStatus(line: string): void {
+    this.status.erase();
+    this.output.write(line);
+    this.status.redraw();
+  }
+
+  /**
+   * Prints the permanent test header once, before its first step line, so
+   * collapsed step summaries read under the test they belong to.
+   */
+  private ensureHeader(key: string, base: string): void {
+    if (this.headerPrinted.has(key)) return;
+    this.headerPrinted.add(key);
+    this.writeAboveStatus(`${this.pc.dim('▸')} ${base}`);
+  }
+
+  /**
+   * Repaints one live entry: only the active step expands, showing its latest
+   * calls under the spinner line; between steps the entry collapses to the
+   * counter (its header is already permanent) or, before any step ran, the
+   * test title. With parallel pairs the title stays as block context.
+   */
+  private redrawLive(key: string, base: string): void {
+    const solo = this.liveBase.size === 1 && this.headerPrinted.has(key);
+    const step = this.liveStep.get(key);
+    if (step === undefined) {
+      this.status.start(key, solo ? undefined : base);
+      return;
+    }
+    const head = solo ? this.pc.dim(step) : `${base}\n    ${this.pc.dim(`▸ ${step}`)}`;
+    const indent = solo ? '      ' : '        ';
+    const lines = [head];
+    for (const tail of this.liveEvents.get(key) ?? []) {
+      lines.push(`${indent}${this.pc.dim(tail)}`);
+    }
+    this.status.start(key, lines.join('\n'));
   }
 
   onResult(result: ResultRecord): void {
@@ -76,19 +257,32 @@ export class ListReporter {
       return;
     }
     this.status.erase();
-    this.status.finish(`${result.test.id}@${result.target.name}`);
+    const key = `${result.test.id}@${result.target.name}`;
+    this.status.finish(key);
+    this.liveBase.delete(key);
+    this.liveStep.delete(key);
+    this.liveEvents.delete(key);
+    this.headerPrinted.delete(key);
     const title = bounded(result.test.titlePath.join(' \u203a '));
     const target = result.target.name;
     const duration = result.attempts.reduce((total, attempt) => total + attempt.durationMs, 0);
+    const usage = aiUsage(result);
+    this.runAi.calls += usage.calls;
+    this.runAi.tokens += usage.tokens;
+    if (usage.costUsd !== undefined) this.runAi.costUsd = (this.runAi.costUsd ?? 0) + usage.costUsd;
+    const ai = aiSegment(usage);
+    const aiSuffix = ai === undefined ? '' : ` \u00b7 ${ai}`;
     switch (result.status) {
       case 'passed':
         this.passed += 1;
-        this.output.write(`${this.pc.green('\u2713')} ${title} ${this.pc.dim(`[${target}] ${duration}ms`)}`);
+        this.output.write(
+          `${this.pc.green('\u2713')} ${title} ${this.pc.dim(`[${target}] ${formatDuration(duration)}${aiSuffix}`)}`,
+        );
         break;
       case 'flaky':
         this.flaky += 1;
         this.output.write(
-          `${this.pc.yellow('\u2713')} ${title} ${this.pc.yellow('(flaky)')} ${this.pc.dim(`[${target}] ${duration}ms`)}`,
+          `${this.pc.yellow('\u2713')} ${title} ${this.pc.yellow('(flaky)')} ${this.pc.dim(`[${target}] ${formatDuration(duration)}${aiSuffix}`)}`,
         );
         break;
       case 'skipped':
@@ -100,7 +294,7 @@ export class ListReporter {
       default: {
         this.failed += 1;
         this.output.write(
-          `${this.pc.red('\u2717')} ${title} ${this.pc.dim(`[${target}] ${result.status} ${duration}ms`)}`,
+          `${this.pc.red('\u2717')} ${title} ${this.pc.dim(`[${target}] ${result.status} ${formatDuration(duration)}${aiSuffix}`)}`,
         );
         const error = result.attempts[result.attempts.length - 1]?.error;
         if (error !== undefined) {
@@ -153,6 +347,10 @@ export class ListReporter {
     ].filter((part) => part !== undefined);
     this.output.write('');
     this.output.write(parts.length > 0 ? parts.join(this.pc.dim(' \u00b7 ')) : this.pc.dim('no tests executed'));
+    const ai = aiSegment(this.runAi);
+    if (ai !== undefined) {
+      this.output.write(this.pc.dim(`${ai} \u00b7 ${this.runAi.calls} model calls`));
+    }
     this.output.write(this.pc.dim(`report: ${info.reportPath}`));
   }
 }

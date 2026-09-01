@@ -85,6 +85,8 @@ export interface ExecutorModelCall {
   readonly durationMs?: number;
   readonly provider?: string;
   readonly modelId?: string;
+  /** Billed cost of this call in USD, when the provider reports one. */
+  readonly estimatedCostUsd?: number;
 }
 
 /** Step budgets, read and reported by the executor, enforced by the harness. */

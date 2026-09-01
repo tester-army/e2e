@@ -15,6 +15,7 @@ import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
 import { z } from 'zod';
 import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
+import { readCost } from './model/sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   BLOCKABLE_CODES,
@@ -173,6 +174,7 @@ class LoopRun {
         },
         onStepEnd: (step) => {
           this.recordTurn(step);
+          const estimatedCostUsd = readCost(step.providerMetadata);
           this.context.budgets.recordModelCall({
             ...(step.usage.inputTokens === undefined
               ? {}
@@ -183,6 +185,7 @@ class LoopRun {
             durationMs: Date.now() - turnStartedMs,
             ...(typeof identity.provider === 'string' ? { provider: identity.provider } : {}),
             ...(typeof identity.modelId === 'string' ? { modelId: identity.modelId } : {}),
+            ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
           });
         },
       });

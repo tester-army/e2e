@@ -244,7 +244,7 @@ function parseJsonObject(text: string): unknown {
  * routes bill the provider key directly and report `cost: "0"`, so fall back
  * to `marketCost`, the list-price estimate of the same request.
  */
-function readCost(
+export function readCost(
   metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
 ): number | undefined {
   const billed = parseCost(metadata?.['gateway']?.['cost']);

@@ -94,6 +94,7 @@ export class TargetWorker {
               testId: pair.test.id,
               title: pair.test.titlePath.join(' \u203a '),
             }),
+          onProgress: (testId, progress) => this.host.emit({ type: 'progress', testId, progress }),
         },
       });
       this.host.emit({ type: 'ready' });

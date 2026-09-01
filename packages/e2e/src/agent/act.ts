@@ -202,6 +202,7 @@ class ActDispatch {
   private transcript: string | undefined;
   private inputTokens = 0;
   private outputTokens = 0;
+  private estimatedCostUsd: number | undefined;
   private peakTokensPerCall = 0;
   private providerReportedUsage = false;
   private modelProvider: string | undefined;
@@ -449,6 +450,9 @@ class ActDispatch {
     }
     if (usage?.provider !== undefined) this.modelProvider = usage.provider;
     if (usage?.modelId !== undefined) this.modelId = usage.modelId;
+    if (usage?.estimatedCostUsd !== undefined) {
+      this.estimatedCostUsd = (this.estimatedCostUsd ?? 0) + usage.estimatedCostUsd;
+    }
     this.runtime.steps.recordEvent({
       kind: 'model',
       startedAt: timestamp(),
@@ -537,6 +541,7 @@ class ActDispatch {
       peakTokensPerCall: this.peakTokensPerCall,
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
+      ...(this.estimatedCostUsd === undefined ? {} : { estimatedCostUsd: this.estimatedCostUsd }),
     };
   }
 

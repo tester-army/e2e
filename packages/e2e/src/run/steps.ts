@@ -102,9 +102,29 @@ export interface StepRecord {
   artifacts: string[];
 }
 
+/**
+ * Live progress notification for one step, streamed to reporters as the step
+ * runs. Derived from the same records the report persists; the report stays
+ * the canonical record.
+ */
+export type StepProgress =
+  | { readonly phase: 'start'; readonly kind: StepKind; readonly api: string; readonly label: string }
+  | {
+      readonly phase: 'end';
+      readonly kind: StepKind;
+      readonly api: string;
+      readonly label: string;
+      readonly status: StepRecord['status'];
+      readonly durationMs: number;
+      readonly modelCalls: number;
+    }
+  | { readonly phase: 'event'; readonly api: string; readonly event: StepEvent };
+
 export interface StepRecorderOptions {
   /** Caps events retained per step (resolved limits.maxEventsPerStep). */
   readonly maxEventsPerStep?: number;
+  /** Live progress sink; omitted in contexts with no reporter to feed. */
+  readonly onProgress?: (progress: StepProgress) => void;
 }
 
 export class StepRecorder {
@@ -113,12 +133,14 @@ export class StepRecorder {
   /** IDs of steps whose bodies are still executing. */
   private readonly running = new Set<string>();
   private readonly maxEventsPerStep: number;
+  private readonly onProgress: ((progress: StepProgress) => void) | undefined;
 
   constructor(
     private readonly attemptId: string,
     options: StepRecorderOptions = {},
   ) {
     this.maxEventsPerStep = options.maxEventsPerStep ?? 1_000;
+    this.onProgress = options.onProgress;
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
@@ -147,6 +169,7 @@ export class StepRecorder {
     this.running.add(record.id);
     const previousActive = this.activeStep;
     this.activeStep = record;
+    this.onProgress?.({ phase: 'start', kind, api, label });
     try {
       const result = await body();
       record.durationMs = Date.now() - startedMs;
@@ -167,6 +190,15 @@ export class StepRecorder {
     } finally {
       this.activeStep = previousActive;
       this.running.delete(record.id);
+      this.onProgress?.({
+        phase: 'end',
+        kind,
+        api,
+        label,
+        status: record.status,
+        durationMs: record.durationMs,
+        modelCalls: record.events.filter((event) => event.kind === 'model').length,
+      });
     }
   }
 
@@ -182,6 +214,7 @@ export class StepRecorder {
     if (current === undefined) return;
     if (current.events.length >= this.maxEventsPerStep) return;
     current.events.push(event);
+    this.onProgress?.({ phase: 'event', api: current.api, event });
   }
 
   /** Merges agent metrics, provenance, and judgment detail into the running step. */

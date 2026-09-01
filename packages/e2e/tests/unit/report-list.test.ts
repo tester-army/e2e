@@ -250,7 +250,8 @@ describe('ListReporter', () => {
       reporter.onTestStart({ id: 't1', title: 'signs in', target: 'web' });
       const status = chunks.join('');
       expect(status).toContain('signs in');
-      expect(status).toContain('\u25B8');
+      // The running marker is the first spinner frame until the timer advances.
+      expect(status).toContain('\u280B');
       reporter.onResult(result({ status: 'passed', title: ['signs in'], attempts: [attempt()] }));
       // The block above the result line is erased before the result prints.
       expect(chunks.some((chunk) => chunk.includes('\u001b[1A\u001b[0J'))).toBe(true);

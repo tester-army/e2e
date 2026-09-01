@@ -31,7 +31,7 @@ import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { INTERRUPTED_BEFORE_START, pairResult, unstartedResult } from './units.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
-import { StepRecorder } from './steps.ts';
+import { StepRecorder, type StepProgress } from './steps.ts';
 import type { SetupFn, TestFn } from '../types.ts';
 
 export interface ExecutionEvents {
@@ -39,6 +39,8 @@ export interface ExecutionEvents {
   onSerialGroup?(group: SerialGroupRecord): void;
   /** Fires before a runnable pair (or serial unit via its first member) starts. */
   onPairStart?(pair: TestTargetPair): void;
+  /** Live step progress of one running attempt, for reporters. */
+  onProgress?(testId: string, progress: StepProgress): void;
 }
 
 export interface TargetExecutorOptions {
@@ -362,8 +364,12 @@ export class TargetExecutor implements SerialHost {
     // Serial members borrow the group's shared session, open state, artifact
     // directory, and prior-step context; every other attempt owns its own.
     const shared = context.kind === 'serial' ? context.shared : undefined;
+    const onProgress = this.options.events?.onProgress;
     const steps = new StepRecorder(attemptId, {
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
+      ...(onProgress === undefined
+        ? {}
+        : { onProgress: (progress: StepProgress) => onProgress(pair.test.id, progress) }),
     });
     // Agent prompts quote completed steps as prior context. Serial-group
     // members prepend the steps earlier members already contributed.

@@ -289,6 +289,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             onRunError: (error) => runErrors.push(error),
             onTestStart: (testId, title, targetName) =>
               listReporter?.onTestStart({ id: testId, title, target: targetName }),
+            onProgress: (testId, targetName, progress) =>
+              listReporter?.onProgress({ testId, target: targetName, progress }),
             onDebug: (snapshot) => debug.merge(snapshot),
           },
         }),

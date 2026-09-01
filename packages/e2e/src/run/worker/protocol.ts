@@ -13,6 +13,7 @@ import type { CliOverrides, ResolvedTarget } from '../../config/resolve.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../records.ts';
+import type { StepProgress } from '../steps.ts';
 
 /** One runnable pair on the wire; the worker resolves the test function. */
 export interface WirePair {
@@ -91,6 +92,13 @@ export interface PairStartMessage {
   readonly title: string;
 }
 
+/** Live step progress of the running attempt; plain data, fire-and-forget. */
+export interface ProgressMessage {
+  readonly type: 'progress';
+  readonly testId: string;
+  readonly progress: StepProgress;
+}
+
 export interface ResultMessage {
   readonly type: 'result';
   readonly result: WireResultRecord;
@@ -117,6 +125,7 @@ export interface FatalMessage {
 export type WorkerToMain =
   | ReadyMessage
   | PairStartMessage
+  | ProgressMessage
   | ResultMessage
   | SerialGroupMessage
   | UnitDoneMessage

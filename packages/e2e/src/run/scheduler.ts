@@ -16,6 +16,7 @@ import type { DebugSnapshot } from '../internal/debug.ts';
 import { InfrastructureError, serializeError } from '../internal/errors.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
+import type { StepProgress } from './steps.ts';
 import type { SpawnUnitRunner, UnitRunner } from './unit-runner.ts';
 import {
   buildWorkPlans,
@@ -34,6 +35,8 @@ export interface SchedulerEvents {
   onRunError(error: RunError): void;
   /** A worker began executing one test-target pair. */
   onTestStart?(testId: string, title: string, targetName: string): void;
+  /** Live step progress of one running attempt. */
+  onProgress?(testId: string, targetName: string, progress: StepProgress): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
 }
@@ -412,6 +415,10 @@ class Scheduler {
       case 'pair-start': {
         worker.inFlightTestId = message.testId;
         this.options.events.onTestStart?.(message.testId, message.title, worker.targetName);
+        break;
+      }
+      case 'progress': {
+        this.options.events.onProgress?.(message.testId, worker.targetName, message.progress);
         break;
       }
       case 'result': {
