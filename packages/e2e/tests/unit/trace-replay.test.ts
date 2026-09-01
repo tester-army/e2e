@@ -126,6 +126,28 @@ describe('replayTrace', () => {
     expect(outcome).toMatchObject({ completed: false, executed: 1, stopReason: 'action-failed' });
   });
 
+  it('surfaces an unknown commit state as action-uncertain with the action named', async () => {
+    const host = makeHost({
+      onAction: (name) => {
+        if (name === 'tap') {
+          const uncertain = new Error('input may have reached the app') as Error & { code: string };
+          uncertain.code = 'ACTION_MAY_HAVE_COMMITTED';
+          throw new Error('action failed', { cause: uncertain });
+        }
+      },
+    });
+    const outcome = await replayTrace(
+      host,
+      trace([{ name: 'navigate', summary: 'navigate', url: '/' }, tapUpgrade]),
+    );
+    expect(outcome).toMatchObject({
+      completed: false,
+      executed: 1,
+      stopReason: 'action-uncertain',
+      uncertainAction: 'tap button "Upgrade"',
+    });
+  });
+
   it('rethrows runtime hard stops untouched', async () => {
     const host = makeHost({
       onAction: () => {

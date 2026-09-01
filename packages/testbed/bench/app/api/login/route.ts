@@ -6,7 +6,11 @@ export async function POST(request: Request) {
   const password = form.get('password');
   if (username === 'member' && password === 'bench-password-1') {
     const response = NextResponse.redirect(new URL('/dashboard', request.url), 303);
-    response.cookies.set('bench_session', 'member', { httpOnly: true, path: '/' });
+    response.cookies.set('bench_session', 'member', {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+    });
     return response;
   }
   return NextResponse.redirect(new URL('/login?error=1', request.url), 303);

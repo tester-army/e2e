@@ -193,7 +193,8 @@
             "gap",
             "target-not-found",
             "target-ambiguous",
-            "action-failed"
+            "action-failed",
+            "action-uncertain"
           ]
         },
         "replayedActions": { "type": "integer", "minimum": 0 },

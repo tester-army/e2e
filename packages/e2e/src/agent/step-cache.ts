@@ -84,7 +84,14 @@ export class StepTraceSession {
     // doubling as the replay decision's current path.
     this.startPath = await host.currentPath();
     if (!this.cache.replayEligible) return undefined;
-    const read = await this.cache.store.read(this.keyHash);
+    let read: Awaited<ReturnType<typeof this.cache.store.read>>;
+    try {
+      read = await this.cache.store.read(this.keyHash);
+    } catch {
+      // A store outage is a slower run, never a failed test: the read
+      // degrades to a miss and the live executor runs.
+      read = { status: 'invalid', reason: 'store read failed' };
+    }
     if (read.status !== 'hit') {
       this.info = this.missed(read.status === 'miss' ? 'no-entry' : 'invalid-entry', 0);
       return undefined;
@@ -120,6 +127,7 @@ export class StepTraceSession {
       replayedActions: outcome.summaries,
       totalActions: outcome.total,
       stopReason,
+      ...(outcome.uncertainAction === undefined ? {} : { uncertainAction: outcome.uncertainAction }),
     };
     this.info = {
       mode: 'agent-concluded',

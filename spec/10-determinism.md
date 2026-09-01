@@ -126,7 +126,12 @@ The key names the exact context the trace was recorded in: project, test,
 target/driver/app identity, step kind, the digests of the normalized
 instruction and the projected params, a per-signature occurrence index, and
 the replay policy version. Executor identity is provenance **on the entry**,
-never part of the key. Every reason an entry cannot be used — absent,
+never part of the key. Ambient agent context (`agent.context`, per-test
+context) is deliberately not part of the key either: a trace records a flow
+that verifiably worked, the deterministic assertions after each step own
+semantic drift, and an implicated entry is evicted — keying on prose would
+cold-start the cache on every wording tweak while proving nothing about the
+flow. Every reason an entry cannot be used — absent,
 malformed, oversized, truncated, recorded on a different page — is a miss
 that dispatches the executor, never an error and never a step failure.
 

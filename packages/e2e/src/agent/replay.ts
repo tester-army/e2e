@@ -57,6 +57,8 @@ export interface ReplayOutcome {
   readonly summaries: readonly string[];
   /** Present exactly when `completed` is false. */
   readonly stopReason?: ReplayHandOffReason;
+  /** The action whose commit state is unknown, on `action-uncertain` only. */
+  readonly uncertainAction?: string;
 }
 
 /**
@@ -141,11 +143,27 @@ export async function replayTrace(host: ReplayHost, trace: ActionTrace): Promise
       }
     } catch (cause) {
       if (isReplayFatal(cause, host.signal)) throw cause;
+      if (isUncertainCommit(cause)) {
+        // Input may have reached the app (spec 09): the hand-off must name
+        // the uncertain action so the executor verifies before re-acting —
+        // the runner never repeats an unknown-commit operation itself.
+        return { ...stop('action-uncertain'), uncertainAction: action.summary };
+      }
       return stop('action-failed');
     }
     summaries.push(action.summary);
   }
   return { completed: true, executed: summaries.length, total, summaries };
+}
+
+/** True when any error in the cause chain reports an unknown commit state. */
+function isUncertainCommit(cause: unknown): boolean {
+  for (let error = cause, depth = 0; depth < 8; depth += 1) {
+    if (typeof error !== 'object' || error === null) return false;
+    if ((error as { code?: unknown }).code === 'ACTION_MAY_HAVE_COMMITTED') return true;
+    error = (error as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /**

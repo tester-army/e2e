@@ -1002,7 +1002,12 @@ export interface ExecutorTarget {
  * id fails the action rather than acting on the wrong node. Actions and
  * observations are serialized in call order: a call issued while another is
  * in flight queues behind it and resolves its target against the newest
- * observation, so concurrency can never soften the staleness rule.
+ * observation, so concurrency can never soften the staleness rule. A
+ * committed mutation does not mint a new observation: ids from the newest
+ * observation stay addressable afterward (batching independent targets — a
+ * form fill — is legitimate), the driver rejects references it can no longer
+ * bind (`NODE_STALE`), and the mutation's effects are visible only through a
+ * fresh `observe()`.
  */
 export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
@@ -1059,7 +1064,8 @@ export type ReplayHandOffReason =
   | 'gap'
   | 'target-not-found'
   | 'target-ambiguous'
-  | 'action-failed';
+  | 'action-failed'
+  | 'action-uncertain';
 
 /**
  * The mid-step hand-off from a diverged cache replay. The replayed actions
@@ -1072,6 +1078,14 @@ export interface ReplayedPrefix {
   readonly replayedActions: readonly string[];
   readonly totalActions: number;
   readonly stopReason: ReplayHandOffReason;
+  /**
+   * Present exactly when `stopReason` is `action-uncertain`: the summary of a
+   * replayed action whose input may have reached the app even though it
+   * failed (chapter 09, ACTION_MAY_HAVE_COMMITTED). The executor must verify
+   * the current state before re-attempting anything like it — repeating it
+   * blind would double-commit a mutation the runner promised not to repeat.
+   */
+  readonly uncertainAction?: string;
 }
 
 export interface StepExecutorContext {

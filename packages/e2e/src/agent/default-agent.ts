@@ -94,6 +94,12 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
     'Cached replay already performed these recorded actions for this step:',
     ...lines,
     `Replay stopped (${prefix.stopReason}) after ${prefix.replayedActions.length} of ${prefix.totalActions} recorded actions.`,
+    ...(prefix.uncertainAction === undefined
+      ? []
+      : [
+          `WARNING: the next action (${prefix.uncertainAction}) failed with an UNKNOWN commit state — ` +
+            'its input may have reached the app. Verify the current state before doing anything like it again.',
+        ]),
     'Continue the step from the CURRENT page state shown below — do NOT redo the actions above.',
   ].join('\n');
 }

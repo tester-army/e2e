@@ -64,8 +64,12 @@ construction. The context provides:
   `stopReason` token — never descriptors, outputs, or error objects. The
   replayed actions already ran against the live app under this step's own
   budgets and recording; the executor MUST continue from current application
-  state and MUST NOT redo them. On a miss, or with caching off, the field is
-  absent and the step is indistinguishable from an uncached one.
+  state and MUST NOT redo them. An `action-uncertain` stop additionally
+  carries `uncertainAction` — the summary of a replayed action whose input
+  may have reached the app (09-drivers.md, `ACTION_MAY_HAVE_COMMITTED`); the
+  executor MUST verify current state before re-attempting anything like it.
+  On a miss, or with caching off, the field is absent and the step is
+  indistinguishable from an uncached one.
 
 The interface never requires the AI SDK. A `StepExecutor` with no model at
 all is valid; the runner cannot tell the difference and does not care.
