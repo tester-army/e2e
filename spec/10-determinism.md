@@ -105,9 +105,12 @@ observation, always.
 
 Caching is opt-out: an unset `cache` key means `read-write` (05-config.md),
 and a project or run opts out with `cache: 'off'` or the `--no-cache` flag,
-which wins over the config. In CI the mode is forced from `read-write` down
-to `read-only` whatever the config chose: committed caches are untrusted
-input, and a CI run never publishes what it learned.
+which wins over the config. In CI the default file store is forced from
+`read-write` down to `read-only` whatever the config chose: committed caches
+are untrusted input, and a CI run never publishes what it learned. A custom
+`cache.store` is exempt from the clamp — it is not a committed file cache,
+and the host that supplied it states its own trust through the store's
+`writable` flag.
 
 ### Entries and keys
 

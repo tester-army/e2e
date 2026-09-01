@@ -80,6 +80,16 @@ describe('cache config resolution', () => {
     expect(resolved.mode).toBe('read-only');
   });
 
+  it('exempts a host-supplied store from the CI clamp', () => {
+    const store = memoryStore();
+    const resolved = resolve(
+      { ...APP, cache: { mode: 'read-write', store } },
+      { ...BASE_ENV, CI: '1' },
+    ).cache;
+    expect(resolved.mode).toBe('read-write');
+    expect(resolved.store).toBe(store);
+  });
+
   it('rejects unknown modes, unknown keys, and non-store store values', () => {
     expect(() => resolve({ ...APP, cache: 'aggressive' as never })).toThrow(/cache mode/);
     expect(() => resolve({ ...APP, cache: { mode: 'off', ttl: 5 } as never })).toThrow(

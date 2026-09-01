@@ -65,6 +65,8 @@ export interface ResolvedConfig {
     readonly environment: 'test' | 'staging' | 'production';
     readonly allowProduction: boolean;
     readonly command: CommandConfig | undefined;
+    /** Stable logical app identity; overrides the origin for cache/session keying. */
+    readonly identity: string | undefined;
   };
   readonly targets: readonly ResolvedTarget[];
   readonly tests: readonly string[];
@@ -143,6 +145,7 @@ const APP_KEYS = new Set([
   'allowedOrigins',
   'environment',
   'allowProduction',
+  'identity',
 ]);
 
 /** True when CI mode is active per 05-config.md. */
@@ -259,9 +262,11 @@ export function resolveConfig(
  * Resolves the `cache` key. The cache is opt-out: an unset key means
  * `read-write`, so a project earns replay speed without asking for it, and
  * `cache: 'off'` or `--no-cache` (which wins over the config) turns it off.
- * CI forces read-only whatever the config or flag chose short of off:
+ * CI forces the default file store from `read-write` down to `read-only`:
  * committed caches are untrusted input, and a CI run never publishes what it
- * learned (spec 10-determinism.md).
+ * learned (spec 10-determinism.md). A host-supplied `cache.store` is exempt —
+ * it is not a committed file cache, and the host states its own trust through
+ * the store's `writable` flag.
  */
 function resolveCacheConfig(
   raw: E2EConfig,
@@ -309,7 +314,7 @@ function resolveCacheConfig(
     );
   }
   if (cliMode !== undefined) mode = cliMode;
-  if (ci && mode === 'read-write') mode = 'read-only';
+  if (ci && mode === 'read-write' && store === undefined) mode = 'read-only';
   return {
     mode,
     store,
@@ -414,6 +419,11 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     }
   }
 
+  const identity = raw.app?.identity;
+  if (identity !== undefined && (typeof identity !== 'string' || identity.trim() === '')) {
+    throw new ConfigurationError('INVALID_CONFIG', 'app.identity must be a non-empty string');
+  }
+
   return {
     base,
     readyUrl: raw.app?.readyUrl ?? base.href,
@@ -421,6 +431,7 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     environment,
     allowProduction,
     command,
+    identity,
   };
 }
 
