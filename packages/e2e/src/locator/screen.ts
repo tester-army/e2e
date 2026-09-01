@@ -31,8 +31,11 @@ import {
 import { Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
 
 export interface SecretResolver {
-  /** Resolves an opaque Secret to its plaintext for a closed input sink. */
-  resolve(secret: Secret): string;
+  /**
+   * Resolves an opaque Secret to its plaintext for a closed input sink, at
+   * fill time — a provider-backed credential may compute it fresh per fill.
+   */
+  resolve(secret: Secret): Promise<string>;
 }
 
 export interface ScreenContext {
@@ -213,11 +216,15 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   fill(value: string | Secret, options?: ActionOptions): Promise<void> {
     const sensitive = isSecret(value);
-    const plaintext = sensitive ? this.context.secrets.resolve(value) : value;
-    return this.action('locator.fill', () =>
+    // Resolved inside the recorded step, so a failing provider fails the fill.
+    return this.action('locator.fill', async () =>
       this.context.engine.perform(
         this.expression,
-        { kind: 'fill', value: plaintext, sensitive },
+        {
+          kind: 'fill',
+          value: sensitive ? await this.context.secrets.resolve(value) : value,
+          sensitive,
+        },
         options?.timeout,
       ),
     );

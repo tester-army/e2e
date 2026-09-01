@@ -384,6 +384,54 @@ describe('agent.act verdict mapping', () => {
     }
   }, 120_000);
 
+  it('resolves a provider-backed secret at fill time and keeps the plaintext out of the report', async () => {
+    const provider: { calls: number } = { calls: 0 };
+    // Read through a call so control-flow narrowing cannot pin the counter:
+    // the provider mutates it from inside the runner, invisibly to tsc.
+    const callsSoFar = () => provider.calls;
+    const executor: StepExecutor = {
+      name: 'provider-login-executor',
+      async runStep(context: StepExecutorContext) {
+        if (callsSoFar() !== 0) {
+          return { status: 'failed' as const, summary: 'provider resolved before the fill' };
+        }
+        const observation = await context.observe();
+        const password = nodeIdFor(observation.text, /textbox "Password"/);
+        await context.actions.typeSecret({ id: password }, 'admin');
+        return callsSoFar() === 1
+          ? { status: 'passed' as const, summary: 'provider resolved exactly once, at fill time' }
+          : { status: 'failed' as const, summary: `provider resolved ${callsSoFar()} times` };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/secret.e2e.ts': SECRET_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agent: executor,
+          credentials: {
+            admin: {
+              username: 'admin',
+              password: () => {
+                provider.calls += 1;
+                return Promise.resolve('provider-pass-1');
+              },
+            },
+          },
+        },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'executor fills a declared secret');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      expect(JSON.stringify(outcome.report)).not.toContain('provider-pass-1');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
   it('rejects a verdict outside the closed grammar', async () => {
     const executor: StepExecutor = {
       name: 'rogue-executor',

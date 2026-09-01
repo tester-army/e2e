@@ -124,6 +124,29 @@ describe('resolveConfig', () => {
     ).toBe('staging');
   });
 
+  it('accepts a provider-backed credential password; env override wins over it', () => {
+    const provider = () => 'fresh-totp';
+    const withProvider = resolve({
+      app: { url: 'https://app.test' },
+      credentials: { admin: { username: 'admin', password: provider } },
+    });
+    expect(withProvider.credentials.get('admin')?.password).toBe(provider);
+    const overridden = resolve(
+      {
+        app: { url: 'https://app.test' },
+        credentials: { admin: { username: 'admin', password: provider } },
+      },
+      { E2E_USER_ADMIN_PASSWORD: 'rotated' },
+    );
+    expect(overridden.credentials.get('admin')?.password).toBe('rotated');
+    expect(() =>
+      resolve({
+        app: { url: 'https://app.test' },
+        credentials: { admin: { username: 'admin', password: 42 as never } },
+      }),
+    ).toThrow(/password must be a string or a provider function/);
+  });
+
   it('accepts a stable app.identity and rejects an empty one', () => {
     expect(resolve({ app: { url: 'https://app.test', identity: 'checkout-app' } }).app.identity).toBe(
       'checkout-app',

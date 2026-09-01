@@ -72,7 +72,7 @@ export async function authorizeSecretFill(
 
   host.recordPolicy('secret.fill', 'allowed');
   try {
-    return runtime.secrets.resolve(secret);
+    return await runtime.secrets.resolve(secret);
   } catch (cause) {
     throw toAgentError(cause);
   }

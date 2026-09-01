@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/driver/index.ts';
 import { observationShape, prepareObservation } from '../../src/agent/observation.ts';
+import { createRedactor } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -16,14 +17,14 @@ function observation(tree: SemanticNode, complete = true): Observation {
   };
 }
 
-const NO_SECRETS = new Map<string, string>();
+const NO_REDACT = (text: string): string => text;
 const TEST_ID = 'data-testid';
 
 describe('prepareObservation', () => {
   it('rejects an observation whose masking the driver cannot prove', () => {
     expect(() =>
       prepareObservation(observation(node('root'), false), {
-        secrets: NO_SECRETS,
+        redact: NO_REDACT,
         maxBytes: 4_096,
         testIdAttribute: TEST_ID,
       }),
@@ -40,7 +41,7 @@ describe('prepareObservation', () => {
       ],
     });
     const prepared = prepareObservation(observation(tree), {
-      secrets: NO_SECRETS,
+      redact: NO_REDACT,
       maxBytes: 4_096,
       testIdAttribute: TEST_ID,
     });
@@ -67,7 +68,7 @@ describe('prepareObservation', () => {
       ],
     });
     const prepared = prepareObservation(observation(tree), {
-      secrets: NO_SECRETS,
+      redact: NO_REDACT,
       maxBytes: 4_096,
       testIdAttribute: TEST_ID,
     });
@@ -84,7 +85,7 @@ describe('prepareObservation', () => {
       ],
     });
     const prepared = prepareObservation(observation(tree), {
-      secrets: new Map([['member', 'hunter2']]),
+      redact: createRedactor(new Map([['member', 'hunter2']])),
       maxBytes: 4_096,
       testIdAttribute: TEST_ID,
     });
@@ -97,7 +98,7 @@ describe('prepareObservation', () => {
       node(`c${index}`, { role: 'button', name: `Button number ${index}` }),
     );
     const prepared = prepareObservation(observation(node('n1', { role: 'document', children })), {
-      secrets: NO_SECRETS,
+      redact: NO_REDACT,
       maxBytes: 256,
       testIdAttribute: TEST_ID,
     });
@@ -110,7 +111,7 @@ describe('prepareObservation', () => {
   it('keeps the root even when it alone exceeds the limit', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'document', name: 'x'.repeat(500) })),
-      { secrets: NO_SECRETS, maxBytes: 1_024, testIdAttribute: TEST_ID },
+      { redact: NO_REDACT, maxBytes: 1_024, testIdAttribute: TEST_ID },
     );
     expect(prepared.text).toContain('#n1 document');
   });
@@ -118,7 +119,7 @@ describe('prepareObservation', () => {
   it('collapses whitespace and strips control characters from app text', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'status', text: 'line\u0007one\n   two  ' })),
-      { secrets: NO_SECRETS, maxBytes: 4_096, testIdAttribute: TEST_ID },
+      { redact: NO_REDACT, maxBytes: 4_096, testIdAttribute: TEST_ID },
     );
     expect(prepared.text).toContain('text="line\uFFFDone two"');
   });
@@ -135,7 +136,7 @@ describe('disambiguating attributes', () => {
       ],
     });
     const lines = prepareObservation(observation(tree), {
-      secrets: NO_SECRETS,
+      redact: NO_REDACT,
       maxBytes: 4_096,
       testIdAttribute: TEST_ID,
     }).text.split('\n');
@@ -157,7 +158,7 @@ describe('observation byte budget', () => {
     for (const maxBytes of [200, 512, 2_048, 4_096]) {
       const prepared = prepareObservation(
         observation(node('n1', { role: 'document', children })),
-        { secrets: NO_SECRETS, maxBytes, testIdAttribute: TEST_ID },
+        { redact: NO_REDACT, maxBytes, testIdAttribute: TEST_ID },
       );
       expect(prepared.bytes).toBeLessThanOrEqual(maxBytes);
       expect(prepared.truncated).toBe(true);

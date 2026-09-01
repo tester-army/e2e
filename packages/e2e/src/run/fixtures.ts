@@ -10,6 +10,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { registerWebExpectTarget } from '../expect/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
+import { SecretLedger } from '../internal/redact.ts';
 import { toRoutePattern } from '../internal/route-pattern.ts';
 import { resolveNavigationUrl, urlMatches } from '../internal/urls.ts';
 import { Deadline, sleep, withTimeout } from '../internal/time.ts';
@@ -109,8 +110,9 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
    */
   const taint = { value: false };
 
+  const ledger = attemptSecretLedger(environment);
   const secrets: SecretResolver = {
-    resolve(secret) {
+    async resolve(secret) {
       const credential = environment.config.credentials.get(secret.name);
       if (credential === undefined) {
         throw new ConfigurationError(
@@ -119,7 +121,17 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         );
       }
       taint.value = true;
-      return credential.password;
+      const password = credential.password;
+      const plaintext = typeof password === 'function' ? await password() : password;
+      if (typeof plaintext !== 'string' || plaintext === '') {
+        throw new ConfigurationError(
+          'AUTH_CREDENTIAL_UNAVAILABLE',
+          `credential "${secret.name}" provider did not return a non-empty string`,
+        );
+      }
+      // A provider-resolved value joins redaction the moment it exists.
+      ledger.register(secret.name, plaintext);
+      return plaintext;
     },
   };
 
@@ -150,7 +162,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
           environment.agentContext,
         ),
         secrets,
-        secretValues: secretValues(environment),
+        redact: ledger.redact,
         taint,
         artifacts: environment.artifacts,
         signal: environment.signal,
@@ -219,13 +231,16 @@ function joinAgentContext(
   return parts.length === 0 ? undefined : parts.join('\n');
 }
 
-/** Registered secret values, used only for runner-side observation redaction. */
-function secretValues(environment: AttemptEnvironment): ReadonlyMap<string, string> {
-  const values = new Map<string, string>();
+/**
+ * The attempt's secret ledger, seeded with the passwords known up front.
+ * Provider-backed values join through the resolver at fill time.
+ */
+function attemptSecretLedger(environment: AttemptEnvironment): SecretLedger {
+  const ledger = new SecretLedger();
   for (const [name, credential] of environment.config.credentials) {
-    values.set(name, credential.password);
+    if (typeof credential.password === 'string') ledger.register(name, credential.password);
   }
-  return values;
+  return ledger;
 }
 
 function createApp(

@@ -63,8 +63,8 @@ export interface AgentContext {
   /** Trusted project context: config.agent.context then test/group agentContext. */
   readonly agentContext: string | undefined;
   readonly secrets: SecretResolver;
-  /** Registered secret values, used only for runner-side redaction. */
-  readonly secretValues: ReadonlyMap<string, string>;
+  /** The attempt's live redactor (SecretLedger); sees values the moment they exist. */
+  readonly redact: (text: string) => string;
   /** Set once any secret is filled; the viewport stays pixel-tainted after. */
   readonly taint: { value: boolean };
   readonly artifacts: ArtifactSink;
@@ -229,7 +229,7 @@ export class Invocation {
       async () => {
         const raw = await this.captureObservation(pixels);
         return prepareObservation(raw, {
-          secrets: this.runtime.secretValues,
+          redact: this.runtime.redact,
           maxBytes: this.observationByteBudget(),
           testIdAttribute: this.runtime.config.testIdAttribute,
         });

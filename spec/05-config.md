@@ -294,6 +294,14 @@ Environment resolution takes precedence as described in 04-resources.md.
 `allowedOrigins` narrows a credential relative to the app-level policy and
 cannot broaden it.
 
+A `password` MAY be a provider function instead of a string: it is called on
+every authorized fill and resolves the plaintext at fill time — a vault
+lookup, a freshly computed one-time code. The resolved value goes straight to
+the trusted driver, joins runner-side redaction the moment it exists, and is
+never logged, cached, or sent to a model. An environment override wins over a
+provider. Like executors and custom stores, a provider never crosses a
+process boundary: workers re-resolve the config module.
+
 ## Environment variables
 
 | Variable | Meaning |

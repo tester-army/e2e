@@ -221,17 +221,19 @@ credentials?: Readonly<
     string,
     {
       username: string;
-      password: string;
+      password: string | SecretProvider;
       allowedOrigins?: readonly string[];
     }
   >
 >;
+
+type SecretProvider = () => string | Promise<string>;
 ```
 
 | Key | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `username` | `string` | yes | Default username |
-| `password` | `string` | yes | Default password. Recorded in the config digest by name only. |
+| `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill — a vault lookup, a freshly computed TOTP. Recorded in the config digest by name only; a resolved value joins redaction the moment it exists and never reaches a model. An `E2E_USER_*` env override wins over a provider. |
 | `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to `app.allowedOrigins`. It can only narrow. |
 
 `credentials.user(name)` resolves a configured entry into a `Credential`. The

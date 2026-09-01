@@ -2,7 +2,6 @@
 
 import type { Observation, ObservationPixels, SemanticNode } from '../driver/index.ts';
 import { sanitizeText } from '../internal/errors.ts';
-import { createRedactor } from '../internal/redact.ts';
 import { sleep } from '../internal/time.ts';
 import { AgentError } from './error.ts';
 
@@ -42,7 +41,7 @@ export interface AgentObservation {
 export function prepareObservation(
   observation: Observation,
   options: {
-    secrets: ReadonlyMap<string, string>;
+    redact: (text: string) => string;
     maxBytes: number;
     testIdAttribute: string;
   },
@@ -57,7 +56,7 @@ export function prepareObservation(
   const nodes = new Map<string, SemanticNode>();
   indexNodes(observation.tree, nodes);
 
-  const redact = createRedactor(options.secrets);
+  const redact = options.redact;
   const lines: string[] = [];
   const encoder = new TextEncoder();
   // The marker is reserved up front so a truncated observation still fits the
