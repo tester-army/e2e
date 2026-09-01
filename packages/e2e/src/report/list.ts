@@ -188,7 +188,7 @@ export class ListReporter {
         if (!this.liveStep.has(key) || tail === undefined) break;
         const recent = this.liveEvents.get(key) ?? [];
         recent.push(tail);
-        this.liveEvents.set(key, recent.slice(-4));
+        this.liveEvents.set(key, recent);
         this.redrawLive(key, base);
         break;
       }
@@ -245,7 +245,18 @@ export class ListReporter {
     const head = solo ? this.pc.dim(step) : `${base}\n    ${this.pc.dim(`▸ ${step}`)}`;
     const indent = solo ? '      ' : '        ';
     const lines = [head];
-    for (const tail of this.liveEvents.get(key) ?? []) {
+    // Every call of the active step stays visible until the step collapses.
+    // The block must still fit the screen: repainting more rows than the
+    // terminal has breaks the cursor-up erase, so the oldest calls fold into
+    // one counter line when height runs out.
+    const events = this.liveEvents.get(key) ?? [];
+    const maxEvents = Math.max(4, (process.stdout.rows ?? 40) - 8);
+    const overflow = events.length - maxEvents;
+    const shown = overflow > 0 ? events.slice(overflow) : events;
+    if (overflow > 0) {
+      lines.push(`${indent}${this.pc.dim(`… ${overflow} earlier call${overflow === 1 ? '' : 's'}`)}`);
+    }
+    for (const tail of shown) {
       lines.push(`${indent}${this.pc.dim(tail)}`);
     }
     this.status.start(key, lines.join('\n'));
