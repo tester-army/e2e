@@ -41,7 +41,7 @@ Requires Node.js 20.19 or newer.
     ```
 
     This is the central decision in e2e: the runner does not come with an
-    agent baked in — you construct one and pass it. `createAgent` builds the
+    agent baked in. You construct one and pass it. `createAgent` builds the
     built-in tool-loop agent; `system` shapes how it works. Later you can hand
     it your own tools, or replace it with a custom executor;
     [Your own agent](/agents) covers both.
@@ -75,7 +75,7 @@ Requires Node.js 20.19 or newer.
 
     One goal per `act`. Real values go through `params`, not through the
     instruction. The final `expect` is deterministic: it costs no model calls
-    and cannot vary. There are no waits or sleeps anywhere — queries poll,
+    and cannot vary. There are no waits or sleeps anywhere: queries poll,
     actions wait, assertions retry.
   </Step>
 

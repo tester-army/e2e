@@ -4,7 +4,7 @@ subtitle: Pick a model, add project tools, or replace the executor.
 ---
 
 The agent you pass to `defineConfig` is a **step executor**: one step in, one
-verdict out. The runner owns everything around it — redacted observations,
+verdict out. The runner owns everything around it: redacted observations,
 every action, budgets, origin policy, secrets, the report. Customizing the
 agent changes how it decides, not what it is allowed to do.
 
@@ -39,8 +39,8 @@ peer dependency; deterministic suites and model-free executors never load it.
 
 ## Add project tools
 
-`createAgent` builds the built-in agent extended with your tools — AI SDK
-tools with declared semantics — and the `agent` config value accepts the agent
+`createAgent` builds the built-in agent extended with your tools (AI SDK
+tools with declared semantics), and the `agent` config value accepts the agent
 itself:
 
 ```ts title="e2e.config.ts"
@@ -114,7 +114,7 @@ export default defineConfig({
 
 `guard()` stops a tool from running once the step is concluding and turns
 budget and timeout stops into a clean end of the loop; `recordToolCall` is
-what counts your tool against the step's action budget — the chassis cannot
+what counts your tool against the step's action budget; the chassis cannot
 see inside a foreign tool, so an unrecorded call is an unbudgeted one. The
 step deadline still settles the verdict either way, but a device operation
 that ignores cancellation finishes on its own time, so keep tool bodies
@@ -122,8 +122,8 @@ short and interruptible.
 
 ## Replace the executor
 
-`agent` accepts anything implementing `StepExecutor` — no AI SDK, no model,
-any decision process you like:
+`agent` accepts anything implementing `StepExecutor`: no AI SDK, no model,
+any decision process you like.
 
 ```ts
 import type { StepExecutor } from 'e2e';
@@ -152,9 +152,9 @@ your code or a model.
 
 Whatever the executor, a step ends one of three ways:
 
-- **passed** — the app behaved as the step required, verified on screen.
-- **failed** — it did not. An ordinary test failure.
-- **blocked** — credentials, the environment, seed data, or budget prevented a
+- **passed**: the app behaved as the step required, verified on screen.
+- **failed**: it did not. An ordinary test failure.
+- **blocked**: credentials, the environment, seed data, or budget prevented a
   product verdict. The error code decides the exit: credential, environment,
   and seed-data blocks exit as configuration or infrastructure; budget and
   timeout blocks remain test failures.
@@ -175,7 +175,7 @@ the step clock, so slow providers conclude rather than time out.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
 `STEP_TIMEOUT`. Keep suites cheap: assert with `expect` when the check is
 mechanical, scope `act` to the step that breaks, and give slow providers
-`timeout` room — latency is not a defect.
+`timeout` room; latency is not a defect.
 
 <Callout intent="warning" title="Not implemented yet">
 `agent.act` structured output (`options.schema`) and per-call `vision` reject

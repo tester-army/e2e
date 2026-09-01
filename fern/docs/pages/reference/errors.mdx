@@ -38,7 +38,7 @@ Check `code` rather than using `instanceof`.
 | `MODEL_UNAVAILABLE` | No model configured, an unknown provider, or a missing provider credential. Raised when the `agent` fixture is acquired. | configuration | 2 |
 | `POLICY_DENIED` | Origin, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
 | `APP_UNREACHABLE` | The app process or URL did not respond | infrastructure | 3 |
-| `MODEL_PROVIDER_FAILED` | Provider transport failure — network error, 5xx, rate limit — after the adapter's transport retries (up to 5 per model call, honoring `retry-after`, bounded by the remaining step timeout) | infrastructure | 3 |
+| `MODEL_PROVIDER_FAILED` | Provider transport failure (network error, 5xx, rate limit) after the adapter's transport retries (up to 5 per model call, honoring `retry-after`, bounded by the remaining step timeout) | infrastructure | 3 |
 | `CANCELLED` | The runner cancelled the operation, without a process signal | infrastructure | 3 |
 | `MODEL_OUTPUT_INVALID` | Structured output still failed validation after the repair budget was spent | test | 1 |
 | `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the driver reported invalid state | test | 1 |

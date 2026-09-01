@@ -32,7 +32,7 @@ await agent.act('invite {email} as an editor', { email: 'ada@example.test' });
 ```
 
 Real values travel through `params`, never from the model's imagination. A
-`Secret` param stays host-side entirely — the model sees only its name, and the
+`Secret` param stays host-side entirely: the model sees only its name, and the
 runner fills the field itself (see [Authentication](/authentication)):
 
 ```ts
@@ -45,11 +45,11 @@ await agent.act('Sign in', {
 
 <Tip title="Write instructions like you would say them out loud">
 Name the visible affordances and prefer the exact wording on screen. One goal
-per call — the flow inside it is the model's job, the order of goals is yours.
+per call. The flow inside it is the model's job; the order of goals is yours.
 </Tip>
 
 Every planned step ends in a ternary verdict: **passed**, **failed**, or
-**blocked** — something prevented a product verdict. Blocked carries an error
+**blocked**, meaning something prevented a product verdict. Blocked carries an error
 code naming the cause: a credential, environment, or seed-data block
 (`AUTH_CREDENTIAL_UNAVAILABLE`, `APP_UNREACHABLE`, `SEED_DATA_MISSING`) exits
 as configuration or infrastructure, while a step that exhausted its budget or
@@ -67,8 +67,8 @@ the report.
 await agent.assert('the dashboard shows a trial badge');
 ```
 
-`assert` looks once. To wait for something to become true, poll with `waitFor`
-— observations are free; a judgment is only spent when the screen changes:
+`assert` looks once. To wait for something to become true, poll with `waitFor`.
+Observations are free; a judgment is only spent when the screen changes:
 
 ```ts
 await agent.waitFor('the export finishes and a download link appears', {
@@ -100,8 +100,8 @@ survives a model swap; `toBe('Pro plan')` does not.
 A redacted snapshot of the screen (roles, names, text, states), a summary of
 prior steps, and your `agent.context`. Never raw HTML, cookies, headers, or
 environment values; password fields arrive masked. Add `vision: true` to a
-judgment when the answer lives in pixels a snapshot can't describe — a canvas
-chart, a layout — or `vision: 'only'` to judge the screenshot alone. Pin a
+judgment when the answer lives in pixels a snapshot cannot describe, like a
+canvas chart or a layout, or `vision: 'only'` to judge the screenshot alone. Pin a
 separate `agent.visionModel` when your text model reads pixels poorly.
 
 ```ts
@@ -114,7 +114,7 @@ When a step or a check is too important to leave to a model, write it
 exactly. These calls cost no model tokens and never vary.
 
 ```ts
-// Semantic queries — role and name first, label second, test ID last:
+// Semantic queries: role and name first, label second, test ID last.
 await screen.getByRole('button', { name: 'Sign in' }).tap();
 await screen.getByLabel('Email').fill('ada@example.test');
 await screen.getByTestId('todo').first().tap();
@@ -135,7 +135,7 @@ assertions **retry** while direct reads like `textContent()` do not. Assert
 with the matcher; it is the version that waits.
 
 Platform power lives behind named fixtures so portable tests stay portable:
-`web` has routes, cookies, dialogs, frames, and downloads — see the
+`web` has routes, cookies, dialogs, frames, and downloads; see the
 [app and web reference](/reference/app-web). Every query, action, and matcher
 is in the [screen reference](/reference/screen).
 

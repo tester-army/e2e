@@ -65,8 +65,8 @@ act(
 ): Promise<AgentResult>;
 ```
 
-Plans and executes one bounded multi-action flow. The harness owns the step —
-observations, actions, budgets, origin policy, recording — and hands only the
+Plans and executes one bounded multi-action flow. The harness owns the step
+(observations, actions, budgets, origin policy, recording) and hands only the
 thinking to the configured step executor. The call ends in an explicit verdict:
 a passing one returns `{ ok: true }`; a failing or blocked one throws an
 `AgentError` whose `code` and `blocked` flag say why.
@@ -82,7 +82,7 @@ a passing one returns `{ ok: true }`; a failing or blocked one throws an
 Values come from your code through `params`, never from the model. A `Secret`
 in `params` is projected before the model sees anything: the model receives the
 secret's name and purpose, and the harness fills the value host-side, subject
-to the same authorization as `locator.fill` — the credential must be
+to the same authorization as `locator.fill`: the credential must be
 registered, the current origin must be allowed by both `app.allowedOrigins`
 and the credential's own `allowedOrigins`, the field must be an enabled secure
 input whose purpose equals the secret's purpose.
@@ -123,7 +123,7 @@ await agent.assert('the search form is visible and not covered', { vision: 'only
 | --- | --- | --- |
 | `false` | the tree | no image tokens |
 | `true` | the tree and a screenshot, every call | image tokens on every call |
-| `'fallback'` | the tree — behaves like `false` for `assert`, `waitFor`, and `extract` | no image tokens |
+| `'fallback'` | the tree; behaves like `false` for `assert`, `waitFor`, and `extract` | no image tokens |
 | `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
 
 Set `agent.vision` in config to make a mode the project default; a per-call value
@@ -133,7 +133,7 @@ same call without it on every call.
 <Callout intent="warn" title="'fallback' behaves like false">
 `'fallback'` exists for calls that can discover mid-flight that the tree was
 not enough. A judgment never does: `assert`, `waitFor`, and `extract` always
-produce an answer from the tree, so there is no miss to escalate on —
+produce an answer from the tree, so there is no miss to escalate on;
 escalating on a `false` judgment would just bias it toward `true`. Under
 `'fallback'` they run tree-only, exactly like `false`. Use `vision: true` or
 `'only'` when you need pixels judged.
@@ -146,7 +146,7 @@ visual assertion: the tree is a cheaper path to an answer, and the model will ta
 it.
 
 ```ts
-// Passes on the tree alone: the form is present, enabled, and named — while a
+// Passes on the tree alone (the form is present, enabled, and named) while a
 // consent sheet covers it on screen.
 await agent.assert('the search form is visible and not covered', { vision: true });
 
@@ -155,19 +155,19 @@ await agent.assert('the search form is visible and not covered', { vision: 'only
 ```
 
 Same for a price rendered at `opacity: 0`, a button under a cookie banner, or a
-broken layout — all of which the tree happily reports as fine. Use `'only'` when
+broken layout, all of which the tree happily reports as fine. Use `'only'` when
 the question is about what the page *presents*; use `true` when the tree is part
 of the answer (`'the submit button is disabled'` is in the tree and often not
 visible at all).
 
 `'only'` is cheaper than `true`, not more expensive: you drop the observation
-bytes. The runner still captures the observation — it reports against it — it
+bytes. The runner still captures the observation and reports against it; it
 just isn't sent. The step records `visionOnly: true` and zero
 `observationBytes`.
 
 <Callout intent="warn" title="Pixels are viewport-scoped, the tree is document-scoped">
 The screenshot is the viewport, never the full page. So a condition the tree
-satisfies can be false on screen, and that is usually the point — but it also
+satisfies can be false on screen, and that is usually the point. But it also
 means `'only'` cannot see below the fold.
 
 ```ts
@@ -186,8 +186,8 @@ fails with `POLICY_DENIED`. Every other mode degrades to the tree; `'only'` will
 not answer a question about pixels from the tree instead.
 
 Calls that send pixels use `agent.visionModel` when it is set, and `agent.model`
-otherwise, and keep it for the rest of the invocation — including polling rounds
-whose pixels were withheld — so a polling method never switches models between
+otherwise, and keep it for the rest of the invocation, including polling rounds
+whose pixels were withheld, so a polling method never switches models between
 rounds.
 
 <Callout intent="info" title="Additive, never pixels-only">
@@ -349,7 +349,7 @@ export class AgentError extends Error {
 | `code` | `AgentErrorCode` | Closed union, assigned by the runner, never taken from model text |
 | `explanation` | `string` | Sanitized, bounded prose. Same value as `message`. |
 | `screenshot` | `string \| undefined` | Artifact path, present only when evidence was captured and permitted |
-| `blocked` | `boolean` | True when the failure reports a blocked step — credentials, environment, or budget — not a product failure |
+| `blocked` | `boolean` | True when the failure reports a blocked step (credentials, environment, or budget), not a product failure |
 
 Check `code` rather than using `instanceof`. Every code, its class, and its exit
 code are in [Errors](/reference/errors).

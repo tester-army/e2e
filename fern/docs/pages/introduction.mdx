@@ -5,7 +5,7 @@ subtitle: End-to-end tests in plain TypeScript, driven by an agent you define.
 
 You write tests in simple TypeScript, and you define the agent that executes
 them. e2e ships no intelligence of its own: the runner owns safety, budgets,
-secrets, and the report — the thinking is yours to control.
+secrets, and the report. The thinking is yours to control.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
@@ -63,7 +63,7 @@ deadline stay enforced.
 
 **Every call is bounded.** An `agent.*` call has a deadline and a model-call
 budget. A planned step ends in one of three verdicts: **passed**, **failed**,
-or **blocked** — something prevented a verdict about your app. A credential,
+or **blocked**, meaning something prevented a verdict about your app. A credential,
 environment, or seed-data block exits as configuration or infrastructure
 rather than as a failing test, so red keeps meaning "the product misbehaved".
 
