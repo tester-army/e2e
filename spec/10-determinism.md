@@ -146,7 +146,10 @@ grammar the executor uses — deadline, action budget, origin policy, secret
 authorization, and recording all apply identically. Each targeted action
 re-finds its node from the recorded descriptor against a fresh observation;
 exactly one node must match or the replay diverges. A full successful replay
-self-finalizes the step as passed. Any divergence — a gap, a moved or
+self-finalizes the step as passed — gated by the trace's postcondition: when
+a recorded end path exists, the live pathname must still match it, so a
+recorded flow whose destination changed hands off (`end-mismatch`) instead of
+passing on mechanics alone. Any divergence — a gap, a moved or
 ambiguous target, a rejected action — hands the step to the executor
 mid-step with a `replayedPrefix` notice (16-executors.md); the executor
 continues from live state. Runtime hard stops (budget, timeout, cancel) are

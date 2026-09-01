@@ -838,6 +838,12 @@ export interface ActionTrace {
   readonly summary: string;
   /** Page path when the step began; a precondition unless the trace opens with navigate. */
   readonly startPath?: string;
+  /**
+   * Page path when the step passed — the trace's deterministic postcondition.
+   * A full replay self-finalizes only while the live pathname still matches;
+   * a recorded flow whose destination changed hands off instead of passing.
+   */
+  readonly endPath?: string;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }
@@ -1065,7 +1071,8 @@ export type ReplayHandOffReason =
   | 'target-not-found'
   | 'target-ambiguous'
   | 'action-failed'
-  | 'action-uncertain';
+  | 'action-uncertain'
+  | 'end-mismatch';
 
 /**
  * The mid-step hand-off from a diverged cache replay. The replayed actions

@@ -195,7 +195,9 @@ function lazyDefaultExecutor(): StepExecutor {
   let executor: StepExecutor | undefined;
   return {
     name: 'e2e-default-agent',
-    version: '1',
+    // Keep in lockstep with createAgent's version: cache provenance and model
+    // policyVersion record this wrapper, not the delegate it constructs.
+    version: '2',
     async runStep(context) {
       if (executor === undefined) {
         const { createAgent } = await import('../agent/default-agent.ts');

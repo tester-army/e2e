@@ -194,7 +194,8 @@
             "target-not-found",
             "target-ambiguous",
             "action-failed",
-            "action-uncertain"
+            "action-uncertain",
+            "end-mismatch"
           ]
         },
         "replayedActions": { "type": "integer", "minimum": 0 },

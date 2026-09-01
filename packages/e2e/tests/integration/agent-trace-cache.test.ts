@@ -145,6 +145,13 @@ describe('trace cache: record then zero-turn replay', () => {
     expect(step.metrics!.modelCalls).toBe(0);
     expect(step.metrics!.actionSteps).toBe(2);
     expect(step.explanation).toContain('zero-turn');
+    // The re-staged entry keeps the ORIGINAL verdict prose and its
+    // postcondition — a summary that nested the replay wrapper would grow on
+    // every run until the bound truncated it.
+    const { document } = readOnlyEntry(project);
+    expect(document.payload.summary).toBe('the counter shows 2');
+    expect(document.payload.summary).not.toContain('recorded verdict');
+    expect(document.payload.endPath).toBe('/');
   });
 
   it('emits schema-valid reports for both cached and uncached runs', () => {

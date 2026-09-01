@@ -46,6 +46,13 @@ export class StepTraceSession {
   private startPath: string | undefined;
   /** Original producer of a fully replayed trace, kept as write provenance. */
   private replaySource: { name: string; version?: string } | undefined;
+  /**
+   * The replayed trace's original verdict prose, kept for the re-stage. The
+   * step's own summary after a replay is the synthesized "replayed N
+   * actions…" wrapper; storing that would nest the summary one level deeper
+   * on every replay until the bound truncated it.
+   */
+  private replaySummary: string | undefined;
   /** True once a cached entry's actions were run this step, fully or partly. */
   private consumedReplay = false;
 
@@ -114,16 +121,36 @@ export class StepTraceSession {
     const outcome = await replayTrace(host, trace);
     this.consumedReplay = true;
     if (outcome.completed) {
-      this.replaySource = { ...trace.executor };
+      // The recorded end path is the trace's postcondition: a flow whose
+      // destination changed replays mechanically but must not pass on its
+      // own — the executor gets the step and judges the live state instead.
+      const endMismatch =
+        trace.endPath !== undefined && !samePathname(await host.currentPath(), trace.endPath);
+      if (!endMismatch) {
+        this.replaySource = { ...trace.executor };
+        this.replaySummary = trace.summary;
+        this.info = {
+          mode: 'self-finalized',
+          replayedActions: outcome.executed,
+          totalActions: outcome.total,
+        };
+        return {
+          status: 'passed',
+          summary: `replayed ${outcome.executed} recorded action(s) zero-turn from the trace cache; recorded verdict: ${trace.summary}`,
+        };
+      }
+      this.prefix = {
+        replayedActions: outcome.summaries,
+        totalActions: outcome.total,
+        stopReason: 'end-mismatch',
+      };
       this.info = {
-        mode: 'self-finalized',
+        mode: 'agent-concluded',
+        reason: 'end-mismatch',
         replayedActions: outcome.executed,
         totalActions: outcome.total,
       };
-      return {
-        status: 'passed',
-        summary: `replayed ${outcome.executed} recorded action(s) zero-turn from the trace cache; recorded verdict: ${trace.summary}`,
-      };
+      return undefined;
     }
     const stopReason = outcome.stopReason ?? 'action-failed';
     if (outcome.executed === 0) {
@@ -155,12 +182,15 @@ export class StepTraceSession {
    * proves the flow reached the right state. A replayed step re-stages its
    * own entry with fresh descriptors, which is how staleness self-heals.
    */
-  stage(verdictSummary: string | undefined): void {
+  stage(verdictSummary: string | undefined, endPath: string | undefined): void {
     if (this.recorder === undefined) return;
     const trace = this.recorder.finalize({
       executor: this.replaySource ?? this.options.executor,
-      summary: verdictSummary ?? 'step passed',
+      // A self-finalized replay re-stages the ORIGINAL verdict prose; the
+      // step's own summary is the synthesized replay wrapper.
+      summary: this.replaySummary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
+      ...(endPath === undefined ? {} : { endPath }),
     });
     if (trace === undefined) return;
     // A trace with no start anchor — no recorded path (a non-web session)
@@ -181,7 +211,19 @@ export class StepTraceSession {
     await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
   }
 
+  /** Whether staging would write anything; gates the end-path driver read. */
+  get wantsStage(): boolean {
+    return this.recorder !== undefined;
+  }
+
   private missed(reason: TraceReplayMissReason | ReplayedPrefix['stopReason'], totalActions: number): StepCacheInfo {
     return { mode: 'missed', reason, replayedActions: 0, totalActions };
   }
+}
+
+/** Pathname-only comparison: volatile query strings must not break zero-turn. */
+function samePathname(current: string | undefined, recorded: string): boolean {
+  if (current === undefined) return true;
+  const pathOf = (value: string): string => value.split('?')[0] ?? value;
+  return pathOf(current) === pathOf(recorded);
 }

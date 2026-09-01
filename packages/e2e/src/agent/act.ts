@@ -146,7 +146,7 @@ async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Pro
           throw dispatch.settleThrown(toAgentError(cause));
         }
         dispatch.settle(validateVerdict(verdict, runtime.executor.name));
-        dispatch.stageTrace();
+        await dispatch.stageTrace();
       } catch (cause) {
         if (!(isAgentError(cause) && cause.code === 'CANCELLED')) {
           await dispatch.evictConsumedReplay();
@@ -425,8 +425,11 @@ class ActDispatch {
   }
 
   /** Stages the step's recorded trace for attempt-end settlement. */
-  stageTrace(): void {
-    this.stepCache?.stage(this.explanation);
+  async stageTrace(): Promise<void> {
+    if (this.stepCache === undefined || !this.stepCache.wantsStage) return;
+    // The end path is the trace's postcondition; captured only when a write
+    // can actually happen, so read-only runs pay no extra driver call.
+    this.stepCache.stage(this.explanation, await this.currentPath());
   }
 
   /** Evicts a consumed replay entry after a non-passed settle. */

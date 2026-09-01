@@ -130,7 +130,8 @@ export type ReplayHandOffReason =
   | 'target-not-found'
   | 'target-ambiguous'
   | 'action-failed'
-  | 'action-uncertain';
+  | 'action-uncertain'
+  | 'end-mismatch';
 
 /**
  * The mid-step hand-off from a diverged cache replay (RFC0001 layer 4). The

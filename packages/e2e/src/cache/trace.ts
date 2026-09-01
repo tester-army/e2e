@@ -127,6 +127,12 @@ export interface ActionTrace {
   readonly summary: string;
   /** Page path when the step began; a precondition unless the trace opens with navigate. */
   readonly startPath?: string;
+  /**
+   * Page path when the step passed — the trace's deterministic postcondition.
+   * A full replay self-finalizes only while the live pathname still matches;
+   * a recorded flow whose destination changed hands off instead of passing.
+   */
+  readonly endPath?: string;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }
@@ -184,6 +190,12 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
       return undefined;
     }
   }
+  const endPath = raw['endPath'];
+  if (endPath !== undefined) {
+    if (typeof endPath !== 'string' || endPath === '' || endPath.length > MAX_TRACE_DESCRIPTOR_CHARS) {
+      return undefined;
+    }
+  }
   const truncated = raw['truncated'];
   if (truncated !== undefined && typeof truncated !== 'boolean') return undefined;
 
@@ -206,6 +218,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     },
     summary,
     ...(startPath === undefined ? {} : { startPath }),
+    ...(endPath === undefined ? {} : { endPath }),
     ...(truncated === undefined ? {} : { truncated }),
   };
 }

@@ -85,6 +85,7 @@ export class TraceRecorder {
     readonly executor: { readonly name: string; readonly version?: string };
     readonly summary: string;
     readonly startPath?: string;
+    readonly endPath?: string;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
@@ -98,6 +99,9 @@ export class TraceRecorder {
       ...(conclusion.startPath === undefined || conclusion.startPath === ''
         ? {}
         : { startPath: bound(conclusion.startPath, MAX_TRACE_DESCRIPTOR_CHARS) }),
+      ...(conclusion.endPath === undefined || conclusion.endPath === ''
+        ? {}
+        : { endPath: bound(conclusion.endPath, MAX_TRACE_DESCRIPTOR_CHARS) }),
       ...(this.truncated ? { truncated: true } : {}),
     };
   }
