@@ -23,16 +23,13 @@ import {
   type ExecutorTarget,
   type ReplayHandOffReason,
 } from './executor.ts';
+import { settleObservation } from './observation.ts';
 
 /** Backoff between relocation attempts while the page settles. */
 const RELOCATION_RETRY_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 
 /** Ceiling on one action's relocation, inside whatever the deadline allows. */
 const RELOCATION_TIMEOUT_MS = 15_000;
-
-/** Poll interval and ceiling for the pre-action settle wait. */
-const SETTLE_POLL_MS = 75;
-const SETTLE_TIMEOUT_MS = 1_000;
 
 /** What the replay engine needs from the dispatch, and nothing more. */
 export interface ReplayHost {
@@ -199,26 +196,19 @@ async function relocate(
 }
 
 /**
- * Observes until the page shape holds still, bounded by a short ceiling.
- * Replay executes recorded actions far faster than the run that recorded
- * them; without this wait, an action can land while the app is still
- * reacting to the previous one — a form mid-clear, a list mid-update — and
- * commit something the recorded run never did. The live run's pacing gave
- * the app this settling time for free; replay has to buy it explicitly.
+ * Pre-action settle: replay executes recorded actions far faster than the run
+ * that recorded them; without this wait, an action can land while the app is
+ * still reacting to the previous one — a form mid-clear, a list mid-update —
+ * and commit something the recorded run never did. Same shared loop the
+ * executor-facing observe uses (observation.ts); replay reads raw
+ * observations and buys its settling here, on its own schedule.
  */
-async function settledNodes(host: ReplayHost): Promise<ReadonlyMap<string, SemanticNode>> {
-  let nodes = await host.observeNodes();
-  let shape = host.latestShape();
-  const deadlineMs = Date.now() + SETTLE_TIMEOUT_MS;
-  while (Date.now() < deadlineMs && host.remainingMs() > SETTLE_POLL_MS) {
-    await sleep(SETTLE_POLL_MS, host.signal);
-    nodes = await host.observeNodes();
-    const nextShape = host.latestShape();
-    const stable = nextShape === shape;
-    shape = nextShape;
-    if (stable) break;
-  }
-  return nodes;
+function settledNodes(host: ReplayHost): Promise<ReadonlyMap<string, SemanticNode>> {
+  return settleObservation(
+    () => host.observeNodes(),
+    () => host.latestShape(),
+    host,
+  );
 }
 
 /**

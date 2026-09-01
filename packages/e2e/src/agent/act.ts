@@ -49,7 +49,12 @@ import {
 import type { AgentContext } from './invocation.ts';
 import { serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
-import { observationShape, prepareObservation, type AgentObservation } from './observation.ts';
+import {
+  observationShape,
+  prepareObservation,
+  settleObservation,
+  type AgentObservation,
+} from './observation.ts';
 import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { StepTraceSession, type StepCacheHost } from './step-cache.ts';
@@ -708,8 +713,16 @@ class ActDispatch {
     return run;
   }
 
+  /**
+   * The executor-facing observe: always settled. An executor observation is
+   * followed by a model call measured in seconds, so the bounded settle wait
+   * is noise there — and it guarantees the model never reads a snapshot the
+   * app is still reacting to, which a fast model turns into a repeated action
+   * (double-committing a toggle) and a verdict judged on pre-render state.
+   * Replay reads raw (`observeLatest`) and settles on its own schedule.
+   */
   private async observe(): Promise<ExecutorObservation> {
-    const observation = await this.observeLatest();
+    const observation = await this.serialized(() => this.observeNow(true));
     return {
       revision: observation.revision,
       text: observation.text,
@@ -719,33 +732,43 @@ class ActDispatch {
   }
 
   private observeLatest(): Promise<AgentObservation> {
-    return this.serialized(() => this.observeNow());
+    return this.serialized(() => this.observeNow(false));
   }
 
-  private async observeNow(): Promise<AgentObservation> {
+  /** One recorded observation; when `settle`, the captures loop inside it. */
+  private async observeNow(settle: boolean): Promise<AgentObservation> {
     this.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
-      async () => {
-        const raw = await retryingObserve({
-          observe: (operation) => this.session.observe(operation, { pixels: false }),
-          operation: () => this.operation(),
-          guard: (cause) => this.checkpoint(cause),
-          signal: this.runtime.signal,
-          api: this.spec.api,
-        });
-        return prepareObservation(raw, {
-          secrets: this.runtime.secretValues,
-          maxBytes: this.runtime.config.agent.maxObservationBytes,
-          testIdAttribute: this.runtime.config.testIdAttribute,
-        });
-      },
+      () =>
+        settle
+          ? settleObservation(() => this.captureObservation(), observationShape, {
+              remainingMs: () => this.deadline.remaining(),
+              signal: this.runtime.signal,
+            })
+          : this.captureObservation(),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
     this.latest = observation;
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     return observation;
+  }
+
+  /** One raw observation capture: retried at the driver, then redacted and bounded. */
+  private async captureObservation(): Promise<AgentObservation> {
+    const raw = await retryingObserve({
+      observe: (operation) => this.session.observe(operation, { pixels: false }),
+      operation: () => this.operation(),
+      guard: (cause) => this.checkpoint(cause),
+      signal: this.runtime.signal,
+      api: this.spec.api,
+    });
+    return prepareObservation(raw, {
+      secrets: this.runtime.secretValues,
+      maxBytes: this.runtime.config.agent.maxObservationBytes,
+      testIdAttribute: this.runtime.config.testIdAttribute,
+    });
   }
 
   /** Resolves an executor target against the newest observation. */

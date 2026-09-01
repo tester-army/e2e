@@ -3,6 +3,7 @@
 import type { Observation, ObservationPixels, SemanticNode } from '../driver/index.ts';
 import { sanitizeText } from '../internal/errors.ts';
 import { createRedactor } from '../internal/redact.ts';
+import { sleep } from '../internal/time.ts';
 import { AgentError } from './error.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
@@ -177,6 +178,44 @@ export function observationShape(observation: AgentObservation): string {
       const stable = states.split(' ').filter((state) => state !== 'focused');
       return stable.length === 0 ? '' : ` [${stable.join(' ')}]`;
     });
+}
+
+/** Poll interval and ceiling for shape-stability settling. */
+export const SETTLE_POLL_MS = 75;
+export const SETTLE_TIMEOUT_MS = 1_000;
+
+/** What a settle loop needs from its step: the remaining clock and cancellation. */
+export interface SettleClock {
+  remainingMs(): number;
+  readonly signal: AbortSignal;
+}
+
+/**
+ * Captures until the page shape holds still, bounded by a short ceiling and
+ * the step clock. An observation taken right after an action can be a
+ * snapshot the app is still reacting to — a fetch-backed mutation re-renders
+ * long after the action resolves — and acting or judging on it repeats
+ * actions and passes steps on pre-render state. Both the executor-facing
+ * observe (act.ts) and replay's pre-action wait (replay.ts) settle through
+ * this one loop, so the pacing can never drift between them.
+ */
+export async function settleObservation<T>(
+  capture: () => Promise<T>,
+  shapeOf: (value: T) => string | undefined,
+  clock: SettleClock,
+): Promise<T> {
+  let value = await capture();
+  let shape = shapeOf(value);
+  const deadlineMs = Date.now() + SETTLE_TIMEOUT_MS;
+  while (Date.now() < deadlineMs && clock.remainingMs() > SETTLE_POLL_MS) {
+    await sleep(SETTLE_POLL_MS, clock.signal);
+    value = await capture();
+    const next = shapeOf(value);
+    const stable = next === shape;
+    shape = next;
+    if (stable) break;
+  }
+  return value;
 }
 
 function collapse(text: string): string {
