@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-subtitle: From install to a passing agentic test.
+subtitle: Install, define your agent, run a test.
 ---
 
 <Callout intent="note">
@@ -18,30 +18,37 @@ Requires Node.js 20.19 or newer.
       ```
     </CodeBlocks>
 
-    `e2e` is the runner and SDK, `@e2edev/playwright` is the default web
-    driver, and `ai` (the AI SDK) powers the built-in agent. Skip `ai` for a
-    purely deterministic suite — it is an optional peer.
+    `e2e` is the runner and SDK. `@e2edev/playwright` is the default web
+    driver. `ai` is the AI SDK the built-in agent runs on; it is an optional
+    peer, so a suite without agents can skip it.
   </Step>
 
-  <Step title="Scaffold and point at your app">
+  <Step title="Define your agent">
     ```bash
     npx e2e init
     ```
 
     ```ts title="e2e.config.ts"
     import { defineConfig } from 'e2e';
+    import { createAgent } from 'e2e/agent';
 
     export default defineConfig({
       app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-      agent: { model: 'anthropic/claude-sonnet-4.5' },
+      agent: createAgent(),
     });
     ```
 
-    The model is a `provider/model-id` string routed through the Vercel AI
-    Gateway — one `E2E_MODEL_API_KEY` reaches any provider — or a live AI SDK
-    model instance with its own credentials. `E2E_MODEL` overrides it per run.
-    The runner can also start your dev server: give `app.command` an
-    executable and args.
+    This is the central decision in e2e: the runner does not come with an
+    agent baked in — you construct one and pass it. `createAgent()` is the
+    built-in tool-loop agent. Later you can hand it your own tools, or replace
+    it with a custom executor; [Your own agent](/agents) covers both.
+
+    The model comes from the `E2E_MODEL` environment variable as a
+    `provider/model-id` string, routed through the Vercel AI Gateway so one
+    `E2E_MODEL_API_KEY` reaches any provider. To use a provider directly, pass
+    an AI SDK model instance: `createAgent({ model: openai('gpt-5.4-mini') })`.
+
+    The runner can also start your dev server: set `app.command`.
   </Step>
 
   <Step title="Write a test">
@@ -63,14 +70,15 @@ Requires Node.js 20.19 or newer.
     });
     ```
 
-    One goal per `act`, real values through `params`, and a deterministic
-    `expect` on the outcome you must not let drift. No waits, no sleeps —
-    queries poll, actions wait, assertions retry.
+    One goal per `act`. Real values go through `params`, not through the
+    instruction. The final `expect` is deterministic: it costs no model calls
+    and cannot vary. There are no waits or sleeps anywhere — queries poll,
+    actions wait, assertions retry.
   </Step>
 
   <Step title="Run">
     ```bash
-    E2E_MODEL_API_KEY=... npx e2e run
+    E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx e2e run
     ```
 
     Missing browsers download automatically on the first run.
@@ -82,10 +90,9 @@ Requires Node.js 20.19 or newer.
     npx e2e run --debug               # save full agent transcripts
     ```
 
-    Every run writes `.e2e/report.json` — results, attempts, steps, artifacts,
-    and model usage — whether it passed, failed, or was interrupted. Exit codes
-    separate test failures (1) from configuration (2) and infrastructure (3),
-    and blocked agent steps land in the latter two, not in red.
+    Every run writes `.e2e/report.json`: results, attempts, steps, artifacts,
+    and model usage. Exit codes separate test failures (1) from configuration
+    (2) and infrastructure (3); blocked agent steps land in the latter two.
   </Step>
 </Steps>
 
@@ -93,7 +100,7 @@ Requires Node.js 20.19 or newer.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen" href="/writing-tests">
-    Goals, checks, extraction, and the deterministic escape hatches.
+    Goals, checks, extraction, and the deterministic APIs.
   </Card>
   <Card title="Your own agent" icon="robot" href="/agents">
     Add tools, tune the loop, or bring your own executor.

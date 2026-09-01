@@ -1,42 +1,41 @@
 ---
 title: Your own agent
-subtitle: Pick a model, hand it project tools, or replace the brain entirely.
+subtitle: Pick a model, add project tools, or replace the executor.
 ---
 
-The brain behind `agent.act` is a **step executor**: one step in, one verdict
-out. The harness owns everything around it — redacted observations, every
-action, budgets, origin policy, secrets, the report — and hands the executor
-only the thinking. So customizing the agent changes what it can *think with*,
-never what it is *allowed to do*.
+The agent you pass to `defineConfig` is a **step executor**: one step in, one
+verdict out. The runner owns everything around it — redacted observations,
+every action, budgets, origin policy, secrets, the report. Customizing the
+agent changes how it decides, not what it is allowed to do.
 
 ## Pick a model
 
-There is no default model. Set one in config, or per run with `E2E_MODEL`:
+There is no default model. `createAgent()` reads `E2E_MODEL`, a
+`provider/model-id` string routed through the Vercel AI Gateway, so one
+`E2E_MODEL_API_KEY` (or `AI_GATEWAY_API_KEY`) reaches any provider:
+
+```bash
+E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx e2e run
+```
+
+To use a provider directly, pass a live AI SDK model instance. Any provider
+package works, including a local one:
 
 ```ts title="e2e.config.ts"
+import { openai } from '@ai-sdk/openai';
+import { createAgent } from 'e2e/agent';
+
 export default defineConfig({
-  agent: {
-    model: 'anthropic/claude-sonnet-4.5',
-    context: 'A billing dashboard. Plans are Free, Pro, and Enterprise.',
-  },
+  agent: createAgent({ model: openai('gpt-5.4-mini') }),
 });
 ```
 
-A `provider/model-id` string routes through the Vercel AI Gateway — one
-`E2E_MODEL_API_KEY` (or `AI_GATEWAY_API_KEY`) reaches any provider. To use a
-provider directly, pass a live AI SDK model instance instead; any provider
-package works, including a local one:
-
-```ts
-import { openai } from '@ai-sdk/openai';
-
-export default defineConfig({ agent: { model: openai('gpt-5.4-mini') } });
-```
-
-`agent.context` is a sentence or two of project vocabulary; it reaches every
-`agent.*` call. `agent.visionModel` pins a separate model for calls that carry
-pixels. The AI SDK (`ai`) is an optional peer dependency — deterministic
-suites and model-free executors never load it.
+The `agent` key also accepts an options block when you have nothing to
+construct: `agent: { model: 'anthropic/claude-sonnet-4.5', context: '...' }`
+runs `createAgent()` with those settings. `context` is a sentence or two of
+project vocabulary and reaches every `agent.*` call; `visionModel` pins a
+separate model for calls that carry pixels. The AI SDK (`ai`) is an optional
+peer dependency; deterministic suites and model-free executors never load it.
 
 ## Add project tools
 
@@ -75,8 +74,8 @@ mid-flow. `createAgent()` with no arguments is exactly what runs by default;
 `createToolLoopExecutor` is the chassis under the built-in agent: the verdict
 tool, budget hard stops, loop guards, wind-down near the clock, model
 accounting, and `--debug` transcripts. Bring your own tool vocabulary and it
-does the rest — this is how you drive things that aren't a browser, like a
-device-automation toolkit:
+does the rest. This is how you drive something that is not a browser, such as
+a device-automation toolkit:
 
 ```ts title="e2e.config.ts"
 import { createToolLoopExecutor } from 'e2e/agent';
@@ -108,7 +107,7 @@ export default defineConfig({
 Wrap each tool body in `guard()` so budget stops and cancellation end the loop
 cleanly instead of leaking work past the verdict.
 
-## Replace the brain entirely
+## Replace the executor
 
 `agent` accepts anything implementing `StepExecutor` — no AI SDK, no model,
 any decision process you like:
@@ -116,8 +115,8 @@ any decision process you like:
 ```ts
 import type { StepExecutor } from 'e2e';
 
-const myBrain: StepExecutor = {
-  name: 'my-brain',
+const scripted: StepExecutor = {
+  name: 'scripted',
   version: '1',
   async runStep(ctx) {
     const screen = await ctx.observe();      // redacted semantic tree
@@ -126,18 +125,19 @@ const myBrain: StepExecutor = {
   },
 };
 
-export default defineConfig({ agent: myBrain });
+export default defineConfig({ agent: scripted });
 ```
 
-`ctx.actions` is the whole action surface — `tap`, `type`, `typeSecret`,
-`press`, `select`, `scroll`, `navigate` — and `ctx.observe()` the whole eye.
+`ctx.actions` is the whole action surface (`tap`, `type`, `typeSecret`,
+`press`, `select`, `scroll`, `navigate`) and `ctx.observe()` is the only view
+of the app.
 Secrets in params arrive as name-only placeholders; `actions.typeSecret(target,
 name)` performs the authorized fill without the plaintext ever passing through
 your code or a model.
 
 ## The verdict
 
-Whatever the brain, a step ends one of three ways:
+Whatever the executor, a step ends one of three ways:
 
 - **passed** — the app behaved as the step required, verified on screen.
 - **failed** — it did not. An ordinary test failure.

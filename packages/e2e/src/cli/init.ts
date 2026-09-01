@@ -5,12 +5,16 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 
 const CONFIG_TEMPLATE = `import { defineConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 
 export default defineConfig({
   specVersion: '0.1',
   app: {
     url: process.env.APP_URL ?? 'http://localhost:3000',
   },
+  // The runner ships no intelligence: you construct the agent and pass it in.
+  // createAgent() is the built-in one; its model comes from E2E_MODEL.
+  agent: createAgent(),
   targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
 });
 `;
@@ -21,6 +25,13 @@ test('app opens', async ({ app, web }) => {
   await app.open();
   await expect(web).toHaveURL('/');
 });
+
+// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
+// test('the agent drives a flow', async ({ app, agent }) => {
+//   await app.open();
+//   await agent.act('one goal in plain language');
+//   await agent.assert('one question about the screen');
+// });
 `;
 
 const GITIGNORE_ENTRIES = ['.e2e/artifacts/', '.e2e/sessions/', '.e2e/report.json'];

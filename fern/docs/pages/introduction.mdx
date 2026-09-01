@@ -1,10 +1,22 @@
 ---
 title: e2e
-subtitle: Agentic end-to-end testing. Describe the flow; pin down what matters.
+subtitle: End-to-end tests in plain TypeScript, driven by an agent you define.
 ---
 
-Write a test as goals and checks. An agent drives the app; your code stays in
-charge of what counts as passing.
+An e2e test is an ordinary TypeScript function. The agent that executes it is
+one you construct in your config and pass to the runner. e2e ships no
+intelligence of its own: the runner owns safety, budgets, secrets, and the
+report; you decide what does the thinking.
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
+
+export default defineConfig({
+  app: { url: 'http://localhost:3000' },
+  agent: createAgent(), // the built-in agent; swap in your own tools or executor
+});
+```
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
@@ -15,22 +27,21 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
   await agent.act('upgrade the workspace to the Pro plan');
   await agent.assert('the invoice preview shows a prorated amount');
 
-  // Pin the check that must never drift:
+  // A deterministic check for the part that must not drift:
   await expect(screen.getByRole('status')).toContainText('Pro');
 });
 ```
 
-That is the whole framework. `agent.act` plans and executes a flow.
-`agent.assert` answers one question about the screen. `expect` and
-`screen.getBy*` are the escape hatch when a step is too important to leave to
-a model — same test, same file, your choice per line.
+`agent.act` executes a goal. `agent.assert` answers a question about the
+screen. When a step or a check is too important to leave to a model, `screen`
+and `expect` do exactly what they say, for free.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="bolt" href="/quickstart">
-    Install, point at your app, run your first test.
+    Install, define your agent, run a test.
   </Card>
   <Card title="Writing tests" icon="pen" href="/writing-tests">
-    Goals, checks, extraction, and the escape hatches.
+    Goals, checks, extraction, and the deterministic APIs.
   </Card>
   <Card title="Your own agent" icon="robot" href="/agents">
     Models, project tools, and custom executors.
@@ -40,35 +51,29 @@ a model — same test, same file, your choice per line.
   </Card>
 </CardGroup>
 
-## Why this shape
+## What you get
 
-**Resilient by default, exact where you say so.** A scripted suite breaks when
-the UI moves; an autonomous one passes for reasons you can't review. Here every
-line picks its own point on that dial: draft with `agent.act` while the feature
-changes shape, then pin the steps and assertions that matter to `screen` and
-`expect` — free, deterministic, and model-independent.
+**You control the agent.** `createAgent()` is the built-in one. Give it your
+own tools, keep its loop with a different tool vocabulary (a device toolkit, an
+internal API), or replace it with anything that takes a step and returns a
+verdict. None of that changes what the agent is allowed to do — observations
+stay redacted, actions stay policed, budgets stay enforced.
 
-**Bounded and honest.** Every `agent.*` call has a deadline and a model-call
-budget; nothing loops forever. Each planned step ends in a ternary verdict —
-**passed**, **failed**, or **blocked**. Blocked means credentials, seed data,
-or the environment prevented a product verdict: it exits as an
-infrastructure signal, not a red test, so trust in red survives.
+**Every call is bounded.** An `agent.*` call has a deadline and a model-call
+budget. A planned step ends in one of three verdicts: **passed**, **failed**,
+or **blocked** — the environment or credentials prevented a verdict about your
+app. Blocked exits as infrastructure, not as a failing test.
 
-**Secrets never meet the model.** A password is an opaque handle. Hand it to
-`agent.act` and the model sees only its name; the runner fills the field
-itself, under the same policy as a deterministic `fill`.
+**Secrets never reach a model.** A password is an opaque handle. Pass it to
+`agent.act` and the model sees its name only; the runner fills the field
+itself.
 
-**Yours to extend.** The brain behind `agent.act` is a socket. Add project
-tools to the built-in agent, keep its loop with your own tool vocabulary — a
-device toolkit, an internal API — or replace it with anything that takes a step
-and returns a verdict. Budgets, redaction, and the report don't change.
+**No service.** `npx e2e run` works the same on your laptop and in CI. The
+report is a JSON file on disk. A suite that never calls `agent.*` needs no
+model at all.
 
-**Local first.** No account, no hosted service. `npx e2e run` is the same code
-path on your laptop and in CI, the report is a JSON file, and a suite with no
-`agent.*` calls needs no model at all.
-
-<Callout intent="note" title="Web today, device-shaped by design">
-This release executes web targets. The API is platform-neutral — semantic
-queries, gestures, app lifecycle — and native targets are rejected rather than
-approximated. Backends plug in as [drivers](/writing-a-driver).
+<Callout intent="note" title="Web today">
+This release executes web targets. The API is platform-neutral, and native
+targets are rejected rather than approximated. Other backends plug in as
+[drivers](/writing-a-driver).
 </Callout>

@@ -1,10 +1,10 @@
 ---
 title: Writing tests
-subtitle: Goals, checks, extraction — and the escape hatches that pin steps down.
+subtitle: Goals, checks, extraction, and the deterministic APIs.
 ---
 
-A test is an ordinary TypeScript function. It states goals, asks questions, and
-pins down the parts that must never drift.
+A test is an ordinary TypeScript function. Agent calls state goals and ask
+questions; deterministic calls pin down the parts that must not drift.
 
 ```ts title="tests/todos.e2e.ts"
 import { test, expect } from 'e2e';
@@ -89,7 +89,7 @@ expect(data.titles).toContain('Buy milk');
 
 <Callout intent="warning" title="Assert on meaning, not on wording">
 Different models phrase things differently. `expect(x.plan).toContain('Pro')`
-survives a model swap; `toBe('Pro plan')` doesn't.
+survives a model swap; `toBe('Pro plan')` does not.
 </Callout>
 
 ### What the model sees
@@ -105,10 +105,10 @@ separate `agent.visionModel` when your text model reads pixels poorly.
 await agent.assert('the chart trends upward', { vision: true });
 ```
 
-## Escape hatches: `screen` and `expect`
+## Deterministic APIs: `screen` and `expect`
 
-When a step or check is too important to leave to a model, write it exactly.
-It costs nothing and never varies.
+When a step or a check is too important to leave to a model, write it
+exactly. These calls cost no model tokens and never vary.
 
 ```ts
 // Semantic queries — role and name first, label second, test ID last:
@@ -128,8 +128,8 @@ await expect(web).toHaveURL('/dashboard');
 
 Two rules keep these honest: a query matching **two nodes is an error**, not a
 first-match guess (narrow with `.filter()`, `.first()`, `.nth()`), and locator
-assertions **retry** while direct reads like `textContent()` don't — assert
-with the matcher, it's the version that waits.
+assertions **retry** while direct reads like `textContent()` do not. Assert
+with the matcher; it is the version that waits.
 
 Platform power lives behind named fixtures so portable tests stay portable:
 `web` has routes, cookies, dialogs, frames, and downloads — see the
