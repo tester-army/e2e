@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,6 +45,18 @@ describe('e2e init', () => {
     expect(code).toBe(0);
     expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toBe('// custom config\n');
     expect(existsSync(path.join(dir, 'tests', 'example.e2e.ts'))).toBe(true);
+  });
+
+  it('reconciles .gitignore entries on a project initialized before they existed', async () => {
+    writeFileSync(path.join(dir, 'e2e.config.ts'), '// custom config\n', 'utf8');
+    mkdirSync(path.join(dir, 'tests'), { recursive: true });
+    writeFileSync(path.join(dir, 'tests', 'example.e2e.ts'), '// custom test\n', 'utf8');
+    const older = '.e2e/artifacts/\n.e2e/cache/\n.e2e/sessions/\n.e2e/report.json\n';
+    writeFileSync(path.join(dir, '.gitignore'), older, 'utf8');
+    const code = await init(dir, { yes: true });
+    expect(code).toBe(0);
+    expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toBe('// custom config\n');
+    expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toBe(`${older}.e2e/ai-trace.json\n`);
   });
 
   it('is idempotent: a second run changes nothing', async () => {

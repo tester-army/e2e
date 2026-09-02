@@ -62,46 +62,54 @@ export async function init(cwd: string, options: { yes?: boolean } = {}): Promis
   ];
 
   const conflicts = planned.filter((file) => existsSync(path.join(cwd, file.relative)));
-  if (conflicts.length > 0) {
-    for (const conflict of conflicts) {
-      clack.log.warn(`exists, not touching: ${conflict.relative}`);
-    }
-    const remaining = planned.filter((file) => !existsSync(path.join(cwd, file.relative)));
-    if (remaining.length === 0) {
-      clack.outro('nothing to create; project already initialized');
-      return 0;
-    }
+  for (const conflict of conflicts) {
+    clack.log.warn(`exists, not touching: ${conflict.relative}`);
+  }
+  const remaining = planned.filter((file) => !existsSync(path.join(cwd, file.relative)));
+
+  // The ignore list is reconciled on every run, not only the first: a project
+  // initialized before an entry existed (`.e2e/ai-trace.json`, say) picks it
+  // up by re-running init, without touching any scaffold file.
+  const gitignorePath = path.join(cwd, '.gitignore');
+  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const lines = existing.split('\n');
+  const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.includes(entry));
+
+  if (remaining.length === 0 && missing.length === 0) {
+    clack.outro('nothing to create; project already initialized');
+    return 0;
   }
 
   if (options.yes !== true) {
-    const proceed = await clack.confirm({
-      message: `create ${planned
-        .filter((file) => !existsSync(path.join(cwd, file.relative)))
-        .map((file) => file.relative)
-        .join(', ')} and update .gitignore?`,
-    });
+    const actions = [
+      ...(remaining.length === 0
+        ? []
+        : [`create ${remaining.map((file) => file.relative).join(', ')}`]),
+      ...(missing.length === 0 ? [] : ['update .gitignore']),
+    ];
+    const proceed = await clack.confirm({ message: `${actions.join(' and ')}?` });
     if (clack.isCancel(proceed) || proceed !== true) {
       clack.cancel('cancelled; no changes were made');
       return 0;
     }
   }
 
-  for (const file of planned) {
+  for (const file of remaining) {
     const absolute = path.join(cwd, file.relative);
-    if (existsSync(absolute)) continue;
     mkdirSync(path.dirname(absolute), { recursive: true });
     writeFileSync(absolute, file.content, 'utf8');
     clack.log.success(`created ${file.relative}`);
   }
 
-  const gitignorePath = path.join(cwd, '.gitignore');
-  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
-  const lines = existing.split('\n');
-  const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.includes(entry));
   if (missing.length > 0) {
     const prefix = existing === '' || existing.endsWith('\n') ? '' : '\n';
     writeFileSync(gitignorePath, `${existing}${prefix}${missing.join('\n')}\n`, 'utf8');
     clack.log.success(`updated .gitignore (${missing.length} entries)`);
+  }
+
+  if (remaining.length === 0) {
+    clack.outro('project already initialized; .gitignore brought up to date');
+    return 0;
   }
 
   clack.outro('next: install @e2edev/playwright, then APP_URL=http://localhost:3000 npx --no-install e2e run');
