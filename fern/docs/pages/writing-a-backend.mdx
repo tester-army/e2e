@@ -8,10 +8,14 @@ Everything in `e2e` above the backend is portable. `test`, `expect`, `screen`,
 speak one narrow contract from `e2e/backend`, and a backend is the package that
 maps it onto a real surface.
 
-`@e2edev/playwright` is one such package, built with the same public
-`defineBackend` as anything the community writes. A backend for iOS, Android, a
-desktop shell, or a surface nobody has thought of yet integrates against the
-same contract: the runner cannot tell them apart, and neither can a test.
+`@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
+with the same public `defineBackend` as anything the community writes. A
+backend for a desktop shell, a TV, or a surface nobody has thought of yet
+integrates against the same contract: the runner cannot tell them apart, and
+neither can a test. The agent-device package is the smaller of the two and a
+good model for a device-shaped backend: one client, one id generation per
+observation, a contributed `device` fixture, and a minted `app://` location
+so the trace cache has an anchor.
 
 ## The ownership boundary
 

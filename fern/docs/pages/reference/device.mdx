@@ -1,0 +1,130 @@
+---
+title: device
+subtitle: The device fixture and backend options @e2edev/agent-device contributes for iOS and Android targets.
+---
+
+`@e2edev/agent-device` is the mobile backend: iOS simulators and Android
+emulators through [agent-device](https://github.com/callstack/agent-device),
+against the same `e2e/backend` contract the browser backend implements. `agent`,
+`app`, `screen`, and `expect` work as they do everywhere; this page covers what
+is specific to a device target. Import `test` from the package to have `device`
+typed; declare `requires: ['device']` in portable suites.
+
+## Backend
+
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
+import { agentDevice } from '@e2edev/agent-device';
+import { agentDeviceTools } from '@e2edev/agent-device/tools';
+
+const device = agentDevice({ platform: 'ios', app: 'Settings' });
+
+export default defineConfig({
+  targets: [{ name: 'iphone', platform: 'ios', backend: device }],
+  workers: 1,
+  agent: { executor: createAgent({ tools: agentDeviceTools(device) }) },
+});
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `platform` | `'ios' \| 'android'` | required | Which device family the target boots. |
+| `app` | `string` | none | App opened fresh at the start of every attempt: a bundle id, a package name, or a display name. Declares `app.restart()` and `app.clearState()`. |
+| `device` | `string` | a booted device | Simulator or emulator name or id. |
+| `session` | `string` | `e2e-<target name>` | agent-device session. One run per session at a time. |
+| `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
+
+The device boots in `init`, once per worker. Each attempt relaunches `app`
+when one is pinned; without it the surface observes whatever is in the
+foreground and the model opens apps with the `open_app` tool. Run device
+targets with `workers: 1`: workers share one simulator.
+
+### Capabilities
+
+| Contract member | On a device |
+| --- | --- |
+| `observe` | The accessibility tree with rects and a viewport. `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`; other types keep their name. Element identifiers surface under the configured `testIdAttribute`. Pixels on request, unmasked: a screen with a secure field reports zero masked regions and the runner withholds the image. |
+| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `focus`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` within a node, `dragTo`. A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child. `selectOption`, `setInputFiles`, `scrollIntoView`, and other keys are `UNSUPPORTED_CAPABILITY`. |
+| `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible unless `hidden: true` is requested. |
+| `swipe` | Viewport scroll in four directions. |
+| `app` | `back`; `restart` and `clearState` when `app` is pinned. No `navigate`: a device has no app URL. |
+| `artifacts` | Screenshots under `screenshots/NNN-<label>.png`. No traces. |
+| `url` | `app://<bundle id>/<screen title>`, the trace cache's anchor. |
+| `state` | Not declared. `test.setup` and `session:` are unavailable. |
+
+## Trace cache on a device
+
+The cache anchors a recorded `agent.act` step on the path the surface reports
+when the step begins and ends. This backend reports `app://<bundle
+id>/<title>`, with the title read off the navigation bar (its label, its inner
+text, or its identifier). A step recorded on `/General` replays only when
+Settings is on General again, and every grammar action inside it (tap, type,
+scroll) replays through the same `perform` seam. Two things end a replay: a
+project-tool call such as `open_app`, and a target that no longer relocates.
+Pin `app` so attempts start on the same screen, and keep in-step app switching
+to the `device` fixture between steps.
+
+## Device
+
+```ts
+export interface Device {
+  locator(selector: string): Locator;
+  setNetwork(state: 'online' | 'offline'): Promise<void>;
+  setAirplaneMode(enabled: boolean): Promise<void>;
+  setPermission(permission: DevicePermission, state: 'grant' | 'deny' | 'reset'): Promise<void>;
+  setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
+  clearLocation(): Promise<void>;
+  setAppearance(mode: 'light' | 'dark'): Promise<void>;
+  setOrientation(orientation: DeviceOrientation): Promise<void>;
+  setBiometrics(sensor: 'faceid' | 'touchid' | 'fingerprint', result: 'match' | 'nonmatch'): Promise<void>;
+  enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
+  openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
+  closeApp(): Promise<void>;
+  foregroundApp(): Promise<{ name: string; bundleId?: string }>;
+  home(): Promise<void>;
+  back(): Promise<void>;
+  alert(action: 'accept' | 'dismiss'): Promise<void>;
+  dismissKeyboard(): Promise<void>;
+  clipboard(): Promise<string>;
+  setClipboard(text: string): Promise<void>;
+}
+```
+
+Every async method is a recorded step named `device.<method>`, bounded by
+`config.actionTimeout` and the attempt signal, and never involves a model. A
+failure is `BACKEND_FAILURE` with agent-device's message; a command the
+platform cannot run is `UNSUPPORTED_CAPABILITY`.
+
+`locator` is a synchronous accessor: it mints a core `Locator` from an
+agent-device selector, for nodes the closed `screen` vocabulary cannot name.
+
+```ts
+await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
+await expect(device.locator('role=StaticText label="iOS Version"')).toHaveText('iOS Version');
+await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
+```
+
+Selector terms are agent-device's: `id`, `role`, `text`, `label`, `value`,
+`appname`, `windowtitle`, and the flags `visible`, `hidden`, `editable`,
+`selected`, `focused`, `enabled`, `hittable`. Text terms compare exactly after
+whitespace collapsing; `role` accepts either the platform type (`StaticText`)
+or the contract role (`text`). Polling and strictness are the runner's, as for
+any locator.
+
+## Agent tools
+
+`agentDeviceTools(backend)` returns a `defineTool` pack for `createAgent`,
+scoped to `ios` and `android` targets:
+
+| Tool | Replay | Purpose |
+| --- | --- | --- |
+| `open_app` | gap | Bring an app to the foreground, optionally relaunched. |
+| `swipe` | gap | Free-form swipe between two points in logical pixels. |
+| `type_text` | gap | Type into the focused field, optionally pressing Return; for editors that hide the focused field from the tree. |
+| `alert` | gap | Accept or dismiss a system alert. |
+| `screenshot` | read | Show the model the actual pixels. |
+
+The grammar verbs (`tap`, `type`, `scroll`) come from the backend manifest and
+need no tool. `type_secret` is not offered: secret fills require an origin the
+runner can check, and `app://` has none.

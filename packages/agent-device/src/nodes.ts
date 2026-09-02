@@ -1,0 +1,292 @@
+/**
+ * Projection of an agent-device accessibility snapshot onto the contract's
+ * `SemanticNode` tree. agent-device hands back a flat list with tree
+ * coordinates (`index`, `parentIndex`, `depth`) and platform element types;
+ * this module rebuilds the tree, maps the types onto the closed role
+ * vocabulary `screen.getByRole` and trace relocation speak, and mints the
+ * ids the surface owns.
+ */
+
+import type { SemanticNode } from 'e2e/backend';
+import type { Rect } from './support.ts';
+
+/** The subset of an agent-device snapshot node this backend reads. */
+export interface RawNode {
+  readonly ref?: string;
+  readonly index?: number;
+  readonly parentIndex?: number;
+  readonly depth?: number;
+  readonly type?: string;
+  readonly role?: string;
+  readonly label?: string;
+  readonly value?: string;
+  readonly identifier?: string;
+  readonly rect?: Rect;
+  readonly enabled?: boolean;
+  readonly selected?: boolean;
+  readonly focused?: boolean;
+  readonly visibleToUser?: boolean;
+  readonly hittable?: boolean;
+  readonly appName?: string;
+  readonly windowTitle?: string;
+}
+
+/** One projected node with what the surface needs to act on it and to answer selector terms. */
+export interface ProjectedNode {
+  readonly id: string;
+  /** agent-device ref without its `@` prefix; empty for a node the runner cannot act on. */
+  readonly ref: string;
+  /** Platform element type, lower-cased (`text-field`, `cell`, `navigation-bar`). */
+  readonly kind: string;
+  readonly raw: RawNode;
+  readonly node: SemanticNode;
+  readonly parent: ProjectedNode | undefined;
+}
+
+export interface ProjectedSnapshot {
+  readonly roots: readonly SemanticNode[];
+  /** Every node in document order, parents before children. */
+  readonly index: readonly ProjectedNode[];
+  readonly viewport: { readonly width: number; readonly height: number; readonly scale: number } | undefined;
+}
+
+/**
+ * Platform element types onto the role vocabulary. Anything not listed keeps
+ * its lower-cased type as the role, so no information is lost; the map only
+ * makes the common controls answer the same `getByRole` a browser does.
+ */
+const ROLE_MAP: Readonly<Record<string, string>> = {
+  button: 'button',
+  link: 'link',
+  'text-field': 'textbox',
+  textfield: 'textbox',
+  'search-field': 'textbox',
+  'text-view': 'textbox',
+  'edit-text': 'textbox',
+  'secure-text-field': 'textbox',
+  securetextfield: 'textbox',
+  switch: 'switch',
+  toggle: 'switch',
+  checkbox: 'checkbox',
+  'check-box': 'checkbox',
+  slider: 'slider',
+  image: 'image',
+  'image-view': 'image',
+  'static-text': 'text',
+  text: 'text',
+  cell: 'listitem',
+  'list-item': 'listitem',
+  'table-cell': 'listitem',
+  'collection-cell': 'listitem',
+  tab: 'tab',
+  'tab-bar-item': 'tab',
+  'tab-bar-button': 'tab',
+  'menu-item': 'menuitem',
+  'menu-button': 'menuitem',
+  alert: 'alert',
+  dialog: 'dialog',
+  sheet: 'dialog',
+  'action-sheet': 'dialog',
+  heading: 'heading',
+  header: 'heading',
+  'navigation-bar': 'navigation',
+  'activity-indicator': 'status',
+  'progress-indicator': 'status',
+};
+
+const SECURE_KINDS = new Set(['secure-text-field', 'securetextfield', 'password-field']);
+const CHECKABLE_ROLES = new Set(['switch', 'checkbox']);
+const CHECKED_VALUES = new Set(['1', 'on', 'true', 'checked', 'selected']);
+const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
+const SCREEN_KINDS = new Set(['application', 'app', 'window']);
+
+/**
+ * Platform element type of one raw node as a kebab-case token: XCTest sends
+ * `NavigationBar` and `StaticText`, Android sends `text-field`; both read as
+ * one vocabulary here. `role` is the fallback some platforms send instead.
+ */
+export function kindOf(raw: RawNode): string {
+  return normalizeKind(raw.type ?? raw.role ?? '');
+}
+
+/** One element-type spelling for `NavigationBar`, `navigation-bar`, and `navigation_bar` alike. */
+export function normalizeKind(type: string): string {
+  return type
+    .replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replaceAll(/[\s_]+/g, '-')
+    .toLowerCase();
+}
+
+/** Contract role for one platform element type. */
+export function roleOf(kind: string): string | undefined {
+  if (kind === '') return undefined;
+  return ROLE_MAP[kind] ?? kind;
+}
+
+function checkedOf(role: string | undefined, value: string | undefined): boolean | undefined {
+  if (role === undefined || !CHECKABLE_ROLES.has(role) || value === undefined) return undefined;
+  const lowered = value.trim().toLowerCase();
+  if (CHECKED_VALUES.has(lowered)) return true;
+  if (UNCHECKED_VALUES.has(lowered)) return false;
+  return undefined;
+}
+
+function stripRef(ref: string | undefined): string {
+  if (ref === undefined) return '';
+  return ref.startsWith('@') ? ref.slice(1) : ref;
+}
+
+/**
+ * Parent position of every raw node. `parentIndex` is authoritative when it
+ * names a node in the list; otherwise `depth` reconstructs nesting from the
+ * document order agent-device emits; a node with neither is a root.
+ */
+function parentPositions(raw: readonly RawNode[]): (number | undefined)[] {
+  const byIndex = new Map<number, number>();
+  raw.forEach((node, position) => {
+    if (typeof node.index === 'number') byIndex.set(node.index, position);
+  });
+  const lastAtDepth: number[] = [];
+  return raw.map((node, position) => {
+    let parent: number | undefined;
+    if (typeof node.parentIndex === 'number' && node.parentIndex >= 0) {
+      const resolved = byIndex.get(node.parentIndex);
+      if (resolved !== undefined && resolved < position) parent = resolved;
+    }
+    if (parent === undefined && typeof node.depth === 'number' && node.depth > 0) {
+      parent = lastAtDepth[node.depth - 1];
+    }
+    if (typeof node.depth === 'number') {
+      lastAtDepth[node.depth] = position;
+      lastAtDepth.length = node.depth + 1;
+    }
+    return parent;
+  });
+}
+
+/**
+ * Projects one snapshot. `mintId` is called once per node in document order,
+ * so the surface's id space stays unique across observations.
+ */
+export function projectSnapshot(
+  raw: readonly RawNode[],
+  options: { readonly testIdAttribute: string; readonly mintId: () => string },
+): ProjectedSnapshot {
+  const parents = parentPositions(raw);
+  const children = new Map<number, number[]>();
+  const roots: number[] = [];
+  parents.forEach((parent, position) => {
+    if (parent === undefined) {
+      roots.push(position);
+      return;
+    }
+    const siblings = children.get(parent);
+    if (siblings === undefined) children.set(parent, [position]);
+    else siblings.push(position);
+  });
+
+  const index: ProjectedNode[] = [];
+  const build = (position: number, parent: ProjectedNode | undefined): SemanticNode => {
+    const source = raw[position] as RawNode;
+    const id = options.mintId();
+    const kind = kindOf(source);
+    const role = roleOf(kind);
+    const secure = SECURE_KINDS.has(kind);
+    const checked = checkedOf(role, source.value);
+    const states = {
+      ...(source.enabled === false ? { disabled: true } : {}),
+      ...(source.selected === true ? { selected: true } : {}),
+      ...(source.focused === true ? { focused: true } : {}),
+      ...(source.visibleToUser === false ? { hidden: true } : {}),
+      ...(secure ? { secure: true } : {}),
+      ...(checked === undefined ? {} : { checked }),
+    };
+    const identifier = source.identifier === undefined || source.identifier === '' ? undefined : source.identifier;
+    const projected: { node: SemanticNode | undefined } = { node: undefined };
+    const entry: ProjectedNode = {
+      id,
+      ref: stripRef(source.ref),
+      kind,
+      raw: source,
+      parent,
+      get node(): SemanticNode {
+        return projected.node as SemanticNode;
+      },
+    };
+    index.push(entry);
+    const childNodes = (children.get(position) ?? []).map((child) => build(child, entry));
+    const node: SemanticNode = {
+      ref: { id, revision: '' },
+      ...(role === undefined ? {} : { role }),
+      // A device label is both the node's accessible name and its visible
+      // text, so `toHaveText` and `getByText` read the same string; the model
+      // rendering elides `text` whenever it equals `name`, so this costs nothing.
+      ...(source.label === undefined || source.label === '' ? {} : { name: source.label, text: source.label }),
+      // A secure field's value is never observed; the tree carries that it is secure, not what it holds.
+      ...(secure || source.value === undefined || source.value === '' ? {} : { value: source.value }),
+      ...(secure ? { inputPurpose: 'password' as const } : {}),
+      ...(Object.keys(states).length === 0 ? {} : { states }),
+      ...(identifier === undefined ? {} : { attributes: { [options.testIdAttribute]: identifier } }),
+      ...(source.rect === undefined ? {} : { rect: { ...source.rect } }),
+      // Structural hint for tuned replay policies: an identifier survives relabeling; a label does not anchor.
+      ...(identifier === undefined ? {} : { selector: `id=${quoteTerm(identifier)}` }),
+      ...(childNodes.length === 0 ? {} : { children: childNodes }),
+    };
+    projected.node = node;
+    return node;
+  };
+  const rootNodes = roots.map((position) => build(position, undefined));
+  return { roots: rootNodes, index, viewport: viewportOf(raw) };
+}
+
+/** Quotes one selector term value the way agent-device's parser reads it back. */
+function quoteTerm(value: string): string {
+  return /[\s"]/.test(value) ? JSON.stringify(value) : value;
+}
+
+/**
+ * The screen's logical size, read off the application or window node when
+ * the platform emits one, else the extent of every rect; undefined for a
+ * snapshot with no geometry at all.
+ */
+export function viewportOf(
+  raw: readonly RawNode[],
+): { readonly width: number; readonly height: number; readonly scale: number } | undefined {
+  const screen = raw.find((node) => SCREEN_KINDS.has(kindOf(node)) && node.rect !== undefined);
+  if (screen?.rect !== undefined && screen.rect.width > 0 && screen.rect.height > 0) {
+    return { width: screen.rect.width, height: screen.rect.height, scale: 1 };
+  }
+  let width = 0;
+  let height = 0;
+  for (const node of raw) {
+    if (node.rect === undefined) continue;
+    width = Math.max(width, node.rect.x + node.rect.width);
+    height = Math.max(height, node.rect.y + node.rect.height);
+  }
+  return width > 0 && height > 0 ? { width, height, scale: 1 } : undefined;
+}
+
+/**
+ * The visible screen's title: the navigation bar's own label, else the first
+ * text inside it, else its identifier (UIKit names the bar after its title).
+ * Undefined when the screen has no navigation bar, which is the honest answer
+ * for a bare launch screen or a full-screen sheet.
+ */
+export function screenTitle(snapshot: ProjectedSnapshot): string | undefined {
+  const bar = snapshot.index.find((entry) => entry.kind === 'navigation-bar');
+  if (bar === undefined) return undefined;
+  if (bar.raw.label !== undefined && bar.raw.label.trim() !== '') return bar.raw.label;
+  const text = snapshot.index.find(
+    (entry) => entry.node.role === 'text' && entry.raw.label !== undefined && entry.raw.label.trim() !== '' && isWithin(entry, bar),
+  );
+  if (text !== undefined) return text.raw.label;
+  return bar.raw.identifier === undefined || bar.raw.identifier.trim() === '' ? undefined : bar.raw.identifier;
+}
+
+/** True when `entry` is a strict descendant of `ancestor`. */
+export function isWithin(entry: ProjectedNode, ancestor: ProjectedNode): boolean {
+  for (let current = entry.parent; current !== undefined; current = current.parent) {
+    if (current === ancestor) return true;
+  }
+  return false;
+}

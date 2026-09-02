@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build",
+    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build",
     "check": "pnpm run lint && pnpm run check:dead-code && pnpm run check:spec && pnpm run typecheck && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "check:manifest": "node scripts/check-manifest-coupling.mjs",
@@ -23,10 +23,11 @@
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run build && changeset publish --tag beta",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test",
+    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
-    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
+    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",
+    "test:device": "pnpm run build && pnpm --filter @e2edev/testbed test:device"
   },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",

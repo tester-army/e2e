@@ -73,9 +73,10 @@ rather than as a failing test, so red keeps meaning "the product misbehaved".
 `agent.act` and the model sees its name only; the runner fills the field
 itself.
 
-<Callout intent="note" title="Web today">
-This release ships one backend, `@e2edev/playwright`, for browsers. The API
-and the runner are platform-neutral, and native
-targets are rejected rather than approximated. Other backends plug in as
-[backends](/writing-a-backend).
+<Callout intent="note" title="Two backends">
+This release ships `@e2edev/playwright` for browsers and
+[`@e2edev/agent-device`](/reference/device) for iOS simulators and Android
+emulators. The API and the runner are platform-neutral: the same test runs on
+both, and a surface neither covers plugs in as a
+[backend](/writing-a-backend) of its own.
 </Callout>

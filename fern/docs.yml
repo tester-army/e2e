@@ -63,6 +63,9 @@ navigation:
           - page: app and web
             path: docs/pages/reference/app-web.mdx
             slug: reference/app-web
+          - page: device
+            path: docs/pages/reference/device.mdx
+            slug: reference/device
           - page: agent
             path: docs/pages/reference/agent.mdx
             slug: reference/agent

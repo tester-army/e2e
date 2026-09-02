@@ -1,0 +1,80 @@
+{
+  "name": "@e2edev/agent-device",
+  "version": "0.0.0",
+  "description": "agent-device mobile backend (iOS and Android) for the e2e agentic end-to-end testing standard",
+  "keywords": [
+    "e2e",
+    "testing",
+    "agentic",
+    "end-to-end",
+    "agent-device",
+    "ios",
+    "android",
+    "backend"
+  ],
+  "license": "MIT",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/agent-device"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/agent-device#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "provenance": true,
+    "tag": "beta"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "default": "./dist/tools.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:simulator": "E2E_AGENT_DEVICE_SIMULATOR=1 vitest run tests/integration"
+  },
+  "dependencies": {
+    "agent-device": "0.20.10",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "ai": "^7.0.0",
+    "e2e": ">=0.1.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "ai": "7.0.37",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

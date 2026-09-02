@@ -18,9 +18,12 @@
     "bench:serve": "next start bench -p 4273",
     "test:bench": "pnpm run bench:build && node node_modules/e2e/dist/cli/bin.js run --config e2e.bench.config.ts",
     "test:device": "node node_modules/e2e/dist/cli/bin.js run --config e2e.device.config.ts",
-    "demo:host": "pnpm run bench:build && node host-demo.mjs"
+    "demo:host": "pnpm run bench:build && node host-demo.mjs",
+    "test:reminders": "node node_modules/e2e/dist/cli/bin.js run --config e2e.reminders.config.ts",
+    "test:device:cached": "pnpm run test:device && pnpm run test:device && node scripts/assert-cache-replay.mjs"
   },
   "dependencies": {
+    "@e2edev/agent-device": "workspace:*",
     "@e2edev/playwright": "workspace:*",
     "e2e": "workspace:*",
     "next": "16.3.4",

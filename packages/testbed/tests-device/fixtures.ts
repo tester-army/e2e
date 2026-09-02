@@ -1,12 +1,7 @@
 /**
- * The device suite's `test`, typed with the agent-device backend's
- * contributed `device` fixture — no global `declare module` augmentation.
- * `extend` is a pure type refinement; `device` still resolves from the
- * target's backend at runtime.
+ * The device suite's `test`: the one `@e2edev/agent-device` exports, typed
+ * with the backend's contributed `device` fixture. `expect` is `e2e`'s.
  */
 
-import { test as base } from 'e2e';
-import type { Device } from '../fixtures/agent-device.ts';
-
-export const test = base.extend<{ device: Device }>();
+export { test } from '@e2edev/agent-device';
 export { expect } from 'e2e';

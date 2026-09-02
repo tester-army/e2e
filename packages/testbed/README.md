@@ -19,6 +19,15 @@ tests.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the same
   playground: `agent.act` flows, assisted polling, judgments, and
   schema-validated extraction with zod.
+- `e2e.device.config.ts` + `tests-device/` — opt-in iOS suite on the
+  `@e2edev/agent-device` backend: the Settings app driven through the grammar
+  verbs, the deterministic `screen`/`expect` tier, and the contributed
+  `device` fixture. Needs a booted simulator and a model credential; steps
+  replay from the trace cache on a second run. See "Device suite" below.
+- `e2e.reminders.config.ts` + `tests-reminders/` — opt-in iOS stress suite:
+  long agentic sessions in the Reminders app (batch entry through the focused
+  field, completion, swipe-to-delete, list management, an interruption), each
+  claim paired with a deterministic tree check. See "Device suite" below.
 - `e2e.selenium.config.ts` + `tests-selenium/` — opt-in suite against
   seleniumbase.io, the community practice site. Deliberately adversarial
   surfaces: shadow roots, frames written into `about:blank`, nested frames,
@@ -76,6 +85,25 @@ The devtools recorder names runs after their first prompt and keeps one
 database per process, hence `--workers 1`; the `--ai-trace` file names runs
 after the test and step and merges every worker, so use it for anything you
 want to keep or compare.
+
+## Device suite
+
+`test:device` runs against a real iOS simulator with real model calls, so it is
+opt-in and never runs in CI. It needs Xcode with a booted simulator (check with
+`npx agent-device doctor`) and pins `openai/gpt-5.6-luna`; `E2E_MODEL`
+overrides it. Run one device suite at a time: workers share the pinned
+agent-device session.
+
+```bash
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:device      # Settings: grammar, screen tier, device fixture
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:reminders   # Reminders: long agentic stress sessions
+```
+
+The backend opens Settings fresh before every test, so no step needs an
+agent-side tool to get started and every `agent.act` step stays inside the
+grammar. The first run records a trace per passing step; the second run
+replays them with zero model calls (`step.cache.mode` is `self-finalized` in
+`.e2e/report.json`). Judgments still spend a call each.
 
 ## Known gaps (seleniumbase.io suite)
 
