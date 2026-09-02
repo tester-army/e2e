@@ -3,7 +3,8 @@
 import path from 'node:path';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import type { ResultRecord, RunError, SerialGroupRecord } from '../run/records.ts';
+import type { RunEventResult, RunEventSink } from '../run/events.ts';
+import type { RunError, SerialGroupRecord } from '../run/records.ts';
 import type { StepEvent, StepProgress, StepRecord } from '../run/steps.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import { LiveStatus } from './live-status.ts';
@@ -69,7 +70,7 @@ function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
  * members carry no attempts of their own; their usage arrives once per group
  * through `onSerialGroup`.
  */
-function aiUsage(result: ResultRecord): AiUsage {
+function aiUsage(result: RunEventResult): AiUsage {
   const usage: AiUsage = { calls: 0, tokens: 0, costUsd: undefined };
   for (const attempt of result.attempts) addStepsUsage(usage, attempt.steps);
   return usage;
@@ -280,7 +281,7 @@ export class ListReporter {
     this.status.start(key, lines.join('\n'));
   }
 
-  onResult(result: ResultRecord): void {
+  onResult(result: RunEventResult): void {
     if (!result.selected && result.status === 'skipped') {
       this.status.skip();
       return;
@@ -382,4 +383,52 @@ export class ListReporter {
     }
     this.output.write(this.pc.dim(`report: ${info.reportPath}`));
   }
+}
+
+/**
+ * Adapts the list reporter onto the run's event spine: one dispatch per fact,
+ * so the CLI renders exactly what a host sink receives and the two can never
+ * drift. Run-level errors are accumulated here because the reporter prints
+ * them once, at the end, while the stream carries them as they happen.
+ */
+export function listReporterSink(reporter: ListReporter): RunEventSink {
+  const errors: RunError[] = [];
+  return (event) => {
+    switch (event.type) {
+      case 'run-started':
+        reporter.onRunStart({
+          runId: event.runId,
+          targets: event.targets,
+          ci: event.ci,
+          projectRoot: event.projectRoot,
+        });
+        break;
+      case 'plan':
+        reporter.onPlan({ total: event.total });
+        break;
+      case 'test-started':
+        reporter.onTestStart({ id: event.testId, title: event.title, target: event.target });
+        break;
+      case 'step':
+        reporter.onProgress({ testId: event.testId, target: event.target, progress: event.progress });
+        break;
+      case 'test-finished':
+        reporter.onResult(event.result);
+        break;
+      case 'serial-group':
+        reporter.onSerialGroup(event.group);
+        break;
+      case 'run-error':
+        errors.push({ error: event.error });
+        break;
+      case 'run-finished':
+        reporter.onRunEnd({
+          status: event.status,
+          exitCode: event.exitCode,
+          reportPath: event.reportPath ?? '(not written)',
+          errors,
+        });
+        break;
+    }
+  };
 }

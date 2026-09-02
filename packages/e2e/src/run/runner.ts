@@ -28,6 +28,8 @@ import { agentStepTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { AppProcess } from './app-process.ts';
+import { listReporterSink } from '../report/list.ts';
+import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode } from './events.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { resolveDriver } from './resolve-driver.ts';
@@ -54,15 +56,22 @@ export interface RunOptions {
   noCache?: boolean | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
-  /** Preloaded raw config (bypasses discovery); intended for tests. */
+  /**
+   * A config value instead of a discovered file — the embedding-host entry
+   * point (see the embedding guide). May hold live values (executors, driver
+   * handles, model instances, cache stores, secret providers), which cannot
+   * cross a process boundary, so the run executes in-process on one worker.
+   */
   rawConfig?: E2EConfig | undefined;
   env?: NodeJS.ProcessEnv | undefined;
   quiet?: boolean | undefined;
   interruptSignal?: AbortSignal | undefined;
+  /** Structured, JSON-serializable run events for embedding hosts. */
+  onEvent?: RunEventSink | undefined;
 }
 
 export interface RunOutcome {
-  exitCode: 0 | 1 | 2 | 3 | 4 | 130;
+  exitCode: RunExitCode;
   status: 'passed' | 'failed' | 'error' | 'interrupted';
   report: Report1Document;
   reportPath: string | undefined;
@@ -81,10 +90,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const results: ResultRecord[] = [];
   const serialGroups: SerialGroupRecord[] = [];
   const targetProvenance = new Map<string, TargetProvenance>();
+  // The event stream is the run's single spine: the list reporter is just one
+  // sink on it, beside the host's, so the CLI and a host can never see
+  // different stories.
   const listReporter =
     options.quiet === true || options.reporters?.includes('json') === true
       ? undefined
       : new ListReporter();
+  const emit = createRunEventEmitter([
+    listReporter === undefined ? undefined : listReporterSink(listReporter),
+    options.onEvent,
+  ]);
 
   let config: ResolvedConfig | undefined;
   let reportPath: string | undefined;
@@ -92,9 +108,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   let sessionStore: SessionStore | undefined;
   const driversToDispose = new Set<Driver>();
 
-  const finish = async (
-    exitCode: 0 | 1 | 2 | 3 | 4 | 130,
-  ): Promise<RunOutcome> => {
+  const finish = async (exitCode: RunExitCode): Promise<RunOutcome> => {
     const status =
       exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
     const report = buildReport({
@@ -114,16 +128,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       try {
         await writeJsonReport(reportPath, report);
       } catch (cause) {
-        const error = classifyError(cause);
-        runErrors.push({ error: serializeError(error, { phase: 'report' }) });
+        recordRunError(classifyError(cause), 'report');
       }
     }
-    listReporter?.onRunEnd({
-      status,
-      exitCode,
-      reportPath: reportPath ?? '(not written)',
-      errors: runErrors,
-    });
+    emit({ type: 'run-finished', status, exitCode, ...(reportPath !== undefined ? { reportPath } : {}) });
     if (options.reporters?.includes('json') === true) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
@@ -135,7 +143,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   const recordRunError = (error: E2EError, phase?: 'config' | 'collection' | 'launch' | 'report') => {
-    runErrors.push({ error: serializeError(error, phase === undefined ? {} : { phase }) });
+    const serialized = serializeError(error, phase === undefined ? {} : { phase });
+    runErrors.push({ error: serialized });
+    emit({ type: 'run-error', error: serialized });
   };
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
@@ -167,11 +177,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   }
 
   setCredentialRegistry(config.credentials);
-  listReporter?.onRunStart({
+  emit({
+    type: 'run-started',
     runId,
-    targets: config.targets.map((target) => target.name),
-    ci: isCiMode(env),
+    projectId: config.projectId,
     projectRoot: config.projectRoot,
+    ci: isCiMode(env),
+    targets: config.targets.map((target) => target.name),
   });
 
   try {
@@ -205,7 +217,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     const { collection, selection } = planned;
 
-    listReporter?.onPlan({ total: selection.pairs.length });
+    emit({ type: 'plan', total: selection.pairs.length });
 
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
     const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
@@ -286,17 +298,20 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           events: {
             onResult: (result) => {
               results.push(result);
-              listReporter?.onResult(result);
+              emit({ type: 'test-finished', result: toEventResult(result) });
             },
             onSerialGroup: (group) => {
               serialGroups.push(group);
-              listReporter?.onSerialGroup(group);
+              emit({ type: 'serial-group', group });
             },
-            onRunError: (error) => runErrors.push(error),
+            onRunError: (error) => {
+              runErrors.push(error);
+              emit({ type: 'run-error', error: error.error });
+            },
             onTestStart: (testId, title, targetName) =>
-              listReporter?.onTestStart({ id: testId, title, target: targetName }),
+              emit({ type: 'test-started', testId, title, target: targetName }),
             onProgress: (testId, targetName, progress) =>
-              listReporter?.onProgress({ testId, target: targetName, progress }),
+              emit({ type: 'step', testId, target: targetName, progress }),
             onDebug: (snapshot) => debug.merge(snapshot),
           },
         }),

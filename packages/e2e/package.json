@@ -39,6 +39,10 @@
       "types": "./dist/agent/public.d.ts",
       "default": "./dist/agent/public.js"
     },
+    "./run": {
+      "types": "./dist/run/public.d.ts",
+      "default": "./dist/run/public.js"
+    },
     "./driver": {
       "types": "./dist/driver/index.d.ts",
       "default": "./dist/driver/index.js"
