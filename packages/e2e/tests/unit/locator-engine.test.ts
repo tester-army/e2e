@@ -12,7 +12,7 @@ import {
   type NodeRef,
   type SemanticNode,
 } from '../../src/backend/surface.ts';
-import { LocatorEngine, isNodeVisible, translateBackendError } from '../../src/locator/engine.ts';
+import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/locator/engine.ts';
 import { E2EError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 
@@ -203,7 +203,7 @@ describe('LocatorEngine read contract', () => {
   });
 });
 
-describe('translateBackendError mapping table', () => {
+describe('translateLocatorError mapping table', () => {
   const cases: Array<[BackendErrorCode, string, string]> = [
     ['NODE_STALE', 'test', 'LOCATOR_NOT_FOUND'],
     ['FRAME_NOT_FOUND', 'test', 'LOCATOR_NOT_FOUND'],
@@ -218,7 +218,7 @@ describe('translateBackendError mapping table', () => {
   ];
 
   it.each(cases)('%s -> %s/%s', (backendCode, category, code) => {
-    const translated = translateBackendError(
+    const translated = translateLocatorError(
       new BackendError(backendCode, 'boom', { retryable: false }),
     );
     expect(translated).toBeInstanceOf(E2EError);
@@ -229,19 +229,19 @@ describe('translateBackendError mapping table', () => {
 
   it('passes existing E2EErrors through unchanged', () => {
     const original = new E2EError('configuration', 'INVALID_CONFIG', 'bad config');
-    expect(translateBackendError(original)).toBe(original);
+    expect(translateLocatorError(original)).toBe(original);
   });
 
   it('wraps unknown errors as infrastructure BACKEND_FAILURE', () => {
-    const translated = translateBackendError(new Error('socket hangup'));
+    const translated = translateLocatorError(new Error('socket hangup'));
     expect(translated.category).toBe('infrastructure');
     expect(translated.code).toBe('BACKEND_FAILURE');
     expect(translated.message).toContain('socket hangup');
-    expect(translateBackendError('string failure').message).toContain('string failure');
+    expect(translateLocatorError('string failure').message).toContain('string failure');
   });
 
   it('appends the locator description when an expression is provided', () => {
-    const translated = translateBackendError(
+    const translated = translateLocatorError(
       new BackendError('NODE_STALE', 'stale', { retryable: false }),
       EXPRESSION,
     );

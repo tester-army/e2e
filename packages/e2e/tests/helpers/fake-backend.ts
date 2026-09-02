@@ -93,7 +93,7 @@ export interface FakeBackendHandle {
   };
 }
 
-export const FAKE_NODE: SemanticNode = {
+const FAKE_NODE: SemanticNode = {
   ref: { id: 'node-1', revision: '' },
   role: 'button',
   name: 'Submit',

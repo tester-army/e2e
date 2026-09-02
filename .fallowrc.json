@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "entry": [
+    "packages/testbed/e2e.config.ts",
+    "packages/testbed/e2e.*.config.ts",
+    "packages/testbed/tests*/**/*.ts",
+    "packages/testbed/dogfood/server.mjs",
+    "packages/testbed/bench/app/**/*.{ts,tsx}",
+    "spec/api/type-tests.ts",
+    "spec/examples/**/*.ts"
+  ],
+  "ignorePatterns": [
+    "fern/**",
+    "**/next-env.d.ts",
+    "**/.e2e/**",
+    "packages/e2e/tests/tmp-projects/**"
+  ],
+  "ignoreDependencies": [
+    "e2e",
+    "@e2edev/playwright"
+  ],
+  "rules": {
+    "unused-class-member": "warn",
+    "dev-dependencies-in-production": "warn"
+  }
+}

@@ -29,7 +29,8 @@ import { ConfigurationError } from '../internal/errors.ts';
 // the JSON-value rules for data a fixture returns.
 export { ConfigurationError, InfrastructureError, TestError } from '../internal/errors.ts';
 export { validateJsonValue, type JsonValueRules } from '../internal/json-value.ts';
-export { describePattern, matchesText, toTextPattern, type TextMatch } from '../internal/text.ts';
+export { describePattern, matchesText, toTextPattern } from '../internal/text.ts';
+export type { TextMatch } from '../types.ts';
 export { Deadline, pollCondition, type PollConditionOptions } from '../internal/time.ts';
 export { urlMatches } from '../internal/urls.ts';
 import type { Expectable, Locator, Momentum, Screen, ScrollDirection } from '../types.ts';

@@ -50,13 +50,13 @@ export interface RawObservedNode extends RawNodeData {
  * the result simply ends, and the runner's visible observation byte budget is
  * the effective limit.
  */
-export interface RawObservation {
+interface RawObservation {
   nodes: RawObservedNode[];
   /** Live element handles positionally aligned with `nodes`. */
   elements: Element[];
 }
 
-export type SemanticMode =
+type SemanticMode =
   | { kind: 'node' }
   | {
       kind: 'tree';
@@ -68,7 +68,7 @@ export type SemanticMode =
     };
 
 /** Result of one read, selected by the mode discriminant. */
-export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'node' }
+type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'node' }
   ? RawNodeData
   : RawObservation;
 
@@ -82,7 +82,7 @@ export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'no
  * modes also project nodes differently; those differences are data (see
  * `projection` below), not scattered branches.
  */
-export const readSemanticsFunction = <Mode extends SemanticMode>(
+const readSemanticsFunction = <Mode extends SemanticMode>(
   element: Element,
   options: { testIdAttribute: string; secureFieldSelector: string; mode: Mode },
 ): SemanticResult<Mode> => {
@@ -634,7 +634,7 @@ interface NodeReadOptions {
 }
 
 /** Options for one document's tree walk. */
-export interface TreeReadOptions {
+interface TreeReadOptions {
   readonly testIdAttribute: string;
   readonly secureFieldSelector: string;
   readonly mode: Extract<SemanticMode, { kind: 'tree' }>;

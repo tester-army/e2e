@@ -180,15 +180,6 @@ export class Invocation {
     );
   }
 
-  /** Public API name of the method being run, e.g. `agent.assert`. */
-  get api(): string {
-    return this.options.api;
-  }
-
-  get engine(): LocatorEngine {
-    return this.runtime.engine;
-  }
-
   get session(): TargetSession {
     return this.runtime.engine.session;
   }

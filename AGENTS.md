@@ -91,6 +91,11 @@ pnpm --filter @e2edev/testbed run test:headed
 - Lint is `oxlint` with `correctness`/`suspicious`/`perf` as errors and
   `style`/`pedantic` off. `no-await-in-loop` is intentionally off (sequential
   execution is the runner's contract).
+- `pnpm check:dead-code` runs [fallow](https://github.com/fallow-rs/fallow)
+  (`.fallowrc.json`): unused files, exports, dependencies, and duplicate
+  export names fail CI. An export whose only consumer is a test is dead
+  production API - make it module-private or move it. The class-member rule is
+  advisory (`warn`) because it misses getters and callback-invoked methods.
 - JSDoc on new functions; avoid inline comments unless they explain *why*.
 
 ## Testing quirks

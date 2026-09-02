@@ -25,6 +25,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      - name: Dead code (fallow)
+        run: pnpm check:dead-code
       - name: Typecheck spec
         run: pnpm check:spec
       - name: Typecheck packages

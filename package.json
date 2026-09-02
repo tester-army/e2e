@@ -10,7 +10,8 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build",
-    "check": "pnpm run lint && pnpm run check:spec && pnpm run typecheck && pnpm run docs:check",
+    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run check:spec && pnpm run typecheck && pnpm run docs:check",
+    "check:dead-code": "fallow dead-code",
     "check:manifest": "node scripts/check-manifest-coupling.mjs",
     "check:spec": "tsc --project tsconfig.spec.json",
     "docs:check": "fern check",
@@ -35,6 +36,7 @@
     "@changesets/changelog-github": "0.7.0",
     "@changesets/cli": "2.31.1",
     "@types/node": "26.1.1",
+    "fallow": "3.22.0",
     "fern-api": "5.80.4",
     "oxlint": "1.75.0",
     "typescript": "7.0.2",

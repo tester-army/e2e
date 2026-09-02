@@ -12,7 +12,7 @@ import {
   asBackendError,
   E2EError,
   TestError,
-  translateBackendError as translateBackendErrorCore,
+  translateBackendError,
 } from '../internal/errors.ts';
 import { describeExpression } from './expression.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
@@ -42,10 +42,6 @@ export class LocatorEngine {
 
   get signal(): AbortSignal {
     return this.options.signal;
-  }
-
-  get actionTimeout(): number {
-    return this.options.actionTimeout;
   }
 
   get assertionTimeout(): number {
@@ -87,7 +83,7 @@ export class LocatorEngine {
           await sleep(POLL_INTERVAL_MS, this.options.signal);
           continue;
         }
-        throw translateBackendError(cause, expression);
+        throw translateLocatorError(cause, expression);
       }
     }
   }
@@ -151,7 +147,7 @@ export class LocatorEngine {
         if (backendError?.code === 'NODE_STALE' && backendError.retryable && !deadline.expired()) {
           continue;
         }
-        throw translateBackendError(cause, expression);
+        throw translateLocatorError(cause, expression);
       }
     }
   }
@@ -170,7 +166,7 @@ export class LocatorEngine {
       if (asBackendError(cause)?.code === 'NODE_STALE') {
         return { node: null, count: 0 };
       }
-      throw translateBackendError(cause, expression);
+      throw translateLocatorError(cause, expression);
     }
   }
 
@@ -201,7 +197,7 @@ export class LocatorEngine {
         ) {
           continue;
         }
-        throw translateBackendError(cause, expression);
+        throw translateLocatorError(cause, expression);
       }
     }
   }
@@ -219,7 +215,7 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
 }
 
 /** Translates a backend error into the runner-owned public taxonomy. */
-export function translateBackendError(cause: unknown, expression?: LocatorExpression): E2EError {
+export function translateLocatorError(cause: unknown, expression?: LocatorExpression): E2EError {
   const suffix = expression === undefined ? '' : `: ${describeExpression(expression)}`;
-  return translateBackendErrorCore(cause, suffix);
+  return translateBackendError(cause, suffix);
 }
