@@ -80,6 +80,8 @@ describe('trace-1 entry', () => {
   it.each([
     ['not an object', 'nope'],
     ['wrong schema version', { schemaVersion: 'cache-1', payload: trace() }],
+    ['missing createdAt', { schemaVersion: 'trace-1', payload: trace() }],
+    ['unparseable createdAt', { schemaVersion: 'trace-1', createdAt: 'not-a-date', payload: trace() }],
     ['empty actions', withPayload({ actions: [] })],
     [
       'too many actions',

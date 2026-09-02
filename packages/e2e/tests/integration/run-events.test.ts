@@ -4,9 +4,12 @@
  * while a throwing sink is quarantined without affecting the run.
  */
 
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
+import { credentials } from '../../src/index.ts';
 import {
   createProject,
   runExisting,
@@ -117,6 +120,65 @@ describe('run events', () => {
     expect(finished.exitCode).toBe(outcome.exitCode);
     expect(finished.reportPath).toBe(outcome.reportPath);
   });
+});
+
+describe('run events: run lifecycle hygiene', () => {
+  it('a report-write failure fails the run, withholds reportPath, and precedes run-finished', async () => {
+    const app = await startFixtureApp();
+    const project = createProject({ 'tests/events.e2e.ts': SUITE });
+    // A directory where report.json must be written makes the atomic rename fail.
+    mkdirSync(path.join(project.dir, '.e2e', 'report.json'), { recursive: true });
+    const events: RunEvent[] = [];
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'] as const,
+          agent: oneTapExecutor,
+          cache: 'off' as const,
+        },
+        runOptions: { onEvent: (event) => events.push(event) },
+      });
+      expect(outcome.exitCode).not.toBe(0);
+      expect(outcome.status).toBe('error');
+      expect(outcome.reportPath).toBeUndefined();
+      const types = events.map((event) => event.type);
+      const reportError = types.indexOf('run-error');
+      expect(reportError).toBeGreaterThan(-1);
+      expect(reportError).toBeLessThan(types.indexOf('run-finished'));
+      const finished = events.at(-1);
+      if (finished?.type !== 'run-finished') throw new Error('missing run-finished');
+      expect(finished.exitCode).toBe(outcome.exitCode);
+      expect(finished.reportPath).toBeUndefined();
+      // The in-memory report is the only complete record and carries the error.
+      expect(outcome.report.run.errors.some((entry) => entry.phase === 'report')).toBe(true);
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+
+  it('clears the credential registry when the run resolves', async () => {
+    const app = await startFixtureApp();
+    const project = createProject({ 'tests/events.e2e.ts': SUITE });
+    try {
+      await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'] as const,
+          agent: oneTapExecutor,
+          cache: 'off' as const,
+          credentials: { member: { username: 'member', password: 'hunter2' } },
+        },
+      });
+      expect(() => credentials.user('member')).toThrow(/only available while the e2e runner/);
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
 });
 
 describe('run events: quarantined sink', () => {

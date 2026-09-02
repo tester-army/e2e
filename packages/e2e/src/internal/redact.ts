@@ -7,7 +7,9 @@
  * Longer values are substituted first, so a secret that contains another secret
  * is not left half-rewritten.
  */
-export function createRedactor(secrets: ReadonlyMap<string, string>): (text: string) => string {
+export function createRedactor(
+  secrets: Iterable<readonly [string, string]>,
+): (text: string) => string {
   const entries = [...secrets]
     .filter(([, value]) => value.length > 0)
     .toSorted((a, b) => b[1].length - a[1].length);
@@ -29,16 +31,22 @@ export function createRedactor(secrets: ReadonlyMap<string, string>): (text: str
  * shared map.
  */
 export class SecretLedger {
-  private readonly values = new Map<string, string>();
+  /**
+   * Every value ever registered, not just the newest per name: a rotating
+   * secret (a fresh TOTP per fill) leaves its earlier codes on screen and in
+   * captures, and an earlier value that stopped redacting would leak there.
+   */
+  private readonly values: [string, string][] = [];
   private redactor: ((text: string) => string) | undefined;
 
   constructor(initial: Iterable<readonly [string, string]> = []) {
-    for (const [name, value] of initial) this.values.set(name, value);
+    for (const [name, value] of initial) this.register(name, value);
   }
 
-  /** Registers one resolved value; later registrations for a name replace it. */
+  /** Registers one resolved value; earlier values for the name keep redacting. */
   register(name: string, value: string): void {
-    this.values.set(name, value);
+    if (this.values.some(([n, v]) => n === name && v === value)) return;
+    this.values.push([name, value]);
     this.redactor = undefined;
   }
 

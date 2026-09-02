@@ -43,6 +43,26 @@ describe('createRunEventEmitter', () => {
     expect(events.map((event) => event.seq)).toEqual([1, 2, 3]);
   });
 
+  it('quarantines an async sink whose promise rejects, without an unhandled rejection', async () => {
+    let calls = 0;
+    const events: RunEvent[] = [];
+    const emit = createRunEventEmitter([
+      async () => {
+        calls += 1;
+        throw new Error('async broken sink');
+      },
+      (event) => events.push(event),
+    ]);
+    emit(fact(1));
+    // The rejection settles on a later tick; quarantine must land before the
+    // next emit that follows it.
+    await new Promise((resolve) => setImmediate(resolve));
+    emit(fact(2));
+    emit(fact(3));
+    expect(calls).toBe(1);
+    expect(events).toHaveLength(3);
+  });
+
   it('emits JSON-serializable events', () => {
     const events: RunEvent[] = [];
     const emit = createRunEventEmitter([(event) => events.push(event)]);
