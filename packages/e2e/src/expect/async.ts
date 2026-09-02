@@ -1,14 +1,13 @@
-/** Runner-owned polling locator and web assertions (spec 03-assertions.md). */
+/** Runner-owned polling locator assertions (spec 03-assertions.md). */
 
-import type { SemanticNode } from '../driver/index.ts';
+import type { SemanticNode } from '../backend/surface.ts';
 import { TestError } from '../internal/errors.ts';
 import { normalizeText, containsText, matchesText, toTextPattern, describePattern } from '../internal/text.ts';
-import { urlMatches, type NormalizedBaseUrl } from '../internal/urls.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
 import { isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { LocatorInternals } from '../locator/screen.ts';
-import type { AsyncExpectation, TextMatch, WebExpectation } from '../types.ts';
+import type { AsyncExpectation, TextMatch } from '../types.ts';
 
 interface Sample {
   readonly count: number;
@@ -261,74 +260,4 @@ function observedState(sample: Sample): string {
 
 export function createAsyncExpectation(internals: LocatorInternals): AsyncExpectation {
   return new AsyncExpectationImpl(internals, false);
-}
-
-/** Internal contract the web fixture registers for expect(web). */
-export interface WebExpectTarget {
-  readonly base: NormalizedBaseUrl;
-  readonly assertionTimeout: number;
-  readonly signal: AbortSignal;
-  url(): Promise<string>;
-  title(): Promise<string>;
-  runStep(api: string, label: string, body: () => Promise<void>): Promise<void>;
-}
-
-class WebExpectationImpl implements WebExpectation {
-  constructor(
-    private readonly target: WebExpectTarget,
-    private readonly negated: boolean,
-  ) {}
-
-  get not(): WebExpectation {
-    return new WebExpectationImpl(this.target, !this.negated);
-  }
-
-  private async poll(
-    api: string,
-    label: string,
-    condition: () => Promise<boolean>,
-    observed: () => Promise<string>,
-    timeout: number | undefined,
-  ): Promise<void> {
-    const fullApi = `expect.${this.negated ? 'not.' : ''}${api}`;
-    await this.target.runStep(fullApi, label, () =>
-      pollCondition({
-        deadline: new Deadline(timeout ?? this.target.assertionTimeout),
-        signal: this.target.signal,
-        negated: this.negated,
-        evaluate: condition,
-        onTimeout: async () =>
-          new TestError(
-            'ASSERTION_FAILED',
-            `${fullApi} failed\nexpected: ${this.negated ? 'not ' : ''}${label}\nobserved: ${await observed()}`,
-          ),
-      }),
-    );
-  }
-
-  toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void> {
-    const label = typeof expected === 'string' ? expected : String(expected);
-    return this.poll(
-      'toHaveURL',
-      `URL ${label}`,
-      async () => urlMatches(await this.target.url(), expected, this.target.base),
-      async () => `URL ${await this.target.url()}`,
-      options?.timeout,
-    );
-  }
-
-  toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    const pattern = toTextPattern(expected, { exact: true });
-    return this.poll(
-      'toHaveTitle',
-      `title ${describePattern(pattern)}`,
-      async () => matchesText(await this.target.title(), pattern),
-      async () => `title ${JSON.stringify(await this.target.title())}`,
-      options?.timeout,
-    );
-  }
-}
-
-export function createWebExpectation(target: WebExpectTarget): WebExpectation {
-  return new WebExpectationImpl(target, false);
 }

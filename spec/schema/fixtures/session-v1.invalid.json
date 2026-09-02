@@ -4,8 +4,8 @@
   "name": "member",
   "targetId": "web",
   "platform": "web",
-  "driver": {
-    "id": "playwright",
+  "backend": {
+    "name": "playwright",
     "version": "1.0.0",
     "spiVersion": 1
   },

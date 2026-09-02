@@ -1,41 +1,44 @@
 /**
- * The backend-to-session adapter (RFC0002). A backend target has no driver;
- * this adapter satisfies the internal `DriverSession` shape over the backend
- * contract instead, so the agent tier, the judgment tier, the trace cache,
- * and the fixture graph run unchanged. Every capability the backend does not
- * declare fails loud with `UNSUPPORTED_CAPABILITY` at the moment of use —
- * the graded-degradation rule, not a silent no-op.
+ * The backend-to-session adapter (RFC0002). One adapter per attempt satisfies
+ * the internal `TargetSession` surface over the backend contract, so the agent
+ * tier, the judgment tier, the trace cache, and the fixture graph program
+ * against one shape. It is the single seam every backend call crosses, which
+ * makes it the one place two rules are enforced: a capability the backend does
+ * not declare fails loud with `UNSUPPORTED_CAPABILITY` at the moment of use,
+ * and anything a backend throws that is not a `BackendError` is normalized to
+ * a non-retryable `BACKEND_FAILURE`, so a crashed backend is an infrastructure
+ * failure everywhere and never a retry-eligible test failure.
  */
 
 import {
-  DriverError,
-  type DriverAgentActions,
-  type DriverApp,
-  type DriverArtifacts,
-  type DriverScreen,
-  type DriverSession,
-  type LocatorAction,
+  asBackendError,
+  ConfigurationError,
+  E2EError,
+  errorMessage,
+  isForeignE2EError,
+} from '../internal/errors.ts';
+import type { BackendHandle } from './index.ts';
+import {
+  BackendError,
   type NodeRef,
   type Observation,
+  type ObserveOptions,
   type OperationContext,
   type SemanticNode,
-} from '../driver/index.ts';
-import { ConfigurationError } from '../internal/errors.ts';
-import type { BackendActions, BackendHandle } from './index.ts';
+  type SessionActions,
+  type SessionApp,
+  type SessionArtifacts,
+  type SessionScreen,
+  type TargetSession,
+} from './surface.ts';
 
 export interface BackendSessionOptions {
   readonly backend: BackendHandle | undefined;
   readonly targetName: string;
-  /** Base href for `app.open()` with no path. */
-  readonly baseHref: string;
 }
 
-function unsupported(targetName: string, what: string): never {
-  throw new ConfigurationError(
-    'UNSUPPORTED_CAPABILITY',
-    `target "${targetName}" has no backend capability for ${what}`,
-  );
-}
+/** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
+const MAX_LOCATED_REFS = 2048;
 
 /**
  * Stamps the adapter's revision onto every ref. Backends mint stable ids;
@@ -70,133 +73,174 @@ function countSecure(nodes: readonly SemanticNode[]): number {
 }
 
 /**
+ * Normalizes what a backend threw onto the error contract. `BackendError`
+ * (from any module copy) and runner errors pass through; anything else is the
+ * backend failing outside its contract, reported as infrastructure.
+ */
+function normalize(cause: unknown, label: string): never {
+  if (cause instanceof E2EError || isForeignE2EError(cause) || asBackendError(cause) !== undefined) {
+    throw cause;
+  }
+  throw new BackendError('BACKEND_FAILURE', `${label} failed: ${errorMessage(cause)}`, {
+    retryable: false,
+    cause,
+  });
+}
+
+/**
  * Builds one session over a backend. One adapter per attempt; revisions are
  * minted per adapter, so refs can never leak across attempts.
  */
-export function createBackendSession(options: BackendSessionOptions): DriverSession {
+export function createBackendSession(options: BackendSessionOptions): TargetSession {
   const { backend, targetName } = options;
   let revision = 0;
   let viewport = { width: 1, height: 1, scale: 1 };
 
-  const actions: DriverAgentActions = {
-    async tap(target, operation) {
-      const tap = backend?.actions?.tap ?? unsupported(targetName, 'tap');
-      await tap.call(backend?.actions, target, operation);
-    },
-    async type(target, value, _sensitive, operation) {
-      const type = backend?.actions?.type ?? unsupported(targetName, 'type');
-      await type.call(backend?.actions, target, value, operation);
-    },
-    async scroll(direction, scrollOptions, operation) {
-      const scroll = backend?.actions?.scroll ?? unsupported(targetName, 'scroll');
-      await scroll.call(
-        backend?.actions,
-        direction,
-        scrollOptions.target === undefined ? undefined : { ref: scrollOptions.target },
-        operation,
-      );
-    },
-    async press() {
-      // The grammar's global key press has no backend verb; targeted presses
-      // route through screen.perform below.
-      unsupported(targetName, 'press');
-    },
+  const unsupported = (what: string): never => {
+    throw new ConfigurationError(
+      'UNSUPPORTED_CAPABILITY',
+      `target "${targetName}" has no backend capability for ${what}`,
+    );
   };
 
-  // Locate results, cached by id so `read(ref)` answers from the resolution
-  // that minted the ref. A read against an older resolution is NODE_STALE,
-  // which the engine treats as retryable: it re-resolves and reads again.
-  let locateRevision = 0;
-  let located = new Map<string, SemanticNode>();
+  /** Resolves one declared member bound to its owner, or fails loud. */
+  const member = <Owner extends object, Key extends keyof Owner>(
+    owner: Owner | undefined,
+    key: Key,
+    what: string,
+  ): NonNullable<Owner[Key]> => {
+    const value = owner?.[key];
+    if (typeof value !== 'function') unsupported(what);
+    return (value as (...args: never[]) => unknown).bind(owner) as NonNullable<Owner[Key]>;
+  };
 
-  const performAction = async (
-    ref: NodeRef,
-    action: LocatorAction,
-    operation: OperationContext,
-  ): Promise<void> => {
-    const verbs: BackendActions | undefined = backend?.actions;
-    switch (action.kind) {
-      case 'tap': {
-        const tap = verbs?.tap ?? unsupported(targetName, 'tap');
-        await tap.call(verbs, { ref }, operation);
-        return;
-      }
-      case 'fill': {
-        const type = verbs?.type ?? unsupported(targetName, 'type');
-        await type.call(verbs, { ref }, action.value, operation);
-        return;
-      }
-      case 'press': {
-        const press = verbs?.press ?? unsupported(targetName, 'press');
-        await press.call(verbs, { ref }, action.key, operation);
-        return;
-      }
-      case 'selectOption': {
-        const select = verbs?.select ?? unsupported(targetName, 'select');
-        await select.call(verbs, { ref }, String(action.value), operation);
-        return;
-      }
-      default:
-        unsupported(targetName, `the "${action.kind}" action`);
+  /** Runs one backend call under the error contract. */
+  const guarded = async <T>(label: string, run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (cause) {
+      return normalize(cause, label);
     }
   };
 
-  const screen: DriverScreen = {
-    async resolve(expression, operation) {
-      const locate = backend?.locate ?? unsupported(targetName, 'locators (screen)');
-      const nodes = await locate.call(backend, expression, operation);
-      locateRevision += 1;
-      const locateRev = `l${locateRevision}`;
-      located = new Map();
-      const refs: NodeRef[] = [];
-      for (const node of nodes) {
-        const stamped = stampRevision(node, locateRev);
-        located.set(stamped.ref.id, stamped);
-        refs.push(stamped.ref);
-      }
-      return refs;
-    },
+  /** One declared member as a guarded call: capability-checked, error-normalized. */
+  const call =
+    <Owner extends object, Key extends keyof Owner>(owner: Owner | undefined, key: Key, what: string) =>
+    (...args: Parameters<Extract<NonNullable<Owner[Key]>, (...inner: never[]) => unknown>>) =>
+      guarded(what, () =>
+        (member(owner, key, what) as (...inner: typeof args) => Promise<never>)(...args),
+      ) as ReturnType<Extract<NonNullable<Owner[Key]>, (...inner: never[]) => unknown>>;
+
+  const actions: SessionActions = {
+    tap: call(backend?.actions, 'tap', 'tap'),
+    type: (target, value, _sensitive, operation) =>
+      call(backend?.actions, 'type', 'type')(target, value, operation),
+    scroll: (direction, scrollOptions, operation) =>
+      call(backend?.actions, 'scroll', 'scroll')(
+        direction,
+        scrollOptions.target === undefined ? undefined : { ref: scrollOptions.target },
+        operation,
+      ),
+  };
+
+  // Located nodes, cached by id so `read(ref)` answers from the resolution
+  // that minted the ref. A read against an older resolution is NODE_STALE,
+  // which the engine treats as retryable: it re-resolves and reads again.
+  let locateRevision = 0;
+  const located = new Map<string, SemanticNode>();
+
+  const stale = (ref: NodeRef): BackendError =>
+    new BackendError('NODE_STALE', `node ${ref.id} is stale; re-resolve`, { retryable: true });
+
+  const requireLocated = (ref: NodeRef): SemanticNode => {
+    if (backend?.locate === undefined) unsupported('locators (screen)');
+    const node = located.get(ref.id);
+    if (node === undefined || node.ref.revision !== ref.revision) throw stale(ref);
+    return node;
+  };
+
+  /** A located ref from a superseded resolution never reaches the backend. */
+  const rejectSupersededLocate = (ref: NodeRef): void => {
+    const known = located.get(ref.id);
+    if (known !== undefined && known.ref.revision !== ref.revision) throw stale(ref);
+  };
+
+  const screen: SessionScreen = {
+    resolve: (expression, operation) =>
+      guarded('locate', async () => {
+        const nodes = await member(backend, 'locate', 'locators (screen)')(expression, operation);
+        locateRevision += 1;
+        const locateRev = `l${locateRevision}`;
+        const refs: NodeRef[] = [];
+        for (const node of nodes) {
+          const stamped = stampRevision(node, locateRev);
+          located.delete(stamped.ref.id);
+          located.set(stamped.ref.id, stamped);
+          refs.push(stamped.ref);
+        }
+        for (const oldest of located.keys()) {
+          if (located.size <= MAX_LOCATED_REFS) break;
+          located.delete(oldest);
+        }
+        return refs;
+      }),
     async read(ref) {
-      if (backend?.locate === undefined) unsupported(targetName, 'locators (screen)');
-      const node = located.get(ref.id);
-      if (node === undefined || node.ref.revision !== ref.revision) {
-        throw new DriverError('NODE_STALE', `node ${ref.id} is stale; re-resolve`, {
-          retryable: true,
-        });
-      }
-      return node;
+      return requireLocated(ref);
     },
-    perform: performAction,
-    async swipe() {
-      unsupported(targetName, 'swipe');
-    },
+    perform: (ref, action, operation) =>
+      guarded(`the "${action.kind}" action`, async () => {
+        // Refs come from locate (the deterministic tier) or from the newest
+        // observation (the agent's targeted press/select). Both live in the
+        // backend's one id space; the adapter only rejects a located ref it
+        // knows to be superseded, and the backend reports NODE_STALE for the rest.
+        rejectSupersededLocate(ref);
+        if (action.kind === 'dragTo') rejectSupersededLocate(action.target);
+        const perform = backend?.perform;
+        if (perform !== undefined) {
+          await perform.call(backend, ref, action, operation);
+          return;
+        }
+        // Without `perform`, the four actions that are also grammar verbs go
+        // through the verbs; everything else is honestly unsupported.
+        const verbs = backend?.actions;
+        switch (action.kind) {
+          case 'tap':
+            await member(verbs, 'tap', 'tap')({ ref }, operation);
+            return;
+          case 'fill':
+            await member(verbs, 'type', 'type')({ ref }, action.value, operation);
+            return;
+          case 'press':
+            await member(verbs, 'press', 'press')({ ref }, action.key, operation);
+            return;
+          case 'selectOption':
+            await member(verbs, 'select', 'select')({ ref }, String(action.value), operation);
+            return;
+          default:
+            unsupported(`the "${action.kind}" action`);
+        }
+      }),
+    swipe: call(backend, 'swipe', 'swipe'),
   };
 
-  const app: DriverApp = {
-    async open(path, operation) {
-      const navigate = backend?.actions?.navigate ?? unsupported(targetName, 'navigate');
-      await navigate.call(backend?.actions, path ?? options.baseHref, operation);
-    },
-    async restart() {
-      unsupported(targetName, 'app restart');
-    },
-    async clearState() {
-      unsupported(targetName, 'app state clearing');
-    },
-    async back() {
-      unsupported(targetName, 'back navigation');
-    },
-    async deepLink(url, operation) {
-      const navigate = backend?.actions?.navigate ?? unsupported(targetName, 'navigate');
-      await navigate.call(backend?.actions, url, operation);
-    },
+  const app: SessionApp = {
+    open: call(backend?.actions, 'navigate', 'navigate'),
+    restart: call(backend?.app, 'restart', 'app restart'),
+    clearState: call(backend?.app, 'clearState', 'app state clearing'),
+    back: call(backend?.actions, 'back', 'back navigation'),
   };
 
-  const artifacts: DriverArtifacts = {
-    async screenshot() {
-      unsupported(targetName, 'screenshots');
-    },
+  const artifacts: SessionArtifacts = {
+    screenshot: call(backend?.artifacts, 'screenshot', 'screenshots'),
+    ...(backend?.artifacts?.startTrace === undefined || backend.artifacts.stopTrace === undefined
+      ? {}
+      : {
+          startTrace: call(backend.artifacts, 'startTrace', 'traces'),
+          stopTrace: call(backend.artifacts, 'stopTrace', 'traces'),
+        }),
   };
+
+  let ended = false;
 
   return {
     app,
@@ -206,49 +250,46 @@ export function createBackendSession(options: BackendSessionOptions): DriverSess
     ...(backend?.state === undefined
       ? {}
       : {
-          async captureState(operation: OperationContext) {
-            const snapshot = await backend.state!.capture(operation);
-            return {
-              format: snapshot.format,
-              version: snapshot.version,
-              data: snapshot.data as never,
-            };
-          },
-          async restoreState(state, operation: OperationContext) {
-            await backend.state!.restore(
-              { format: state.format, version: state.version, data: state.data },
-              operation,
-            );
-          },
+          captureState: call(backend.state, 'capture', 'state capture'),
+          restoreState: call(backend.state, 'restore', 'state restore'),
         }),
-    async observe(operation: OperationContext): Promise<Observation> {
-      const observe = backend?.observe ?? unsupported(targetName, 'observation');
-      const snapshot = await observe.call(backend, operation);
-      if (snapshot.viewport !== undefined) viewport = snapshot.viewport;
-      revision += 1;
-      const minted = `b${revision}`;
-      return {
-        revision: minted,
-        capturedAt: new Date().toISOString(),
-        tree: toTree(snapshot.nodes, minted),
-        viewport,
-        // The harness redacts observation text downstream for every backend;
-        // the completeness gate is about masked pixels, which a backend
-        // observation never carries.
-        redaction: {
-          secureNodeCount: countSecure(snapshot.nodes),
-          maskedRegionCount: 0,
-          complete: true,
-        },
-      };
-    },
+    ...(backend?.url === undefined ? {} : { url: call(backend, 'url', 'the current URL') }),
+    observe: (operation: OperationContext, observeOptions?: ObserveOptions): Promise<Observation> =>
+      guarded('observe', async () => {
+        const snapshot = await member(backend, 'observe', 'observation')(
+          operation,
+          observeOptions?.pixels === true ? { pixels: true } : {},
+        );
+        if (snapshot.viewport !== undefined) viewport = snapshot.viewport;
+        revision += 1;
+        const minted = `b${revision}`;
+        return {
+          revision: minted,
+          capturedAt: new Date().toISOString(),
+          ...(snapshot.pixels === undefined ? {} : { pixels: snapshot.pixels }),
+          tree: toTree(snapshot.nodes, minted),
+          viewport,
+          // The harness redacts observation text downstream for every backend.
+          // Pixel completeness is judged downstream too, from the region count
+          // against the secure nodes, so a short mask degrades to tree-only
+          // input instead of failing the observation here.
+          redaction: {
+            secureNodeCount: countSecure(snapshot.nodes),
+            maskedRegionCount: snapshot.maskedRegionCount ?? 0,
+            complete: true,
+          },
+        };
+      }),
     async runtime() {
       return { viewport };
     },
-    async close() {
+    close: () =>
       // The backend outlives the attempt; only the per-attempt isolation ends
-      // here. dispose() (browser/process teardown) belongs to the worker.
-      await backend?.endAttempt?.();
-    },
+      // here, exactly once. dispose() belongs to the worker.
+      guarded('attempt end', async () => {
+        if (ended) return;
+        ended = true;
+        await backend?.endAttempt?.();
+      }),
   };
 }

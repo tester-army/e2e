@@ -1,4 +1,5 @@
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 /**
  * Opt-in suite against real public websites. Run manually:
@@ -22,5 +23,5 @@ export default defineConfig({
     ],
   },
   tests: 'tests-public/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
 })

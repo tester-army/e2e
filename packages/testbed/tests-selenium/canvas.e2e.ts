@@ -1,4 +1,5 @@
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 /**
  * Two canvas pages, both with nothing in the accessibility tree: the target on

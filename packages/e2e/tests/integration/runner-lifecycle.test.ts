@@ -151,7 +151,8 @@ test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, screen, sessi
   await session.save('seeded');
 });
 `;
-      const consumerFile = `import { test, expect } from 'e2e';
+      const consumerFile = `import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test('starts with the seeded state', { session: 'seeded' }, async ({ app, screen, web }) => {
   await app.open('/storage');

@@ -10,7 +10,7 @@ function resolve(
   env: NodeJS.ProcessEnv = BASE_ENV,
   cli?: CliOverrides,
 ) {
-  return resolveConfig(raw, {
+  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, {
     projectRoot: ROOT,
     env,
     ...(cli === undefined ? {} : { cli }),

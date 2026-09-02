@@ -1,58 +1,29 @@
-/** Reference Playwright driver for web-0.1 (spec 09-drivers.md). */
+/**
+ * `@e2edev/playwright` public surface: the `playwright()` backend factory, the
+ * `web` fixture types, and a `test` typed with that fixture. Everything else a
+ * test needs (`expect`, `credentials`) comes from `e2e` itself: this package
+ * contributes a surface, it does not re-export the test API.
+ */
 
-import {
-  DriverError,
-  defineDriver,
-  type Driver,
-  type DriverContext,
-  type DriverSession,
-  type Target,
-} from 'e2e/driver';
-import { packageVersion } from 'e2e/internal';
-import { BrowserPool } from './browser-pool.ts';
-import { ensureBrowsersInstalled } from './install.ts';
-import { PlaywrightSession, parseWebTarget } from './session.ts';
-import { message } from './support.ts';
+import { test as base } from 'e2e';
+import type { Web } from './web.ts';
 
-/** Creates the reference Playwright driver instance with a per-handle browser pool. */
-export function playwright(): Driver {
-  const pool = new BrowserPool();
-  return defineDriver({
-    id: 'playwright',
-    version: packageVersion(import.meta.url, '../package.json', 'unknown'),
-    platforms: ['web'],
-    spiVersion: 1,
-    capabilities: {
-      fixtures: ['web'],
-      artifacts: ['screenshot', 'trace'],
-      state: true,
-    },
-    async prepare(targets: readonly Target[]): Promise<void> {
-      await ensureBrowsersInstalled(targets.map((target) => parseWebTarget(target).browser));
-    },
-    async launch(context: DriverContext): Promise<DriverSession> {
-      const target = parseWebTarget(context.target);
-      let browser;
-      try {
-        browser = await pool.acquire(
-          target.browser,
-          context.launchOptions.headed,
-          context.operation.timeoutMs,
-        );
-      } catch (cause) {
-        throw new DriverError('DRIVER_FAILURE', `browser launch failed: ${message(cause)}`, {
-          retryable: false,
-          cause,
-        });
-      }
-      const session = new PlaywrightSession(context, browser);
-      await session.launch();
-      return session;
-    },
-    async dispose(): Promise<void> {
-      await pool.dispose();
-    },
-  });
-}
+export { playwright } from './backend.ts';
+export type { PlaywrightOptions } from './surface.ts';
+export type { BrowserName } from './browser-pool.ts';
+export type { Dialog } from './dialogs.ts';
+export type {
+  Cookie,
+  CookieFields,
+  RouteFulfillResponse,
+  Web,
+  WebExpectation,
+  WebResponse,
+  WebRoute,
+} from './web.ts';
 
-export default playwright;
+/**
+ * `test` typed with this backend's contributed `web` fixture. The same
+ * runtime `test` as `e2e`'s; only the fixture types differ.
+ */
+export const test = base.extend<{ web: Web }>();

@@ -4,7 +4,7 @@
  * The harness opens the step, owns the deadline, the action budget, origin
  * policy, observation redaction, and recording — then hands the step to the
  * configured executor and maps its verdict back onto the runner's error
- * taxonomy. The executor never touches the driver: everything bottoms out in
+ * taxonomy. The executor never touches the backend: everything bottoms out in
  * the context built here, on the same accounting core (phases.ts) the
  * locate/judgment tier runs on. Trace-cache participation — replay, live
  * recording, staging — lives beside the dispatch in `StepTraceSession`.
@@ -12,7 +12,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DriverError, type SemanticNode } from '../driver/index.ts';
+import { BackendError, type SemanticNode } from '../backend/surface.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { createRedactor } from '../internal/redact.ts';
@@ -196,7 +196,7 @@ class ActDispatch {
    *
    * Invariant: a serialized body must never call `observe()` or `runAction()`
    * itself — the inner call would queue behind its own caller and deadlock.
-   * Grammar bodies call the driver session directly, and secret authorization
+   * Grammar bodies call the session directly, and secret authorization
    * never observes; keep it that way.
    */
   private grammarChain: Promise<unknown> = Promise.resolve();
@@ -280,6 +280,7 @@ class ActDispatch {
           purpose: secret.purpose,
         })),
       },
+      target: this.runtime.target,
       ...(replayedPrefix === undefined ? {} : { replayedPrefix }),
       signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
       // Resolved on first read, so executors that bring their own model (or
@@ -417,12 +418,12 @@ class ActDispatch {
     };
   }
 
-  /** Best-effort current page path + query, for trace preconditions. */
+  /** Best-effort current location path + query, for trace preconditions. */
   private async currentPath(): Promise<string | undefined> {
-    const web = this.session.web;
-    if (web === undefined) return undefined;
+    const currentUrl = this.session.url;
+    if (currentUrl === undefined) return undefined;
     try {
-      const url = new URL(await web.url(this.operation()));
+      const url = new URL(await currentUrl.call(this.session, this.operation()));
       return `${url.pathname}${url.search}`;
     } catch {
       return undefined;
@@ -433,7 +434,7 @@ class ActDispatch {
   async stageTrace(): Promise<void> {
     if (this.stepCache === undefined || !this.stepCache.wantsStage) return;
     // The end path is the trace's postcondition; captured only when a write
-    // can actually happen, so read-only runs pay no extra driver call.
+    // can actually happen, so read-only runs pay no extra backend call.
     this.stepCache.stage(this.explanation, await this.currentPath());
   }
 
@@ -589,7 +590,7 @@ class ActDispatch {
   private recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void {
     this.checkpoint();
     this.runtime.steps.recordEvent({
-      kind: 'driver',
+      kind: 'backend',
       startedAt: timestamp(),
       durationMs: Math.max(0, Math.round(call.durationMs ?? 0)),
       status: 'passed',
@@ -664,8 +665,8 @@ class ActDispatch {
   }
 
   /**
-   * One driver operation's budget: `actionTimeout`, capped by the step clock.
-   * Bounding each call independently is what keeps a single page that never
+   * One backend operation's budget: `actionTimeout`, capped by the step clock.
+   * Bounding each call independently is what keeps a single screen that never
    * settles from consuming the whole step — the hang costs one action
    * timeout and a clearly attributed failure, not the test budget.
    */
@@ -758,7 +759,7 @@ class ActDispatch {
     return observation;
   }
 
-  /** One raw observation capture: retried at the driver, then redacted and bounded. */
+  /** One raw observation capture: retried at the backend, then redacted and bounded. */
   private async captureObservation(): Promise<AgentObservation> {
     const raw = await retryingObserve({
       observe: (operation) => this.session.observe(operation, { pixels: false }),
@@ -797,7 +798,7 @@ class ActDispatch {
     return node;
   }
 
-  /** Runs one grammar action against the action budget, recorded as a driver event. */
+  /** Runs one grammar action against the action budget, recorded as a backend event. */
   private runAction(name: string, body: () => Promise<void>, onCommit?: () => void): Promise<void> {
     return this.serialized(() => this.runActionNow(name, body, onCommit));
   }
@@ -821,7 +822,7 @@ class ActDispatch {
     try {
       await instrumentPhase(
         this.runtime,
-        { api: this.spec.api, kind: 'driver', phase: 'agent.action', name },
+        { api: this.spec.api, kind: 'backend', phase: 'agent.action', name },
         body,
       );
     } catch (cause) {
@@ -843,7 +844,7 @@ class ActDispatch {
       try {
         await body(node);
       } catch (cause) {
-        if (cause instanceof DriverError && cause.code === 'NODE_STALE') {
+        if (cause instanceof BackendError && cause.code === 'NODE_STALE') {
           throw new AgentError(
             'LOCATOR_NOT_FOUND',
             'the target node is stale; re-observe and use a current id',

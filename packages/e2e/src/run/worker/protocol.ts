@@ -2,7 +2,7 @@
  * Protocol between the scheduler and one target worker. Every message is
  * JSON-serializable so the same shapes work over a child-process IPC channel
  * and in-process (see `run/unit-runner.ts`). Two things deliberately never
- * cross: `ResolvedTarget`, which may hold a live driver instance, and test
+ * cross: `ResolvedTarget`, which may hold a live backend handle, and test
  * functions. Work units therefore carry `TestIdentity` and the worker pairs
  * each identity with a locally resolved test function.
  */

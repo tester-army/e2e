@@ -1,7 +1,7 @@
 /** LocatorExpression -> Playwright locator projection. */
 
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
-import { DriverError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/driver';
+import { BackendError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/backend';
 
 type PwScope = Page | FrameLocator | PwLocator;
 
@@ -18,7 +18,7 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {
-        throw new DriverError('DRIVER_FAILURE', 'role query value must be a string', {
+        throw new BackendError('BACKEND_FAILURE', 'role query value must be a string', {
           retryable: false,
         });
       }
@@ -42,7 +42,7 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
     case 'text':
       return scope.getByText(patternToPw(query.value), { exact: patternExact(query.value) });
     case 'displayValue':
-      // Candidate set; the session filters by current value at resolve time.
+      // Candidate set; the surface filters by current value at locate time.
       return scope.locator('input, textarea, select');
     case 'testId':
       return scope.getByTestId(patternToPw(query.value));
@@ -57,7 +57,7 @@ export interface ProjectedLocator {
 
 /**
  * Projects a complete immutable expression onto a Playwright locator within
- * one scope. Frame cardinality is validated separately by the session.
+ * one scope. Frame cardinality is validated separately by the surface.
  */
 function project(scope: PwScope, expression: LocatorExpression): ProjectedLocator {
   switch (expression.kind) {
@@ -88,7 +88,7 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
             : source.nth(expression.index);
       return { locator, displayValue: null };
     }
-    case 'web-selector':
+    case 'selector':
       return { locator: scope.locator(expression.selector), displayValue: null };
     case 'frame':
       return project(scope.frameLocator(expression.selector), expression.source);
@@ -102,9 +102,9 @@ export function projectExpression(page: Page, expression: LocatorExpression): Pr
 
 function requireSingle(projected: ProjectedLocator): PwLocator {
   if (projected.displayValue !== null) {
-    throw new DriverError(
+    throw new BackendError(
       'UNSUPPORTED_CAPABILITY',
-      'displayValue queries cannot be used as scopes or filters in this driver',
+      'displayValue queries cannot be used as scopes or filters in this backend',
       { retryable: false },
     );
   }
@@ -119,7 +119,7 @@ export function frameSelectors(expression: LocatorExpression): string[] {
     case 'filter':
     case 'index':
       return frameSelectors(expression.source);
-    case 'web-selector':
+    case 'selector':
       return [];
     case 'frame':
       return [expression.selector, ...frameSelectors(expression.source)];

@@ -36,7 +36,7 @@ export function agentStepTable(
     formatMs(step.durationMs),
     formatMs(eventMs(step, 'model')),
     formatMs(eventMs(step, 'observation')),
-    formatMs(eventMs(step, 'driver')),
+    formatMs(eventMs(step, 'backend')),
     String(step.model?.calls ?? 0),
     `${String(step.model?.inputTokens ?? 0)}/${String(step.model?.outputTokens ?? 0)}`,
     step.model?.estimatedCostUsd === undefined ? '-' : formatUsd(step.model.estimatedCostUsd),
@@ -92,7 +92,7 @@ function collectAgentSteps(
   return steps;
 }
 
-function eventMs(step: StepRecord, kind: 'model' | 'observation' | 'driver'): number {
+function eventMs(step: StepRecord, kind: 'model' | 'observation' | 'backend'): number {
   return step.events
     .filter((event) => event.kind === kind)
     .reduce((total, event) => total + event.durationMs, 0);

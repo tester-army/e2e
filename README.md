@@ -21,6 +21,9 @@ E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... pnpm e2e run
 ```
 
 Deterministic suites using `screen`, `app`, `web`, and `expect` need no model.
+The runner knows no platform: `@e2edev/playwright` is the browser backend a
+web target names in its config, and a device or desktop backend plugs into the
+same contract.
 
 ## Why
 
@@ -49,8 +52,8 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 ## Packages
 
 - [`e2e`](./packages/e2e) — the SDK, runner, and CLI.
-- [`@e2edev/playwright`](./packages/playwright) — the reference web driver,
-  loaded on demand by `driver: 'playwright'`.
+- [`@e2edev/playwright`](./packages/playwright) — the browser backend, passed
+  to a target as `backend: playwright()`.
 
 Both publish under the `beta` dist-tag while the surface stabilizes, so npm's
 `latest` is never moved.

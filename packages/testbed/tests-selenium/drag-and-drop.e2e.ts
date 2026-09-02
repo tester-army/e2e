@@ -1,4 +1,5 @@
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 /**
  * seleniumbase.io/other/drag_and_drop is native HTML5 drag-and-drop: the image

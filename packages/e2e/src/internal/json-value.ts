@@ -1,6 +1,6 @@
 /**
  * The one JSON-safety walker. Anything crossing a boundary that demands plain
- * JSON — `web.evaluate` arguments and results, `agent.act` params — validates
+ * JSON — fixture evaluation arguments and results, `agent.act` params — validates
  * here, so cycle detection, plain-prototype checks, and secret rejection
  * cannot drift between call sites.
  */

@@ -51,7 +51,7 @@ function createProgram(): Command {
     .option('--target <ids>', 'comma-separated target IDs', parseList)
     .option('--tag <tag>', 'repeatable tag filter', (value: string, previous: string[] = []) => [...previous, value])
     .option('--tag-mode <mode>', 'tag composition: any or all', 'any')
-    .option('--headed', 'request visible UI when the driver supports it')
+    .option('--headed', 'request visible UI when the backend supports it')
     .option('--retries <n>', 'replace resolved retry count', parsePositiveInt)
     .option('--workers <n>', 'replace worker count', parsePositiveInt)
     .option('--reporter <ids>', 'comma-separated reporters: list, json', parseList)

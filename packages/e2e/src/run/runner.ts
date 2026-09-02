@@ -9,7 +9,6 @@ import {
   type ResolvedConfig,
   type ResolvedTarget,
 } from '../config/resolve.ts';
-import type { Driver } from '../driver/index.ts';
 import { collect, type Collection } from '../collect/collect.ts';
 import { select, type Selection, type SelectionFilters } from '../collect/select.ts';
 import {
@@ -18,11 +17,11 @@ import {
   ConfigurationError,
   exitCodeForCategory,
   serializeError,
-  translateDriverError,
   type E2EError,
 } from '../internal/errors.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
+import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
 import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
@@ -30,12 +29,11 @@ import { writeJsonReport } from '../report/write.ts';
 import { AppProcess } from './app-process.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
-import { resolveDriver } from './resolve-driver.ts';
 import { runUnits } from './scheduler.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
-import type { E2EConfig, Target } from '../types.ts';
+import type { E2EConfig } from '../types.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -90,7 +88,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   let reportPath: string | undefined;
   let appProcess: AppProcess | undefined;
   let sessionStore: SessionStore | undefined;
-  const driversToDispose = new Set<Driver>();
 
   const finish = async (
     exitCode: 0 | 1 | 2 | 3 | 4 | 130,
@@ -212,28 +209,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const store = SessionStore.create(runId, sessionsRoot);
     sessionStore = store;
 
-    // Pre-flight: validate every selected driver before any session launches.
-    // Child-process workers build their own driver instances; these are used
-    // for validation, for report provenance, and (in-process only) execution.
-    const preflightDrivers = new Map<string, Driver>();
+    // Pre-flight: grade every selected target from its backend declaration
+    // before any worker starts, so a config that asks for more than the
+    // backend offers fails here, once, instead of inside a launch budget.
     for (const { target } of selection.perTarget) {
-      const driver = await resolveDriver(target);
-      if (driver === undefined) {
-        // Backend target: nothing to validate or prepare; provenance names
-        // the backend so the report says what actually ran the surface.
-        targetProvenance.set(target.name, backendProvenance(target));
-        continue;
-      }
-      driversToDispose.add(driver);
-      preflightDrivers.set(target.name, driver);
-      targetProvenance.set(target.name, validateDriver(driver, target, resolvedConfig));
+      targetProvenance.set(target.name, validateBackend(target, resolvedConfig));
     }
-
-    // Pre-flight: let each distinct driver provision its backend before any
-    // session launches, so first-run downloads and boots never eat launch
-    // timeouts. Workers build their own driver instances and launch their own
-    // backends, so this must happen here, once, before any worker starts.
-    await prepareDrivers(preflightDrivers, selection, debug);
 
     const externalSignal = options.interruptSignal;
     const onExternalAbort = () => interruptController.abort();
@@ -245,7 +226,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A programmatic `rawConfig` cannot cross a process
-    // boundary (it may hold live driver instances), so it runs in-process
+    // boundary (it may hold live backend handles), so it runs in-process
     // against one worker. Either way the scheduler is the only engine.
     const transport =
       config.configPath === undefined
@@ -259,7 +240,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
               sessionStore: store,
               headed: options.headed ?? false,
               debug,
-              drivers: preflightDrivers,
             }),
           }
         : {
@@ -318,7 +298,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const exitCodes = [exitCodeForCategory(error.category), ...resultExitCodes(results)];
     return finish(combineExitCodes(exitCodes));
   } finally {
-    await debug.time('driver.dispose', () => disposeDrivers(driversToDispose));
     sessionStore?.cleanup();
     await appProcess?.stop();
   }
@@ -332,98 +311,36 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 }
 
 /**
- * Runs each distinct driver's optional `prepare` hook once, before any session
- * launches (spec 09-drivers.md). Grouping is by driver id, not by instance:
- * `prepare` provisions backend state shared by every instance of a driver — a
- * browser download, a booted simulator — so running it per target would repeat
- * the same work. A rejection propagates and aborts the run.
+ * Grades one target from its backend declaration and validates the configured
+ * artifacts against it; returns the report provenance. A target without a
+ * backend is agent-tools-only and honestly reports no capabilities.
  */
-async function prepareDrivers(
-  driversByTarget: ReadonlyMap<string, Driver>,
-  selection: Selection,
-  debug: DebugTrace,
-): Promise<void> {
-  const groups = new Map<string, { driver: Driver; targets: Target[] }>();
-  for (const { target } of selection.perTarget) {
-    const driver = driversByTarget.get(target.name);
-    if (driver?.prepare === undefined) continue;
-    const group = groups.get(driver.id);
-    if (group === undefined) {
-      groups.set(driver.id, { driver, targets: [target.driverTarget] });
-    } else {
-      group.targets.push(target.driverTarget);
-    }
+function validateBackend(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
+  const backend = target.backend;
+  const artifactCapabilities: ('screenshot' | 'trace' | 'video')[] = [];
+  if (backend?.artifacts !== undefined) {
+    artifactCapabilities.push('screenshot');
+    if (backend.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
   }
-  for (const { driver, targets } of groups.values()) {
-    const prepare = driver.prepare!;
-    try {
-      await debug.time(`driver.prepare.${driver.id}`, () => prepare.call(driver, targets));
-    } catch (cause) {
-      // A provisioning failure is the backend's, not the test's: it must not be
-      // classified as a test failure or land on exit code 1.
-      throw translateDriverError(cause, ` while preparing driver ${driver.id}`);
-    }
-  }
-}
-
-/** Disposes driver-level shared resources; failures never affect the run outcome. */
-async function disposeDrivers(drivers: ReadonlySet<Driver>): Promise<void> {
-  for (const driver of drivers) {
-    try {
-      await driver.dispose?.();
-    } catch {
-      // dispose is best-effort cleanup
-    }
-  }
-}
-
-/** Report provenance for a backend target: the backend is the surface. */
-function backendProvenance(target: ResolvedTarget): TargetProvenance {
-  return {
-    browserVersion: 'none',
-    viewport: { width: 1, height: 1, scale: 1 },
-    driver: {
-      id: `backend:${target.backend?.name ?? 'none'}`,
-      version: String(target.backend?.spiVersion ?? 0),
-      spiVersion: 1,
-    },
-    capabilities: [],
-    artifactCapabilities: [],
-    stateCapability: false,
-  };
-}
-
-/** Validates one driver against the SPI version and configured artifacts; returns provenance. */
-function validateDriver(
-  driver: Driver,
-  target: ResolvedTarget,
-  config: ResolvedConfig,
-): TargetProvenance {
-  if (driver.spiVersion !== 1) {
-    throw new ConfigurationError(
-      'SPI_MISMATCH',
-      `driver ${driver.id} uses unsupported SPI version ${String(driver.spiVersion)}`,
-    );
-  }
-  for (const artifact of config.artifacts) {
-    if (!driver.capabilities.artifacts.includes(artifact)) {
+  // The default artifact set is best-effort: a backend without evidence
+  // capture simply records none. Asking for one explicitly is a contract.
+  for (const artifact of config.artifactsExplicit ? config.artifacts : []) {
+    if (!artifactCapabilities.includes(artifact)) {
       throw new ConfigurationError(
         'UNSUPPORTED_ARTIFACT',
-        `driver ${driver.id} does not support the configured "${artifact}" artifact`,
+        `target "${target.name}" (backend ${backend?.name ?? 'none'}) does not support the configured "${artifact}" artifact`,
       );
     }
   }
   return {
-    browserVersion: 'unknown',
-    viewport: {
-      width: target.viewport?.width ?? 1280,
-      height: target.viewport?.height ?? 720,
-      scale: 1,
+    backend: {
+      name: backend?.name ?? 'none',
+      version: backend?.version ?? 'unversioned',
+      spiVersion: BACKEND_SPI_VERSION,
     },
-    driver: { id: driver.id, version: driver.version, spiVersion: 1 },
-    capabilities: [...driver.capabilities.fixtures],
-    artifactCapabilities: [...driver.capabilities.artifacts],
-    stateCapability: driver.capabilities.state,
+    capabilities: [...(backend?.capabilities ?? [])].toSorted(),
+    artifactCapabilities,
+    stateCapability: backend?.state !== undefined,
   };
 }
 

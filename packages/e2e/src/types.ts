@@ -5,7 +5,7 @@
 
 import type {
   credentialBrand,
-  driverHandleBrand,
+  expectationBrand,
   secretBrand,
   testCaseBrand,
 } from './internal/brands.ts';
@@ -28,7 +28,7 @@ export type JsonValue =
   | readonly JsonValue[];
 
 export type Platform = 'web' | 'ios' | 'android' | (string & {});
-export type Capability = 'web' | (string & {});
+export type Capability = string;
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
 
@@ -122,7 +122,7 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * answer, and a model will take it: asked whether a form is covered by an
  * overlay, it can read from the tree that the form is present and named and
  * answer yes, while the pixels show the overlay. For a judgment that is about
- * what the page presents, the tree is a distractor, so the mode that means it
+ * what the screen presents, the tree is a distractor, so the mode that means it
  * removes it. It also costs fewer input tokens than `true`, not more.
  *
  * A judgment always produces an answer from the tree, so `'fallback'` behaves
@@ -343,7 +343,7 @@ export interface Locator extends Screen {
 }
 
 export interface App {
-  /** Opens the configured app URL or relative route. */
+  /** Opens the configured app URL or a path relative to it. */
   open(path?: string): Promise<void>;
   /** Recreates the execution context while preserving persisted state. */
   restart(): Promise<void>;
@@ -357,141 +357,6 @@ export interface App {
   screenshot(label?: string): Promise<string>;
 }
 
-export type RouteFulfillResponse = {
-  status?: number;
-  headers?: Record<string, string>;
-} & (
-  | { json: JsonValue; body?: never }
-  | { body: string; json?: never }
-  | { body?: never; json?: never }
-);
-
-export interface WebRoute {
-  readonly request: {
-    readonly url: string;
-    readonly method: string;
-    readonly headers: Readonly<Record<string, string>>;
-    readonly postData?: string;
-  };
-  /** Fulfills the intercepted request once. */
-  fulfill(response: RouteFulfillResponse): Promise<void>;
-  /** Continues the intercepted request once. */
-  continue(): Promise<void>;
-  /** Aborts the intercepted request once. */
-  abort(): Promise<void>;
-}
-
-export interface WebResponse {
-  readonly url: string;
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  /** Parses the response body as JSON. */
-  json<T = unknown>(): Promise<T>;
-  /** Reads the response body as text. */
-  text(): Promise<string>;
-}
-
-export interface CookieFields {
-  name: string;
-  value: string;
-  /** Unix timestamp in whole seconds. */
-  expires?: number;
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: 'Strict' | 'Lax' | 'None';
-}
-
-export type Cookie = CookieFields &
-  (
-    | { url: string; domain?: never; path?: never }
-    | { url?: never; domain: string; path?: string }
-  );
-
-export interface Dialog {
-  readonly message: string;
-  /** Accepts the dialog once. */
-  accept(text?: string): Promise<void>;
-  /** Dismisses the dialog once. */
-  dismiss(): Promise<void>;
-}
-
-export interface Web {
-  /** Navigates to an allowed URL. */
-  goto(
-    url: string,
-    options?: {
-      waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
-      timeout?: number;
-    },
-  ): Promise<void>;
-  /** Reloads the current document. */
-  reload(options?: ActionOptions): Promise<void>;
-  /** Navigates browser history back once. */
-  back(options?: ActionOptions): Promise<void>;
-  /** Navigates browser history forward once. */
-  forward(options?: ActionOptions): Promise<void>;
-  /** Returns the current URL. */
-  url(): Promise<string>;
-  /** Returns the current title. */
-  title(): Promise<string>;
-  /** Waits for the current URL to match. */
-  waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
-  /** Creates a web-only CSS or XPath locator. */
-  locator(selector: string): Locator;
-  /** Creates a screen query scope inside one iframe. */
-  frameLocator(selector: string): Screen;
-  /** Evaluates trusted test code in the page. */
-  evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
-  /** Evaluates trusted test code with one required JSON-safe argument. */
-  evaluate<T extends JsonValue, Arg extends JsonValue>(
-    fn: string | ((arg: Arg) => T | Promise<T>),
-    arg: Arg,
-  ): Promise<T>;
-  /** Adds an attempt-scoped network route. */
-  route(
-    pattern: string | RegExp,
-    handler: (route: WebRoute) => void | Promise<void>,
-  ): Promise<void>;
-  /** Removes matching attempt-scoped routes. */
-  unroute(pattern: string | RegExp): Promise<void>;
-  /** Waits for a matching response. */
-  waitForResponse(
-    pattern: string | RegExp,
-    options?: { timeout?: number },
-  ): Promise<WebResponse>;
-  /** Returns cookies visible to the current context. */
-  cookies(): Promise<Cookie[]>;
-  /** Sets cookies after origin policy validation. */
-  setCookies(cookies: readonly Cookie[]): Promise<void>;
-  /** Sets the viewport size. */
-  setViewport(size: { width: number; height: number }): Promise<void>;
-  /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
-  onDialog(
-    handler: 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>),
-  ): Promise<() => Promise<void>>;
-  /** Runs a trigger and waits for its download. */
-  waitForDownload(
-    trigger: () => Promise<void>,
-    options?: { timeout?: number },
-  ): Promise<{ path: string; suggestedFilename: string }>;
-  readonly keyboard: {
-    /** Sends one key. */
-    press(key: string): Promise<void>;
-    /** Types plain text. */
-    type(text: string): Promise<void>;
-  };
-  readonly mouse: {
-    /** Moves the pointer. */
-    move(x: number, y: number): Promise<void>;
-    /** Scrolls the pointer wheel. */
-    wheel(deltaX: number, deltaY: number): Promise<void>;
-    /** Presses the primary pointer button. */
-    down(): Promise<void>;
-    /** Releases the primary pointer button. */
-    up(): Promise<void>;
-  };
-}
-
 export interface SetupSession {
   /** Saves state under a setup-declared name. */
   save(name: string): Promise<void>;
@@ -502,14 +367,6 @@ export interface TestFixtures {
   readonly app: App;
   readonly screen: Screen;
   readonly platform: Platform;
-  /**
-   * The web capability fixture. Transitional: it is the one platform surface
-   * still declared in core, because web is driver-provided today. When
-   * playwright becomes a backend (RFC0002 migration) `web` moves to a backend
-   * contribution and is declared by augmentation like any other platform
-   * fixture (`device`, `desktop`), leaving only the universal fixtures here.
-   */
-  readonly web: Web;
 }
 
 export interface SetupFixtures extends TestFixtures {
@@ -621,12 +478,14 @@ export interface AsyncExpectation {
   toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
 }
 
-export interface WebExpectation {
-  readonly not: WebExpectation;
-  /** Waits for the current URL to match. */
-  toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
-  /** Waits for the current title to match. */
-  toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+/**
+ * An object that carries its own expectation surface, so `expect(object)`
+ * returns `E`. Backend-contributed fixtures attach one through
+ * `BackendFixtureContext.expectable`; core never declares a platform's
+ * matchers, it only routes to them.
+ */
+export interface Expectable<E> {
+  readonly [expectationBrand]: E;
 }
 
 export interface ValueExpectation<T> {
@@ -655,22 +514,6 @@ export interface ValueExpectation<T> {
   toBeLessThan(expected: number): void;
 }
 
-export interface DriverManifest {
-  readonly id: string;
-  readonly version: string;
-  readonly platforms: readonly Platform[];
-  readonly spiVersion: 1;
-  readonly capabilities: {
-    readonly fixtures: readonly Capability[];
-    readonly artifacts: readonly ('screenshot' | 'trace' | 'video')[];
-    readonly state: boolean;
-  };
-}
-
-export interface DriverHandle extends DriverManifest {
-  readonly [driverHandleBrand]: true;
-}
-
 export interface CommandConfig {
   executable: string;
   args?: readonly string[];
@@ -689,27 +532,16 @@ export interface AppConfig {
   allowProduction?: boolean;
 }
 
-export interface WebTarget {
-  name: string;
-  platform: 'web';
-  driver?: 'playwright' | DriverHandle;
-  browser?: 'chromium' | 'firefox' | 'webkit';
-  viewport?: { width: number; height: number };
-}
-
 /**
- * A target whose surface is a backend (RFC0002): no driver, no app server.
- * What the target can serve is graded by the backend's declared capabilities;
- * with no `backend` the target is agent-tools-only and everything runs
- * opaque.
+ * One target: a named surface on one platform, served by a backend (RFC0002).
+ * What the target can do is graded from the backend's declared capabilities;
+ * with no `backend` the target is agent-tools-only and everything runs opaque.
  */
-export interface BackendTarget {
+export interface Target {
   name: string;
   platform: Platform;
   backend?: BackendHandle;
 }
-
-export type Target = WebTarget | BackendTarget;
 
 export interface ModelConfig {
   provider: string;
@@ -775,7 +607,6 @@ export interface E2EConfig {
   projectId?: string;
   app?: AppConfig;
   targets?: readonly Target[];
-  browser?: 'chromium' | 'firefox' | 'webkit';
   tests?: string | readonly string[];
   timeout?: number;
   launchTimeout?: number;

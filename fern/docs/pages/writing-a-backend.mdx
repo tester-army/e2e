@@ -1,0 +1,195 @@
+---
+title: Writing a backend
+subtitle: How the runner talks to a surface, and what it takes to add a new one.
+---
+
+Everything in `e2e` above the backend is portable. `test`, `expect`, `screen`,
+`app`, and the agent tiers never touch a browser, a simulator, or a device: they
+speak one narrow contract from `e2e/backend`, and a backend is the package that
+maps it onto a real surface.
+
+`@e2edev/playwright` is one such package, built with the same public
+`defineBackend` as anything the community writes. A backend for iOS, Android, a
+desktop shell, or a surface nobody has thought of yet integrates against the
+same contract: the runner cannot tell them apart, and neither can a test.
+
+## The ownership boundary
+
+Read this table before writing any code. Most backend bugs are a backend doing
+the runner's job.
+
+| Concern | Owner |
+| --- | --- |
+| Collection, targets, retries, hooks, sessions | runner |
+| Query polling and strict single-match cardinality | runner |
+| Assertion polling, step recording, timeouts | runner |
+| One immediate query, one node read | backend |
+| One node's actionability and input dispatch | backend |
+| Agent planning, prompts, budgets, ledger | runner |
+| Tool authorization and secret resolution | runner |
+| Process, page, and device mechanics | backend |
+| Source masking of secure observations | backend |
+| Defense-in-depth redaction | runner |
+
+Two rules follow from it and get broken most often: a backend **must not** add
+hidden query retries - `locate` answers with what is on screen right now and
+returns an empty array without complaint - and a backend **must not** enforce
+single-match strictness, because `screen.getByRole(...)` deciding that two
+matches is an error is a runner decision.
+
+## The shape of a backend
+
+A backend is a factory returning a validated handle. `defineBackend` checks the
+manifest synchronously at config load, freezes it, computes its capability set,
+and stamps the brand that makes the handle acceptable in a target.
+
+```ts title="src/index.ts"
+import { defineBackend, type BackendHandle } from 'e2e/backend';
+
+export function hyperdrive(options: { device: string }): BackendHandle {
+  const client = createClient(options);
+  return defineBackend({
+    name: 'hyperdrive',
+    version: '1.0.0',
+    spiVersion: 1,
+    async init(info) { await client.boot(); },
+    async dispose() { await client.shutdown(); },
+    async observe() { return { nodes: await client.snapshot() }; },
+    actions: {
+      tap: (target) => client.tap(target.ref.id),
+      type: (target, value) => client.type(target.ref.id, value),
+      scroll: (direction) => client.scroll(direction),
+    },
+  });
+}
+```
+
+```ts title="e2e.config.ts"
+targets: [{ name: 'phone', platform: 'ios', backend: hyperdrive({ device: 'iPhone 16' }) }],
+```
+
+<Callout intent="note">
+Depend on `e2e/backend` only, and take `e2e` as a **peer** dependency, never a
+regular one: the backend and the runner must agree on one copy of the error
+class. `e2e/internal` exists so first-party backend packages can share text
+and URL matching; it carries no semver guarantee.
+</Callout>
+
+## Capabilities
+
+Every member is optional. What you declare grades what a target can do; what
+you omit fails at the first honest moment with `UNSUPPORTED_CAPABILITY`,
+never silently.
+
+| Member | Capability | Unlocks |
+| --- | --- | --- |
+| `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
+| `actions.{tap,type,press,select,scroll,navigate,back}` | `actions` (needs `observe`) | harness-routed grammar verbs, `app.open()`, `app.back()` |
+| `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
+| `perform(ref, action, context)` | with `locate` | the full `Locator` action set; without it tap/fill/press/select route through the verbs |
+| `swipe(direction, momentum, context)` | with `locate` | `screen.swipe`, `scrollUntilVisible` |
+| `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
+| `artifacts.{screenshot,startTrace?,stopTrace?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']` |
+| `app.{restart?,clearState?}` | - | `app.restart()`, `app.clearState()` |
+| `url(context)` | - | trace start anchors, the secret-fill origin check |
+| `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
+
+`init` runs once per worker before the first attempt, outside every step
+budget: boot devices and download runtimes there. `startAttempt`/`endAttempt`
+bracket one test attempt and carry the attempt's artifact directory; give each
+test a fresh surface here (a new browser context, a reset app). `dispose` runs
+at worker shutdown.
+
+### Nodes and refs
+
+`observe` and `locate` return `SemanticNode` trees. Ids are yours and must be
+unique for the surface's lifetime; the harness stamps revisions onto them and
+enforces the staleness rule (act on the newest observation only), so you never
+implement it. `perform` and the grammar verbs receive `{ id, revision }`;
+look the id up and throw `NODE_STALE` when it no longer binds.
+
+### Vision-only surfaces
+
+A surface that offers screenshots and coordinates but no semantic tree (a
+desktop shell, a canvas app, a computer-use agent) declares `observe` returning
+a pixels-only snapshot (`nodes: []` plus `pixels`) and acts through agent-side
+coordinate tools, since the grammar verbs take observation refs it cannot hand
+out. That is the tools-only tier for actions: deterministic tool replay is what
+it gets, and nothing else in the harness changes.
+
+### State is a credential
+
+A `state` snapshot carries whatever authenticates the app: cookies, tokens,
+storage. The contract splits the duties. The harness encrypts it at rest with a
+per-run key that never touches disk, keeps it in the run's private session
+directory, binds it to the run, target, backend, and app identity, deletes it
+when the run ends, and never logs, reports, digests, or sends it to a model.
+Your side: never persist, cache, or log a snapshot; never echo its contents in
+an error; make `restore` replace the surface's whole persisted state rather than
+merge into it.
+
+### Errors
+
+Throw `BackendError` across the seam. Retryability is closed to `NODE_STALE`
+and `FRAME_NOT_FOUND`; asking for a retryable `BACKEND_FAILURE` is coerced to
+non-retryable so a backend can never talk the runner into repeating an action
+that may have committed. `ACTION_MAY_HAVE_COMMITTED` says exactly that;
+`INVALID_STATE` maps to `APP_NOT_OPEN`; `UNSUPPORTED_CAPABILITY` is a
+configuration error; anything else is infrastructure.
+
+## Contributed fixtures
+
+A platform-shaped surface - `web` for a browser, `device` for a simulator - is
+a fixture the backend contributes, not something core declares. The harness
+records every async method call as a step named `<fixture>.<method>`, bounded
+by the action timeout (or the call's own `timeout` option) and the attempt
+signal; synchronous members are accessors and pass through.
+
+```ts
+fixtures: {
+  device: (context) => ({
+    async setNetwork(state: 'online' | 'offline') { await client.network(state); },
+    async home() { await client.home(); },
+  }),
+},
+```
+
+```ts title="tests/fixtures.ts"
+import { test as base } from 'e2e';
+import type { Device } from 'e2e-backend-hyperdrive';
+
+export const test = base.extend<{ device: Device }>();
+```
+
+The factory's `context` carries what a fixture legitimately needs from the
+harness and nothing else: the app's base URL and origin policy (`app.resolveUrl`
+enforces it), the configured timeouts, `operation()` budgets, `attachArtifact`
+and `attachViewport` for the current step, `locator(expression)` and
+`screen(scope)` to mint core locators from a platform selector or a nested
+document, and `expectable(target, factory)` to attach an expectation surface so
+`expect(fixture)` works. This is how `@e2edev/playwright` builds `web` and
+`expect(web).toHaveURL()`, and it touches no core file.
+
+## Scoping agent tools to a platform
+
+Agent tools are declared with `defineTool` on the agent, not on the backend. A
+project that mixes web and device targets scopes a tool pack with the
+`platforms` annotation; the agent offers a tool only on targets whose
+`platform` is listed, so a swipe tool never reaches a web target and a route
+tool never reaches a device.
+
+```ts
+const swipe = defineTool(swipeTool(client), {
+  replay: 'deterministic',
+  mutates: true,
+  secrets: false,
+  platforms: ['ios', 'android'],
+});
+```
+
+## Verify it
+
+Run the runner against your backend with a real test file: the contract test
+`packages/e2e/tests/integration/backend-contract.test.ts` shows the guarantees
+the runner holds - lifecycle order, operation contexts, error mapping, capability
+gating - and is the reference for what your backend can rely on.

@@ -12,7 +12,7 @@
  * make a node unequal to its own recording.
  */
 
-import type { SemanticNode } from '../driver/index.ts';
+import type { SemanticNode } from '../backend/surface.ts';
 import { describeTarget } from './recorder.ts';
 import type { TraceTargetDescriptor } from './trace.ts';
 

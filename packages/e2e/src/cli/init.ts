@@ -6,6 +6,7 @@ import * as clack from '@clack/prompts';
 
 const CONFIG_TEMPLATE = `import { defineConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   specVersion: '0.1',
@@ -17,11 +18,13 @@ export default defineConfig({
   agent: createAgent({
     system: 'You are a thorough QA agent. Verify every outcome on screen.',
   }),
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  // The runner knows no platform: a target is served by the backend you pass.
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
 });
 `;
 
-const EXAMPLE_TEMPLATE = `import { test, expect } from 'e2e';
+const EXAMPLE_TEMPLATE = `import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test('app opens', async ({ app, web }) => {
   await app.open();
@@ -100,6 +103,6 @@ export async function init(cwd: string, options: { yes?: boolean } = {}): Promis
     clack.log.success(`updated .gitignore (${missing.length} entries)`);
   }
 
-  clack.outro('next: APP_URL=http://localhost:3000 npx --no-install e2e run');
+  clack.outro('next: install @e2edev/playwright, then APP_URL=http://localhost:3000 npx --no-install e2e run');
   return 0;
 }

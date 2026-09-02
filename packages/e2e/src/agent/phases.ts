@@ -5,7 +5,7 @@
  * and observation race-hardening cannot drift between the two paths.
  */
 
-import { DriverError, type Observation, type OperationContext } from '../driver/index.ts';
+import { BackendError, type Observation, type OperationContext } from '../backend/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -111,8 +111,8 @@ export function checkStepClock(options: {
 }
 
 /**
- * Captures one raw observation, re-capturing while the driver reports a
- * retryable failure and the step clock allows. A page that navigates as it is
+ * Captures one raw observation, re-capturing while the backend reports a
+ * retryable failure and the step clock allows. A screen that navigates as it is
  * read (a redirect, a hydration swap, a form submit still committing) makes
  * the capture lose its document; that is a race, not a broken app, so it is
  * re-read rather than surfaced as a failed call. `guard` is the caller's
@@ -131,11 +131,11 @@ export async function retryingObserve(options: {
       return await options.observe(options.operation());
     } catch (cause) {
       options.guard(cause);
-      if (!(cause instanceof DriverError && cause.retryable)) {
+      if (!(cause instanceof BackendError && cause.retryable)) {
         throw cause;
       }
       agentTrace(
-        () => `${options.api} observation attempt ${attempt} raced the page: ${cause.code}`,
+        () => `${options.api} observation attempt ${attempt} raced the screen: ${cause.code}`,
       );
       await sleep(POLL_INTERVAL_MS, options.signal);
     }

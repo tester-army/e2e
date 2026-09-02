@@ -13,10 +13,11 @@ export function defineConfig(config: E2EConfig): E2EConfig;
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
 });
 ```
 
@@ -31,11 +32,8 @@ stopping at the repository root. Both names in one directory is
 `CONFIG_AMBIGUOUS`. The selected file's directory is the project root; with no
 config file, the working directory is.
 
-No config file is required for a single web target:
-
-```bash
-APP_URL=http://localhost:3000 npx --no-install e2e run
-```
+A config file is required: the runner ships no backend, so `targets` must name
+the one that drives each target. `npx e2e init` writes a starter config.
 
 ## Top level
 
@@ -43,12 +41,11 @@ APP_URL=http://localhost:3000 npx --no-install e2e run
 | --- | --- | --- | --- |
 | `projectId` | `string` | nearest `package.json` name, else a generated ID | 1-256 characters |
 | `app` | `AppConfig` | see [app](#app) | - |
-| `targets` | `readonly Target[]` | one implicit web target | non-empty; mutually exclusive with `browser` |
-| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | applies to the implicit target only |
+| `targets` | `readonly Target[]` | required | non-empty |
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
 | `timeout` | `number` | `120000` | positive safe integer |
 | `launchTimeout` | `number` | `60000` | positive safe integer |
-| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every driver operation, including each observation and action inside an agent step |
+| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every backend operation, including each observation and action inside an agent step |
 | `assertionTimeout` | `number` | `5000` | positive safe integer |
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
@@ -122,39 +119,37 @@ Target names are required, unique, and limited to ASCII letters, digits, `_`,
 `-`, and `.`. An empty `targets` array is an error.
 
 ```ts
-export interface WebTarget {
-  name: string;
-  platform: 'web';
-  driver?: 'playwright' | DriverHandle;
-  browser?: 'chromium' | 'firefox' | 'webkit';
-  viewport?: { width: number; height: number };
-}
-
-export interface BackendTarget {
+export interface Target {
   name: string;
   platform: Platform;
   backend?: BackendHandle; // defineBackend(...) from 'e2e/backend'
 }
 ```
 
-A backend target has no driver and no browser: the backend's declared
-capabilities (observation, actions) grade what the target serves,
-and anything undeclared fails loud with `UNSUPPORTED_CAPABILITY`. `app.url`
-is optional when every target is a backend target. With an `executor` in the
-`agent` block, a custom brain composes with the model, budget, and context
-options instead of replacing them.
+Every target is served by a backend, and the runner knows only the backend
+contract: the backend's declared capabilities (observation, actions, location,
+state, artifacts, contributed fixtures) grade what the target serves, and
+anything undeclared fails loud with `UNSUPPORTED_CAPABILITY`. A target without
+a `backend` is agent-tools-only and runs everything opaque. `app.url` is
+optional until a test calls `app.open()`. With an `executor` in the `agent`
+block, a custom brain composes with the model, budget, and context options
+instead of replacing them.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
-| `platform` | `Platform` | - | `'web'` for driver targets; any platform for backend targets |
-| `driver` | `'playwright' \| DriverHandle` | `'playwright'` | `'playwright'` loads `@e2edev/playwright`, which must be installed; any other string is `INVALID_CONFIG`. A `DriverHandle` comes from [`defineDriver`](/writing-a-driver) |
-| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Per-target |
-| `viewport` | `{ width: number; height: number }` | driver default | Initial viewport |
+| `platform` | `Platform` | - | Any label; `platforms: [...]` on a test filters against it |
+| `backend` | `BackendHandle` | none | `playwright({ browser?, viewport? })` from `@e2edev/playwright` for a browser; any [`defineBackend`](/writing-a-backend) handle otherwise |
 
-Non-web platforms run as backend targets. A *driver* target whose `platform`
-is not `'web'` fails config resolution with `PLATFORM_UNSUPPORTED` and exit
-code 2.
+Browser choice and viewport are options of the playwright backend, not of the
+runner:
+
+```ts
+targets: [
+  { name: 'chromium', platform: 'web', backend: playwright() },
+  { name: 'webkit-mobile', platform: 'web', backend: playwright({ browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+],
+```
 
 ## screen
 

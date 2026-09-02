@@ -1,6 +1,6 @@
 /** Serial-group execution: one shared session per group attempt (spec 11-lifecycle.md). */
 
-import type { DriverSession } from '../driver/index.ts';
+import type { TargetSession } from '../backend/surface.ts';
 import {
   classifyError,
   ConfigurationError,
@@ -29,19 +29,17 @@ import { runWithRetries } from './retry.ts';
 import { pairResult } from './units.ts';
 
 /**
- * One shared driver session plus its app open-state for a serial-group
- * attempt: members preserve app state, so a page opened by an earlier member
- * stays open for later members.
+ * One shared session for a serial-group attempt: members preserve app state,
+ * so a screen an earlier member reached stays current for later members.
  */
 export interface SharedSerialSession {
-  readonly session: DriverSession;
+  readonly session: TargetSession;
   /**
    * Report segments of the group attempt directory. The shared session writes
    * every artifact there, so members resolve artifact paths against it rather
    * than against their own attempt directory.
    */
   readonly artifactSegments: readonly string[];
-  readonly opened: { value: boolean };
   /** Steps completed by earlier members, so later members see them as prior context. */
   readonly priorSteps: StepRecord[];
 }
@@ -57,9 +55,9 @@ export interface SerialHost {
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
-  ): Promise<DriverSession>;
+  ): Promise<TargetSession>;
   closeSession(
-    session: DriverSession,
+    session: TargetSession,
     attemptId: string,
     record: { cleanup: 'complete' | 'failed' | 'forced' },
     sink: ArtifactSink,
@@ -194,7 +192,6 @@ async function runSerialAttempt(
     shared = {
       session: await host.launchSession(first, attemptId, artifacts.dir, host.interruptSignal),
       artifactSegments,
-      opened: { value: false },
       priorSteps: [],
     };
   } catch (cause) {

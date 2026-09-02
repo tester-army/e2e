@@ -6,6 +6,7 @@
  */
 
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 import { createAgent, defineTool } from 'e2e/agent';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
@@ -52,7 +53,7 @@ export default defineConfig({
     },
   },
   tests: 'tests-dogfood/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: createAgent({

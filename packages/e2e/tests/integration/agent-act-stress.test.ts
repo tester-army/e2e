@@ -337,6 +337,7 @@ describe('config-file executor across worker processes', () => {
   it('reconstructs the executor per worker and passes in parallel', async () => {
     const configSource = `import { defineConfig } from 'e2e';
 import type { StepExecutor } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 const executor: StepExecutor = {
   name: 'worker-executor',
@@ -352,6 +353,7 @@ const executor: StepExecutor = {
 
 export default defineConfig({
   app: { url: process.env.APP_URL! },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   workers: 2,
   agent: executor,
 });

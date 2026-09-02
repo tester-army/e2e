@@ -1,14 +1,14 @@
 {
   "name": "@e2edev/playwright",
   "version": "0.1.0",
-  "description": "Reference Playwright web driver for the e2e agentic end-to-end testing standard",
+  "description": "Playwright browser backend for the e2e agentic end-to-end testing standard",
   "keywords": [
     "e2e",
     "testing",
     "agentic",
     "end-to-end",
     "playwright",
-    "driver"
+    "backend"
   ],
   "license": "MIT",
   "contributors": [

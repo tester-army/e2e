@@ -1,7 +1,7 @@
 /** Test-target execution engine (spec 11-lifecycle.md). */
 
 import path from 'node:path';
-import type { Driver, DriverSession, OperationContext } from '../driver/index.ts';
+import type { TargetSession, OperationContext } from '../backend/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
   classifyError,
@@ -10,6 +10,7 @@ import {
   InfrastructureError,
   serializeError,
   TestTimeoutError,
+  translateBackendError,
   type SerializedError,
 } from '../internal/errors.ts';
 import { DebugTrace } from '../internal/debug.ts';
@@ -20,6 +21,7 @@ import type { CollectedFile } from '../collect/collect.ts';
 import type { RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
 import { createBackendSession } from '../backend/session.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { findRegistered, RealmManager, type Realm } from './realm.ts';
@@ -48,8 +50,6 @@ export interface ExecutionEvents {
 export interface TargetExecutorOptions {
   readonly config: ResolvedConfig;
   readonly target: ResolvedTarget;
-  /** Undefined for backend targets: no driver is ever launched for them. */
-  readonly driver: Driver | undefined;
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
@@ -61,10 +61,13 @@ export interface TargetExecutorOptions {
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
 
+/** Signal for operations that only end when they finish, such as cleanup. */
+const NEVER_ABORTS = new AbortController().signal;
+
 /** The file-path slice of a collected file that unit execution needs. */
 export type FileRef = Pick<CollectedFile, 'file' | 'absolutePath'>;
 
-/** How one attempt acquires its driver session and session-staging hooks. */
+/** How one attempt acquires its session and session-staging hooks. */
 export type AttemptContext =
   | { readonly kind: 'ordinary' }
   | { readonly kind: 'setup'; readonly staging: SessionStaging }
@@ -98,11 +101,11 @@ export class TargetExecutor implements SerialHost {
     });
     this.sessionIdentity = {
       targetId: options.target.name,
-      // A backend target's session and cache identity comes from the backend
-      // declaration, so entries never collide with driver-target entries.
-      driverId: options.driver?.id ?? `backend:${options.target.backend?.name ?? 'none'}`,
-      driverVersion: options.driver?.version ?? String(options.target.backend?.spiVersion ?? 0),
-      spiVersion: options.driver?.spiVersion ?? 1,
+      // Session and cache identity comes from the backend declaration, so a
+      // backend swap never restores another backend's state.
+      backendName: options.target.backend?.name ?? 'none',
+      backendVersion: options.target.backend?.version ?? 'unversioned',
+      spiVersion: options.target.backend?.spiVersion ?? BACKEND_SPI_VERSION,
       platform: options.target.platform,
       appIdentity: canonicalDigest({
         origin: options.config.app.base.origin,
@@ -121,11 +124,11 @@ export class TargetExecutor implements SerialHost {
     this.options.events?.onResult?.(result);
   }
 
-  /** Builds one driver operation context; defaults to a non-aborting signal. */
+  /** Builds one backend operation context; defaults to a non-aborting signal. */
   private op(
     attemptId: string,
     timeoutMs: number,
-    signal: AbortSignal = new AbortController().signal,
+    signal: AbortSignal = NEVER_ABORTS,
   ): OperationContext {
     return { signal, timeoutMs, runId: this.options.runId, attemptId };
   }
@@ -140,17 +143,50 @@ export class TargetExecutor implements SerialHost {
    * Boot work (simulators, device leases) is bounded by the launch timeout
    * but never charged against a step budget.
    */
-  private initBackendOnce(signal: AbortSignal): Promise<void> {
-    const init = this.target.backend?.init?.bind(this.target.backend);
+  private initBackendOnce(): Promise<void> {
+    const backend = this.target.backend;
+    const init = backend?.init?.bind(backend);
     if (init === undefined) return Promise.resolve();
+    // Memoized for the worker's lifetime, failure included: a backend that
+    // could not boot fails every attempt on this worker with the same cause
+    // instead of re-running a broken boot per test. Init outlives any single
+    // attempt, so it aborts on worker interrupt, not on one test's deadline.
     this.backendReady ??= this.debug.time('backend.init', () =>
-      withTimeout(
-        init({ runId: this.options.runId, targetName: this.target.name, signal }),
-        this.config.launchTimeout,
-        () => new InfrastructureError('LAUNCH_TIMEOUT', 'backend init timed out'),
+      this.lifecycle(`initializing backend ${backend?.name ?? "none"}`, this.config.launchTimeout, 'LAUNCH_TIMEOUT', () =>
+        init({
+          runId: this.options.runId,
+          targetName: this.target.name,
+          app: {
+            ...(this.config.app.configured ? { baseUrl: this.config.app.base.href } : {}),
+            allowedOrigins: this.config.app.allowedOrigins,
+          },
+          testIdAttribute: this.config.testIdAttribute,
+          headed: this.options.headed,
+          signal: this.interruptSignal,
+        }),
       ),
     );
     return this.backendReady;
+  }
+
+  /**
+   * Runs one lifecycle call on the backend seam: bounded by the given budget,
+   * synchronous throws included, and translated onto the runner taxonomy so a
+   * backend failing outside its contract is infrastructure, never a test error.
+   */
+  private lifecycle<T>(
+    label: string,
+    timeoutMs: number,
+    code: 'LAUNCH_TIMEOUT' | 'CLEANUP_TIMEOUT',
+    run: () => Promise<T>,
+  ): Promise<T> {
+    return withTimeout(
+      Promise.resolve().then(run),
+      timeoutMs,
+      () => new InfrastructureError(code, `${label} timed out`),
+    ).catch((cause: unknown) => {
+      throw translateBackendError(cause, ` while ${label}`);
+    });
   }
 
   /** Disposes the backend at worker end of life, bounded by the cleanup budget. */
@@ -312,112 +348,89 @@ export class TargetExecutor implements SerialHost {
 
   // --- attempt core ---
 
-  /** Launches one driver session, restores a configured session, and starts tracing. */
+  /** Starts one attempt on the backend, restores a configured session, and starts tracing. */
   async launchSession(
     pair: TestTargetPair,
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
-  ): Promise<DriverSession> {
-    const driver = this.options.driver;
-    if (driver === undefined) {
-      // Backend target: no driver launch. The backend booted in init() once
-      // per worker; the adapter is per-attempt so refs never cross attempts.
-      await this.initBackendOnce(signal);
-      const backend = this.target.backend;
-      if (backend?.startAttempt !== undefined) {
-        await backend.startAttempt({
-          attemptId,
-          artifactsDir,
-          headed: this.options.headed,
-          signal,
-        });
-      }
-      const session = createBackendSession({
-        backend,
-        targetName: this.target.name,
-        baseHref: this.config.app.base.href,
-      });
-      // Session restore rides the backend's neutral state capability; a
-      // backend without one fails loud through restoreState below, exactly
-      // like a driver without state support.
+  ): Promise<TargetSession> {
+    // The backend booted in init() once per worker; the adapter is per-attempt
+    // so refs never cross attempts.
+    await this.initBackendOnce();
+    const backend = this.target.backend;
+    const launchOperation = this.op(attemptId, this.config.launchTimeout, signal);
+    // Session restore rides the backend's neutral state capability. Checked
+    // before any per-attempt isolation opens, so a misconfigured session never
+    // orphans a started attempt.
+    if (pair.options.session !== undefined && backend?.state === undefined) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `target "${this.target.name}" has no backend state capability for session restore`,
+      );
+    }
+    const startAttempt = backend?.startAttempt?.bind(backend);
+    if (startAttempt !== undefined) {
+      await this.debug.time('session.launch', () =>
+        this.lifecycle(`starting an attempt on backend ${backend?.name ?? "none"}`, this.config.launchTimeout, 'LAUNCH_TIMEOUT', () =>
+          startAttempt({ attemptId, artifactsDir, signal }),
+        ),
+      );
+    }
+    const session = createBackendSession({ backend, targetName: this.target.name });
+    const launch = <T>(label: string, run: () => Promise<T>) =>
+      this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', run);
+    try {
       if (pair.options.session !== undefined) {
         const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
-        if (session.restoreState === undefined) {
-          throw new ConfigurationError(
-            'UNSUPPORTED_CAPABILITY',
-            `target "${this.target.name}" has no backend state capability for session restore`,
-          );
-        }
-        await session.restoreState(state, this.op(attemptId, this.config.launchTimeout, signal));
+        await launch('restoring the session', () => session.restoreState!(state, launchOperation));
       }
-      return session;
-    }
-    const driverSession = await this.debug.time('session.launch', () =>
-      withTimeout(
-        driver.launch({
-          target: this.target.driverTarget,
-          targetId: this.target.name,
-          app: {
-            baseUrl: this.config.app.base.href,
-            allowedOrigins: this.config.app.allowedOrigins,
-            environment: this.config.app.environment,
-            allowProduction: this.config.app.allowProduction,
-            testIdAttribute: this.config.testIdAttribute,
-          },
-          artifactsDir,
-          runId: this.options.runId,
-          attemptId,
-          operation: this.op(attemptId, this.config.launchTimeout, signal),
-          launchOptions: { headed: this.options.headed },
-        }),
-        this.config.launchTimeout,
-        () => new InfrastructureError('LAUNCH_TIMEOUT', 'driver launch timed out'),
-      ),
-    );
-
-    if (pair.options.session !== undefined) {
-      const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
-      if (driverSession.restoreState === undefined) {
-        throw new ConfigurationError('UNSUPPORTED_CAPABILITY', 'driver does not support state restore');
+      if (this.config.artifacts.includes('trace') && session.artifacts.startTrace !== undefined) {
+        // An explicitly configured trace is a contract; the default set is best-effort.
+        const starting = launch('starting the trace', () => session.artifacts.startTrace!(launchOperation));
+        if (this.config.artifactsExplicit) await starting;
+        else await starting.catch(() => undefined);
       }
-      await driverSession.restoreState(state, this.op(attemptId, this.config.launchTimeout, signal));
+    } catch (cause) {
+      // The attempt's isolation is open: end it, or the retry opens a second one.
+      await this.endAttempt(session, attemptId).catch(() => undefined);
+      throw cause;
     }
-
-    if (this.config.artifacts.includes('trace') && driverSession.artifacts.startTrace !== undefined) {
-      await driverSession.artifacts
-        .startTrace(this.op(attemptId, this.config.launchTimeout, signal))
-        .catch(() => undefined);
-    }
-    return driverSession;
+    return session;
   }
 
-  /** Finalizes trace and closes the driver session with a fresh cleanup budget. */
+  /** Ends one attempt's isolation within the cleanup budget. */
+  private endAttempt(session: TargetSession, attemptId: string): Promise<void> {
+    return this.lifecycle('ending the attempt', this.config.cleanupTimeout, 'CLEANUP_TIMEOUT', () =>
+      session.close(this.op(attemptId, this.config.cleanupTimeout)),
+    );
+  }
+
+  /** Finalizes trace and ends the attempt with a fresh cleanup budget. */
   async closeSession(
-    driverSession: DriverSession,
+    session: TargetSession,
     attemptId: string,
     record: { cleanup: 'complete' | 'failed' | 'forced' },
     artifactSink: ArtifactSink,
     secondaryErrors: SerializedError[],
   ): Promise<void> {
-    if (this.config.artifacts.includes('trace') && driverSession.artifacts.stopTrace !== undefined) {
+    if (this.config.artifacts.includes('trace') && session.artifacts.stopTrace !== undefined) {
       try {
-        const tracePath = await driverSession.artifacts.stopTrace(
-          this.op(attemptId, this.config.cleanupTimeout),
+        const tracePath = await this.lifecycle('stopping the trace', this.config.cleanupTimeout, 'CLEANUP_TIMEOUT', () =>
+          session.artifacts.stopTrace!(this.op(attemptId, this.config.cleanupTimeout)),
         );
         artifactSink.register('trace', tracePath);
-      } catch {
-        // trace finalization is best-effort
+      } catch (cause) {
+        // Best-effort for the default artifact set; a configured trace that
+        // cannot be finalized is a cleanup failure the report must show.
+        if (this.config.artifactsExplicit) {
+          record.cleanup = 'failed';
+          secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+        }
       }
     }
     try {
-      await this.debug.time('session.close', () =>
-        withTimeout(
-          driverSession.close(this.op(attemptId, this.config.cleanupTimeout)),
-          this.config.cleanupTimeout,
-          () => new InfrastructureError('CLEANUP_TIMEOUT', 'driver close timed out'),
-        ),
-      );
+      await this.debug.time('session.close', () => this.endAttempt(session, attemptId));
     } catch (cause) {
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
@@ -479,7 +492,7 @@ export class TargetExecutor implements SerialHost {
       cleanup: 'complete',
     };
 
-    let driverSession: DriverSession | null = null;
+    let openSession: TargetSession | null = null;
     let failure: E2EError | undefined;
     let failurePhase: AttemptPhase | undefined;
     let phase: AttemptPhase = 'launch';
@@ -505,7 +518,7 @@ export class TargetExecutor implements SerialHost {
       const session =
         shared?.session ??
         (await this.launchSession(pair, attemptId, artifacts.dir, attemptAbort.signal));
-      driverSession = session;
+      openSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);
       const saveSession =
@@ -515,7 +528,7 @@ export class TargetExecutor implements SerialHost {
               if (session.captureState === undefined) {
                 throw new ConfigurationError(
                   'UNSUPPORTED_CAPABILITY',
-                  'driver does not support state capture',
+                  `target "${this.target.name}" has no backend state capability for session.save()`,
                 );
               }
               const state = await session.captureState(
@@ -526,7 +539,7 @@ export class TargetExecutor implements SerialHost {
       const { fixtures } = createFixtures({
         config: this.config,
         target: this.target,
-        driverSession: session,
+        session,
         steps,
         signal: attemptAbort.signal,
         runId: this.options.runId,
@@ -535,9 +548,6 @@ export class TargetExecutor implements SerialHost {
         artifacts: artifacts.sink,
         priorSteps,
         agentContext: pair.options.agentContext,
-        // A backend surface is observable from the first step: there is no
-        // page to navigate to, so nothing gates screen/web behind app.open().
-        opened: shared?.opened ?? { value: this.target.backend !== undefined },
         saveSession,
         ...(cache === undefined ? {} : { cache }),
         debug: this.debug,
@@ -589,8 +599,8 @@ export class TargetExecutor implements SerialHost {
       recordFailure(cause, phase);
     } finally {
       this.interruptSignal.removeEventListener('abort', onInterrupt);
-      if (driverSession !== null && shared === undefined) {
-        await this.closeSession(driverSession, attemptId, record, artifacts.sink, secondaryErrors);
+      if (openSession !== null && shared === undefined) {
+        await this.closeSession(openSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
     }
 

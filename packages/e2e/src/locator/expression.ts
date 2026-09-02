@@ -1,6 +1,6 @@
 /** Immutable locator expression construction (spec 08-platforms.md). */
 
-import type { LocatorExpression, SemanticQuery } from '../driver/index.ts';
+import type { LocatorExpression, SemanticQuery } from '../backend/surface.ts';
 import { toTextPattern } from '../internal/text.ts';
 import { TestError } from '../internal/errors.ts';
 import type { Role, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';
@@ -83,12 +83,12 @@ export function indexExpression(
   return { kind: 'index', source, index };
 }
 
-/** Builds a web CSS/XPath selector expression. */
-export function webSelectorExpression(selector: string): LocatorExpression {
+/** Builds a platform-selector expression (CSS or XPath on a document platform). */
+export function selectorExpression(selector: string): LocatorExpression {
   if (typeof selector !== 'string' || selector.length === 0) {
-    throw new TestError('INVALID_LOCATOR', 'web.locator() requires a nonempty selector');
+    throw new TestError('INVALID_LOCATOR', 'locator() requires a nonempty selector');
   }
-  return { kind: 'web-selector', selector };
+  return { kind: 'selector', selector };
 }
 
 /** Renders an expression for diagnostics. */
@@ -119,7 +119,7 @@ export function describeExpression(expression: LocatorExpression): string {
       return typeof expression.index === 'number'
         ? `${describeExpression(expression.source)}.nth(${expression.index})`
         : `${describeExpression(expression.source)}.${expression.index}()`;
-    case 'web-selector':
+    case 'selector':
       return `locator(${JSON.stringify(expression.selector)})`;
     case 'frame':
       return `frameLocator(${JSON.stringify(expression.selector)}) >> ${describeExpression(expression.source)}`;

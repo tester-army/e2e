@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
-import { defineDriver } from '../../src/driver/index.ts';
+import { defineBackend } from '../../src/backend/index.ts';
 
 const ROOT = '/tmp/e2e-config-project';
 const BASE_ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
+const WEB = { name: 'web', platform: 'web' } as const;
+const TARGETS = [WEB];
 
 function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEnv = BASE_ENV) {
-  return resolveConfig(raw, { projectRoot: ROOT, env });
+  return resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env });
+}
+
+function fakeBackend() {
+  return defineBackend({ name: 'fake', spiVersion: 1, observe: async () => ({ nodes: [] }) });
 }
 
 describe('CI mode', () => {
@@ -41,21 +47,23 @@ describe('resolveConfig', () => {
     expect(config.workers).toBe(1);
   });
 
-  it('creates the implicit web target', () => {
+  it('requires explicit targets: core resolves no default backend', () => {
+    expect(() => resolveConfig({}, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
+      /targets is required/,
+    );
     const config = resolve({});
-    expect(config.targets).toHaveLength(1);
-    expect(config.targets[0]).toMatchObject({
-      name: 'web',
-      platform: 'web',
-      browser: 'chromium',
-      driver: 'playwright',
-    });
+    expect(config.targets[0]).toMatchObject({ name: 'web', platform: 'web', backend: undefined });
   });
 
-  it('requires an app URL', () => {
-    expect(() => resolveConfig({}, { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv })).toThrow(
-      /app URL is required/,
-    );
+  it('tolerates a missing app URL until app.open() needs one', () => {
+    const config = resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv });
+    expect(config.app.configured).toBe(false);
+    expect(() =>
+      resolveConfig(
+        { targets: TARGETS, app: { command: { executable: 'node' } } },
+        { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
+      ),
+    ).toThrow(/app URL is required/);
   });
 
   it('prefers app.url over APP_URL', () => {
@@ -74,10 +82,13 @@ describe('resolveConfig', () => {
     expect(() => resolve({ specVersion: '0.2' } as never)).toThrow(/specVersion/);
   });
 
-  it('rejects defining both top-level browser and explicit targets', () => {
-    expect(() =>
-      resolve({ browser: 'firefox', targets: [{ name: 'web', platform: 'web' }] }),
-    ).toThrow(/browser and explicit targets/);
+  it('rejects target keys the contract does not know', () => {
+    expect(() => resolve({ targets: [{ ...WEB, browser: 'firefox' }] } as never)).toThrow(
+      /unknown key "browser"/,
+    );
+    expect(() => resolve({ targets: [{ ...WEB, driver: 'playwright' }] } as never)).toThrow(
+      /unknown key "driver"/,
+    );
   });
 
   it('validates target names and uniqueness', () => {
@@ -94,23 +105,17 @@ describe('resolveConfig', () => {
     ).toThrow(/duplicate target/);
   });
 
-  it('rejects non-web driver targets; backends carry other platforms', () => {
-    expect(() =>
-      resolve({
-        targets: [{ name: 'ios', platform: 'ios', driver: fakeDriver(), app: 'App.app' }],
-      } as never),
-    ).toThrow(/use a backend target/);
+  it('accepts any platform: the backend decides what a target can do', () => {
+    const backend = fakeBackend();
+    const config = resolve({ targets: [{ name: 'ios', platform: 'ios', backend }] });
+    expect(config.targets[0]).toMatchObject({ name: 'ios', platform: 'ios', backend });
+    expect(config.targets[0]!.backend?.capabilities.has('observation')).toBe(true);
   });
 
-  it('accepts branded third-party drivers and rejects plain objects', () => {
-    const driver = fakeDriver();
-    const config = resolve({ targets: [{ name: 'custom', platform: 'web', driver }] });
-    expect(config.targets[0]!.driver).toBe(driver);
+  it('accepts defineBackend handles and rejects plain objects', () => {
     expect(() =>
-      resolve({
-        targets: [{ name: 'custom', platform: 'web', driver: { id: 'x' } }],
-      } as never),
-    ).toThrow(/defineDriver/);
+      resolve({ targets: [{ ...WEB, backend: { name: 'x', spiVersion: 1 } }] } as never),
+    ).toThrow(/defineBackend/);
   });
 
   it('defaults environment to test only for loopback/.localhost/.test hosts', () => {
@@ -191,13 +196,3 @@ describe('resolveConfig', () => {
   });
 });
 
-function fakeDriver() {
-  return defineDriver({
-    id: 'fake-driver',
-    version: '1.0.0',
-    platforms: ['web'],
-    spiVersion: 1,
-    capabilities: { fixtures: ['web'], artifacts: ['screenshot'], state: false },
-    launch: () => Promise.reject(new Error('not implemented')),
-  });
-}

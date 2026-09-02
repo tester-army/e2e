@@ -3,7 +3,8 @@
  * page, each verified deterministically so a wrong model verdict cannot pass.
  */
 
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test('drives a multi-step expense journey', async ({ web, agent, screen }) => {
   // Deterministic isolation: a retry or a leftover server must never start

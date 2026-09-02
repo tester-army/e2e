@@ -1,4 +1,5 @@
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 /**
  * Opt-in deterministic suite against seleniumbase.io, the practice site the
@@ -22,7 +23,7 @@ export default defineConfig({
     allowedOrigins: ['https://seleniumbase.io'],
   },
   tests: 'tests-selenium/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   // Third-party pages over the public internet: pages such as /canvas and
   // /error_page ship hundreds of KiB of inline data, so a cold navigation is
   // slower than anything the local playground produces.

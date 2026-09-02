@@ -1,4 +1,5 @@
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 /**
  * Long-running agentic journey against the production tester.army site.
@@ -25,7 +26,7 @@ export default defineConfig({
     ],
   },
   tests: 'tests-tester-army/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   timeout: 600_000,
   actionTimeout: 90_000,
   agent: {

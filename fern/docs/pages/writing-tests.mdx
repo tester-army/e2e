@@ -135,8 +135,9 @@ assertions **retry** while direct reads like `textContent()` do not. Assert
 with the matcher; it is the version that waits.
 
 Platform power lives behind named fixtures so portable tests stay portable:
-`web` has routes, cookies, dialogs, frames, and downloads; see the
-[app and web reference](/reference/app-web). Every query, action, and matcher
+`web` is contributed by the playwright backend (import `test` from
+`@e2edev/playwright` to have it typed) and has routes, cookies, dialogs,
+frames, and downloads; see the [app and web reference](/reference/app-web). Every query, action, and matcher
 is in the [screen reference](/reference/screen).
 
 ## Structure

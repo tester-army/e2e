@@ -32,9 +32,9 @@ export interface TraceCacheKey {
   readonly testId: string;
   readonly targetId: string;
   readonly platform: string;
-  readonly driverId: string;
-  readonly driverVersion: string;
-  readonly driverSpiVersion: number;
+  readonly backendName: string;
+  readonly backendVersion: string;
+  readonly backendSpiVersion: number;
   readonly kind: TraceCacheKind;
   /** Zero-based occurrence of this signature within the attempt. */
   readonly callIndex: number;
@@ -44,24 +44,24 @@ export interface TraceCacheKey {
   readonly policyVersion: string;
 }
 
-/** Identity of the target/driver/app a trace was recorded against. */
+/** Identity of the target/backend/app a trace was recorded against. */
 export interface CacheTargetIdentity {
   readonly targetId: string;
   readonly platform: string;
-  readonly driverId: string;
-  readonly driverVersion: string;
+  readonly backendName: string;
+  readonly backendVersion: string;
   readonly spiVersion: number;
   readonly appIdentity: string;
 }
 
 /**
- * Reduces a driver version to the part that can change how a semantic node
+ * Reduces a backend version to the part that can change how a semantic node
  * resolves: `1.61.1` becomes `1.61`. Keying on the exact version cold-started
  * every entry on a patch release for no benefit; a minor might change matching,
  * so that part is kept. A version that is not `major.minor[.patch]` is used
  * unchanged rather than guessed at.
  */
-export function driverCompatibilityVersion(version: string): string {
+export function backendCompatibilityVersion(version: string): string {
   const match = /^(\d+)\.(\d+)(?:[.\-+].*)?$/u.exec(version);
   return match === null ? version : `${match[1]!}.${match[2]!}`;
 }
@@ -166,9 +166,9 @@ export function buildTraceCacheKey(parts: {
     testId: parts.testId,
     targetId: parts.target.targetId,
     platform: parts.target.platform,
-    driverId: parts.target.driverId,
-    driverVersion: driverCompatibilityVersion(parts.target.driverVersion),
-    driverSpiVersion: parts.target.spiVersion,
+    backendName: parts.target.backendName,
+    backendVersion: backendCompatibilityVersion(parts.target.backendVersion),
+    backendSpiVersion: parts.target.spiVersion,
     kind: parts.signature.kind,
     callIndex: parts.callIndex,
     instructionDigest: parts.signature.instructionDigest,

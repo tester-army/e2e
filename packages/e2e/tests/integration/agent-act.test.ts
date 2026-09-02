@@ -144,9 +144,9 @@ describe('agent.act with a hand-rolled step executor', () => {
     expect(step!.status).toBe('passed');
     expect(step!.metrics!.actionSteps).toBe(1);
     expect(step!.explanation).toContain('the counter shows 1');
-    const driverEvents = step!.events.filter((event) => event.kind === 'driver');
+    const backendEvents = step!.events.filter((event) => event.kind === 'backend');
     const observations = step!.events.filter((event) => event.kind === 'observation');
-    expect(driverEvents).toHaveLength(1);
+    expect(backendEvents).toHaveLength(1);
     expect(observations).toHaveLength(2);
   });
 
@@ -405,7 +405,7 @@ describe('agent.act verdict mapping', () => {
   }, 120_000);
 });
 
-describe('agent.act driver operations are bounded by actionTimeout', () => {
+describe('agent.act backend operations are bounded by actionTimeout', () => {
   it('a page that never settles costs one action timeout, not the step budget', async () => {
     const app = await startFixtureApp();
     const executor: StepExecutor = {

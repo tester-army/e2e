@@ -32,9 +32,9 @@ const MIN_STEP_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
 
 /**
- * How often `waitFor` looks at the page between judgments.
+ * How often `waitFor` looks at the screen between judgments.
  *
- * An observation is driver-only work, so it is far cheaper than a model call —
+ * An observation is backend-only work, so it is far cheaper than a model call —
  * but it is not free: it walks the document and swaps the session's reference
  * generation, which invalidates any node reference taken from the previous one.
  * That is safe here because a judgment reads only the observation text, and it
@@ -235,14 +235,14 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * Waits until the next judgment is worth spending, and returns the observation
  * to spend it on.
  *
- * A judgment reads the observation and nothing else, so while the page looks the
+ * A judgment reads the observation and nothing else, so while the screen looks the
  * same the answer is the same and re-asking is a model call that can only repeat
- * itself. So a false judgment is followed by driver-only observations until the
- * page actually changes, which is also what makes a condition that came true two
+ * itself. So a false judgment is followed by backend-only observations until the
+ * screen actually changes, which is also what makes a condition that came true two
  * seconds ago cost two seconds rather than a full interval.
  *
  * `intervalMs` stays the rate limit it always was: at most one judgment per
- * interval, so a page that changes continuously — a spinner, a countdown —
+ * interval, so a screen that changes continuously — a spinner, a countdown —
  * cannot spend the budget in a second.
  *
  * A vision call waits on the interval alone. An animation the tree cannot see is

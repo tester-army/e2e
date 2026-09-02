@@ -1,6 +1,6 @@
 /**
  * Worker process glue. Owns nothing but the process: it loads the config
- * itself (config modules may hold live driver instances that cannot cross
+ * itself (config modules may hold live backend handles that cannot cross
  * IPC), resolves each unit's pairs by re-importing the file, and hands all
  * actual execution to `TargetWorker`.
  */
@@ -13,7 +13,6 @@ import { resolveConfig } from '../../config/resolve.ts';
 import { setCredentialRegistry } from '../../credentials.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
-import { resolveDriver } from '../resolve-driver.ts';
 import { SessionStore } from '../sessions.ts';
 import type { ChildProcessInbound, RunUnitMessage, WorkerBootstrap, WorkerToMain } from './protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './session.ts';
@@ -74,7 +73,6 @@ async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<T
   return {
     config,
     target,
-    driver: await resolveDriver(target),
     sessionStore: SessionStore.forWorker(
       message.runId,
       message.sessionsRoot,
@@ -85,7 +83,6 @@ async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<T
     headed: message.headed,
     resolvePairs,
     debug,
-    disposeDriver: true,
   };
 }
 

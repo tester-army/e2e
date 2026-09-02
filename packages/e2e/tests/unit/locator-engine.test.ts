@@ -1,18 +1,18 @@
 /**
- * LocatorEngine <-> driver error contract: retry-on-stale semantics and the
- * complete DriverError -> runner taxonomy mapping (spec 10-drivers.md).
+ * LocatorEngine <-> backend error contract: retry-on-stale semantics and the
+ * complete BackendError -> runner taxonomy mapping.
  */
 
 import { describe, expect, it } from 'vitest';
 import {
-  DriverError,
-  type DriverErrorCode,
-  type DriverSession,
+  BackendError,
+  type BackendErrorCode,
+  type TargetSession,
   type LocatorExpression,
   type NodeRef,
   type SemanticNode,
-} from '../../src/driver/index.ts';
-import { LocatorEngine, isNodeVisible, translateDriverError } from '../../src/locator/engine.ts';
+} from '../../src/backend/surface.ts';
+import { LocatorEngine, isNodeVisible, translateBackendError } from '../../src/locator/engine.ts';
 import { E2EError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 
@@ -30,14 +30,14 @@ interface ScreenScript {
 }
 
 /**
- * A `NODE_STALE` thrown by a driver loaded through another module registry, so
- * it is not an instance of the runner's own `DriverError` class. The runner's
+ * A `NODE_STALE` thrown by a backend loaded through another module registry, so
+ * it is not an instance of the runner's own `BackendError` class. The runner's
  * staleness retries must recognize it structurally, or a recoverable race
- * becomes an immediate test failure for every out-of-tree driver.
+ * becomes an immediate test failure for every out-of-tree backend.
  */
 function foreignStale(retryable: boolean): Error {
   const error = new Error('stale');
-  error.name = 'DriverError';
+  error.name = 'BackendError';
   Object.assign(error, { code: 'NODE_STALE', retryable });
   return error;
 }
@@ -54,33 +54,33 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
       async resolve() {
         const step = next(script.resolve, 'resolve');
         if (step === undefined || typeof step === 'function') return step?.() ?? [REF];
-        if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: true });
+        if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
         if (step === 'foreign-stale') throw foreignStale(true);
         if (step === 'frame')
-          throw new DriverError('FRAME_NOT_FOUND', 'frame missing', { retryable: true });
-        throw new DriverError('DRIVER_FAILURE', 'backend died', { retryable: false });
+          throw new BackendError('FRAME_NOT_FOUND', 'frame missing', { retryable: true });
+        throw new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false });
       },
       async read() {
         const step = next(script.read, 'read');
         if (step === undefined || typeof step === 'function') return step?.() ?? NODE;
-        if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: false });
+        if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: false });
         if (step === 'foreign-stale') throw foreignStale(false);
-        throw new DriverError('DRIVER_FAILURE', 'backend died', { retryable: false });
+        throw new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false });
       },
       async perform() {
         const step = next(script.perform, 'perform');
         if (step === undefined || typeof step === 'function') return step?.();
-        if (step === 'stale') throw new DriverError('NODE_STALE', 'stale', { retryable: true });
+        if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
         if (step === 'foreign-stale') throw foreignStale(true);
         if (step === 'committed')
-          throw new DriverError('ACTION_MAY_HAVE_COMMITTED', 'maybe committed', {
+          throw new BackendError('ACTION_MAY_HAVE_COMMITTED', 'maybe committed', {
             retryable: false,
           });
-        throw new DriverError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
+        throw new BackendError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
       },
       async swipe() {},
     },
-  } as unknown as DriverSession;
+  } as unknown as TargetSession;
   const engine = new LocatorEngine({
     session,
     signal: new AbortController().signal,
@@ -89,13 +89,12 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
     actionTimeout: options.actionTimeout ?? 1_000,
     assertionTimeout: 1_000,
     testDeadline: new Deadline(30_000),
-    requireOpen: () => {},
   });
   return { engine, calls };
 }
 
 describe('LocatorEngine resolve retry contract', () => {
-  it('retries retryable frame misses until the driver recovers', async () => {
+  it('retries retryable frame misses until the backend recovers', async () => {
     const { engine, calls } = makeEngine({ resolve: ['frame', 'stale', () => [REF]] });
     const refs = await engine.resolveAll(EXPRESSION);
     expect(refs).toEqual([REF]);
@@ -106,7 +105,7 @@ describe('LocatorEngine resolve retry contract', () => {
     const { engine, calls } = makeEngine({ resolve: ['failure'] });
     await expect(engine.resolveAll(EXPRESSION)).rejects.toMatchObject({
       category: 'infrastructure',
-      code: 'DRIVER_FAILURE',
+      code: 'BACKEND_FAILURE',
     });
     expect(calls.resolve).toBe(1);
   });
@@ -140,32 +139,6 @@ describe('LocatorEngine resolve retry contract', () => {
       engine.resolveExactlyOne(EXPRESSION, new Deadline(350)),
     ).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
     expect(calls.resolve).toBeGreaterThan(1);
-  });
-
-  it('enforces the requireOpen gate before touching the driver', async () => {
-    const calls = { resolve: 0 };
-    const session = {
-      screen: {
-        async resolve() {
-          calls.resolve += 1;
-          return [REF];
-        },
-      },
-    } as unknown as DriverSession;
-    const engine = new LocatorEngine({
-      session,
-      signal: new AbortController().signal,
-      runId: 'run-1',
-      attemptId: 'attempt-1',
-      actionTimeout: 1_000,
-      assertionTimeout: 1_000,
-      testDeadline: new Deadline(30_000),
-      requireOpen: () => {
-        throw new E2EError('test', 'APP_NOT_OPEN', 'call app.open() first');
-      },
-    });
-    await expect(engine.resolveAll(EXPRESSION)).rejects.toMatchObject({ code: 'APP_NOT_OPEN' });
-    expect(calls.resolve).toBe(0);
   });
 });
 
@@ -205,7 +178,7 @@ describe('LocatorEngine read contract', () => {
   it('translates non-stale read failures', async () => {
     const { engine } = makeEngine({ read: ['failure'] });
     await expect(engine.tryRead(EXPRESSION, new Deadline(5_000))).rejects.toMatchObject({
-      code: 'DRIVER_FAILURE',
+      code: 'BACKEND_FAILURE',
       category: 'infrastructure',
     });
   });
@@ -216,8 +189,8 @@ describe('LocatorEngine read contract', () => {
   });
 });
 
-describe('translateDriverError mapping table', () => {
-  const cases: Array<[DriverErrorCode, string, string]> = [
+describe('translateBackendError mapping table', () => {
+  const cases: Array<[BackendErrorCode, string, string]> = [
     ['NODE_STALE', 'test', 'LOCATOR_NOT_FOUND'],
     ['FRAME_NOT_FOUND', 'test', 'LOCATOR_NOT_FOUND'],
     ['FRAME_AMBIGUOUS', 'test', 'LOCATOR_AMBIGUOUS'],
@@ -227,35 +200,35 @@ describe('translateDriverError mapping table', () => {
     ['CANCELLED', 'infrastructure', 'CANCELLED'],
     ['UNSUPPORTED_CAPABILITY', 'configuration', 'UNSUPPORTED_CAPABILITY'],
     ['INVALID_STATE', 'test', 'APP_NOT_OPEN'],
-    ['DRIVER_FAILURE', 'infrastructure', 'DRIVER_FAILURE'],
+    ['BACKEND_FAILURE', 'infrastructure', 'BACKEND_FAILURE'],
   ];
 
-  it.each(cases)('%s -> %s/%s', (driverCode, category, code) => {
-    const translated = translateDriverError(
-      new DriverError(driverCode, 'boom', { retryable: false }),
+  it.each(cases)('%s -> %s/%s', (backendCode, category, code) => {
+    const translated = translateBackendError(
+      new BackendError(backendCode, 'boom', { retryable: false }),
     );
     expect(translated).toBeInstanceOf(E2EError);
     expect(translated.category).toBe(category);
     expect(translated.code).toBe(code);
-    expect(translated.cause).toBeInstanceOf(DriverError);
+    expect(translated.cause).toBeInstanceOf(BackendError);
   });
 
   it('passes existing E2EErrors through unchanged', () => {
     const original = new E2EError('configuration', 'INVALID_CONFIG', 'bad config');
-    expect(translateDriverError(original)).toBe(original);
+    expect(translateBackendError(original)).toBe(original);
   });
 
-  it('wraps unknown errors as infrastructure DRIVER_FAILURE', () => {
-    const translated = translateDriverError(new Error('socket hangup'));
+  it('wraps unknown errors as infrastructure BACKEND_FAILURE', () => {
+    const translated = translateBackendError(new Error('socket hangup'));
     expect(translated.category).toBe('infrastructure');
-    expect(translated.code).toBe('DRIVER_FAILURE');
+    expect(translated.code).toBe('BACKEND_FAILURE');
     expect(translated.message).toContain('socket hangup');
-    expect(translateDriverError('string failure').message).toContain('string failure');
+    expect(translateBackendError('string failure').message).toContain('string failure');
   });
 
   it('appends the locator description when an expression is provided', () => {
-    const translated = translateDriverError(
-      new DriverError('NODE_STALE', 'stale', { retryable: false }),
+    const translated = translateBackendError(
+      new BackendError('NODE_STALE', 'stale', { retryable: false }),
       EXPRESSION,
     );
     expect(translated.message).toContain('stale');

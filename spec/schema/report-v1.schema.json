@@ -152,7 +152,7 @@
       "required": ["kind", "startedAt", "durationMs", "status"],
       "properties": {
         "kind": {
-          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "driver", "schema"]
+          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "backend", "schema"]
         },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
@@ -219,7 +219,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
-        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "web", "session", "resource"] },
+        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "session", "resource"] },
         "api": { "type": "string", "minLength": 1 },
         "label": { "type": "string", "maxLength": 8192 },
         "source": { "$ref": "#/$defs/source" },
@@ -475,34 +475,22 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "index", "platform", "browser", "browserVersion", "viewport", "baseOrigin", "environment", "allowProduction", "testIdAttribute", "driver", "capabilities", "artifactCapabilities", "stateCapability"],
+      "required": ["id", "index", "platform", "baseOrigin", "environment", "allowProduction", "testIdAttribute", "backend", "capabilities", "artifactCapabilities", "stateCapability"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
         "platform": { "type": "string", "minLength": 1 },
-        "browser": { "enum": ["chromium", "firefox", "webkit"] },
-        "browserVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "viewport": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["width", "height", "scale"],
-          "properties": {
-            "width": { "type": "integer", "minimum": 1 },
-            "height": { "type": "integer", "minimum": 1 },
-            "scale": { "type": "number", "exclusiveMinimum": 0 }
-          }
-        },
         "baseOrigin": { "type": "string", "format": "uri" },
         "environment": { "enum": ["test", "staging", "production"] },
         "allowProduction": { "type": "boolean" },
         "testIdAttribute": { "type": "string", "minLength": 1 },
-        "driver": {
+        "backend": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "version", "spiVersion"],
+          "required": ["name", "version", "spiVersion"],
           "properties": {
-            "id": { "type": "string", "minLength": 1 },
-            "version": { "type": "string", "minLength": 1 },
+            "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "version": { "type": "string", "minLength": 1, "maxLength": 128 },
             "spiVersion": { "const": 1 }
           }
         },

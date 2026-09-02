@@ -5,7 +5,7 @@
  * miss that dispatches the live executor, never an error and never a step
  * failure. Validation has one owner — the store (`readTraceEntry`) — so this
  * decision takes an already-trusted entry and answers only the questions the
- * entry alone cannot: is it whole, and is the page where the recording began?
+ * entry alone cannot: is it whole, and is the app where the recording began?
  */
 
 import type { ActionTrace, TraceEntry } from './trace.ts';
@@ -31,7 +31,7 @@ export type TraceReplayDecision =
 
 /**
  * Decides whether one entry replays for the current step. A trace that does
- * not open with a navigate carries a start-path precondition: the page must
+ * not open with a navigate carries a start-path precondition: the app must
  * be where the recording began, or the recorded actions would run against a
  * different screen than they were proven on.
  */

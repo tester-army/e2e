@@ -1,4 +1,5 @@
 import { defineConfig, type CacheMode } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 const CACHE_MODES = ['off', 'read-only', 'read-write'] as const;
 
@@ -32,7 +33,7 @@ export default defineConfig({
     },
   },
   tests: 'tests-bench/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {

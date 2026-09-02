@@ -27,24 +27,28 @@
         "id": "web",
         "index": 0,
         "platform": "web",
-        "browser": "chromium",
-        "browserVersion": "128.0.0",
-        "viewport": {
-          "width": 1280,
-          "height": 720,
-          "scale": 1
-        },
         "baseOrigin": "https://example.test",
         "environment": "test",
         "allowProduction": false,
         "testIdAttribute": "data-testid",
-        "driver": {
-          "id": "playwright",
+        "backend": {
+          "name": "playwright",
           "version": "1.0.0",
           "spiVersion": 1
         },
-        "capabilities": ["web"],
-        "artifactCapabilities": ["screenshot", "trace", "video"],
+        "capabilities": [
+          "actions",
+          "artifacts",
+          "location",
+          "observation",
+          "state",
+          "web"
+        ],
+        "artifactCapabilities": [
+          "screenshot",
+          "trace",
+          "video"
+        ],
         "stateCapability": true
       }
     ],
@@ -55,7 +59,9 @@
         "testId": "tests/example.e2e.ts::opens%20app",
         "kind": "test",
         "declarationIndex": 0,
-        "titlePath": ["opens app"],
+        "titlePath": [
+          "opens app"
+        ],
         "file": "tests/example.e2e.ts",
         "source": {
           "file": "tests/example.e2e.ts",

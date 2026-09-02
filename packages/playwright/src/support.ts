@@ -1,8 +1,8 @@
-/** Shared error translation, filename, and swipe helpers for the Playwright driver. */
+/** Shared error translation, filename, and swipe helpers for the Playwright backend. */
 
 import type { ElementHandle, Locator as PwLocator, Page } from 'playwright';
-import { DriverError, type Momentum, type ScrollDirection } from 'e2e/driver';
-import { causeMessage as message, sanitizeFilename } from 'e2e/internal';
+import { BackendError, type Momentum, type ScrollDirection } from 'e2e/backend';
+import { causeMessage as message, ConfigurationError, InfrastructureError, sanitizeFilename, TestError } from 'e2e/internal';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 
@@ -28,7 +28,7 @@ export type ActionTarget =
   | { readonly kind: 'locator'; readonly locator: PwLocator }
   | { readonly kind: 'element'; readonly element: ElementHandle<Element> };
 
-export interface Rect {
+interface Rect {
   x: number;
   y: number;
   width: number;
@@ -61,7 +61,7 @@ export function asActionable(target: ActionTarget): Actionable {
 }
 
 /** Owning page of one action target. */
-export async function targetPage(target: ActionTarget): Promise<Page> {
+async function targetPage(target: ActionTarget): Promise<Page> {
   if (target.kind === 'locator') return target.locator.page();
   const frame = await target.element.ownerFrame();
   if (frame === null) throw invalidState('element is detached from every frame');
@@ -73,10 +73,19 @@ export async function targetPage(target: ActionTarget): Promise<Page> {
  * element to resolve; an element handle is already resolved, so its box is
  * read immediately.
  */
-export function targetBoundingBox(target: ActionTarget, timeout: number): Promise<Rect | null> {
+function targetBoundingBox(target: ActionTarget, timeout: number): Promise<Rect | null> {
   return target.kind === 'locator'
     ? target.locator.boundingBox({ timeout })
     : target.element.boundingBox();
+}
+
+/** Minimal scroll that brings one target into view, without centring it. */
+async function scrollIntoViewNearest(target: ActionTarget): Promise<void> {
+  const scroll = (el: Element): void => {
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
+  if (target.kind === 'locator') await target.locator.evaluate(scroll);
+  else await target.element.evaluate(scroll);
 }
 
 /**
@@ -89,15 +98,6 @@ export function targetBoundingBox(target: ActionTarget, timeout: number): Promis
  * works for both kinds because a handle has a bounding box like anything else.
  *
  */
-/** Minimal scroll that brings one target into view, without centring it. */
-async function scrollIntoViewNearest(target: ActionTarget): Promise<void> {
-  const scroll = (el: Element): void => {
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  };
-  if (target.kind === 'locator') await target.locator.evaluate(scroll);
-  else await target.element.evaluate(scroll);
-}
-
 export async function performPointerDrag(
   source: ActionTarget,
   destination: ActionTarget,
@@ -130,7 +130,7 @@ export async function performPointerDrag(
   }
 
   if (from === null || to === null) {
-    throw new DriverError('NOT_ACTIONABLE', 'a drag endpoint has no visible bounding box', {
+    throw new BackendError('NOT_ACTIONABLE', 'a drag endpoint has no visible bounding box', {
       retryable: false,
     });
   }
@@ -145,7 +145,7 @@ export async function performPointerDrag(
     ['destination', end],
   ] as const) {
     if (!withinViewport(point, viewport)) {
-      throw new DriverError(
+      throw new BackendError(
         'NOT_ACTIONABLE',
         `the drag ${label} is outside the viewport at (${Math.round(point.x)}, ${Math.round(point.y)}) ` +
           `of ${viewport.width}x${viewport.height}: the two endpoints cannot be reached in one gesture`,
@@ -163,27 +163,39 @@ export async function performPointerDrag(
 }
 
 // Re-exported so the rest of the package keeps importing its text helpers from
-// one place, whether they are shared with other drivers or local to this one.
+// one place, whether they are shared with other backends or local to this one.
 export { message, sanitizeFilename };
 
 export function isPwTimeout(cause: unknown): boolean {
   return cause instanceof Error && cause.name === 'TimeoutError';
 }
 
-export function invalidState(text: string): DriverError {
-  return new DriverError('INVALID_STATE', text, { retryable: false });
+export function invalidState(text: string): BackendError {
+  return new BackendError('INVALID_STATE', text, { retryable: false });
 }
 
-/** Translates an unexpected Playwright error at the SPI boundary. */
-export function translatePwError(cause: unknown, operation: string): DriverError {
-  if (cause instanceof DriverError) return cause;
+/**
+ * True for an error that already carries its classification: a `BackendError`
+ * from any module copy, or a runner error (policy, validation, timeout). Those
+ * must cross the boundary untouched; re-wrapping one would turn a
+ * `POLICY_DENIED` into an infrastructure failure.
+ */
+export function isClassified(cause: unknown): cause is Error {
+  if (cause instanceof BackendError || cause instanceof TestError) return true;
+  if (cause instanceof ConfigurationError || cause instanceof InfrastructureError) return true;
+  return cause instanceof Error && cause.name === 'BackendError';
+}
+
+/** Translates an unexpected Playwright error at the contract boundary. */
+export function translatePwError(cause: unknown, operation: string): BackendError {
+  if (isClassified(cause)) return cause as BackendError;
   if (isPwTimeout(cause)) {
-    return new DriverError('OPERATION_TIMEOUT', `${operation} timed out: ${message(cause)}`, {
+    return new BackendError('OPERATION_TIMEOUT', `${operation} timed out: ${message(cause)}`, {
       retryable: false,
       cause,
     });
   }
-  return new DriverError('DRIVER_FAILURE', `${operation} failed: ${message(cause)}`, {
+  return new BackendError('BACKEND_FAILURE', `${operation} failed: ${message(cause)}`, {
     retryable: false,
     cause,
   });
@@ -200,7 +212,7 @@ const NAVIGATION_RACE_PATTERN =
   /execution context was destroyed|because of a navigation|navigating and changing the content|frame was detached|frame got detached|node is detached from document/i;
 
 /** Whether a Playwright failure describes a read that lost its document to a navigation. */
-export function isNavigationRace(cause: unknown): boolean {
+function isNavigationRace(cause: unknown): boolean {
   return NAVIGATION_RACE_PATTERN.test(message(cause));
 }
 
@@ -210,9 +222,9 @@ export function isNavigationRace(cause: unknown): boolean {
  * of failing the call. Timeouts keep their meaning: an observation that cannot
  * be captured in time is not a race.
  */
-export function navigationStaleOr(cause: unknown, operation: string): DriverError {
-  if (!(cause instanceof DriverError) && isNavigationRace(cause)) {
-    return new DriverError('NODE_STALE', `${operation}: ${message(cause)}`, {
+export function navigationStaleOr(cause: unknown, operation: string): BackendError {
+  if (!isClassified(cause) && isNavigationRace(cause)) {
+    return new BackendError('NODE_STALE', `${operation}: ${message(cause)}`, {
       retryable: true,
       cause,
     });
@@ -221,10 +233,11 @@ export function navigationStaleOr(cause: unknown, operation: string): DriverErro
 }
 
 /** Like translatePwError, but detachment/miss failures become retryable NODE_STALE. */
-export function staleOr(cause: unknown, operation: string): DriverError {
+export function staleOr(cause: unknown, operation: string): BackendError {
+  if (isClassified(cause)) return cause as BackendError;
   const text = message(cause);
   if (STALE_PATTERN.test(text) || isNavigationRace(cause) || isPwTimeout(cause)) {
-    return new DriverError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
+    return new BackendError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
   }
   return translatePwError(cause, operation);
 }
@@ -254,7 +267,7 @@ export async function performElementSwipe(
   await asActionable(target).hover({ timeout });
   const box = await targetBoundingBox(target, timeout);
   if (box === null) {
-    throw new DriverError('NOT_ACTIONABLE', 'element has no visible bounding box', {
+    throw new BackendError('NOT_ACTIONABLE', 'element has no visible bounding box', {
       retryable: false,
     });
   }

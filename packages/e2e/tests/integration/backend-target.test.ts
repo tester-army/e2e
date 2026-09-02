@@ -1,5 +1,5 @@
 /**
- * Backend targets (RFC0002): a driver-less target whose surface is a
+ * Backend targets (RFC0002): a target whose surface is a
  * defineBackend body. Covers the full pipeline — config, worker, adapter,
  * executor socket, lifecycle, capability gating, and the report — with a toy
  * in-memory backend and a hand-rolled executor, no model and no browser.
@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { defineBackend, type BackendFixtureContext } from '../../src/backend/index.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
-import type { SemanticNode } from '../../src/driver/index.ts';
+import type { SemanticNode } from '../../src/backend/surface.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject } from '../helpers/run-project.ts';
 
@@ -24,8 +24,7 @@ test('agent drives the toy device', async ({ agent }) => {
 
 const SCREEN_SUITE = `import { test, expect } from 'e2e';
 
-test('screen is unavailable on a backend without location', async ({ app, screen }) => {
-  await app.open();
+test('screen is unavailable on a backend without location', async ({ screen }) => {
   await expect(screen.getByRole('button')).toBeVisible();
 });
 `;
@@ -189,7 +188,7 @@ describe('backend targets', () => {
       expect(toy.current()).toBe(2);
       expect(toy.lifecycle).toEqual(['init', 'dispose']);
       const reportTarget = outcome.report.run.targets.find((entry) => entry.id === 'toy-sim');
-      expect(reportTarget?.driver.id).toBe('backend:toy-device');
+      expect(reportTarget?.backend.name).toBe('toy-device');
       expect(reportTarget?.platform).toBe('ios');
       assertValidReport(outcome.report);
     } finally {

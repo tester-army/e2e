@@ -9,6 +9,7 @@
 
 import type { Tool } from 'ai';
 import { TestError } from '../internal/errors.ts';
+import type { Platform } from '../types.ts';
 
 /** Cross-realm identity marker for defined tools. */
 const DEFINED_TOOL_MARKER = Symbol.for('e2e.defined-tool.v1');
@@ -23,6 +24,13 @@ export interface ToolAnnotations {
   readonly mutates: boolean;
   /** Whether the tool handles secret material. */
   readonly secrets: boolean;
+  /**
+   * Platforms this tool is offered on; absent means every platform. A suite
+   * that mixes targets of different platforms keeps a gesture tool off the
+   * platforms that cannot honor it by declaring this, not by splitting
+   * configs.
+   */
+  readonly platforms?: readonly Platform[];
 }
 
 export interface DefinedTool {
@@ -44,16 +52,33 @@ export function defineTool(tool: Tool, annotations: ToolAnnotations): DefinedToo
   if (typeof annotations.mutates !== 'boolean' || typeof annotations.secrets !== 'boolean') {
     throw new TestError('INVALID_ARGUMENT', 'annotations.mutates and annotations.secrets must be booleans');
   }
+  if (
+    annotations.platforms !== undefined &&
+    (!Array.isArray(annotations.platforms) ||
+      annotations.platforms.length === 0 ||
+      annotations.platforms.some((platform) => typeof platform !== 'string' || platform === ''))
+  ) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      'annotations.platforms must be a non-empty array of platform names when present',
+    );
+  }
   const defined: DefinedTool = {
     tool,
     annotations: {
       replay: annotations.replay,
       mutates: annotations.mutates,
       secrets: annotations.secrets,
+      ...(annotations.platforms === undefined ? {} : { platforms: [...annotations.platforms] }),
     },
   };
   Object.defineProperty(defined, DEFINED_TOOL_MARKER, { value: true });
   return Object.freeze(defined);
+}
+
+/** True when a defined tool is offered on the given platform. */
+export function toolAppliesTo(defined: DefinedTool, platform: Platform): boolean {
+  return defined.annotations.platforms === undefined || defined.annotations.platforms.includes(platform);
 }
 
 /** True when a value came through `defineTool`, from this or another realm. */

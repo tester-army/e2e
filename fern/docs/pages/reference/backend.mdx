@@ -1,0 +1,212 @@
+---
+title: e2e/backend
+subtitle: The backend contract a target's surface implements, and the fixture context it contributes through.
+---
+
+`e2e/backend` is the authoring import for a backend. `defineBackend` validates
+the body synchronously at config load, freezes it, computes its capability set,
+and returns the branded handle a target accepts.
+
+```ts
+import { defineBackend, type BackendHandle } from 'e2e/backend';
+
+export function defineBackend(spec: Backend): BackendHandle;
+export function isBackendHandle(value: unknown): value is BackendHandle;
+```
+
+Validation fails with `INVALID_CONFIG`, never a silent demotion: unknown keys,
+`actions` or `locate` without `observe`, `perform`/`swipe` without `locate`,
+malformed `state`/`artifacts`/`app`, a fixture name that is not a lower-camel
+identifier or shadows a universal fixture (`agent`, `app`, `screen`,
+`platform`, `session`), or a `spiVersion` other than `1`.
+
+## Backend
+
+```ts
+export interface Backend {
+  readonly name: string;
+  readonly version?: string;
+  readonly spiVersion: 1;
+
+  observe?(context: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot>;
+  readonly actions?: BackendActions;
+  locate?(expression: LocatorExpression, context: OperationContext): Promise<readonly SemanticNode[]>;
+  perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
+  swipe?(direction: ScrollDirection, momentum: Momentum | undefined, context: OperationContext): Promise<void>;
+  readonly fixtures?: Readonly<Record<string, BackendFixtureFactory>>;
+  readonly state?: BackendStateCapability;
+  readonly artifacts?: BackendArtifacts;
+  readonly app?: BackendApp;
+  url?(context: OperationContext): Promise<string>;
+
+  init?(info: BackendInitInfo): Promise<void>;
+  startAttempt?(context: BackendAttemptContext): Promise<void>;
+  endAttempt?(): Promise<void>;
+  dispose?(): Promise<void>;
+}
+```
+
+| Member | Capability | Requires | Unlocks |
+| --- | --- | --- | --- |
+| `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay |
+| `actions` | `actions` | `observe` | grammar verbs for the agent, `app.open()`, `app.back()` |
+| `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
+| `perform` | - | `locate` | the full `Locator` action set with platform actionability checks |
+| `swipe` | - | `locate` | `screen.swipe`, `scrollUntilVisible` |
+| `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
+| `state` | `state` | - | `test.setup` sessions and the `session:` option |
+| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']` |
+| `app` | - | - | `app.restart()`, `app.clearState()` |
+| `url` | - | - | trace start anchors, the secret-fill origin check |
+
+`backend.capabilities` is the computed `ReadonlySet` of capability names and is
+what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
+
+## Lifecycle
+
+| Hook | When | Budget |
+| --- | --- | --- |
+| `init(info)` | once per worker, before the first attempt | `launchTimeout`; failure is infrastructure |
+| `startAttempt(context)` | before every attempt; `context.artifactsDir` is where artifacts go | `launchTimeout` |
+| `endAttempt()` | after every attempt, idempotent | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
+| `dispose()` | worker shutdown | `cleanupTimeout`; failure is a run error |
+
+```ts
+export interface BackendInitInfo {
+  readonly runId: string;
+  readonly targetName: string;
+  readonly app: { readonly baseUrl: string; readonly allowedOrigins: readonly string[] };
+  readonly testIdAttribute: string;
+  readonly headed: boolean;
+  readonly signal: AbortSignal;
+}
+
+export interface BackendAttemptContext {
+  readonly attemptId: string;
+  readonly artifactsDir: string;
+  readonly signal: AbortSignal;
+}
+```
+
+## Observation
+
+```ts
+export interface BackendSnapshot {
+  readonly nodes: readonly SemanticNode[];
+  readonly viewport?: { width: number; height: number; scale: number };
+  readonly pixels?: ObservationPixels;
+  readonly maskedRegionCount?: number;
+}
+```
+
+Return the surface as it is right now. The harness mints the revision, stamps it
+onto every ref, redacts registered secret values, bounds the byte size, and
+checks that `maskedRegionCount` covers every `secure` node when `pixels` are
+present. A pixels-only snapshot (`nodes: []`) is valid: that is how a
+screenshot-and-coordinates surface is observable.
+
+## Actions
+
+```ts
+export interface BackendActions {
+  tap?(target: { ref: NodeRef }, context: OperationContext): Promise<void>;
+  type?(target: { ref: NodeRef }, value: string, context: OperationContext): Promise<void>;
+  press?(target: { ref: NodeRef }, key: string, context: OperationContext): Promise<void>;
+  select?(target: { ref: NodeRef }, value: string, context: OperationContext): Promise<void>;
+  scroll?(direction: ScrollDirection, target: { ref: NodeRef } | undefined, context: OperationContext): Promise<void>;
+  navigate?(url: string, context: OperationContext): Promise<void>;
+  back?(context: OperationContext): Promise<void>;
+}
+```
+
+The grammar is closed. Declare the verbs the surface supports; an absent verb
+fails a step action with `UNSUPPORTED_CAPABILITY` and the model is told.
+Anything beyond the grammar is an agent-side `defineTool`.
+
+## Errors
+
+```ts
+export class BackendError extends Error {
+  constructor(code: BackendErrorCode, message: string, options: { retryable: boolean; cause?: unknown });
+  readonly code: BackendErrorCode;
+  readonly retryable: boolean;
+}
+
+export type BackendErrorCode =
+  | 'NODE_STALE' | 'FRAME_NOT_FOUND' | 'FRAME_AMBIGUOUS' | 'NOT_ACTIONABLE'
+  | 'ACTION_MAY_HAVE_COMMITTED' | 'OPERATION_TIMEOUT' | 'CANCELLED'
+  | 'UNSUPPORTED_CAPABILITY' | 'INVALID_STATE' | 'BACKEND_FAILURE';
+```
+
+| Code | Runner mapping | Retryable |
+| --- | --- | --- |
+| `NODE_STALE` | re-resolve, then `LOCATOR_NOT_FOUND` | yes |
+| `FRAME_NOT_FOUND` | re-resolve, then `LOCATOR_NOT_FOUND` | yes |
+| `FRAME_AMBIGUOUS` | `LOCATOR_AMBIGUOUS` | no |
+| `NOT_ACTIONABLE`, `ACTION_MAY_HAVE_COMMITTED`, `OPERATION_TIMEOUT` | `ACTION_FAILED` | no |
+| `CANCELLED` | infrastructure `CANCELLED` | no |
+| `UNSUPPORTED_CAPABILITY` | configuration `UNSUPPORTED_CAPABILITY` | no |
+| `INVALID_STATE` | `APP_NOT_OPEN` | no |
+| `BACKEND_FAILURE`, any non-`BackendError` | infrastructure `BACKEND_FAILURE` | no |
+
+Retryability is closed to the two repeatable-read codes; a retryable claim on
+any other code is coerced to a non-retryable `BACKEND_FAILURE`.
+
+## State
+
+```ts
+export interface BackendState {
+  readonly format: string;
+  readonly version: number;
+  readonly data: unknown;
+  readonly expiresAt?: string;
+}
+
+export interface BackendStateCapability {
+  capture(context: OperationContext): Promise<BackendState>;
+  restore(state: BackendState, context: OperationContext): Promise<void>;
+}
+```
+
+A snapshot is a credential. The harness encrypts it at rest with a per-run
+AES-256-GCM key, binds it to run, target, backend, and app identity, deletes it
+at run end, and never logs, reports, digests, or sends it to a model. A backend
+must not persist, cache, log, or echo a snapshot, and `restore` replaces the
+surface's persisted state rather than merging into it.
+
+## Contributed fixtures
+
+```ts
+export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
+
+export interface BackendFixtureContext {
+  readonly targetName: string;
+  readonly app: { baseUrl: string; allowedOrigins: readonly string[]; resolveUrl(url: string): string };
+  readonly timeouts: { test: number; action: number; assertion: number };
+  readonly signal: AbortSignal;
+  operation(timeoutMs?: number): OperationContext;
+  attachArtifact(kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log', relativePath: string): void;
+  attachViewport(viewport: { width: number; height: number; scale: number }): void;
+  locator(expression: LocatorExpression): Locator;
+  screen(scope: (expression: LocatorExpression) => LocatorExpression): Screen;
+  expectable<T extends object, E extends object>(target: T, factory: () => E): T & Expectable<E>;
+}
+```
+
+The harness records every async method call on a contributed fixture as a
+`<fixture>.<method>` step, labelled with the first string argument, bounded by
+`actionTimeout` or the call's own `{ timeout }` option, and aborted with the
+attempt. Synchronous members are accessors and pass through; nested plain
+objects are namespaces (`web.keyboard.press`). `expectable` attaches an
+expectation surface so `expect(fixture)` returns it, with every matcher recorded
+as an `expect.<matcher>` assertion step. Type the fixture in tests with
+`test.extend<{ name: Type }>()`.
+
+## Vocabulary
+
+`OperationContext`, `TextPattern`, `SemanticQuery`, `LocatorExpression`,
+`NodeRef`, `SemanticNode`, `ObservationPixels`, `LocatorAction`,
+`OBSERVED_NAME_LIMIT`, and `OBSERVED_TEXT_LIMIT` are exported from
+`e2e/backend` and are the platform-neutral words every backend speaks. The
+`selector` expression kind carries a platform-native selector string (CSS or
+XPath on a document platform); `frame` scopes a query into a nested document.

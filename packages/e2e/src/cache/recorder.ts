@@ -6,7 +6,7 @@
  * replay can re-find it against a fresh observation. Recording is
  * defense-in-depth on secrets: callers already hand secret-free input
  * (`typeSecret` contributes only the secret's stable name), and every string
- * that could carry page content is additionally passed through the run's
+ * that could carry screen content is additionally passed through the run's
  * redactor before it can reach disk.
  *
  * Replay inputs are verbatim or nothing. A value the redactor would alter, or
@@ -16,7 +16,7 @@
  * state. A poisoned trace still documents what happened; it never replays.
  */
 
-import type { SemanticNode } from '../driver/index.ts';
+import type { SemanticNode } from '../backend/surface.ts';
 import { sanitizeText } from '../internal/errors.ts';
 import type { ScrollDirection } from '../types.ts';
 import {
@@ -203,7 +203,7 @@ export class TraceRecorder {
 
 /**
  * Builds the durable descriptor for one resolved node: the semantic fields
- * replay re-finds it by, plus the driver's structural selector hint (kept as
+ * replay re-finds it by, plus the backend's structural selector hint (kept as
  * provenance for tuned policies; the conservative relocator ignores it).
  * Values a secure node holds are never part of it — descriptors carry how a
  * node is named, not what it contains.
@@ -239,7 +239,7 @@ export function describeTarget(
 }
 
 function describeForSummary(target: TraceTargetDescriptor | undefined): string {
-  if (target === undefined) return 'the page';
+  if (target === undefined) return 'the screen';
   const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';
   const role = target.role ?? 'node';
   return label === '' ? role : `${role} ${JSON.stringify(bound(label, 40))}`;

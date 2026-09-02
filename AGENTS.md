@@ -7,12 +7,11 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 
 `spec/` is a frozen normative contract, not documentation.
 
-- `spec/api/e2e.d.ts` (`sdk-0.1`) and `spec/api/driver.d.ts` (`driver-1`) are
-  canonical. Implementation code must match them, not the reverse.
-- `packages/e2e/tests/contract/driver-spec-drift.ts` fails the build if
-  `src/driver/index.ts` and `spec/api/driver.d.ts` diverge structurally. Any
-  change to either requires the same change in the other. Run via
-  `pnpm --filter e2e run check:driver-drift` (already inside `typecheck`).
+- `spec/api/e2e.d.ts` (`sdk-0.1`) is canonical for the test API. `spec/api/
+  driver.d.ts` (`driver-1`) describes the retired driver SPI: the runner now
+  speaks the backend contract (`e2e/backend`, RFC0002), and spec chapter 09 is
+  scheduled to retire into a backends chapter (RFC0002 migration step 5). Until
+  then the spec and `src/backend/` intentionally diverge on that surface.
 - Wire output must validate against `spec/schema/*.schema.json`; integration
   tests validate every generated report against `report-v1.schema.json`.
 - A spec change touches declarations, schemas, prose, examples, and tests in
@@ -26,15 +25,18 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 ## Layout
 
 - `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
-  `e2e/driver` SPI.
+  `e2e/backend` contract. Core knows the contract and never a backend's
+  internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
+  `src/` (grep for them; zero hits is the invariant).
   - `src/run/` runner core (scheduler, units, workers, retries, sessions),
     `src/collect/` registration+selection, `src/locator/` locator AST/engine,
     `src/agent/` the agent (the `act` executor socket plus the judgment
     methods).
 - `packages/playwright` — the published `@e2edev/playwright` package: the
-  reference web driver. It depends on `e2e` (peer), never the reverse. The
-  runner loads it on demand for `driver: 'playwright'`; `src/config/drivers.ts`
-  is the one place that maps a well-known driver id to its package.
+  browser backend, built with the public `defineBackend`, contributing the
+  `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
+  reverse; a target names it explicitly as `backend: playwright()`. There is
+  no default backend and no well-known id registry in core.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the
@@ -63,15 +65,16 @@ pnpm --filter @e2edev/testbed run test:headed
 
 - Package `test` scripts do **not** build. Root `build` and `test` order the
   packages explicitly rather than relying on topological sort, because `e2e`
-  devDepends on the driver for its browser-backed integration tests while the
-  driver peer-depends on `e2e` — pnpm reports that cycle on every install.
+  devDepends on the playwright backend for its browser-backed integration tests
+  while the backend peer-depends on `e2e` — pnpm reports that cycle on every
+  install.
 - `pnpm typecheck` runs `build` first, then per-package `typecheck`.
 - `pnpm check:spec` typechecks `spec/api` + `spec/examples` under a separate,
   stricter config (`skipLibCheck: false`, DOM lib) — it can fail while package
   typecheck passes.
 - Integration tests need Chromium: `pnpm --filter @e2edev/playwright exec
-  playwright install chromium`. The driver's `prepare` hook also installs
-  missing browsers on first run, before any session launches.
+  playwright install chromium`. The backend's `init` hook also installs
+  missing browsers once per worker, before any attempt starts.
 
 ## Non-obvious conventions
 
@@ -111,7 +114,8 @@ pnpm --filter @e2edev/testbed run test:headed
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
 - No implicit default model. Agent fixtures without model config fail with
-  `MODEL_UNAVAILABLE`; mobile targets are rejected by the v0 boundary.
+  `MODEL_UNAVAILABLE`. No implicit target either: `targets` is required and
+  each names its backend.
 - Secrets must never reach model input, digests, logs, or reports. Model input
   is the redacted semantic tree plus the bounded ledger only.
 - CI (`.github/workflows/spec.yml`) runs Node 26 and pins actions by SHA; keep
@@ -119,7 +123,7 @@ pnpm --filter @e2edev/testbed run test:headed
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
-  entry. Peer ranges point one way only (driver -> `e2e`, widened to `>=x <1`);
+  entry. Peer ranges point one way only (backend -> `e2e`, widened to `>=x <1`);
   making them mutual or narrow forces changesets to bump both packages to a
   major on every release.
 - The root `release` script publishes with `--tag beta`, so releases land on the
@@ -130,7 +134,7 @@ pnpm --filter @e2edev/testbed run test:headed
   here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
   `--tag`, so a brand-new package lands on `latest` once regardless.
   Do not switch to changesets pre mode to get a real prerelease version: it is
-  outside the driver's `e2e` peer range, which majors `@e2edev/playwright` on
+  outside the backend's `e2e` peer range, which majors `@e2edev/playwright` on
   every runner minor and rewrites the peer range. Widening the range does not
   rescue it — node-semver only lets a prerelease satisfy a comparator set when a
   comparator with the same `major.minor.patch` carries a prerelease, so

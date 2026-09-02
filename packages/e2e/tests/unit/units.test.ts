@@ -14,11 +14,7 @@ const target: ResolvedTarget = {
   name: 'web',
   index: 0,
   platform: 'web',
-  browser: 'chromium',
-  viewport: undefined,
-  driver: 'playwright',
   backend: undefined,
-    driverTarget: { name: 'web', platform: 'web', browser: 'chromium' },
 };
 
 function makeTest(

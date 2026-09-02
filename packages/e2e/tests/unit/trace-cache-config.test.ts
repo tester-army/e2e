@@ -14,7 +14,7 @@ function resolve(
   env: NodeJS.ProcessEnv = BASE_ENV,
   cli: Parameters<typeof resolveConfig>[1]['cli'] = {},
 ) {
-  return resolveConfig(raw, { projectRoot: ROOT, env, cli });
+  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: ROOT, env, cli });
 }
 
 const APP = { app: { url: 'http://localhost:4272' } };
@@ -100,8 +100,8 @@ describe('flushStagedTraces', () => {
       target: {
         targetId: 'web',
         platform: 'web',
-        driverId: 'playwright',
-        driverVersion: '1.61.1',
+        backendName: 'playwright',
+        backendVersion: '1.61.1',
         spiVersion: 1,
         appIdentity: 'a'.repeat(64),
       },

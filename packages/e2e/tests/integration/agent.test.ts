@@ -179,7 +179,7 @@ describe('agent judgment tier', () => {
     expect(judged.observation).toContain('#n');
     expect(judged.observation).toContain('button "Increment"');
     expect(judged.observation).toContain('value=<secure>');
-    expect(judged.revision).toMatch(/^r\d+$/);
+    expect(judged.revision).toMatch(/^b\d+$/);
   });
 
   it('discloses href origin and path only, never query strings or fragments', () => {

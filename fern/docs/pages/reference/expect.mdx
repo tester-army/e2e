@@ -1,18 +1,21 @@
 ---
 title: expect
-subtitle: "Locator assertions, web assertions, and plain value matchers."
+subtitle: "Locator assertions, fixture assertions, and plain value matchers."
 ---
 
 `expect` dispatches on its argument.
 
 ```ts
 export function expect(actual: Locator): AsyncExpectation;
-export function expect(actual: Web): WebExpectation;
+export function expect<E extends object>(actual: Expectable<E>): E;
 export function expect<T>(actual: T): ValueExpectation<T>;
 ```
 
-Anything that is not a runner locator or the `web` fixture falls through to
-`ValueExpectation<T>`, including a promise. Await the value first.
+A backend-contributed fixture may carry its own expectation surface
+(`Expectable<E>`): `expect(web)` returns the `WebExpectation` the playwright
+backend attaches. Anything that is neither a runner locator nor such a fixture
+falls through to `ValueExpectation<T>`, including a promise. Await the value
+first.
 
 | Property | Value |
 | --- | --- |
@@ -78,6 +81,9 @@ await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
 ```
 
 ## web matchers
+
+Contributed by `@e2edev/playwright`; the type is exported from that package.
+Every matcher call is a recorded `expect.<matcher>` assertion step.
 
 ```ts
 export interface WebExpectation {

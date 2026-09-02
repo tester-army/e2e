@@ -1,8 +1,8 @@
 /**
- * Text helpers every driver package repeats. Backend messages and artifact
+ * Text helpers every backend package repeats. Backend messages and artifact
  * labels reach reports and terminals, so stripping control sequences and
  * constraining filenames happens in exactly one place rather than once per
- * driver, where two copies would eventually disagree about what a report shows.
+ * backend, where two copies would eventually disagree about what a report shows.
  */
 
 /** Backends colorize call logs; escape codes are noise in reports. */

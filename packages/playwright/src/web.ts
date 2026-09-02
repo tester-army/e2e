@@ -1,27 +1,169 @@
-/** Playwright-backed DriverWeb channel: navigation, routing, dialogs, downloads. */
+/**
+ * The `web` fixture: the browser-shaped deterministic surface this backend
+ * contributes. It lives here, not in core, because the harness knows the
+ * backend contract and never a platform's fixture shape. Every async method
+ * runs as a harness-recorded `web.<method>` step; `expect(web)` reaches the
+ * matchers attached through `context.expectable`.
+ *
+ * Layering rule: policy and validation (`resolveUrl`, JSON checks, cookie
+ * origins, the download trigger) run outside `surface.guard`, so a runner
+ * error keeps its classification and only Playwright faults are translated.
+ */
 
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import type {
-  BrowserContext,
-  Dialog as PwDialog,
-  Download,
-  Page,
-  Route,
-} from 'playwright';
+import type { Download, Route } from 'playwright';
+import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
+import type { BackendFixtureContext, OperationContext, TextPattern } from 'e2e/backend';
 import {
-  DriverError,
-  type Cookie,
-  type DriverDialog,
-  type DriverWeb,
-  type DriverWebResponse,
-  type DriverWebRoute,
-  type JsonValue,
-  type OperationContext,
-  type TextPattern,
-} from 'e2e/driver';
-import { routePatternMatches, routePatternsEqual } from 'e2e/internal';
-import { invalidState, message, sanitizeFilename } from './support.ts';
+  ConfigurationError,
+  Deadline,
+  describePattern,
+  matchesText,
+  normalizeBaseUrl,
+  pollCondition,
+  TestError,
+  toTextPattern,
+  urlMatches,
+  validateJsonValue,
+  type NormalizedBaseUrl,
+} from 'e2e/internal';
+import type { Dialog, DialogHandler } from './dialogs.ts';
+import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
+import type { PlaywrightSurface } from './surface.ts';
+
+export type RouteFulfillResponse = {
+  status?: number;
+  headers?: Record<string, string>;
+} & (
+  | { json: JsonValue; body?: never }
+  | { body: string; json?: never }
+  | { body?: never; json?: never }
+);
+
+export interface WebRoute {
+  readonly request: {
+    readonly url: string;
+    readonly method: string;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly postData?: string;
+  };
+  /** Fulfills the intercepted request once. */
+  fulfill(response: RouteFulfillResponse): Promise<void>;
+  /** Continues the intercepted request once. */
+  continue(): Promise<void>;
+  /** Aborts the intercepted request once. */
+  abort(): Promise<void>;
+}
+
+export interface WebResponse {
+  readonly url: string;
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  /** Parses the response body as JSON. */
+  json<T = unknown>(): Promise<T>;
+  /** Reads the response body as text. */
+  text(): Promise<string>;
+}
+
+export interface CookieFields {
+  name: string;
+  value: string;
+  /** Unix timestamp in whole seconds. */
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+export type Cookie = CookieFields &
+  (
+    | { url: string; domain?: never; path?: never }
+    | { url?: never; domain: string; path?: string }
+  );
+
+export interface WebExpectation {
+  readonly not: WebExpectation;
+  /** Waits for the current URL to match. */
+  toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  /** Waits for the current title to match. */
+  toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+}
+
+export interface Web extends Expectable<WebExpectation> {
+  /** Navigates to an allowed URL. */
+  goto(
+    url: string,
+    options?: {
+      waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+      timeout?: number;
+    },
+  ): Promise<void>;
+  /** Reloads the current document. */
+  reload(options?: ActionOptions): Promise<void>;
+  /** Navigates browser history back once. */
+  back(options?: ActionOptions): Promise<void>;
+  /** Navigates browser history forward once. */
+  forward(options?: ActionOptions): Promise<void>;
+  /** Returns the current URL. */
+  url(): Promise<string>;
+  /** Returns the current title. */
+  title(): Promise<string>;
+  /** Waits for the current URL to match. */
+  waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  /** Creates a web-only CSS or XPath locator. */
+  locator(selector: string): Locator;
+  /** Creates a screen query scope inside one iframe. */
+  frameLocator(selector: string): Screen;
+  /** Evaluates trusted test code in the page. */
+  evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
+  /** Evaluates trusted test code with one required JSON-safe argument. */
+  evaluate<T extends JsonValue, Arg extends JsonValue>(
+    fn: string | ((arg: Arg) => T | Promise<T>),
+    arg: Arg,
+  ): Promise<T>;
+  /** Adds an attempt-scoped network route. */
+  route(
+    pattern: string | RegExp,
+    handler: (route: WebRoute) => void | Promise<void>,
+  ): Promise<void>;
+  /** Removes matching attempt-scoped routes. */
+  unroute(pattern: string | RegExp): Promise<void>;
+  /** Waits for a matching response. */
+  waitForResponse(
+    pattern: string | RegExp,
+    options?: { timeout?: number },
+  ): Promise<WebResponse>;
+  /** Returns cookies visible to the current context. */
+  cookies(): Promise<Cookie[]>;
+  /** Sets cookies after origin policy validation. */
+  setCookies(cookies: readonly Cookie[]): Promise<void>;
+  /** Sets the viewport size. */
+  setViewport(size: { width: number; height: number }): Promise<void>;
+  /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
+  onDialog(
+    handler: 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>),
+  ): Promise<() => Promise<void>>;
+  /** Runs a trigger and waits for its download. */
+  waitForDownload(
+    trigger: () => Promise<void>,
+    options?: { timeout?: number },
+  ): Promise<{ path: string; suggestedFilename: string }>;
+  readonly keyboard: {
+    /** Sends one key. */
+    press(key: string): Promise<void>;
+    /** Types plain text. */
+    type(text: string): Promise<void>;
+  };
+  readonly mouse: {
+    /** Moves the pointer. */
+    move(x: number, y: number): Promise<void>;
+    /** Scrolls the pointer wheel. */
+    wheel(deltaX: number, deltaY: number): Promise<void>;
+    /** Presses the primary pointer button. */
+    down(): Promise<void>;
+    /** Releases the primary pointer button. */
+    up(): Promise<void>;
+  };
+}
 
 interface StoredRoute {
   readonly pattern: TextPattern;
@@ -29,175 +171,201 @@ interface StoredRoute {
   readonly predicate: (url: URL) => boolean;
 }
 
-/** Session capabilities the web channel borrows. */
-export interface WebSessionHost {
-  requirePage(): Page;
-  ensurePage(): Promise<Page>;
-  requireContext(): BrowserContext;
-  /** Checks cancellation, runs fn, and translates raw errors at the SPI boundary. */
-  guard<T>(operation: OperationContext, label: string, fn: () => Promise<T>): Promise<T>;
-  readonly artifactsDir: string;
-}
+/** Builds the `web` fixture for one attempt over the shared surface. */
+export function createWebFixture(surface: PlaywrightSurface, context: BackendFixtureContext): Web {
+  const routes: StoredRoute[] = [];
 
-/** Owns all web-namespace state for one driver session. */
-export class WebChannel {
-  private readonly routes: StoredRoute[] = [];
-  private readonly dialogHandlers = new Map<
-    string,
-    'accept' | 'dismiss' | ((dialog: DriverDialog) => void | Promise<void>)
-  >();
-  private readonly downloads = new Map<string, Promise<Download>>();
-  private dialogHandlerCounter = 0;
-  private downloadCounter = 0;
-  private latchedDialogError: DriverError | null = null;
-
-  constructor(private readonly host: WebSessionHost) {}
-
-  /** Rethrows an error latched by an unhandled or failing dialog handler. */
-  throwPendingDialogError(): void {
-    if (this.latchedDialogError !== null) {
-      const error = this.latchedDialogError;
-      this.latchedDialogError = null;
-      throw error;
-    }
-  }
-
-  /** Routes one native dialog to the newest registered handler. */
-  async dispatchDialog(dialog: PwDialog): Promise<void> {
-    const entries = [...this.dialogHandlers.entries()];
-    const newest = entries[entries.length - 1];
-    if (newest === undefined) {
-      this.latchedDialogError = new DriverError(
-        'INVALID_STATE',
-        `unhandled ${dialog.type()} dialog: ${dialog.message()}`,
-        { retryable: false },
-      );
-      await dialog.dismiss().catch(() => undefined);
-      return;
-    }
-    const handler = newest[1];
-    const wireDialog: DriverDialog = {
-      message: dialog.message(),
-      accept: async (text) => {
-        await dialog.accept(text);
-      },
-      dismiss: async () => {
-        await dialog.dismiss();
-      },
-    };
-    try {
-      if (handler === 'accept') await dialog.accept();
-      else if (handler === 'dismiss') await dialog.dismiss();
-      else await handler(wireDialog);
-    } catch (cause) {
-      this.latchedDialogError = new DriverError(
-        'DRIVER_FAILURE',
-        `dialog handler failed: ${message(cause)}`,
-        { retryable: false, cause },
+  /** Relative URLs and URL matching need the configured base; absent, that is a config error. */
+  const base = (): NormalizedBaseUrl => {
+    if (context.app.baseUrl === undefined) {
+      throw new ConfigurationError(
+        'APP_URL_REQUIRED',
+        'this call needs an app URL: set app.url in e2e.config.ts or the APP_URL environment variable',
       );
     }
-  }
+    return normalizeBaseUrl(context.app.baseUrl);
+  };
 
-  readonly web: DriverWeb = {
-    goto: (url, waitUntil, operation) =>
-      this.host.guard(operation, 'navigation', async () => {
-        const page = await this.host.ensurePage();
-        await page.goto(url, { waitUntil: waitUntil ?? 'load', timeout: operation.timeoutMs });
+  /** A navigation's budget: the call's own timeout or the action timeout, clamped to the test. */
+  const navigation = (
+    label: string,
+    options: { timeout?: number } | undefined,
+    run: (operation: OperationContext) => Promise<void>,
+  ): Promise<void> => {
+    const operation = context.operation(options?.timeout);
+    return surface.guard(operation, label, () => run(operation));
+  };
+
+  /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
+  const deadlineFor = (timeout: number | undefined): Deadline =>
+    new Deadline(context.operation(timeout ?? context.timeouts.assertion).timeoutMs);
+
+  const currentUrl = () => surface.url(context.operation());
+  const currentTitle = () =>
+    surface.guard(context.operation(), 'title', () => surface.requirePage().title());
+
+  const web: Omit<Web, keyof Expectable<WebExpectation>> = {
+    goto(url, options) {
+      const resolved = context.app.resolveUrl(url);
+      return navigation('navigation', options, async (operation) => {
+        const page = await surface.ensurePage();
+        await page.goto(resolved, {
+          waitUntil: options?.waitUntil ?? 'load',
+          timeout: operation.timeoutMs,
+        });
+      });
+    },
+    reload: (options) =>
+      navigation('navigation', options, async (operation) => {
+        await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
-    reload: (operation) =>
-      this.host.guard(operation, 'navigation', async () => {
-        await this.host.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
+    back: (options) =>
+      navigation('navigation', options, async (operation) => {
+        await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
-    back: (operation) =>
-      this.host.guard(operation, 'navigation', async () => {
-        await this.host.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
+    forward: (options) =>
+      navigation('navigation', options, async (operation) => {
+        await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
-    forward: (operation) =>
-      this.host.guard(operation, 'navigation', async () => {
-        await this.host.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
-      }),
-    url: (operation) => this.host.guard(operation, 'url', async () => this.host.requirePage().url()),
-    title: (operation) => this.host.guard(operation, 'title', () => this.host.requirePage().title()),
-    evaluate: <T extends JsonValue>(
-      source: string,
-      argument: JsonValue | undefined,
-      operation: OperationContext,
-    ): Promise<T> =>
-      this.host.guard(operation, 'evaluate', async () => {
-        const page = this.host.requirePage();
-        if (argument === undefined) {
-          return (await page.evaluate(`(${source})()`)) as T;
-        }
+    url: currentUrl,
+    title: currentTitle,
+    async waitForURL(url, options) {
+      const target = base();
+      const label = typeof url === 'string' ? url : String(url);
+      let current = '';
+      await pollCondition({
+        deadline: deadlineFor(options?.timeout),
+        signal: context.signal,
+        negated: false,
+        evaluate: async () => {
+          current = await currentUrl();
+          return urlMatches(current, url, target);
+        },
+        onTimeout: async () =>
+          new TestError(
+            'ASSERTION_FAILED',
+            `waitForURL timed out; expected ${label}, current URL is ${current}`,
+          ),
+      });
+    },
+    locator(selector) {
+      if (typeof selector !== 'string' || selector.length === 0) {
+        throw new TestError('INVALID_LOCATOR', 'web.locator() requires a nonempty selector');
+      }
+      return context.locator({ kind: 'selector', selector });
+    },
+    frameLocator(selector) {
+      if (typeof selector !== 'string' || selector.length === 0) {
+        throw new TestError('INVALID_LOCATOR', 'web.frameLocator() requires a nonempty selector');
+      }
+      return context.screen((expression) => ({ kind: 'frame', selector, source: expression }));
+    },
+    async evaluate<T extends JsonValue>(
+      fn: string | ((arg?: never) => T | Promise<T>),
+      arg?: JsonValue,
+    ): Promise<T> {
+      const source = typeof fn === 'string' ? fn : fn.toString();
+      validateJsonValue(arg, 'evaluate argument');
+      const result = await surface.guard(context.operation(), 'evaluate', async () => {
+        const page = surface.requirePage();
+        if (arg === undefined) return page.evaluate(`(${source})()`);
         const wrapped = new Function('arg', `return (${source})(arg);`);
         const evaluate = page.evaluate.bind(page) as (fn: unknown, arg: unknown) => Promise<unknown>;
-        return (await evaluate(wrapped, argument)) as T;
-      }),
-    route: (pattern, handler, operation) =>
-      this.host.guard(operation, 'route', async () => {
-        const page = this.host.requirePage();
-        const predicate = (url: URL) => routePatternMatches(pattern, url.href);
-        const pwHandler = async (route: Route): Promise<void> => {
-          const wireRoute: DriverWebRoute = {
-            request: {
-              url: route.request().url(),
-              method: route.request().method(),
-              headers: route.request().headers(),
-              ...(route.request().postData() !== null
-                ? { postData: route.request().postData()! }
-                : {}),
-            },
-            fulfill: async (response) => {
-              await route.fulfill({
-                status: response.status ?? 200,
-                headers: response.headers ?? {},
-                ...('json' in response && response.json !== undefined
-                  ? { json: response.json }
-                  : 'body' in response && response.body !== undefined
-                    ? { body: response.body }
-                    : { body: '' }),
-              });
-            },
-            continue: async () => {
-              await route.fallback();
-            },
-            abort: async () => {
-              await route.abort();
-            },
-          };
-          await handler(wireRoute);
+        return evaluate(wrapped, arg);
+      });
+      validateJsonValue(result, 'evaluate result');
+      return result as T;
+    },
+    route(pattern, handler) {
+      const wirePattern = toRoutePattern(pattern);
+      const predicate = (url: URL) => routePatternMatches(wirePattern, url.href);
+      const pwHandler = async (route: Route): Promise<void> => {
+        let decided = false;
+        const decide = (name: string) => {
+          if (decided) {
+            throw new TestError('ACTION_FAILED', `route handler already decided; ${name} called twice`);
+          }
+          decided = true;
         };
-        this.routes.push({ pattern, pwHandler, predicate });
-        await page.route(predicate, pwHandler);
-      }),
-    unroute: (pattern, operation) =>
-      this.host.guard(operation, 'unroute', async () => {
-        const page = this.host.requirePage();
-        for (let i = this.routes.length - 1; i >= 0; i -= 1) {
-          const stored = this.routes[i]!;
-          if (routePatternsEqual(stored.pattern, pattern)) {
+        const publicRoute: WebRoute = {
+          request: {
+            url: route.request().url(),
+            method: route.request().method(),
+            headers: route.request().headers(),
+            ...(route.request().postData() !== null
+              ? { postData: route.request().postData()! }
+              : {}),
+          },
+          fulfill: async (response) => {
+            decide('fulfill');
+            await route.fulfill({
+              status: response.status ?? 200,
+              headers: response.headers ?? {},
+              ...('json' in response && response.json !== undefined
+                ? { json: response.json }
+                : 'body' in response && response.body !== undefined
+                  ? { body: response.body }
+                  : { body: '' }),
+            });
+          },
+          continue: async () => {
+            decide('continue');
+            await route.fallback();
+          },
+          abort: async () => {
+            decide('abort');
+            await route.abort();
+          },
+        };
+        await handler(publicRoute);
+        if (!decided) {
+          await route.abort();
+          throw new TestError(
+            'ACTION_FAILED',
+            'route handler returned without calling fulfill, continue, or abort',
+          );
+        }
+      };
+      return surface.guard(context.operation(), 'route', async () => {
+        routes.push({ pattern: wirePattern, pwHandler, predicate });
+        await surface.requirePage().route(predicate, pwHandler);
+      });
+    },
+    unroute(pattern) {
+      const wirePattern = toRoutePattern(pattern);
+      return surface.guard(context.operation(), 'unroute', async () => {
+        const page = surface.requirePage();
+        for (let i = routes.length - 1; i >= 0; i -= 1) {
+          const stored = routes[i]!;
+          if (routePatternsEqual(stored.pattern, wirePattern)) {
             await page.unroute(stored.predicate, stored.pwHandler);
-            this.routes.splice(i, 1);
+            routes.splice(i, 1);
           }
         }
-      }),
-    waitForResponse: (pattern, operation): Promise<DriverWebResponse> =>
-      this.host.guard(operation, 'waitForResponse', async () => {
-        const page = this.host.requirePage();
-        const response = await page.waitForResponse(
-          (candidate) => routePatternMatches(pattern, candidate.url()),
+      });
+    },
+    waitForResponse(pattern, options) {
+      const wirePattern = toRoutePattern(pattern);
+      const operation = context.operation(options?.timeout);
+      return surface.guard(operation, 'waitForResponse', async () => {
+        const response = await surface.requirePage().waitForResponse(
+          (candidate) => routePatternMatches(wirePattern, candidate.url()),
           { timeout: operation.timeoutMs },
         );
         const body = await response.body().catch(() => Buffer.alloc(0));
+        const decoder = new TextDecoder();
         return {
           url: response.url(),
           status: response.status(),
           headers: response.headers(),
-          body: new Uint8Array(body),
+          json: async <T = unknown>() => JSON.parse(decoder.decode(body)) as T,
+          text: async () => decoder.decode(body),
         };
-      }),
-    cookies: (operation) =>
-      this.host.guard(operation, 'cookies', async () => {
-        const cookies = await this.host.requireContext().cookies();
+      });
+    },
+    cookies: () =>
+      surface.guard(context.operation(), 'cookies', async () => {
+        const cookies = await surface.requireContext().cookies();
         return cookies.map(
           (cookie): Cookie => ({
             name: cookie.name,
@@ -211,9 +379,22 @@ export class WebChannel {
           }),
         );
       }),
-    setCookies: (cookies, operation) =>
-      this.host.guard(operation, 'setCookies', async () => {
-        await this.host.requireContext().addCookies(
+    setCookies(cookies) {
+      const scheme = base().origin.startsWith('https') ? 'https' : 'http';
+      for (const cookie of cookies) {
+        const originSource = cookie.url ?? `${scheme}://${cookie.domain?.replace(/^\./, '')}`;
+        let origin: string;
+        try {
+          origin = new URL(originSource).origin;
+        } catch {
+          throw new ConfigurationError('POLICY_DENIED', `invalid cookie target: ${originSource}`);
+        }
+        if (!context.app.allowedOrigins.includes(origin)) {
+          throw new ConfigurationError('POLICY_DENIED', `cookie origin ${origin} is not in allowedOrigins`);
+        }
+      }
+      return surface.guard(context.operation(), 'setCookies', async () => {
+        await surface.requireContext().addCookies(
           cookies.map((cookie) => ({
             name: cookie.name,
             value: cookie.value,
@@ -226,62 +407,116 @@ export class WebChannel {
             ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
           })),
         );
+      });
+    },
+    setViewport: (size) =>
+      surface.guard(context.operation(), 'setViewport', async () => {
+        await surface.requirePage().setViewportSize(size);
+        context.attachViewport({ width: size.width, height: size.height, scale: 1 });
       }),
-    setViewport: (size, operation) =>
-      this.host.guard(operation, 'setViewport', async () => {
-        await this.host.requirePage().setViewportSize(size);
-      }),
-    setDialogHandler: (handler, operation) =>
-      this.host.guard(operation, 'setDialogHandler', async () => {
-        this.dialogHandlerCounter += 1;
-        const id = `dialog-${this.dialogHandlerCounter}`;
-        this.dialogHandlers.set(id, handler);
-        return id;
-      }),
-    removeDialogHandler: (id, operation) =>
-      this.host.guard(operation, 'removeDialogHandler', async () => {
-        this.dialogHandlers.delete(id);
-      }),
-    beginDownload: (operation) =>
-      this.host.guard(operation, 'download', async () => {
-        const page = this.host.requirePage();
-        this.downloadCounter += 1;
-        const id = `download-${this.downloadCounter}`;
-        this.downloads.set(id, page.waitForEvent('download', { timeout: operation.timeoutMs }));
-        return id;
-      }),
-    finishDownload: (id, operation) =>
-      this.host.guard(operation, 'download', async () => {
-        const waiter = this.downloads.get(id);
-        if (waiter === undefined) throw invalidState(`unknown download waiter ${id}`);
-        this.downloads.delete(id);
+    // Async so the harness records the registration as a `web.onDialog` step.
+    async onDialog(handler: DialogHandler) {
+      const unsubscribe = surface.dialogs.add(handler);
+      return async () => unsubscribe();
+    },
+    async waitForDownload(trigger, options) {
+      const operation = context.operation(options?.timeout);
+      // The waiter is armed synchronously, before the trigger, and never
+      // awaited through an async wrapper: an `async` guard would flatten the
+      // returned promise and wait for the download before the trigger ran.
+      const waiter: Promise<Download> = surface
+        .requirePage()
+        .waitForEvent('download', { timeout: operation.timeoutMs });
+      // A rejected waiter nobody awaits (the trigger failed first) must not
+      // become an unhandled rejection.
+      waiter.catch(() => undefined);
+      // The trigger is test code: its own errors keep their own classification.
+      await trigger();
+      return surface.guard(operation, 'download', async () => {
         const download = await waiter;
         const suggestedFilename = download.suggestedFilename();
-        const relative = path.posix.join('downloads', `${id}-${sanitizeFilename(suggestedFilename)}`);
-        const absolute = path.join(this.host.artifactsDir, relative);
-        mkdirSync(path.dirname(absolute), { recursive: true });
+        const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
         await download.saveAs(absolute);
+        context.attachArtifact('download', relative);
         return { path: relative, suggestedFilename };
-      }),
-    cancelDownload: (id, operation) =>
-      this.host.guard(operation, 'download', async () => {
-        const waiter = this.downloads.get(id);
-        this.downloads.delete(id);
-        waiter?.catch(() => undefined);
-      }),
-    keyboardPress: (key, operation) =>
-      this.host.guard(operation, 'keyboard.press', () => this.host.requirePage().keyboard.press(key)),
-    keyboardType: (text, operation) =>
-      this.host.guard(operation, 'keyboard.type', () => this.host.requirePage().keyboard.type(text)),
-    mouseMove: (x, y, operation) =>
-      this.host.guard(operation, 'mouse.move', () => this.host.requirePage().mouse.move(x, y)),
-    mouseWheel: (deltaX, deltaY, operation) =>
-      this.host.guard(operation, 'mouse.wheel', () =>
-        this.host.requirePage().mouse.wheel(deltaX, deltaY),
-      ),
-    mouseDown: (operation) =>
-      this.host.guard(operation, 'mouse.down', () => this.host.requirePage().mouse.down()),
-    mouseUp: (operation) =>
-      this.host.guard(operation, 'mouse.up', () => this.host.requirePage().mouse.up()),
+      });
+    },
+    keyboard: {
+      press: (key) =>
+        surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key)),
+      type: (text) =>
+        surface.guard(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text)),
+    },
+    mouse: {
+      move: (x, y) =>
+        surface.guard(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y)),
+      wheel: (deltaX, deltaY) =>
+        surface.guard(context.operation(), 'mouse.wheel', () =>
+          surface.requirePage().mouse.wheel(deltaX, deltaY),
+        ),
+      down: () => surface.guard(context.operation(), 'mouse.down', () => surface.requirePage().mouse.down()),
+      up: () => surface.guard(context.operation(), 'mouse.up', () => surface.requirePage().mouse.up()),
+    },
+  };
+
+  return context.expectable(web, () =>
+    createWebExpectation({ currentUrl, currentTitle, base, deadlineFor, context }),
+  );
+}
+
+interface ExpectationDeps {
+  currentUrl(): Promise<string>;
+  currentTitle(): Promise<string>;
+  base(): NormalizedBaseUrl;
+  deadlineFor(timeout: number | undefined): Deadline;
+  readonly context: BackendFixtureContext;
+}
+
+/** `expect(web)` matchers: URL and title polling against the assertion budget. */
+function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpectation {
+  const poll = async (
+    api: string,
+    label: string,
+    condition: () => Promise<boolean>,
+    observed: () => Promise<string>,
+    timeout: number | undefined,
+  ): Promise<void> => {
+    await pollCondition({
+      deadline: deps.deadlineFor(timeout),
+      signal: deps.context.signal,
+      negated,
+      evaluate: condition,
+      onTimeout: async () =>
+        new TestError(
+          'ASSERTION_FAILED',
+          `expect.${negated ? 'not.' : ''}${api} failed\nexpected: ${negated ? 'not ' : ''}${label}\nobserved: ${await observed()}`,
+        ),
+    });
+  };
+  return {
+    get not() {
+      return createWebExpectation(deps, !negated);
+    },
+    toHaveURL(expected, options) {
+      const label = typeof expected === 'string' ? expected : String(expected);
+      const target = deps.base();
+      return poll(
+        'toHaveURL',
+        `URL ${label}`,
+        async () => urlMatches(await deps.currentUrl(), expected, target),
+        async () => `URL ${await deps.currentUrl()}`,
+        options?.timeout,
+      );
+    },
+    toHaveTitle(expected, options) {
+      const pattern = toTextPattern(expected, { exact: true });
+      return poll(
+        'toHaveTitle',
+        `title ${describePattern(pattern)}`,
+        async () => matchesText(await deps.currentTitle(), pattern),
+        async () => `title ${JSON.stringify(await deps.currentTitle())}`,
+        options?.timeout,
+      );
+    },
   };
 }

@@ -1,7 +1,7 @@
 /** Step trace recording: durable descriptors, redaction, verbatim inputs (RFC0001 cache-in). */
 
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode } from '../../src/driver/index.ts';
+import type { SemanticNode } from '../../src/backend/surface.ts';
 import { describeTarget, TraceRecorder } from '../../src/cache/recorder.ts';
 import { buildTraceEntry, MAX_TRACE_INPUT_CHARS, readTraceEntry } from '../../src/cache/trace.ts';
 import { createRedactor } from '../../src/internal/redact.ts';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Observation, SemanticNode } from '../../src/driver/index.ts';
+import type { Observation, SemanticNode } from '../../src/backend/surface.ts';
 import { observationShape, prepareObservation } from '../../src/agent/observation.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {

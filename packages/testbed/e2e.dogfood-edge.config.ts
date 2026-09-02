@@ -7,6 +7,7 @@
  */
 
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   specVersion: '0.1',
@@ -20,7 +21,7 @@ export default defineConfig({
     },
   },
   tests: 'tests-dogfood-edge/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {

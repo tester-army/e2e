@@ -12,7 +12,6 @@ export type StepKind =
   | 'assertion'
   | 'screen'
   | 'app'
-  | 'web'
   | 'session'
   | 'resource';
 
@@ -22,7 +21,7 @@ export type StepKind =
  * by this milestone.
  */
 export interface StepEvent {
-  kind: 'poll' | 'observation' | 'model' | 'policy' | 'driver' | 'schema';
+  kind: 'poll' | 'observation' | 'model' | 'policy' | 'backend' | 'schema';
   startedAt: string;
   durationMs: number;
   status: 'passed' | 'failed' | 'cancelled';
@@ -225,10 +224,14 @@ export class StepRecorder {
     }
   }
 
-  /** Attaches an artifact ID to the most recent step, when one exists. */
+  /**
+   * Attaches an artifact ID to the running step, or to the most recent step
+   * when none is running. The running step wins so a step that ran a nested
+   * step (a fixture call that clicked a link, say) still owns what it produced.
+   */
   attachArtifact(artifactId: string): void {
-    const last = this.steps[this.steps.length - 1];
-    if (last !== undefined) last.artifacts.push(artifactId);
+    const target = this.activeStep ?? this.steps[this.steps.length - 1];
+    if (target !== undefined) target.artifacts.push(artifactId);
   }
 
   /** Records one child event of the running step. */
@@ -256,7 +259,7 @@ export class StepRecorder {
     if (details.visionOnly !== undefined) current.visionOnly = details.visionOnly;
   }
 
-  /** Records the viewport a step established (required for web.setViewport). */
+  /** Records the viewport a step established. */
   attachViewport(viewport: { width: number; height: number; scale: number }): void {
     const current = this.current();
     if (current !== undefined) current.viewport = viewport;

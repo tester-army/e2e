@@ -17,7 +17,7 @@
  * matter whose brain runs the step.
  */
 
-import type { AgentErrorCode, JsonValue, ModelInstance, ScrollDirection, Secret } from '../types.ts';
+import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
 import { AGENT_CODE_TABLE } from './error.ts';
 
 export type { BlockedCategory } from './error.ts';
@@ -65,7 +65,7 @@ export interface ExecutorTarget {
  * observation, so concurrency can never soften the staleness rule. A
  * committed mutation does not mint a new observation: ids from the newest
  * observation stay addressable afterward (batching independent targets — a
- * form fill — is legitimate), the driver rejects references it can no longer
+ * form fill — is legitimate), the backend rejects references it can no longer
  * bind (`NODE_STALE`), and the mutation's effects are visible only through a
  * fresh `observe()`.
  */
@@ -76,7 +76,7 @@ export interface ExecutorActions {
    * Fills one secret declared in the step's params into a secure input. The
    * harness authorizes the fill (registered credential, origin policy, an
    * editable sink whose purpose matches) and hands the plaintext straight to
-   * the driver — it never passes through the executor or any model.
+   * the backend — it never passes through the executor or any model.
    */
   typeSecret(target: ExecutorTarget, name: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;
@@ -156,6 +156,8 @@ export interface ReplayedPrefix {
 
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
+  /** The target this step runs on; tool packs scope themselves by its platform. */
+  readonly target: { readonly name: string; readonly platform: Platform };
   /**
    * Present when a cached replay ran part of this step before handing it
    * over. Absent on a cache miss or when caching is off.

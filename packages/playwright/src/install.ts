@@ -1,4 +1,4 @@
-/** First-run browser provisioning for the bundled Playwright driver. */
+/** First-run browser provisioning for the Playwright backend. */
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';

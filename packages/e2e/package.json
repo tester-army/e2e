@@ -6,12 +6,11 @@
     "e2e",
     "testing",
     "agentic",
-    "end-to-end",
-    "playwright"
+    "end-to-end"
   ],
   "license": "MIT",
   "contributors": [
-    "Oskar Kwa\u015bniewski <oskar@tester.army>",
+    "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "repository": {
@@ -43,10 +42,6 @@
       "types": "./dist/backend/index.d.ts",
       "default": "./dist/backend/index.js"
     },
-    "./driver": {
-      "types": "./dist/driver/index.d.ts",
-      "default": "./dist/driver/index.js"
-    },
     "./internal": {
       "types": "./dist/internal/index.d.ts",
       "default": "./dist/internal/index.js"
@@ -60,8 +55,7 @@
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit && pnpm run check:driver-drift",
-    "check:driver-drift": "tsc --project tsconfig.driver-drift.json",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit"

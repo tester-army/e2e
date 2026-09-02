@@ -45,20 +45,21 @@ references.
 ## `report-1`
 
 `report-v1.schema.json` is the canonical run document. It contains runner and
-environment provenance, resolved target/driver manifests, every discovered
+environment provenance, resolved target/backend manifests, every discovered
 test-target result (including filtered/skipped pairs), all attempts, steps,
 artifacts, errors, cleanup outcomes, and selection counts.
-Target provenance includes browser engine/version, viewport/scale, fixture and
-artifact capabilities, state capability, origin, and production policy.
-The target viewport is the initial runtime value; a step that changes viewport
-records the resulting viewport on that step.
+Target provenance includes the backend name/version/contract version, the
+declared capability set (harness capabilities plus contributed fixture names),
+artifact capabilities, state capability, origin, and production policy. It
+carries no platform noun: a step that changes the viewport records the
+resulting viewport on that step, and nothing else about the surface is assumed.
 
 The only inventory exception is collection failure before expansion due to the
 discovered-result limit. That error report contains no results and zero summary
 counts, avoiding an unbounded report while preserving the typed run error.
 
 `configDigest` is SHA-256/JCS of resolved config after replacing credential
-material and model API keys with `{ secretName }`, replacing driver handles with
+material and model API keys with `{ secretName }`, replacing backend handles with
 their manifests, normalizing paths relative to project root, and omitting
 ambient environment values not represented in config. Every `app.command.env`
 value is replaced by `{ envName: key }`; no environment value contributes to
@@ -106,12 +107,12 @@ Stacks are optional, project-root-relative, source-mapped, and sanitized. Core
 error/event objects contain no open metadata bags; recognized extensions are
 validated against their own schema before a trusted consumer uses them. A
 report MUST NOT include environment values, authorization headers, cookies,
-session payloads, provider requests/responses, or raw driver dumps.
+session payloads, provider requests/responses, or raw backend dumps.
 
 ### Steps and events
 
 Top-level step boundaries follow 10-determinism.md. Polls, model calls,
-observations, tool proposals, policy decisions, driver operations, and schema
+observations, tool proposals, policy decisions, backend operations, and schema
 validation are child events. Events record metadata and counts, not sensitive
 payloads. Core event metadata is limited to bounded name, count, byte, decision,
 and code fields defined by the schema.
@@ -166,8 +167,8 @@ runner implementation, not a standalone specification-repository script.
 
 ## `session-1`
 
-`session-v1.schema.json` wraps AES-256-GCM encrypted driver state with run,
-target, driver, platform, app identity, creation, required expiry, IV, tag, and
+`session-v1.schema.json` wraps AES-256-GCM encrypted backend state with run,
+target, backend, platform, app identity, creation, required expiry, IV, tag, and
 ciphertext. All cleartext metadata is authenticated additional data using JCS.
 
 The IV is a unique random 96-bit value for the per-run key and session write;

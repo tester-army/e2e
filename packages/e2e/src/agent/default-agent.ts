@@ -1,6 +1,6 @@
 /**
  * The default step executor (RFC0001, layer 4 golden path): the tool-loop
- * chassis plus the web grammar toolset. Every mutating tool returns the
+ * chassis plus the grammar toolset. Every mutating tool returns the
  * updated screen; verdicts, budgets, hard stops, loop guards, wind-down, and
  * the transcript come from the chassis (`tool-loop.ts`) unchanged.
  */
@@ -18,14 +18,14 @@ import {
 } from './executor.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
-import { isDefinedTool } from './tool.ts';
+import { isDefinedTool, toolAppliesTo } from './tool.ts';
 
-const WEB_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real web application.
+const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
 
 Rules:
 - Work only toward the given step; do not start the next step or explore beyond it.
 - Use the tools to inspect and act. Node ids like "n42" are valid only for the newest observation; after any action, use ids from the latest "Updated screen" snapshot.
-- Issue at most ONE mutating tool call per turn: every mutation refreshes the screen and invalidates all earlier node ids, so a second action batched in the same turn targets a stale page and fails.
+- Issue at most ONE mutating tool call per turn: every mutation refreshes the screen and invalidates all earlier node ids, so a second action batched in the same turn targets a stale screen and fails.
 - Never invent node ids. If the target is not on screen, scroll or navigate to find it, or conclude.`;
 
 /** How many trailing screen snapshots stay verbatim in the transcript. */
@@ -47,7 +47,7 @@ export interface CreateAgentOptions {
 /** Builds the default AI SDK step executor. */
 export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
   const userTools = validateUserTools(options.tools);
-  const system = [WEB_RULES, options.system]
+  const system = [BASE_RULES, options.system]
     .filter((part): part is string => part !== undefined && part.trim() !== '')
     .join('\n\n');
   return createToolLoopExecutor({
@@ -100,7 +100,7 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
           `WARNING: the next action (${prefix.uncertainAction}) failed with an UNKNOWN commit state — ` +
             'its input may have reached the app. Verify the current state before doing anything like it again.',
         ]),
-    'Continue the step from the CURRENT page state shown below — do NOT redo the actions above.',
+    'Continue the step from the CURRENT screen state shown below — do NOT redo the actions above.',
   ].join('\n');
 }
 
@@ -216,7 +216,7 @@ function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelper
 /**
  * Compacts stale screen snapshots out of the tool-result history.
  *
- * Only the newest observations describe the page the model is acting on;
+ * Only the newest observations describe the screen the model is acting on;
  * every older tree is dead weight that grows the prompt linearly with turn
  * count. Stale snapshot results keep their first line (what the action did)
  * and lose the tree. Returns the input array unchanged when there is nothing
@@ -293,6 +293,9 @@ function wrapUserTools(
 ): ToolSet {
   const wrapped: Record<string, ToolSet[string]> = {};
   for (const [name, defined] of Object.entries(tools)) {
+    // A tool scoped to other platforms is not offered, so the model never
+    // learns a verb the surface cannot honor.
+    if (!toolAppliesTo(defined, context.target.platform)) continue;
     const execute = defined.tool.execute?.bind(defined.tool);
     if (execute === undefined) {
       wrapped[name] = defined.tool;

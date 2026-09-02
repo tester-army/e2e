@@ -1,4 +1,5 @@
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 /**
  * seleniumbase.io/other/shadow_dom is a `<fancy-tabs>` custom element: the tab

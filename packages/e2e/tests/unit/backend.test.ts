@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defineBackend, isBackendHandle, type Backend } from '../../src/backend/index.ts';
 import { createBackendSession } from '../../src/backend/session.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
-import type { OperationContext, SemanticNode } from '../../src/driver/index.ts';
+import type { OperationContext, SemanticNode } from '../../src/backend/surface.ts';
 
 const OP: OperationContext = {
   signal: new AbortController().signal,
@@ -69,7 +69,6 @@ describe('createBackendSession', () => {
     const session = createBackendSession({
       backend: defineBackend(observingBackend()),
       targetName: 'toy-target',
-      baseHref: 'http://127.0.0.1:1/',
     });
     const first = await session.observe(OP);
     const second = await session.observe(OP);
@@ -90,7 +89,6 @@ describe('createBackendSession', () => {
         }),
       ),
       targetName: 'toy-target',
-      baseHref: 'http://127.0.0.1:1/',
     });
     await session.actions.tap({ ref: { id: 'n1', revision: 'b1' } }, OP);
     await session.screen.perform({ id: 'n1', revision: 'b1' }, { kind: 'press', key: 'Enter' }, OP);
@@ -108,23 +106,40 @@ describe('createBackendSession', () => {
     const session = createBackendSession({
       backend: undefined,
       targetName: 'bare',
-      baseHref: 'http://127.0.0.1:1/',
     });
     await expect(session.observe(OP)).rejects.toThrow(/no backend capability for observation/);
+  });
+});
+
+describe('createBackendSession pixels-only observation', () => {
+  it('accepts a snapshot with no nodes and pixels: a vision-only body is observable', async () => {
+    const pixels = { data: new Uint8Array(8), mediaType: 'image/png' as const, width: 4, height: 2, scale: 1 };
+    const session = createBackendSession({
+      backend: defineBackend({
+        name: 'vision',
+        spiVersion: 1,
+        observe: async () => ({ nodes: [], pixels, maskedRegionCount: 0 }),
+      }),
+      targetName: 'desktop',
+    });
+    const observation = await session.observe(OP, { pixels: true });
+    expect(observation.tree.role).toBe('root');
+    expect(observation.tree.children ?? []).toHaveLength(0);
+    expect(observation.pixels).toBe(pixels);
+    expect(observation.redaction).toEqual({ secureNodeCount: 0, maskedRegionCount: 0, complete: true });
   });
 });
 
 describe('backend targets in config', () => {
   const ROOT = '/tmp/e2e-backend-config';
 
-  it('resolves a backend target without driver, browser, or app url', () => {
+  it('resolves a backend target on any platform without an app url', () => {
     const backend = defineBackend(observingBackend());
     const config = resolveConfig(
       { targets: [{ name: 'ios-simulator', platform: 'ios', backend }] },
       { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
     );
     const target = config.targets[0];
-    expect(target?.driver).toBeUndefined();
     expect(target?.backend?.name).toBe('toy');
     expect(target?.platform).toBe('ios');
     expect(config.app.allowedOrigins).toEqual([]);
@@ -137,15 +152,6 @@ describe('backend targets in config', () => {
         { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
       ),
     ).toThrow(/defineBackend/);
-  });
-
-  it('still requires an app url when any driver target exists', () => {
-    expect(() =>
-      resolveConfig(
-        { targets: [{ name: 'web', platform: 'web' }] },
-        { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
-      ),
-    ).toThrow(/app URL is required/);
   });
 
   it('accepts agent options alongside an executor', () => {

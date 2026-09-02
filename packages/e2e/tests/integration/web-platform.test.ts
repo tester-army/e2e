@@ -6,7 +6,8 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const KITCHEN_SINK = `import { test, expect } from 'e2e';
+const KITCHEN_SINK = `import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test('deterministic queries and reads', async ({ app, screen }) => {
   await app.open();
@@ -159,6 +160,13 @@ test('frame locators scope queries into iframes', async ({ app, web }) => {
   await new Promise((resolve) => setTimeout(resolve, 100));
 });
 
+test('downloads are captured as artifacts', async ({ app, web }) => {
+  await app.open('/downloads');
+  const download = await web.waitForDownload(() => web.locator('a[download]').tap());
+  if (download.suggestedFilename !== 'report.csv') throw new Error(download.suggestedFilename);
+  if (!download.path.startsWith('downloads/')) throw new Error(download.path);
+});
+
 test('css selectors via web.locator', async ({ app, web }) => {
   await app.open();
   await expect(web.locator('ul[data-testid="items"] li').first()).toHaveText('Item Alpha');
@@ -224,6 +232,7 @@ describe('web platform integration', () => {
       'dialogs are handled by registered handlers',
       'frame locators scope queries into iframes',
       'css selectors via web.locator',
+      'downloads are captured as artifacts',
       'app lifecycle: restart preserves storage, clearState clears it',
       'screenshots land in the artifact directory',
     ];
@@ -284,6 +293,16 @@ describe('web platform integration', () => {
       readFileSync(outcome.reportPath!, 'utf8'),
     ) as Record<string, unknown>;
     assertValidReport(written);
+  });
+
+  it('attributes a download to the fixture step that produced it, not the nested tap', () => {
+    const result = resultByTitle(outcome, 'downloads are captured as artifacts');
+    const attempt = result.attempts[0]!;
+    const waitStep = attempt.steps.find((step) => step.api === 'web.waitForDownload');
+    expect(waitStep?.artifacts).toHaveLength(1);
+    const tapStep = attempt.steps.find((step) => step.api === 'locator.tap');
+    expect(tapStep?.artifacts ?? []).toHaveLength(0);
+    expect(attempt.artifacts.find((artifact) => artifact.kind === 'download')?.path).toContain('downloads/');
   });
 
   it('records steps and screenshot artifacts on attempts', () => {

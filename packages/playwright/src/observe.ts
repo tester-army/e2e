@@ -1,7 +1,7 @@
-/** Masked pixel capture for an observation (spec 09-drivers.md, 14-security.md). */
+/** Masked pixel capture for an observation (spec 14-security.md). */
 
 import type { Page } from 'playwright';
-import type { ObservationPixels, OperationContext } from 'e2e/driver';
+import type { ObservationPixels, OperationContext } from 'e2e/backend';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /**

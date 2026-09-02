@@ -1,6 +1,6 @@
 /**
  * In-process `UnitRunner`, used when the config cannot cross a process
- * boundary — a programmatic `rawConfig` may hold live driver instances and
+ * boundary — a programmatic `rawConfig` may hold live backend handles and
  * closures. Execution still goes through the scheduler and the same
  * `TargetWorker` core; only the transport and pair resolution differ, and the
  * scheduler is capped at one worker so nothing overlaps in this process.
@@ -9,7 +9,6 @@
 import type { TestIdentity } from '../collect/collect.ts';
 import type { Selection, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Driver } from '../driver/index.ts';
 import { classifyError, ConfigurationError, serializeError } from '../internal/errors.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import type { SessionStore } from './sessions.ts';
@@ -25,8 +24,6 @@ export interface InProcessRunnerOptions {
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
   readonly debug: DebugTrace;
-  /** Pre-flight driver instances by target name; owned and disposed by the runner. */
-  readonly drivers: ReadonlyMap<string, Driver>;
 }
 
 class InProcessRunner implements UnitRunner {
@@ -103,31 +100,20 @@ class InProcessRunner implements UnitRunner {
   }
 
   private async bootstrap(): Promise<TargetWorkerDeps> {
-    const { config, drivers } = this.options;
+    const { config } = this.options;
     const target = config.targets.find((candidate) => candidate.name === this.targetName);
     if (target === undefined) {
       throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${this.targetName}"`);
     }
-    const driver = drivers.get(this.targetName);
-    if (driver === undefined && target.driver !== undefined) {
-      throw new ConfigurationError(
-        'UNKNOWN_TARGET',
-        `no pre-flight driver instance for target "${this.targetName}"`,
-      );
-    }
     return {
       config,
       target,
-      driver,
       sessionStore: this.options.sessionStore,
       runId: this.options.runId,
       artifactsRoot: this.options.artifactsRoot,
       headed: this.options.headed,
       debug: this.options.debug,
       resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit),
-      // The runner owns these drivers for the whole run and disposes them once
-      // at the end, so a discarded worker must not take one down with it.
-      disposeDriver: false,
     };
   }
 }

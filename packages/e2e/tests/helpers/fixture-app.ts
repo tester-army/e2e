@@ -521,6 +521,22 @@ export async function startFixtureApp(): Promise<FixtureApp> {
   const server: Server = createServer((request, response) => {
     const requested = new URL(request.url ?? '/', 'http://localhost');
     const pathname = requested.pathname;
+    if (pathname === '/downloads') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(
+        '<!doctype html><html><head><title>Downloads</title></head><body><h1>Downloads</h1>' +
+          '<a href="/report.csv" download>Download report</a></body></html>',
+      );
+      return;
+    }
+    if (pathname === '/report.csv') {
+      response.writeHead(200, {
+        'content-type': 'text/csv',
+        'content-disposition': 'attachment; filename="report.csv"',
+      });
+      response.end('id,total\n1,42\n');
+      return;
+    }
     if (pathname === '/unanchored') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(UNANCHORED_PAGE);

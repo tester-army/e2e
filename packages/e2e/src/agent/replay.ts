@@ -14,7 +14,7 @@
 
 import { relocateDescriptor } from '../cache/relocate.ts';
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor } from '../cache/trace.ts';
-import type { SemanticNode } from '../driver/index.ts';
+import type { SemanticNode } from '../backend/surface.ts';
 import { sleep } from '../internal/time.ts';
 import { isAgentError } from './error.ts';
 import {
@@ -25,7 +25,7 @@ import {
 } from './executor.ts';
 import { settleObservation } from './observation.ts';
 
-/** Backoff between relocation attempts while the page settles. */
+/** Backoff between relocation attempts while the screen settles. */
 const RELOCATION_RETRY_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 
 /** Ceiling on one action's relocation, inside whatever the deadline allows. */
@@ -164,7 +164,7 @@ function isUncertainCommit(cause: unknown): boolean {
 }
 
 /**
- * Relocates one descriptor with settling backoff: a page mid-transition gets
+ * Relocates one descriptor with settling backoff: a screen mid-transition gets
  * a few fresh observations before replay gives the step up. Ambiguity never
  * retries — two matching nodes will not become one by waiting, and acting on
  * either would be a guess.

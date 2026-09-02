@@ -1,4 +1,5 @@
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test.describe('dashboard', { tags: ['auth'] }, () => {
   test('authenticated session reaches the dashboard directly', { session: 'admin' }, async ({ app, screen, web }) => {

@@ -1,6 +1,7 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
 import os from 'node:os';
+import { BACKEND_SPI_VERSION, type BackendSpiVersion } from '../backend/contract.ts';
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
 import type { AgentErrorCode } from '../types.ts';
@@ -33,9 +34,7 @@ export interface ReportSource {
 }
 
 export interface TargetProvenance {
-  browserVersion: string;
-  viewport: { width: number; height: number; scale: number };
-  driver: { id: string; version: string; spiVersion: 1 };
+  backend: { name: string; version: string; spiVersion: BackendSpiVersion };
   capabilities: string[];
   artifactCapabilities: ('screenshot' | 'trace' | 'video')[];
   stateCapability: boolean;
@@ -159,14 +158,11 @@ export interface ReportTarget {
   id: string;
   index: number;
   platform: string;
-  browser: string | undefined;
-  browserVersion: string;
-  viewport: { width: number; height: number; scale: number };
   baseOrigin: string;
   environment: string;
   allowProduction: boolean;
   testIdAttribute: string;
-  driver: { id: string; version: string; spiVersion: 1 };
+  backend: { name: string; version: string; spiVersion: BackendSpiVersion };
   capabilities: readonly string[];
   artifactCapabilities: readonly string[];
   stateCapability: boolean;
@@ -346,21 +342,18 @@ function serializeTarget(
     id: target.name,
     index: target.index,
     platform: target.platform,
-    browser: target.browser,
-    browserVersion: provenance?.browserVersion ?? 'unknown',
-    viewport: provenance?.viewport ?? {
-      width: target.viewport?.width ?? 1280,
-      height: target.viewport?.height ?? 720,
-      scale: 1,
-    },
     baseOrigin: config.app.base.origin,
     environment: config.app.environment,
     allowProduction: config.app.allowProduction,
     testIdAttribute: config.testIdAttribute,
-    driver: provenance?.driver ?? { id: 'playwright', version: 'unknown', spiVersion: 1 },
-    capabilities: provenance?.capabilities ?? ['web'],
-    artifactCapabilities: provenance?.artifactCapabilities ?? ['screenshot', 'trace'],
-    stateCapability: provenance?.stateCapability ?? true,
+    backend: provenance?.backend ?? {
+      name: target.backend?.name ?? 'none',
+      version: target.backend?.version ?? 'unversioned',
+      spiVersion: BACKEND_SPI_VERSION,
+    },
+    capabilities: provenance?.capabilities ?? [...(target.backend?.capabilities ?? [])].toSorted(),
+    artifactCapabilities: provenance?.artifactCapabilities ?? [],
+    stateCapability: provenance?.stateCapability ?? target.backend?.state !== undefined,
   };
 }
 

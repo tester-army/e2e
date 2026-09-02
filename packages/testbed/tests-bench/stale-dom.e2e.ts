@@ -4,7 +4,8 @@
  * survive; the acts must relocate by meaning, not by cached references.
  */
 
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test('activates named toggles despite churning ids', async ({ web, agent, screen }) => {
   await web.goto('/stale');

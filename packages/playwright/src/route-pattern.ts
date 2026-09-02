@@ -1,7 +1,7 @@
 /** Route URL pattern grammar per 08-platforms.md. */
 
-import { escapeRegexpChar, testPattern } from './regexp.ts';
-import type { TextPattern } from './text.ts';
+import { escapeRegexpChar, testPattern } from 'e2e/internal';
+import type { TextPattern } from 'e2e/backend';
 
 /**
  * Compiles a string route pattern: `*` matches within one path segment, `**`

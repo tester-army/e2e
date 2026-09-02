@@ -1,10 +1,12 @@
 /**
- * Playwright error translation at the driver SPI boundary (spec/09-drivers.md
- * "Errors"): what the runner is allowed to retry, and what it must surface.
+ * Playwright error translation at the backend contract boundary: what the
+ * runner is allowed to retry, what it must surface, and what must pass through
+ * untouched because it is already classified.
  */
 
 import { describe, expect, it } from 'vitest';
-import { DriverError } from 'e2e/driver';
+import { BackendError } from 'e2e/backend';
+import { ConfigurationError, TestError } from 'e2e/internal';
 import { navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {
@@ -20,9 +22,23 @@ const NAVIGATION_RACES = [
 ];
 
 describe('translatePwError', () => {
-  it('passes driver errors through untouched', () => {
-    const original = new DriverError('NODE_STALE', 'gone', { retryable: true });
+  it('passes backend errors through untouched', () => {
+    const original = new BackendError('NODE_STALE', 'gone', { retryable: true });
     expect(translatePwError(original, 'observe')).toBe(original);
+  });
+
+  it('passes runner errors through untouched: policy never becomes infrastructure', () => {
+    const denied = new ConfigurationError('POLICY_DENIED', 'origin not allowed');
+    expect(translatePwError(denied, 'navigation')).toBe(denied);
+    const invalid = new TestError('INVALID_ARGUMENT', 'not JSON');
+    expect(translatePwError(invalid, 'evaluate')).toBe(invalid);
+  });
+
+  it('recognizes a BackendError from another module copy structurally', () => {
+    const foreign = new Error('stale');
+    foreign.name = 'BackendError';
+    Object.assign(foreign, { code: 'NODE_STALE', retryable: true });
+    expect(translatePwError(foreign, 'read')).toBe(foreign);
   });
 
   it('maps a timeout to a non-retryable OPERATION_TIMEOUT', () => {
@@ -46,14 +62,14 @@ describe('navigationStaleOr', () => {
     expect(error.retryable).toBe(false);
   });
 
-  it('leaves every other failure a non-retryable DRIVER_FAILURE', () => {
+  it('leaves every other failure a non-retryable BACKEND_FAILURE', () => {
     const error = navigationStaleOr(new Error('protocol error'), 'observe');
-    expect(error.code).toBe('DRIVER_FAILURE');
+    expect(error.code).toBe('BACKEND_FAILURE');
     expect(error.retryable).toBe(false);
   });
 
-  it('never reclassifies a driver error the capture already classified', () => {
-    const original = new DriverError('DRIVER_FAILURE', 'Execution context was destroyed', {
+  it('never reclassifies a backend error the capture already classified', () => {
+    const original = new BackendError('BACKEND_FAILURE', 'Execution context was destroyed', {
       retryable: false,
     });
     expect(navigationStaleOr(original, 'observe')).toBe(original);

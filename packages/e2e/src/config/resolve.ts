@@ -6,24 +6,14 @@ import path from 'node:path';
 import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
-import { isDriverHandle, type Driver } from '../driver/index.ts';
-import {
-  DEFAULT_DRIVER_ID,
-  isWellKnownDriverId,
-  wellKnownDriverIds,
-  type WellKnownDriverId,
-} from './drivers.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import type {
   AgentConfig,
-  BackendTarget,
   CacheMode,
   CommandConfig,
   E2EConfig,
   Platform,
-  Target,
   TraceCacheStore,
-  WebTarget,
 } from '../types.ts';
 import { isBackendHandle, type BackendHandle } from '../backend/index.ts';
 import {
@@ -40,18 +30,8 @@ export interface ResolvedTarget {
   readonly name: string;
   readonly index: number;
   readonly platform: Platform;
-  readonly browser: 'chromium' | 'firefox' | 'webkit';
-  readonly viewport: { readonly width: number; readonly height: number } | undefined;
-  /**
-   * Well-known driver id resolved on demand, or an imported branded handle.
-   * Undefined for backend targets (RFC0002): no driver is ever resolved or
-   * launched for them.
-   */
-  readonly driver: WellKnownDriverId | Driver | undefined;
-  /** Validated backend of a backend target; undefined on driver targets. */
+  /** Validated backend; undefined for an agent-tools-only target. */
   readonly backend: BackendHandle | undefined;
-  /** Wire-shaped target passed to the driver at launch. */
-  readonly driverTarget: Target;
 }
 
 export interface ResolvedCredential {
@@ -68,6 +48,8 @@ export interface ResolvedConfig {
   readonly configPath: string | undefined;
   readonly ci: boolean;
   readonly app: {
+    /** False when no app URL was configured and `base` is a synthetic loopback placeholder. */
+    readonly configured: boolean;
     readonly base: NormalizedBaseUrl;
     readonly readyUrl: string;
     readonly allowedOrigins: readonly string[];
@@ -85,6 +67,8 @@ export interface ResolvedConfig {
   readonly retries: number;
   readonly workers: number;
   readonly artifacts: readonly ('trace' | 'screenshot' | 'video')[];
+  /** True when `artifacts` was set in config, so a backend that cannot produce one is an error. */
+  readonly artifactsExplicit: boolean;
   readonly reporters: readonly ('list' | 'json')[];
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
@@ -119,12 +103,13 @@ export interface CliOverrides {
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
+const TARGET_KEYS = new Set(['name', 'platform', 'backend']);
+
 const TOP_LEVEL_KEYS = new Set([
   'specVersion',
   'projectId',
   'app',
   'targets',
-  'browser',
   'tests',
   'timeout',
   'launchTimeout',
@@ -192,7 +177,7 @@ export function resolveConfig(
   }
 
   const targets = resolveTargets(raw);
-  const app = resolveApp(raw, env, targets.every((target) => target.driver === undefined));
+  const app = resolveApp(raw, env);
   const tests = normalizeTests(raw.tests);
 
   const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
@@ -208,12 +193,18 @@ export function resolveConfig(
     (ci ? 1 : Math.max(1, Math.floor(os.availableParallelism() / 2)));
 
   const artifacts = raw.artifacts ?? (['screenshot', 'trace'] as const);
+  if (!Array.isArray(artifacts)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'artifacts must be an array of artifact kinds');
+  }
   for (const artifact of artifacts) {
     if (!['screenshot', 'trace', 'video'].includes(artifact)) {
       throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${artifact}"`);
     }
   }
   const reporters = cli.reporters ?? raw.reporters ?? (['list'] as const);
+  if (!Array.isArray(reporters)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'reporters must be an array of reporter ids');
+  }
   for (const reporter of reporters) {
     if (!['list', 'json'].includes(reporter)) {
       throw new ConfigurationError('INVALID_CONFIG', `unknown reporter "${reporter}"`);
@@ -253,6 +244,7 @@ export function resolveConfig(
     retries,
     workers,
     artifacts,
+    artifactsExplicit: raw.artifacts !== undefined,
     reporters,
     testIdAttribute,
     agent,
@@ -361,11 +353,7 @@ function boundedInt(
   return value;
 }
 
-function resolveApp(
-  raw: E2EConfig,
-  env: NodeJS.ProcessEnv,
-  allTargetsBackend: boolean,
-): ResolvedConfig['app'] {
+function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app'] {
   if (raw.app !== undefined) {
     for (const key of Object.keys(raw.app)) {
       if (!APP_KEYS.has(key)) {
@@ -375,11 +363,21 @@ function resolveApp(
   }
   const rawUrl = raw.app?.url ?? env['APP_URL'];
   if (rawUrl === undefined || rawUrl === '') {
-    // Backend targets have no web app to point at: a synthetic loopback base
-    // keeps navigation resolution and identity digests defined without
-    // forcing a placeholder URL into every device config (RFC0002).
-    if (allTargetsBackend && raw.app?.command === undefined) {
+    // Not every surface has an app URL to point at (a device, a desktop
+    // shell): a synthetic loopback base keeps navigation resolution and
+    // identity digests defined, and `app.open()` fails loud with
+    // APP_URL_REQUIRED the moment a test actually needs one. A configured
+    // app command without a URL is still a mistake worth failing early on.
+    const orphaned = Object.keys(raw.app ?? {}).filter((key) => key !== 'command' && key !== 'url');
+    if (orphaned.length > 0) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `app.${orphaned[0]} requires app.url: set app.url in e2e.config.ts or the APP_URL environment variable`,
+      );
+    }
+    if (raw.app?.command === undefined) {
       return {
+        configured: false,
         base: normalizeBaseUrl('http://127.0.0.1:1'),
         readyUrl: 'http://127.0.0.1:1/',
         allowedOrigins: [],
@@ -390,7 +388,7 @@ function resolveApp(
     }
     throw new ConfigurationError(
       'APP_URL_REQUIRED',
-      'an app URL is required: set app.url in e2e.config.ts or the APP_URL environment variable',
+      'an app URL is required alongside app.command: set app.url in e2e.config.ts or the APP_URL environment variable',
     );
   }
   const base = normalizeBaseUrl(rawUrl);
@@ -441,6 +439,7 @@ function resolveApp(
   }
 
   return {
+    configured: true,
     base,
     readyUrl: raw.app?.readyUrl ?? base.href,
     allowedOrigins,
@@ -451,26 +450,12 @@ function resolveApp(
 }
 
 function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
-  if (raw.targets !== undefined && raw.browser !== undefined) {
+  if (raw.targets === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'defining both top-level browser and explicit targets is an error',
+      'targets is required: declare at least one target and the backend that drives it, ' +
+        'e.g. targets: [{ name, platform, backend }]',
     );
-  }
-  if (raw.targets === undefined) {
-    const browser = raw.browser ?? 'chromium';
-    return [
-      {
-        name: 'web',
-        index: 0,
-        platform: 'web',
-        browser,
-        viewport: undefined,
-        driver: DEFAULT_DRIVER_ID,
-        backend: undefined,
-        driverTarget: { name: 'web', platform: 'web', browser },
-      },
-    ];
   }
   if (raw.targets.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', 'targets must not be empty');
@@ -487,72 +472,31 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${target.name}"`);
     }
     seen.add(target.name);
-    // A target without a driver key, carrying a backend key or a non-web
-    // platform, is a backend target (RFC0002): no driver resolution, no
-    // browser, capabilities graded from the backend's declaration.
-    if (!('driver' in target) && ('backend' in target || target.platform !== 'web')) {
-      const backendTarget = target as BackendTarget;
-      if (typeof backendTarget.platform !== 'string' || backendTarget.platform.trim() === '') {
+    for (const key of Object.keys(target)) {
+      if (!TARGET_KEYS.has(key)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `target "${target.name}" requires a non-empty platform`,
+          `target "${target.name}" has unknown key "${key}"; a target is { name, platform, backend? }`,
         );
       }
-      if (backendTarget.backend !== undefined && !isBackendHandle(backendTarget.backend)) {
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `target "${target.name}" backend must be a defineBackend(...) handle`,
-        );
-      }
-      return {
-        name: target.name,
-        index,
-        platform: backendTarget.platform,
-        browser: 'chromium' as const,
-        viewport: undefined,
-        driver: undefined,
-        backend: backendTarget.backend,
-        driverTarget: { name: target.name, platform: backendTarget.platform } as Target,
-      };
     }
-    if (target.platform !== 'web') {
-      throw new ConfigurationError(
-        'PLATFORM_UNSUPPORTED',
-        `target "${target.name}" requests platform "${target.platform}"; driver targets are web-only — use a backend target for other platforms`,
-      );
-    }
-    const webTarget = target as WebTarget;
-    let driver: WellKnownDriverId | Driver;
-    if (webTarget.driver === undefined) {
-      driver = DEFAULT_DRIVER_ID;
-    } else if (isWellKnownDriverId(webTarget.driver)) {
-      driver = webTarget.driver;
-    } else if (isDriverHandle(webTarget.driver)) {
-      driver = webTarget.driver;
-    } else {
+    if (typeof target.platform !== 'string' || target.platform.trim() === '') {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" driver must be ${wellKnownDriverIds()} or a defineDriver handle`,
+        `target "${target.name}" requires a non-empty platform`,
       );
     }
-    const browser = webTarget.browser ?? 'chromium';
-    if (!['chromium', 'firefox', 'webkit'].includes(browser)) {
-      throw new ConfigurationError('INVALID_CONFIG', `invalid browser "${browser}"`);
+    if (target.backend !== undefined && !isBackendHandle(target.backend)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `target "${target.name}" backend must be a defineBackend(...) handle`,
+      );
     }
     return {
       name: target.name,
       index,
-      platform: 'web' as const,
-      browser,
-      viewport: webTarget.viewport,
-      driver,
-      backend: undefined,
-      driverTarget: {
-        name: target.name,
-        platform: 'web' as const,
-        browser,
-        ...(webTarget.viewport !== undefined ? { viewport: webTarget.viewport } : {}),
-      },
+      platform: target.platform,
+      backend: target.backend,
     };
   });
 }
@@ -606,7 +550,7 @@ function resolveCredentials(
 /**
  * SHA-256/JCS digest of resolved config after replacing credential material
  * with `{ secretName }` and env values with `{ envName }` (13-reporting.md).
- * Live objects (driver handles, model instances) are replaced by their stable
+ * Live objects (backend handles, model instances) are replaced by their stable
  * identity before the JSON clone, so they never enter the digest and cannot
  * make it nondeterministic across processes.
  */
@@ -654,27 +598,15 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   }
   if (raw.targets !== undefined) {
     sanitized['targets'] = raw.targets.map((target) => {
-      if ('driver' in target && isDriverHandle(target.driver)) {
-        const { driver, ...rest } = target;
-        return {
-          ...rest,
-          driver: {
-            id: driver.id,
-            version: driver.version,
-            platforms: driver.platforms,
-            spiVersion: driver.spiVersion,
-            capabilities: driver.capabilities,
-          },
-        };
-      }
       // A backend handle holds live functions; its digest identity is the
-      // declaration — name, contract version, and capability set.
-      if ('backend' in target && isBackendHandle(target.backend)) {
+      // declaration - name, version, contract version, and capability set.
+      if (isBackendHandle(target.backend)) {
         const { backend, ...rest } = target;
         return {
           ...rest,
           backend: {
             name: backend.name,
+            ...(backend.version === undefined ? {} : { version: backend.version }),
             spiVersion: backend.spiVersion,
             capabilities: [...backend.capabilities].toSorted(),
           },

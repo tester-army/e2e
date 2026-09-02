@@ -1,4 +1,5 @@
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 /**
  * Opt-in agentic suite against the local playground. Run manually:
@@ -22,7 +23,7 @@ export default defineConfig({
     },
   },
   tests: 'tests-agent/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', browser: 'chromium' }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   // Every agent step includes model round trips, so the deterministic
   // 30 s action budget is too tight for a loaded provider. Latency is not a
   // product defect: give it room rather than reading timeouts as failures.

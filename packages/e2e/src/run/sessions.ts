@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
-import type { DriverState } from '../driver/index.ts';
+import type { BackendSpiVersion, BackendState } from '../backend/surface.ts';
 import { ConfigurationError, E2EError } from '../internal/errors.ts';
 import { canonicalJson, timestamp } from '../internal/ids.ts';
 
@@ -12,9 +12,9 @@ const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface SessionIdentity {
   readonly targetId: string;
-  readonly driverId: string;
-  readonly driverVersion: string;
-  readonly spiVersion: number;
+  readonly backendName: string;
+  readonly backendVersion: string;
+  readonly spiVersion: BackendSpiVersion;
   readonly platform: string;
   readonly appIdentity: string;
 }
@@ -24,7 +24,7 @@ interface SessionEnvelope {
   runId: string;
   name: string;
   targetId: string;
-  driver: { id: string; version: string; spiVersion: number };
+  backend: { name: string; version: string; spiVersion: number };
   platform: string;
   appIdentity: string;
   createdAt: string;
@@ -44,12 +44,12 @@ interface SessionEnvelope {
  * contract: each declared name saved exactly once, nothing undeclared.
  */
 export class SessionStaging {
-  private readonly staged = new Map<string, DriverState>();
+  private readonly staged = new Map<string, BackendState>();
 
   constructor(private readonly declared: readonly string[]) {}
 
   /** Stages one captured state, rejecting duplicate or undeclared names. */
-  stage(name: string, state: DriverState): void {
+  stage(name: string, state: BackendState): void {
     if (this.staged.has(name)) {
       throw new E2EError('test', 'SESSION_CONTRACT', `session "${name}" saved twice`);
     }
@@ -68,7 +68,7 @@ export class SessionStaging {
     return this.declared.filter((name) => !this.staged.has(name));
   }
 
-  entries(): IterableIterator<[string, DriverState]> {
+  entries(): IterableIterator<[string, BackendState]> {
     return this.staged.entries();
   }
 }
@@ -113,17 +113,17 @@ export class SessionStore {
     return path.join(this.directory, `${targetId}--${name}.json`);
   }
 
-  /** Encrypts and atomically persists one captured driver state. */
-  async save(name: string, identity: SessionIdentity, state: DriverState): Promise<void> {
+  /** Encrypts and atomically persists one captured backend state. */
+  async save(name: string, identity: SessionIdentity, state: BackendState): Promise<void> {
     this.ensureDirectory();
     const createdAt = timestamp();
     let expiresAt = new Date(Date.now() + MAX_SESSION_AGE_MS).toISOString();
     if (state.expiresAt !== undefined) {
-      const driverExpiry = Date.parse(state.expiresAt);
-      if (Number.isNaN(driverExpiry) || driverExpiry <= Date.now()) {
-        throw new E2EError('test', 'SESSION_EXPIRED', 'driver state expiry is at or before creation');
+      const stateExpiry = Date.parse(state.expiresAt);
+      if (Number.isNaN(stateExpiry) || stateExpiry <= Date.now()) {
+        throw new E2EError('test', 'SESSION_EXPIRED', 'state expiry is at or before creation');
       }
-      if (driverExpiry < Date.parse(expiresAt)) expiresAt = new Date(driverExpiry).toISOString();
+      if (stateExpiry < Date.parse(expiresAt)) expiresAt = new Date(stateExpiry).toISOString();
     }
 
     const iv = randomBytes(12);
@@ -134,9 +134,9 @@ export class SessionStore {
       runId: this.runId,
       name,
       targetId: identity.targetId,
-      driver: {
-        id: identity.driverId,
-        version: identity.driverVersion,
+      backend: {
+        name: identity.backendName,
+        version: identity.backendVersion,
         spiVersion: identity.spiVersion,
       },
       platform: identity.platform,
@@ -174,7 +174,7 @@ export class SessionStore {
   }
 
   /** Validates identity and expiry, then decrypts one session state. */
-  async load(name: string, identity: SessionIdentity): Promise<DriverState> {
+  async load(name: string, identity: SessionIdentity): Promise<BackendState> {
     let rawText: string;
     try {
       rawText = await readFile(this.filePath(identity.targetId, name), 'utf8');
@@ -188,15 +188,15 @@ export class SessionStore {
       envelope.schemaVersion !== 'session-1' ||
       envelope.runId !== this.runId ||
       envelope.targetId !== identity.targetId ||
-      envelope.driver.id !== identity.driverId ||
-      envelope.driver.version !== identity.driverVersion ||
-      envelope.driver.spiVersion !== identity.spiVersion ||
+      envelope.backend.name !== identity.backendName ||
+      envelope.backend.version !== identity.backendVersion ||
+      envelope.backend.spiVersion !== identity.spiVersion ||
       envelope.platform !== identity.platform ||
       envelope.appIdentity !== identity.appIdentity
     ) {
       throw new ConfigurationError(
         'SESSION_MISMATCH',
-        `session "${name}" does not match the current run/target/driver identity`,
+        `session "${name}" does not match the current run/target/backend identity`,
       );
     }
     if (Date.parse(envelope.expiresAt) <= Date.now()) {

@@ -1,11 +1,16 @@
-/** In-page semantic reader executed via locator.evaluate / locator.evaluateHandle. */
+/**
+ * In-page semantic reader executed via locator.evaluate, locator.evaluateAll,
+ * and locator.evaluateHandle. Everything below the exported functions is
+ * serialized into the page, so it must stay self-contained: no imports, no
+ * module-scope references, every constant inside the function body.
+ */
 
 /**
  * The one definition of a secure field.
  *
  * It is a selector rather than a predicate because it has to be applied from
  * two sides that cannot share code: the in-page reader matches elements
- * against it to mark nodes `secure`, and the driver hands the same string to
+ * against it to mark nodes `secure`, and the backend hands the same string to
  * the screenshot masker. One string means the tree's redaction and the image's
  * redaction cannot describe different sets of elements, which is what the
  * runner's pixel-clearance check relies on.
@@ -50,7 +55,7 @@ export interface RawObservedNode extends RawNodeData {
 }
 
 /**
- * One walked document. driver-1 has no way to report a truncated tree, so the
+ * One walked document. The contract has no way to report a truncated tree, so the
  * node budget is a safety valve, not a signal: when it stops the walk early
  * the result simply ends, and the runner's visible observation byte budget is
  * the effective limit.
@@ -592,7 +597,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (isHidden(el, style)) return;
 
     // Iframes are emitted as boundary nodes and never entered: their content
-    // lives in another document, which the driver captures per frame and
+    // lives in another document, which the backend captures per frame and
     // stitches under this node.
     if (tag === 'iframe') {
       if (nodes.length >= maxNodes) {
@@ -638,3 +643,22 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   return { nodes, elements, secureNodeCount } as SemanticResult<Mode>;
 };
+
+/** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */
+export interface NodeReadOptions {
+  readonly testIdAttribute: string;
+  readonly secureFieldSelector: string;
+  readonly mode: { readonly kind: 'node' };
+}
+
+/**
+ * Reads every matched element in one in-page round trip. A page function
+ * cannot close over module scope, so the batch function is assembled from the
+ * reader's own source (the same source `evaluate` sends) and is a
+ * self-contained function Playwright serializes and calls with the elements.
+ */
+export const readManySemanticsFunction = new Function(
+  'elements',
+  'options',
+  `return elements.map((element) => (${readSemanticsFunction.toString()})(element, options));`,
+) as (elements: Element[], options: NodeReadOptions) => RawNodeData[];

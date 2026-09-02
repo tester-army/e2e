@@ -1,7 +1,7 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
 import nodePath from 'node:path';
-import type { LocatorExpression, SemanticNode } from '../driver/index.ts';
+import type { LocatorExpression, SemanticNode } from '../backend/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -74,12 +74,18 @@ export function createScreen(context: ScreenContext): Screen {
   return new ScreenImpl(context, undefined);
 }
 
-/** Creates a screen scope whose queries are wrapped inside one iframe. */
-export function createFrameScreen(context: ScreenContext, frameSelector: string): Screen {
-  return new ScreenImpl(context, undefined, frameSelector);
+/**
+ * Creates a screen scope whose every query is wrapped by `wrap` - a
+ * contributed fixture scoping queries into a nested document, for example.
+ */
+export function createScopedScreen(
+  context: ScreenContext,
+  wrap: (expression: LocatorExpression) => LocatorExpression,
+): Screen {
+  return new ScreenImpl(context, undefined, wrap);
 }
 
-/** Creates a public locator from a raw expression (web.locator). */
+/** Creates a public locator from a raw expression (a contributed fixture's platform selector). */
 export function createLocator(context: ScreenContext, expression: LocatorExpression): Locator {
   return new LocatorImpl(context, expression);
 }
@@ -88,13 +94,12 @@ class ScreenImpl implements Screen {
   constructor(
     protected readonly context: ScreenContext,
     protected readonly scope: LocatorExpression | undefined,
-    /** When set, every query is wrapped inside this iframe selector. */
-    protected readonly frameSelector: string | undefined = undefined,
+    /** When set, every query expression is passed through it before use. */
+    protected readonly wrap: ((expression: LocatorExpression) => LocatorExpression) | undefined = undefined,
   ) {}
 
   private build(expression: LocatorExpression): LocatorExpression {
-    if (this.frameSelector === undefined) return expression;
-    return { kind: 'frame', selector: this.frameSelector, source: expression };
+    return this.wrap === undefined ? expression : this.wrap(expression);
   }
 
   getByRole(role: Role, options?: RoleOptions): Locator {

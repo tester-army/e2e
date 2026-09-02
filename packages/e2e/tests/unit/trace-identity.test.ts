@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTraceCacheKey,
   createCallIndexer,
-  driverCompatibilityVersion,
+  backendCompatibilityVersion,
   instructionDigest,
   normalizeInstruction,
   paramsDigest,
@@ -16,8 +16,8 @@ import {
 const target: CacheTargetIdentity = {
   targetId: 'web',
   platform: 'web',
-  driverId: 'playwright',
-  driverVersion: '1.61.1',
+  backendName: 'playwright',
+  backendVersion: '1.61.1',
   spiVersion: 1,
   appIdentity: 'a'.repeat(64),
 };
@@ -38,12 +38,12 @@ describe('params identity', () => {
   });
 });
 
-describe('driverCompatibilityVersion', () => {
+describe('backendCompatibilityVersion', () => {
   it('keeps major.minor and passes odd versions through', () => {
-    expect(driverCompatibilityVersion('1.61.1')).toBe('1.61');
-    expect(driverCompatibilityVersion('2.0')).toBe('2.0');
-    expect(driverCompatibilityVersion('1.2.3-beta.1')).toBe('1.2');
-    expect(driverCompatibilityVersion('nightly')).toBe('nightly');
+    expect(backendCompatibilityVersion('1.61.1')).toBe('1.61');
+    expect(backendCompatibilityVersion('2.0')).toBe('2.0');
+    expect(backendCompatibilityVersion('1.2.3-beta.1')).toBe('1.2');
+    expect(backendCompatibilityVersion('nightly')).toBe('nightly');
   });
 });
 
@@ -75,7 +75,7 @@ describe('traceCacheKeyHash', () => {
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
     expect(
       traceCacheKeyHash(
-        buildTraceCacheKey({ ...parts, target: { ...target, driverVersion: '1.61.9' } }),
+        buildTraceCacheKey({ ...parts, target: { ...target, backendVersion: '1.61.9' } }),
       ),
     ).toBe(hash);
   });
@@ -85,7 +85,7 @@ describe('traceCacheKeyHash', () => {
     ['params', { signature: traceCallSignature('act', 'open billing', { fast: true }) }],
     ['call index', { callIndex: 1 }],
     ['test', { testId: 'other test' }],
-    ['driver minor', { target: { ...target, driverVersion: '1.62.0' } }],
+    ['driver minor', { target: { ...target, backendVersion: '1.62.0' } }],
     ['driver SPI version', { target: { ...target, spiVersion: 2 } }],
     ['policy version', { policyVersion: 'replay-policy/1' }],
   ])('changes when the %s changes', (_label, override) => {

@@ -7,7 +7,7 @@
  * writer cannot leave a torn entry behind.
  *
  * There is no locking. Two writers only ever collide on a key when the same
- * step runs concurrently on the same route, and then they are writing the same
+ * step runs concurrently on the same path, and then they are writing the same
  * flow, so last-write-wins is the correct outcome rather than a hazard.
  *
  * The interface exists so a remote store — the cloud's shared cache — can

@@ -10,8 +10,8 @@ export interface RealmSlot<T> {
   delete(host: object): void;
 }
 
-export function realmSlot<T>(key: string): RealmSlot<T> {
-  const symbol = Symbol.for(key);
+export function realmSlot<T>(key: string | symbol): RealmSlot<T> {
+  const symbol = typeof key === 'symbol' ? key : Symbol.for(key);
   return {
     set(host, value) {
       Object.defineProperty(host, symbol, {

@@ -1,6 +1,6 @@
 /** Host-side secret fill authorization (spec 04-resources.md, 14-security.md). */
 
-import type { DriverSession, OperationContext, SemanticNode } from '../driver/index.ts';
+import type { TargetSession, OperationContext, SemanticNode } from '../backend/surface.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
 import type { AgentContext } from './invocation.ts';
@@ -11,7 +11,7 @@ import type { AgentContext } from './invocation.ts';
  * satisfy it, so the authorization policy has exactly one implementation.
  */
 export interface SecretFillHost {
-  readonly session: DriverSession;
+  readonly session: TargetSession;
   operation(): OperationContext;
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void;
 }
@@ -22,7 +22,7 @@ const EDITABLE_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
 /**
  * Authorizes one secret fill and resolves the plaintext only after every check
  * passes. The value is returned to the caller for a single immediate handoff to
- * the trusted driver and is never logged, cached, or sent to a model.
+ * the trusted backend and is never logged, cached, or sent to a model.
  */
 export async function authorizeSecretFill(
   host: SecretFillHost,
@@ -80,16 +80,16 @@ export async function authorizeSecretFill(
 
 /** Reads the current top-level origin for origin policy checks. */
 async function currentOrigin(host: SecretFillHost): Promise<string> {
-  const web = host.session.web;
-  if (web === undefined) {
+  const url = host.session.url;
+  if (url === undefined) {
     throw new AgentError(
       'POLICY_DENIED',
-      'secret fills require a driver that exposes the current top-level URL',
+      'secret fills require a backend that exposes the current top-level URL',
     );
   }
   let href: string;
   try {
-    href = await web.url(host.operation());
+    href = await url.call(host.session, host.operation());
   } catch (cause) {
     throw toAgentError(cause);
   }

@@ -14,8 +14,19 @@ e2e init
 APP_URL=http://localhost:3000 e2e run
 ```
 
+```ts title="e2e.config.ts"
+import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default defineConfig({
+  app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+});
+```
+
 ```ts
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test('user signs in', async ({ app, screen, web }) => {
   await app.open('/login');
@@ -25,8 +36,10 @@ test('user signs in', async ({ app, screen, web }) => {
 });
 ```
 
-Missing Playwright browsers are downloaded on first run. To provision them ahead
-of time (for example in a CI image), run `npx playwright install chromium`.
+The runner itself knows no platform: every target names the backend that
+drives it, and `@e2edev/playwright` is the browser one. Missing Playwright
+browsers are downloaded on first run. To provision them ahead of time (for
+example in a CI image), run `npx playwright install chromium`.
 
 Run files in parallel with `--workers`, or set `workers` in the config.
 
@@ -76,7 +89,7 @@ run, from a fresh observation.
   (`options.vision`) reject with `UNSUPPORTED_CAPABILITY`.
 - The HTML reporter and video artifacts are not available.
 - Reported steps carry no source locations.
-- iOS and Android targets are rejected.
+- iOS and Android need a backend package; none ships in this repo yet.
 
 ## Contributing
 

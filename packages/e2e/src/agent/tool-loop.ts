@@ -1,7 +1,7 @@
 /**
  * The tool-loop chassis (RFC0001, layer 4): everything an AI SDK step
  * executor needs except its tool vocabulary. `createAgent` is this chassis
- * plus the web grammar toolset; a device or API executor brings different
+ * plus the grammar toolset; a device or API executor brings different
  * tools and inherits the whole discipline unchanged:
  *
  * - the `complete_step` verdict tool and the closed blocked-code policy;

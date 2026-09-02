@@ -1,6 +1,6 @@
 /** Observation capture, redaction, and model serialization (spec 09-drivers.md, 14-security.md). */
 
-import type { Observation, ObservationPixels, SemanticNode } from '../driver/index.ts';
+import type { Observation, ObservationPixels, SemanticNode } from '../backend/surface.ts';
 import { sanitizeText } from '../internal/errors.ts';
 import { createRedactor } from '../internal/redact.ts';
 import { sleep } from '../internal/time.ts';
@@ -26,16 +26,16 @@ export interface AgentObservation {
   readonly nodes: ReadonlyMap<string, SemanticNode>;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
-  /** Present only when the driver captured pixels and masking checks out. */
+  /** Present only when the backend captured pixels and masking checks out. */
   readonly pixels?: AgentPixels | undefined;
   /** Set when captured pixels were dropped instead of being sent. */
   readonly pixelsWithheld?: PixelsWithheld | undefined;
 }
 
 /**
- * Turns one raw driver observation into redacted model input.
+ * Turns one raw backend observation into redacted model input.
  *
- * An observation whose masking the driver cannot prove is rejected before it
+ * An observation whose masking the backend cannot prove is rejected before it
  * reaches a model or disk. Registered secret values are additionally replaced
  * by their stable secret name.
  */
@@ -50,7 +50,7 @@ export function prepareObservation(
   if (!observation.redaction.complete) {
     throw new AgentError(
       'POLICY_DENIED',
-      'the driver could not prove observation masking is complete; the observation was discarded',
+      'the backend could not prove observation masking is complete; the observation was discarded',
     );
   }
 
@@ -99,8 +99,8 @@ export function prepareObservation(
 /**
  * Clears captured pixels for model input, or withholds them.
  *
- * Every secure node the driver observed must be covered by a masked region.
- * When it is not, the driver masked less than it saw and the image cannot be
+ * Every secure node the backend observed must be covered by a masked region.
+ * When it is not, the backend masked less than it saw and the image cannot be
  * proven redacted, so it is dropped exactly like an incompletely redacted
  * artifact (14-security.md) — the semantic tree still goes out.
  */
@@ -120,7 +120,7 @@ const MAX_INDENT_DEPTH = 10;
 
 /**
  * Renders one node as `#id role "name" text="..." [states]`. Role-less text
- * holders omit the role token entirely: on a large page they are half the
+ * holders omit the role token entirely: on a large screen they are half the
  * lines, and the model needs their text, not a filler word.
  */
 function formatNode(
@@ -134,7 +134,7 @@ function formatNode(
   if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(redact(node.name)));
   const text = node.text === undefined ? '' : collapse(node.text);
   if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
-  // Disambiguators the model needs when role and name repeat. The driver has
+  // Disambiguators the model needs when role and name repeat. The backend has
   // already reduced href to origin and path.
   const testId = node.attributes?.[testIdAttribute];
   if (testId !== undefined && testId !== '') parts.push(`testid=${JSON.stringify(testId)}`);
@@ -160,14 +160,14 @@ function formatNode(
 }
 
 /**
- * What the page looks like, independent of which observation looked at it.
+ * What the screen looks like, independent of which observation looked at it.
  *
  * Two things are dropped. Node ids, because they are minted per observation, so
- * two looks at a page that has not moved would never render identically. And
- * the focus state, because focus moves on its own — the browser settling it
- * after load, a script claiming it, a widget stealing it — without the page
+ * two looks at a screen that has not moved would never render identically. And
+ * the focus state, because focus moves on its own — the platform settling it
+ * after load, a script claiming it, a widget stealing it — without the screen
  * having changed in any way a judgment could answer differently about. Leaving
- * it in meant a genuinely static page could still spend a second model call.
+ * it in meant a genuinely static screen could still spend a second model call.
  *
  * Lives next to `formatNode` so the line grammar keeps one owner.
  */
@@ -191,7 +191,7 @@ interface SettleClock {
 }
 
 /**
- * Captures until the page shape holds still, bounded by a short ceiling and
+ * Captures until the screen shape holds still, bounded by a short ceiling and
  * the step clock. An observation taken right after an action can be a
  * snapshot the app is still reacting to — a fetch-backed mutation re-renders
  * long after the action resolves — and acting or judging on it repeats

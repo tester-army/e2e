@@ -41,7 +41,7 @@ Check `code` rather than using `instanceof`.
 | `MODEL_PROVIDER_FAILED` | Provider transport failure (network error, 5xx, rate limit) after the adapter's transport retries (up to 5 per model call, honoring `retry-after`, bounded by the remaining step timeout) | infrastructure | 3 |
 | `CANCELLED` | The runner cancelled the operation, without a process signal | infrastructure | 3 |
 | `MODEL_OUTPUT_INVALID` | Structured output still failed validation after the repair budget was spent | test | 1 |
-| `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the driver reported invalid state | test | 1 |
+| `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the backend reported invalid state | test | 1 |
 | `LOCATOR_NOT_FOUND` | Zero matches within the deadline, or the model declined to name a node | test | 1 |
 | `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails immediately, no polling. | test | 1 |
 | `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
@@ -57,7 +57,7 @@ These appear in terminal output and in the report as plain string codes.
 | --- | --- | --- | ---: |
 | `CONFIG_NOT_FOUND` | `--config <path>` names a file that does not exist | configuration | 2 |
 | `CONFIG_AMBIGUOUS` | Both `e2e.config.ts` and `e2e.config.mts` in one directory | configuration | 2 |
-| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, `browser` together with `targets`, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
+| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, backend }`, a `backend` that is not a `defineBackend` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
 | `APP_URL_REQUIRED` | Neither `app.url` nor `APP_URL` is set | configuration | 2 |
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, or unparseable | configuration | 2 |
@@ -65,29 +65,27 @@ These appear in terminal output and in the report as plain string codes.
 | `PRODUCTION_NOT_ALLOWED` | `environment: 'production'` without `allowProduction: true` | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
-| `PLATFORM_UNSUPPORTED` | A target requested a platform other than `web`. Mobile platforms are rejected. | configuration | 2 |
-| `DRIVER_NOT_INSTALLED` | A target names a well-known driver whose package is not installed. `driver: 'playwright'` needs `@e2edev/playwright`. | configuration | 2 |
-| `UNSUPPORTED_ARTIFACT` | A configured artifact kind the driver cannot produce. `video` is not implemented yet. | configuration | 2 |
-| `UNSUPPORTED_CAPABILITY` | The `web` fixture on a target without the `web` capability, the `device` fixture, state restore without state capability, or `agent.act` options that are not implemented yet (`schema`, `vision`) | configuration | 2 |
+| `UNSUPPORTED_ARTIFACT` | A configured artifact kind the target's backend cannot produce. `video` is not implemented by any first-party backend. | configuration | 2 |
+| `UNSUPPORTED_CAPABILITY` | A fixture, action, or tier the target's backend does not declare: a contributed fixture it does not contribute, `screen` without `locate`, state restore without `state`, screenshots without `artifacts` | configuration | 2 |
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. Suppress with `--pass-with-no-tests`. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
 | `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, or a positional path outside the project root | configuration | 2 |
 | `POLICY_DENIED` | Origin, cookie, scheme, secret-sink, or route policy denial | configuration | 2 |
-| `SESSION_MISMATCH` | A stored session does not match the current run, target, driver, platform, or app identity | configuration | 2 |
+| `SESSION_MISMATCH` | A stored session does not match the current run, target, backend, platform, or app identity | configuration | 2 |
 | `SESSION_EXPIRED` | A stored session is past its expiry at restore time | configuration | 2 |
 | `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |
 | `SESSION_UNAVAILABLE` | A test requires a session no selected setup test produced | configuration | 2 |
 | `SESSION_CONTRACT` | A setup test saved a session twice, saved an undeclared name, or finished without saving a declared one | test | 1 |
 | `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout` | test | 1 |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
-| `LAUNCH_TIMEOUT` | Driver launch exceeded `config.launchTimeout` | infrastructure | 3 |
-| `CLEANUP_TIMEOUT` | Driver close exceeded `config.cleanupTimeout` | infrastructure | 3 |
+| `LAUNCH_TIMEOUT` | Backend init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
+| `CLEANUP_TIMEOUT` | Backend attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
 | `WORKER_EXIT` | A worker exited unexpectedly between tests | infrastructure | 3 |
 | `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
 | `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
-| `DRIVER_FAILURE` | Any driver fault with no more specific mapping | infrastructure | 3 |
+| `BACKEND_FAILURE` | Any backend fault with no more specific mapping | infrastructure | 3 |
 | `INTERNAL_ERROR` | A runner invariant was violated. Report it. | internal | 4 |
 | `INTERRUPTED` | A user or CI signal aborted the run | interrupted | 130 |
 
@@ -102,7 +100,7 @@ value from test code is reported as `ERROR`.
 | 0 | All selected tests passed, were flaky, or were explicitly skipped |
 | 1 | Final test or setup failure, or test timeout |
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
-| 3 | Driver, browser, app process, model provider, artifact, or cleanup infrastructure failure |
+| 3 | Backend, app process, model provider, artifact, or cleanup infrastructure failure |
 | 4 | Internal runner invariant or unhandled runner error |
 | 130 | Interrupted by a user or CI signal |
 

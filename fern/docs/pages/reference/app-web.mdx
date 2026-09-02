@@ -1,12 +1,13 @@
 ---
 title: app and web
-subtitle: Portable app lifecycle, plus the web capability fixture.
+subtitle: Portable app lifecycle, plus the web fixture the playwright backend contributes.
 ---
 
-`app` is the portable surface: every method exists on every platform. `web` is a
-capability fixture for web-only work. Declare `requires: ['web']` in portable
-suites; acquiring it on a target without the `web` capability fails with
-`UNSUPPORTED_CAPABILITY`.
+`app` is the portable surface: every method exists on every platform. `web` is
+the fixture `@e2edev/playwright` contributes for browser-only work; import
+`test` from that package to have it typed. Declare `requires: ['web']` in
+portable suites; acquiring it on a target whose backend does not contribute it
+fails with `UNSUPPORTED_CAPABILITY`.
 
 ## App
 
@@ -26,12 +27,12 @@ the remaining test timeout.
 
 | Method | Timeout | Behavior | Throws |
 | --- | --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or route relative to it. Marks the attempt as opened. | `POLICY_DENIED` outside `app.allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
-| `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. Marks the attempt as opened. | `ACTION_FAILED`, `DRIVER_FAILURE` |
-| `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `DRIVER_FAILURE` |
+| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or path relative to it. | `APP_URL_REQUIRED` without `app.url`, `POLICY_DENIED` outside `app.allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
+| `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. | `ACTION_FAILED`, `BACKEND_FAILURE`, `UNSUPPORTED_CAPABILITY` |
+| `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `BACKEND_FAILURE`, `UNSUPPORTED_CAPABILITY` |
 | `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED` |
 | `deepLink(url)` | `config.timeout`, 120000 ms | Resolves the URL against the base URL and validates the origin. | `POLICY_DENIED` for a disallowed origin or a `file:`, `data:`, or `javascript:` scheme |
-| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures evidence, registers it as an attempt artifact, and returns its path relative to the artifact root. `label` defaults to `''`. | `UNSUPPORTED_ARTIFACT`, `DRIVER_FAILURE` |
+| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures evidence, registers it as an attempt artifact, and returns its path relative to the artifact root. `label` defaults to `''`. | `UNSUPPORTED_CAPABILITY`, `BACKEND_FAILURE` |
 
 ```ts
 await app.open('/settings/billing');
@@ -104,10 +105,12 @@ export interface Web {
 
 | Member | Default timeout |
 | --- | --- |
-| `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms |
+| `goto`, `reload`, `back`, `forward`, `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
-| `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms |
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
+
+Every `web` call is a recorded `web.<method>` step. A relative URL or a URL
+match needs `app.url`; without it the call fails with `APP_URL_REQUIRED`.
 
 ### Navigation
 
@@ -241,7 +244,7 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 | Method | Behavior | Throws |
 | --- | --- | --- |
 | `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. | - |
-| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. The watch is cancelled on every failure path. | `ACTION_FAILED` when the download does not complete in time |
+| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` (operation timed out) when the download does not complete in time |
 
 ```ts
 export interface Dialog {

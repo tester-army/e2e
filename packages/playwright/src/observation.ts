@@ -1,0 +1,260 @@
+/**
+ * Semantic tree capture for one observation: the in-page walk, nested-document
+ * stitching, and element-handle bookkeeping the surface keeps per generation.
+ */
+
+import type { ElementHandle, JSHandle, Locator } from 'playwright';
+import {
+  BackendError,
+  OBSERVED_NAME_LIMIT,
+  OBSERVED_TEXT_LIMIT,
+  type NodeRef,
+  type SemanticNode,
+} from 'e2e/backend';
+import { withTimeout } from 'e2e/internal';
+import {
+  readSemanticsFunction,
+  SECURE_FIELD_SELECTOR,
+  type RawNodeData,
+  type RawObservedNode,
+} from './read-node.ts';
+
+/** Nested iframe capture depth; deeper frames stay boundary nodes. */
+const MAX_FRAME_DEPTH = 4;
+
+/**
+ * Budget for capturing one child document. A stalled frame (ads, trackers)
+ * must cost an observation a moment, not the context default timeout.
+ */
+const FRAME_CAPTURE_TIMEOUT_MS = 3_000;
+
+/** What one capture needs from the surface that owns the generation. */
+export interface CaptureDeps {
+  readonly testIdAttribute: string;
+  readonly allowedOrigins: readonly string[];
+  /** Mints one node id; the surface owns the id space. */
+  mintId(): string;
+  /** Publishes one element handle under its id in the generation being built. */
+  commit(id: string, element: ElementHandle<Element>): void;
+}
+
+export interface CaptureOptions {
+  /** Enclosing frame selectors, outermost first; empty for the main document. */
+  readonly framePath: readonly string[];
+  /** Remaining node budget shared across every document of the observation. */
+  readonly budget: number;
+  readonly timeoutMs: number;
+}
+
+/** One stored handle awaiting publication once its document captured successfully. */
+type StagedRef = readonly [id: string, element: ElementHandle<Element>];
+
+/**
+ * Captures one document's semantic tree, then descends into each observed
+ * iframe boundary node via its content frame and stitches the child
+ * document under it. Frame capture is best-effort: a detached or unloaded
+ * frame leaves its boundary node childless rather than failing the
+ * observation. The node budget is shared across all documents.
+ */
+export async function captureDocument(
+  deps: CaptureDeps,
+  root: Locator,
+  options: CaptureOptions,
+): Promise<{ tree: SemanticNode; nodeCount: number }> {
+  const { framePath, budget, timeoutMs } = options;
+  // A child document's handles are published only once it captured whole; a
+  // frame that fails midway leaves no reachable ids behind.
+  const staged: StagedRef[] = [];
+  const stage = (element: ElementHandle<Element>): string => {
+    const id = deps.mintId();
+    staged.push([id, element]);
+    return id;
+  };
+  try {
+    const captured = await captureInto(deps, stage, root, framePath, budget, timeoutMs);
+    for (const [id, element] of staged) deps.commit(id, element);
+    return captured;
+  } catch (cause) {
+    for (const [, element] of staged) void element.dispose().catch(() => undefined);
+    throw cause;
+  }
+}
+
+async function captureInto(
+  deps: CaptureDeps,
+  storeRef: (element: ElementHandle<Element>) => string,
+  root: Locator,
+  framePath: readonly string[],
+  budget: number,
+  timeoutMs: number,
+): Promise<{ tree: SemanticNode; nodeCount: number }> {
+  const evaluation = root.evaluateHandle(readSemanticsFunction, {
+    testIdAttribute: deps.testIdAttribute,
+    secureFieldSelector: SECURE_FIELD_SELECTOR,
+    mode: {
+      kind: 'tree' as const,
+      maxNodes: budget,
+      nameLimit: OBSERVED_NAME_LIMIT,
+      textLimit: OBSERVED_TEXT_LIMIT,
+    },
+  });
+  const captured = await withTimeout(evaluation, timeoutMs, () => {
+    // The losing evaluation may still settle later; a late handle must be
+    // released and a late failure must not become an unhandled rejection.
+    void evaluation.then((handle) => handle.dispose()).catch(() => undefined);
+    // Retryability is closed to NODE_STALE and FRAME_NOT_FOUND, so asking
+    // for a retryable timeout here would silently downgrade the code to
+    // BACKEND_FAILURE - reporting a broken backend for a capture that
+    // merely outlived the budget it was handed.
+    return new BackendError('OPERATION_TIMEOUT', 'observation capture timed out', {
+      retryable: false,
+    });
+  });
+  let elementsHandle: JSHandle | undefined;
+  try {
+    const [nodes, elementsProperty] = await Promise.all([
+      captured.getProperty('nodes').then((handle) => handle.jsonValue()),
+      captured.getProperty('elements'),
+    ]);
+    elementsHandle = elementsProperty;
+    const elements = await collectElementHandles(elementsHandle, nodes.length);
+    const ids = elements.map((element) => storeRef(element));
+    let nodeCount = nodes.length;
+    const frameChildren = new Map<number, SemanticNode>();
+    if (framePath.length < MAX_FRAME_DEPTH) {
+      for (let index = 0; index < nodes.length; index += 1) {
+        const selector = nodes[index]!.frameSelector;
+        if (selector === undefined) continue;
+        const remaining = budget - nodeCount;
+        if (remaining <= 0) break;
+        const frame = await elements[index]!.contentFrame().catch(() => null);
+        if (frame === null) continue;
+        // Only frames within allowedOrigins enter observations. Third-party
+        // frames (ads, trackers, embeds) are not the agent's to read or act
+        // on - and a stalled ad frame must not tax the capture. They stay
+        // boundary nodes, exactly like frames past the depth limit.
+        if (!isAllowedFrameOrigin(frame.url(), deps.allowedOrigins)) continue;
+        const child = await captureDocument(deps, frame.locator(':root'), {
+          framePath: [...framePath, selector],
+          budget: remaining,
+          timeoutMs: FRAME_CAPTURE_TIMEOUT_MS,
+        }).catch(() => undefined);
+        if (child === undefined) continue;
+        frameChildren.set(index, child.tree);
+        nodeCount += child.nodeCount;
+      }
+    }
+    return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount };
+  } finally {
+    await elementsHandle?.dispose().catch(() => undefined);
+    await captured.dispose().catch(() => undefined);
+  }
+}
+
+/**
+ * True when a frame document's origin is inside the app's allowed origins.
+ *
+ * `about:blank` and `srcdoc` documents inherit their parent's origin, so they
+ * are the app's own content (consent managers, editors) and always allowed; the
+ * parent frame was already admitted to be captured at all.
+ *
+ * A `data:` document is *not* admitted, even though its bytes are written by the
+ * page that embeds it. It has an opaque origin rather than an inherited one, and
+ * 14-security.md denies the scheme by name alongside `file:` and `javascript:`.
+ */
+function isAllowedFrameOrigin(url: string, allowedOrigins: readonly string[]): boolean {
+  if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;
+  try {
+    return allowedOrigins.includes(new URL(url).origin);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads one element handle per observed node from the in-page element array.
+ * `asElement` types handles as `ElementHandle<Node>`, but the observation walk
+ * records `Element` nodes only, so the narrowing is safe by construction.
+ */
+async function collectElementHandles(
+  elementsHandle: JSHandle,
+  count: number,
+): Promise<ElementHandle<Element>[]> {
+  const properties = await elementsHandle.getProperties();
+  const elements: ElementHandle<Element>[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const property = properties.get(String(index));
+    const element = (property?.asElement() ?? null) as ElementHandle<Element> | null;
+    if (element === null) {
+      // The in-page array outlived its document (a navigation committed while
+      // the handles were being read back). The capture is repeatable.
+      throw new BackendError('NODE_STALE', `observation node ${index} lost its element`, {
+        retryable: true,
+      });
+    }
+    elements.push(element);
+  }
+  for (const [key, handle] of properties) {
+    if (Number(key) >= count) void handle.dispose().catch(() => undefined);
+  }
+  return elements;
+}
+
+/**
+ * Rebuilds the observation tree from the depth-first node list. Descendants
+ * always follow their parent, so children are complete before a parent is
+ * built. Captured child documents attach under their iframe boundary nodes.
+ */
+function assembleTree(
+  nodes: readonly RawObservedNode[],
+  ids: readonly string[],
+  framePath: readonly string[],
+  frameChildren: ReadonlyMap<number, SemanticNode>,
+): SemanticNode {
+  if (nodes.length === 0 || ids.length === 0) {
+    // An empty document is what a navigation in flight looks like; a real page
+    // always has nodes, so the capture is worth repeating.
+    throw new BackendError('NODE_STALE', 'observation produced no nodes', { retryable: true });
+  }
+  const childLists: SemanticNode[][] = nodes.map(() => []);
+  const built: SemanticNode[] = [];
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const raw = nodes[index]!;
+    const embedded = frameChildren.get(index);
+    if (embedded !== undefined) childLists[index]!.unshift(embedded);
+    const node = toSemanticNode({ id: ids[index]!, revision: '' }, raw, childLists[index]!, framePath);
+    built[index] = node;
+    if (raw.parent >= 0) childLists[raw.parent]!.unshift(node);
+  }
+  return built[0]!;
+}
+
+export function toSemanticNode(
+  ref: NodeRef,
+  raw: RawNodeData,
+  children: readonly SemanticNode[] = [],
+  framePath: readonly string[] = [],
+): SemanticNode {
+  const states: Record<string, boolean> = {};
+  if (raw.states.checked !== null) states['checked'] = raw.states.checked;
+  if (raw.states.disabled) states['disabled'] = true;
+  if (raw.states.selected !== null) states['selected'] = raw.states.selected;
+  if (raw.states.expanded !== null) states['expanded'] = raw.states.expanded;
+  if (raw.states.focused) states['focused'] = true;
+  if (raw.states.hidden) states['hidden'] = true;
+  if (raw.states.secure) states['secure'] = true;
+  return {
+    ref,
+    ...(raw.role !== null ? { role: raw.role } : {}),
+    ...(raw.name !== null ? { name: raw.name } : {}),
+    ...(raw.text !== null ? { text: raw.text } : {}),
+    ...(raw.value !== null ? { value: raw.value } : {}),
+    inputPurpose: raw.inputPurpose,
+    states,
+    attributes: raw.attributes,
+    rect: raw.rect,
+    ...(raw.selector === '' ? {} : { selector: raw.selector }),
+    ...(framePath.length > 0 ? { framePath } : {}),
+    ...(children.length > 0 ? { children } : {}),
+  };
+}

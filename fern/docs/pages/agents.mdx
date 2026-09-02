@@ -66,7 +66,9 @@ export default defineConfig({
 ```
 
 Now `agent.act('seed three items and check out')` can call your test API
-mid-flow. `createAgent()` with no arguments is exactly what runs by default;
+mid-flow. A tool that only makes sense on some targets declares them:
+`{ ..., platforms: ['ios', 'android'] }` keeps a swipe tool off a web target,
+and the model never sees a verb the surface cannot honor. `createAgent()` with no arguments is exactly what runs by default;
 `system` appends guidance, `model` overrides the config-resolved one.
 
 ## Keep the loop, change the vocabulary
@@ -188,7 +190,7 @@ with `UNSUPPORTED_CAPABILITY` in this release.
   <Card title="agent reference" icon="code" href="/reference/agent">
     Every method, option, and budget.
   </Card>
-  <Card title="Writing a driver" icon="plug" href="/writing-a-driver">
+  <Card title="Writing a backend" icon="plug" href="/writing-a-backend">
     Plug in a whole new backend below the executor.
   </Card>
 </CardGroup>

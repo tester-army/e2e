@@ -16,7 +16,7 @@ import { replayTrace, type ReplayHost } from './replay.ts';
 
 /**
  * The replay host plus the one session-level probe replay itself never
- * needs: the current page path, read once per step for the start-anchor
+ * needs: the current location path, read once per step for the start-anchor
  * precondition.
  */
 export interface StepCacheHost extends ReplayHost {
@@ -193,7 +193,7 @@ export class StepTraceSession {
       ...(endPath === undefined ? {} : { endPath }),
     });
     if (trace === undefined) return;
-    // A trace with no start anchor — no recorded path (a non-web session)
+    // A trace with no start anchor — no recorded path (a surface without a URL)
     // and no opening navigate — could never replay: `wrong-context` forever.
     // Writing it would be pure store traffic, so it is not written at all.
     if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
@@ -211,7 +211,7 @@ export class StepTraceSession {
     await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
   }
 
-  /** Whether staging would write anything; gates the end-path driver read. */
+  /** Whether staging would write anything; gates the end-path location read. */
   get wantsStage(): boolean {
     return this.recorder !== undefined;
   }

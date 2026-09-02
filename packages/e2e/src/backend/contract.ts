@@ -1,0 +1,223 @@
+/**
+ * The backend contract vocabulary (RFC0002): the platform-neutral types every
+ * backend speaks and the harness consumes. A backend imports these from
+ * `e2e/backend`; core never imports anything from a backend.
+ *
+ * Everything here is capability vocabulary - semantic nodes, locator
+ * expressions, action kinds, the error contract - never a platform noun. A
+ * document platform, a simulator, and a desktop shell describe themselves with the same
+ * words, which is what lets `screen`, `expect`, and the agent work identically
+ * on all of them.
+ */
+
+import type { Momentum, ScrollDirection, SelectOption } from '../types.ts';
+
+/** The backend contract version this runner speaks. */
+export const BACKEND_SPI_VERSION = 1;
+export type BackendSpiVersion = typeof BACKEND_SPI_VERSION;
+
+export interface OperationContext {
+  readonly signal: AbortSignal;
+  /** Remaining operation budget when the call starts. */
+  readonly timeoutMs: number;
+  readonly runId: string;
+  readonly attemptId: string;
+}
+
+export type TextPattern =
+  | { readonly kind: 'string'; readonly value: string; readonly exact: boolean }
+  | { readonly kind: 'regexp'; readonly source: string; readonly flags: string };
+
+export type QueryKind = 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' | 'testId';
+
+export interface SemanticQuery {
+  readonly kind: QueryKind;
+  readonly value: TextPattern;
+  readonly name?: TextPattern;
+  readonly states?: Readonly<
+    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'hidden', boolean>>
+  >;
+}
+
+/**
+ * The location capability's query language. `selector` is a platform-native
+ * selector string (CSS or XPath on a document platform, a predicate on a
+ * device platform); `frame` scopes a query inside one nested document.
+ */
+export type LocatorExpression =
+  | {
+      readonly kind: 'query';
+      readonly query: SemanticQuery;
+      readonly scope?: LocatorExpression;
+    }
+  | {
+      readonly kind: 'filter';
+      readonly source: LocatorExpression;
+      readonly hasText?: TextPattern;
+      readonly has?: LocatorExpression;
+    }
+  | {
+      readonly kind: 'index';
+      readonly source: LocatorExpression;
+      readonly index: number | 'first' | 'last';
+    }
+  | {
+      readonly kind: 'selector';
+      readonly selector: string;
+    }
+  | {
+      readonly kind: 'frame';
+      readonly selector: string;
+      readonly source: LocatorExpression;
+    };
+
+export interface NodeRef {
+  readonly id: string;
+  readonly revision: string;
+}
+
+/**
+ * Per-field bounds a backend applies to observation-tree nodes. A `name` or
+ * `text` whose length reaches its limit was cut at exactly that limit, so
+ * "length >= limit" is a precise truncation signal; every shorter value is
+ * complete. Single-node reads are unbounded and always carry the full value.
+ */
+export const OBSERVED_NAME_LIMIT = 256;
+export const OBSERVED_TEXT_LIMIT = 512;
+
+export interface SemanticNode {
+  readonly ref: NodeRef;
+  readonly role?: string;
+  readonly name?: string;
+  readonly text?: string;
+  readonly value?: string;
+  readonly inputPurpose?: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
+  readonly states?: Readonly<
+    Partial<
+      Record<
+        'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure',
+        boolean
+      >
+    >
+  >;
+  readonly attributes?: Readonly<Record<string, string>>;
+  readonly rect?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  /**
+   * Platform selector that addresses this node within its own document, when
+   * the platform has one. It is structural, not semantic: it survives the
+   * content changes that rename a node, and a runner may store it to re-find
+   * the node cheaply on a later run. It is never part of the node's identity,
+   * so whatever it resolves to is still checked before it is used.
+   *
+   * It SHOULD be anchored on an attribute naming the node or one of its
+   * ancestors, and SHOULD be absent rather than positional all the way to the
+   * document root: such a path is shifted by anything inserted above the node,
+   * so it does not survive to the later run it exists for (10-determinism.md).
+   */
+  readonly selector?: string;
+  /**
+   * Enclosing nested-document chain as selectors of each boundary node,
+   * outermost first. Absent for nodes in the main document.
+   */
+  readonly framePath?: readonly string[];
+  readonly children?: readonly SemanticNode[];
+}
+
+/**
+ * Viewport point in CSS pixels, origin at the top-left of the viewport.
+ * Reserved surface with a named consumer: vision-pointing executors dispatch
+ * coordinate taps through it.
+ */
+export interface ViewportPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * Masked viewport pixels captured for one observation revision.
+ *
+ * `width` and `height` MUST be the true dimensions of `data`, because they are
+ * the space every coordinate read off the image refers to. `scale` relates that
+ * space to the CSS pixels of `SemanticNode.rect`, which is the space actions
+ * dispatch in: one image pixel is `1 / scale` CSS pixels.
+ */
+export interface ObservationPixels {
+  readonly data: Uint8Array;
+  readonly mediaType: 'image/png';
+  readonly width: number;
+  readonly height: number;
+  /** Image pixels per CSS pixel; 1 for a CSS-scale capture. */
+  readonly scale: number;
+}
+
+/** One deterministic action the location tier performs on a located node. */
+export type LocatorAction =
+  | {
+      readonly kind:
+        | 'tap'
+        | 'doubleTap'
+        | 'check'
+        | 'uncheck'
+        | 'clear'
+        | 'focus'
+        | 'hover'
+        | 'scrollIntoView';
+    }
+  | { readonly kind: 'longPress'; readonly durationMs?: number }
+  | { readonly kind: 'fill'; readonly value: string; readonly sensitive: boolean }
+  | { readonly kind: 'press'; readonly key: string }
+  | { readonly kind: 'selectOption'; readonly value: SelectOption }
+  | { readonly kind: 'setInputFiles'; readonly paths: readonly string[] }
+  | { readonly kind: 'dragTo'; readonly target: NodeRef }
+  | {
+      readonly kind: 'swipe';
+      readonly direction: ScrollDirection;
+      readonly momentum?: Momentum;
+    };
+
+export type BackendErrorCode =
+  | 'NODE_STALE'
+  | 'FRAME_NOT_FOUND'
+  | 'FRAME_AMBIGUOUS'
+  | 'NOT_ACTIONABLE'
+  | 'ACTION_MAY_HAVE_COMMITTED'
+  | 'OPERATION_TIMEOUT'
+  | 'CANCELLED'
+  | 'UNSUPPORTED_CAPABILITY'
+  | 'INVALID_STATE'
+  | 'BACKEND_FAILURE';
+
+const LEGAL_RETRYABLE: ReadonlySet<BackendErrorCode> = new Set(['NODE_STALE', 'FRAME_NOT_FOUND']);
+
+/**
+ * The error contract a backend throws across the seam. Retryability is closed
+ * to the two codes that describe a repeatable read (`NODE_STALE`,
+ * `FRAME_NOT_FOUND`); any other retryable claim is coerced to a non-retryable
+ * `BACKEND_FAILURE` so a backend can never talk the harness into repeating an
+ * action that may have committed.
+ */
+export class BackendError extends Error {
+  readonly code: BackendErrorCode;
+  readonly retryable: boolean;
+
+  constructor(
+    code: BackendErrorCode,
+    message: string,
+    options: { retryable: boolean; cause?: unknown },
+  ) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
+    this.name = 'BackendError';
+    if (options.retryable && !LEGAL_RETRYABLE.has(code)) {
+      this.code = 'BACKEND_FAILURE';
+      this.retryable = false;
+      return;
+    }
+    this.code = code;
+    this.retryable = options.retryable;
+  }
+}

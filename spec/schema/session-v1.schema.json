@@ -4,19 +4,19 @@
   "title": "e2e session-1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "runId", "name", "targetId", "platform", "driver", "appIdentity", "createdAt", "expiresAt", "state"],
+  "required": ["schemaVersion", "runId", "name", "targetId", "platform", "backend", "appIdentity", "createdAt", "expiresAt", "state"],
   "properties": {
     "schemaVersion": { "const": "session-1" },
     "runId": { "$ref": "#/$defs/uuidV7" },
     "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
     "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
     "platform": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "driver": {
+    "backend": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "version", "spiVersion"],
+      "required": ["name", "version", "spiVersion"],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
         "version": { "type": "string", "minLength": 1, "maxLength": 128 },
         "spiVersion": { "const": 1 }
       }

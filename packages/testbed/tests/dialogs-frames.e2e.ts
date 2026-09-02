@@ -1,4 +1,5 @@
-import { test, expect } from 'e2e';
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
 
 test.describe('dialogs', { requires: ['web'] }, () => {
   test('accepting a confirm dialog', async ({ app, screen, web }) => {

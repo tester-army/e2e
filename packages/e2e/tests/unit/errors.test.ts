@@ -11,7 +11,7 @@ import {
   TestError,
   truncateUtf8,
 } from '../../src/internal/errors.ts';
-import { DriverError } from '../../src/driver/index.ts';
+import { BackendError } from '../../src/backend/surface.ts';
 
 describe('exit code mapping', () => {
   it('maps categories per 06-cli.md', () => {
@@ -42,25 +42,25 @@ describe('classifyError', () => {
     expect(classifyError('string failure').category).toBe('test');
   });
 
-  it('applies the canonical driver mapping to DriverErrors from any surface', () => {
+  it('applies the canonical driver mapping to BackendErrors from any surface', () => {
     const failure = classifyError(
-      new DriverError('DRIVER_FAILURE', 'backend died', { retryable: false }),
+      new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false }),
     );
     expect(failure.category).toBe('infrastructure');
-    expect(failure.code).toBe('DRIVER_FAILURE');
+    expect(failure.code).toBe('BACKEND_FAILURE');
 
     const unsupported = classifyError(
-      new DriverError('UNSUPPORTED_CAPABILITY', 'no video', { retryable: false }),
+      new BackendError('UNSUPPORTED_CAPABILITY', 'no video', { retryable: false }),
     );
     expect(unsupported.category).toBe('configuration');
     expect(unsupported.code).toBe('UNSUPPORTED_CAPABILITY');
 
-    const cancelled = classifyError(new DriverError('CANCELLED', 'stop', { retryable: false }));
+    const cancelled = classifyError(new BackendError('CANCELLED', 'stop', { retryable: false }));
     expect(cancelled.category).toBe('infrastructure');
     expect(cancelled.code).toBe('CANCELLED');
 
     const invalidState = classifyError(
-      new DriverError('INVALID_STATE', 'nothing open', { retryable: false }),
+      new BackendError('INVALID_STATE', 'nothing open', { retryable: false }),
     );
     expect(invalidState.category).toBe('test');
     expect(invalidState.code).toBe('APP_NOT_OPEN');
@@ -103,9 +103,9 @@ describe('truncateUtf8', () => {
 
 describe('E2EError', () => {
   it('carries category, code, and retryability', () => {
-    const error = new E2EError('infrastructure', 'DRIVER_FAILURE', 'x', { retryable: false });
+    const error = new E2EError('infrastructure', 'BACKEND_FAILURE', 'x', { retryable: false });
     expect(error.category).toBe('infrastructure');
-    expect(error.code).toBe('DRIVER_FAILURE');
+    expect(error.code).toBe('BACKEND_FAILURE');
     expect(error.retryable).toBe(false);
   });
 });

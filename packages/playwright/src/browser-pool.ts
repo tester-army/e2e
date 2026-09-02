@@ -9,7 +9,7 @@ export type BrowserName = 'chromium' | 'firefox' | 'webkit';
  * Launching a browser process costs hundreds of milliseconds; per-session
  * isolation lives in browser contexts, so sessions of one run can share the
  * process. The pool relaunches a browser that crashed or disconnected and is
- * emptied by `dispose` (wired to the driver-1 `dispose` hook).
+ * emptied by `dispose` (wired to the backend `dispose` hook).
  */
 export class BrowserPool {
   private readonly browsers = new Map<string, Promise<Browser>>();

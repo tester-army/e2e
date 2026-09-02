@@ -8,7 +8,6 @@
 import type { TestIdentity } from '../../collect/collect.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
-import type { Driver } from '../../driver/index.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { TargetExecutor } from '../execute.ts';
 import type { RunError } from '../records.ts';
@@ -33,20 +32,12 @@ export type ResolveUnitPairs = (unit: RunUnitMessage) => Promise<ResolvedUnitPai
 export interface TargetWorkerDeps {
   readonly config: ResolvedConfig;
   readonly target: ResolvedTarget;
-  /** Undefined for backend targets: the worker never owns a driver then. */
-  readonly driver: Driver | undefined;
   readonly sessionStore: SessionStore;
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly headed: boolean;
   readonly resolvePairs: ResolveUnitPairs;
   readonly debug?: DebugTrace;
-  /**
-   * Whether end of life disposes the driver. Child-process workers own their
-   * driver outright; in-process workers share the runner's instance, which the
-   * runner disposes once at the end of the run.
-   */
-  readonly disposeDriver: boolean;
 }
 
 /** Transport callbacks a target worker needs. */
@@ -54,7 +45,7 @@ export interface TargetWorkerHost {
   emit(message: WorkerToMain): void;
   /** Unrecoverable failure: the worker must be treated as dead afterwards. */
   fatal(cause: unknown): void;
-  /** Graceful end of life, after driver disposal. */
+  /** Graceful end of life, after backend disposal. */
   finished(): void;
 }
 
@@ -79,7 +70,6 @@ export class TargetWorker {
       this.executor = new TargetExecutor({
         config: deps.config,
         target: deps.target,
-        driver: deps.driver,
         runId: deps.runId,
         artifactsRoot: deps.artifactsRoot,
         sessionStore: deps.sessionStore,
@@ -162,19 +152,11 @@ export class TargetWorker {
   }
 
   private async shutdown(): Promise<void> {
-    // The backend belongs to this worker's executor on both transports; the
-    // driver is owned by the worker only when it created it (child process).
+    // The backend belongs to this worker's executor on both transports.
     try {
       await this.executor?.dispose();
     } catch {
       // dispose is best-effort cleanup
-    }
-    if (this.deps?.disposeDriver === true) {
-      try {
-        await this.deps.driver?.dispose?.();
-      } catch {
-        // dispose is best-effort cleanup
-      }
     }
     this.host.finished();
   }

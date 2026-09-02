@@ -4,6 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { playwright } from '@e2edev/playwright';
 import type { RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
@@ -17,6 +18,15 @@ const { run } = (await import(builtRunnerModule)) as typeof import('../../src/ru
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
+
+/**
+ * The web target integration suites run against. The handle comes from the
+ * built playwright package, whose `e2e` peer resolves to this package's dist,
+ * so the brand symbol is shared at runtime even though the src/dist types differ.
+ */
+function defaultTargets(): NonNullable<E2EConfig['targets']> {
+  return [{ name: 'web', platform: 'web', backend: playwright() }] as unknown as NonNullable<E2EConfig['targets']>;
+}
 
 export interface FixtureProject {
   readonly dir: string;
@@ -62,7 +72,9 @@ export async function runExisting(
 ): Promise<RunOutcome> {
   return run({
     cwd: project.dir,
-    rawConfig: { ...options.config },
+    // Core knows no backend: a web target is served by the playwright backend
+    // the test explicitly passes, exactly as a project config would.
+    rawConfig: { targets: defaultTargets(), ...options.config },
     env: {
       ...process.env,
       APP_URL: options.appUrl,
@@ -76,9 +88,11 @@ export async function runExisting(
 /** Default file-backed config used by worker-path integration tests. */
 export function workerConfigSource(workers: number, extra = ''): string {
   return `import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   app: { url: process.env.APP_URL! },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   workers: ${workers},${extra}
 });
 `;

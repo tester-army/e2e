@@ -43,9 +43,9 @@ navigation:
       - section: Extend
         skip-slug: true
         contents:
-          - page: Writing a driver
-            path: docs/pages/writing-a-driver.mdx
-            slug: writing-a-driver
+          - page: Writing a backend
+            path: docs/pages/writing-a-backend.mdx
+            slug: writing-a-backend
   - tab: reference
     layout:
       - section: API
@@ -75,6 +75,9 @@ navigation:
           - page: Errors
             path: docs/pages/reference/errors.mdx
             slug: reference/errors
+          - page: e2e/backend
+            path: docs/pages/reference/backend.mdx
+            slug: reference/backend
 
 navbar-links:
   - type: minimal
