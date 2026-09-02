@@ -142,7 +142,7 @@ instead of replacing them.
 | --- | --- | --- | --- |
 | `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
 | `platform` | `Platform` | - | Any label; `platforms: [...]` on a test filters against it |
-| `backend` | `BackendHandle` | none | `playwright({ browser?, viewport? })` from `@e2edev/playwright` for a browser; any [`defineBackend`](/writing-a-backend) handle otherwise |
+| `backend` | `BackendHandle` | none | `playwright({ browser?, viewport?, connect? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP); any [`defineBackend`](/writing-a-backend) handle otherwise |
 
 Browser choice and viewport are options of the playwright backend, not of the
 runner:

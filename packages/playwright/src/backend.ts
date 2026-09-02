@@ -6,13 +6,19 @@
  * fixture the way a device backend contributes `device`.
  */
 
-import { defineBackend, type BackendHandle } from 'e2e/backend';
+import { ConfigurationError, defineBackend, type BackendHandle } from 'e2e/backend';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
 
 /** Creates one Playwright backend: one browser per worker, one context per attempt. */
 export function playwright(options: PlaywrightOptions = {}): BackendHandle {
+  if (options.connect !== undefined && options.browser !== undefined && options.browser !== 'chromium') {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `playwright({ connect }) requires the chromium engine; CDP attach is chromium-only, got "${options.browser}"`,
+    );
+  }
   const surface = new PlaywrightSurface(options);
   return defineBackend({
     name: 'playwright',

@@ -29,7 +29,7 @@ import {
 } from 'e2e/backend';
 import { matchesText } from 'e2e/backend';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
-import { BrowserPool, type BrowserName } from './browser-pool.ts';
+import { BrowserPool, connectCdp, type BrowserName } from './browser-pool.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { frameSelectors, projectExpression } from './locators.ts';
@@ -104,11 +104,33 @@ function isStorageState(data: unknown): data is StorageState {
   );
 }
 
+/**
+ * Attach to a remote browser over CDP instead of launching a local one. The
+ * seam a hosted-browser backend plugs into: a per-run cloud session (its
+ * endpoint provisioned only once the run starts) resolves through
+ * `cdpEndpoint` at `init`, and again on any reconnect. CDP attach is
+ * chromium-only.
+ */
+export interface PlaywrightConnectOptions {
+  /**
+   * Resolves the CDP endpoint (a `ws://`/`wss://` or `http://` DevTools URL)
+   * to attach to. Async because a hosted endpoint is not known at config load;
+   * called once per worker in `init`, and again whenever the pool relaunches,
+   * so a fresh per-run URL reconnects a dropped session cleanly.
+   */
+  readonly cdpEndpoint: () => string | Promise<string>;
+}
+
 export interface PlaywrightOptions {
   /** Browser engine; defaults to chromium. */
   readonly browser?: BrowserName;
   /** Initial viewport of every attempt's page. */
   readonly viewport?: { readonly width: number; readonly height: number };
+  /**
+   * Attach to a remote browser over CDP instead of launching locally. Requires
+   * the chromium engine (the default). Wired by a hosted-browser backend.
+   */
+  readonly connect?: PlaywrightConnectOptions;
 }
 
 export class PlaywrightSurface {
@@ -121,6 +143,7 @@ export class PlaywrightSurface {
 
   private readonly browserName: BrowserName;
   private readonly pool = new BrowserPool();
+  private readonly connect: PlaywrightConnectOptions | undefined;
   private readonly viewport: { readonly width: number; readonly height: number };
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
@@ -145,32 +168,58 @@ export class PlaywrightSurface {
 
   constructor(options: PlaywrightOptions) {
     this.browserName = options.browser ?? 'chromium';
+    this.connect = options.connect;
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
   }
 
   // --- lifecycle ---
 
-  /** Provisions and launches the shared browser once per worker. */
+  /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
   async init(info: BackendInitInfo): Promise<void> {
     this.app = info.app;
     this.testIdAttribute = info.testIdAttribute;
     this.headed = info.headed;
-    // Both boot steps honour the init signal: a first-run browser download
-    // and a launch are the two things here that can outlive a launch budget.
-    await ensureBrowsersInstalled([this.browserName], { signal: info.signal });
+    // A CDP attach uses the remote's browser; only a local launch needs the
+    // engine installed here. Both boot steps honour the init signal: a
+    // first-run browser download and a launch or attach are the things here
+    // that can outlive a launch budget.
+    if (this.connect === undefined) {
+      await ensureBrowsersInstalled([this.browserName], { signal: info.signal });
+    }
+    // Checked before the endpoint is resolved: a cancelled init must never
+    // provision a remote session it will not use.
+    if (info.signal.aborted) {
+      throw new BackendError('CANCELLED', 'backend init cancelled', { retryable: false });
+    }
+    const verb = this.connect === undefined ? 'launch' : 'connect';
     try {
       this.browser = await raceAbort(
-        this.pool.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS),
+        this.pool.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS, this.connector()),
         info.signal,
-        'browser launch',
+        `browser ${verb}`,
       );
     } catch (cause) {
       if (cause instanceof BackendError) throw cause;
-      throw new BackendError('BACKEND_FAILURE', `browser launch failed: ${message(cause)}`, {
+      throw new BackendError('BACKEND_FAILURE', `browser ${verb} failed: ${message(cause)}`, {
         retryable: false,
         cause,
       });
     }
+  }
+
+  /** Builds the pool's connector when attaching over CDP; undefined for a local launch. */
+  private connector(): (() => Promise<Browser>) | undefined {
+    const connect = this.connect;
+    if (connect === undefined) return undefined;
+    return async () => {
+      const endpoint = await connect.cdpEndpoint();
+      if (typeof endpoint !== 'string' || endpoint.trim() === '') {
+        throw new BackendError('BACKEND_FAILURE', 'connect.cdpEndpoint resolved to an empty CDP endpoint', {
+          retryable: false,
+        });
+      }
+      return connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS);
+    };
   }
 
   /**
