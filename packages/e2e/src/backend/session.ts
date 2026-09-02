@@ -246,7 +246,9 @@ export function createBackendSession(options: BackendSessionOptions): DriverSess
       return { viewport };
     },
     async close() {
-      // The backend outlives the attempt; dispose() belongs to the worker.
+      // The backend outlives the attempt; only the per-attempt isolation ends
+      // here. dispose() (browser/process teardown) belongs to the worker.
+      await backend?.endAttempt?.();
     },
   };
 }

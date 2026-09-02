@@ -63,7 +63,7 @@ test('restores the seeded counter', { session: 'seeded' }, async ({ screen }) =>
 
 /** A two-node screen: a counter value and a button that increments it. */
 function toyBackend(
-  options: { withLocate?: boolean; withFixtures?: boolean; withState?: boolean } = {},
+  options: { withLocate?: boolean; withFixtures?: boolean; withState?: boolean; withIsolation?: boolean } = {},
 ) {
   const lifecycle: string[] = [];
   const fixtureCalls: string[] = [];
@@ -78,6 +78,17 @@ function toyBackend(
     async init() {
       lifecycle.push('init');
     },
+    ...(options.withIsolation !== true
+      ? {}
+      : {
+          async startAttempt(context: { attemptId: string; artifactsDir: string }) {
+            lifecycle.push(`startAttempt:${context.artifactsDir.length > 0 ? 'dir' : 'nodir'}`);
+            count = 0;
+          },
+          async endAttempt() {
+            lifecycle.push('endAttempt');
+          },
+        }),
     async dispose() {
       lifecycle.push('dispose');
     },
@@ -277,6 +288,43 @@ describe('backend targets', () => {
     }
   });
 
+
+  it('resets per-attempt state via startAttempt/endAttempt isolation', async () => {
+    const toy = toyBackend({ withLocate: true, withIsolation: true });
+    const suite = `import { test, expect } from 'e2e';
+
+test('first attempt starts fresh', async ({ screen }) => {
+  await screen.getByRole('button', { name: 'Increment' }).tap();
+  await expect(screen.getByRole('status')).toHaveText('1');
+});
+
+test('second attempt also starts fresh', async ({ screen }) => {
+  await screen.getByRole('button', { name: 'Increment' }).tap();
+  await expect(screen.getByRole('status')).toHaveText('1');
+});
+`;
+    const project = createProject({ 'tests/iso.e2e.ts': suite });
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(toy.lifecycle.filter((e) => e.startsWith('startAttempt'))).toEqual([
+        'startAttempt:dir',
+        'startAttempt:dir',
+      ]);
+      expect(toy.lifecycle.filter((e) => e === 'endAttempt')).toHaveLength(2);
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
 
   it('gates an undeclared fixture at selection via requires', async () => {
     const toy = toyBackend(); // no fixtures declared

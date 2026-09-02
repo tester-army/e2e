@@ -77,6 +77,20 @@ export interface BackendInitInfo {
 }
 
 /**
+ * Per-attempt isolation context. A backend that must give each test a fresh
+ * surface (a browser context per test, a reset device) sets it up in
+ * `startAttempt` and tears it down in `endAttempt`. Carries the two
+ * harness-owned data a backend cannot self-provide: the attempt's artifact
+ * directory and whether the run is headed.
+ */
+export interface BackendAttemptContext {
+  readonly attemptId: string;
+  readonly artifactsDir: string;
+  readonly headed: boolean;
+  readonly signal: AbortSignal;
+}
+
+/**
  * One fresh semantic snapshot of the surface under test. The harness owns
  * everything downstream: revision minting, secret redaction, and the
  * observation byte budget apply to every backend equally.
@@ -149,6 +163,10 @@ export interface Backend {
   readonly state?: BackendStateCapability;
   /** Once per worker, before the first step; boot devices here, not in a step budget. */
   init?(info: BackendInitInfo): Promise<void>;
+  /** Before each attempt: set up per-test isolation (a fresh browser context). */
+  startAttempt?(context: BackendAttemptContext): Promise<void>;
+  /** After each attempt, bounded by the cleanup timeout: tear that isolation down. */
+  endAttempt?(): Promise<void>;
   /** Worker shutdown, bounded by the cleanup timeout; failure is a run error. */
   dispose?(): Promise<void>;
 }
@@ -168,6 +186,8 @@ const KNOWN_KEYS = new Set([
   'fixtures',
   'state',
   'init',
+  'startAttempt',
+  'endAttempt',
   'dispose',
 ]);
 
@@ -273,7 +293,7 @@ export function defineBackend(spec: Backend): BackendHandle {
     }
     capabilities.add('state');
   }
-  for (const hook of ['init', 'dispose'] as const) {
+  for (const hook of ['init', 'startAttempt', 'endAttempt', 'dispose'] as const) {
     if (spec[hook] !== undefined && typeof spec[hook] !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": ${hook} must be a function`);
     }

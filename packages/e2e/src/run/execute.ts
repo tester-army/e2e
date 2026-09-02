@@ -324,8 +324,17 @@ export class TargetExecutor implements SerialHost {
       // Backend target: no driver launch. The backend booted in init() once
       // per worker; the adapter is per-attempt so refs never cross attempts.
       await this.initBackendOnce(signal);
+      const backend = this.target.backend;
+      if (backend?.startAttempt !== undefined) {
+        await backend.startAttempt({
+          attemptId,
+          artifactsDir,
+          headed: this.options.headed,
+          signal,
+        });
+      }
       const session = createBackendSession({
-        backend: this.target.backend,
+        backend,
         targetName: this.target.name,
         baseHref: this.config.app.base.href,
       });
