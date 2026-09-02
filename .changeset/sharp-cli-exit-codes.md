@@ -9,7 +9,6 @@ CLI, config, and report correctness:
   exited 1, which CI reads as a test failure.
 - `--workers` and `--retries` obey the same bounds as the config keys they
   replace; `--workers 0` no longer plans work no worker can take.
-- `reporters` in the config file is honoured; `--reporter` still replaces it.
 - A live `agent.visionModel` instance is reduced to its identity before the
   config digest, like `agent.model`, so provider settings never enter the
   digest and workers agree on it.
