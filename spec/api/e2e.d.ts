@@ -860,6 +860,15 @@ export interface ActionTrace {
    * a recorded flow whose destination changed hands off instead of passing.
    */
   readonly endPath?: string;
+  /**
+   * Descriptors of nodes on screen when the step passed that were absent when
+   * it began — the recording run's verification, made mechanical. Recorded
+   * for a step that ended on the pathname it began on (or on a surface with
+   * no location), capped at 8, leaves before containers. A full replay self-finalizes
+   * only while every anchor is present again; a flow whose actions replayed
+   * but whose effect did not hands off (`end-mismatch`) instead of passing.
+   */
+  readonly endAnchors?: readonly TraceTargetDescriptor[];
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }

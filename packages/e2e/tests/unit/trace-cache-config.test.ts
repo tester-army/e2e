@@ -132,17 +132,27 @@ describe('flushStagedTraces', () => {
   const KEY_A = 'a'.repeat(64);
   const KEY_B = 'b'.repeat(64);
 
-  it('writes everything when the attempt passed', async () => {
+  it('writes only what a later verification step confirmed, even when the attempt passed', async () => {
     const store = memoryStore();
+    store.entries.set(KEY_B, JSON.stringify(buildTraceEntry(trace('stale trailing flow'))));
     const context = contextWith(store);
     context.staged.push({ keyHash: KEY_A, trace: trace('one'), stepIndex: 1 });
+    // A trailing act nothing asserted on: the attempt passing is not a check.
     context.staged.push({ keyHash: KEY_B, trace: trace('two'), stepIndex: 3 });
-    await flushStagedTraces(context, 3, 'passed');
-    expect([...store.entries.keys()].toSorted()).toEqual([KEY_A, KEY_B]);
+    await flushStagedTraces(context, 2, 'passed');
+    expect([...store.entries.keys()]).toEqual([KEY_A]);
     expect(context.staged).toHaveLength(0);
   });
 
-  it('confirms traces followed by a later passed step and evicts the implicated one', async () => {
+  it('writes nothing when no verification step ever passed', async () => {
+    const store = memoryStore();
+    const context = contextWith(store);
+    context.staged.push({ keyHash: KEY_A, trace: trace('unchecked'), stepIndex: 1 });
+    await flushStagedTraces(context, -1, 'passed');
+    expect(store.entries.size).toBe(0);
+  });
+
+  it('confirms traces followed by a later passed verification and evicts the implicated one', async () => {
     const store = memoryStore();
     store.entries.set(KEY_B, JSON.stringify(buildTraceEntry(trace('stale good flow'))));
     const context = contextWith(store);

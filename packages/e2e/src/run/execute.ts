@@ -35,7 +35,7 @@ import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { INTERRUPTED_BEFORE_START, pairResult, unstartedResult } from './units.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
-import { StepRecorder, type StepProgress } from './steps.ts';
+import { isVerificationStep, StepRecorder, type StepProgress, type StepRecord } from './steps.ts';
 import type { SetupFn, TestFn } from '../types.ts';
 
 export interface ExecutionEvents {
@@ -540,10 +540,10 @@ export class TargetExecutor implements SerialHost {
     let timedOut = false;
     // Captured the moment the primary failure lands: steps that pass later —
     // afterEach cleanup, teardown — must not confirm traces the failure
-    // implicated (a cleanup navigation says nothing about the failed flow).
-    let lastPassedAtFailure = -1;
+    // implicated (a cleanup assertion says nothing about the failed flow).
+    let lastVerifiedAtFailure = -1;
     const recordFailure = (cause: unknown, atPhase: AttemptPhase): void => {
-      if (failure === undefined) lastPassedAtFailure = lastPassedStepIndex(steps.all());
+      if (failure === undefined) lastVerifiedAtFailure = lastVerifiedStepIndex(steps.all());
       failure = classifyError(cause);
       failurePhase = atPhase;
     };
@@ -665,13 +665,13 @@ export class TargetExecutor implements SerialHost {
     if (cache !== undefined) {
       // Settled only after the status is classified: an interrupted attempt
       // implicates nothing, so Ctrl-C can never evict a good entry. On a
-      // failure, confirmation stops at what had passed when the failure
-      // landed — later teardown steps prove nothing about the failed flow.
-      const lastPassed =
-        failure === undefined ? lastPassedStepIndex(record.steps) : lastPassedAtFailure;
+      // failure, confirmation stops at what had been verified when the
+      // failure landed — later teardown steps prove nothing about the flow.
+      const lastVerified =
+        failure === undefined ? lastVerifiedStepIndex(record.steps) : lastVerifiedAtFailure;
       await flushStagedTraces(
         cache,
-        lastPassed,
+        lastVerified,
         record.status === 'passed' ? 'passed' : record.status === 'interrupted' ? 'interrupted' : 'failed',
       );
     }
@@ -679,10 +679,11 @@ export class TargetExecutor implements SerialHost {
   }
 }
 
-/** Highest timeline index among steps that passed, or -1 when none have. */
-function lastPassedStepIndex(steps: readonly { index: number; status: string }[]): number {
+/** Highest timeline index among passed verification steps, or -1 when none have. */
+function lastVerifiedStepIndex(steps: readonly StepRecord[]): number {
   return steps.reduce(
-    (max, step) => (step.status === 'passed' && step.index > max ? step.index : max),
+    (max, step) =>
+      step.status === 'passed' && isVerificationStep(step) && step.index > max ? step.index : max,
     -1,
   );
 }

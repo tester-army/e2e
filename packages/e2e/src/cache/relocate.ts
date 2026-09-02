@@ -22,7 +22,7 @@ import type { TraceTargetDescriptor } from './trace.ts';
  * change, because an entry recorded under different rules could relocate to a
  * different node.
  */
-export const REPLAY_POLICY_VERSION = 'conservative/2';
+export const REPLAY_POLICY_VERSION = 'conservative/3';
 
 export type RelocationFailure = 'target-not-found' | 'target-ambiguous';
 
@@ -32,6 +32,20 @@ export type RelocationResult =
 
 /** Identity fields that must match whenever the recording captured them. */
 const IDENTITY_FIELDS = ['role', 'name', 'testId', 'placeholder', 'inputPurpose'] as const;
+
+/**
+ * Whether a descriptor can identify a node at all. Role or selector alone
+ * cannot: a wrong match acts on the wrong control, so such a descriptor is
+ * not relocatable and, as an anchor, would prove nothing.
+ */
+export function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): boolean {
+  return (
+    descriptor.testId !== undefined ||
+    descriptor.name !== undefined ||
+    descriptor.text !== undefined ||
+    descriptor.placeholder !== undefined
+  );
+}
 
 /**
  * Relocates one descriptor against the nodes of a fresh observation, in two
@@ -67,11 +81,7 @@ function matchDescriptor(
   options: { readonly redact: (text: string) => string; readonly testIdAttribute: string },
 ): RelocationResult {
   const requireText = descriptor.testId === undefined && descriptor.name === undefined;
-  if (requireText && descriptor.text === undefined && descriptor.placeholder === undefined) {
-    // Role or selector alone cannot identify a node; a wrong match acts on
-    // the wrong control, so this descriptor is not relocatable at all.
-    return { kind: 'failed', failure: 'target-not-found' };
-  }
+  if (!isRelocatableDescriptor(descriptor)) return { kind: 'failed', failure: 'target-not-found' };
   const matches: string[] = [];
   for (const [id, node] of nodes) {
     const candidate = describeTarget(node, options.redact, options.testIdAttribute);

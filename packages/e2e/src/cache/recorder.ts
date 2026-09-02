@@ -20,6 +20,7 @@ import { describeAction, type RecordableAction } from '../agent/actions.ts';
 import {
   bound,
   MAX_TRACE_ACTIONS,
+  MAX_TRACE_ANCHORS,
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
@@ -48,6 +49,11 @@ export class TraceRecorder {
     this.maxActions = Math.min(options.maxActions ?? MAX_TRACE_ACTIONS, MAX_TRACE_ACTIONS);
   }
 
+  /** Number of actions recorded so far, gaps included. */
+  get recordedCount(): number {
+    return this.actions.length;
+  }
+
   /** Records one committed grammar action. */
   record(action: RecordableAction): void {
     const { target, summary } = describeAction(action, this.redact, this.testIdAttribute);
@@ -72,6 +78,8 @@ export class TraceRecorder {
     readonly summary: string;
     readonly startPath?: string;
     readonly endPath?: string;
+    /** Already projected through `describeTarget`; recorded as given, capped. */
+    readonly endAnchors?: readonly TraceTargetDescriptor[];
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
@@ -88,6 +96,9 @@ export class TraceRecorder {
       ...(conclusion.endPath === undefined || conclusion.endPath === ''
         ? {}
         : { endPath: bound(conclusion.endPath, MAX_TRACE_DESCRIPTOR_CHARS) }),
+      ...(conclusion.endAnchors === undefined || conclusion.endAnchors.length === 0
+        ? {}
+        : { endAnchors: conclusion.endAnchors.slice(0, MAX_TRACE_ANCHORS) }),
       ...(this.truncated ? { truncated: true } : {}),
     };
   }

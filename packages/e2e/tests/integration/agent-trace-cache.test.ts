@@ -130,6 +130,9 @@ describe('trace cache: record then zero-turn replay', () => {
     expect(document.payload.actions).toHaveLength(2);
     expect(document.payload.executor.name).toBe('two-tap-executor');
     expect(document.payload.startPath).toBe('/');
+    // The recording's own check, kept as data: the counter reading 2 appeared
+    // during the step, so a replay must show it again before passing alone.
+    expect(document.payload.endAnchors).toContainEqual({ role: 'status', name: 'Counter', text: '2' });
   });
 
   it('replays the second run zero-turn without invoking the executor', () => {
@@ -300,6 +303,175 @@ describe('trace cache: unconfirmed traces are withheld and poisoned entries evic
     expect(records.at(-1)!.calls).toBe(0);
     expect(readdirSync(cacheDir(project))).toHaveLength(0);
   }, 240_000);
+});
+
+const STORAGE_SUITE = `import { test, expect } from 'e2e';
+
+test('saves the marker', async ({ app, agent, screen }) => {
+  await app.open('/storage');
+  await agent.act('save the marker');
+  await expect(screen.getByLabel('Marker')).toHaveText('saved');
+});
+`;
+
+/**
+ * Taps "Save marker" once (unless a replayed prefix already did) and checks
+ * the marker. With `repair`, an end-mismatch hand-off makes it tap again — the
+ * shape of an executor that found the replayed flow had not taken effect.
+ */
+function saveMarkerExecutor(record: ExecutorRecord, options: { repair?: boolean } = {}): StepExecutor {
+  return {
+    name: 'save-marker-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      let observation = await context.observe();
+      const prefix = context.replayedPrefix;
+      const mustAct =
+        (prefix?.replayedActions.length ?? 0) === 0 ||
+        (options.repair === true && prefix?.stopReason === 'end-mismatch');
+      if (mustAct) {
+        await context.actions.tap({ id: nodeIdFor(observation.text, /button "Save marker"/) });
+        observation = await context.observe();
+      }
+      if (!/"Marker"[^\n]*text="saved"/.test(observation.text)) {
+        return { status: 'failed' as const, summary: 'the marker was not saved' };
+      }
+      return { status: 'passed' as const, summary: 'the marker reads saved' };
+    },
+  };
+}
+
+describe('trace cache: the recorded end state gates self-finalization', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const records: ExecutorRecord[] = [];
+
+  const options = (executor: { repair?: boolean } = {}) => {
+    const record: ExecutorRecord = { calls: 0, prefixes: [] };
+    records.push(record);
+    return {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        reporters: ['json'] as const,
+        agent: saveMarkerExecutor(record, executor),
+        cache: 'read-write' as const,
+      },
+    };
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/storage.e2e.ts': STORAGE_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('records the effect of a same-path mutation as end anchors and replays on them', async () => {
+    const first = await runExisting(project, options());
+    expect(first.exitCode).toBe(0);
+    const { document } = readOnlyEntry(project);
+    expect(document.payload.startPath).toBe('/storage');
+    expect(document.payload.endPath).toBe('/storage');
+    expect(document.payload.endAnchors).toContainEqual({ role: 'status', name: 'Marker', text: 'saved' });
+
+    const second = await runExisting(project, options());
+    expect(second.exitCode).toBe(0);
+    expect(records.at(-1)!.calls).toBe(0);
+    const step = resultByTitle(second, 'saves the marker').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
+  }, 240_000);
+
+  it('hands off with end-mismatch when the recorded effect is not on screen after a full replay', async () => {
+    // Every recorded action still replays; only the recorded end state is
+    // made unreachable. Mechanics alone must not pass the step.
+    const { file, document } = readOnlyEntry(project);
+    document.payload.endAnchors = [{ role: 'status', name: 'Marker', text: 'never-saved' }];
+    writeFileSync(file, JSON.stringify(document, null, 2), 'utf8');
+
+    const outcome = await runExisting(project, options());
+    expect(outcome.exitCode).toBe(0);
+    const record = records.at(-1)!;
+    expect(record.calls).toBe(1);
+    expect(record.prefixes[0]).toMatchObject({
+      stopReason: 'end-mismatch',
+      replayedActions: ['tap button "Save marker"'],
+      totalActions: 1,
+    });
+    const step = resultByTitle(outcome, 'saves the marker').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toEqual({
+      mode: 'agent-concluded',
+      reason: 'end-mismatch',
+      replayedActions: 1,
+      totalActions: 1,
+    });
+    // The executor's pass re-stages the entry with the live anchors: healed.
+    expect(readOnlyEntry(project).document.payload.endAnchors).toContainEqual({
+      role: 'status',
+      name: 'Marker',
+      text: 'saved',
+    });
+  }, 240_000);
+
+  it('evicts the entry when the executor had to act again after an end-mismatch', async () => {
+    const { file, document } = readOnlyEntry(project);
+    document.payload.endAnchors = [{ role: 'status', name: 'Marker', text: 'never-saved' }];
+    writeFileSync(file, JSON.stringify(document, null, 2), 'utf8');
+
+    const outcome = await runExisting(project, options({ repair: true }));
+    expect(outcome.exitCode).toBe(0);
+    const record = records.at(-1)!;
+    expect(record.prefixes[0]?.stopReason).toBe('end-mismatch');
+    // The replayed flow plus its repair is not a flow worth replaying: the
+    // entry is gone, and the next passing run records a clean one.
+    expect(readdirSync(cacheDir(project)).filter((name) => name.endsWith('.json'))).toHaveLength(0);
+  }, 240_000);
+});
+
+const TRAILING_ACT_SUITE = `import { test } from 'e2e';
+
+test('cached step increments twice', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('increment the counter twice');
+});
+`;
+
+describe('trace cache: only a verification step confirms a write', () => {
+  let app: FixtureApp;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+  }, 60_000);
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('never writes the trace of a trailing act nothing asserted on, even though the attempt passed', async () => {
+    const project = createProject({ 'tests/act.e2e.ts': TRAILING_ACT_SUITE });
+    try {
+      const record: ExecutorRecord = { calls: 0, prefixes: [] };
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'] as const,
+          agent: twoTapExecutor(record),
+          cache: 'read-write' as const,
+        },
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(record.calls).toBe(1);
+      expect(existsSync(cacheDir(project))).toBe(false);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
 });
 
 describe('trace cache: modes that never write', () => {

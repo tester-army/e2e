@@ -5,6 +5,19 @@ import type { AgentCacheContext } from '../../src/cache/context.ts';
 import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
 import { StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
+import type { SemanticNode } from '../../src/backend/surface.ts';
+
+const savedMarker: SemanticNode = {
+  ref: { id: 'm1', revision: 'r1' },
+  role: 'status',
+  name: 'Marker',
+  text: 'saved',
+};
+const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
+
+function nodeMap(list: readonly SemanticNode[]): ReadonlyMap<string, SemanticNode> {
+  return new Map(list.map((node) => [node.ref.id, node]));
+}
 
 function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContext {
   return {
@@ -20,15 +33,17 @@ function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContex
   };
 }
 
-function makeHost(paths: string[]): StepCacheHost {
+function makeHost(paths: string[], nodes: readonly SemanticNode[] = []): StepCacheHost {
   return {
-    observe: async () => ({ nodes: new Map(), shape: 'stable' }),
+    observe: async () => ({ nodes: nodeMap(nodes), shape: 'stable' }),
     actions: { navigate: async () => undefined } as unknown as ExecutorActions,
     signal: new AbortController().signal,
-    remainingMs: () => 60_000,
+    // Short enough that a missing anchor is not waited for across the backoff.
+    remainingMs: () => 50,
     redact: (text) => text,
     testIdAttribute: 'data-testid',
     currentPath: async () => paths.shift() ?? '/',
+    observeSettledNodes: async () => nodeMap(nodes),
   };
 }
 
@@ -88,15 +103,108 @@ describe('StepTraceSession', () => {
       name: 'tap',
       node: { ref: { id: 'n1', revision: 'r1' }, role: 'button', name: 'Upgrade' },
     });
-    withheld.stage('passed', undefined);
+    withheld.stage('passed', undefined, undefined);
     expect(unanchored.staged).toHaveLength(0);
 
     // A navigate-opening trace anchors itself and stages without a path.
     const anchored = fakeContext(neverRead);
     const staged = makeSession(anchored);
     staged.record({ name: 'navigate', url: '/billing' });
-    staged.stage('passed', undefined);
+    staged.stage('passed', undefined, undefined);
     expect(anchored.staged).toHaveLength(1);
+  });
+
+  it('stages the delta between the starting and passing screens as end anchors', async () => {
+    const context = fakeContext(async () => {
+      throw new Error('no entry');
+    });
+    const session = makeSession(context);
+    // The starting screen is read at replay time, before any action.
+    await session.tryReplay(
+      makeHost(
+        ['/storage'],
+        [
+          { ref: { id: 'h', revision: 'r1' }, role: 'heading', name: 'Storage' },
+          { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Save marker' },
+        ],
+      ),
+    );
+    session.record({ name: 'tap', node: { ref: { id: 'b', revision: 'r2' }, role: 'button', name: 'Save marker' } });
+    session.stage(
+      'saved the marker',
+      '/storage',
+      nodeMap([
+        { ref: { id: 'h2', revision: 'r2' }, role: 'heading', name: 'Storage' },
+        { ref: { id: 'b2', revision: 'r2' }, role: 'button', name: 'Save marker' },
+        savedMarker,
+      ]),
+    );
+    expect(context.staged[0]?.trace.endAnchors).toEqual([savedAnchor]);
+  });
+
+  it('records no anchors for a step that moved to another pathname', async () => {
+    const context = fakeContext(async () => {
+      throw new Error('no entry');
+    });
+    const session = makeSession(context);
+    await session.tryReplay(makeHost(['/pricing']));
+    session.record({ name: 'navigate', url: '/customers' });
+    session.stage('opened customers', '/customers?ref=nav', nodeMap([savedMarker]));
+    expect(context.staged[0]?.trace.endAnchors).toBeUndefined();
+    expect(context.staged[0]?.trace.endPath).toBe('/customers?ref=nav');
+  });
+
+  it('refuses to self-finalize when a recorded end anchor is not on screen again', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    const session = makeSession(context);
+    const verdict = await session.tryReplay(makeHost(['/pricing', '/customers']));
+    expect(verdict).toBeUndefined();
+    expect(session.replayedPrefix).toMatchObject({
+      stopReason: 'end-mismatch',
+      replayedActions: ['navigate to "/customers"'],
+    });
+    expect(session.cacheInfo).toEqual({
+      mode: 'agent-concluded',
+      reason: 'end-mismatch',
+      replayedActions: 1,
+      totalActions: 1,
+    });
+  });
+
+  it('heals stale anchors when the executor settled an end-mismatch without acting', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    const session = makeSession(context);
+    await session.tryReplay(recordingHost(session, ['/pricing', '/customers']));
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    // The executor looked, agreed the step was done, and recorded nothing more.
+    session.stage('the customers page is open', '/customers', nodeMap([savedMarker]));
+    expect(context.staged).toHaveLength(1);
+    expect(context.staged[0]?.trace.actions.map((action) => action.name)).toEqual(['navigate']);
+  });
+
+  it('evicts instead of re-staging when the executor had to repair after an end-mismatch', async () => {
+    const deleted: string[] = [];
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    context.store.delete = async (keyHash) => {
+      deleted.push(keyHash);
+    };
+    const session = makeSession(context);
+    await session.tryReplay(recordingHost(session, ['/pricing', '/customers']));
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    // The replayed flow did not produce its effect; the executor acted further.
+    session.record({ name: 'tap', node: { ref: { id: 's', revision: 'r2' }, role: 'button', name: 'Save' } });
+    session.stage('saved after all', '/customers', nodeMap([savedMarker]));
+    expect(context.staged).toHaveLength(0);
+    await Promise.resolve();
+    expect(deleted).toEqual(['a'.repeat(64)]);
+  });
+
+  it('self-finalizes when the recorded end anchors are present again', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    const session = makeSession(context);
+    const verdict = await session.tryReplay(makeHost(['/pricing', '/customers'], [savedMarker]));
+    expect(verdict?.status).toBe('passed');
+    expect(session.cacheInfo?.mode).toBe('self-finalized');
   });
 
   it('refuses to self-finalize when the recorded end path no longer matches', async () => {
@@ -116,10 +224,20 @@ describe('StepTraceSession', () => {
     expect(verdict?.status).toBe('passed');
     expect(verdict?.summary).toContain('recorded verdict: opened the customers page');
     session.record({ name: 'navigate', url: '/customers' });
-    session.stage(verdict?.summary, '/customers');
+    session.stage(verdict?.summary, '/customers', undefined);
     expect(context.staged[0]?.trace.summary).toBe('opened the customers page');
   });
 });
+
+/** A host whose grammar records into the session, as the real dispatch's does. */
+function recordingHost(session: StepTraceSession, paths: string[]): StepCacheHost {
+  return {
+    ...makeHost(paths),
+    actions: {
+      navigate: async (url: string) => session.record({ name: 'navigate', url }),
+    } as unknown as ExecutorActions,
+  };
+}
 
 /** A context whose store always hits with one navigate-opening trace. */
 function entryContext(overrides: Partial<ActionTrace>): AgentCacheContext {

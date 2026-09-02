@@ -12,6 +12,7 @@
  * divergence.
  */
 
+import { anchorPresent } from '../cache/anchors.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor } from '../cache/trace.ts';
 import type { SemanticNode } from '../backend/surface.ts';
@@ -193,6 +194,38 @@ async function relocate(
       host.remainingMs() <= delay
     ) {
       return { kind: 'failed', failure: 'target-not-found' };
+    }
+    await sleep(delay, host.signal);
+    nodes = (await host.observe()).nodes;
+  }
+}
+
+/**
+ * Verifies a trace's recorded end anchors against the live screen: every
+ * anchor must be present again (`anchors.ts`, every recorded field equal) or
+ * the replay must not pass on its own. Retries on the same
+ * settling backoff relocation uses, because the recording run's final look
+ * came seconds of model latency after its last action and a replay's comes
+ * right away: a save still in flight is a wait, not a divergence. Anchors
+ * are all checked against each observation, so a slow effect costs one
+ * backoff, not one per anchor.
+ */
+export async function verifyAnchors(
+  host: ReplayHost,
+  anchors: readonly TraceTargetDescriptor[],
+): Promise<boolean> {
+  if (anchors.length === 0) return true;
+  const startedMs = Date.now();
+  let nodes = await settledNodes(host);
+  for (let attempt = 0; ; attempt += 1) {
+    if (anchors.every((anchor) => anchorPresent(anchor, nodes, host))) return true;
+    const delay = RELOCATION_RETRY_DELAYS_MS[attempt];
+    if (
+      delay === undefined ||
+      Date.now() - startedMs + delay > RELOCATION_TIMEOUT_MS ||
+      host.remainingMs() <= delay
+    ) {
+      return false;
     }
     await sleep(delay, host.signal);
     nodes = (await host.observe()).nodes;
