@@ -70,19 +70,37 @@ export class DialogRouter {
       await dialog.dismiss().catch(() => undefined);
       return;
     }
+    let decided = false;
     const publicDialog: Dialog = {
       message: dialog.message(),
       accept: async (text) => {
+        decided = true;
         await dialog.accept(text);
       },
       dismiss: async () => {
+        decided = true;
         await dialog.dismiss();
       },
     };
     try {
       if (handler === 'accept') await dialog.accept();
       else if (handler === 'dismiss') await dialog.dismiss();
-      else await handler(publicDialog);
+      else {
+        await handler(publicDialog);
+        // A dialog left open blocks the page, and the failure would surface
+        // later as an unrelated action timeout. The handler contract is the
+        // same as a route handler's: decide, or the step fails naming you.
+        if (!decided) {
+          await dialog.dismiss().catch(() => undefined);
+          this.latch.latch(
+            new BackendError(
+              'INVALID_STATE',
+              `dialog handler returned without calling accept or dismiss for ${dialog.type()} dialog: ${dialog.message()}`,
+              { retryable: false },
+            ),
+          );
+        }
+      }
     } catch (cause) {
       this.latch.latch(
         new BackendError('BACKEND_FAILURE', `dialog handler failed: ${message(cause)}`, {

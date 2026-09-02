@@ -63,9 +63,6 @@ const MAX_STORED_REFS = 2048;
  */
 const MAX_OBSERVED_NODES = 3_000;
 
-/** Budget for capturing the main document, still capped by the operation timeout. */
-const DOCUMENT_CAPTURE_TIMEOUT_MS = 15_000;
-
 /** Bounded settle before an observation so a committing navigation is not raced. */
 const SETTLE_TIMEOUT_MS = 5_000;
 
@@ -154,13 +151,17 @@ export class PlaywrightSurface {
     this.app = info.app;
     this.testIdAttribute = info.testIdAttribute;
     this.headed = info.headed;
-    await ensureBrowsersInstalled([this.browserName]);
-    if (info.signal.aborted) {
-      throw new BackendError('CANCELLED', 'backend init cancelled', { retryable: false });
-    }
+    // Both boot steps honour the init signal: a first-run browser download
+    // and a launch are the two things here that can outlive a launch budget.
+    await ensureBrowsersInstalled([this.browserName], { signal: info.signal });
     try {
-      this.browser = await this.pool.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS);
+      this.browser = await raceAbort(
+        this.pool.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS),
+        info.signal,
+        'browser launch',
+      );
     } catch (cause) {
+      if (cause instanceof BackendError) throw cause;
       throw new BackendError('BACKEND_FAILURE', `browser launch failed: ${message(cause)}`, {
         retryable: false,
         cause,
@@ -289,16 +290,22 @@ export class PlaywrightSurface {
   private async replaceContext(storageState: StorageState | undefined): Promise<void> {
     const context = this.requireContext();
     const resumeTrace = this.tracing;
-    if (this.tracing) {
-      this.tracing = false;
-      this.traceSegments += 1;
-      await context.tracing.stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute });
-    }
+    // The old context is released from the surface before anything awaits, so
+    // a trace segment or close that fails cannot leave the surface pointing at
+    // a context it meant to replace. A segment that cannot be written is
+    // best-effort: the final trace still records from the new context.
     this.context = null;
     this.page = null;
+    this.tracing = false;
     PlaywrightSurface.disposeGeneration(this.observationRefs);
     this.observationRefs = new Map();
     this.refs.clear();
+    if (resumeTrace) {
+      this.traceSegments += 1;
+      await context.tracing
+        .stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute })
+        .catch(() => undefined);
+    }
     await context.close();
     await this.openContext(storageState);
     if (resumeTrace) {
@@ -387,7 +394,7 @@ export class PlaywrightSurface {
   }
 
   restart(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'navigation', async () => {
+    return this.guard(operation, 'restart', async () => {
       const baseUrl = this.requireBaseUrl();
       const context = this.requireContext();
       for (const page of context.pages()) await page.close();
@@ -398,7 +405,7 @@ export class PlaywrightSurface {
   }
 
   clearState(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'navigation', async () => {
+    return this.guard(operation, 'state reset', async () => {
       const baseUrl = this.requireBaseUrl();
       await this.replaceContext(undefined);
       const page = await this.ensurePage();
@@ -420,7 +427,7 @@ export class PlaywrightSurface {
   locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
     return this.guard(
       operation,
-      'resolve',
+      'locate',
       async () => {
         const page = this.requirePage();
         await this.validateFrames(expression);
@@ -612,11 +619,14 @@ export class PlaywrightSurface {
     options: BackendObserveOptions | undefined,
   ): Promise<BackendSnapshot> {
     const page = this.requirePage();
+    // One deadline for the whole observation: settle, every document, and the
+    // pixels each spend from what remains of it, never from the full budget.
+    const deadline = Date.now() + operation.timeoutMs;
     // A preceding action may still be committing a navigation. Settling is
     // bounded and best-effort: a slow document never fails the observation.
     await page
       .waitForLoadState('domcontentloaded', {
-        timeout: Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS),
+        timeout: Math.max(1, Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS)),
       })
       .catch(() => undefined);
     const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
@@ -645,18 +655,21 @@ export class PlaywrightSurface {
               generation.set(id, { kind: 'element', element });
             },
           },
-          page.locator(':root'),
-          {
-            framePath: [],
-            budget: MAX_OBSERVED_NODES,
-            timeoutMs: Math.max(1, Math.min(operation.timeoutMs, DOCUMENT_CAPTURE_TIMEOUT_MS)),
-          },
+          page,
+          { framePath: [], budget: MAX_OBSERVED_NODES, deadline },
         ),
         pixelCapture,
       ]);
     } catch (cause) {
       PlaywrightSurface.disposeGeneration(generation);
       throw cause;
+    }
+    // `guard` already rejected the caller on abort; the capture kept running.
+    // Its generation must not be published over the one the caller still
+    // holds refs into, nor destroy that one.
+    if (operation.signal.aborted) {
+      PlaywrightSurface.disposeGeneration(generation);
+      throw cancelled('observe cancelled');
     }
     PlaywrightSurface.disposeGeneration(this.observationRefs);
     this.observationRefs = generation;

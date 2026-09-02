@@ -34,7 +34,7 @@ describe('DialogRouter', () => {
 
   it('tracks registrations by identity: the same handler twice, unsubscribed once, stays', async () => {
     const router = new DialogRouter();
-    const handler = vi.fn();
+    const handler = vi.fn((dialog: { accept(): Promise<void> }) => dialog.accept());
     const unsubscribeFirst = router.add(handler);
     router.add(handler);
     unsubscribeFirst();
@@ -67,6 +67,22 @@ describe('DialogRouter', () => {
     await router.dispatch(custom.dialog);
     expect(seen).toEqual(['name?']);
     expect(custom.accept).toHaveBeenCalledWith('yes');
+  });
+
+  it('dismisses a dialog its handler left undecided and latches INVALID_STATE naming the handler', async () => {
+    const router = new DialogRouter();
+    router.add(() => {
+      // Looked, decided nothing: the page would stay blocked behind the dialog.
+    });
+    const { dialog, dismiss } = fakeDialog('are you sure?');
+    await router.dispatch(dialog);
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(() => router.throwPending()).toThrowError(
+      expect.objectContaining({
+        code: 'INVALID_STATE',
+        message: expect.stringContaining('returned without calling accept or dismiss'),
+      }),
+    );
   });
 
   it('dismisses an unhandled dialog and latches INVALID_STATE, thrown exactly once', async () => {

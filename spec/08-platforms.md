@@ -217,7 +217,9 @@ forms is a type and runtime error.
 
 Dialog handlers are registered asynchronously, are attempt-scoped,
 newest-first, and are removed automatically. The returned async disposer is
-idempotent. The first active handler decides. An unhandled dialog fails the
+idempotent. The first active handler decides. A function handler that returns
+without accepting or dismissing has the dialog dismissed and is treated as
+unhandled. An unhandled dialog fails the
 attempt. If an operation is active it rejects immediately; otherwise the driver
 latches the failure, aborts pending waits, and the runner fails before the next
 test statement can complete.

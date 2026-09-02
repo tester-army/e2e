@@ -34,16 +34,6 @@ export interface RawNodeData {
   };
   attributes: Record<string, string>;
   rect: { x: number; y: number; width: number; height: number };
-  /**
-   * CSS selector for this element within its own document, or `''` when the
-   * active mode derives none or the element has none worth keeping. Structural,
-   * so it survives the content changes that rename a node, but anchored on an
-   * attribute that names something rather than counted from `body` — an
-   * unanchored path does not survive to the next run, which is the only run it
-   * exists for. Only `node` mode derives it: the probe is document-wide, so a
-   * tree walk must not pay for it per node.
-   */
-  selector: string;
 }
 
 /** One observed node plus its position in the flattened depth-first tree. */
@@ -133,12 +123,6 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           redactHref: true,
           directTextOnly: true,
           documentRoot: true,
-          // Off for the tree walk. Deriving a selector probes the whole document
-          // once per naming attribute per ancestor, so doing it for every
-          // observed node costs O(nodes x depth) document-wide queries per
-          // observation. Only the one node a caller goes on to act on needs it,
-          // and that node is re-read in `node` mode, which does derive it.
-          selector: false,
         }
       : {
           attributes: [
@@ -159,10 +143,25 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           redactHref: false,
           directTextOnly: false,
           documentRoot: false,
-          selector: true,
         };
 
-  const implicitRole = (el: Element): string | null => {
+  /**
+   * Per-element memo for the facts several passes need. A tree walk asks for
+   * an element's role, name, and direct text from `isInteresting`, `describe`,
+   * and the empty-box test; each is a pure function of the element for the
+   * duration of one read, and `innerText` in particular forces layout.
+   */
+  const memoized = <T,>(compute: (el: Element) => T): ((el: Element) => T) => {
+    const cache = new Map<Element, T>();
+    return (el) => {
+      if (cache.has(el)) return cache.get(el) as T;
+      const value = compute(el);
+      cache.set(el, value);
+      return value;
+    };
+  };
+
+  const implicitRole = memoized((el: Element): string | null => {
     const explicit = el.getAttribute('role');
     if (explicit !== null && explicit !== '') return explicit.split(/\s+/)[0] ?? null;
     const tag = el.tagName.toLowerCase();
@@ -225,7 +224,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       default:
         return null;
     }
-  };
+  });
 
   const textOf = (el: Element): string => {
     if (el instanceof HTMLElement) return el.innerText;
@@ -233,15 +232,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /** Text owned directly by an element, excluding descendant elements. */
-  const directTextOf = (el: Element): string => {
+  const directTextOf = memoized((el: Element): string => {
     let out = '';
     for (const child of Array.from(el.childNodes)) {
       if (child.nodeType === 3) out += child.nodeValue ?? '';
     }
     return out.replace(/\s+/g, ' ').trim();
-  };
+  });
 
-  const accessibleName = (el: Element): string | null => {
+  const accessibleName = memoized((el: Element): string | null => {
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel !== null && ariaLabel.trim() !== '') return ariaLabel.trim();
     const labelledBy = el.getAttribute('aria-labelledby');
@@ -294,7 +293,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const title = el.getAttribute('title');
     if (title !== null && title.trim() !== '') return title.trim();
     return null;
-  };
+  });
 
   /** Computed style, or undefined for a node the view cannot style. */
   const styleOf = (el: Element): CSSStyleDeclaration | undefined =>
@@ -345,7 +344,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * every layout div: a spacer, a clearfix, or a zero-alpha wrapper paints
    * nothing and is not something anyone can point at.
    */
-  const isVisibleEmptyBox = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
+  const isVisibleEmptyBox = memoized((el: Element): boolean => {
+    const style = styleOf(el);
     if (style === undefined) return false;
     if (el.children.length > 0) return false;
     const explicit = (el.getAttribute('role') ?? '').trim();
@@ -354,7 +354,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const rect = el.getBoundingClientRect();
     if (rect.width < MIN_BOX_SIDE || rect.height < MIN_BOX_SIDE) return false;
     return hasPaint(style);
-  };
+  });
 
   /**
    * Reduces a URL to origin and path, dropping userinfo, query, and fragment.
@@ -429,25 +429,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
-   * The selector a runner may keep, or `''` when this element has none worth
-   * keeping.
-   *
-   * An unanchored path is refused rather than offered. A runner stores a selector
-   * to re-find the node on a later run, and a body-rooted path does not survive
-   * to one: measured against a production page that injects a chat widget, the
-   * entry went stale between every run, so the step paid its full model call
-   * anyway and left one dead file behind each time. Reporting no selector costs
-   * the same model call and tells the truth about why.
-   */
-  const storableSelectorOf = (el: Element): string => {
-    const path = pathTo(el);
-    return path.anchored ? path.selector : '';
-  };
-
-  /**
    * The selector used to re-enter one iframe. Unanchored is fine here: it is
    * resolved against the document it was just read from, within this
-   * observation, and never stored.
+   * observation, and never stored. This is the one place a selector is
+   * derived: each `namedSelectorOf` probe is a document-wide query, and no
+   * runner consumes a per-node selector, so neither read mode pays for one.
    */
   const frameSelectorOf = (el: Element): string => pathTo(el).selector;
 
@@ -460,11 +446,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * makes the node unactionable. Anything the walk used to attach after the fact
    * belongs here instead.
    */
-  const roleOf = (el: Element, tag: string, style: CSSStyleDeclaration | undefined): string | null => {
+  const roleOf = (el: Element, tag: string): string | null => {
     const implicit = implicitRole(el);
     if (implicit !== null) return implicit;
     if (tag === 'iframe') return 'iframe';
-    return isVisibleEmptyBox(el, style) ? 'box' : null;
+    return isVisibleEmptyBox(el) ? 'box' : null;
   };
 
   const describe = (el: Element, style = styleOf(el)): RawNodeData => {
@@ -539,7 +525,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const rect = el.getBoundingClientRect();
 
     return {
-      role: isDocumentRoot ? 'document' : roleOf(el, tag, style),
+      role: isDocumentRoot ? 'document' : roleOf(el, tag),
       name,
       text,
       value: secure ? null : value,
@@ -550,12 +536,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
         selected: selectedState,
         expanded: ariaExpanded === null ? null : ariaExpanded === 'true',
         focused: el.ownerDocument.activeElement === el,
-        hidden: isHidden(el),
+        hidden: isHidden(el, style),
         secure,
       },
       attributes,
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      selector: projection.selector ? storableSelectorOf(el) : '',
     };
   };
 
@@ -614,7 +599,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     let nextParent = parent;
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    if (isInteresting(el) || isVisibleEmptyBox(el, style)) {
+    if (isInteresting(el) || isVisibleEmptyBox(el)) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;
@@ -647,6 +632,24 @@ interface NodeReadOptions {
   readonly secureFieldSelector: string;
   readonly mode: { readonly kind: 'node' };
 }
+
+/** Options for one document's tree walk. */
+export interface TreeReadOptions {
+  readonly testIdAttribute: string;
+  readonly secureFieldSelector: string;
+  readonly mode: Extract<SemanticMode, { kind: 'tree' }>;
+}
+
+/**
+ * Walks a whole document from its root element in one in-page call. Built
+ * from the reader's source like the batch reader below, so the caller
+ * evaluates it directly on a page or frame instead of first resolving a
+ * `:root` locator - one fewer protocol round trip per document per capture.
+ */
+export const readDocumentSemanticsFunction = new Function(
+  'options',
+  `return (${readSemanticsFunction.toString()})(document.documentElement, options);`,
+) as (options: TreeReadOptions) => RawObservation;
 
 /**
  * Reads every matched element in one in-page round trip. A page function

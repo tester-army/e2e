@@ -3,7 +3,7 @@
  * stitching, and element-handle bookkeeping the surface keeps per generation.
  */
 
-import type { ElementHandle, JSHandle, Locator } from 'playwright';
+import type { ElementHandle, Frame, JSHandle } from 'playwright';
 import {
   BackendError,
   OBSERVED_NAME_LIMIT,
@@ -12,7 +12,7 @@ import {
   type SemanticNode,
 } from 'e2e/backend';
 import {
-  readSemanticsFunction,
+  readDocumentSemanticsFunction,
   SECURE_FIELD_SELECTOR,
   type RawNodeData,
   type RawObservedNode,
@@ -21,11 +21,17 @@ import {
 /** Nested iframe capture depth; deeper frames stay boundary nodes. */
 const MAX_FRAME_DEPTH = 4;
 
+/** Budget for capturing the main document, still capped by the observation deadline. */
+const DOCUMENT_CAPTURE_TIMEOUT_MS = 15_000;
+
 /**
  * Budget for capturing one child document. A stalled frame (ads, trackers)
  * must cost an observation a moment, not the context default timeout.
  */
 const FRAME_CAPTURE_TIMEOUT_MS = 3_000;
+
+/** A page or frame: anything one document's reader can be evaluated on. */
+export type DocumentHost = Pick<Frame, 'evaluateHandle'>;
 
 /** What one capture needs from the surface that owns the generation. */
 export interface CaptureDeps {
@@ -42,7 +48,12 @@ export interface CaptureOptions {
   readonly framePath: readonly string[];
   /** Remaining node budget shared across every document of the observation. */
   readonly budget: number;
-  readonly timeoutMs: number;
+  /**
+   * Absolute time (epoch ms) by which the whole observation must be done.
+   * Every document's budget is derived from what remains of it, so the
+   * documents of one observation can never sum past the operation's budget.
+   */
+  readonly deadline: number;
 }
 
 /** One stored handle awaiting publication once its document captured successfully. */
@@ -57,10 +68,10 @@ type StagedRef = readonly [id: string, element: ElementHandle<Element>];
  */
 export async function captureDocument(
   deps: CaptureDeps,
-  root: Locator,
+  host: DocumentHost,
   options: CaptureOptions,
 ): Promise<{ tree: SemanticNode; nodeCount: number }> {
-  const { framePath, budget, timeoutMs } = options;
+  const { framePath, budget, deadline } = options;
   // A child document's handles are published only once it captured whole; a
   // frame that fails midway leaves no reachable ids behind.
   const staged: StagedRef[] = [];
@@ -70,7 +81,7 @@ export async function captureDocument(
     return id;
   };
   try {
-    const captured = await captureInto(deps, stage, root, framePath, budget, timeoutMs);
+    const captured = await captureInto(deps, stage, host, framePath, budget, deadline);
     for (const [id, element] of staged) deps.commit(id, element);
     return captured;
   } catch (cause) {
@@ -81,13 +92,15 @@ export async function captureDocument(
 
 async function captureInto(
   deps: CaptureDeps,
-  storeRef: (element: ElementHandle<Element>) => string,
-  root: Locator,
+  stage: (element: ElementHandle<Element>) => string,
+  host: DocumentHost,
   framePath: readonly string[],
   budget: number,
-  timeoutMs: number,
+  deadline: number,
 ): Promise<{ tree: SemanticNode; nodeCount: number }> {
-  const evaluation = root.evaluateHandle(readSemanticsFunction, {
+  const cap = framePath.length === 0 ? DOCUMENT_CAPTURE_TIMEOUT_MS : FRAME_CAPTURE_TIMEOUT_MS;
+  const timeoutMs = Math.max(1, Math.min(cap, deadline - Date.now()));
+  const evaluation = host.evaluateHandle(readDocumentSemanticsFunction, {
     testIdAttribute: deps.testIdAttribute,
     secureFieldSelector: SECURE_FIELD_SELECTOR,
     mode: {
@@ -117,7 +130,7 @@ async function captureInto(
     ]);
     elementsHandle = elementsProperty;
     const elements = await collectElementHandles(elementsHandle, nodes.length);
-    const ids = elements.map((element) => storeRef(element));
+    const ids = elements.map((element) => stage(element));
     let nodeCount = nodes.length;
     const frameChildren = new Map<number, SemanticNode>();
     if (framePath.length < MAX_FRAME_DEPTH) {
@@ -125,7 +138,7 @@ async function captureInto(
         const selector = nodes[index]!.frameSelector;
         if (selector === undefined) continue;
         const remaining = budget - nodeCount;
-        if (remaining <= 0) break;
+        if (remaining <= 0 || Date.now() >= deadline) break;
         const frame = await elements[index]!.contentFrame().catch(() => null);
         if (frame === null) continue;
         // Only frames within allowedOrigins enter observations. Third-party
@@ -133,10 +146,10 @@ async function captureInto(
         // on - and a stalled ad frame must not tax the capture. They stay
         // boundary nodes, exactly like frames past the depth limit.
         if (!isAllowedFrameOrigin(frame.url(), deps.allowedOrigins)) continue;
-        const child = await captureDocument(deps, frame.locator(':root'), {
+        const child = await captureDocument(deps, frame, {
           framePath: [...framePath, selector],
           budget: remaining,
-          timeoutMs: FRAME_CAPTURE_TIMEOUT_MS,
+          deadline,
         }).catch(() => undefined);
         if (child === undefined) continue;
         frameChildren.set(index, child.tree);
@@ -252,7 +265,6 @@ export function toSemanticNode(
     states,
     attributes: raw.attributes,
     rect: raw.rect,
-    ...(raw.selector === '' ? {} : { selector: raw.selector }),
     ...(framePath.length > 0 ? { framePath } : {}),
     ...(children.length > 0 ? { children } : {}),
   };

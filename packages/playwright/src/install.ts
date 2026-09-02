@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { InfrastructureError } from 'e2e/backend';
+import { BackendError, InfrastructureError } from 'e2e/backend';
 import { browserType, type BrowserName } from './browser-pool.ts';
 
 /** Returns true when the browser's executable exists on disk. */
@@ -28,7 +28,9 @@ export interface EnsureBrowsersOptions {
   /** Injected detection for tests; defaults to an executable existence check. */
   readonly isInstalled?: (name: BrowserName) => boolean;
   /** Injected installer for tests; defaults to spawning the Playwright CLI. */
-  readonly install?: (names: readonly BrowserName[]) => Promise<void>;
+  readonly install?: (names: readonly BrowserName[], signal?: AbortSignal) => Promise<void>;
+  /** Aborts a download in progress; the harness init budget owns it. */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -47,18 +49,28 @@ export async function ensureBrowsersInstalled(
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
   log(`Downloading missing Playwright browsers (first run): ${missing.join(', ')}...`);
   const install = options.install ?? runPlaywrightInstall;
-  await install(missing);
+  await install(missing, options.signal);
   log('Browser download complete.');
 }
 
 /** Spawns `node <playwright>/cli.js install <names>` with output on stderr. */
-function runPlaywrightInstall(names: readonly BrowserName[]): Promise<void> {
+function runPlaywrightInstall(names: readonly BrowserName[], signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted === true) {
+      reject(new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }));
+      return;
+    }
     const child = spawn(process.execPath, [playwrightCliPath(), 'install', ...names], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.pipe(process.stderr);
     child.stderr.pipe(process.stderr);
+    const onAbort = () => {
+      child.kill();
+      reject(new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    child.on('exit', () => signal?.removeEventListener('abort', onAbort));
     child.on('error', (cause) => {
       reject(
         new InfrastructureError('BROWSER_INSTALL_FAILED', `failed to run playwright install: ${cause.message}`, {
