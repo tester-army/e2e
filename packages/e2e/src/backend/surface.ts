@@ -20,7 +20,7 @@ import type {
 import type { BackendObserveOptions, BackendState } from './index.ts';
 
 export type * from './contract.ts';
-export { BackendError, OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from './contract.ts';
+export { BackendError } from './contract.ts';
 export type { BackendObserveOptions, BackendState } from './index.ts';
 
 /**

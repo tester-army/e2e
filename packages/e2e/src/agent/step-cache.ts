@@ -7,7 +7,7 @@
  */
 
 import type { AgentCacheContext } from '../cache/context.ts';
-import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
+import { decideTraceReplay, opensWithNavigate, samePathname, type TraceReplayMissReason } from '../cache/decide.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { readTraceEntry } from '../cache/trace.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
@@ -234,9 +234,3 @@ export class StepTraceSession {
   }
 }
 
-/** Pathname-only comparison: volatile query strings must not break zero-turn. */
-function samePathname(current: string | undefined, recorded: string): boolean {
-  if (current === undefined) return true;
-  const pathOf = (value: string): string => value.split('?')[0] ?? value;
-  return pathOf(current) === pathOf(recorded);
-}

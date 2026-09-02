@@ -17,6 +17,7 @@ import {
   type TraceTargetDescriptor,
 } from '../cache/trace.ts';
 import { sanitizeText } from '../internal/errors.ts';
+import { normalizeText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
@@ -89,7 +90,7 @@ export function describeTarget(
 ): TraceTargetDescriptor | undefined {
   const field = (value: string | undefined): string | undefined => {
     if (value === undefined) return undefined;
-    const collapsed = redact(sanitizeText(value)).replace(/\s+/g, ' ').trim();
+    const collapsed = normalizeText(redact(sanitizeText(value)));
     return collapsed === '' ? undefined : bound(collapsed, MAX_TRACE_DESCRIPTOR_CHARS);
   };
   const role = field(node.role);

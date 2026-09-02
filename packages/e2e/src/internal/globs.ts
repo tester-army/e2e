@@ -89,14 +89,25 @@ function matchFrom(
  */
 export function discoverFiles(root: string, patterns: readonly string[]): string[] {
   const compiled = patterns.map(compileGlob);
+  // No pattern segment can match a dot-directory unless it was spelled with
+  // a leading dot, so `.git`, `.e2e`, and friends are pruned at the walk
+  // instead of being read and rejected file by file.
+  const visitDotDirectories = compiled.some((glob) =>
+    glob.segments.some((segment) => segment.kind === 'pattern' && segment.allowsDot),
+  );
   const matched = new Set<string>();
-  walk(root, '', (relative) => {
+  walk(root, '', visitDotDirectories, (relative) => {
     if (compiled.some((glob) => matchesGlob(glob, relative))) matched.add(relative);
   });
   return [...matched].toSorted(compareCodePoints);
 }
 
-function walk(absoluteDir: string, relativeDir: string, onFile: (relative: string) => void): void {
+function walk(
+  absoluteDir: string,
+  relativeDir: string,
+  visitDotDirectories: boolean,
+  onFile: (relative: string) => void,
+): void {
   let entries;
   try {
     entries = readdirSync(absoluteDir, { withFileTypes: true });
@@ -107,7 +118,8 @@ function walk(absoluteDir: string, relativeDir: string, onFile: (relative: strin
     const relative = relativeDir === '' ? entry.name : `${relativeDir}/${entry.name}`;
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules') continue;
-      walk(path.join(absoluteDir, entry.name), relative, onFile);
+      if (!visitDotDirectories && entry.name.startsWith('.')) continue;
+      walk(path.join(absoluteDir, entry.name), relative, visitDotDirectories, onFile);
     } else if (entry.isFile()) {
       onFile(relative);
     }

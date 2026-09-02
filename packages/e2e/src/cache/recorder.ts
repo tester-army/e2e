@@ -75,6 +75,11 @@ export class TraceRecorder {
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
+    // Anchors are replay preconditions, so they follow the input rule: a path
+    // the redactor alters carried a secret (a token in a query string) and
+    // the trace is marked non-replayable rather than storing it verbatim.
+    const startPath = this.anchorPath(conclusion.startPath);
+    const endPath = this.anchorPath(conclusion.endPath);
     return {
       actions: [...this.actions],
       executor: {
@@ -82,14 +87,17 @@ export class TraceRecorder {
         ...(conclusion.executor.version === undefined ? {} : { version: conclusion.executor.version }),
       },
       summary: summary.trim() === '' ? 'step passed' : summary,
-      ...(conclusion.startPath === undefined || conclusion.startPath === ''
-        ? {}
-        : { startPath: bound(conclusion.startPath, MAX_TRACE_DESCRIPTOR_CHARS) }),
-      ...(conclusion.endPath === undefined || conclusion.endPath === ''
-        ? {}
-        : { endPath: bound(conclusion.endPath, MAX_TRACE_DESCRIPTOR_CHARS) }),
+      ...(startPath === undefined ? {} : { startPath }),
+      ...(endPath === undefined ? {} : { endPath }),
       ...(this.truncated ? { truncated: true } : {}),
     };
+  }
+
+  private anchorPath(value: string | undefined): string | undefined {
+    if (value === undefined || value === '') return undefined;
+    const redacted = this.redact(value);
+    if (redacted !== value) this.truncated = true;
+    return bound(redacted, MAX_TRACE_DESCRIPTOR_CHARS);
   }
 
   /**

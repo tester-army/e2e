@@ -315,9 +315,12 @@ function applySessionSelection(
     if (pair.test.kind !== 'setup') return pair;
     const key = `${pair.target.name}::${pair.test.id}`;
     if (!neededSetups.has(key)) return pair;
-    if (pair.disposition === 'skip') {
+    // A producer the target cannot run - skipped for a missing capability or
+    // filtered out by its own platform list - cannot be promoted; a consumer
+    // that needs it is a configuration error, not a silent run elsewhere.
+    if (pair.disposition === 'skip' || pair.skip?.cause === 'platform-unavailable') {
       throw new CollectionError(
-        `setup test ${pair.test.id} is required by a session consumer but is skipped: ${pair.skip?.reason ?? ''}`,
+        `setup test ${pair.test.id} is required by a session consumer but cannot run on target "${pair.target.name}": ${pair.skip?.reason ?? ''}`,
       );
     }
     return { ...pair, disposition: 'run' as const, skip: undefined };

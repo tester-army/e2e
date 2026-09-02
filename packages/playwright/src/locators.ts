@@ -49,7 +49,7 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
   }
 }
 
-export interface ProjectedLocator {
+interface ProjectedLocator {
   readonly locator: PwLocator;
   /** Non-null when the terminal query filters by display value. */
   readonly displayValue: TextPattern | null;

@@ -130,7 +130,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
     const { engine } = this.internals.context;
     if (spec.wholeSet === true) {
-      const refs = await engine.resolveAll(this.internals.expression);
+      const refs = await engine.resolveAll(this.internals.expression, deadline);
       return { count: refs.length, node: null };
     }
     const { node, count } = await engine.tryRead(this.internals.expression, deadline);

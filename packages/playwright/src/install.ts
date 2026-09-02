@@ -8,7 +8,7 @@ import { InfrastructureError } from 'e2e/backend';
 import { browserType, type BrowserName } from './browser-pool.ts';
 
 /** Returns true when the browser's executable exists on disk. */
-export function isBrowserInstalled(name: BrowserName): boolean {
+function isBrowserInstalled(name: BrowserName): boolean {
   try {
     return existsSync(browserType(name).executablePath());
   } catch {

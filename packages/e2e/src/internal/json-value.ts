@@ -23,7 +23,10 @@ export function validateJsonValue(value: unknown, label: string, rules: JsonValu
     ((at: string): never => {
       throw new ConfigurationError('POLICY_DENIED', `${at} must not contain a Secret`);
     });
-  const seen = new Set<unknown>();
+  // The ancestor path of the value being visited. Only an object that
+  // contains itself is a cycle; the same object reachable twice by different
+  // paths is an ordinary, serializable DAG.
+  const ancestors = new Set<unknown>();
   const visit = (item: unknown, depth = 0): void => {
     if (rules.maxDepth !== undefined && depth > rules.maxDepth) {
       throw new TestError(
@@ -45,21 +48,20 @@ export function validateJsonValue(value: unknown, label: string, rules: JsonValu
         if (isSecret(item)) {
           onSecret(label);
         }
-        if (seen.has(item)) {
+        if (ancestors.has(item)) {
           throw new TestError('INVALID_ARGUMENT', `${label} contains a cycle`);
         }
-        seen.add(item);
-        if (Array.isArray(item)) {
-          for (const entry of item) visit(entry, depth + 1);
-          return;
-        }
         if (
+          !Array.isArray(item) &&
           Object.getPrototypeOf(item) !== Object.prototype &&
           Object.getPrototypeOf(item) !== null
         ) {
           throw new TestError('INVALID_ARGUMENT', `${label} must be JSON-safe`);
         }
-        for (const entry of Object.values(item)) visit(entry, depth + 1);
+        ancestors.add(item);
+        const entries = Array.isArray(item) ? item : Object.values(item);
+        for (const entry of entries) visit(entry, depth + 1);
+        ancestors.delete(item);
         return;
       }
       default:

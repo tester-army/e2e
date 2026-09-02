@@ -72,6 +72,9 @@ export interface PollConditionOptions {
  * error at the deadline.
  */
 export async function pollCondition(options: PollConditionOptions): Promise<void> {
+  // A budget shorter than the grace window still has to be satisfiable: the
+  // negation then only needs to hold for the budget itself.
+  const grace = Math.min(NEGATION_GRACE_MS, Math.max(0, options.deadline.remaining()));
   let negatedTrueSince: number | undefined;
   for (;;) {
     const value = await options.evaluate();
@@ -79,7 +82,7 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
       if (value === true) return;
     } else if (value === false) {
       negatedTrueSince ??= Date.now();
-      if (Date.now() - negatedTrueSince >= NEGATION_GRACE_MS) return;
+      if (Date.now() - negatedTrueSince >= grace) return;
     } else {
       negatedTrueSince = undefined;
     }

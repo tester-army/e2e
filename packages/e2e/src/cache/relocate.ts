@@ -51,20 +51,59 @@ const IDENTITY_FIELDS = ['role', 'name', 'testId', 'placeholder', 'inputPurpose'
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, SemanticNode>,
-  options: { readonly redact: (text: string) => string; readonly testIdAttribute: string },
+  options: RelocationOptions,
 ): RelocationResult {
-  const strict = matchDescriptor(descriptor, nodes, options);
+  const candidates = projectNodes(nodes, options);
+  const strict = matchDescriptor(descriptor, candidates);
   if (strict.kind === 'found' || strict.failure === 'target-ambiguous') return strict;
   if (descriptor.testId === undefined) return strict;
   const { testId, ...semantic } = descriptor;
   void testId;
-  return matchDescriptor(semantic, nodes, options);
+  return matchDescriptor(semantic, candidates);
+}
+
+export interface RelocationOptions {
+  readonly redact: (text: string) => string;
+  readonly testIdAttribute: string;
+}
+
+type ProjectedNodes = ReadonlyMap<string, TraceTargetDescriptor | undefined>;
+
+interface Projection extends RelocationOptions {
+  readonly projected: ProjectedNodes;
+}
+
+/**
+ * Descriptor projections per observation. A replay relocates every recorded
+ * action, in two tiers, against the same node map (and again per settling
+ * retry), while the projection of a node is a pure function of the node: it
+ * is computed once per observation and shared by every lookup into it.
+ */
+const projections = new WeakMap<ReadonlyMap<string, SemanticNode>, Projection>();
+
+function projectNodes(
+  nodes: ReadonlyMap<string, SemanticNode>,
+  options: RelocationOptions,
+): ProjectedNodes {
+  const cached = projections.get(nodes);
+  if (
+    cached !== undefined &&
+    cached.redact === options.redact &&
+    cached.testIdAttribute === options.testIdAttribute
+  ) {
+    return cached.projected;
+  }
+  const projected = new Map<string, TraceTargetDescriptor | undefined>();
+  for (const [id, node] of nodes) {
+    projected.set(id, describeTarget(node, options.redact, options.testIdAttribute));
+  }
+  projections.set(nodes, { ...options, projected });
+  return projected;
 }
 
 function matchDescriptor(
   descriptor: TraceTargetDescriptor,
-  nodes: ReadonlyMap<string, SemanticNode>,
-  options: { readonly redact: (text: string) => string; readonly testIdAttribute: string },
+  candidates: ProjectedNodes,
 ): RelocationResult {
   const requireText = descriptor.testId === undefined && descriptor.name === undefined;
   if (requireText && descriptor.text === undefined && descriptor.placeholder === undefined) {
@@ -73,8 +112,7 @@ function matchDescriptor(
     return { kind: 'failed', failure: 'target-not-found' };
   }
   const matches: string[] = [];
-  for (const [id, node] of nodes) {
-    const candidate = describeTarget(node, options.redact, options.testIdAttribute);
+  for (const [id, candidate] of candidates) {
     if (candidate === undefined) continue;
     if (!fieldsMatch(descriptor, candidate, requireText)) continue;
     matches.push(id);

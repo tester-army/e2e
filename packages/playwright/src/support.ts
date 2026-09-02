@@ -41,7 +41,7 @@ interface Rect {
  * evaluate, page ownership, drag) have explicit helpers below so every fork is
  * visible at its call site instead of hidden behind a uniform interface.
  */
-export type Actionable = Pick<
+type Actionable = Pick<
   PwLocator,
   | 'click'
   | 'dblclick'
@@ -162,8 +162,6 @@ export async function performPointerDrag(
   await page.mouse.up();
 }
 
-// Re-exported so the rest of the package keeps importing its text helpers from
-// one place, whether they are shared with other backends or local to this one.
 /** Playwright colorizes call logs; escape codes are noise in reports. */
 // oxlint-disable-next-line no-control-regex -- intentionally matches the ESC control character
 const ANSI_PATTERN = /\u001b\[\d+(?:;\d+)*m/g;

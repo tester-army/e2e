@@ -25,7 +25,7 @@ import {
   type ResolvedLimits,
 } from './agent.ts';
 
-export type { ResolvedAgentConfig, ResolvedLimits, ResolvedModel } from './agent.ts';
+export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 
 export interface ResolvedTarget {
   readonly name: string;

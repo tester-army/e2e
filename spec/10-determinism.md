@@ -136,6 +136,12 @@ semantic drift, and an implicated entry is evicted — keying on prose would
 cold-start the cache on every wording tweak while proving nothing about the
 flow.
 
+Both anchors compare by pathname: a query string that differs from the
+recording (tracking parameters, cache busters) neither blocks the start
+precondition nor fails the end postcondition. Anchors pass the secret redactor
+like every other recorded string; a path the redactor alters marks the trace
+non-replayable rather than storing the value.
+
 A trace with no start anchor — no recorded start path (a session without a
 page URL) and no opening navigate — is never written: it could only ever miss
 with `wrong-context`, and an unreplayable entry is pure store traffic. Every reason an entry cannot be used — absent,

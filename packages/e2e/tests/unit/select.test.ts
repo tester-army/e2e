@@ -145,6 +145,14 @@ describe('select', () => {
     expect(setup.disposition).toBe('run');
   });
 
+  it('fails when the consumed session\'s producer is filtered by its platform list', async () => {
+    const col = await collection(() => {
+      test.setup('auth', { sessions: ['member'], platforms: ['ios'] }, noop);
+      test('uses session', { session: 'member' }, noop);
+    });
+    expect(() => select(col, config())).toThrow(/cannot run on target "web"/);
+  });
+
   it('fails when a consumed session has no producer', async () => {
     const col = await collection(() => {
       test('uses session', { session: 'missing' }, noop);

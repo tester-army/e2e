@@ -83,14 +83,6 @@ export function indexExpression(
   return { kind: 'index', source, index };
 }
 
-/** Builds a platform-selector expression (CSS or XPath on a document platform). */
-export function selectorExpression(selector: string): LocatorExpression {
-  if (typeof selector !== 'string' || selector.length === 0) {
-    throw new TestError('INVALID_LOCATOR', 'locator() requires a nonempty selector');
-  }
-  return { kind: 'selector', selector };
-}
-
 /** Renders an expression for diagnostics. */
 export function describeExpression(expression: LocatorExpression): string {
   switch (expression.kind) {

@@ -3,6 +3,7 @@
 import path from 'node:path';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8, type SerializedError } from '../internal/errors.ts';
+import { collapseText } from '../internal/text.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../run/events.ts';
 import type { SerialGroupRecord } from '../run/records.ts';
 import type { StepEvent, StepRecord } from '../run/steps.ts';
@@ -12,7 +13,7 @@ import { LiveStatus } from './live-status.ts';
 const MAX_FIELD_BYTES = 8192;
 
 /** Step labels stay one glanceable line; the report holds the full text. */
-const MAX_STEP_LABEL_CHARS = 72;
+const MAX_STEP_LABEL_BYTES = 72;
 
 export interface ListReporterOutput {
   write(line: string): void;
@@ -26,8 +27,9 @@ function bounded(text: string): string {
 
 /** One-line, quoted step label bounded for the live view. */
 function stepLabel(label: string): string {
-  const flat = sanitizeText(label).replace(/\s+/g, ' ').trim();
-  return `"${truncateUtf8(flat, MAX_STEP_LABEL_CHARS)}${flat.length > MAX_STEP_LABEL_CHARS ? '…' : ''}"`;
+  const flat = collapseText(label);
+  const shown = truncateUtf8(flat, MAX_STEP_LABEL_BYTES);
+  return `"${shown}${shown === flat ? '' : '…'}"`;
 }
 
 /** Human duration: milliseconds under a second, one decimal above. */

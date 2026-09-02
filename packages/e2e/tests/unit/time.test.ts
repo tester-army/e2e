@@ -125,6 +125,20 @@ describe('pollCondition', () => {
     await assertion;
   });
 
+  it('negated: a budget shorter than the grace window is still satisfiable', async () => {
+    vi.useFakeTimers();
+    let resolved = false;
+    const promise = pollCondition(
+      makeOptions({ negated: true, timeoutMs: 400, evaluate: async () => false }),
+    );
+    void promise.then(() => {
+      resolved = true;
+    });
+    await vi.advanceTimersByTimeAsync(400 + POLL_INTERVAL_MS);
+    expect(resolved).toBe(true);
+    await promise;
+  });
+
   it('negated: passes only after the grace window holds continuously', async () => {
     vi.useFakeTimers();
     let resolved = false;

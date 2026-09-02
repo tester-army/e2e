@@ -20,6 +20,22 @@ export function opensWithNavigate(trace: ActionTrace): boolean {
 }
 
 /**
+ * Pathname-only comparison of a live path against a recorded anchor: volatile
+ * query strings (tracking parameters, cache busters) must break neither the
+ * start precondition nor the end postcondition. Both anchors use this one
+ * rule, so an entry that replays also finalizes under the same reading of
+ * "the same page". An unknown live path is not evidence against the anchor.
+ */
+export function samePathname(current: string | undefined, recorded: string): boolean {
+  if (current === undefined) return true;
+  return pathnameOf(current) === pathnameOf(recorded);
+}
+
+function pathnameOf(value: string): string {
+  return value.split('?')[0] ?? value;
+}
+
+/**
  * The full miss vocabulary of the report. `no-entry` and `invalid-entry` are
  * assigned by the store-read path; this decision produces the other two.
  */
@@ -42,7 +58,11 @@ export function decideTraceReplay(
   if (entry.payload.truncated === true) return { action: 'miss', reason: 'truncated' };
   if (!opensWithNavigate(entry.payload)) {
     const startPath = entry.payload.startPath;
-    if (startPath === undefined || currentPath === undefined || startPath !== currentPath) {
+    if (
+      startPath === undefined ||
+      currentPath === undefined ||
+      !samePathname(currentPath, startPath)
+    ) {
       return { action: 'miss', reason: 'wrong-context' };
     }
   }

@@ -250,28 +250,24 @@ export function serializeError(
   return serialized;
 }
 
+/** C0/C1 control characters except tab and newline. */
+// oxlint-disable-next-line no-control-regex -- the control range is the point
+const CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+const UTF8 = new TextEncoder();
+const UTF8_DECODER = new TextDecoder();
+
 /** Strips C0/C1 control characters except tab and newline. */
 export function sanitizeText(text: string): string {
-  let out = '';
-  for (const ch of text) {
-    const code = ch.codePointAt(0)!;
-    const isControl = (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
-    out += isControl ? '\uFFFD' : ch;
-  }
-  return out;
+  return text.replace(CONTROL_PATTERN, '\uFFFD');
 }
 
 /** Truncates a string so its UTF-8 encoding fits maxBytes without splitting a code point. */
 export function truncateUtf8(text: string, maxBytes: number): string {
-  const encoder = new TextEncoder();
-  if (encoder.encode(text).byteLength <= maxBytes) return text;
-  let result = '';
-  let bytes = 0;
-  for (const ch of text) {
-    const chBytes = encoder.encode(ch).byteLength;
-    if (bytes + chBytes > maxBytes) break;
-    result += ch;
-    bytes += chBytes;
-  }
-  return result;
+  const bytes = UTF8.encode(text);
+  if (bytes.byteLength <= maxBytes) return text;
+  // Back up off any UTF-8 continuation bytes (10xxxxxx) so the cut lands on a
+  // code point boundary; the lead byte at the cut is excluded with its tail.
+  let end = Math.max(0, maxBytes);
+  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1;
+  return UTF8_DECODER.decode(bytes.subarray(0, end));
 }

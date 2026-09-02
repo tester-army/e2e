@@ -133,6 +133,18 @@ describe('decideTraceReplay', () => {
     }
   });
 
+  it('compares the start path by pathname so query strings never cold-miss', () => {
+    const entry = entryOf(trace());
+    expect(decideTraceReplay(entry, '/settings?utm_source=mail').action).toBe('replay');
+    expect(decideTraceReplay(entryOf(trace({ startPath: '/settings?tab=2' })), '/settings').action).toBe(
+      'replay',
+    );
+    expect(decideTraceReplay(entry, '/settings/billing')).toEqual({
+      action: 'miss',
+      reason: 'wrong-context',
+    });
+  });
+
   it('replays a navigate-opening trace from anywhere', () => {
     const entry = entryOf(trace({ actions: [navigate, tap] }));
     expect(decideTraceReplay(entry, '/other').action).toBe('replay');

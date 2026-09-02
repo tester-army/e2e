@@ -91,6 +91,16 @@ describe('sanitizeText', () => {
   it('keeps tabs and newlines', () => {
     expect(sanitizeText('a\tb\nc')).toBe('a\tb\nc');
   });
+
+  it('replaces C0, DEL, and C1 controls and leaves non-BMP text intact', () => {
+    expect(sanitizeText('a\u0000b\u007fc\u0085d')).toBe('a\uFFFDb\uFFFDc\uFFFDd');
+    expect(sanitizeText('ok 😀 fine')).toBe('ok 😀 fine');
+  });
+
+  it('is repeatable across calls (no regexp state leaks)', () => {
+    expect(sanitizeText('\u0001\u0001')).toBe('\uFFFD\uFFFD');
+    expect(sanitizeText('\u0001x')).toBe('\uFFFDx');
+  });
 });
 
 describe('truncateUtf8', () => {
@@ -98,6 +108,12 @@ describe('truncateUtf8', () => {
     expect(truncateUtf8('abcd', 2)).toBe('ab');
     expect(truncateUtf8('żż', 3)).toBe('ż'); // 2 bytes each
     expect(truncateUtf8('abc', 10)).toBe('abc');
+  });
+
+  it('never splits a four-byte code point and honors a zero budget', () => {
+    expect(truncateUtf8('a😀b', 4)).toBe('a'); // 😀 is 4 bytes; 1 + 4 > 4
+    expect(truncateUtf8('a😀b', 5)).toBe('a😀');
+    expect(truncateUtf8('a😀b', 0)).toBe('');
   });
 });
 

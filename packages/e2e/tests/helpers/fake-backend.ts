@@ -23,7 +23,6 @@ const { defineBackend, BackendError, BACKEND_SPI_VERSION } = (await import(
   builtBackendModule
 )) as typeof import('../../src/backend/index.ts');
 
-export { BackendError as BuiltBackendError };
 
 export interface RecordedOperation {
   readonly method: string;

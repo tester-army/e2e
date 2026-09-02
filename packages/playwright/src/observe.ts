@@ -13,7 +13,7 @@ import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 const PIXEL_CAPTURE_TIMEOUT_MS = 10_000;
 
 /** Opaque fill covering every masked region. */
-export const MASK_COLOR = '#000000';
+const MASK_COLOR = '#000000';
 
 /**
  * One mask locator per frame Playwright can reach, covering every secure

@@ -1,7 +1,7 @@
 /** Observation capture, redaction, and model serialization (spec 09-drivers.md, 14-security.md). */
 
 import type { Observation, ObservationPixels, SemanticNode } from '../backend/surface.ts';
-import { sanitizeText } from '../internal/errors.ts';
+import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
@@ -124,7 +124,7 @@ function formatNode(
   const parts: string[] = [`#${node.ref.id}`];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
   if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(redact(node.name)));
-  const text = node.text === undefined ? '' : collapse(node.text);
+  const text = node.text === undefined ? '' : collapseText(node.text);
   if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
   // Disambiguators the model needs when role and name repeat. The backend has
   // already reduced href to origin and path.
@@ -208,10 +208,6 @@ export async function settleObservation<T>(
     if (stable) break;
   }
   return value;
-}
-
-function collapse(text: string): string {
-  return sanitizeText(text).replace(/\s+/g, ' ').trim();
 }
 
 function indexNodes(node: SemanticNode, into: Map<string, SemanticNode>): void {

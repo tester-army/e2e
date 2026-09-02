@@ -64,7 +64,6 @@ export interface RawObservation {
   nodes: RawObservedNode[];
   /** Live element handles positionally aligned with `nodes`. */
   elements: Element[];
-  secureNodeCount: number;
 }
 
 export type SemanticMode =
@@ -568,11 +567,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   const nodes: RawObservedNode[] = [];
   const elements: Element[] = [];
   let truncated = false;
-  let secureNodeCount = 0;
 
   const include = (el: Element, parent: number, style = styleOf(el)): number => {
     const data = describe(el, style);
-    if (data.states.secure) secureNodeCount += 1;
     nodes.push({ ...data, parent });
     elements.push(el);
     return nodes.length - 1;
@@ -641,11 +638,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   include(element, -1);
   for (const child of Array.from(element.children)) walk(child, 0);
 
-  return { nodes, elements, secureNodeCount } as SemanticResult<Mode>;
+  return { nodes, elements } as SemanticResult<Mode>;
 };
 
 /** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */
-export interface NodeReadOptions {
+interface NodeReadOptions {
   readonly testIdAttribute: string;
   readonly secureFieldSelector: string;
   readonly mode: { readonly kind: 'node' };

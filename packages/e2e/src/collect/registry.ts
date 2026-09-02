@@ -1,5 +1,7 @@
 /** Synchronous registration during module evaluation (spec 11-lifecycle.md). */
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { testCaseBrand } from '../internal/brands.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
@@ -91,6 +93,7 @@ class Collector {
     this.assertOpen(kind === 'setup' ? 'test.setup()' : 'test()');
     const titleError = validateTitle(title);
     if (titleError !== null) throw new CollectionError(titleError);
+    const normalizedTitle = title.normalize('NFC');
     if (typeof fn !== 'function') throw new CollectionError('test body must be a function');
     if (kind === 'setup') {
       if (this.currentGroup !== undefined) {
@@ -111,10 +114,10 @@ class Collector {
       }
     }
     validateTestOptions(options, this.currentGroup);
-    const titlePath = [...groupTitles(this.currentGroup), title.normalize('NFC')];
+    const titlePath = [...groupTitles(this.currentGroup), normalizedTitle];
     const registered: RegisteredTest = {
       kind,
-      title: title.normalize('NFC'),
+      title: normalizedTitle,
       titlePath,
       declarationIndex: this.declarationCounter,
       options,
@@ -271,6 +274,9 @@ function requireCollector(api: string): Collector {
   return collector;
 }
 
+/** The runner's own source root (`src/` or `dist/`), whose frames are never a test's location. */
+const RUNNER_ROOT = `${path.dirname(path.dirname(fileURLToPath(import.meta.url)))}${path.sep}`;
+
 function captureSource(): SourceLocation | undefined {
   const stack = new Error().stack;
   if (stack === undefined) return undefined;
@@ -279,9 +285,7 @@ function captureSource(): SourceLocation | undefined {
     const match = /\(?(?:file:\/\/)?([^()\s]+?):(\d+):(\d+)\)?$/.exec(line.trim());
     if (match === null) continue;
     const file = decodeURIComponent(match[1]!);
-    if (file.includes('/e2e/src/') || file.includes('/e2e/dist/') || file.includes('node:')) {
-      continue;
-    }
+    if (file.startsWith(RUNNER_ROOT) || file.startsWith('node:')) continue;
     return { file, line: Number(match[2]), column: Number(match[3]) };
   }
   return undefined;

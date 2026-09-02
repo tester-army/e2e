@@ -32,67 +32,68 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     return new ValueExpectationImpl(this.actual, !this.negated);
   }
 
-  private check(condition: boolean, positiveMessage: string, negativeMessage: string): void {
+  /** Messages are thunks: formatting large values is paid only on failure. */
+  private check(condition: boolean, positive: () => string, negative: () => string): void {
     if (this.negated) {
-      if (condition) fail(negativeMessage);
+      if (condition) fail(negative());
       return;
     }
-    if (!condition) fail(positiveMessage);
+    if (!condition) fail(positive());
   }
 
   toBe(expected: T): void {
     this.check(
       Object.is(this.actual, expected),
-      `expected ${format(this.actual)} to be ${format(expected)}`,
-      `expected ${format(this.actual)} not to be ${format(expected)}`,
+      () => `expected ${format(this.actual)} to be ${format(expected)}`,
+      () => `expected ${format(this.actual)} not to be ${format(expected)}`,
     );
   }
 
   toEqual(expected: unknown): void {
     this.check(
       equals(this.actual, expected, [iterableEquality]),
-      `expected ${format(this.actual)} to equal ${format(expected)}`,
-      `expected ${format(this.actual)} not to equal ${format(expected)}`,
+      () => `expected ${format(this.actual)} to equal ${format(expected)}`,
+      () => `expected ${format(this.actual)} not to equal ${format(expected)}`,
     );
   }
 
   toBeTruthy(): void {
     this.check(
       Boolean(this.actual),
-      `expected ${format(this.actual)} to be truthy`,
-      `expected ${format(this.actual)} not to be truthy`,
+      () => `expected ${format(this.actual)} to be truthy`,
+      () => `expected ${format(this.actual)} not to be truthy`,
     );
   }
 
   toBeFalsy(): void {
     this.check(
       !this.actual,
-      `expected ${format(this.actual)} to be falsy`,
-      `expected ${format(this.actual)} not to be falsy`,
+      () => `expected ${format(this.actual)} to be falsy`,
+      () => `expected ${format(this.actual)} not to be falsy`,
     );
   }
 
   toBeNull(): void {
     this.check(
       this.actual === null,
-      `expected ${format(this.actual)} to be null`,
-      `expected value not to be null`,
+      () => `expected ${format(this.actual)} to be null`,
+      () => `expected value not to be null`,
     );
   }
 
   toBeUndefined(): void {
     this.check(
       this.actual === undefined,
-      `expected ${format(this.actual)} to be undefined`,
-      `expected value not to be undefined`,
+      () => `expected ${format(this.actual)} to be undefined`,
+      () => `expected value not to be undefined`,
     );
   }
 
   toBeDefined(): void {
     this.check(
       this.actual !== undefined && this.actual !== null,
-      `expected ${format(this.actual)} to be defined`,
-      `expected ${format(this.actual)} not to be defined`,
+      () => `expected ${format(this.actual)} to be defined`,
+      () => `expected ${format(this.actual)} not to be defined`,
     );
   }
 
@@ -113,8 +114,8 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     }
     this.check(
       contains,
-      `expected ${format(this.actual)} to contain ${format(expected)}`,
-      `expected ${format(this.actual)} not to contain ${format(expected)}`,
+      () => `expected ${format(this.actual)} to contain ${format(expected)}`,
+      () => `expected ${format(this.actual)} not to contain ${format(expected)}`,
     );
   }
 
@@ -127,8 +128,8 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       typeof expected === 'string' ? actual.includes(expected) : expected.test(actual);
     this.check(
       matches,
-      `expected ${format(actual)} to match ${format(expected)}`,
-      `expected ${format(actual)} not to match ${format(expected)}`,
+      () => `expected ${format(actual)} to match ${format(expected)}`,
+      () => `expected ${format(actual)} not to match ${format(expected)}`,
     );
   }
 
@@ -137,8 +138,8 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     if (typeof actual !== 'number') fail(`toBeGreaterThan requires a number, got ${format(actual)}`);
     this.check(
       actual > expected,
-      `expected ${actual} to be greater than ${expected}`,
-      `expected ${actual} not to be greater than ${expected}`,
+      () => `expected ${actual} to be greater than ${expected}`,
+      () => `expected ${actual} not to be greater than ${expected}`,
     );
   }
 
@@ -147,8 +148,8 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     if (typeof actual !== 'number') fail(`toBeLessThan requires a number, got ${format(actual)}`);
     this.check(
       actual < expected,
-      `expected ${actual} to be less than ${expected}`,
-      `expected ${actual} not to be less than ${expected}`,
+      () => `expected ${actual} to be less than ${expected}`,
+      () => `expected ${actual} not to be less than ${expected}`,
     );
   }
 }
