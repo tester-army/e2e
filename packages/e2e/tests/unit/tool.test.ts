@@ -35,3 +35,49 @@ describe('defineTool platforms', () => {
     ).toThrow(/platforms/);
   });
 });
+
+describe('defineTool replay tiers (RFC0003)', () => {
+  it('accepts the deterministic and none string sugar, normalizing to the object form', () => {
+    expect(defineTool(tool, { replay: 'deterministic', mutates: false, secrets: false }).annotations.replay).toEqual({
+      mode: 'deterministic',
+    });
+    expect(defineTool(tool, { replay: 'none', mutates: true, secrets: false }).annotations.replay).toEqual({
+      mode: 'none',
+    });
+  });
+
+  it('accepts the located tier with concrete input paths', () => {
+    const defined = defineTool(tool, {
+      replay: { mode: 'located', locate: ['target', 'anchor'] },
+      mutates: false,
+      secrets: false,
+    });
+    expect(defined.annotations.replay).toEqual({ mode: 'located', locate: ['target', 'anchor'] });
+  });
+
+  it('rejects a located tier with no paths, blank paths, or duplicates', () => {
+    for (const locate of [[], [''], ['  '], ['a', 'a']]) {
+      expect(() =>
+        defineTool(tool, { replay: { mode: 'located', locate }, mutates: false, secrets: false }),
+      ).toThrow(/locate/);
+    }
+  });
+
+  it('accepts a fixed-model tier only on a non-mutating tool', () => {
+    expect(
+      defineTool(tool, { replay: { mode: 'fixed-model' }, mutates: false, secrets: false }).annotations.replay,
+    ).toEqual({ mode: 'fixed-model' });
+    expect(() =>
+      defineTool(tool, { replay: { mode: 'fixed-model' }, mutates: true, secrets: false }),
+    ).toThrow(/fixed-model/);
+  });
+
+  it('rejects an unknown tier and a malformed replay value', () => {
+    expect(() =>
+      defineTool(tool, { replay: { mode: 'sometimes' } as never, mutates: false, secrets: false }),
+    ).toThrow(/unknown replay tier/);
+    expect(() =>
+      defineTool(tool, { replay: 42 as never, mutates: false, secrets: false }),
+    ).toThrow(/replay/);
+  });
+});

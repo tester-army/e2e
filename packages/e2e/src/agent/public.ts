@@ -12,5 +12,11 @@ export {
   type ToolLoopExecutorOptions,
   type ToolLoopHelpers,
 } from './tool-loop.ts';
-export { defineTool, type DefinedTool, type ToolAnnotations } from './tool.ts';
+export {
+  defineTool,
+  type DefinedTool,
+  type ToolAnnotations,
+  type ToolReplay,
+  type NormalizedToolAnnotations,
+} from './tool.ts';
 export { AgentError, isAgentError } from './error.ts';
