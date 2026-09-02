@@ -75,9 +75,11 @@ sent to the model.
 
 The adaptive trace cache (`trace-1`) replays a passing `agent.act()` step's
 recorded actions zero-turn on the next run, diverging to the live agent
-mid-step whenever the app no longer matches the recording. It is on by
-default (`read-write`; CI forces the file store to `read-only`, while a
-host-supplied store keeps its configured mode) — opt out with
+mid-step whenever the app no longer matches the recording, or whenever the
+recorded actions ran but the recorded end state is not on screen again. An
+entry is written only after a later assertion confirms the step's outcome. It
+is on by default (`read-write`; CI forces the file store to `read-only`, while
+a host-supplied store keeps its configured mode) — opt out with
 `cache: 'off'` or per run with `--no-cache`. Entries live under
 `.e2e/cache/` or in any custom `TraceCacheStore`. Judgments (`assert`,
 `waitFor`, `extract`) are never cached — every judgment is made fresh, per
