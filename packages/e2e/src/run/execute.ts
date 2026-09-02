@@ -329,11 +329,18 @@ export class TargetExecutor implements SerialHost {
         targetName: this.target.name,
         baseHref: this.config.app.base.href,
       });
+      // Session restore rides the backend's neutral state capability; a
+      // backend without one fails loud through restoreState below, exactly
+      // like a driver without state support.
       if (pair.options.session !== undefined) {
-        throw new ConfigurationError(
-          'UNSUPPORTED_CAPABILITY',
-          'backend targets do not support saved sessions',
-        );
+        const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
+        if (session.restoreState === undefined) {
+          throw new ConfigurationError(
+            'UNSUPPORTED_CAPABILITY',
+            `target "${this.target.name}" has no backend state capability for session restore`,
+          );
+        }
+        await session.restoreState(state, this.op(attemptId, this.config.launchTimeout, signal));
       }
       return session;
     }

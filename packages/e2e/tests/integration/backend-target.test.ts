@@ -48,8 +48,23 @@ test('a contributed fixture runs with harness discipline', async (fixtures) => {
 });
 `;
 
+const STATE_SUITE = `import { test, expect } from 'e2e';
+
+test.setup('seed the counter', { sessions: ['seeded'] }, async ({ screen, session }) => {
+  await screen.getByRole('button', { name: 'Increment' }).tap();
+  await session.save('seeded');
+});
+
+test('restores the seeded counter', { session: 'seeded' }, async ({ screen }) => {
+  await expect(screen.getByRole('status')).toHaveText('1');
+});
+`;
+
+
 /** A two-node screen: a counter value and a button that increments it. */
-function toyBackend(options: { withLocate?: boolean; withFixtures?: boolean } = {}) {
+function toyBackend(
+  options: { withLocate?: boolean; withFixtures?: boolean; withState?: boolean } = {},
+) {
   const lifecycle: string[] = [];
   const fixtureCalls: string[] = [];
   let count = 0;
@@ -108,6 +123,18 @@ function toyBackend(options: { withLocate?: boolean; withFixtures?: boolean } = 
                 return 'shaken';
               },
             }),
+          },
+        }),
+    ...(options.withState !== true
+      ? {}
+      : {
+          state: {
+            async capture() {
+              return { format: 'toy', version: 1, data: { count } };
+            },
+            async restore(snapshot: { data: unknown }) {
+              count = (snapshot.data as { count: number }).count;
+            },
           },
         }),
   });
@@ -229,6 +256,27 @@ describe('backend targets', () => {
       project.cleanup();
     }
   });
+
+  it('captures and restores opaque backend state across a session', async () => {
+    const toy = toyBackend({ withLocate: true, withState: true });
+    const project = createProject({ 'tests/state.e2e.ts': STATE_SUITE });
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+      });
+      expect(outcome.exitCode).toBe(0);
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
 
   it('gates an undeclared fixture at selection via requires', async () => {
     const toy = toyBackend(); // no fixtures declared

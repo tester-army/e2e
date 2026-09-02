@@ -23,7 +23,12 @@ import type { ScrollDirection } from '../types.ts';
  * contributed fixture. Dependencies: actions and location require
  * observation (their refs live in the same semantic space).
  */
-export type BackendCapability = 'observation' | 'actions' | 'location' | (string & {});
+export type BackendCapability =
+  | 'observation'
+  | 'actions'
+  | 'location'
+  | 'state'
+  | (string & {});
 
 /** Context handed to a contributed fixture factory, once per attempt. */
 export interface BackendFixtureContext {
@@ -40,6 +45,28 @@ export interface BackendFixtureContext {
 export type BackendFixtureFactory = (
   context: BackendFixtureContext,
 ) => Readonly<Record<string, (...args: never[]) => Promise<unknown>>>;
+
+/**
+ * An opaque, restorable snapshot of a backend's state. `data` is JSON the
+ * harness never inspects — a browser's storage state, a device's app state, a
+ * desktop's window state all satisfy it identically. `format`/`version` let a
+ * backend reject a snapshot it can no longer read.
+ */
+export interface BackendState {
+  readonly format: string;
+  readonly version: number;
+  readonly data: unknown;
+}
+
+/**
+ * Platform-neutral state capture and restore. A setup test captures a
+ * snapshot; an ordinary test restores it at launch. Nothing here is
+ * web-shaped: a Limrun backend implements it exactly as a browser does.
+ */
+export interface BackendStateCapability {
+  capture(context: OperationContext): Promise<BackendState>;
+  restore(state: BackendState, context: OperationContext): Promise<void>;
+}
 
 /** Run identity handed to `init`, once per worker before the first step. */
 export interface BackendInitInfo {
@@ -118,6 +145,8 @@ export interface Backend {
    * and capability names; `requires: ['<name>']` gates at selection.
    */
   readonly fixtures?: Readonly<Record<string, BackendFixtureFactory>>;
+  /** capability: state — opaque snapshot capture/restore for session reuse. */
+  readonly state?: BackendStateCapability;
   /** Once per worker, before the first step; boot devices here, not in a step budget. */
   init?(info: BackendInitInfo): Promise<void>;
   /** Worker shutdown, bounded by the cleanup timeout; failure is a run error. */
@@ -137,6 +166,7 @@ const KNOWN_KEYS = new Set([
   'actions',
   'locate',
   'fixtures',
+  'state',
   'init',
   'dispose',
 ]);
@@ -228,6 +258,20 @@ export function defineBackend(spec: Backend): BackendHandle {
       }
       capabilities.add(fixture);
     }
+  }
+  if (spec.state !== undefined) {
+    if (
+      typeof spec.state !== 'object' ||
+      spec.state === null ||
+      typeof spec.state.capture !== 'function' ||
+      typeof spec.state.restore !== 'function'
+    ) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `backend "${spec.name}": state must be { capture, restore }`,
+      );
+    }
+    capabilities.add('state');
   }
   for (const hook of ['init', 'dispose'] as const) {
     if (spec[hook] !== undefined && typeof spec[hook] !== 'function') {

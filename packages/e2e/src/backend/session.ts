@@ -203,6 +203,24 @@ export function createBackendSession(options: BackendSessionOptions): DriverSess
     screen,
     actions,
     artifacts,
+    ...(backend?.state === undefined
+      ? {}
+      : {
+          async captureState(operation: OperationContext) {
+            const snapshot = await backend.state!.capture(operation);
+            return {
+              format: snapshot.format,
+              version: snapshot.version,
+              data: snapshot.data as never,
+            };
+          },
+          async restoreState(state, operation: OperationContext) {
+            await backend.state!.restore(
+              { format: state.format, version: state.version, data: state.data },
+              operation,
+            );
+          },
+        }),
     async observe(operation: OperationContext): Promise<Observation> {
       const observe = backend?.observe ?? unsupported(targetName, 'observation');
       const snapshot = await observe.call(backend, operation);
