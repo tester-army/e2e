@@ -22,5 +22,8 @@
   "rules": {
     "unused-class-member": "warn",
     "dev-dependencies-in-production": "warn"
-  }
+  },
+  "ignoreUnresolvedImports": [
+    "e2e/run"
+  ]
 }

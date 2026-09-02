@@ -89,7 +89,7 @@ export function withAiTraceStep<T>(api: string, label: string, work: () => Promi
 }
 
 /** The scope of the calling async context, when inside an attempt. */
-export function currentAiTraceScope(): AiTraceScope | undefined {
+function currentAiTraceScope(): AiTraceScope | undefined {
   return scopeStorage.getStore();
 }
 
