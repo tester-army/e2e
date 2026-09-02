@@ -143,6 +143,46 @@ describe('snapshot projection', () => {
     expect(screenTitle(projected)).toBe('Settings');
   });
 
+  it('maps Android view classes, drops echoed values, and titles the screen from the toolbar', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.widget.FrameLayout', label: 'Network & internet', identifier: 'com.android.settings:id/collapsing_toolbar' },
+      { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'androidx.recyclerview.widget.RecyclerView', identifier: 'com.android.settings:id/recycler_view' },
+      { ref: 'e4', index: 3, parentIndex: 2, depth: 2, type: 'android.widget.LinearLayout' },
+      { ref: 'e5', index: 4, parentIndex: 3, depth: 3, type: 'android.widget.TextView', label: 'Airplane mode', value: 'Airplane mode', identifier: 'android:id/title' },
+      { ref: 'e6', index: 5, parentIndex: 3, depth: 3, type: 'android.widget.Switch' },
+      { ref: 'e7', index: 6, parentIndex: 2, depth: 2, type: 'android.widget.EditText', label: 'Search', value: 'wifi' },
+      { ref: 'e8', index: 7, parentIndex: 2, depth: 2, type: 'android.widget.ImageButton', label: 'Back' },
+    ]);
+    expect(projected.index.map((entry) => entry.kind)).toEqual([
+      'frame-layout',
+      'frame-layout',
+      'recycler-view',
+      'linear-layout',
+      'text-view',
+      'switch',
+      'edit-text',
+      'image-button',
+    ]);
+    expect(projected.index.map((entry) => entry.node.role)).toEqual([
+      'group',
+      'group',
+      'list',
+      'group',
+      'text',
+      'switch',
+      'textbox',
+      'button',
+    ]);
+    const title = projected.index[4]!.node;
+    expect(title.name).toBe('Airplane mode');
+    expect(title.value).toBeUndefined();
+    expect(projected.index[6]!.node.value).toBe('wifi');
+    expect(title.attributes).toEqual({ 'data-testid': 'android:id/title' });
+    expect(screenTitle(projected)).toBe('Network & internet');
+    expect(screenTitle(project([{ ref: 'e1', type: 'android.widget.FrameLayout', label: 'x' }]))).toBeUndefined();
+  });
+
   it('reads the screen title from the navigation bar, its inner text, its identifier, or nothing', () => {
     expect(screenTitle(project(SETTINGS_NODES))).toBe('General');
     expect(screenTitle(project([{ ref: '@e1', type: 'navigation-bar', identifier: 'About' }]))).toBe('About');

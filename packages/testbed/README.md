@@ -19,10 +19,11 @@ tests.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the same
   playground: `agent.act` flows, assisted polling, judgments, and
   schema-validated extraction with zod.
-- `e2e.device.config.ts` + `tests-device/` — opt-in iOS suite on the
-  `@e2edev/agent-device` backend: the Settings app driven through the grammar
-  verbs, the deterministic `screen`/`expect` tier, and the contributed
-  `device` fixture. Needs a booted simulator and a model credential; steps
+- `e2e.device.config.ts` + `tests-device/` — opt-in mobile suite on the
+  `@e2edev/agent-device` backend, two targets: an iOS simulator and an Android
+  emulator, each with its Settings app. Portable files (`about`, `device`) run
+  on both unchanged; `ios` and `android` hold the label-bound deterministic
+  checks. Needs a booted simulator, one AVD, and a model credential; steps
   replay from the trace cache on a second run. See "Device suite" below.
 - `e2e.reminders.config.ts` + `tests-reminders/` — opt-in iOS stress suite:
   long agentic sessions in the Reminders app (batch entry through the focused
@@ -99,9 +100,11 @@ AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:device      # Settings
 AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:reminders   # Reminders: long agentic stress sessions
 ```
 
-The backend opens Settings fresh before every test, so no step needs an
-agent-side tool to get started and every `agent.act` step stays inside the
-grammar. The first run records a trace per passing step; the second run
+Each backend opens its platform's Settings app fresh before every test, so no
+step needs an agent-side tool to get started and every `agent.act` step stays
+inside the grammar. The portable tests describe goals, not labels ("open the
+screen that describes this device"), and read the result back with judgments
+or `agent.extract`; that is what lets one file run on both targets. The first run records a trace per passing step; the second run
 replays them with zero model calls (`step.cache.mode` is `self-finalized` in
 `.e2e/report.json`). Judgments still spend a call each.
 

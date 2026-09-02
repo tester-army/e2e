@@ -23,6 +23,8 @@ same way `@e2edev/playwright` does for browsers, and core learns nothing new.
   location, appearance, orientation, biometrics, open/close app, foreground
   app, home, back, alerts, keyboard, clipboard. Import `test` from the
   package to have it typed.
-- `@e2edev/agent-device/tools` exports `agentDeviceTools(backend)`: an
-  `open_app`, `swipe`, `alert`, and `screenshot` pack for `createAgent`,
-  scoped to `ios` and `android` targets.
+- `@e2edev/agent-device/tools` exports `agentDeviceTools(...backends)`: an
+  `open_app`, `swipe`, `type_text`, `alert`, and `screenshot` pack for
+  `createAgent`, scoped to the platforms of the backends passed and
+  dispatching to the one whose attempt is running, so one pack serves an iOS
+  and an Android target in the same config.

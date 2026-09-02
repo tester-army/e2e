@@ -18,14 +18,23 @@ import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 
-const device = agentDevice({ platform: 'ios', app: 'Settings' });
+const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
+const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
 export default defineConfig({
-  targets: [{ name: 'iphone', platform: 'ios', backend: device }],
+  targets: [
+    { name: 'iphone', platform: 'ios', backend: iphone },
+    { name: 'pixel', platform: 'android', backend: pixel },
+  ],
   workers: 1,
-  agent: { executor: createAgent({ tools: agentDeviceTools(device) }) },
+  agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
 });
 ```
+
+One backend per device; a config declares as many as it has devices. A test
+written against `agent`, `app`, `screen`, and `device` runs on every target;
+a deterministic check that names a platform label is scoped with
+`platforms: ['ios']` or `platforms: ['android']`.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -44,13 +53,13 @@ targets with `workers: 1`: workers share one simulator.
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects and a viewport. `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`; other types keep their name. Element identifiers surface under the configured `testIdAttribute`. Pixels on request, unmasked: a screen with a secure field reports zero masked regions and the runner withholds the image. |
+| `observe` | The accessibility tree with rects and a viewport. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles (no `checked` state: Android exposes none), layouts are `group`, `RecyclerView` is `list`; a label echoed as the value is dropped. Other types keep their kebab-cased name. Element identifiers surface under the configured `testIdAttribute`. Pixels on request, unmasked: a screen with a secure field reports zero masked regions and the runner withholds the image. |
 | `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `focus`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` within a node, `dragTo`. A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child. `selectOption`, `setInputFiles`, `scrollIntoView`, and other keys are `UNSUPPORTED_CAPABILITY`. |
 | `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible unless `hidden: true` is requested. |
 | `swipe` | Viewport scroll in four directions. |
 | `app` | `back`; `restart` and `clearState` when `app` is pinned. No `navigate`: a device has no app URL. |
 | `artifacts` | Screenshots under `screenshots/NNN-<label>.png`. No traces. |
-| `url` | `app://<bundle id>/<screen title>`, the trace cache's anchor. |
+| `url` | `app://<bundle id>/<screen title>`, the trace cache's anchor; the title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
 ## Trace cache on a device
@@ -114,8 +123,11 @@ any locator.
 
 ## Agent tools
 
-`agentDeviceTools(backend)` returns a `defineTool` pack for `createAgent`,
-scoped to `ios` and `android` targets:
+`agentDeviceTools(...backends)` returns a `defineTool` pack for `createAgent`.
+Pass every device backend the config declares: tool names are fixed, so two
+packs cannot be merged; the pack is scoped to the platforms of those backends
+and dispatches each call to the backend whose attempt is running (a worker
+runs one attempt at a time):
 
 | Tool | Replay | Purpose |
 | --- | --- | --- |

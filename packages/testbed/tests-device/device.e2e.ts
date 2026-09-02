@@ -1,32 +1,38 @@
 /**
- * The contributed `device` fixture: deterministic device management recorded
- * as `device.<method>` steps. Each arrangement is checked through the
- * accessibility tree or the fixture itself, never through a model.
+ * The contributed `device` fixture and the portable `app` lifecycle, on both
+ * platforms. Each arrangement is checked through the fixture itself or a
+ * judgment, never through a platform label.
  */
 
 import { expect, test } from './fixtures.ts';
 
-test('reports the foreground app the backend opened', async ({ device }) => {
+const SETTINGS_APP = { ios: 'Settings', android: 'com.android.settings' } as const;
+const SETTINGS_IDENTITY = /settings|com\.apple\.Preferences/i;
+
+test('reports the Settings app the backend opened', async ({ device }) => {
   const app = await device.foregroundApp();
-  expect(app.name).toBe('Settings');
-  expect(app.bundleId).toBe('com.apple.Preferences');
+  expect(`${app.name} ${app.bundleId ?? ''}`).toMatch(SETTINGS_IDENTITY);
 });
 
-test('rotates the device and comes back to portrait', async ({ device, screen }) => {
+test('rotates the device and comes back to portrait', async ({ agent, device }) => {
   await device.setOrientation('landscape-left');
-  await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
+  await agent.assert('the Settings screen is shown');
   await device.setOrientation('portrait');
-  await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
+  await agent.assert('the Settings screen is shown');
 });
 
-test('switches to another app and returns to Settings', async ({ device, screen }) => {
-  await device.openApp('Reminders');
-  expect((await device.foregroundApp()).name).toBe('Reminders');
-  await device.openApp('Settings');
-  await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
+test('leaves for the home screen and returns to Settings', async ({ agent, device, platform }) => {
+  await device.home();
+  await device.openApp(platform === 'android' ? SETTINGS_APP.android : SETTINGS_APP.ios);
+  const app = await device.foregroundApp();
+  expect(`${app.name} ${app.bundleId ?? ''}`).toMatch(SETTINGS_IDENTITY);
+  await agent.assert('the Settings screen is shown');
 });
 
-test('round-trips the clipboard', async ({ device }) => {
-  await device.setClipboard('e2e-device-suite');
-  expect(await device.clipboard()).toBe('e2e-device-suite');
+test('restarts the app back to its home screen and takes a screenshot', async ({ agent, app }) => {
+  await agent.act('open the Accessibility settings');
+  await app.restart();
+  await agent.assert('the Settings home screen is shown');
+  const shot = await app.screenshot('home');
+  expect(shot).toMatch(/^screenshots\/\d{3}-home\.png$/);
 });

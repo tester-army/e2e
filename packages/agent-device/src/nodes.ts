@@ -101,25 +101,73 @@ const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
 const SCREEN_KINDS = new Set(['application', 'app', 'window']);
 
 /**
+ * Android view classes onto the role vocabulary, keyed by the simple class
+ * name in kebab case. A `TextView` is static text here where an iOS
+ * `TextView` is an editor, which is why the two platforms keep separate maps.
+ */
+const ANDROID_ROLE_MAP: Readonly<Record<string, string>> = {
+  'text-view': 'text',
+  'edit-text': 'textbox',
+  'auto-complete-text-view': 'textbox',
+  'text-input-edit-text': 'textbox',
+  'search-view': 'textbox',
+  button: 'button',
+  'image-button': 'button',
+  'material-button': 'button',
+  'image-view': 'image',
+  switch: 'switch',
+  'switch-compat': 'switch',
+  'switch-material': 'switch',
+  'toggle-button': 'switch',
+  'check-box': 'checkbox',
+  'material-check-box': 'checkbox',
+  'radio-button': 'radio',
+  'seek-bar': 'slider',
+  slider: 'slider',
+  spinner: 'combobox',
+  'web-view': 'document',
+  'recycler-view': 'list',
+  'list-view': 'list',
+  'grid-view': 'list',
+  'scroll-view': 'group',
+  'view-group': 'group',
+  view: 'group',
+  'compose-view': 'group',
+  'view-factory-holder': 'group',
+  'card-view': 'group',
+};
+
+/** Identifier suffixes of the view that carries an Android screen's title. */
+const ANDROID_TITLE_IDS = [':id/collapsing_toolbar', ':id/action_bar', ':id/toolbar'];
+
+/**
  * Platform element type of one raw node as a kebab-case token: XCTest sends
- * `NavigationBar` and `StaticText`, Android sends `text-field`; both read as
- * one vocabulary here. `role` is the fallback some platforms send instead.
+ * `NavigationBar` and `StaticText`, Android sends `android.widget.TextView`;
+ * both read as one vocabulary here, the Android package prefix dropped.
+ * `role` is the fallback some platforms send instead.
  */
 export function kindOf(raw: RawNode): string {
   return normalizeKind(raw.type ?? raw.role ?? '');
 }
 
-/** One element-type spelling for `NavigationBar`, `navigation-bar`, and `navigation_bar` alike. */
+/** True when a raw type is a qualified Android class name. */
+function isAndroidClass(type: string | undefined): boolean {
+  return type !== undefined && type.includes('.');
+}
+
+/** One element-type spelling for `NavigationBar`, `navigation-bar`, and `android.widget.NavigationBar` alike. */
 export function normalizeKind(type: string): string {
-  return type
+  const simple = type.slice(type.lastIndexOf('.') + 1);
+  return simple
     .replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replaceAll(/[\s_]+/g, '-')
     .toLowerCase();
 }
 
 /** Contract role for one platform element type. */
-export function roleOf(kind: string): string | undefined {
+export function roleOf(kind: string, android = false): string | undefined {
   if (kind === '') return undefined;
+  if (android) return ANDROID_ROLE_MAP[kind] ?? (kind.endsWith('layout') ? 'group' : kind);
   return ROLE_MAP[kind] ?? kind;
 }
 
@@ -190,7 +238,7 @@ export function projectSnapshot(
     const source = raw[position] as RawNode;
     const id = options.mintId();
     const kind = kindOf(source);
-    const role = roleOf(kind);
+    const role = roleOf(kind, isAndroidClass(source.type));
     const secure = SECURE_KINDS.has(kind);
     const checked = checkedOf(role, source.value);
     const states = {
@@ -222,8 +270,12 @@ export function projectSnapshot(
       // text, so `toHaveText` and `getByText` read the same string; the model
       // rendering elides `text` whenever it equals `name`, so this costs nothing.
       ...(source.label === undefined || source.label === '' ? {} : { name: source.label, text: source.label }),
-      // A secure field's value is never observed; the tree carries that it is secure, not what it holds.
-      ...(secure || source.value === undefined || source.value === '' ? {} : { value: source.value }),
+      // A secure field's value is never observed; the tree carries that it is
+      // secure, not what it holds. Android echoes a text view's label as its
+      // value, which would render every line twice, so an echo is dropped.
+      ...(secure || source.value === undefined || source.value === '' || source.value === source.label
+        ? {}
+        : { value: source.value }),
       ...(secure ? { inputPurpose: 'password' as const } : {}),
       ...(Object.keys(states).length === 0 ? {} : { states }),
       ...(identifier === undefined ? {} : { attributes: { [options.testIdAttribute]: identifier } }),
@@ -267,13 +319,16 @@ export function viewportOf(
 }
 
 /**
- * The visible screen's title: the navigation bar's own label, else the first
- * text inside it, else its identifier (UIKit names the bar after its title).
- * Undefined when the screen has no navigation bar, which is the honest answer
- * for a bare launch screen or a full-screen sheet.
+ * The visible screen's title: the navigation bar's (iOS) or toolbar's
+ * (Android) own label, else the first text inside it, else its identifier
+ * (UIKit names the bar after its title). Undefined when the screen has no
+ * title bar, which is the honest answer for a launch screen, a full-screen
+ * sheet, or Android's Settings home.
  */
 export function screenTitle(snapshot: ProjectedSnapshot): string | undefined {
-  const bar = snapshot.index.find((entry) => entry.kind === 'navigation-bar');
+  const bar =
+    snapshot.index.find((entry) => entry.kind === 'navigation-bar') ??
+    snapshot.index.find((entry) => ANDROID_TITLE_IDS.some((suffix) => entry.raw.identifier?.endsWith(suffix) === true));
   if (bar === undefined) return undefined;
   if (bar.raw.label !== undefined && bar.raw.label.trim() !== '') return bar.raw.label;
   const text = snapshot.index.find(

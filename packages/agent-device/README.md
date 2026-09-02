@@ -22,14 +22,23 @@ import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 
-const device = agentDevice({ platform: 'ios', app: 'Settings' });
+const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
+const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
 export default defineConfig({
-  targets: [{ name: 'iphone', platform: 'ios', backend: device }],
+  targets: [
+    { name: 'iphone', platform: 'ios', backend: iphone },
+    { name: 'pixel', platform: 'android', backend: pixel },
+  ],
   workers: 1,
-  agent: { executor: createAgent({ tools: agentDeviceTools(device) }) },
+  agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
 });
 ```
+
+A test written against `agent`, `app`, `screen`, and `device` runs on both
+targets unchanged. Only a check that names a platform label (`General` on iOS,
+`Network & internet` on Android) needs `platforms: ['ios']` or
+`platforms: ['android']` on the test.
 
 Options:
 
@@ -44,9 +53,11 @@ Options:
 ## What the backend declares
 
 - **Observation**: the accessibility tree, projected onto the role vocabulary
-  (`Button` becomes `button`, `TextField` becomes `textbox`, `Cell` becomes
-  `listitem`), with rects, a viewport, and pixels on request. Element
-  identifiers surface as the configured test id attribute.
+  (iOS `Button` becomes `button`, `TextField` becomes `textbox`, `Cell` becomes
+  `listitem`; Android `android.widget.TextView` becomes `text`, `EditText`
+  becomes `textbox`, `Switch` becomes `switch`), with rects, a viewport, and
+  pixels on request. Element identifiers (`ABOUT`, `android:id/title`) surface
+  as the configured test id attribute.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck,
   `Enter`, single-character keys, swipe within a node, drag. `selectOption`,
   `setInputFiles`, and other keys fail with `UNSUPPORTED_CAPABILITY`.
@@ -60,7 +71,8 @@ Options:
 
 The runner caches `agent.act` steps by their location anchor, and a device has
 no address bar. This backend reports one anyway: `app://<bundle id>/<screen
-title>`, with the title read off the navigation bar. A step recorded on
+title>`, with the title read off the navigation bar on iOS and the collapsing
+toolbar on Android. A step recorded on
 `app://com.apple.preferences/General` replays only when the app is on that
 screen again, and a flow that stays within tap, type, and scroll replays with
 zero model calls. Pin `app` so every attempt starts on the same screen, and
@@ -93,11 +105,14 @@ accessor.
 
 ## Agent tools
 
-`@e2edev/agent-device/tools` exports `agentDeviceTools(backend)`: `open_app`,
-`swipe` (free-form, in logical pixels), `type_text` (into the focused field,
-for editors that hide it from the tree), `alert`, and `screenshot` (the model
-sees the image). Every tool is scoped to `ios` and `android`, so a suite that
-mixes web and device targets can pass the pack to one `createAgent`.
+`@e2edev/agent-device/tools` exports `agentDeviceTools(...backends)`:
+`open_app`, `swipe` (free-form, in logical pixels), `type_text` (into the
+focused field, for editors that hide it from the tree), `alert`, and
+`screenshot` (the model sees the image). Pass every device backend the config
+declares: tool names are fixed, so two packs cannot be merged, and the pack
+dispatches each call to the backend whose attempt is running. Tools are scoped
+to the platforms of those backends, so a suite that mixes web and device
+targets can hand the pack to one `createAgent`.
 
 ## Secrets
 

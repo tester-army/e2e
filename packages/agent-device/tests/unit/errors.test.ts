@@ -22,6 +22,12 @@ describe('error translation', () => {
     expect(translateError(new AppError('UNSUPPORTED_OPERATION', 'hover is macOS only'), 'perform hover')).toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
     });
+    expect(
+      translateError(
+        new AppError('COMMAND_FAILED', 'Android shell clipboard write is not supported on this device.'),
+        'device.setClipboard',
+      ),
+    ).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
   });
 
   it('maps timeouts, stale refs, and the rest', () => {

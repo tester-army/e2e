@@ -7,6 +7,7 @@
  * | AbortError                                                  | CANCELLED                    |
  * | no active session / session not found                       | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
+ * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
  * | a ref the daemon no longer knows (action paths only)        | NODE_STALE (retryable)       |
  * | timed out                                                   | OPERATION_TIMEOUT            |
  * | anything else                                               | BACKEND_FAILURE              |
@@ -34,6 +35,7 @@ export function message(cause: unknown): string {
 
 const NO_SESSION_PATTERN = /no active (?:app )?session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
+const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
 const TIMEOUT_PATTERN = /\btimed?\s?out\b/i;
 const STALE_PATTERN =
   /\bref\b.*\b(?:not found|unknown|stale|no longer|expired|invalid|missing)|\b(?:not found|unknown|stale|no longer|expired|invalid|missing)\b.*\bref\b|refs?generation/i;
@@ -48,7 +50,9 @@ export function translateError(cause: unknown, operation: string): Error {
   if (normalized.code === 'SESSION_NOT_FOUND' || NO_SESSION_PATTERN.test(normalized.message)) {
     return new BackendError('INVALID_STATE', text, options);
   }
-  if (UNSUPPORTED_CODES.has(normalized.code)) return new BackendError('UNSUPPORTED_CAPABILITY', text, options);
+  if (UNSUPPORTED_CODES.has(normalized.code) || UNSUPPORTED_PATTERN.test(normalized.message)) {
+    return new BackendError('UNSUPPORTED_CAPABILITY', text, options);
+  }
   if (TIMEOUT_PATTERN.test(normalized.message)) return new BackendError('OPERATION_TIMEOUT', text, options);
   return new BackendError('BACKEND_FAILURE', text, options);
 }

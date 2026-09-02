@@ -134,6 +134,11 @@ export class AgentDeviceSurface {
     return this.options.app !== undefined;
   }
 
+  /** Whether an attempt is running on this surface right now. */
+  get attemptRunning(): boolean {
+    return this.attempt !== undefined;
+  }
+
   /** The live client; INVALID_STATE before init or after dispose. */
   requireClient(): AgentDeviceClient {
     if (this.client === undefined) throw invalidState('the agent-device backend is not initialized');
