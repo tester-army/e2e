@@ -18,6 +18,7 @@ function target(driver: ResolvedTarget['driver']): ResolvedTarget {
     browser: 'chromium',
     viewport: undefined,
     driver,
+    backend: undefined,
     driverTarget: { name: 'web', platform: 'web', browser: 'chromium' },
   };
 }
@@ -34,9 +35,9 @@ const handle: Driver = defineDriver({
 describe('resolveDriver', () => {
   it('loads a well-known id from its own package', async () => {
     const driver = await resolveDriver(target(DEFAULT_DRIVER_ID));
-    expect(driver.id).toBe(DEFAULT_DRIVER_ID);
-    expect(driver.spiVersion).toBe(1);
-    expect(driver.capabilities.fixtures).toEqual(WELL_KNOWN_DRIVERS[DEFAULT_DRIVER_ID]?.capabilities);
+    expect(driver?.id).toBe(DEFAULT_DRIVER_ID);
+    expect(driver?.spiVersion).toBe(1);
+    expect(driver?.capabilities.fixtures).toEqual(WELL_KNOWN_DRIVERS[DEFAULT_DRIVER_ID]?.capabilities);
   });
 
   it('creates an independent instance per call, so workers never share one', async () => {

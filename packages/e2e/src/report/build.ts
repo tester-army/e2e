@@ -365,7 +365,7 @@ function serializeTarget(
 }
 
 /** Computes report-1 summary counts from results. */
-export function computeSummary(results: readonly ResultRecord[]): ReportSummary {
+function computeSummary(results: readonly ResultRecord[]): ReportSummary {
   let selected = 0;
   let executed = 0;
   let passed = 0;

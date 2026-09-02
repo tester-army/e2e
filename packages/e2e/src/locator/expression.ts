@@ -91,11 +91,6 @@ export function webSelectorExpression(selector: string): LocatorExpression {
   return { kind: 'web-selector', selector };
 }
 
-/** Wraps an expression in a frame scope. */
-export function frameExpression(selector: string, source: LocatorExpression): LocatorExpression {
-  return { kind: 'frame', selector, source };
-}
-
 /** Renders an expression for diagnostics. */
 export function describeExpression(expression: LocatorExpression): string {
   switch (expression.kind) {

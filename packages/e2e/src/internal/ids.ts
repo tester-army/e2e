@@ -95,7 +95,7 @@ export function canonicalJson(value: unknown): string {
  * collation must never be used here: it is environment-dependent, and a digest
  * that depends on the host locale is not canonical.
  */
-export function compareStrings(a: string, b: string): number {
+function compareStrings(a: string, b: string): number {
   if (a === b) return 0;
   return a < b ? -1 : 1;
 }

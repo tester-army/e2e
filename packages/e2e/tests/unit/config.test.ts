@@ -94,12 +94,12 @@ describe('resolveConfig', () => {
     ).toThrow(/duplicate target/);
   });
 
-  it('rejects mobile targets instead of skipping them', () => {
+  it('rejects non-web driver targets; backends carry other platforms', () => {
     expect(() =>
       resolve({
         targets: [{ name: 'ios', platform: 'ios', driver: fakeDriver(), app: 'App.app' }],
       } as never),
-    ).toThrow(/web targets only/);
+    ).toThrow(/use a backend target/);
   });
 
   it('accepts branded third-party drivers and rejects plain objects', () => {

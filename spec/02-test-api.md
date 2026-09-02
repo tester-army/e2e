@@ -43,9 +43,9 @@ test.setup('authenticate', { sessions: ['member'] }, async fixtures => {
 The four universal test fixtures are `agent`, `app`, `screen`, and `platform`.
 Their names are frozen for `sdk-0.1`. The setup-only `session` fixture can save
 declared outputs. Ordinary tests restore only through the static `session` test
-option. `web` is the capability fixture required by `web-0.1`; `device` is
-reserved for future mobile profiles. Driver packages MAY augment the
-`TestFixtures` interface with one fixture per platform family.
+option. `web` is the capability fixture required by `web-0.1`. Driver
+packages MAY augment the `TestFixtures` interface with one fixture per
+platform family.
 
 Fixtures are lazy. Accessing a fixture acquires it in the active attempt scope.
 Destructuring a fixture in the callback parameter therefore acquires it before

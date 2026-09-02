@@ -8,3 +8,5 @@
 .e2e/report.json
 .e2e/report.html
 bench/.next/
+# AI SDK devtools trace database written by testbed telemetry.
+.devtools/

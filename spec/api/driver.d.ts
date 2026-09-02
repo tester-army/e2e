@@ -131,12 +131,6 @@ export interface SemanticNode {
   readonly children?: readonly SemanticNode[];
 }
 
-/** Viewport point in CSS pixels, origin at the top-left of the viewport. */
-export interface ViewportPoint {
-  readonly x: number;
-  readonly y: number;
-}
-
 /**
  * Masked viewport pixels captured for one observation revision.
  *
@@ -300,12 +294,6 @@ export interface DriverAgentActions {
     target: { readonly ref: NodeRef },
     operation: OperationContext,
   ): Promise<void>;
-  /** Long-presses one semantic node. */
-  longPress(
-    target: { readonly ref: NodeRef },
-    durationMs: number | undefined,
-    operation: OperationContext,
-  ): Promise<void>;
   /** Types one plain or sensitive host-resolved value. */
   type(
     target: { readonly ref: NodeRef },
@@ -321,12 +309,6 @@ export interface DriverAgentActions {
   ): Promise<void>;
   /** Sends one key. */
   press(key: string, operation: OperationContext): Promise<void>;
-  /**
-   * Taps one runner-validated viewport point. Optional: a driver without
-   * coordinate input omits it, and vision pointing that hit-tests to no
-   * semantic node then fails instead of dispatching.
-   */
-  tapPoint?(point: ViewportPoint, operation: OperationContext): Promise<void>;
 }
 
 export interface DriverWebRoute {

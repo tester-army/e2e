@@ -20,6 +20,7 @@ import type { CollectedFile } from '../collect/collect.ts';
 import type { RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { createBackendSession } from '../backend/session.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { findRegistered, RealmManager, type Realm } from './realm.ts';
 import type {
@@ -47,7 +48,8 @@ export interface ExecutionEvents {
 export interface TargetExecutorOptions {
   readonly config: ResolvedConfig;
   readonly target: ResolvedTarget;
-  readonly driver: Driver;
+  /** Undefined for backend targets: no driver is ever launched for them. */
+  readonly driver: Driver | undefined;
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
@@ -78,6 +80,8 @@ export class TargetExecutor implements SerialHost {
 
   private readonly runErrors: RunError[] = [];
   private readonly sessionIdentity: SessionIdentity;
+  /** Resolves once the backend's init hook completed for this worker. */
+  private backendReady: Promise<void> | undefined;
 
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
@@ -94,9 +98,11 @@ export class TargetExecutor implements SerialHost {
     });
     this.sessionIdentity = {
       targetId: options.target.name,
-      driverId: options.driver.id,
-      driverVersion: options.driver.version,
-      spiVersion: options.driver.spiVersion,
+      // A backend target's session and cache identity comes from the backend
+      // declaration, so entries never collide with driver-target entries.
+      driverId: options.driver?.id ?? `backend:${options.target.backend?.name ?? 'none'}`,
+      driverVersion: options.driver?.version ?? String(options.target.backend?.spiVersion ?? 0),
+      spiVersion: options.driver?.spiVersion ?? 1,
       platform: options.target.platform,
       appIdentity: canonicalDigest({
         origin: options.config.app.base.origin,
@@ -127,6 +133,39 @@ export class TargetExecutor implements SerialHost {
   /** Run-level errors recorded so far, in order. */
   collectedRunErrors(): readonly RunError[] {
     return this.runErrors;
+  }
+
+  /**
+   * Runs the backend's init hook once per worker, before the first session.
+   * Boot work (simulators, device leases) is bounded by the launch timeout
+   * but never charged against a step budget.
+   */
+  private initBackendOnce(signal: AbortSignal): Promise<void> {
+    const init = this.target.backend?.init?.bind(this.target.backend);
+    if (init === undefined) return Promise.resolve();
+    this.backendReady ??= this.debug.time('backend.init', () =>
+      withTimeout(
+        init({ runId: this.options.runId, targetName: this.target.name, signal }),
+        this.config.launchTimeout,
+        () => new InfrastructureError('LAUNCH_TIMEOUT', 'backend init timed out'),
+      ),
+    );
+    return this.backendReady;
+  }
+
+  /** Disposes the backend at worker end of life, bounded by the cleanup budget. */
+  async dispose(): Promise<void> {
+    const disposeBackend = this.target.backend?.dispose?.bind(this.target.backend);
+    if (disposeBackend === undefined || this.backendReady === undefined) return;
+    try {
+      await withTimeout(
+        disposeBackend(),
+        this.config.cleanupTimeout,
+        () => new InfrastructureError('CLEANUP_TIMEOUT', 'backend dispose timed out'),
+      );
+    } catch (cause) {
+      this.runErrors.push({ error: serializeError(classifyError(cause), { phase: 'cleanup' }) });
+    }
   }
 
   /**
@@ -280,9 +319,27 @@ export class TargetExecutor implements SerialHost {
     artifactsDir: string,
     signal: AbortSignal,
   ): Promise<DriverSession> {
+    const driver = this.options.driver;
+    if (driver === undefined) {
+      // Backend target: no driver launch. The backend booted in init() once
+      // per worker; the adapter is per-attempt so refs never cross attempts.
+      await this.initBackendOnce(signal);
+      const session = createBackendSession({
+        backend: this.target.backend,
+        targetName: this.target.name,
+        baseHref: this.config.app.base.href,
+      });
+      if (pair.options.session !== undefined) {
+        throw new ConfigurationError(
+          'UNSUPPORTED_CAPABILITY',
+          'backend targets do not support saved sessions',
+        );
+      }
+      return session;
+    }
     const driverSession = await this.debug.time('session.launch', () =>
       withTimeout(
-        this.options.driver.launch({
+        driver.launch({
           target: this.target.driverTarget,
           targetId: this.target.name,
           app: {

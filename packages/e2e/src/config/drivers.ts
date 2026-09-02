@@ -11,16 +11,16 @@
 
 import type { Capability } from '../types.ts';
 
-export interface WellKnownDriver {
+interface WellKnownDriver {
   /** Package that exports the driver factory under the driver id. */
   readonly specifier: string;
   /** Fixture capabilities the package declares in its manifest. */
   readonly capabilities: readonly Capability[];
 }
 
-export const WELL_KNOWN_DRIVERS: Readonly<Record<string, WellKnownDriver>> = {
+export const WELL_KNOWN_DRIVERS = {
   playwright: { specifier: '@e2edev/playwright', capabilities: ['web'] },
-};
+} as const satisfies Readonly<Record<string, WellKnownDriver>>;
 
 export type WellKnownDriverId = keyof typeof WELL_KNOWN_DRIVERS;
 

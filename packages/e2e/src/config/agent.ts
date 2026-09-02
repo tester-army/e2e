@@ -7,7 +7,7 @@ import { isLoopbackHost } from '../internal/urls.ts';
 import type { AgentConfig, E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
 
 /** Default environment variable holding the provider credential. */
-export const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
+const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
 
 /** Gateway-native credential variable, used when apiKeyEnv holds no value. */
 export const GATEWAY_API_KEY_ENV = 'AI_GATEWAY_API_KEY';
@@ -81,6 +81,7 @@ export interface ResolvedLimits {
 export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 
 const AGENT_KEYS = new Set([
+  'executor',
   'model',
   'visionModel',
   'maxSteps',
@@ -116,8 +117,12 @@ export function resolveAgentConfig(
   limits: ResolvedBaseLimits,
 ): ResolvedAgentConfig {
   const value = raw.agent;
-  const executor = value !== undefined && isStepExecutor(value) ? value : undefined;
-  const agent = executor === undefined ? (value as AgentConfig | undefined) : undefined;
+  // Three accepted shapes (RFC0002): the agent itself, an options object, or
+  // an options object carrying `executor` — a custom brain no longer forfeits
+  // the model, budgets, or context.
+  const bare = value !== undefined && isStepExecutor(value) ? value : undefined;
+  const agent = bare === undefined ? (value as AgentConfig | undefined) : undefined;
+  let executor = bare;
   if (agent !== undefined) {
     if (typeof agent !== 'object' || agent === null || Array.isArray(agent)) {
       throw new ConfigurationError(
@@ -127,14 +132,17 @@ export function resolveAgentConfig(
     }
     for (const key of Object.keys(agent)) {
       if (!AGENT_KEYS.has(key)) {
-        if (key === 'executor') {
-          throw new ConfigurationError(
-            'INVALID_CONFIG',
-            'agent.executor was removed: pass the agent itself, e.g. agent: createAgent(...)',
-          );
-        }
         throw new ConfigurationError('INVALID_CONFIG', `unknown agent config key "${key}"`);
       }
+    }
+    if (agent.executor !== undefined) {
+      if (!isStepExecutor(agent.executor)) {
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          'agent.executor must be a StepExecutor: createAgent(...) or any { name, runStep(context) }',
+        );
+      }
+      executor = agent.executor;
     }
   }
 

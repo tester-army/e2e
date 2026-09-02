@@ -39,6 +39,10 @@
       "types": "./dist/agent/public.d.ts",
       "default": "./dist/agent/public.js"
     },
+    "./backend": {
+      "types": "./dist/backend/index.d.ts",
+      "default": "./dist/backend/index.js"
+    },
     "./driver": {
       "types": "./dist/driver/index.d.ts",
       "default": "./dist/driver/index.js"
@@ -81,7 +85,6 @@
   "devDependencies": {
     "ai": "7.0.37",
     "@e2edev/playwright": "workspace:*",
-    "@types/json-schema": "7.0.15",
     "@types/node": "26.1.1",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",

@@ -31,7 +31,7 @@ function isTagMode(value: string): value is 'any' | 'all' {
 }
 
 /** Builds the commander program. */
-export function createProgram(): Command {
+function createProgram(): Command {
   const program = new Command('e2e');
   program.description('open, local-first standard for agentic end-to-end testing');
 

@@ -162,9 +162,6 @@ export function createFakeDriver(behavior: FakeDriverBehavior = {}): FakeDriverH
         async tap(target, operation) {
           record(`actions.tap(${'ref' in target ? target.ref.id : 'point'})`, sessionIndex, operation);
         },
-        async longPress(target, durationMs, operation) {
-          record('actions.longPress', sessionIndex, operation);
-        },
         async type(target, value, sensitive, operation) {
           record('actions.type', sessionIndex, operation);
         },

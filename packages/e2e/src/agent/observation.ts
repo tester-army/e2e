@@ -181,11 +181,11 @@ export function observationShape(observation: AgentObservation): string {
 }
 
 /** Poll interval and ceiling for shape-stability settling. */
-export const SETTLE_POLL_MS = 75;
-export const SETTLE_TIMEOUT_MS = 1_000;
+const SETTLE_POLL_MS = 75;
+const SETTLE_TIMEOUT_MS = 1_000;
 
 /** What a settle loop needs from its step: the remaining clock and cancellation. */
-export interface SettleClock {
+interface SettleClock {
   remainingMs(): number;
   readonly signal: AbortSignal;
 }

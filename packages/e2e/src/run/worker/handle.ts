@@ -42,7 +42,7 @@ export function childProcessSpawner(options: ChildProcessSpawnOptions): SpawnUni
 }
 
 /** One live worker process bound to a single target. */
-export class ChildProcessRunner implements UnitRunner {
+class ChildProcessRunner implements UnitRunner {
   readonly exit: Promise<void>;
   private readonly child: ChildProcess;
   private exited = false;

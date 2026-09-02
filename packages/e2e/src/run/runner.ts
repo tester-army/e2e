@@ -218,6 +218,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const preflightDrivers = new Map<string, Driver>();
     for (const { target } of selection.perTarget) {
       const driver = await resolveDriver(target);
+      if (driver === undefined) {
+        // Backend target: nothing to validate or prepare; provenance names
+        // the backend so the report says what actually ran the surface.
+        targetProvenance.set(target.name, backendProvenance(target));
+        continue;
+      }
       driversToDispose.add(driver);
       preflightDrivers.set(target.name, driver);
       targetProvenance.set(target.name, validateDriver(driver, target, resolvedConfig));
@@ -369,6 +375,22 @@ async function disposeDrivers(drivers: ReadonlySet<Driver>): Promise<void> {
       // dispose is best-effort cleanup
     }
   }
+}
+
+/** Report provenance for a backend target: the backend is the surface. */
+function backendProvenance(target: ResolvedTarget): TargetProvenance {
+  return {
+    browserVersion: 'none',
+    viewport: { width: 1, height: 1, scale: 1 },
+    driver: {
+      id: `backend:${target.backend?.name ?? 'none'}`,
+      version: String(target.backend?.spiVersion ?? 0),
+      spiVersion: 1,
+    },
+    capabilities: [],
+    artifactCapabilities: [],
+    stateCapability: false,
+  };
 }
 
 /** Validates one driver against the SPI version and configured artifacts; returns provenance. */

@@ -129,18 +129,32 @@ export interface WebTarget {
   browser?: 'chromium' | 'firefox' | 'webkit';
   viewport?: { width: number; height: number };
 }
+
+export interface BackendTarget {
+  name: string;
+  platform: Platform;
+  backend?: BackendHandle; // defineBackend(...) from 'e2e/backend'
+}
 ```
+
+A backend target has no driver and no browser: the backend's declared
+capabilities (observation, actions) grade what the target serves,
+and anything undeclared fails loud with `UNSUPPORTED_CAPABILITY`. `app.url`
+is optional when every target is a backend target. With an `executor` in the
+`agent` block, a custom brain composes with the model, budget, and context
+options instead of replacing them.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
-| `platform` | `'web'` | - | Required literal |
+| `platform` | `Platform` | - | `'web'` for driver targets; any platform for backend targets |
 | `driver` | `'playwright' \| DriverHandle` | `'playwright'` | `'playwright'` loads `@e2edev/playwright`, which must be installed; any other string is `INVALID_CONFIG`. A `DriverHandle` comes from [`defineDriver`](/writing-a-driver) |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | Per-target |
 | `viewport` | `{ width: number; height: number }` | driver default | Initial viewport |
 
-Mobile platforms are rejected: any target whose `platform` is not `'web'` fails
-config resolution with `PLATFORM_UNSUPPORTED` and exit code 2.
+Non-web platforms run as backend targets. A *driver* target whose `platform`
+is not `'web'` fails config resolution with `PLATFORM_UNSUPPORTED` and exit
+code 2.
 
 ## screen
 

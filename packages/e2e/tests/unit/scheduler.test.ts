@@ -37,6 +37,7 @@ function makeTarget(name: string, index: number): ResolvedTarget {
     browser: 'chromium',
     viewport: undefined,
     driver: 'playwright',
+    backend: undefined,
     driverTarget: { name, platform: 'web', browser: 'chromium' },
   };
 }

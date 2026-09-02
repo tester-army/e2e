@@ -7,7 +7,7 @@ export type JsonValue =
   | readonly JsonValue[];
 
 export type Platform = 'web' | 'ios' | 'android' | (string & {});
-export type Capability = 'web' | 'device' | (string & {});
+export type Capability = 'web' | (string & {});
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
 
@@ -15,6 +15,7 @@ declare const secretBrand: unique symbol;
 declare const credentialBrand: unique symbol;
 declare const testCaseBrand: unique symbol;
 declare const driverHandleBrand: unique symbol;
+declare const backendBrand: unique symbol;
 
 /** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
@@ -498,26 +499,6 @@ export interface Web {
   };
 }
 
-/** Reserved mobile surface. It is not part of the web-0.1 execution profile. */
-export interface Device {
-  readonly platform: 'ios' | 'android';
-  /** Sends the device to its home screen. */
-  home(): Promise<void>;
-  /** Hides the software keyboard. */
-  hideKeyboard(): Promise<void>;
-  /** Opens a device URL. */
-  openUrl(url: string): Promise<void>;
-  /** Sets simulator location. */
-  setLocation(options: { latitude: number; longitude: number }): Promise<void>;
-  /** Sets one simulator permission. */
-  setPermission(
-    permission: 'camera' | 'location' | 'notifications' | 'contacts',
-    state: 'allow' | 'deny' | 'unset',
-  ): Promise<void>;
-  /** Injects one simulator push notification. */
-  pushNotification(payload: Record<string, unknown>): Promise<void>;
-}
-
 export interface SetupSession {
   /** Saves state under a setup-declared name. */
   save(name: string): Promise<void>;
@@ -529,7 +510,6 @@ export interface TestFixtures {
   readonly screen: Screen;
   readonly platform: Platform;
   readonly web: Web;
-  readonly device: Device;
 }
 
 export interface SetupFixtures extends TestFixtures {
@@ -694,6 +674,17 @@ export interface DriverHandle extends DriverManifest {
   readonly [driverHandleBrand]: true;
 }
 
+/**
+ * A validated backend from `defineBackend` (`e2e/backend`, RFC0002): the
+ * typed, model-free body of one target. Opaque here; the full contract lives
+ * on the `e2e/backend` entry point.
+ */
+export interface BackendHandle {
+  readonly [backendBrand]: true;
+  readonly name: string;
+  readonly spiVersion: 1;
+}
+
 export interface CommandConfig {
   executable: string;
   args?: readonly string[];
@@ -720,22 +711,20 @@ export interface WebTarget {
   viewport?: { width: number; height: number };
 }
 
-export interface MobileTarget {
-  name: string;
-  platform: 'ios' | 'android';
-  driver: DriverHandle;
-  app: string;
-  device?: string;
-  os?: string;
-}
-
-export interface CustomTarget {
+/**
+ * A target whose surface is a backend (RFC0002): no driver, no browser. What
+ * the target can serve is graded from the backend's declared capabilities;
+ * with no `backend` the target is agent-tools-only and everything runs
+ * opaque. A test that requests an undeclared capability fails loud, never
+ * silently.
+ */
+export interface BackendTarget {
   name: string;
   platform: Platform;
-  driver: DriverHandle;
+  backend?: BackendHandle;
 }
 
-export type Target = WebTarget | MobileTarget | CustomTarget;
+export type Target = WebTarget | BackendTarget;
 
 export interface ModelConfig {
   provider: string;
@@ -892,6 +881,12 @@ export interface CacheConfig {
 
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
+  /**
+   * The step executor `agent.act()` dispatches to, alongside the options — a
+   * custom brain no longer forfeits `model`, budgets, or `context` (RFC0002).
+   * Omitted selects the built-in agent.
+   */
+  executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
   /** Model used by calls with `vision`; falls back to `model`. */
   visionModel?: string | ModelConfig | ModelInstance;

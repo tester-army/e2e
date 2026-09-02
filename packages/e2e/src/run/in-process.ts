@@ -109,7 +109,7 @@ class InProcessRunner implements UnitRunner {
       throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${this.targetName}"`);
     }
     const driver = drivers.get(this.targetName);
-    if (driver === undefined) {
+    if (driver === undefined && target.driver !== undefined) {
       throw new ConfigurationError(
         'UNKNOWN_TARGET',
         `no pre-flight driver instance for target "${this.targetName}"`,

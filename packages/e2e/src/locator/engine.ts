@@ -22,7 +22,7 @@ export function isNodeVisible(node: SemanticNode | null): boolean {
   return node !== null && node.states?.hidden !== true;
 }
 
-export interface EngineOptions {
+interface EngineOptions {
   readonly session: DriverSession;
   readonly signal: AbortSignal;
   readonly runId: string;

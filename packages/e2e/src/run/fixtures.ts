@@ -27,8 +27,7 @@ import type {
   Agent,
   App,
   Cookie,
-  Device,
-  Dialog,
+    Dialog,
   JsonValue,
   Locator,
   Screen,
@@ -163,12 +162,6 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
     screen,
     platform: environment.target.platform,
     web,
-    get device(): Device {
-      throw new ConfigurationError(
-        'UNSUPPORTED_CAPABILITY',
-        'the device fixture is reserved for future mobile profiles; web-0.1 does not provide it',
-      );
-    },
     session: {
       save: async (name: string) => {
         const saveSession = environment.saveSession;

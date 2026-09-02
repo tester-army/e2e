@@ -33,7 +33,8 @@ export type ResolveUnitPairs = (unit: RunUnitMessage) => Promise<ResolvedUnitPai
 export interface TargetWorkerDeps {
   readonly config: ResolvedConfig;
   readonly target: ResolvedTarget;
-  readonly driver: Driver;
+  /** Undefined for backend targets: the worker never owns a driver then. */
+  readonly driver: Driver | undefined;
   readonly sessionStore: SessionStore;
   readonly runId: string;
   readonly artifactsRoot: string;
@@ -161,9 +162,16 @@ export class TargetWorker {
   }
 
   private async shutdown(): Promise<void> {
+    // The backend belongs to this worker's executor on both transports; the
+    // driver is owned by the worker only when it created it (child process).
+    try {
+      await this.executor?.dispose();
+    } catch {
+      // dispose is best-effort cleanup
+    }
     if (this.deps?.disposeDriver === true) {
       try {
-        await this.deps.driver.dispose?.();
+        await this.deps.driver?.dispose?.();
       } catch {
         // dispose is best-effort cleanup
       }

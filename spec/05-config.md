@@ -131,10 +131,19 @@ forced to `read-only`.
 
 ## Targets and capabilities
 
-v0 accepts web targets only. A target that requests a profile the runner does
-not implement is a configuration error; it is never silently ignored. Future
-mobile target declarations may compile against the reserved SDK surface but do
-not satisfy `web-0.1`.
+v0 accepts web driver targets and backend targets. A driver target that
+requests a non-web platform is a configuration error; it is never silently
+ignored.
+
+A backend target (RFC0002) declares `{ name, platform, backend? }` with no
+driver: no browser is resolved, launched, or downloaded, and `app.url` is
+optional when every target is a backend target. The `backend` value is a
+`defineBackend(...)` handle from `e2e/backend`; its declared capabilities
+(observation, actions) grade what the target serves. A test that
+uses a fixture the backend does not support fails loud with
+`UNSUPPORTED_CAPABILITY` — at selection when statically known, at first use
+otherwise. A backend target with no backend at all serves only the agent
+fixture, with every action opaque to the harness.
 
 Before collection, the runner reads each driver's static platform, fixture,
 artifact, and state capabilities. Configured artifacts unsupported by a driver

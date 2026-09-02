@@ -67,7 +67,7 @@ export interface Collection {
 }
 
 /** Derives the serial unit source ID per 11-lifecycle.md. */
-export function serialSourceId(file: string, group: GroupNode): string {
+function serialSourceId(file: string, group: GroupNode): string {
   return `serial::${testId(file, groupTitles(group))}`;
 }
 
@@ -93,7 +93,7 @@ function toCollectedTests(file: string, registration: ModuleRegistration): Colle
 }
 
 /** Normalizes an absolute or relative file path to the project-root-relative wire form. */
-export function normalizeRelativePath(projectRoot: string, filePath: string): string {
+function normalizeRelativePath(projectRoot: string, filePath: string): string {
   const relative = path.isAbsolute(filePath) ? path.relative(projectRoot, filePath) : filePath;
   const normalized = relative.split(path.sep).join('/');
   if (normalized.startsWith('..')) {

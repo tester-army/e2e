@@ -109,9 +109,15 @@ describe('agent as the executor itself', () => {
     expect(renamed.configDigest).not.toBe(first.configDigest);
   });
 
-  it('rejects the removed executor key with the migration in the message', () => {
-    expect(() => resolve({ agent: { executor: brain() } } as never)).toThrow(
-      /agent\.executor was removed: pass the agent itself/,
+  it('accepts an executor alongside the agent options (RFC0002)', () => {
+    const config = resolve({ agent: { executor: brain(), maxModelCalls: 40 } } as never);
+    expect(config.agent.executor?.name).toBe('custom-brain');
+    expect(config.agent.maxModelCalls).toBe(40);
+  });
+
+  it('rejects an executor value that is not a StepExecutor', () => {
+    expect(() => resolve({ agent: { executor: { name: 'x' } } } as never)).toThrow(
+      /agent\.executor must be a StepExecutor/,
     );
   });
 

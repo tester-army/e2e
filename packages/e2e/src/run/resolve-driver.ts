@@ -15,7 +15,9 @@ import { ConfigurationError } from '../internal/errors.ts';
  * is reported as a configuration error rather than a launch failure: it is
  * fixed by installing a dependency, so it must not enter the retry path.
  */
-export async function resolveDriver(target: ResolvedTarget): Promise<Driver> {
+export async function resolveDriver(target: ResolvedTarget): Promise<Driver | undefined> {
+  // Backend targets have no driver: nothing to resolve, prepare, or launch.
+  if (target.driver === undefined) return undefined;
   if (typeof target.driver !== 'string') return target.driver;
   const wellKnown = WELL_KNOWN_DRIVERS[target.driver];
   if (wellKnown === undefined) {

@@ -16,13 +16,16 @@ import {
 import { isStepExecutor } from '../agent/executor.ts';
 import type {
   AgentConfig,
+  BackendTarget,
   CacheMode,
   CommandConfig,
   E2EConfig,
+  Platform,
   Target,
   TraceCacheStore,
   WebTarget,
 } from '../types.ts';
+import { isBackendHandle, type BackendHandle } from '../backend/index.ts';
 import {
   isModelInstance,
   resolveAgentConfig,
@@ -36,11 +39,17 @@ export type { ResolvedAgentConfig, ResolvedLimits, ResolvedModel } from './agent
 export interface ResolvedTarget {
   readonly name: string;
   readonly index: number;
-  readonly platform: 'web';
+  readonly platform: Platform;
   readonly browser: 'chromium' | 'firefox' | 'webkit';
   readonly viewport: { readonly width: number; readonly height: number } | undefined;
-  /** Well-known driver id resolved on demand, or an imported branded handle. */
-  readonly driver: WellKnownDriverId | Driver;
+  /**
+   * Well-known driver id resolved on demand, or an imported branded handle.
+   * Undefined for backend targets (RFC0002): no driver is ever resolved or
+   * launched for them.
+   */
+  readonly driver: WellKnownDriverId | Driver | undefined;
+  /** Validated backend of a backend target; undefined on driver targets. */
+  readonly backend: BackendHandle | undefined;
   /** Wire-shaped target passed to the driver at launch. */
   readonly driverTarget: Target;
 }
@@ -182,8 +191,8 @@ export function resolveConfig(
     );
   }
 
-  const app = resolveApp(raw, env);
   const targets = resolveTargets(raw);
+  const app = resolveApp(raw, env, targets.every((target) => target.driver === undefined));
   const tests = normalizeTests(raw.tests);
 
   const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
@@ -352,7 +361,11 @@ function boundedInt(
   return value;
 }
 
-function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app'] {
+function resolveApp(
+  raw: E2EConfig,
+  env: NodeJS.ProcessEnv,
+  allTargetsBackend: boolean,
+): ResolvedConfig['app'] {
   if (raw.app !== undefined) {
     for (const key of Object.keys(raw.app)) {
       if (!APP_KEYS.has(key)) {
@@ -362,6 +375,19 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
   }
   const rawUrl = raw.app?.url ?? env['APP_URL'];
   if (rawUrl === undefined || rawUrl === '') {
+    // Backend targets have no web app to point at: a synthetic loopback base
+    // keeps navigation resolution and identity digests defined without
+    // forcing a placeholder URL into every device config (RFC0002).
+    if (allTargetsBackend && raw.app?.command === undefined) {
+      return {
+        base: normalizeBaseUrl('http://127.0.0.1:1'),
+        readyUrl: 'http://127.0.0.1:1/',
+        allowedOrigins: [],
+        environment: 'test',
+        allowProduction: false,
+        command: undefined,
+      };
+    }
     throw new ConfigurationError(
       'APP_URL_REQUIRED',
       'an app URL is required: set app.url in e2e.config.ts or the APP_URL environment variable',
@@ -441,6 +467,7 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
         browser,
         viewport: undefined,
         driver: DEFAULT_DRIVER_ID,
+        backend: undefined,
         driverTarget: { name: 'web', platform: 'web', browser },
       },
     ];
@@ -460,10 +487,38 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${target.name}"`);
     }
     seen.add(target.name);
+    // A target without a driver key, carrying a backend key or a non-web
+    // platform, is a backend target (RFC0002): no driver resolution, no
+    // browser, capabilities graded from the backend's declaration.
+    if (!('driver' in target) && ('backend' in target || target.platform !== 'web')) {
+      const backendTarget = target as BackendTarget;
+      if (typeof backendTarget.platform !== 'string' || backendTarget.platform.trim() === '') {
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `target "${target.name}" requires a non-empty platform`,
+        );
+      }
+      if (backendTarget.backend !== undefined && !isBackendHandle(backendTarget.backend)) {
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `target "${target.name}" backend must be a defineBackend(...) handle`,
+        );
+      }
+      return {
+        name: target.name,
+        index,
+        platform: backendTarget.platform,
+        browser: 'chromium' as const,
+        viewport: undefined,
+        driver: undefined,
+        backend: backendTarget.backend,
+        driverTarget: { name: target.name, platform: backendTarget.platform } as Target,
+      };
+    }
     if (target.platform !== 'web') {
       throw new ConfigurationError(
         'PLATFORM_UNSUPPORTED',
-        `target "${target.name}" requests platform "${target.platform}"; this v0 runner executes web targets only`,
+        `target "${target.name}" requests platform "${target.platform}"; driver targets are web-only — use a backend target for other platforms`,
       );
     }
     const webTarget = target as WebTarget;
@@ -491,6 +546,7 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       browser,
       viewport: webTarget.viewport,
       driver,
+      backend: undefined,
       driverTarget: {
         name: target.name,
         platform: 'web' as const,
@@ -608,6 +664,19 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
             platforms: driver.platforms,
             spiVersion: driver.spiVersion,
             capabilities: driver.capabilities,
+          },
+        };
+      }
+      // A backend handle holds live functions; its digest identity is the
+      // declaration — name, contract version, and capability set.
+      if ('backend' in target && isBackendHandle(target.backend)) {
+        const { backend, ...rest } = target;
+        return {
+          ...rest,
+          backend: {
+            name: backend.name,
+            spiVersion: backend.spiVersion,
+            capabilities: [...backend.capabilities].toSorted(),
           },
         };
       }
