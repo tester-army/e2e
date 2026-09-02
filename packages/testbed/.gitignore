@@ -10,3 +10,4 @@
 bench/.next/
 # AI SDK devtools trace database written by testbed telemetry.
 .devtools/
+tmp-host-demo/
