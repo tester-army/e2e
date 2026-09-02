@@ -149,7 +149,25 @@ describe('resolveConfig', () => {
         app: { url: 'https://app.test' },
         credentials: { admin: { username: 'admin', password: 42 as never } },
       }),
-    ).toThrow(/password must be a string or a provider function/);
+    ).toThrow(/password must be a non-empty string or a provider function/);
+  });
+
+  it('rejects an empty credential password at config time, including an empty env override', () => {
+    expect(() =>
+      resolve({
+        app: { url: 'https://app.test' },
+        credentials: { admin: { username: 'admin', password: '' } },
+      }),
+    ).toThrow(/password must be a non-empty string/);
+    expect(() =>
+      resolve(
+        {
+          app: { url: 'https://app.test' },
+          credentials: { admin: { username: 'admin', password: 'configured' } },
+        },
+        { E2E_USER_ADMIN_PASSWORD: '' },
+      ),
+    ).toThrow(/password must be a non-empty string/);
   });
 
   it('accepts a stable app.identity and rejects an empty one', () => {

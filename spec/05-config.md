@@ -307,7 +307,9 @@ Environment resolution takes precedence as described in 04-resources.md.
 `allowedOrigins` narrows a credential relative to the app-level policy and
 cannot broaden it.
 
-A `password` MAY be a provider function instead of a string: it is called on
+A static `password` MUST be a non-empty string; an empty one, including an
+empty environment override, is a configuration error. A `password` MAY be a
+provider function instead of a string: it is called on
 every authorized fill and resolves the plaintext at fill time — a vault
 lookup, a freshly computed one-time code. The resolved value goes straight to
 the trusted driver, joins runner-side redaction the moment it exists, and is

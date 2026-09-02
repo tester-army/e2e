@@ -553,10 +553,10 @@ function resolveCredentials(
     // An env override always wins, including over a provider: the operator
     // rotating a credential must not need to know how it was configured.
     const password = env[`${envPrefix}_PASSWORD`] ?? credential.password;
-    if (typeof password !== 'string' && typeof password !== 'function') {
+    if ((typeof password !== 'string' && typeof password !== 'function') || password === '') {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `credential "${name}" password must be a string or a provider function`,
+        `credential "${name}" password must be a non-empty string or a provider function`,
       );
     }
     resolved.set(name, {
