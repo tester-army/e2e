@@ -745,7 +745,10 @@ class ActDispatch {
         settle
           ? settleObservation(() => this.captureObservation(), observationShape, {
               remainingMs: () => this.deadline.remaining(),
-              signal: this.runtime.signal,
+              // The step's own hard stop must interrupt a settle sleep too —
+              // the attempt signal alone would let settling outlive the step
+              // by one poll interval.
+              signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
             })
           : this.captureObservation(),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
