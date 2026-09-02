@@ -200,7 +200,7 @@ export interface SettleClock {
  */
 export async function settleObservation<T>(
   capture: () => Promise<T>,
-  shapeOf: (value: T) => string | undefined,
+  shapeOf: (value: T) => string,
   clock: SettleClock,
 ): Promise<T> {
   let value = await capture();

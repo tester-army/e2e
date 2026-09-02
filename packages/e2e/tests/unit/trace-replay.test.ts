@@ -40,8 +40,10 @@ function makeHost(options: {
   };
   return {
     calls,
-    observeNodes: async () => new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n])),
-    latestShape: () => 'stable',
+    observe: async () => ({
+      nodes: new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n])),
+      shape: 'stable',
+    }),
     actions,
     signal: new AbortController().signal,
     remainingMs: () => 60_000,

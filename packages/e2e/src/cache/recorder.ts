@@ -65,7 +65,7 @@ export class TraceRecorder {
       action.name === 'navigate' || action.node === undefined
         ? undefined
         : describeTarget(action.node, this.redact, this.testIdAttribute);
-    this.push(this.toRecorded(action, target));
+    this.push(this.toRecorded(action, target, summarizeRecordable(action, target, this.redact)));
   }
 
   /**
@@ -106,9 +106,17 @@ export class TraceRecorder {
     };
   }
 
+  /**
+   * Builds the stored variant for one action. Prose comes in from the one
+   * grammar owner (`summarizeRecordable`) — already redacted and bounded —
+   * so the trace summary and the live event `detail` can never diverge.
+   * Stored inputs still go through `verbatim`, whose poisoning marks the
+   * trace non-replayable when a value cannot be kept whole.
+   */
   private toRecorded(
     action: RecordableAction,
     target: TraceTargetDescriptor | undefined,
+    summary: string,
   ): RecordedAction {
     // A targeted commit whose node yields no durable descriptor cannot be
     // re-found; the trace stays honest by poisoning instead of guessing.
@@ -117,65 +125,26 @@ export class TraceRecorder {
       this.truncated = true;
       return { role: 'unknown' };
     };
-    const where = describeForSummary(target);
-    // Safe values are derived first and used for both the stored input and
-    // the summary, so a value the redactor rewrites can never leak through
-    // the prose either.
     switch (action.name) {
       case 'tap':
-        return { name: 'tap', summary: bound(`tap ${where}`, MAX_TRACE_SUMMARY_CHARS), target: requireTarget() };
-      case 'type': {
-        const value = this.verbatim(action.value);
-        return {
-          name: 'type',
-          summary: bound(`type ${quote(value)} into ${where}`, MAX_TRACE_SUMMARY_CHARS),
-          target: requireTarget(),
-          value,
-        };
-      }
+        return { name: 'tap', summary, target: requireTarget() };
+      case 'type':
+        return { name: 'type', summary, target: requireTarget(), value: this.verbatim(action.value) };
       case 'typeSecret':
-        return {
-          name: 'typeSecret',
-          summary: bound(`fill secret ${quote(action.secret)} into ${where}`, MAX_TRACE_SUMMARY_CHARS),
-          target: requireTarget(),
-          secret: action.secret,
-        };
-      case 'press': {
-        const key = this.verbatim(action.key);
-        return {
-          name: 'press',
-          summary: bound(`press ${quote(key)} on ${where}`, MAX_TRACE_SUMMARY_CHARS),
-          target: requireTarget(),
-          key,
-        };
-      }
-      case 'select': {
-        const value = this.verbatim(action.value);
-        return {
-          name: 'select',
-          summary: bound(`select ${quote(value)} in ${where}`, MAX_TRACE_SUMMARY_CHARS),
-          target: requireTarget(),
-          value,
-        };
-      }
+        return { name: 'typeSecret', summary, target: requireTarget(), secret: action.secret };
+      case 'press':
+        return { name: 'press', summary, target: requireTarget(), key: this.verbatim(action.key) };
+      case 'select':
+        return { name: 'select', summary, target: requireTarget(), value: this.verbatim(action.value) };
       case 'scroll':
         return {
           name: 'scroll',
-          summary: bound(
-            target === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`,
-            MAX_TRACE_SUMMARY_CHARS,
-          ),
+          summary,
           direction: action.direction,
           ...(target === undefined ? {} : { target }),
         };
-      case 'navigate': {
-        const url = this.verbatim(action.url);
-        return {
-          name: 'navigate',
-          summary: bound(`navigate to ${quote(url)}`, MAX_TRACE_SUMMARY_CHARS),
-          url,
-        };
-      }
+      case 'navigate':
+        return { name: 'navigate', summary, url: this.verbatim(action.url) };
     }
   }
 
@@ -250,9 +219,20 @@ export function summarizeAction(
   testIdAttribute: string,
 ): string {
   const node = 'node' in action ? action.node : undefined;
-  const where = describeForSummary(
-    node === undefined ? undefined : describeTarget(node, redact, testIdAttribute),
-  );
+  const target = node === undefined ? undefined : describeTarget(node, redact, testIdAttribute);
+  return summarizeRecordable(action, target, redact);
+}
+
+/**
+ * The one owner of the action prose grammar: both the recorded trace summary
+ * and the live event `detail` come from here, so the two can never drift.
+ */
+function summarizeRecordable(
+  action: RecordableAction,
+  target: TraceTargetDescriptor | undefined,
+  redact: (text: string) => string,
+): string {
+  const where = describeForSummary(target);
   const safe = (value: string) => quote(redact(sanitizeText(value)));
   const prose = (() => {
     switch (action.name) {
@@ -267,7 +247,7 @@ export function summarizeAction(
       case 'select':
         return `select ${safe(action.value)} in ${where}`;
       case 'scroll':
-        return node === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
+        return target === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
       case 'navigate':
         return `navigate to ${safe(action.url)}`;
     }

@@ -40,3 +40,9 @@ export type {
   StepRecord,
 } from './steps.ts';
 export type { Report1Document } from '../report/build.ts';
+// The shapes the records above are built from, so a host can name them
+// directly (an error handler's parameter, a test-identity map key) without
+// indexed-access gymnastics.
+export type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
+export type { TestIdentity } from '../collect/collect.ts';
+export type { SkipInfo } from '../collect/select.ts';
