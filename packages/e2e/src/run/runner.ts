@@ -21,6 +21,8 @@ import {
   serializeError,
   type ErrorPhase,
 } from '../internal/errors.ts';
+import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, describeTarget, type Report1Document, type TargetProvenance } from '../report/build.ts';
@@ -54,6 +56,8 @@ export interface RunOptions {
   noCache?: boolean | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
+  /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
+  aiTrace?: boolean | undefined;
   /**
    * A config value instead of a discovered file — the embedding-host entry
    * point (see the embedding guide). May hold live values (executors, driver
@@ -73,6 +77,8 @@ export interface RunOutcome {
   status: 'passed' | 'failed' | 'error' | 'interrupted';
   report: Report1Document;
   reportPath: string | undefined;
+  /** Where the AI trace was written; undefined unless `aiTrace` was requested. */
+  aiTracePath: string | undefined;
   results: readonly ResultRecord[];
 }
 
@@ -83,6 +89,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const runId = uuidv7();
   const startedAt = timestamp();
   const debug = new DebugTrace(options.debug === true);
+  const aiTrace = options.aiTrace === true ? new AiTraceCollector() : undefined;
+  /** The in-process recorder; child-process workers own their own. */
+  let aiTraceRecorder: AiTraceRecorder | undefined;
   const interruptController = new AbortController();
   const runErrors: RunError[] = [];
   const results: ResultRecord[] = [];
@@ -183,13 +192,51 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
   };
 
+  /**
+   * Writes the AI trace next to the report, on the same terms: the path is
+   * returned only once the file exists, and a lost trace is a recorded run
+   * error. The in-process recorder is drained here; child-process workers
+   * already shipped theirs over the worker channel.
+   */
+  const writeAiTrace = async (config: ResolvedConfig): Promise<string | undefined> => {
+    if (aiTrace === undefined) return undefined;
+    if (aiTraceRecorder !== undefined) {
+      aiTrace.merge(aiTraceRecorder.drain({ all: true }));
+      aiTraceRecorder.dispose();
+      aiTraceRecorder = undefined;
+    }
+    const target = path.join(path.dirname(resolveArtifactsRoot(config, options.artifactsDir)), 'ai-trace.json');
+    try {
+      await writeJsonReport(target, aiTrace.document());
+      return target;
+    } catch (cause) {
+      recordFailure(
+        new E2EError(
+          'infrastructure',
+          'REPORT_WRITE_FAILED',
+          `the AI trace could not be written: ${errorMessage(cause)}`,
+          { cause },
+        ),
+        'report',
+      );
+      return undefined;
+    }
+  };
+
   const finish = async (): Promise<RunOutcome> => {
+    const aiTracePath = loaded.config === undefined ? undefined : await writeAiTrace(loaded.config);
     const reportPath = loaded.config === undefined ? undefined : await writeCanonicalReport(loaded.config);
     const exitCode = currentExitCode();
     const status = statusOf(exitCode);
     const report = buildRunReport(exitCode);
     setCredentialRegistry(undefined);
-    emit({ type: 'run-finished', status, exitCode, ...(reportPath === undefined ? {} : { reportPath }) });
+    emit({
+      type: 'run-finished',
+      status,
+      exitCode,
+      ...(reportPath === undefined ? {} : { reportPath }),
+      ...(aiTracePath === undefined ? {} : { aiTracePath }),
+    });
     if (jsonReport) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
@@ -197,7 +244,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       process.stderr.write(debug.summary());
       process.stderr.write(agentStepTable(results, serialGroups));
     }
-    return { exitCode, status, report, reportPath, results };
+    return { exitCode, status, report, reportPath, aiTracePath, results };
   };
 
   if (loaded.config === undefined) {
@@ -268,6 +315,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // runs across processes. A programmatic `rawConfig` cannot cross a process
     // boundary (it may hold live backend handles), so it runs in-process
     // against one worker. Either way the scheduler is the only engine.
+    if (aiTrace !== undefined && config.configPath === undefined) {
+      // In-process execution shares this process with the runner, so the
+      // recorder lives here and is drained straight into the collector.
+      aiTraceRecorder = new AiTraceRecorder();
+      await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
+    }
     const transport =
       config.configPath === undefined
         ? {
@@ -295,6 +348,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
               sessionsRoot,
               sessionKeyBase64: store.exportKeyForWorker(),
               debug: debug.enabled,
+              aiTrace: aiTrace !== undefined,
               env,
             }),
           };
@@ -323,6 +377,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           onProgress: (testId, targetName, progress) =>
             emit({ type: 'step', testId, target: targetName, progress }),
           onDebug: (snapshot) => debug.merge(snapshot),
+          onAiTrace: (snapshot) => aiTrace?.merge(snapshot),
         },
       }),
     );

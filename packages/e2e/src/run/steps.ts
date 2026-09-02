@@ -3,6 +3,7 @@
 import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
+import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 
@@ -200,7 +201,8 @@ export class StepRecorder {
     this.activeStep = record;
     this.onProgress?.({ phase: 'start', kind, api, label });
     try {
-      const result = await body();
+      // Model calls made inside the body are attributed to this step.
+      const result = await withAiTraceStep(api, label, body);
       record.durationMs = Date.now() - startedMs;
       return result;
     } catch (cause) {

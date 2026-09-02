@@ -59,6 +59,7 @@ function createProgram(): Command {
     .option('--no-cache', 'run without the trace cache, overriding the config')
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')
     .option('--debug', 'print aggregated phase timings to stderr after the run')
+    .option('--ai-trace', 'record every model call to .e2e/ai-trace.json for trace viewers')
     .action(
       async (
         files: string[],
@@ -76,6 +77,7 @@ function createProgram(): Command {
           cache?: boolean;
           passWithNoTests?: boolean;
           debug?: boolean;
+          aiTrace?: boolean;
         },
       ) => {
         const { tagMode, reporter } = options;
@@ -104,6 +106,7 @@ function createProgram(): Command {
           noCache: options.cache === false,
           passWithNoTests: options.passWithNoTests,
           debug: options.debug,
+          aiTrace: options.aiTrace,
         });
         process.exitCode = outcome.exitCode;
       },

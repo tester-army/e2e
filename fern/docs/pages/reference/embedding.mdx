@@ -60,7 +60,7 @@ type RunEventFact =
   | { type: 'test-finished'; result: RunEventResult }
   | { type: 'serial-group'; group: SerialGroupRecord }
   | { type: 'run-error'; error: SerializedError }
-  | { type: 'run-finished'; status; exitCode; reportPath? };
+  | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
 `step` events stream each public step's `start` and `end` phases plus its
@@ -76,6 +76,8 @@ reach it. Either way the run is never affected. `run-finished` carries
 `reportPath` only when the canonical report was actually written: it is
 absent when the write failed (an infrastructure run error that also joins the
 exit code) and on a configuration failure, where no report exists at all.
+`aiTracePath` follows the same rule for the model-call trace a run requested
+with `aiTrace: true` (the CLI's `--ai-trace`); see [CLI](/reference/cli#output).
 Redaction happens before events are built; secret values never appear in the
 stream.
 

@@ -66,6 +66,8 @@ export type RunEventFact =
       readonly status: 'passed' | 'failed' | 'error' | 'interrupted';
       readonly exitCode: RunExitCode;
       readonly reportPath?: string;
+      /** Where `--ai-trace` wrote the run's model calls, once the file exists. */
+      readonly aiTracePath?: string;
     };
 
 /** Envelope stamped by the emitter: monotonic order and wall-clock time. */

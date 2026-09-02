@@ -44,6 +44,7 @@ const GITIGNORE_ENTRIES = [
   '.e2e/cache/',
   '.e2e/sessions/',
   '.e2e/report.json',
+  '.e2e/ai-trace.json',
 ];
 
 interface PlannedFile {

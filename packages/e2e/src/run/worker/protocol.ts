@@ -10,6 +10,7 @@
 import type { TestIdentity } from '../../collect/collect.ts';
 import type { ResolvedTestOptions } from '../../collect/select.ts';
 import type { CliOverrides, ResolvedTarget } from '../../config/resolve.ts';
+import type { AiTraceSnapshot } from '../../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../records.ts';
@@ -54,6 +55,8 @@ export interface WorkerBootstrap {
   readonly sessionKeyBase64: string;
   /** Whether the worker should collect `--debug` phase timings. */
   readonly debug: boolean;
+  /** Whether the worker should record model calls for `--ai-trace`. */
+  readonly aiTrace: boolean;
 }
 
 export interface RunUnitMessage {
@@ -115,6 +118,8 @@ export interface UnitDoneMessage {
   readonly runErrors: readonly RunError[];
   /** Phase timings drained from this worker since the previous unit. */
   readonly debug?: DebugSnapshot;
+  /** Model calls drained from this worker since the previous unit. */
+  readonly aiTrace?: AiTraceSnapshot;
 }
 
 /**
@@ -126,6 +131,8 @@ export interface ShutdownDoneMessage {
   readonly runErrors: readonly RunError[];
   /** Phase timings drained from this worker since the last unit. */
   readonly debug?: DebugSnapshot;
+  /** Model calls drained from this worker since the last unit, open ones included. */
+  readonly aiTrace?: AiTraceSnapshot;
 }
 
 export interface FatalMessage {

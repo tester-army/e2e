@@ -12,6 +12,7 @@
 import type { Collection } from '../collect/collect.ts';
 import type { Selection, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
+import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';
 import { InfrastructureError, serializeError } from '../internal/errors.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
@@ -39,6 +40,8 @@ export interface SchedulerEvents {
   onProgress?(testId: string, targetName: string, progress: StepProgress): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
+  /** Model calls a child-process worker drained after one unit. */
+  onAiTrace?(snapshot: AiTraceSnapshot): void;
 }
 
 export interface RunUnitsOptions {
@@ -439,6 +442,7 @@ class Scheduler {
       case 'unit-done': {
         for (const runError of message.runErrors) this.options.events.onRunError(runError);
         if (message.debug !== undefined) this.options.events.onDebug?.(message.debug);
+        if (message.aiTrace !== undefined) this.options.events.onAiTrace?.(message.aiTrace);
         const unit = worker.unit;
         worker.unit = undefined;
         worker.inFlightTestId = undefined;
@@ -463,6 +467,7 @@ class Scheduler {
       case 'shutdown-done': {
         for (const runError of message.runErrors) this.options.events.onRunError(runError);
         if (message.debug !== undefined) this.options.events.onDebug?.(message.debug);
+        if (message.aiTrace !== undefined) this.options.events.onAiTrace?.(message.aiTrace);
         break;
       }
       case 'fatal': {

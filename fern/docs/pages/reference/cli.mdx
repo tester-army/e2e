@@ -57,6 +57,7 @@ selection, they do not bypass it. A path outside the project root is
 | `--no-cache` | boolean | `false` | Runs with the trace cache off, overriding `config.cache` — the quickest way to check whether a failure is cache-related |
 | `--pass-with-no-tests` | boolean | `false` | Allows zero runnable ordinary test-target pairs instead of failing with `NO_TESTS` |
 | `--debug` | boolean | `false` | Prints aggregated phase timings and an agent step table to stderr after the run |
+| `--ai-trace` | boolean | `false` | Records every model call of the run to `.e2e/ai-trace.json`, an AI SDK devtools database a trace viewer such as [unbox-ai](https://github.com/tester-army/unbox-ai) opens directly |
 
 <Callout intent="warning">
 `--retries` and `--workers` replace the resolved value directly and bypass the
@@ -80,6 +81,15 @@ npx --no-install e2e run --reporter json --workers 4 --retries 2
 
 Every run atomically writes `.e2e/report.json` under the artifact parent
 regardless of the selected reporters. A reporter can never change run status.
+
+With `--ai-trace`, the run also writes `.e2e/ai-trace.json` next to the
+report: one run per agent step, named after the test and the step, with one
+entry per model round trip (an `act` turn, a `waitFor` poll, a repair round)
+carrying the exact prompt, tool definitions, response,
+usage, and provider metadata of every round trip. It is the model's view of
+the run and nothing more: observations are already redacted before they reach
+the model, and image evidence is recorded by size, never by pixels. Open it
+with `npx unbox-ai .e2e/ai-trace.json`; see [Your own agent](/agents#inspect-a-run).
 
 ### Signals
 

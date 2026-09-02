@@ -104,6 +104,7 @@ describe('e2e run argument parsing', () => {
       'run',
       '--headed',
       '--debug',
+      '--ai-trace',
       '--pass-with-no-tests',
       '--config',
       'custom.config.ts',
@@ -113,6 +114,7 @@ describe('e2e run argument parsing', () => {
     const options = lastRunOptions();
     expect(options.headed).toBe(true);
     expect(options.debug).toBe(true);
+    expect(options.aiTrace).toBe(true);
     expect(options.passWithNoTests).toBe(true);
     expect(options.configPath).toBe('custom.config.ts');
     expect(options.artifactsDir).toBe('out/artifacts');

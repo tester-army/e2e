@@ -13,6 +13,7 @@ import {
   translateBackendError,
   type SerializedError,
 } from '../internal/errors.ts';
+import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import { Deadline, withTimeout } from '../internal/time.ts';
@@ -479,7 +480,29 @@ export class TargetExecutor implements SerialHost {
   }
 
   /** Runs one attempt to completion (SerialHost). */
-  async runAttempt(
+  /**
+   * Runs one attempt under its AI trace scope, so every model call the
+   * attempt makes is attributed to this test, target, and attempt.
+   */
+  runAttempt(
+    pair: TestTargetPair,
+    registered: RegisteredTest,
+    realm: Realm,
+    attemptIndex: number,
+    context: AttemptContext,
+  ): Promise<AttemptRecord> {
+    return withAiTraceScope(
+      {
+        test: pair.test.titlePath.join(' › '),
+        testId: pair.test.id,
+        target: this.target.name,
+        attempt: attemptIndex,
+      },
+      () => this.executeAttempt(pair, registered, realm, attemptIndex, context),
+    );
+  }
+
+  private async executeAttempt(
     pair: TestTargetPair,
     registered: RegisteredTest,
     realm: Realm,

@@ -11,6 +11,8 @@ import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
 import { resolveConfig } from '../../config/resolve.ts';
 import { setCredentialRegistry } from '../../credentials.ts';
+import { loadAiSdk } from '../../agent/ai-sdk.ts';
+import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
 import { SessionStore } from '../sessions.ts';
@@ -52,7 +54,15 @@ function fatal(cause: unknown): void {
  * Loads the config in this process and verifies it matches the runner's, then
  * assembles everything the worker core needs.
  */
-async function bootstrap(message: WorkerBootstrap, debug: DebugTrace): Promise<TargetWorkerDeps> {
+async function bootstrap(
+  message: WorkerBootstrap,
+  debug: DebugTrace,
+  aiTrace: AiTraceRecorder | undefined,
+): Promise<TargetWorkerDeps> {
+  // Registered before the config loads: a config module may construct an
+  // executor that imports the AI SDK itself, and the integration list is
+  // process-wide, so calls from either module instance land in one trace.
+  if (aiTrace !== undefined) await registerAiTraceRecorder(aiTrace, loadAiSdk);
   const raw = await loadConfigModule(message.configPath);
   const config = resolveConfig(raw, {
     projectRoot: message.projectRoot,
@@ -125,16 +135,23 @@ function main(): void {
       // This worker owns its trace outright, so each drain point (unit-done,
       // shutdown-done) ships the entries accumulated since the previous one.
       const debug = new DebugTrace(message.bootstrap.debug);
+      const aiTrace = message.bootstrap.aiTrace ? new AiTraceRecorder() : undefined;
       const emit = (outbound: WorkerToMain): void => {
-        if ((outbound.type === 'unit-done' || outbound.type === 'shutdown-done') && debug.enabled) {
-          send({ ...outbound, debug: debug.drain() });
+        if (outbound.type !== 'unit-done' && outbound.type !== 'shutdown-done') {
+          send(outbound);
           return;
         }
-        send(outbound);
+        send({
+          ...outbound,
+          ...(debug.enabled ? { debug: debug.drain() } : {}),
+          ...(aiTrace === undefined
+            ? {}
+            : { aiTrace: aiTrace.drain({ all: outbound.type === 'shutdown-done' }) }),
+        });
       };
       worker = new TargetWorker(
         { emit, fatal, finished: () => exitAfterFlush(0) },
-        () => bootstrap(message.bootstrap, debug),
+        () => bootstrap(message.bootstrap, debug, aiTrace),
       );
       worker.start();
       return;

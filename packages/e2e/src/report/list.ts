@@ -407,6 +407,11 @@ export class ListReporter {
       this.output.write(this.pc.dim(`${ai} \u00b7 ${this.runAi.calls} model calls`));
     }
     this.output.write(this.pc.dim(`report: ${event.reportPath ?? '(not written)'}`));
+    if (event.aiTracePath !== undefined) {
+      this.output.write(
+        this.pc.dim(`ai trace: ${event.aiTracePath} · open with: npx unbox-ai ${event.aiTracePath}`),
+      );
+    }
   }
 }
 

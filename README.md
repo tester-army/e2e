@@ -43,6 +43,8 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
   whenever the app no longer matches. On by default; opt out with
   `cache: 'off'` or `--no-cache`. Judgments are never cached.
 - Credentials never reach the model or the report.
+- `--ai-trace` records every model call to `.e2e/ai-trace.json`; open it with
+  [unbox-ai](https://github.com/tester-army/unbox-ai) to see where the tokens went.
 - Runs locally. No account, no hosted runner.
 
 ## Documentation

@@ -10,4 +10,5 @@ dist/
 .e2e/sessions/
 .e2e/report.json
 .e2e/report.html
+.e2e/ai-trace.json
 packages/e2e/tests/tmp-projects/

@@ -188,6 +188,43 @@ mechanical, scope `act` to the step that breaks, and give slow providers
 with `UNSUPPORTED_CAPABILITY` in this release.
 </Callout>
 
+## Inspect a run
+
+`--debug` tells you how long each step took and what it cost. To see *why* —
+which tokens went to the system prompt, the tool definitions, or a screen
+snapshot that was resent five times — record the run and open it in a trace
+viewer:
+
+```bash
+npx e2e run --ai-trace
+npx unbox-ai .e2e/ai-trace.json
+```
+
+`--ai-trace` writes `.e2e/ai-trace.json` next to the report, in the AI SDK
+devtools database shape that [unbox-ai](https://github.com/tester-army/unbox-ai)
+reads directly. Every agent step is one run, named after the test and the
+step, so `unbox-ai runs .e2e/ai-trace.json` lists your agent steps and
+`unbox-ai compare --run 0 --run 1` diffs two of them. Inside a run, every model
+round trip is one step: an `agent.act` turn, a `waitFor` poll, a judgment's
+repair round. A generation made inside a `defineTool` tool nests under the
+step that called it, and a step the trace cache replayed zero-turn makes no
+model call and so leaves no run. Each step carries the prompt as sent (system prompt first), the tool
+definitions with their JSON schemas, the response, usage, model latency, and
+the provider metadata — including the AI Gateway's per-request cost.
+
+The trace records the model's view and nothing else. Observations are
+redacted before the model sees them, so the trace holds no secret the model
+did not; image evidence appears by byte size, never as pixels. It is a
+debugging aid, not part of the report, and `e2e init` ignores it.
+
+The recorder is an AI SDK telemetry integration, so it also sees calls a
+custom executor makes through its own `ai` import. The reverse works too:
+`registerTelemetry` in your config runs in every worker, so any AI SDK
+telemetry integration observes the run — for example the
+[`@ai-sdk/devtools`](https://www.npmjs.com/package/@ai-sdk/devtools) recorder
+whose live viewer `npx unbox-ai devtools` replaces. That integration keeps one
+database per process and rewrites it whole, so use it with `workers: 1`.
+
 ## Next
 
 <CardGroup cols={2}>

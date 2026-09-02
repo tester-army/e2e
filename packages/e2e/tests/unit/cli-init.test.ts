@@ -35,6 +35,7 @@ describe('e2e init', () => {
     expect(gitignore).toContain('.e2e/artifacts/');
     expect(gitignore).toContain('.e2e/sessions/');
     expect(gitignore).toContain('.e2e/report.json');
+    expect(gitignore).toContain('.e2e/ai-trace.json');
     expect(gitignore.endsWith('\n')).toBe(true);
   });
 

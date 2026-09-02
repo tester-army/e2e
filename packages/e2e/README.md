@@ -83,6 +83,12 @@ host-supplied store keeps its configured mode) — opt out with
 `waitFor`, `extract`) are never cached — every judgment is made fresh, per
 run, from a fresh observation.
 
+`e2e run --ai-trace` records every model call of the run — prompt, tool
+definitions, response, usage, cost — to `.e2e/ai-trace.json`, one run per
+agent step, in the AI SDK devtools database shape. Open it with
+[unbox-ai](https://github.com/tester-army/unbox-ai):
+`npx unbox-ai .e2e/ai-trace.json`.
+
 ## Current limitations
 
 - `agent.act` structured output (`options.schema`) and vision evidence
