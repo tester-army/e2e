@@ -526,6 +526,12 @@ export class PlaywrightSession implements DriverSession, WebSessionHost {
       this.checkOperation(operation);
       await this.requirePage().keyboard.press(key);
     },
+    tapPoint: (point, operation) =>
+      this.guard(operation, 'tapPoint', async () => {
+        // The runner validated the point against the observation viewport, so
+        // there is no node to check for actionability: the click is the action.
+        await this.requirePage().mouse.click(point.x, point.y);
+      }),
   };
 
   // --- Artifacts ---

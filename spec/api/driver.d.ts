@@ -132,6 +132,16 @@ export interface SemanticNode {
 }
 
 /**
+ * Viewport point in CSS pixels, origin at the top-left of the viewport.
+ * Reserved surface with a named consumer: vision-pointing executors
+ * (TesterArmy vision tools) dispatch coordinate taps through `tapPoint`.
+ */
+export interface ViewportPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
  * Masked viewport pixels captured for one observation revision.
  *
  * `width` and `height` MUST be the true dimensions of `data`, because they are
@@ -309,6 +319,13 @@ export interface DriverAgentActions {
   ): Promise<void>;
   /** Sends one key. */
   press(key: string, operation: OperationContext): Promise<void>;
+  /**
+   * Taps one runner-validated viewport point. Optional: a driver without
+   * coordinate input omits it, and vision pointing that hit-tests to no
+   * semantic node then fails instead of dispatching. Reserved for
+   * vision-pointing executors (TesterArmy vision tools).
+   */
+  tapPoint?(point: ViewportPoint, operation: OperationContext): Promise<void>;
 }
 
 export interface DriverWebRoute {

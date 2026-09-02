@@ -27,6 +27,7 @@ export type Cases = [
   Expect<Equals<Spec.LocatorExpression, Src.LocatorExpression>>,
   Expect<Equals<Spec.NodeRef, Src.NodeRef>>,
   Expect<Equals<Spec.SemanticNode, Src.SemanticNode>>,
+  Expect<Equals<Spec.ViewportPoint, Src.ViewportPoint>>,
   Expect<Equals<Spec.ObservationPixels, Src.ObservationPixels>>,
   Expect<Equals<Spec.ObserveOptions, Src.ObserveOptions>>,
   Expect<Equals<Spec.Observation, Src.Observation>>,
