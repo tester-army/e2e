@@ -7,6 +7,10 @@ export { expect } from './expect/index.ts';
 export { credentials } from './credentials.ts';
 export { AgentError } from './agent/error.ts';
 export { BLOCKABLE_CODES, blockedCategoryOf } from './agent/executor.ts';
+// Entry framing for custom TraceCacheStore implementations: a remote store
+// serializes buildTraceEntry(payload) on write and validates documents with
+// readTraceEntry on read — the same framing the default file store uses.
+export { buildTraceEntry, readTraceEntry } from './cache/trace.ts';
 
 /** Type-checks and returns an e2e configuration object. */
 export function defineConfig(config: E2EConfig): E2EConfig {
