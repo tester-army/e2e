@@ -16,6 +16,7 @@ import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { playwright } from '@e2edev/playwright';
 import { run } from 'e2e/run';
 
 // ---- 1. The "DB rows": how a hosted platform stores a test ----------------
@@ -81,6 +82,9 @@ try {
       projectId: 'host-demo',
       app: { url: 'http://localhost:4273' },
       tests: 'tests/**/*.e2e.ts',
+      // The platform is explicit since the backend contract (RFC0002): a host
+      // declares the target and the backend that drives it, same as a config.
+      targets: [{ name: 'web', platform: 'web', backend: playwright() }],
       // Same budgets as the bench config: model turns on a busy gateway can
       // run tens of seconds, and a hosted platform sets its own ceilings.
       timeout: 300_000,
