@@ -72,6 +72,9 @@ navigation:
           - page: CLI
             path: docs/pages/reference/cli.mdx
             slug: reference/cli
+          - page: Embedding (e2e/run)
+            path: docs/pages/reference/embedding.mdx
+            slug: reference/embedding
           - page: Errors
             path: docs/pages/reference/errors.mdx
             slug: reference/errors

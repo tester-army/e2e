@@ -41,6 +41,10 @@
     "./backend": {
       "types": "./dist/backend/index.d.ts",
       "default": "./dist/backend/index.js"
+    },
+    "./run": {
+      "types": "./dist/run/public.d.ts",
+      "default": "./dist/run/public.js"
     }
   },
   "bin": {

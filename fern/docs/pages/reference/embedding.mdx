@@ -1,0 +1,87 @@
+---
+title: Embedding (e2e/run)
+description: Run the runner programmatically and stream structured events.
+---
+
+`e2e/run` is the host surface: everything a program embedding the runner — a
+hosted platform, a CI wrapper, an IDE — needs to start runs, stream progress,
+and read outcomes in-process. The CLI is a thin consumer of exactly this
+surface. It is host tooling, not part of the sdk-0.1 test API: it can grow in
+minor releases, and `report.json` (report-1) stays the canonical record of a
+run.
+
+```ts
+import { run } from 'e2e/run';
+
+const outcome = await run({
+  cwd: '/path/to/project',
+  onEvent: (event) => publish(event),
+  interruptSignal: controller.signal,
+  quiet: true,
+});
+
+outcome.status; // 'passed' | 'failed' | 'error' | 'interrupted'
+outcome.report; // the full report-1 document, in memory
+```
+
+`run()` never calls `process.exit`. It resolves config exactly like the CLI
+(`cwd` + `configPath`, or a preloaded `rawConfig`), honors `interruptSignal`
+for cancellation, and returns the complete report alongside the raw result
+records. One `run()` at a time per process: the runner installs signal
+handlers and a process-wide credential registry.
+
+## RunOptions
+
+Everything the CLI flags map to (`files`, `tags`, `targetIds`, `headed`,
+`retries`, `workers`, `reporters`, `artifactsDir`, `passWithNoTests`,
+`noCache`, `debug`), plus the host-only fields:
+
+| Field | What it does |
+| --- | --- |
+| `rawConfig` | Preloaded config object, bypassing file discovery. It may hold live values (a `StepExecutor`, a model instance, a `TraceCacheStore`), so it cannot cross a process boundary: the run executes in-process on one worker. A file-backed config keeps full parallelism. |
+| `env` | The environment the run resolves against, instead of `process.env`. This controls CI detection (`CI`), model credentials, and `APP_URL`. |
+| `quiet` | Suppresses the terminal reporter; pair it with `onEvent`. |
+| `interruptSignal` | External cancellation, equivalent to Ctrl-C: the run finishes with status `interrupted` and exit code 130. |
+| `onEvent` | The structured event stream below. |
+
+## The event stream
+
+`onEvent` receives every lifecycle fact as plain JSON data — the same records
+the report persists, streamed while the run is going. Each event carries a
+`seq` stamped by the run's single writer (so ordering survives any transport
+that preserves per-connection order) and an ISO `at` timestamp.
+
+```ts
+type RunEventFact =
+  | { type: 'run-started'; runId; projectId; projectRoot; ci; targets }
+  | { type: 'plan'; total }
+  | { type: 'test-started'; testId; title; target }
+  | { type: 'step'; testId; target; progress: StepProgress }
+  | { type: 'test-finished'; result: RunEventResult }
+  | { type: 'serial-group'; group: SerialGroupRecord }
+  | { type: 'run-error'; error: SerializedError }
+  | { type: 'run-finished'; status; exitCode; reportPath? };
+```
+
+`step` events stream each public step's `start` and `end` phases plus its
+child events (observations, model calls, backend actions, policy decisions) as
+they happen — the same feed the list reporter renders. `test-finished`
+carries the full result record with the live target flattened to
+`{ name, platform }`, so every payload survives `JSON.stringify`.
+
+The sink must not block and must not throw: a sink that throws is quarantined
+for the rest of the run — the run is never affected, and the sink is not
+called again. Redaction happens before events are built; secret values never
+appear in the stream.
+
+## Hosted caching
+
+Two config seams exist for hosts that own a shared trace cache
+([defineConfig → cache](/reference/config#cache)):
+
+- `cache.store` accepts any `TraceCacheStore` (a Redis adapter, an API). A
+  host-supplied store is exempt from the CI read-only clamp: it is not a
+  committed file cache, and it states its own trust through `writable`.
+- `app.identity` keys cache and session identity by what the app *is* rather
+  than the origin it happens to be served from, so ephemeral per-deploy
+  origins (PR previews) share their recorded traces.
