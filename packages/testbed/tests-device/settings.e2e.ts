@@ -5,7 +5,7 @@
  * agent; each is recorded as a `device.<method>` step, no model involved.
  */
 
-import { test } from 'e2e';
+import { test } from './fixtures.ts';
 
 test('reads the software version under a dark, offline arrangement', async ({ agent, device }) => {
   // Deterministic backend-defined actions: no model, recorded as device.* steps.

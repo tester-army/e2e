@@ -549,9 +549,11 @@ export interface SetupOptions
   sessions: readonly string[];
 }
 
-export type TestFn = (fixtures: TestFixtures) => void | Promise<void>;
-export type SetupFn = (fixtures: SetupFixtures) => void | Promise<void>;
-export type TestHookFn = (fixtures: TestFixtures) => void | Promise<void>;
+export type TestFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
+export type SetupFn<Fixtures = TestFixtures> = (
+  fixtures: Fixtures & SetupFixtures,
+) => void | Promise<void>;
+export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
 export type SynchronousBody<Result> = Extract<
   Result,
@@ -564,17 +566,23 @@ export interface TestCase {
   readonly [testCaseBrand]: true;
 }
 
-export interface TestAPI {
+export interface TestAPI<Fixtures = TestFixtures> {
   /** Registers one test synchronously during module evaluation. */
-  (title: string, fn: TestFn): TestCase;
+  (title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one configured test synchronously during module evaluation. */
-  (title: string, options: TestOptions, fn: TestFn): TestCase;
+  (title: string, options: TestOptions, fn: TestFn<Fixtures>): TestCase;
   /** Registers one skipped test. */
-  skip(title: string, fn: TestFn): TestCase;
+  skip(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one focused local test. CI rejects focused tests. */
-  only(title: string, fn: TestFn): TestCase;
+  only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
-  setup(title: string, options: SetupOptions, fn: SetupFn): TestCase;
+  setup(title: string, options: SetupOptions, fn: SetupFn<Fixtures>): TestCase;
+  /**
+   * Returns the same runtime `test`, typed with a backend's contributed
+   * fixtures — a pure type refinement, so a project types its
+   * device/desktop/web surface without a global `declare module`.
+   */
+  extend<Extra>(): TestAPI<Fixtures & Extra>;
   /** Declares a group synchronously. */
   describe<Result>(title: string, body: SynchronousBody<Result>): void;
   /** Declares a configured group synchronously. */
@@ -584,9 +592,9 @@ export interface TestAPI {
     body: SynchronousBody<Result>,
   ): void;
   /** Registers a test-attempt setup hook. */
-  beforeEach(fn: TestHookFn): void;
+  beforeEach(fn: TestHookFn<Fixtures>): void;
   /** Registers a test-attempt teardown hook. */
-  afterEach(fn: TestHookFn): void;
+  afterEach(fn: TestHookFn<Fixtures>): void;
   /** Registers a suite-instance setup hook. */
   beforeAll(fn: SuiteHookFn): void;
   /** Registers a suite-instance teardown hook. */

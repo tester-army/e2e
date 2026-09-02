@@ -15,17 +15,9 @@
 import { defineConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
 import { createGateway } from 'ai';
-import { agentDevice, type Device } from './fixtures/agent-device.ts';
+import { agentDevice } from './fixtures/agent-device.ts';
 
 const { backend, tools } = agentDevice({ session: 'e2e-testbed-device', platform: 'ios' });
-
-// The backend contributes `device`; the test API learns it through the seam
-// spec 02 reserves for exactly this.
-declare module 'e2e' {
-  interface TestFixtures {
-    device: Device;
-  }
-}
 
 export default defineConfig({
   specVersion: '0.1',
