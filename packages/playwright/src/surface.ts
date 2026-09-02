@@ -9,7 +9,7 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, Page } from 'playwright';
+import type { Browser, BrowserContext, ElementHandle, Page, Route } from 'playwright';
 import {
   BackendError,
   type BackendAppInfo,
@@ -88,6 +88,14 @@ type StorageState = Exclude<
   string
 >;
 
+type RoutePredicate = (url: URL) => boolean;
+type RouteHandler = (route: Route) => Promise<void>;
+
+interface StoredRoute {
+  readonly predicate: RoutePredicate;
+  readonly handler: RouteHandler;
+}
+
 /** True for the storage-state object shape; a string (a file path) or anything else is refused. */
 function isStorageState(data: unknown): data is StorageState {
   return (
@@ -128,6 +136,13 @@ export class PlaywrightSurface {
   private tracing = false;
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
   private traceSegments = 0;
+  /**
+   * Attempt-scoped network routes (spec 08-platforms.md). Registered on the
+   * context, not a page, so they cover every page the attempt opens - the
+   * first navigation included - and re-applied to each context the attempt
+   * replaces on `clearState` or session restore.
+   */
+  private readonly routes: StoredRoute[] = [];
   /** Locator-backed refs from `locate`; they hold no live handles. */
   private readonly refs = new Map<string, ActionTarget>();
   /**
@@ -181,6 +196,7 @@ export class PlaywrightSurface {
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     this.traceSegments = 0;
+    this.routes.length = 0;
     this.dialogs.reset();
     await this.openContext(undefined);
   }
@@ -240,6 +256,7 @@ export class PlaywrightSurface {
       this.context.on('dialog', (dialog) => {
         void this.dialogs.dispatch(dialog);
       });
+      for (const stored of this.routes) await this.context.route(stored.predicate, stored.handler);
     } catch (cause) {
       await this.context?.close().catch(() => undefined);
       this.context = null;
@@ -250,6 +267,25 @@ export class PlaywrightSurface {
         cause,
       });
     }
+  }
+
+  // --- network routes shared with the web fixture ---
+
+  /** Registers one attempt-scoped route on the current context. */
+  async route(predicate: RoutePredicate, handler: RouteHandler): Promise<void> {
+    const context = this.requireContext();
+    this.routes.push({ predicate, handler });
+    await context.route(predicate, handler);
+  }
+
+  /** Removes one registered route from the attempt and the current context. */
+  async unroute(predicate: RoutePredicate, handler: RouteHandler): Promise<void> {
+    const context = this.requireContext();
+    const index = this.routes.findIndex(
+      (stored) => stored.predicate === predicate && stored.handler === handler,
+    );
+    if (index !== -1) this.routes.splice(index, 1);
+    await context.unroute(predicate, handler);
   }
 
   // --- page access shared with the web fixture ---

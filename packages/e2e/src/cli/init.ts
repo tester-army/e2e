@@ -61,18 +61,20 @@ export async function init(cwd: string, options: { yes?: boolean } = {}): Promis
     { relative: path.join('tests', 'example.e2e.ts'), content: EXAMPLE_TEMPLATE },
   ];
 
-  const conflicts = planned.filter((file) => existsSync(path.join(cwd, file.relative)));
+  const exists = (file: PlannedFile): boolean => existsSync(path.join(cwd, file.relative));
+  const conflicts = planned.filter(exists);
+  const remaining = planned.filter((file) => !exists(file));
   for (const conflict of conflicts) {
     clack.log.warn(`exists, not touching: ${conflict.relative}`);
   }
-  const remaining = planned.filter((file) => !existsSync(path.join(cwd, file.relative)));
 
   // The ignore list is reconciled on every run, not only the first: a project
   // initialized before an entry existed (`.e2e/ai-trace.json`, say) picks it
   // up by re-running init, without touching any scaffold file.
   const gitignorePath = path.join(cwd, '.gitignore');
   const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
-  const lines = existing.split('\n');
+  // A CRLF .gitignore must not re-append every entry on each init.
+  const lines = existing.split(/\r?\n/);
   const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.includes(entry));
 
   if (remaining.length === 0 && missing.length === 0) {

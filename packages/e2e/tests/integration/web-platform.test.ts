@@ -115,6 +115,22 @@ test('routes intercept and fulfill', async ({ app, web, screen }) => {
   await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta off');
 });
 
+test('routes are attempt-scoped: registered before the first page, kept across restart and clearState', async ({
+  app,
+  web,
+  screen,
+}) => {
+  await web.route('**/api/flags', (route) => route.fulfill({ json: { betaBoard: true } }));
+  await app.open('/flags');
+  await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
+  await app.restart();
+  await web.goto('/flags');
+  await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
+  await app.clearState();
+  await web.goto('/flags');
+  await expect(screen.getByRole('status', { name: 'Flags' })).toHaveText('beta on');
+});
+
 test('waitForResponse observes network traffic', async ({ app, web }) => {
   await app.open();
   const [response] = await Promise.all([
@@ -226,6 +242,7 @@ describe('web platform integration', () => {
       'assertions poll until the app settles',
       'web navigation, urls, and titles',
       'routes intercept and fulfill',
+      'routes are attempt-scoped: registered before the first page, kept across restart and clearState',
       'waitForResponse observes network traffic',
       'evaluate runs trusted code with JSON arguments',
       'cookies round-trip through policy checks',

@@ -160,7 +160,7 @@ const flag = await web.evaluate(
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `route(pattern, handler)` | Registers an attempt-scoped route. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice, or returns without deciding |
+| `route(pattern, handler)` | Registers an attempt-scoped route. It may be registered before the first page opens and stays in force across `app.restart()`, `app.clearState()`, and session restore. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice, or returns without deciding |
 | `unroute(pattern)` | Removes every attempt-scoped route registered with a matching pattern | - |
 | `waitForResponse(pattern, options?)` | Resolves with a `WebResponse` whose `json()` and `text()` decode the buffered body | `ACTION_FAILED` when nothing matches inside the deadline |
 

@@ -321,17 +321,16 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
       };
       return surface.guard(context.operation(), 'route', async () => {
         routes.push({ pattern: wirePattern, pwHandler, predicate });
-        await surface.requirePage().route(predicate, pwHandler);
+        await surface.route(predicate, pwHandler);
       });
     },
     unroute(pattern) {
       const wirePattern = toRoutePattern(pattern);
       return surface.guard(context.operation(), 'unroute', async () => {
-        const page = surface.requirePage();
         for (let i = routes.length - 1; i >= 0; i -= 1) {
           const stored = routes[i]!;
           if (routePatternsEqual(stored.pattern, wirePattern)) {
-            await page.unroute(stored.predicate, stored.pwHandler);
+            await surface.unroute(stored.predicate, stored.pwHandler);
             routes.splice(i, 1);
           }
         }
