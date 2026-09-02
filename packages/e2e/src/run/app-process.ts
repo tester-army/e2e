@@ -8,6 +8,12 @@ import type { CommandConfig } from '../types.ts';
 
 const INHERITED_ENV = ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'COMSPEC'] as const;
 
+/** Readiness polling starts fast and backs off; a booting server answers late, not on a schedule. */
+const READY_POLL_MIN_MS = 25;
+const READY_POLL_MAX_MS = 250;
+/** One readiness probe never outlives this, so a half-open server cannot stall the deadline check. */
+const READY_PROBE_TIMEOUT_MS = 2_000;
+
 export class AppProcess {
   private child: ChildProcess | null = null;
 
@@ -43,6 +49,7 @@ export class AppProcess {
 
     const startupTimeout = this.command.startupTimeout ?? 60_000;
     const deadline = Date.now() + startupTimeout;
+    let pollMs = READY_POLL_MIN_MS;
     for (;;) {
       if (signal?.aborted === true) {
         await this.stop();
@@ -61,20 +68,25 @@ export class AppProcess {
           `app command exited with code ${this.child.exitCode} before becoming ready`,
         );
       }
-      try {
-        const response = await fetch(this.readyUrl, { redirect: 'manual' });
-        if (response.status >= 200 && response.status <= 499) return;
-      } catch {
-        // not ready yet
-      }
-      if (Date.now() >= deadline) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
         await this.stop();
         throw new InfrastructureError(
           'APP_UNREACHABLE',
           `app was not reachable at ${this.readyUrl} within ${startupTimeout} ms`,
         );
       }
-      await sleep(250, signal).catch(() => undefined);
+      try {
+        const response = await fetch(this.readyUrl, {
+          redirect: 'manual',
+          signal: AbortSignal.timeout(Math.min(READY_PROBE_TIMEOUT_MS, remaining)),
+        });
+        if (response.status >= 200 && response.status <= 499) return;
+      } catch {
+        // not ready yet
+      }
+      await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())), signal).catch(() => undefined);
+      pollMs = Math.min(pollMs * 2, READY_POLL_MAX_MS);
     }
   }
 

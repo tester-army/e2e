@@ -92,6 +92,171 @@ test('independent survives', async ({ app }) => {
   );
 
   it(
+    'runs afterAll for a realm a failing test discards',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeAll(() => log('beforeAll'));
+test.afterAll(() => log('afterAll'));
+
+test('first fails', async () => {
+  log('body:first');
+  throw new Error('boom');
+});
+
+test('second passes', async ({ app }) => {
+  log('body:second');
+  await app.open();
+});
+`;
+      const logPath = path.join('/tmp', `e2e-discard-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/discard.e2e.ts': file }, { appUrl: app.url });
+      expect(resultByTitle(outcome, 'first fails').status).toBe('failed');
+      expect(resultByTitle(outcome, 'second passes').status).toBe('passed');
+      // The failed realm is discarded but its afterAll still runs; the fresh
+      // realm for the second test reruns beforeAll and tears down at the end.
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
+        'beforeAll',
+        'body:first',
+        'afterAll',
+        'beforeAll',
+        'body:second',
+        'afterAll',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'runs suite hooks for serial groups and setup tests',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeAll(() => log('beforeAll:file'));
+test.afterAll(() => log('afterAll:file'));
+
+test.setup('seed', { sessions: ['seeded'] }, async ({ app, session }) => {
+  log('body:setup');
+  await app.open('/storage');
+  await session.save('seeded');
+});
+
+test.describe('wizard', { serial: true }, () => {
+  test.beforeAll(() => log('beforeAll:wizard'));
+  test.afterAll(() => log('afterAll:wizard'));
+
+  test('step 1', async ({ app }) => {
+    log('body:step1');
+    await app.open();
+  });
+
+  test('step 2', async () => {
+    log('body:step2');
+  });
+});
+
+test('consumer', { session: 'seeded' }, async ({ app }) => {
+  log('body:consumer');
+  await app.open();
+});
+`;
+      const logPath = path.join('/tmp', `e2e-suitehooks-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/hooks.e2e.ts': file }, { appUrl: app.url });
+      expect(resultByTitle(outcome, 'seed').status).toBe('passed');
+      expect(resultByTitle(outcome, 'step 1').status).toBe('passed');
+      expect(resultByTitle(outcome, 'step 2').status).toBe('passed');
+      expect(resultByTitle(outcome, 'consumer').status).toBe('passed');
+      expect(outcome.exitCode).toBe(0);
+      // The setup unit, the serial group, and the ordinary test each own a
+      // realm: file-scope hooks wrap each, and the group scope enters once
+      // for both members.
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
+        'beforeAll:file',
+        'body:setup',
+        'afterAll:file',
+        'beforeAll:file',
+        'beforeAll:wizard',
+        'body:step1',
+        'body:step2',
+        'afterAll:wizard',
+        'afterAll:file',
+        'beforeAll:file',
+        'body:consumer',
+        'afterAll:file',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'skips every serial member behind a failing beforeAll and fails the group',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test.describe('wizard', { serial: true }, () => {
+  test.beforeAll(() => {
+    throw new Error('wizard setup exploded');
+  });
+  test('step 1', async () => {});
+  test('step 2', async () => {});
+});
+`;
+      const { outcome, project } = await runProject({ 'tests/serialhook.e2e.ts': file }, { appUrl: app.url });
+      for (const title of ['step 1', 'step 2']) {
+        const result = resultByTitle(outcome, title);
+        expect(result.status).toBe('skipped');
+        expect(result.skip?.cause).toBe('hook-failed');
+      }
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(group.attempts).toHaveLength(1);
+      expect(group.attempts[0]!.error?.code).toBe('HOOK_FAILED');
+      expect(outcome.exitCode).not.toBe(0);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'keeps the failed attempts when a retry hits a beforeAll failure',
+    async () => {
+      const file = `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test.beforeAll(() => {
+  if (existsSync(process.env.RETRY_MARKER!)) throw new Error('second realm cannot boot');
+});
+
+test('fails then cannot retry', { retries: 1 }, async ({ app }) => {
+  await app.open();
+  writeFileSync(process.env.RETRY_MARKER!, 'attempted');
+  throw new Error('first attempt fails');
+});
+`;
+      const marker = path.join('/tmp', `e2e-retryhook-${Date.now()}`);
+      process.env['RETRY_MARKER'] = marker;
+      const { outcome, project } = await runProject({ 'tests/retryhook.e2e.ts': file }, { appUrl: app.url });
+      const result = resultByTitle(outcome, 'fails then cannot retry');
+      expect(result.status).toBe('failed');
+      expect(result.attempts).toHaveLength(1);
+      expect(result.attempts[0]!.error?.message).toContain('first attempt fails');
+      expect(outcome.exitCode).toBe(1);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'retries failed attempts in fresh realms and reports flaky',
     async () => {
       const file = `import { existsSync, writeFileSync } from 'node:fs';

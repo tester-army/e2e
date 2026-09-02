@@ -26,7 +26,7 @@ import type {
   SerialMemberRecord,
 } from './records.ts';
 import { runWithRetries } from './retry.ts';
-import { pairResult } from './units.ts';
+import { INTERRUPTED_BEFORE_START, pairResult } from './units.ts';
 
 /**
  * One shared session for a serial-group attempt: members preserve app state,
@@ -104,13 +104,16 @@ export async function runSerialUnit(
       const attempt = await runSerialAttempt(host, members, absolutePath, attemptIndex);
       group.attempts.push(attempt);
       for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
+      // A beforeAll failure is not retry-eligible (spec 11-lifecycle.md): the
+      // attempt stands as recorded and the retry loop stops here.
+      if (attempt.error?.code === 'HOOK_FAILED') return undefined;
       return attempt;
     },
   );
 
   if (group.attempts.length === 0) {
     group.status = 'skipped';
-    group.skip = { cause: 'infrastructure-unavailable', reason: 'run interrupted before execution' };
+    group.skip = INTERRUPTED_BEFORE_START;
   } else {
     group.status = finalStatus;
   }
@@ -212,6 +215,7 @@ async function runSerialAttempt(
   }
 
   let skipRemaining: SkipInfo | undefined;
+  let hookFailure: SerializedError | undefined;
   for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
     const member = members[memberIndex]!;
     const memberId = `${attemptId}:member:${memberIndex}`;
@@ -243,6 +247,15 @@ async function runSerialAttempt(
       skipRemaining = predecessorFailed(memberIndex);
       continue;
     }
+    // Suite scopes enter per member, exactly as for ordinary tests: a
+    // beforeAll failure skips this member and, since later members build on
+    // its screen, every member after it (spec 11-lifecycle.md).
+    hookFailure = await host.realms.enterScopes(realm, registered);
+    if (hookFailure !== undefined) {
+      skipRemaining = { cause: 'hook-failed', reason: hookFailure.message };
+      memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
+      continue;
+    }
     const memberAttempt = await host.runAttempt(member, registered, realm, attemptIndex, {
       kind: 'serial',
       shared,
@@ -264,10 +277,16 @@ async function runSerialAttempt(
   }
   await host.realms.leave(realm);
   await host.closeSession(shared.session, attemptId, record, artifacts.sink, record.secondaryErrors);
+  await artifacts.settle();
 
   const failedMember = memberRecords.find(isFailedMember);
   if (host.interruptSignal.aborted) {
     record.status = 'interrupted';
+  } else if (failedMember === undefined && hookFailure !== undefined) {
+    // No member failed, but a suite hook did: the attempt is a failure the
+    // hook explains, never a pass over skipped members.
+    record.status = 'failed';
+    record.error = hookFailure;
   } else if (failedMember === undefined) {
     record.status = 'passed';
   } else {

@@ -89,11 +89,19 @@ export interface SetupSession {
 | --- | --- | --- | --- |
 | `test.beforeEach` | `beforeEach(fn: TestHookFn): void` | `TestFixtures` | Before each test attempt, outermost group first |
 | `test.afterEach` | `afterEach(fn: TestHookFn): void` | `TestFixtures` | After each test attempt, innermost group first, including after a failure |
-| `test.beforeAll` | `beforeAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance |
-| `test.afterAll` | `afterAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance |
+| `test.beforeAll` | `beforeAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, on first entry into the scope |
+| `test.afterAll` | `afterAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, when the realm ends |
+
+A suite instance is one execution realm: the module is re-imported for every
+retry, for every serial group, and for every setup test, so `beforeAll` runs
+again in each. A realm ends when its tests are done or when a failure
+discards it, and `afterAll` runs either way for every scope whose `beforeAll`
+started.
 
 A throw inside `beforeAll` or `afterAll` is reported as `HOOK_FAILED` and skips
-the suite's tests with cause `hook-failed`.
+the suite's tests with cause `hook-failed`. Inside a serial group, a
+`beforeAll` failure skips every remaining member and fails the group without
+retrying it.
 
 ## Options
 

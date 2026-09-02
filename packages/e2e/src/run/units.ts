@@ -43,41 +43,44 @@ export function buildWorkPlans(
   projectRoot: string,
 ): TargetWorkPlan[] {
   return selection.perTarget.map(({ target, pairs }) => {
-    const setupUnits: WorkUnit[] = pairs
-      .filter((pair) => pair.test.kind === 'setup' && pair.disposition === 'run')
-      .map((pair) => ({
-        id: `setup::${target.name}::${pair.test.id}`,
-        kind: 'setup' as const,
-        targetName: target.name,
-        file: pair.test.file,
-        absolutePath: path.resolve(projectRoot, pair.test.file),
-        pairs: [pair],
-      }));
+    // One pass sorts every pair into its bucket; files are then visited in
+    // collection order so unit order (and thus report order) is stable.
+    const setupUnits: WorkUnit[] = [];
+    const runnableByFile = new Map<string, TestTargetPair[]>();
+    const immediate: TestTargetPair[] = [];
+    for (const pair of pairs) {
+      if (pair.test.kind === 'setup') {
+        if (pair.disposition !== 'run') continue;
+        setupUnits.push({
+          id: `setup::${target.name}::${pair.test.id}`,
+          kind: 'setup',
+          targetName: target.name,
+          file: pair.test.file,
+          absolutePath: path.resolve(projectRoot, pair.test.file),
+          pairs: [pair],
+        });
+      } else if (pair.disposition !== 'run') {
+        immediate.push(pair);
+      } else {
+        const bucket = runnableByFile.get(pair.test.file);
+        if (bucket === undefined) runnableByFile.set(pair.test.file, [pair]);
+        else bucket.push(pair);
+      }
+    }
 
     const fileUnits: WorkUnit[] = [];
     for (const file of collection.files) {
-      const filePairs = pairs
-        .filter(
-          (pair) =>
-            pair.test.file === file.file &&
-            pair.test.kind === 'test' &&
-            pair.disposition === 'run',
-        )
-        .toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
-      if (filePairs.length === 0) continue;
+      const filePairs = runnableByFile.get(file.file);
+      if (filePairs === undefined) continue;
       fileUnits.push({
         id: `file::${target.name}::${file.file}`,
         kind: 'file',
         targetName: target.name,
         file: file.file,
         absolutePath: file.absolutePath,
-        pairs: filePairs,
+        pairs: filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex),
       });
     }
-
-    const immediate = pairs.filter(
-      (pair) => pair.test.kind === 'test' && pair.disposition !== 'run',
-    );
 
     return { target, setupUnits, fileUnits, immediate };
   });

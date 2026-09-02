@@ -57,13 +57,10 @@ export interface AttemptEnvironment {
   readonly debug?: DebugTrace;
 }
 
-export interface FixtureGraph {
-  readonly fixtures: TestFixtures & { readonly session: SetupSession };
-  readonly engine: LocatorEngine;
-}
-
 /** Builds the lazy fixture graph for one attempt. */
-export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
+export function createFixtures(
+  environment: AttemptEnvironment,
+): TestFixtures & { readonly session: SetupSession } {
   const engine = new LocatorEngine({
     session: environment.session,
     signal: environment.signal,
@@ -170,7 +167,7 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
     Object.getOwnPropertyDescriptors(contributedFixtures(environment, engine, screenContext)),
   );
 
-  return { fixtures: gateUnknownFixtures(fixtures, environment), engine };
+  return gateUnknownFixtures(fixtures, environment);
 }
 
 /** Keys a test body may probe without meaning a fixture. */

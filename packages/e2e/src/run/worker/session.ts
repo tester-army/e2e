@@ -6,6 +6,7 @@
  */
 
 import type { TestIdentity } from '../../collect/collect.ts';
+import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
 import { DebugTrace } from '../../internal/debug.ts';
@@ -20,6 +21,12 @@ export interface ResolvedUnitPairs {
   readonly pairs: readonly TestTargetPair[];
   /** Planned tests absent from this worker's view of the file. */
   readonly missing: readonly TestIdentity[];
+  /**
+   * The module registration the resolver imported to resolve the pairs, when
+   * it imported one. Nothing has run in it, so the executor adopts it as the
+   * unit's first realm instead of importing the same file a second time.
+   */
+  readonly registration?: ModuleRegistration;
 }
 
 /**
@@ -118,29 +125,36 @@ export class TargetWorker {
     if (deps === undefined || executor === undefined) {
       throw new Error('received a work unit before the worker finished starting');
     }
-    try {
-      const { pairs, missing } = await deps.resolvePairs(message);
-      for (const test of missing) {
-        executor.recordDisappeared(
-          `test ${test.id} disappeared before execution; registration must be deterministic`,
-        );
-        executor.emit(disappearedResult(test, deps.target));
-      }
-      if (message.kind === 'setup') {
-        for (const pair of pairs) await executor.runSetupUnit(pair);
-      } else {
-        await executor.runFileUnit(
-          { file: message.file, absolutePath: message.absolutePath },
-          pairs,
-        );
-      }
-    } finally {
-      this.host.emit({
-        type: 'unit-done',
-        unitId: message.unitId,
-        runErrors: this.drainRunErrors(executor),
-      });
+    // `unit-done` is sent only when the unit ran to completion. A throw here
+    // (a module that fails to re-import, a realm that cannot be created) is
+    // fatal for the worker; the scheduler still holds the unit and synthesizes
+    // failed results for every pair it never heard about. Reporting the unit
+    // done first would clear that bookkeeping and drop those tests silently.
+    const { pairs, missing, registration } = await deps.resolvePairs(message);
+    for (const test of missing) {
+      executor.recordDisappeared(
+        `test ${test.id} disappeared before execution; registration must be deterministic`,
+      );
+      executor.emit(disappearedResult(test, deps.target));
     }
+    if (message.kind === 'setup') {
+      // The imported registration has run nothing yet, so only the first
+      // setup pair may adopt it; any later one needs its own fresh realm.
+      for (const [index, pair] of pairs.entries()) {
+        await executor.runSetupUnit(pair, index === 0 ? registration : undefined);
+      }
+    } else {
+      await executor.runFileUnit(
+        { file: message.file, absolutePath: message.absolutePath },
+        pairs,
+        registration,
+      );
+    }
+    this.host.emit({
+      type: 'unit-done',
+      unitId: message.unitId,
+      runErrors: this.drainRunErrors(executor),
+    });
   }
 
   /** Run errors accumulate on the executor; forward only the new ones. */

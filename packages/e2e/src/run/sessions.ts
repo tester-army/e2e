@@ -77,6 +77,8 @@ export class SessionStaging {
 export class SessionStore {
   private readonly key: Buffer;
   private readonly directory: string;
+  /** Decrypted states by target and name; see `load`. */
+  private readonly loaded = new Map<string, Promise<BackendState>>();
 
   private constructor(
     private readonly runId: string,
@@ -173,8 +175,27 @@ export class SessionStore {
     await rename(temporary, target);
   }
 
-  /** Validates identity and expiry, then decrypts one session state. */
+  /**
+   * Validates identity and expiry, then decrypts one session state. A
+   * session is immutable for the life of the run that produced it, so the
+   * decrypted state is memoized per store: a worker running many consumers
+   * of one session reads and decrypts its file once.
+   */
   async load(name: string, identity: SessionIdentity): Promise<BackendState> {
+    const memoKey = `${identity.targetId}\u0000${name}`;
+    const cached = this.loaded.get(memoKey);
+    if (cached !== undefined) return cached;
+    const loading = this.loadUncached(name, identity);
+    this.loaded.set(memoKey, loading);
+    try {
+      return await loading;
+    } catch (cause) {
+      this.loaded.delete(memoKey);
+      throw cause;
+    }
+  }
+
+  private async loadUncached(name: string, identity: SessionIdentity): Promise<BackendState> {
     let rawText: string;
     try {
       rawText = await readFile(this.filePath(identity.targetId, name), 'utf8');
@@ -183,7 +204,7 @@ export class SessionStore {
         cause,
       });
     }
-    const envelope = JSON.parse(rawText) as SessionEnvelope;
+    const envelope = parseEnvelope(rawText, name);
     if (
       envelope.schemaVersion !== 'session-1' ||
       envelope.runId !== this.runId ||
@@ -236,4 +257,27 @@ export class SessionStore {
   cleanup(): void {
     rmSync(this.directory, { recursive: true, force: true });
   }
+}
+
+/** Parses an envelope file, classifying a corrupt or truncated one as SESSION_INVALID. */
+function parseEnvelope(rawText: string, name: string): SessionEnvelope {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (cause) {
+    throw new ConfigurationError('SESSION_INVALID', `session "${name}" is not valid JSON`, {
+      cause,
+    });
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as { state?: unknown }).state !== 'object' ||
+    (parsed as { state: unknown }).state === null ||
+    typeof (parsed as { backend?: unknown }).backend !== 'object' ||
+    (parsed as { backend: unknown }).backend === null
+  ) {
+    throw new ConfigurationError('SESSION_INVALID', `session "${name}" has an unexpected shape`);
+  }
+  return parsed as SessionEnvelope;
 }

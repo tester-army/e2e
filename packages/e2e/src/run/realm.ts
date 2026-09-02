@@ -26,6 +26,8 @@ import type { RunError } from './records.ts';
 
 export interface Realm {
   registration: ModuleRegistration;
+  /** Registered tests by title-path key, for per-attempt lookup. */
+  testsByKey: ReadonlyMap<string, RegisteredTest>;
   /** Scope keys whose beforeAll already ran in this realm. */
   entered: Map<string, { failed: SerializedError | undefined }>;
   /** Scopes pending afterAll, innermost last. */
@@ -34,10 +36,7 @@ export interface Realm {
 
 /** Finds a registered test in a re-imported realm by its exact title path. */
 export function findRegistered(realm: Realm, test: CollectedTest): RegisteredTest | undefined {
-  const key = titlePathKey(test.titlePath);
-  return realm.registration.tests.find(
-    (candidate) => titlePathKey(candidate.titlePath) === key,
-  );
+  return realm.testsByKey.get(titlePathKey(test.titlePath));
 }
 
 export interface RealmManagerOptions {
@@ -67,7 +66,18 @@ export class RealmManager {
         importModule(absolutePath, `${this.options.targetName}-${this.realmCounter}`),
       ),
     );
-    return { registration, entered: new Map(), pendingAfterAll: [] };
+    return this.adopt(registration);
+  }
+
+  /**
+   * Wraps a registration that was just imported and has run nothing yet as a
+   * realm. The worker imports every unit's file once to resolve its pairs;
+   * adopting that import saves the second, identical one per unit.
+   */
+  adopt(registration: ModuleRegistration): Realm {
+    const testsByKey = new Map<string, RegisteredTest>();
+    for (const test of registration.tests) testsByKey.set(titlePathKey(test.titlePath), test);
+    return { registration, testsByKey, entered: new Map(), pendingAfterAll: [] };
   }
 
   /** Returns a test's hooks of one kind across its enclosing scope chain. */

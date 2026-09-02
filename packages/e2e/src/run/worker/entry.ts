@@ -89,17 +89,18 @@ async function bootstrap(
       importModule(unit.absolutePath, `worker-collect-${collectCounter}`),
     );
     const collected = collectFromRegistration(config.projectRoot, unit.absolutePath, registration);
+    const byId = new Map(collected.tests.map((test) => [test.id, test]));
     const pairs: TestTargetPair[] = [];
     const missing: TestIdentity[] = [];
     for (const wire of unit.pairs) {
-      const test = collected.tests.find((candidate) => candidate.id === wire.test.id);
+      const test = byId.get(wire.test.id);
       if (test === undefined) {
         missing.push(wire.test);
         continue;
       }
       pairs.push({ test, target, options: wire.options, disposition: 'run', skip: undefined });
     }
-    return { pairs, missing };
+    return { pairs, missing, registration };
   };
 
   return {

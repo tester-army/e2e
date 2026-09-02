@@ -1,8 +1,10 @@
 /** Attempt-scoped artifact directory and report registration. */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, mkdirSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import type { ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
 
@@ -12,11 +14,20 @@ export interface AttemptArtifacts {
   /** Report-order artifact records; the sink appends to this array. */
   readonly records: ArtifactRecord[];
   readonly sink: ArtifactSink;
+  /**
+   * Resolves once every registered file has been measured and hashed.
+   * Registration itself is synchronous and cheap; the size and digest of a
+   * file (a trace zip can be tens of megabytes) are filled in off the event
+   * loop, so awaiting this before the record is read is what makes them
+   * complete.
+   */
+  settle(): Promise<void>;
 }
 
 /**
- * Creates the artifact directory for one attempt and a sink that stats,
- * hashes, and registers produced files under report-relative paths.
+ * Creates the artifact directory for one attempt and a sink that registers
+ * produced files under report-relative paths, measuring and hashing them
+ * asynchronously.
  */
 export function createAttemptArtifacts(options: {
   artifactsRoot: string;
@@ -29,36 +40,53 @@ export function createAttemptArtifacts(options: {
   const dir = path.join(options.artifactsRoot, ...options.segments);
   mkdirSync(dir, { recursive: true });
   const records: ArtifactRecord[] = [];
+  const pending: Promise<void>[] = [];
 
   const sink: ArtifactSink = {
     dir,
     register: (kind, relativePath) => {
       const id = `${options.attemptId}:artifact:${records.length}`;
       const absolute = path.join(dir, relativePath);
-      let size: number | undefined;
-      let digest: string | undefined;
-      try {
-        size = statSync(absolute).size;
-        digest = createHash('sha256').update(readFileSync(absolute)).digest('hex');
-      } catch {
-        // artifact may not exist yet; recorded without size/digest
-      }
       const stepId = options.currentStepId?.();
-      records.push({
+      const record: ArtifactRecord = {
         id,
         kind,
         mediaType: mediaTypeFor(relativePath),
-        ...(size !== undefined && digest !== undefined
-          ? { path: path.posix.join(...options.segments, relativePath), size, sha256: digest }
-          : {}),
         redaction: 'complete',
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
-      });
+      };
+      records.push(record);
+      pending.push(
+        measure(absolute).then((measured) => {
+          // A file that never appeared is recorded without size or digest.
+          if (measured === undefined) return;
+          record.path = path.posix.join(...options.segments, relativePath);
+          record.size = measured.size;
+          record.sha256 = measured.sha256;
+        }),
+      );
       return id;
     },
   };
 
-  return { dir, records, sink };
+  const settle = async (): Promise<void> => {
+    // Registrations may land while earlier ones are still hashing.
+    while (pending.length > 0) await Promise.all(pending.splice(0));
+  };
+
+  return { dir, records, sink, settle };
+}
+
+/** Size and SHA-256 of one file, streamed; undefined when it cannot be read. */
+async function measure(absolute: string): Promise<{ size: number; sha256: string } | undefined> {
+  try {
+    const { size } = await stat(absolute);
+    const hash = createHash('sha256');
+    await pipeline(createReadStream(absolute), hash);
+    return { size, sha256: hash.digest('hex') };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Restricts a report path segment to a safe filename alphabet. */

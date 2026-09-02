@@ -19,7 +19,7 @@ import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import { Deadline, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import type { CollectedFile } from '../collect/collect.ts';
-import type { RegisteredTest } from '../collect/registry.ts';
+import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
@@ -238,10 +238,15 @@ export class TargetExecutor implements SerialHost {
    * setup-failure dependencies) belongs to the scheduler, so every pair
    * reaching here is runnable.
    */
-  async runFileUnit(file: FileRef, filePairs: readonly TestTargetPair[]): Promise<void> {
+  async runFileUnit(
+    file: FileRef,
+    filePairs: readonly TestTargetPair[],
+    freshRegistration?: ModuleRegistration,
+  ): Promise<void> {
     const executedSerialUnits = new Set<string>();
     const ordered = filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
-    let realm: Realm | null = null;
+    let realm: Realm | null =
+      freshRegistration === undefined ? null : this.realms.adopt(freshRegistration);
     for (const pair of ordered) {
       if (this.interruptSignal.aborted) {
         this.emit(unstartedResult(pair, INTERRUPTED_BEFORE_START));
@@ -252,9 +257,12 @@ export class TargetExecutor implements SerialHost {
           executedSerialUnits.add(pair.test.serialId);
           const members = ordered.filter((member) => member.test.serialId === pair.test.serialId);
           this.options.events?.onPairStart?.(pair);
+          // A serial group owns its realm; whatever realm ordinary tests were
+          // sharing ends here, afterAll included.
+          if (realm !== null) await this.realms.leave(realm);
+          realm = null;
           const group = await runSerialUnit(this, members, file.absolutePath);
           this.options.events?.onSerialGroup?.(group);
-          realm = null;
         }
         continue;
       }
@@ -302,12 +310,20 @@ export class TargetExecutor implements SerialHost {
           kind: 'ordinary',
         });
         attempts.push(attempt);
-        if (attempt.status !== 'passed') realm = null;
+        if (attempt.status !== 'passed') {
+          // Spec 11-lifecycle.md: a failed realm is never reused, but afterAll
+          // still runs for every scope whose beforeAll started in it.
+          await this.realms.leave(realm);
+          realm = null;
+        }
         return attempt;
       },
     );
 
-    if (hookFailure !== undefined) {
+    // A beforeAll failure before any attempt ran skips the test. On a retry
+    // the recorded attempts stand: the hook failure is already a run error,
+    // and a failing test must not be reported as skipped.
+    if (hookFailure !== undefined && attempts.length === 0) {
       this.emit(
         pairResult(pair, {
           status: 'skipped',
@@ -325,19 +341,28 @@ export class TargetExecutor implements SerialHost {
   // --- setup tests ---
 
   /** Runs one setup pair to completion, persisting staged sessions on success. */
-  async runSetupUnit(pair: TestTargetPair): Promise<void> {
+  async runSetupUnit(pair: TestTargetPair, freshRegistration?: ModuleRegistration): Promise<void> {
     this.options.events?.onPairStart?.(pair);
     const absolutePath = path.resolve(this.config.projectRoot, pair.test.file);
     const attempts: AttemptRecord[] = [];
+    let hookFailure: SerializedError | undefined;
 
     const finalStatus = await runWithRetries(
       pair.options.retries + 1,
       this.interruptSignal,
       async (attemptIndex) => {
-        const realm = await this.realms.create(absolutePath);
+        const realm =
+          attemptIndex === 0 && freshRegistration !== undefined
+            ? this.realms.adopt(freshRegistration)
+            : await this.realms.create(absolutePath);
         const registered = findRegistered(realm, pair.test);
         if (registered === undefined) {
           this.recordDisappeared(`setup ${pair.test.id} disappeared on re-import`);
+          return undefined;
+        }
+        hookFailure = await this.realms.enterScopes(realm, registered);
+        if (hookFailure !== undefined) {
+          await this.realms.leave(realm);
           return undefined;
         }
         const staging = new SessionStaging(pair.test.sessions);
@@ -370,6 +395,17 @@ export class TargetExecutor implements SerialHost {
       },
     );
 
+    if (hookFailure !== undefined && attempts.length === 0) {
+      this.emit(
+        pairResult(pair, {
+          status: 'skipped',
+          selected: true,
+          skip: { cause: 'hook-failed', reason: hookFailure.message },
+          attempts: [],
+        }),
+      );
+      return;
+    }
     this.emit(pairResult(pair, { status: finalStatus, selected: true, attempts }));
   }
 
@@ -600,7 +636,7 @@ export class TargetExecutor implements SerialHost {
               );
               context.staging.stage(name, state);
             };
-      const { fixtures } = createFixtures({
+      const fixtures = createFixtures({
         config: this.config,
         target: this.target,
         session,
@@ -668,6 +704,9 @@ export class TargetExecutor implements SerialHost {
       }
     }
 
+    // Serial members register into the group's directory; the group settles
+    // it once, after closing the shared session.
+    if (shared === undefined) await artifacts.settle();
     record.durationMs = Date.now() - startedMs;
     record.steps = [...steps.all()];
 
