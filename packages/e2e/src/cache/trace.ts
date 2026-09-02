@@ -41,6 +41,14 @@ export function bound(text: string, maxChars: number): string {
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }
 
+/**
+ * Cap on recorded end anchors. Anchors are the step's own delta — what
+ * appeared on screen between the first observation and the passing one — so
+ * a same-screen mutation rarely has more than a handful; a step that changes
+ * the whole screen keeps the first few in document order.
+ */
+export const MAX_TRACE_ANCHORS = 8;
+
 const SCROLL_DIRECTIONS: ReadonlySet<string> = new Set(['up', 'down', 'left', 'right']);
 
 /**
@@ -138,6 +146,15 @@ export interface ActionTrace {
    * a recorded flow whose destination changed hands off instead of passing.
    */
   readonly endPath?: string;
+  /**
+   * Descriptors of nodes that were on screen when the step passed and were
+   * not there when it began — the recorded run's verification, made
+   * mechanical. A full replay self-finalizes only while every anchor is
+   * present again; a flow whose actions replayed but whose effect did not
+   * (a save that never committed, an unnamed form left behind) hands off
+   * instead of passing on mechanics alone.
+   */
+  readonly endAnchors?: readonly TraceTargetDescriptor[];
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }
@@ -209,6 +226,18 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   const truncated = raw['truncated'];
   if (truncated !== undefined && typeof truncated !== 'boolean') return undefined;
 
+  const anchorsRaw = raw['endAnchors'];
+  let endAnchors: TraceTargetDescriptor[] | undefined;
+  if (anchorsRaw !== undefined) {
+    if (!Array.isArray(anchorsRaw) || anchorsRaw.length > MAX_TRACE_ANCHORS) return undefined;
+    endAnchors = [];
+    for (const entry of anchorsRaw) {
+      const descriptor = readDescriptor(entry);
+      if (descriptor === undefined) return undefined;
+      endAnchors.push(descriptor);
+    }
+  }
+
   const actionsRaw = raw['actions'];
   if (!Array.isArray(actionsRaw) || actionsRaw.length === 0 || actionsRaw.length > MAX_TRACE_ACTIONS) {
     return undefined;
@@ -229,6 +258,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     summary,
     ...(startPath === undefined ? {} : { startPath }),
     ...(endPath === undefined ? {} : { endPath }),
+    ...(endAnchors === undefined || endAnchors.length === 0 ? {} : { endAnchors }),
     ...(truncated === undefined ? {} : { truncated }),
   };
 }

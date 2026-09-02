@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
-import { replayTrace, type ReplayHost } from '../../src/agent/replay.ts';
+import { replayTrace, verifyAnchors, type ReplayHost } from '../../src/agent/replay.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/backend/surface.ts';
 
@@ -23,7 +23,8 @@ const tapUpgrade: RecordedAction = {
 function makeHost(options: {
   nodes?: SemanticNode[];
   onAction?: (name: string, detail: unknown) => void | Promise<void>;
-}): ReplayHost & { calls: string[] } {
+  remainingMs?: number;
+}): ReplayHost & { calls: string[]; observations: number } {
   const calls: string[] = [];
   const act = (name: string, detail?: unknown) => {
     calls.push(name);
@@ -38,19 +39,60 @@ function makeHost(options: {
     scroll: (direction, t) => act('scroll', { direction, t }),
     navigate: (url) => act('navigate', url),
   };
-  return {
+  const host = {
     calls,
-    observe: async () => ({
-      nodes: new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n])),
-      shape: 'stable',
-    }),
+    observations: 0,
+    observe: async () => {
+      host.observations += 1;
+      return {
+        nodes: new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n])),
+        shape: 'stable',
+      };
+    },
     actions,
     signal: new AbortController().signal,
-    remainingMs: () => 60_000,
-    redact: (text) => text,
+    remainingMs: () => options.remainingMs ?? 60_000,
+    redact: (text: string) => text,
     testIdAttribute: 'data-testid',
   };
+  return host;
 }
+
+describe('verifyAnchors', () => {
+  const saved: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'status', name: 'Marker', text: 'saved' };
+  const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
+
+  it('holds trivially for a trace without anchors, without observing', async () => {
+    const host = makeHost({});
+    await expect(verifyAnchors(host, [])).resolves.toBe(true);
+    expect(host.observations).toBe(0);
+  });
+
+  it('holds when every anchor is present, counting an ambiguous match as presence', async () => {
+    const twin: SemanticNode = { ...saved, ref: { id: 'm2', revision: 'r1' } };
+    const host = makeHost({ nodes: [upgrade, saved, twin] });
+    await expect(verifyAnchors(host, [savedAnchor, { role: 'button', name: 'Upgrade' }])).resolves.toBe(true);
+  });
+
+  it('fails when any anchor is missing once the clock leaves no room to wait', async () => {
+    const host = makeHost({ nodes: [upgrade, email], remainingMs: 50 });
+    await expect(verifyAnchors(host, [{ role: 'button', name: 'Upgrade' }, savedAnchor])).resolves.toBe(false);
+  });
+
+  it('waits out a slow effect before giving up', async () => {
+    let shown = false;
+    const host = makeHost({});
+    host.observe = async () => {
+      host.observations += 1;
+      // Present from the second look on: the effect landed after the last action.
+      const list = host.observations >= 3 ? [upgrade, saved] : [upgrade];
+      shown = host.observations >= 3;
+      return { nodes: new Map(list.map((n) => [n.ref.id, n])), shape: 'stable' };
+    };
+    await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(true);
+    expect(shown).toBe(true);
+  });
+});
 
 describe('replayTrace', () => {
   it('replays a full trace and reports completion', async () => {

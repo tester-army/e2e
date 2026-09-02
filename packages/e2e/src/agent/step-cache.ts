@@ -6,23 +6,29 @@
  * verdict; this class owns nothing but the cache.
  */
 
+import { describeAnchors } from '../cache/anchors.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, samePathname, type TraceReplayMissReason } from '../cache/decide.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { readTraceEntry } from '../cache/trace.ts';
+import type { SemanticNode } from '../backend/surface.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
 import type { ReplayedPrefix, StepVerdict } from './executor.ts';
-import { replayTrace, type ReplayHost } from './replay.ts';
+import { replayTrace, verifyAnchors, type ReplayHost } from './replay.ts';
 
 /**
- * The replay host plus the one session-level probe replay itself never
+ * The replay host plus the two session-level probes replay itself never
  * needs: the current location path, read once per step for the start-anchor
- * precondition.
+ * precondition, and one settled look at the screen before any action — the
+ * baseline the staged trace's end anchors are the delta from. The settled
+ * observe is the dispatch's own (one recorded observation, settling inside),
+ * not replay's raw polling loop, so the baseline costs the step one event.
  */
 export interface StepCacheHost extends ReplayHost {
   currentPath(): Promise<string | undefined>;
+  observeSettledNodes(): Promise<ReadonlyMap<string, SemanticNode>>;
 }
 
 /** What the session needs from the dispatch beyond the replay host itself. */
@@ -46,6 +52,12 @@ export class StepTraceSession {
   private info: StepCacheInfo | undefined;
   private prefix: ReplayedPrefix | undefined;
   private startPath: string | undefined;
+  /**
+   * The screen before any action, kept only when this step may write: the
+   * staged trace's end anchors are the delta between this and the passing
+   * observation, so a replay must reproduce the step's effect to pass alone.
+   */
+  private startNodes: ReadonlyMap<string, SemanticNode> | undefined;
   /** Original producer of a fully replayed trace, kept as write provenance. */
   private replaySource: { name: string; version?: string } | undefined;
   /**
@@ -57,6 +69,8 @@ export class StepTraceSession {
   private replaySummary: string | undefined;
   /** True once a cached entry's actions were run this step, fully or partly. */
   private consumedReplay = false;
+  /** Grammar actions recorded so far when an end-mismatch hand-off happened. */
+  private actionsAtEndMismatch: number | undefined;
 
   constructor(options: StepCacheOptions) {
     this.options = options;
@@ -101,6 +115,7 @@ export class StepTraceSession {
     // Captured before any action for the write's start-path precondition, and
     // doubling as the replay decision's current path.
     this.startPath = await host.currentPath();
+    if (this.recorder !== undefined) this.startNodes = await host.observeSettledNodes();
     if (!this.cache.replayEligible) return undefined;
     let read: Awaited<ReturnType<typeof this.cache.store.read>>;
     try {
@@ -134,11 +149,15 @@ export class StepTraceSession {
     const outcome = await replayTrace(host, trace);
     this.consumedReplay = true;
     if (outcome.completed) {
-      // The recorded end path is the trace's postcondition: a flow whose
-      // destination changed replays mechanically but must not pass on its
-      // own — the executor gets the step and judges the live state instead.
+      // The recorded end path and end anchors are the trace's postcondition:
+      // a flow whose destination changed, or whose effect is not on screen
+      // again, replays mechanically but must not pass on its own — the
+      // executor gets the step and judges the live state instead. Actions
+      // that all ran prove the clicks happened; only the anchors prove the
+      // save took.
       const endMismatch =
-        trace.endPath !== undefined && !samePathname(await host.currentPath(), trace.endPath);
+        (trace.endPath !== undefined && !samePathname(await host.currentPath(), trace.endPath)) ||
+        !(await verifyAnchors(host, trace.endAnchors ?? []));
       if (!endMismatch) {
         this.replaySource = { ...trace.executor };
         this.replaySummary = trace.summary;
@@ -157,6 +176,7 @@ export class StepTraceSession {
         totalActions: outcome.total,
         stopReason: 'end-mismatch',
       };
+      this.actionsAtEndMismatch = this.recorder?.recordedCount ?? 0;
       this.info = {
         mode: 'agent-concluded',
         reason: 'end-mismatch',
@@ -194,9 +214,37 @@ export class StepTraceSession {
    * deterministic assertion after the step — not the verdict alone — is what
    * proves the flow reached the right state. A replayed step re-stages its
    * own entry with fresh descriptors, which is how staleness self-heals.
+   *
+   * `endNodes` is the passing observation; its delta against the starting
+   * one becomes the trace's end anchors. When the step moved to another
+   * pathname the whole screen is the delta and the path is the postcondition,
+   * so anchors are recorded only for a step that ended where it began (or on
+   * a surface without a location at all, where they are the only check).
    */
-  stage(verdictSummary: string | undefined, endPath: string | undefined): void {
+  stage(
+    verdictSummary: string | undefined,
+    endPath: string | undefined,
+    endNodes: ReadonlyMap<string, SemanticNode> | undefined,
+  ): void {
     if (this.recorder === undefined) return;
+    if (this.repairedAfterEndMismatch) {
+      // Every recorded action ran and the effect was still missing, and the
+      // executor had to act further to get there: the recorded flow is proven
+      // not to produce its effect. Re-staging would freeze the failed flow
+      // plus its repair — a typo, its deletion, the retype — as the thing to
+      // replay forever. Evict instead; the next pass records a clean flow.
+      // A hand-off the executor settled without acting is different: the
+      // flow was fine and only the anchors were stale, so it heals below.
+      void this.cache.store.delete?.(this.keyHash).catch(() => undefined);
+      return;
+    }
+    const endAnchors =
+      this.startNodes === undefined || endNodes === undefined || movedPathname(this.startPath, endPath)
+        ? undefined
+        : describeAnchors(this.startNodes, endNodes, {
+            redact: this.options.redact,
+            testIdAttribute: this.options.testIdAttribute,
+          });
     const trace = this.recorder.finalize({
       executor: this.replaySource ?? this.options.executor,
       // A self-finalized replay re-stages the ORIGINAL verdict prose; the
@@ -204,6 +252,7 @@ export class StepTraceSession {
       summary: this.replaySummary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
+      ...(endAnchors === undefined ? {} : { endAnchors }),
     });
     if (trace === undefined) return;
     // A trace with no start anchor — no recorded path (a surface without a URL)
@@ -229,8 +278,19 @@ export class StepTraceSession {
     return this.recorder !== undefined;
   }
 
+  private get repairedAfterEndMismatch(): boolean {
+    return (
+      this.actionsAtEndMismatch !== undefined &&
+      (this.recorder?.recordedCount ?? 0) > this.actionsAtEndMismatch
+    );
+  }
+
   private missed(reason: TraceReplayMissReason | ReplayedPrefix['stopReason'], totalActions: number): StepCacheInfo {
     return { mode: 'missed', reason, replayedActions: 0, totalActions };
   }
 }
 
+/** True only when both locations are known and their pathnames differ. */
+function movedPathname(start: string | undefined, end: string | undefined): boolean {
+  return start !== undefined && end !== undefined && !samePathname(start, end);
+}

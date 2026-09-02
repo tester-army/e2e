@@ -422,6 +422,7 @@ class ActDispatch {
       redact: this.redact,
       testIdAttribute: this.runtime.config.testIdAttribute,
       currentPath: () => this.currentPath(),
+      observeSettledNodes: async () => (await this.observeSettled()).nodes,
     };
   }
 
@@ -437,12 +438,23 @@ class ActDispatch {
     }
   }
 
-  /** Stages the step's recorded trace for attempt-end settlement. */
+  /**
+   * Stages the step's recorded trace for attempt-end settlement. The end path
+   * and a fresh settled observation are the trace's postcondition — the
+   * state the step passed in, captured only when a write can actually
+   * happen, so read-only runs pay no extra backend call. A postcondition
+   * that cannot be captured stages nothing: a trace without its check would
+   * replay on mechanics alone.
+   */
   async stageTrace(): Promise<void> {
     if (this.stepCache === undefined || !this.stepCache.wantsStage) return;
-    // The end path is the trace's postcondition; captured only when a write
-    // can actually happen, so read-only runs pay no extra backend call.
-    this.stepCache.stage(this.explanation, await this.currentPath());
+    let endNodes: AgentObservation['nodes'];
+    try {
+      endNodes = (await this.observeSettled()).nodes;
+    } catch {
+      return;
+    }
+    this.stepCache.stage(this.explanation, await this.currentPath(), endNodes);
   }
 
   /** Evicts a consumed replay entry after a non-passed settle. */
@@ -729,7 +741,7 @@ class ActDispatch {
    * Replay reads raw (`observeLatest`) and settles on its own schedule.
    */
   private async observe(): Promise<ExecutorObservation> {
-    const observation = await this.serialized(() => this.observeNow(true));
+    const observation = await this.observeSettled();
     return {
       revision: observation.revision,
       text: observation.text,
@@ -740,6 +752,10 @@ class ActDispatch {
 
   private observeLatest(): Promise<AgentObservation> {
     return this.serialized(() => this.observeNow(false));
+  }
+
+  private observeSettled(): Promise<AgentObservation> {
+    return this.serialized(() => this.observeNow(true));
   }
 
   /** One recorded observation; when `settle`, the captures loop inside it. */

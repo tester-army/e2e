@@ -94,6 +94,12 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
     'Cached replay already performed these recorded actions for this step:',
     ...lines,
     `Replay stopped (${prefix.stopReason}) after ${prefix.replayedActions.length} of ${prefix.totalActions} recorded actions.`,
+    ...(prefix.stopReason === 'end-mismatch'
+      ? [
+          'Every recorded action ran, but the screen does not show the recorded end state. ' +
+            'Check whether the step actually took effect before doing anything — the recorded flow may have silently failed to commit.',
+        ]
+      : []),
     ...(prefix.uncertainAction === undefined
       ? []
       : [

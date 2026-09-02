@@ -5,6 +5,7 @@ import { decideTraceReplay } from '../../src/cache/decide.ts';
 import {
   buildTraceEntry,
   MAX_TRACE_ACTIONS,
+  MAX_TRACE_ANCHORS,
   MAX_TRACE_INPUT_CHARS,
   readTraceEntry,
   type ActionTrace,
@@ -68,6 +69,18 @@ describe('trace-1 entry', () => {
     expect(entry.payload.startPath).toBe('/settings');
   });
 
+  it('round-trips the postcondition: end path and end anchors', () => {
+    const endAnchors = [
+      { role: 'status', name: 'Marker', text: 'saved' },
+      { text: 'Playbook saved' },
+    ];
+    const entry = entryOf(trace({ endPath: '/settings', endAnchors }));
+    expect(entry.payload.endPath).toBe('/settings');
+    expect(entry.payload.endAnchors).toEqual(endAnchors);
+    // An empty list is the same as no anchors; the shape stays canonical.
+    expect(entryOf(trace({ endAnchors: [] })).payload.endAnchors).toBeUndefined();
+  });
+
   it('drops unknown fields instead of carrying them', () => {
     const document = roundTrip(trace()) as Record<string, unknown>;
     document['extra'] = 'x';
@@ -102,6 +115,13 @@ describe('trace-1 entry', () => {
     ['non-string descriptor field', withPayload({ actions: [{ name: 'tap', summary: 'tap', target: { role: 7 } }] })],
     ['empty descriptor', withPayload({ actions: [{ name: 'tap', summary: 'tap', target: {} }] })],
     ['missing executor name', withPayload({ executor: { name: '' } })],
+    ['non-array anchors', withPayload({ endAnchors: { role: 'status' } })],
+    ['empty anchor descriptor', withPayload({ endAnchors: [{}] })],
+    ['non-string anchor field', withPayload({ endAnchors: [{ text: 42 }] })],
+    [
+      'too many anchors',
+      withPayload({ endAnchors: Array.from({ length: MAX_TRACE_ANCHORS + 1 }, (_, i) => ({ text: `a${i}` })) }),
+    ],
   ])('rejects %s', (_label, document) => {
     expect(readTraceEntry(document)).toBeUndefined();
   });

@@ -10,6 +10,16 @@ self-finalizes the step as passed with zero model calls; any divergence hands
 the step to the executor mid-step with a `replayedPrefix` notice and the step
 re-records on pass. Judgments are never cached.
 
+A replay never passes on mechanics alone: each entry records the state the
+step passed in — the end path and the **end anchors**, the elements that
+appeared between the step's first observation and its passing one — and a
+full replay self-finalizes only while that state is on screen again. A flow
+whose actions all ran but whose effect is missing hands off with
+`end-mismatch`, and the built-in agent is told to verify before acting. If the
+agent then has to act further to pass, the entry is evicted rather than
+re-staged with the failed flow plus its repair; a hand-off the agent settles
+without acting heals the anchors in place.
+
 New surface:
 
 - config `cache`: `'off' | 'read-only' | 'read-write'` or
@@ -22,8 +32,10 @@ New surface:
 - Report: agent steps carry `step.cache`
   (`self-finalized | agent-concluded | missed` + a closed reason token).
 - Write settlement is attempt-scoped: passing steps stage their traces,
-  confirmation requires a later passed step or a passing attempt, an
-  implicated entry is evicted, and interruption touches nothing.
+  confirmation requires a later passing **verification step** (an `expect`
+  assertion, a locator `waitFor`, `agent.assert`, or `agent.waitFor`) — a
+  later `agent.act` or the attempt passing on its own confirms nothing — an
+  unconfirmed entry is evicted, and interruption touches nothing.
 - Exported types: `CacheMode`, `CacheConfig`, `TraceCacheStore`,
   `CacheReadResult`, `ActionTrace`, `RecordedAction`, `TraceEntry`,
   `TraceTargetDescriptor`.
@@ -31,4 +43,5 @@ New surface:
 Spec: 10-determinism's "No caching" clause is replaced by the trace cache
 chapter; 05-config and 16-executors document the config key and the hand-off;
 `report-v1.schema.json` gains `step.cache`; conformance `suiteVersion` bumps
-0.4.0 → 0.5.0 with the new `trace-1` profile.
+to 0.8.0 with the `trace-1` profile, including `TRACE-ANCHOR-001` and the
+verification-step write rule.

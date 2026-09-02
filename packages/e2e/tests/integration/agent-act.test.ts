@@ -146,7 +146,10 @@ describe('agent.act with a hand-rolled step executor', () => {
     const backendEvents = step!.events.filter((event) => event.kind === 'backend');
     const observations = step!.events.filter((event) => event.kind === 'observation');
     expect(backendEvents).toHaveLength(1);
-    expect(observations).toHaveLength(2);
+    // The executor's two looks, plus the trace cache's two (on by default):
+    // the settled baseline before any action and the passing observation,
+    // whose delta becomes the staged trace's end anchors.
+    expect(observations).toHaveLength(4);
   });
 
   it('emits a schema-valid report for executor-driven steps', () => {

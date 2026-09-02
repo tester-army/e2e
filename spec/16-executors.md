@@ -71,6 +71,10 @@ construction. The context provides:
   carries `uncertainAction` — the summary of a replayed action whose input
   may have reached the app (09-drivers.md, `ACTION_MAY_HAVE_COMMITTED`); the
   executor MUST verify current state before re-attempting anything like it.
+  An `end-mismatch` stop means every recorded action ran but the recorded
+  postcondition — end path or end anchors — did not hold: the executor
+  SHOULD judge whether the step took effect before acting, because the
+  recorded flow may have failed to commit rather than merely moved.
   On a miss, or with caching off, the field is absent and the step is
   indistinguishable from an uncached one.
 

@@ -16,6 +16,22 @@ export type StepKind =
   | 'session'
   | 'resource';
 
+/** Agent methods that judge the screen rather than change it. */
+const AGENT_VERIFICATION_APIS: ReadonlySet<string> = new Set(['agent.assert', 'agent.waitFor']);
+
+/**
+ * Whether a step checks state rather than producing it: a deterministic
+ * assertion, a locator wait, or an agent judgment. Only such a step passing
+ * can confirm a staged action trace (cache/context.ts) — an `agent.act`
+ * passing is the executor's opinion of its own work, and an `app` or
+ * `locator` action passing proves only that the action could be performed.
+ */
+export function isVerificationStep(step: { readonly kind: StepKind; readonly api: string }): boolean {
+  if (step.kind === 'assertion') return true;
+  if (step.kind === 'locator') return step.api === 'locator.waitFor';
+  return step.kind === 'agent' && AGENT_VERIFICATION_APIS.has(step.api);
+}
+
 /**
  * Child event of one public step: polls, model calls, policy decisions.
  * `tool-proposal` (report-1) belongs to the planning tier and is not emitted

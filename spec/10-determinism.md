@@ -118,7 +118,15 @@ An entry (`schemaVersion: "trace-1"`) wraps one `ActionTrace`: the recorded
 actions, each with a durable target descriptor (role, name, testid,
 placeholder, structural selector — captured at commit time from the node the
 action actually ran against), JSON-safe secret-free input, and a one-line
-prose summary; plus producer provenance and the page path the step began on.
+prose summary; plus producer provenance, the page path the step began on, the
+page path it passed on, and its **end anchors**: the descriptors of nodes on
+screen when the step passed that were absent when it began. Anchors are the
+recording run's verification made mechanical — the executor's final look at
+the screen, which the action list alone drops — and are recorded for a step
+that ended on the pathname it began on (or on a surface with no location),
+capped at 8 — leaf nodes first, then containers, each in document order,
+because a container's name only repeats its children's. A step that moved to
+another pathname has the path as its postcondition and records no anchors.
 Secret plaintext MUST NOT appear anywhere in an entry — a secret fill is
 recorded by its stable name only, and every recorded string passes the run's
 secret redactor first. A mutation the grammar cannot reproduce (a mutating
@@ -156,27 +164,43 @@ authorization, and recording all apply identically. Each targeted action
 re-finds its node from the recorded descriptor against a fresh observation;
 exactly one node must match or the replay diverges. A full successful replay
 self-finalizes the step as passed — gated by the trace's postcondition: when
-a recorded end path exists, the live pathname must still match it, so a
-recorded flow whose destination changed hands off (`end-mismatch`) instead of
-passing on mechanics alone. Any divergence — a gap, a moved or
+a recorded end path exists, the live pathname must still match it, and every
+recorded end anchor must be present again (found, or ambiguous — presence,
+not uniqueness), waiting out a short settling backoff for a slow effect. A
+recorded flow whose destination changed, or whose actions all ran but whose
+effect is not on screen — a save that never committed, a form left unnamed —
+hands off (`end-mismatch`) instead of passing on mechanics alone. Any
+divergence — a gap, a moved or
 ambiguous target, a rejected action — hands the step to the executor
 mid-step with a `replayedPrefix` notice (16-executors.md); the executor
 continues from live state. Runtime hard stops (budget, timeout, cancel) are
 never divergence: they propagate as the step's own accounting.
 
 Writes are staged, then settled at attempt end. A step's own passing verdict
-is not what proves the flow reached the right state — the deterministic
-assertion after it is. A staged trace is **confirmed** (written) when the
-attempt passed or any later step passed after it; on a failed attempt the
-staged trace of the last passed step is implicated instead, and its entry is
-**evicted**, so a cached flow that led to a failure re-records on the next
-pass rather than replaying a poisoned state forever. A step that settles
-non-passed after consuming a cached replay evicts that entry directly for the
-same reason. Interruption and cancellation implicate nothing: an interrupted
-attempt neither writes nor evicts. Confirmed rewrites are unconditional —
-including after a replay, which is how stale descriptors self-heal — and only
-passing steps ever stage. The store is disposable: flushing it can slow the
-next run, never change a verdict.
+is not what proves the flow reached the right state — the verification after
+it is. A staged trace is **confirmed** (written) only when a **verification
+step** passed after it: a deterministic assertion (`expect`), a locator wait,
+or an agent judgment (`agent.assert`, `agent.waitFor`). A later `agent.act`
+passing confirms nothing — it says only that the executor coped with whatever
+state it found — and neither does the attempt passing by itself, so a trailing
+act no assertion ever checks is never replayed blind. Every unconfirmed
+staged trace is implicated instead, and its entry is **evicted**, so a cached
+flow that led to a failure — or one that was never checked — re-records on
+the next pass rather than replaying a poisoned state forever. On a failed
+attempt, confirmation stops at what had been verified when the failure
+landed: teardown steps passing afterwards prove nothing about the flow. A
+step that settles non-passed after consuming a cached replay evicts that
+entry directly for the same reason, and so does a step whose replay ended in
+`end-mismatch` and whose executor then had to perform further actions to
+pass: every recorded action ran and the effect was still missing, so the flow
+is proven not to produce it, and re-staging would freeze the failed flow plus
+its repair as the thing to replay. An `end-mismatch` the executor settles
+without acting — the flow was fine, only the anchors were stale — re-stages
+and heals. Interruption and cancellation implicate
+nothing: an interrupted attempt neither writes nor evicts. Confirmed rewrites
+are unconditional — including after a replay, which is how stale descriptors
+and anchors self-heal — and only passing steps ever stage. The store is
+disposable: flushing it can slow the next run, never change a verdict.
 
 ### Storage and concurrency
 
