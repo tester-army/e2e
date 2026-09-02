@@ -23,7 +23,7 @@
  * `release:public`, which is the plain changesets publish.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -51,7 +51,9 @@ function publishPackage(dir, rewrite) {
 
   writeFileSync(manifestPath, `${JSON.stringify(pkg, null, 2)}\n`);
   try {
-    execSync('npm publish --tag beta', { cwd: dir, stdio: 'inherit' });
+    // Arguments, never a shell: manifest fields must not be able to smuggle
+    // shell syntax into the release job.
+    execFileSync('npm', ['publish', '--tag', 'beta'], { cwd: dir, stdio: 'inherit' });
     console.log(`published ${pkg.name}@${pkg.version} (restricted, beta)`);
   } finally {
     writeFileSync(manifestPath, original);
@@ -61,7 +63,7 @@ function publishPackage(dir, rewrite) {
 /** True when this exact version is already on the registry. */
 function alreadyPublished(name, version) {
   try {
-    const found = execSync(`npm view ${name}@${version} version`, {
+    const found = execFileSync('npm', ['view', `${name}@${version}`, 'version'], {
       stdio: ['ignore', 'pipe', 'ignore'],
     })
       .toString()
