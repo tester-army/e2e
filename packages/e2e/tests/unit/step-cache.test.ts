@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentCacheContext } from '../../src/cache/context.ts';
 import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
 import { StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
+import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import type { SemanticNode } from '../../src/backend/surface.ts';
 
@@ -91,7 +92,7 @@ describe('StepTraceSession', () => {
     });
   });
 
-  it('never stages a trace with no start anchor', () => {
+  it('never stages a trace with no start anchor', async () => {
     const neverRead = async (): Promise<never> => {
       throw new Error('unused');
     };
@@ -103,14 +104,14 @@ describe('StepTraceSession', () => {
       name: 'tap',
       node: { ref: { id: 'n1', revision: 'r1' }, role: 'button', name: 'Upgrade' },
     });
-    withheld.stage('passed', undefined, undefined);
+    await withheld.stage('passed', undefined, undefined);
     expect(unanchored.staged).toHaveLength(0);
 
     // A navigate-opening trace anchors itself and stages without a path.
     const anchored = fakeContext(neverRead);
     const staged = makeSession(anchored);
     staged.record({ name: 'navigate', url: '/billing' });
-    staged.stage('passed', undefined, undefined);
+    await staged.stage('passed', undefined, undefined);
     expect(anchored.staged).toHaveLength(1);
   });
 
@@ -130,7 +131,7 @@ describe('StepTraceSession', () => {
       ),
     );
     session.record({ name: 'tap', node: { ref: { id: 'b', revision: 'r2' }, role: 'button', name: 'Save marker' } });
-    session.stage(
+    await session.stage(
       'saved the marker',
       '/storage',
       nodeMap([
@@ -149,7 +150,7 @@ describe('StepTraceSession', () => {
     const session = makeSession(context);
     await session.tryReplay(makeHost(['/pricing']));
     session.record({ name: 'navigate', url: '/customers' });
-    session.stage('opened customers', '/customers?ref=nav', nodeMap([savedMarker]));
+    await session.stage('opened customers', '/customers?ref=nav', nodeMap([savedMarker]));
     expect(context.staged[0]?.trace.endAnchors).toBeUndefined();
     expect(context.staged[0]?.trace.endPath).toBe('/customers?ref=nav');
   });
@@ -177,7 +178,7 @@ describe('StepTraceSession', () => {
     await session.tryReplay(recordingHost(session, ['/pricing', '/customers']));
     expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
     // The executor looked, agreed the step was done, and recorded nothing more.
-    session.stage('the customers page is open', '/customers', nodeMap([savedMarker]));
+    await session.stage('the customers page is open', '/customers', nodeMap([savedMarker]));
     expect(context.staged).toHaveLength(1);
     expect(context.staged[0]?.trace.actions.map((action) => action.name)).toEqual(['navigate']);
   });
@@ -185,7 +186,10 @@ describe('StepTraceSession', () => {
   it('evicts instead of re-staging when the executor had to repair after an end-mismatch', async () => {
     const deleted: string[] = [];
     const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    // A slow store: the eviction must be awaited, not fired and forgotten, or
+    // a later read could still be served the stale flow.
     context.store.delete = async (keyHash) => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
       deleted.push(keyHash);
     };
     const session = makeSession(context);
@@ -193,10 +197,36 @@ describe('StepTraceSession', () => {
     expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
     // The replayed flow did not produce its effect; the executor acted further.
     session.record({ name: 'tap', node: { ref: { id: 's', revision: 'r2' }, role: 'button', name: 'Save' } });
-    session.stage('saved after all', '/customers', nodeMap([savedMarker]));
+    await session.stage('saved after all', '/customers', nodeMap([savedMarker]));
     expect(context.staged).toHaveLength(0);
-    await Promise.resolve();
     expect(deleted).toEqual(['a'.repeat(64)]);
+  });
+
+  it('lets a backend-independent executor run when the baseline cannot be observed, and stages nothing', async () => {
+    const context = fakeContext(async () => ({ status: 'miss' }));
+    const session = makeSession(context);
+    const blindHost: StepCacheHost = {
+      ...makeHost(['/']),
+      observeSettledNodes: async () => {
+        throw new Error('no surface to observe');
+      },
+    };
+    await expect(session.tryReplay(blindHost)).resolves.toBeUndefined();
+    session.record({ name: 'navigate', url: '/billing' });
+    await session.stage('done without looking', '/billing', nodeMap([savedMarker]));
+    expect(context.staged).toHaveLength(0);
+  });
+
+  it('propagates a runtime hard stop raised while capturing the baseline', async () => {
+    const context = fakeContext(async () => ({ status: 'miss' }));
+    const session = makeSession(context);
+    const cancelledHost: StepCacheHost = {
+      ...makeHost(['/']),
+      observeSettledNodes: async () => {
+        throw new AgentError('CANCELLED', 'the attempt was cancelled');
+      },
+    };
+    await expect(session.tryReplay(cancelledHost)).rejects.toMatchObject({ code: 'CANCELLED' });
   });
 
   it('self-finalizes when the recorded end anchors are present again', async () => {
@@ -224,7 +254,7 @@ describe('StepTraceSession', () => {
     expect(verdict?.status).toBe('passed');
     expect(verdict?.summary).toContain('recorded verdict: opened the customers page');
     session.record({ name: 'navigate', url: '/customers' });
-    session.stage(verdict?.summary, '/customers', undefined);
+    await session.stage(verdict?.summary, '/customers', undefined);
     expect(context.staged[0]?.trace.summary).toBe('opened the customers page');
   });
 });
