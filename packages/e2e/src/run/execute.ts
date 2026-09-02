@@ -712,15 +712,8 @@ export class TargetExecutor implements SerialHost {
     if (failure === undefined) {
       record.status = 'passed';
     } else {
-      const reportPhase = failurePhase ?? phase;
-      if (this.interruptSignal.aborted && !timedOut) {
-        record.status = 'interrupted';
-      } else if (timedOut || failure instanceof TestTimeoutError || failure.code === 'TEST_TIMEOUT') {
-        record.status = 'timed-out';
-      } else {
-        record.status = 'failed';
-      }
-      record.error = serializeError(failure, { phase: reportPhase });
+      record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
+      record.error = serializeError(failure, { phase: failurePhase ?? phase });
     }
 
     if (cache !== undefined) {
@@ -738,6 +731,23 @@ export class TargetExecutor implements SerialHost {
     }
     return record;
   }
+}
+
+/**
+ * The status of a failed attempt. An interrupt outranks everything except a
+ * timeout that had already fired: the attempt then timed out, whatever
+ * arrived after.
+ */
+function classifyAttemptStatus(
+  failure: E2EError,
+  timedOut: boolean,
+  interrupted: boolean,
+): 'failed' | 'timed-out' | 'interrupted' {
+  if (interrupted && !timedOut) return 'interrupted';
+  if (timedOut || failure instanceof TestTimeoutError || failure.code === 'TEST_TIMEOUT') {
+    return 'timed-out';
+  }
+  return 'failed';
 }
 
 /** Highest timeline index among steps that passed, or -1 when none have. */

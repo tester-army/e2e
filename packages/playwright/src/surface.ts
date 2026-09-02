@@ -36,6 +36,7 @@ import { frameSelectors, projectExpression } from './locators.ts';
 import { captureDocument, toSemanticNode } from './observation.ts';
 import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
 import { readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { RefRegistry } from './refs.ts';
 import {
   cancelled,
   DEFAULT_VIEWPORT,
@@ -51,9 +52,6 @@ import {
   withinCleanupBudget,
   type ActionTarget,
 } from './support.ts';
-
-/** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
-const MAX_STORED_REFS = 2048;
 
 /**
  * Safety valve on nodes in one observation. The contract has no way to report
@@ -131,7 +129,6 @@ export class PlaywrightSurface {
   private testIdAttribute = 'data-testid';
   private headed = false;
   private artifactsDir = '';
-  private refCounter = 0;
   private artifactCounter = 0;
   private tracing = false;
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
@@ -143,16 +140,8 @@ export class PlaywrightSurface {
    * replaces on `clearState` or session restore.
    */
   private readonly routes: StoredRoute[] = [];
-  /** Locator-backed refs from `locate`; they hold no live handles. */
-  private readonly refs = new Map<string, ActionTarget>();
-  /**
-   * Handle-backed refs of the newest observation. One observation is one
-   * handle generation: the whole map is swapped atomically per `observe()`,
-   * and the superseded generation is disposed in one sweep. Keeping these out
-   * of `refs` means locator-ref eviction can never destroy a handle an
-   * in-flight observation still references.
-   */
-  private observationRefs = new Map<string, ActionTarget>();
+  /** Located and observed node refs; see `RefRegistry` for the two lifetimes. */
+  private readonly refs = new RefRegistry();
 
   constructor(options: PlaywrightOptions) {
     this.browserName = options.browser ?? 'chromium';
@@ -209,8 +198,6 @@ export class PlaywrightSurface {
    */
   async endAttempt(context: BackendCleanupContext): Promise<void> {
     await this.closeContext(context);
-    PlaywrightSurface.disposeGeneration(this.observationRefs);
-    this.observationRefs = new Map();
     this.refs.clear();
   }
 
@@ -333,8 +320,6 @@ export class PlaywrightSurface {
     this.context = null;
     this.page = null;
     this.tracing = false;
-    PlaywrightSurface.disposeGeneration(this.observationRefs);
-    this.observationRefs = new Map();
     this.refs.clear();
     if (resumeTrace) {
       this.traceSegments += 1;
@@ -378,40 +363,6 @@ export class PlaywrightSurface {
     } catch (cause) {
       throw translate(cause, label);
     }
-  }
-
-  private mintId(): string {
-    this.refCounter += 1;
-    return `n${this.refCounter}`;
-  }
-
-  private storeRef(target: ActionTarget): string {
-    const id = this.mintId();
-    this.refs.set(id, target);
-    for (const oldest of this.refs.keys()) {
-      if (this.refs.size <= MAX_STORED_REFS) break;
-      this.refs.delete(oldest);
-    }
-    return id;
-  }
-
-  /** Disposes every element handle in one observation generation. */
-  private static disposeGeneration(generation: ReadonlyMap<string, ActionTarget>): void {
-    for (const target of generation.values()) {
-      if (target.kind === 'element') void target.element.dispose().catch(() => undefined);
-    }
-  }
-
-  /**
-   * Ids are the backend's; revisions are the harness's. The adapter already
-   * rejected a ref from a superseded resolution, so lookup is by id alone.
-   */
-  private lookupRef(ref: NodeRef): ActionTarget {
-    const target = this.refs.get(ref.id) ?? this.observationRefs.get(ref.id);
-    if (target === undefined) {
-      throw new BackendError('NODE_STALE', `node reference ${ref.id} is stale`, { retryable: true });
-    }
-    return target;
   }
 
   // --- navigation and app lifecycle ---
@@ -485,7 +436,7 @@ export class PlaywrightSurface {
           // ambiguous between locate and perform fails loud instead of acting
           // on whichever element is first.
           const locator = raws.length === 1 ? projected.locator : projected.locator.nth(index);
-          const id = this.storeRef({ kind: 'locator', locator });
+          const id = this.refs.storeLocated({ kind: 'locator', locator });
           nodes.push(toSemanticNode({ id, revision: '' }, raw));
         });
         return nodes;
@@ -500,8 +451,8 @@ export class PlaywrightSurface {
       action.kind,
       () => {
         this.requirePage();
-        return dispatchLocatorAction(this.lookupRef(ref), action, operation.timeoutMs, (other) =>
-          this.lookupRef(other),
+        return dispatchLocatorAction(this.refs.lookup(ref), action, operation.timeoutMs, (other) =>
+          this.refs.lookup(other),
         );
       },
       (cause) => classifyActionError(cause, action),
@@ -686,7 +637,7 @@ export class PlaywrightSurface {
           {
             testIdAttribute: this.testIdAttribute,
             allowedOrigins: this.app.allowedOrigins,
-            mintId: () => this.mintId(),
+            mintId: () => this.refs.mintId(),
             commit: (id: string, element: ElementHandle<Element>) => {
               generation.set(id, { kind: 'element', element });
             },
@@ -697,18 +648,17 @@ export class PlaywrightSurface {
         pixelCapture,
       ]);
     } catch (cause) {
-      PlaywrightSurface.disposeGeneration(generation);
+      RefRegistry.dispose(generation);
       throw cause;
     }
     // `guard` already rejected the caller on abort; the capture kept running.
     // Its generation must not be published over the one the caller still
     // holds refs into, nor destroy that one.
     if (operation.signal.aborted) {
-      PlaywrightSurface.disposeGeneration(generation);
+      RefRegistry.dispose(generation);
       throw cancelled('observe cancelled');
     }
-    PlaywrightSurface.disposeGeneration(this.observationRefs);
-    this.observationRefs = generation;
+    this.refs.publish(generation);
     return {
       nodes: [captured.tree],
       viewport: { width: viewport.width, height: viewport.height, scale: 1 },
