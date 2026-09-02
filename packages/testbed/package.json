@@ -28,12 +28,13 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@ai-sdk/devtools": "1.0.15",
     "@types/node": "26.1.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "agent-device": "0.20.10",
     "ai": "7.0.37",
     "typescript": "7.0.2",
-    "zod": "4.4.3",
-    "agent-device": "0.20.10"
+    "zod": "4.4.3"
   }
 }

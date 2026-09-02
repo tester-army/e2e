@@ -54,6 +54,29 @@ Agentic assertions are structurally comparable across models, not textually
 identical, so these tests assert on meaning (`toContain`) and pair every
 agentic step with a deterministic locator check.
 
+To see where the tokens went, record the run and open the trace in
+[unbox-ai](https://github.com/tester-army/unbox-ai):
+
+```bash
+E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace
+npx unbox-ai .e2e/ai-trace.json          # viewer: treemap, waterfall, diffed turns
+npx unbox-ai runs .e2e/ai-trace.json     # one line per agent step, from the terminal
+```
+
+To watch calls land while the suite runs, `e2e.agent.config.ts` registers the
+AI SDK devtools recorder when `E2E_DEVTOOLS` is set; start the live viewer
+first, in this directory:
+
+```bash
+npx unbox-ai devtools                    # live viewer on http://localhost:4983
+E2E_DEVTOOLS=1 E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --workers 1
+```
+
+The devtools recorder names runs after their first prompt and keeps one
+database per process, hence `--workers 1`; the `--ai-trace` file names runs
+after the test and step and merges every worker, so use it for anything you
+want to keep or compare.
+
 ## Known gaps (seleniumbase.io suite)
 
 The suite is opt-in and never runs in CI:

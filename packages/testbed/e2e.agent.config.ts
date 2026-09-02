@@ -2,6 +2,21 @@ import { defineConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 /**
+ * Live trace view: `E2E_DEVTOOLS=1` registers the AI SDK devtools recorder,
+ * which streams every model call into `.devtools/generations.json` and pings
+ * a running `npx unbox-ai devtools` (or `npx @ai-sdk/devtools`) viewer. The
+ * config loads in every worker, so each worker's calls are captured; that
+ * recorder keeps one database per process and rewrites it whole, so keep
+ * `workers: 1` while it is on. For a file to inspect after the run, prefer
+ * `e2e run --ai-trace`, which needs no setup.
+ */
+if (process.env.E2E_DEVTOOLS !== undefined && process.env.E2E_DEVTOOLS !== '') {
+  const { registerTelemetry } = await import('ai');
+  const { DevToolsTelemetry } = await import('@ai-sdk/devtools');
+  registerTelemetry(DevToolsTelemetry());
+}
+
+/**
  * Opt-in agentic suite against the local playground. Run manually:
  *
  *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent
