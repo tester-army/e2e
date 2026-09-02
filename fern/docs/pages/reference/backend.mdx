@@ -199,6 +199,30 @@ Retryability is closed to `RETRYABLE_BACKEND_ERROR_CODES`, the two
 repeatable-read codes; a retryable claim on any other code is coerced to a
 non-retryable `BACKEND_FAILURE`.
 
+A contributed fixture method fails a step with the runner's own taxonomy,
+exported from the same entry so a backend never carries a copy:
+
+```ts
+export class TestError extends Error {}            // a test failure: ASSERTION_FAILED, INVALID_LOCATOR, ACTION_FAILED, ...
+export class ConfigurationError extends Error {}   // POLICY_DENIED, APP_URL_REQUIRED, UNSUPPORTED_CAPABILITY, ...
+export class InfrastructureError extends Error {}  // the surface itself failed: BROWSER_INSTALL_FAILED, ...
+```
+
+## Shared semantics
+
+What the spec requires every backend and fixture to reproduce exactly is
+exported rather than re-implemented per backend:
+
+| Export | Spec | Use |
+| --- | --- | --- |
+| `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | 04-locators | `TextPattern` matching for `locate` and text matchers |
+| `urlMatches(current, expected, baseHref)` | 03-assertions | `toHaveURL`-style comparison: relative strings resolve against the base, regexps test the serialized URL |
+| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | 03-assertions | Assertion polling cadence and the negation grace window |
+| `validateJsonValue(value, label)` | 04-locators | Rejects non-JSON data (`undefined`, `NaN`, cycles) a fixture would return |
+
+There is no other shared entry: anything a backend needs beyond the contract
+is its own to write.
+
 ## State
 
 ```ts
@@ -270,7 +294,7 @@ step. Type the fixture in tests with `test.extend<{ name: Type }>()`.
 `OperationContext`, `TextPattern`, `SemanticQuery`, `LocatorExpression`,
 `NodeRef`, `SemanticNode`, `ObservationPixels`, `LocatorAction`,
 `BACKEND_SPI_VERSION`, `BACKEND_ERROR_CODES`, `RETRYABLE_BACKEND_ERROR_CODES`,
-`OBSERVED_NAME_LIMIT`, and `OBSERVED_TEXT_LIMIT` are exported from
+`OBSERVED_NAME_LIMIT`, `OBSERVED_TEXT_LIMIT`, and the shared semantics above are exported from
 `e2e/backend` and are the platform-neutral words every backend speaks. The
 `selector` expression kind carries a platform-native selector string (CSS or
 XPath on a document platform); `frame` scopes a query into a nested document.

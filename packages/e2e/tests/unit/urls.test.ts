@@ -68,16 +68,16 @@ describe('urlMatches', () => {
   const base = normalizeBaseUrl('http://localhost:3000');
 
   it('resolves relative expected strings against the base URL', () => {
-    expect(urlMatches('http://localhost:3000/billing', '/billing', base)).toBe(true);
+    expect(urlMatches('http://localhost:3000/billing', '/billing', base.href)).toBe(true);
   });
 
   it('compares exactly after WHATWG serialization', () => {
-    expect(urlMatches('http://localhost:3000/a', 'http://localhost:3000/a/../a', base)).toBe(true);
-    expect(urlMatches('http://localhost:3000/a?x=1', '/a', base)).toBe(false);
+    expect(urlMatches('http://localhost:3000/a', 'http://localhost:3000/a/../a', base.href)).toBe(true);
+    expect(urlMatches('http://localhost:3000/a?x=1', '/a', base.href)).toBe(false);
   });
 
   it('tests regexps against the complete serialized URL', () => {
-    expect(urlMatches('http://localhost:3000/beta/board', /beta/, base)).toBe(true);
-    expect(urlMatches('http://localhost:3000/alpha', /beta/, base)).toBe(false);
+    expect(urlMatches('http://localhost:3000/beta/board', /beta/, base.href)).toBe(true);
+    expect(urlMatches('http://localhost:3000/alpha', /beta/, base.href)).toBe(false);
   });
 });

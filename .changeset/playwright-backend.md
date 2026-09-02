@@ -57,6 +57,11 @@ Added:
   `test` typed with `web`; `expect` and `credentials` still come from `e2e`.
 - `e2e/backend` exports `BACKEND_ERROR_CODES` and
   `RETRYABLE_BACKEND_ERROR_CODES` (`NODE_STALE`, `FRAME_NOT_FOUND`).
+- `e2e/backend` exports the semantics the spec requires every backend to
+  reproduce exactly: `TestError`, `ConfigurationError`, `InfrastructureError`,
+  `matchesText`, `toTextPattern`, `describePattern`, `urlMatches`,
+  `pollCondition`, `Deadline`, and `validateJsonValue`. The `e2e/internal`
+  subpath is removed; a backend package depends on `e2e/backend` only.
 - `defineTool` accepts `platforms` to scope a tool pack to targets by
   platform, and `StepExecutorContext.target` names the target a step runs on.
 

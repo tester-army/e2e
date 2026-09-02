@@ -14,21 +14,21 @@
 
 import type { Download, Route } from 'playwright';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
-import type { BackendFixtureContext, OperationContext, TextPattern } from 'e2e/backend';
 import {
-  causeMessage,
   Deadline,
   describePattern,
   matchesText,
-  normalizeBaseUrl,
   pollCondition,
   TestError,
   toTextPattern,
   urlMatches,
   validateJsonValue,
-  type NormalizedBaseUrl,
-} from 'e2e/internal';
+  type BackendFixtureContext,
+  type OperationContext,
+  type TextPattern,
+} from 'e2e/backend';
 import type { DialogHandler } from './dialogs.ts';
+import { message as causeMessage } from './support.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
@@ -180,7 +180,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
    * empty reference yields the base itself, and lets the harness raise
    * `APP_URL_REQUIRED` when there is none.
    */
-  const base = (): NormalizedBaseUrl => normalizeBaseUrl(context.app.resolveUrl(''));
+  const baseHref = (): string => context.app.resolveUrl('');
 
   /**
    * A navigation's budget: the call's own timeout, else the test timeout the
@@ -202,7 +202,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
   const currentUrl = () => surface.url(context.operation());
   const currentTitle = () =>
     surface.guard(context.operation(), 'title', () => surface.requirePage().title());
-  const expectation = createWebExpectation({ currentUrl, currentTitle, base, deadlineFor, context });
+  const expectation = createWebExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
 
   const web: Omit<Web, keyof Expectable<WebExpectation>> = {
     goto(url, options) {
@@ -373,7 +373,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
         );
       }),
     setCookies(cookies) {
-      const scheme = base().origin.startsWith('https') ? 'https' : 'http';
+      const scheme = new URL(baseHref()).protocol === 'https:' ? 'https' : 'http';
       // The harness's origin policy decides which cookie targets are admitted;
       // a domain cookie is checked as the origin it would be sent to.
       for (const cookie of cookies) {
@@ -453,7 +453,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
 interface ExpectationDeps {
   currentUrl(): Promise<string>;
   currentTitle(): Promise<string>;
-  base(): NormalizedBaseUrl;
+  baseHref(): string;
   deadlineFor(timeout: number | undefined): Deadline;
   readonly context: BackendFixtureContext;
 }
@@ -485,7 +485,7 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
     },
     toHaveURL(expected, options) {
       const label = typeof expected === 'string' ? expected : String(expected);
-      const target = deps.base();
+      const target = deps.baseHref();
       return poll(
         'toHaveURL',
         `URL ${label}`,

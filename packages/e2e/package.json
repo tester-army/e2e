@@ -41,10 +41,6 @@
     "./backend": {
       "types": "./dist/backend/index.d.ts",
       "default": "./dist/backend/index.js"
-    },
-    "./internal": {
-      "types": "./dist/internal/index.d.ts",
-      "default": "./dist/internal/index.js"
     }
   },
   "bin": {

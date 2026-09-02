@@ -21,6 +21,17 @@
 
 import { backendBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+
+// Semantics the spec requires every backend and contributed fixture to
+// reproduce exactly, exported so a backend never carries its own copy: the
+// runner error taxonomy (06-cli.md), text-pattern matching (04-locators.md),
+// URL matching (03-assertions.md), assertion polling (03-assertions.md), and
+// the JSON-value rules for data a fixture returns.
+export { ConfigurationError, InfrastructureError, TestError } from '../internal/errors.ts';
+export { validateJsonValue, type JsonValueRules } from '../internal/json-value.ts';
+export { describePattern, matchesText, toTextPattern, type TextMatch } from '../internal/text.ts';
+export { Deadline, pollCondition, type PollConditionOptions } from '../internal/time.ts';
+export { urlMatches } from '../internal/urls.ts';
 import type { Expectable, Locator, Momentum, Screen, ScrollDirection } from '../types.ts';
 import {
   BACKEND_SPI_VERSION,

@@ -7,7 +7,7 @@
  */
 
 import { defineBackend, type BackendHandle } from 'e2e/backend';
-import { packageVersion } from 'e2e/internal';
+import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
 
@@ -16,7 +16,7 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
   const surface = new PlaywrightSurface(options);
   return defineBackend({
     name: 'playwright',
-    version: packageVersion(import.meta.url, '../package.json', 'unknown'),
+    version: ownVersion(),
     spiVersion: 1,
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
@@ -46,4 +46,13 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
       web: (context) => createWebFixture(surface, context),
     },
   });
+}
+
+/** This package's published version, read through require resolution. */
+function ownVersion(): string {
+  try {
+    return (createRequire(import.meta.url)('../package.json') as { version: string }).version;
+  } catch {
+    return 'unknown';
+  }
 }

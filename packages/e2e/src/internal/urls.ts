@@ -90,15 +90,11 @@ export function resolveNavigationUrl(
  * Relative expected strings resolve against the base URL; string comparison is
  * exact after WHATWG serialization; regexps test the complete serialized URL.
  */
-export function urlMatches(
-  current: string,
-  expected: string | RegExp,
-  base: NormalizedBaseUrl,
-): boolean {
+export function urlMatches(current: string, expected: string | RegExp, baseHref: string): boolean {
   if (typeof expected === 'string') {
     let expectedUrl: URL;
     try {
-      expectedUrl = new URL(expected, base.href);
+      expectedUrl = new URL(expected, baseHref);
     } catch {
       return false;
     }

@@ -18,9 +18,3 @@ Builds now clear `dist` before compiling. `tsc` only writes files, so output
 whose source has since moved or been deleted survived every later build and was
 published: after the Playwright driver moved out of `e2e`, the `e2e` tarball
 still carried a full copy of the old `dist/playwright` tree.
-
-`e2e/internal` additionally shares `causeMessage` and `sanitizeFilename`, the
-two text helpers each driver package would otherwise reimplement. Backend
-messages and artifact labels reach reports, so stripping terminal control
-sequences and constraining filenames happen in one place rather than once per
-driver.

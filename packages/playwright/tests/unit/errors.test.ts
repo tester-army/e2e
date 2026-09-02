@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BackendError } from 'e2e/backend';
-import { ConfigurationError, TestError } from 'e2e/internal';
+import { ConfigurationError, TestError } from 'e2e/backend';
 import { navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {

@@ -1,6 +1,17 @@
 /** Route URL pattern grammar per 08-platforms.md. */
 
-import { escapeRegexpChar, testPattern } from 'e2e/internal';
+/** Escapes one character for literal use inside a regexp source. */
+function escapeRegexpChar(ch: string): string {
+  return /[a-zA-Z0-9_-]/.test(ch) ? ch : `\\${ch}`;
+}
+
+/**
+ * Tests input against a wire regexp (source + flags). A fresh RegExp is
+ * constructed per call, so sticky/global state can never leak between matches.
+ */
+function testPattern(source: string, flags: string, input: string): boolean {
+  return new RegExp(source, flags).test(input);
+}
 import type { TextPattern } from 'e2e/backend';
 
 /**

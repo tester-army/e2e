@@ -79,8 +79,13 @@ targets: [{ name: 'phone', platform: 'ios', backend: hyperdrive({ device: 'iPhon
 <Callout intent="note">
 Depend on `e2e/backend` only, and take `e2e` as a **peer** dependency, never a
 regular one: the backend and the runner must agree on one copy of the error
-class. `e2e/internal` exists so first-party backend packages can share text
-and URL matching; it carries no semver guarantee.
+classes. Everything the spec requires a backend to reproduce exactly is exported
+there: the runner error taxonomy (`TestError`, `ConfigurationError`,
+`InfrastructureError`), text-pattern matching (`matchesText`, `toTextPattern`,
+`describePattern`), URL matching (`urlMatches`), assertion polling
+(`pollCondition`, `Deadline`), and the JSON-value rules (`validateJsonValue`).
+Anything else a backend needs is its own to write; there is no shared internal
+subpath.
 </Callout>
 
 ## Capabilities

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { OperationContext } from 'e2e/backend';
-import { TestError } from 'e2e/internal';
+import { TestError } from 'e2e/backend';
 import { raceAbort, withinCleanupBudget } from '../../src/support.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 

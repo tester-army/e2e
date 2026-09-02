@@ -38,7 +38,10 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   browser backend, built with the public `defineBackend`, contributing the
   `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
   reverse; a target names it explicitly as `backend: playwright()`. There is
-  no default backend and no well-known id registry in core.
+  no default backend and no well-known id registry in core. It imports from
+  `e2e/backend` only: the semantics the spec makes every backend reproduce
+  (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
+  are exported there, and there is no `e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the

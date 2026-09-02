@@ -27,7 +27,7 @@ import {
   type ScrollDirection,
   type SemanticNode,
 } from 'e2e/backend';
-import { matchesText } from 'e2e/internal';
+import { matchesText } from 'e2e/backend';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
 import { BrowserPool, type BrowserName } from './browser-pool.ts';
 import { DialogRouter } from './dialogs.ts';
