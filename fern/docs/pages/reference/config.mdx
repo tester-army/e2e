@@ -299,6 +299,32 @@ Opt out per project with `cache: 'off'`, or per run with `e2e run --no-cache`
 | `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Exempt from the CI clamp — it is not a committed file cache, and states its own trust through `writable`. Never crosses a process boundary; workers re-resolve the config module. |
 | `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root. |
 
+A replay never passes on mechanics alone. Each entry records the state the
+step passed in — the page path and the **end anchors**, the elements that
+appeared between the step's first look at the screen and its last — and a
+replay self-finalizes only when that state is on screen again. If every
+recorded action ran but the effect is missing (a save that never committed,
+a record created under the wrong name), the step hands off to the live agent
+with an `end-mismatch` notice, which tells it to check whether the step took
+effect before doing anything. If the agent then has to act to finish the step,
+the entry is evicted and the next passing run records a clean flow, so a
+broken recording never accumulates its own repairs.
+
+An entry is written only once a **verification step** after it passes: an
+`expect(...)` assertion, a locator `waitFor`, or an `agent.assert` /
+`agent.waitFor` judgment. A later `agent.act` passing does not count, and
+neither does the test passing on its own — a trailing act nothing ever checks
+is never replayed blind, so pair every `agent.act()` with an assertion of its
+outcome to make it cacheable. A failed run writes nothing the failure could
+have implicated and evicts the entries it did; the flow re-records on the
+next passing run.
+
+Cache-friendly tests also create their own data under names unique to the
+run and clean up in `afterEach`, not in their last steps: a replay that finds
+two rows with the recorded name hands off rather than guessing, and a run
+that fails before its cleanup should not leave duplicates for the next one
+to trip over.
+
 Entries are disposable: deleting `.e2e/cache/` slows the next run and changes
 nothing else. Every agent step's report records how the cache participated
 (`step.cache`: `self-finalized`, `agent-concluded`, or `missed`, with a
