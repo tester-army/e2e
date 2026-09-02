@@ -121,12 +121,13 @@ export function swipeWithin(
  * The location a device surface reports through `url`. A simulator has no
  * address bar, but the trace cache anchors every recorded step on a path and
  * refuses to write a trace for a surface without one, so the backend mints
- * one: the foreground app is the host and the visible screen title is the
- * path. `new URL(...)` parses it, and its pathname changes exactly when the
- * app moves to another screen, which is what a replay precondition needs.
+ * one: `app://device/<app>/<screen title>`. The cache compares pathnames
+ * only, so the app identity lives in the path, not the host: two apps with a
+ * screen called "General" must not share an anchor. `new URL(...)` parses
+ * it, and its pathname changes exactly when the app or its screen changes.
  */
 export function screenUrl(app: string | undefined, title: string | undefined): string {
-  const host = (app ?? '').replaceAll(/[^A-Za-z0-9.-]/g, '-').replaceAll(/^-+|-+$/g, '').toLowerCase() || 'app';
+  const identity = (app ?? '').replaceAll(/[^A-Za-z0-9.-]/g, '-').replaceAll(/^-+|-+$/g, '').toLowerCase() || 'unknown';
   const trimmed = title === undefined ? '' : title.replaceAll(/\s+/g, ' ').trim();
-  return `app://${host}/${trimmed === '' ? '' : encodeURIComponent(trimmed)}`;
+  return `app://device/${identity}/${trimmed === '' ? '' : encodeURIComponent(trimmed)}`;
 }

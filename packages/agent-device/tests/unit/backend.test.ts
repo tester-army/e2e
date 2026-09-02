@@ -6,11 +6,12 @@
  * what this backend owes agent-device.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
+import { decodePng, encodePng } from '../../src/png.ts';
 import type { BackendFixtureContext, BackendHandle, OperationContext, SemanticNode } from 'e2e/backend';
 import { buildBackend } from '../../src/backend.ts';
 import type { Device } from '../../src/device.ts';
@@ -225,22 +226,34 @@ describe('observation', () => {
     await expect(pinned.backend.observe!(operation())).rejects.toMatchObject({ code: 'INVALID_STATE' });
   });
 
-  it('captures pixels on request, reports no masked regions, and degrades to tree-only when the shot fails', async () => {
+  it('captures pixels on request, masks every secure node, and degrades to tree-only when it cannot', async () => {
     const h = harness();
-    const png = new Uint8Array(24);
-    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
-    new DataView(png.buffer).setUint32(16, 1170);
-    new DataView(png.buffer).setUint32(20, 2532);
+    // 390x844 viewport at 3x: a white RGBA image of the device's size.
+    const image = { width: 1170, height: 2532, channels: 4 as const, pixels: new Uint8Array(1170 * 2532 * 4).fill(255) };
+    const png = encodePng(image);
     h.fake.respond('capture.screenshot', (args) => {
-      const { writeFileSync } = require('node:fs') as typeof import('node:fs');
       writeFileSync((args as { path: string }).path, png);
       return { path: (args as { path: string }).path };
     });
     await openAttempt(h);
     const snapshot = await h.backend.observe!(operation(), { pixels: true });
     expect(snapshot.pixels).toMatchObject({ mediaType: 'image/png', width: 1170, height: 2532, scale: 3 });
-    expect(snapshot.maskedRegionCount).toBe(0);
+    // One secure node on the Settings fixture: the Password field at y=270, 44 tall.
+    expect(snapshot.maskedRegionCount).toBe(1);
+    const decoded = decodePng(snapshot.pixels!.data);
+    const at = (x: number, y: number) => [...decoded.pixels.subarray((y * 1170 + x) * 4, (y * 1170 + x) * 4 + 3)];
+    expect(at(600, 290 * 3)).toEqual([0, 0, 0]);
+    expect(at(600, 240 * 3)).toEqual([255, 255, 255]);
 
+    // A secure node without bounds cannot be masked: the tree ships, the image does not.
+    h.fake.respond('capture.snapshot', () => ({
+      nodes: [{ ref: 'e1', type: 'SecureTextField', label: 'PIN', value: '1234' }],
+    }));
+    const unmaskable = await h.backend.observe!(operation(), { pixels: true });
+    expect(unmaskable.pixels).toBeUndefined();
+    expect(unmaskable.nodes).toHaveLength(1);
+
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     h.fake.respond('capture.screenshot', () => {
       throw new AppError('COMMAND_FAILED', 'screenshot failed');
     });
@@ -292,7 +305,7 @@ describe('perform', () => {
     await h.backend.perform!(about!.ref, { kind: 'tap' }, op);
     await h.backend.perform!(about!.ref, { kind: 'doubleTap' }, op);
     await h.backend.perform!(about!.ref, { kind: 'longPress', durationMs: 900 }, op);
-    await h.backend.perform!(about!.ref, { kind: 'focus' }, op);
+    await h.backend.perform!(search!.ref, { kind: 'focus' }, op);
     await h.backend.perform!(about!.ref, { kind: 'hover' }, op);
     await h.backend.perform!(search!.ref, { kind: 'fill', value: 'blue', sensitive: false }, op);
     await h.backend.perform!(search!.ref, { kind: 'clear' }, op);
@@ -306,7 +319,7 @@ describe('perform', () => {
       ['interactions.press', { ref: '@e4', settle: true }],
       ['interactions.press', { ref: '@e4', doubleTap: true, settle: true }],
       ['interactions.longPress', { ref: '@e4', settle: true, durationMs: 900 }],
-      ['interactions.press', { ref: '@e4', settle: true }],
+      ['interactions.press', { ref: '@e7', settle: true }],
       ['interactions.hover', { ref: '@e4' }],
       ['interactions.fill', { ref: '@e7', text: 'blue', settle: true }],
       ['interactions.fill', { ref: '@e7', text: '', settle: true }],
@@ -362,6 +375,10 @@ describe('perform', () => {
       { kind: 'setInputFiles', paths: ['/tmp/x'] },
       { kind: 'scrollIntoView' },
       { kind: 'press', key: 'Escape' },
+      // A tap would activate the row; focus is for editable fields only.
+      { kind: 'focus' },
+      // The row-level cell exposes no checked state; a blind flip could undo a correct one.
+      { kind: 'check' },
     ] as const) {
       await expect(h.backend.perform!(about.ref, action, operation())).rejects.toMatchObject({
         code: 'UNSUPPORTED_CAPABILITY',
@@ -405,26 +422,87 @@ describe('app hooks, swipe, url, artifacts', () => {
   it('anchors the path on the foreground app and the screen title', async () => {
     const h = harness();
     await openAttempt(h);
-    expect(await h.backend.url!(operation())).toBe('app://com.apple.preferences/General');
+    expect(await h.backend.url!(operation())).toBe('app://device/com.apple.preferences/General');
     h.fake.respond('capture.snapshot', () => ({ nodes: [{ ref: '@e1', type: 'button', label: 'Go' }] }));
-    expect(await h.backend.url!(operation())).toBe('app://com.apple.preferences/');
+    expect(await h.backend.url!(operation())).toBe('app://device/com.apple.preferences/');
     const cold = harness({}, false);
     await openAttempt(cold);
     cold.fake.respond('capture.snapshot', () => ({ nodes: [{ ref: '@e1', type: 'button' }] }));
-    expect(await cold.backend.url!(operation())).toBe('app://app/');
+    expect(await cold.backend.url!(operation())).toBe('app://device/unknown/');
   });
 
-  it('numbers screenshots per attempt under the artifact directory', async () => {
+  it('numbers screenshots per attempt, masks secure fields in them, and refuses an unmaskable one', async () => {
     const h = harness();
+    const image = { width: 390, height: 844, channels: 3 as const, pixels: new Uint8Array(390 * 844 * 3).fill(200) };
+    h.fake.respond('capture.screenshot', (args) => {
+      writeFileSync((args as { path: string }).path, encodePng(image));
+      return { path: (args as { path: string }).path };
+    });
     await openAttempt(h);
     expect(await h.backend.artifacts!.screenshot('first shot', operation())).toBe('screenshots/001-first_shot.png');
     expect(await h.backend.artifacts!.screenshot(undefined, operation())).toBe('screenshots/002-screenshot.png');
-    expect(h.fake.lastArgs('capture.screenshot')).toEqual({
-      path: path.join(artifactsDir, 'screenshots', '002-screenshot.png'),
-    });
+    const written = decodePng(new Uint8Array(readFileSync(path.join(artifactsDir, 'screenshots', '002-screenshot.png'))));
+    const at = (x: number, y: number) => [...written.pixels.subarray((y * 390 + x) * 3, (y * 390 + x) * 3 + 3)];
+    expect(at(100, 290)).toEqual([0, 0, 0]);
+    expect(at(100, 240)).toEqual([200, 200, 200]);
+
     await h.backend.endAttempt!(cleanup());
     await h.backend.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
     expect(await h.backend.artifacts!.screenshot('again', operation())).toBe('screenshots/001-again.png');
+
+    h.fake.respond('capture.snapshot', () => ({
+      nodes: [{ ref: 'e1', type: 'SecureTextField', label: 'PIN', value: '1234' }],
+    }));
+    await expect(h.backend.artifacts!.screenshot('leak', operation())).rejects.toMatchObject({ code: 'BACKEND_FAILURE' });
+    expect(existsSync(path.join(artifactsDir, 'screenshots', '002-leak.png'))).toBe(false);
+  });
+
+  it('waits for an abandoned command to settle before the next attempt opens anything', async () => {
+    const h = harness();
+    let release: (() => void) | undefined;
+    let settled = false;
+    h.fake.respond('interactions.press', () => new Promise<void>((resolve) => {
+      release = () => {
+        settled = true;
+        resolve();
+      };
+    }));
+    let openedAfterSettle: boolean | undefined;
+    h.fake.respond('apps.open', () => {
+      openedAfterSettle = settled;
+      return { appName: 'Settings', appBundleId: 'com.apple.Preferences' };
+    });
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    const controller = new AbortController();
+    const pending = h.backend.perform!(about.ref, { kind: 'tap' }, operation(controller.signal));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await h.backend.endAttempt!(cleanup());
+
+    const next = h.backend.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
+    let nextDone = false;
+    void next.then(() => {
+      nextDone = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(nextDone).toBe(false);
+    release!();
+    await next;
+    expect(openedAfterSettle).toBe(true);
+
+    // A command that never settles fails the launch within its budget instead of racing it.
+    h.fake.respond('interactions.press', () => new Promise<void>(() => undefined));
+    const stuck = await observed(h, 'About');
+    const abort = new AbortController();
+    const hung = h.backend.perform!(stuck.ref, { kind: 'tap' }, operation(abort.signal));
+    abort.abort();
+    await expect(hung).rejects.toMatchObject({ code: 'CANCELLED' });
+    await h.backend.endAttempt!(cleanup());
+    const launch = new AbortController();
+    const launching = h.backend.startAttempt!({ attemptId: 'a3', artifactsDir, signal: launch.signal });
+    launch.abort();
+    await expect(launching).rejects.toMatchObject({ code: 'CANCELLED' });
   });
 });
 

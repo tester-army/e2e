@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { readPngSize, sanitizeFilename, screenUrl, swipeWithin } from '../../src/support.ts';
 
 describe('support helpers', () => {
-  it('mints a parseable app URL whose pathname is the screen title', () => {
+  it('mints a parseable app URL whose pathname carries the app identity and the screen title', () => {
     const url = new URL(screenUrl('com.apple.Preferences', 'General'));
     expect(url.protocol).toBe('app:');
-    expect(url.host).toBe('com.apple.preferences');
-    expect(url.pathname).toBe('/General');
-    expect(new URL(screenUrl(undefined, undefined)).href).toBe('app://app/');
-    expect(new URL(screenUrl('My App!', ' Wi-Fi  Settings ')).pathname).toBe('/Wi-Fi%20Settings');
-    expect(new URL(screenUrl('My App!', undefined)).host).toBe('my-app');
+    expect(url.host).toBe('device');
+    expect(url.pathname).toBe('/com.apple.preferences/General');
+    expect(new URL(screenUrl(undefined, undefined)).href).toBe('app://device/unknown/');
+    expect(new URL(screenUrl('My App!', ' Wi-Fi  Settings ')).pathname).toBe('/my-app/Wi-Fi%20Settings');
+    // Two apps with a screen of the same name never share a path.
+    expect(new URL(screenUrl('com.apple.Preferences', 'General')).pathname).not.toBe(
+      new URL(screenUrl('com.example.other', 'General')).pathname,
+    );
   });
 
   it('swipes against the scroll direction inside the rect', () => {

@@ -7,7 +7,7 @@
  * agent-device's commands. The runner owns everything else.
  */
 
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { createAgentDeviceClient } from 'agent-device';
@@ -30,6 +30,7 @@ import {
 import { staleOr, translateError } from './errors.ts';
 import { resolveExpression } from './locate.ts';
 import { isWithin, projectSnapshot, screenTitle, type ProjectedNode, type ProjectedSnapshot, type RawNode } from './nodes.ts';
+import { maskPng } from './png.ts';
 import {
   invalidState,
   notActionable,
@@ -40,6 +41,7 @@ import {
   swipeWithin,
   unsupported,
   withinCleanupBudget,
+  type Rect,
 } from './support.ts';
 
 export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
@@ -123,6 +125,13 @@ export class AgentDeviceSurface {
   private generation = new Map<string, ProjectedNode>();
   private idCounter = 0;
   private appIdentity: string | undefined;
+  /**
+   * Commands still running on the device. agent-device takes no abort
+   * signal, so a cancelled or timed-out call is only abandoned by its
+   * caller; it keeps executing. The next attempt waits for these to settle
+   * before it opens anything, so a ghost tap can never land in a retry.
+   */
+  private readonly inflight = new Set<Promise<unknown>>();
 
   constructor(
     readonly options: AgentDeviceOptions,
@@ -153,10 +162,31 @@ export class AgentDeviceSurface {
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
     try {
-      const pending = run(client);
+      const pending = this.track(run(client));
       return await (signal === undefined ? pending : raceAbort(pending, signal, label));
     } catch (cause) {
       throw translateError(cause, label);
+    }
+  }
+
+  /** Registers one device command as in flight until it settles. */
+  private track<T>(pending: Promise<T>): Promise<T> {
+    this.inflight.add(pending);
+    pending.then(
+      () => this.inflight.delete(pending),
+      () => this.inflight.delete(pending),
+    );
+    return pending;
+  }
+
+  /**
+   * Waits for every abandoned command to settle, within the caller's
+   * budget. A command that never settles fails the attempt launch instead of
+   * racing it: the launch timeout is the honest bound on a stuck device.
+   */
+  private async settleInflight(signal: AbortSignal): Promise<void> {
+    while (this.inflight.size > 0) {
+      await raceAbort(Promise.allSettled(this.inflight), signal, 'settling in-flight device commands');
     }
   }
 
@@ -178,6 +208,7 @@ export class AgentDeviceSurface {
     if (this.attempt !== undefined) {
       throw invalidState('an attempt is already running on this agent-device backend');
     }
+    await this.settleInflight(context.signal);
     this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0 };
     this.generation = new Map();
     if (this.options.app === undefined) return;
@@ -262,14 +293,11 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive');
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, entry]));
-    const pixels = options?.pixels === true ? await this.capturePixels(operation, projected.viewport) : undefined;
+    const capture = options?.pixels === true ? await this.capturePixels(operation, projected) : undefined;
     return {
       nodes: projected.roots,
       ...(projected.viewport === undefined ? {} : { viewport: projected.viewport }),
-      // The device paints secure fields as dots but this backend cannot mask
-      // regions, so a screen with secure nodes reports zero masks and the
-      // runner withholds the image. Honest beats helpful here.
-      ...(pixels === undefined ? {} : { pixels, maskedRegionCount: 0 }),
+      ...(capture === undefined ? {} : { pixels: capture.pixels, maskedRegionCount: capture.masked }),
     };
   }
 
@@ -333,8 +361,14 @@ export class AgentDeviceSurface {
         // observation that follows describes the screen the action produced,
         // not a frame of its transition. Best-effort on agent-device's side.
         case 'tap':
-        case 'focus':
           return client.interactions.press({ ...this.actionTarget(this.controlOf(entry)), settle: true });
+        case 'focus':
+          // A touch surface focuses by tapping, and a tap on anything but an
+          // editable field activates it; focus is offered for fields only.
+          if (entry.node.role !== 'textbox') {
+            throw unsupported(`agent-device can only focus editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
+          }
+          return client.interactions.press({ ...this.actionTarget(entry), settle: true });
         case 'doubleTap':
           return client.interactions.press({ ...this.actionTarget(entry), doubleTap: true, settle: true });
         case 'longPress':
@@ -354,7 +388,13 @@ export class AgentDeviceSurface {
         case 'check':
         case 'uncheck': {
           const wanted = action.kind === 'check';
-          if (entry.node.states?.checked === wanted) return undefined;
+          const checked = entry.node.states?.checked;
+          // A toggle whose state the tree does not expose (Android switches)
+          // cannot be set, only flipped; flipping blind could undo a correct state.
+          if (checked === undefined) {
+            throw unsupported(`agent-device cannot read whether node ${entry.id} is checked; tap it instead`);
+          }
+          if (checked === wanted) return undefined;
           return client.interactions.press({ ...this.actionTarget(this.controlOf(entry)), settle: true });
         }
         case 'press':
@@ -378,7 +418,7 @@ export class AgentDeviceSurface {
       }
     };
     try {
-      await raceAbort(run(), operation.signal, label);
+      await raceAbort(this.track(run()), operation.signal, label);
     } catch (cause) {
       throw staleOr(cause, label);
     }
@@ -394,7 +434,7 @@ export class AgentDeviceSurface {
       return client.command.keyboard({ action: 'enter' });
     }
     if ([...key].length === 1) {
-      if (entry.node.states?.focused !== true) {
+      if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
         await client.interactions.press({ ...this.actionTarget(entry), settle: true });
       }
       return client.interactions.type({ text: key });
@@ -433,23 +473,32 @@ export class AgentDeviceSurface {
     return screenUrl(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
   }
 
+  /**
+   * A redacted screenshot artifact. The device paints secure fields as dots,
+   * but the last typed character shows in clear, so every secure node's
+   * bounds are painted over before the file is kept. A secure node without
+   * bounds cannot be masked, and an image that cannot be redacted is not
+   * written at all.
+   */
   async screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
     const attempt = this.attempt;
     if (attempt === undefined) throw invalidState('screenshot outside an attempt');
+    const masked = await this.maskedScreenshot(operation.signal);
     attempt.screenshots += 1;
     const name = `${String(attempt.screenshots).padStart(3, '0')}-${sanitizeFilename(label ?? 'screenshot')}.png`;
     const relative = path.join('screenshots', name);
     mkdirSync(path.join(attempt.artifactsDir, 'screenshots'), { recursive: true });
-    await this.command(
-      'screenshot',
-      (client) => client.capture.screenshot({ path: path.join(attempt.artifactsDir, relative) }),
-      operation.signal,
-    );
+    writeFileSync(path.join(attempt.artifactsDir, relative), masked.data);
     return relative;
   }
 
-  /** Raw screen pixels as a PNG, for the agent's screenshot tool. */
+  /** Redacted screen pixels as a PNG, for the agent's screenshot tool. */
   async screenshotBytes(signal?: AbortSignal): Promise<Uint8Array> {
+    return (await this.maskedScreenshot(signal)).data;
+  }
+
+  /** Raw device pixels; the caller owns redaction. */
+  private async rawScreenshot(signal?: AbortSignal): Promise<Uint8Array> {
     const file = path.join(tmpdir(), `e2e-agent-device-${process.pid}-${Date.now()}.png`);
     try {
       const shot = await this.command('screenshot', (client) => client.capture.screenshot({ path: file }), signal);
@@ -460,22 +509,80 @@ export class AgentDeviceSurface {
   }
 
   /**
+   * Screenshot with every secure node on the current screen painted over.
+   * Observes first so the regions describe the screen the pixels show;
+   * throws when a secure field cannot be covered, because an image that may
+   * hold a credential must not leave the backend.
+   */
+  private async maskedScreenshot(signal?: AbortSignal): Promise<{ data: Uint8Array; masked: number }> {
+    const operation: OperationContext = {
+      signal: signal ?? new AbortController().signal,
+      timeoutMs: 30_000,
+      runId: '',
+      attemptId: '',
+    };
+    const projected = this.project(await this.snapshotOrEmpty(operation, false));
+    const data = await this.rawScreenshot(signal);
+    const masked = redactSecure(data, projected);
+    if (masked === undefined) {
+      throw new BackendError('BACKEND_FAILURE', 'a secure field on screen could not be masked; screenshot withheld', {
+        retryable: false,
+      });
+    }
+    return masked;
+  }
+
+  /**
    * Viewport pixels for an observation. Best-effort: a screenshot that cannot
-   * be produced costs the observation its image, not the step.
+   * be produced or redacted costs the observation its image, not the step.
    */
   private async capturePixels(
     operation: OperationContext,
-    viewport: ProjectedSnapshot['viewport'],
-  ): Promise<ObservationPixels | undefined> {
-    let data: Uint8Array;
+    projected: ProjectedSnapshot,
+  ): Promise<{ pixels: ObservationPixels; masked: number } | undefined> {
+    let raw: Uint8Array;
     try {
-      data = await this.screenshotBytes(operation.signal);
+      raw = await this.rawScreenshot(operation.signal);
     } catch {
       return undefined;
     }
-    const size = readPngSize(data);
+    const redacted = redactSecure(raw, projected);
+    if (redacted === undefined) return undefined;
+    const size = readPngSize(redacted.data);
     if (size === undefined) return undefined;
+    const viewport = projected.viewport;
     const scale = viewport !== undefined && viewport.width > 0 ? size.width / viewport.width : 1;
-    return { data, mediaType: 'image/png', width: size.width, height: size.height, scale };
+    return {
+      pixels: { data: redacted.data, mediaType: 'image/png', width: size.width, height: size.height, scale },
+      masked: redacted.masked,
+    };
+  }
+}
+
+/**
+ * Paints every secure node's bounds black on a screenshot of the same
+ * screen. Returns the masked bytes and how many regions were covered, or
+ * undefined when a secure node has no bounds or the image format cannot be
+ * edited: the caller then withholds the image rather than ship one it could
+ * not prove redacted. Bounds are in logical points; the image may be at
+ * device scale, so they are scaled by the image-to-viewport ratio.
+ */
+function redactSecure(data: Uint8Array, projected: ProjectedSnapshot): { data: Uint8Array; masked: number } | undefined {
+  const secure = projected.index.filter((entry) => entry.node.states?.secure === true);
+  if (secure.length === 0) return { data, masked: 0 };
+  const size = readPngSize(data);
+  if (size === undefined) return undefined;
+  const viewport = projected.viewport;
+  const scale = viewport !== undefined && viewport.width > 0 ? size.width / viewport.width : 1;
+  const rects: Rect[] = [];
+  for (const entry of secure) {
+    const rect = entry.node.rect;
+    if (rect === undefined) return undefined;
+    rects.push({ x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale });
+  }
+  try {
+    return { data: maskPng(data, rects), masked: rects.length };
+  } catch {
+    return undefined;
   }
 }

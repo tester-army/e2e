@@ -18,6 +18,22 @@ function operation(): OperationContext {
   return { signal: new AbortController().signal, timeoutMs: 120_000, runId: 'run-sim', attemptId: 'sim-1' };
 }
 
+/**
+ * `url()` answers immediately, like every backend read; a push transition
+ * takes a few frames, so the test polls for the anchor to change the way the
+ * runner's `expect` polls a locator, instead of sampling one frame.
+ */
+async function urlWhen(backend: BackendHandle, accept: (url: string) => boolean): Promise<string> {
+  const deadline = Date.now() + 8_000;
+  let last = '';
+  while (Date.now() < deadline) {
+    last = await backend.url!(operation());
+    if (accept(last)) return last;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return last;
+}
+
 function* walk(nodes: readonly SemanticNode[]): Generator<SemanticNode> {
   for (const node of nodes) {
     yield node;
@@ -59,7 +75,7 @@ describe.skipIf(!enabled)('agent-device backend on a booted iOS simulator', () =
 
   it('anchors the path on the app and screen, then navigates by grammar and comes back', async () => {
     const root = await backend.url!(operation());
-    expect(root).toMatch(/^app:\/\/com\.apple\.preferences\//);
+    expect(root).toMatch(/^app:\/\/device\/com\.apple\.preferences\//);
 
     const [general] = await backend.locate!(
       { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'General', exact: true } } },
@@ -68,12 +84,11 @@ describe.skipIf(!enabled)('agent-device backend on a booted iOS simulator', () =
     expect(general).toBeDefined();
     await backend.perform!(general!.ref, { kind: 'tap' }, operation());
 
-    const inside = await backend.url!(operation());
-    expect(new URL(inside).pathname).toBe('/General');
-    expect(inside).not.toBe(root);
+    const inside = await urlWhen(backend, (url) => url !== root);
+    expect(new URL(inside).pathname).toBe('/com.apple.preferences/General');
 
     await backend.app!.back!(operation());
-    expect(await backend.url!(operation())).toBe(root);
+    expect(await urlWhen(backend, (url) => url === root)).toBe(root);
   });
 
   it('writes a screenshot artifact under the attempt directory', async () => {

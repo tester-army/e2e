@@ -15,9 +15,11 @@ same way `@e2edev/playwright` does for browsers, and core learns nothing new.
   selectors through `screen.locator`), a viewport swipe, `app.back`, and
   `app.restart`/`app.clearState` when `app` is pinned. Screenshots land under
   the attempt artifact directory.
-- Trace cache support: the backend reports a location as `app://<app>/<screen
-  title>`, so `agent.act` steps record a start and end anchor and replay
-  zero-turn on the next run like a web step does. With `app` pinned, the app
+- Trace cache support: the backend reports a location as
+  `app://device/<app>/<screen title>`, so `agent.act` steps record a start and
+  end anchor and replay zero-turn on the next run like a web step does.
+  Screenshots and observation pixels have every secure field painted over;
+  an image that cannot be redacted is withheld. With `app` pinned, the app
   is opened fresh per attempt and a flow needs no agent-side tool at all.
 - The contributed `device` fixture: network, airplane mode, permissions,
   location, appearance, orientation, biometrics, open/close app, foreground

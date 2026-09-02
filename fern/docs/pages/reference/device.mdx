@@ -44,8 +44,11 @@ a deterministic check that names a platform label is scoped with
 | `session` | `string` | `e2e-<target name>` | agent-device session. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
 
-The device boots in `init`, once per worker. Each attempt relaunches `app`
-when one is pinned; without it the surface observes whatever is in the
+The device boots in `init`, once per worker. agent-device commands take no
+abort signal, so a cancelled or timed-out command is abandoned by its caller
+but keeps running on the device; the next attempt waits for every abandoned
+command to settle before it opens anything, within the launch timeout. Each
+attempt relaunches `app` when one is pinned; without it the surface observes whatever is in the
 foreground and the model opens apps with the `open_app` tool. Run device
 targets with `workers: 1`: workers share one simulator.
 
@@ -53,22 +56,22 @@ targets with `workers: 1`: workers share one simulator.
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects and a viewport. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles (no `checked` state: Android exposes none), layouts are `group`, `RecyclerView` is `list`; a label echoed as the value is dropped. Other types keep their kebab-cased name. Element identifiers surface under the configured `testIdAttribute`. Pixels on request, unmasked: a screen with a secure field reports zero masked regions and the runner withholds the image. |
-| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `focus`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` within a node, `dragTo`. A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child. `selectOption`, `setInputFiles`, `scrollIntoView`, and other keys are `UNSUPPORTED_CAPABILITY`. |
+| `observe` | The accessibility tree with rects and a viewport. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles (no `checked` state: Android exposes none), layouts are `group`, `RecyclerView` is `list`; a label echoed as the value is dropped. Other types keep their kebab-cased name. Element identifiers surface under the configured `testIdAttribute`. Pixels on request, with every secure node's bounds painted black; a secure node without bounds withholds the image. |
+| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` within a node, `dragTo`, and `focus` on editable fields (a touch surface focuses by tapping, and a tap on a control would activate it). A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child; `check` and `uncheck` need the tree to expose the checked state, which Android switches do not. `selectOption`, `setInputFiles`, `scrollIntoView`, focus on a control, and other keys are `UNSUPPORTED_CAPABILITY`. |
 | `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible unless `hidden: true` is requested. |
 | `swipe` | Viewport scroll in four directions. |
 | `app` | `back`; `restart` and `clearState` when `app` is pinned. No `navigate`: a device has no app URL. |
-| `artifacts` | Screenshots under `screenshots/NNN-<label>.png`. No traces. |
-| `url` | `app://<bundle id>/<screen title>`, the trace cache's anchor; the title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
+| `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`: every secure field's bounds are painted black first, and a screenshot that cannot be redacted fails instead of being written. No traces. |
+| `url` | `app://device/<bundle id>/<screen title>`, the trace cache's anchor; the cache compares pathnames, so the app identity is in the path. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
 ## Trace cache on a device
 
 The cache anchors a recorded `agent.act` step on the path the surface reports
-when the step begins and ends. This backend reports `app://<bundle
+when the step begins and ends. This backend reports `app://device/<bundle
 id>/<title>`, with the title read off the navigation bar (its label, its inner
-text, or its identifier). A step recorded on `/General` replays only when
-Settings is on General again, and every grammar action inside it (tap, type,
+text, or its identifier). A step recorded on `/com.apple.preferences/General`
+replays only when Settings is on General again, and every grammar action inside it (tap, type,
 scroll) replays through the same `perform` seam. Two things end a replay: a
 project-tool call such as `open_app`, and a target that no longer relocates.
 Pin `app` so attempts start on the same screen, and keep in-step app switching

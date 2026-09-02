@@ -56,26 +56,31 @@ Options:
   (iOS `Button` becomes `button`, `TextField` becomes `textbox`, `Cell` becomes
   `listitem`; Android `android.widget.TextView` becomes `text`, `EditText`
   becomes `textbox`, `Switch` becomes `switch`), with rects, a viewport, and
-  pixels on request. Element identifiers (`ABOUT`, `android:id/title`) surface
-  as the configured test id attribute.
-- **Actions**: tap, double tap, long press, fill, clear, check/uncheck,
-  `Enter`, single-character keys, swipe within a node, drag. `selectOption`,
-  `setInputFiles`, and other keys fail with `UNSUPPORTED_CAPABILITY`.
+  pixels on request with every secure field painted over. Element identifiers
+  (`ABOUT`, `android:id/title`) surface as the configured test id attribute.
+- **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
+  the tree exposes the checked state; Android switches do not), focus on
+  editable fields, `Enter`, single-character keys, swipe within a node, drag.
+  `selectOption`, `setInputFiles`, focus on a control, and other keys fail
+  with `UNSUPPORTED_CAPABILITY`.
 - **Location**: every `screen` query, plus agent-device selectors through
   `device.locator('role=NavigationBar id=General')`.
 - **Viewport swipe**, `app.back()`, `app.restart()`, `app.clearState()`, and
-  screenshots under the attempt artifact directory. No `state` capability: a
+  redacted screenshots under the attempt artifact directory: the bounds of
+  every secure field are painted black before the file is kept, and a
+  screenshot that cannot be redacted is not written. No `state` capability: a
   simulator has no portable session snapshot.
 
 ## Trace cache
 
 The runner caches `agent.act` steps by their location anchor, and a device has
-no address bar. This backend reports one anyway: `app://<bundle id>/<screen
-title>`, with the title read off the navigation bar on iOS and the collapsing
-toolbar on Android. A step recorded on
-`app://com.apple.preferences/General` replays only when the app is on that
-screen again, and a flow that stays within tap, type, and scroll replays with
-zero model calls. Pin `app` so every attempt starts on the same screen, and
+no address bar. This backend reports one anyway: `app://device/<bundle
+id>/<screen title>`, with the title read off the navigation bar on iOS and the
+collapsing toolbar on Android. The cache compares pathnames, so the app
+identity is part of the path and two apps with a "General" screen never share
+an anchor. A step recorded on `/com.apple.preferences/General` replays only
+when that app is on that screen again, and a flow that stays within tap, type,
+and scroll replays with zero model calls. Pin `app` so every attempt starts on the same screen, and
 prefer the grammar over the `open_app` tool inside a step: a tool call is a
 replay gap.
 
@@ -117,7 +122,8 @@ targets can hand the pack to one `createAgent`.
 ## Secrets
 
 Secret fills need an origin the runner can check, and an `app://` location has
-none, so `type_secret` is not available on a device target. Fill credentials
+an opaque origin that no allowlist can name, so `type_secret` is denied on a
+device target before any plaintext reaches the device. Fill credentials
 through a deterministic `screen` action in a setup step instead.
 
 ## Documentation
