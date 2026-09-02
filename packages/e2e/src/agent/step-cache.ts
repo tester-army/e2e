@@ -8,9 +8,11 @@
 
 import type { AgentCacheContext } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
-import { TraceRecorder, type RecordableAction } from '../cache/recorder.ts';
+import { TraceRecorder } from '../cache/recorder.ts';
+import { readTraceEntry } from '../cache/trace.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
+import type { RecordableAction } from './actions.ts';
 import type { ReplayedPrefix, StepVerdict } from './executor.ts';
 import { replayTrace, type ReplayHost } from './replay.ts';
 
@@ -107,6 +109,17 @@ export class StepTraceSession {
       // A store outage is a slower run, never a failed test: the read
       // degrades to a miss and the live executor runs.
       read = { status: 'invalid', reason: 'store read failed' };
+    }
+    if (read.status === 'hit') {
+      // Every hit is re-validated through the trace-1 framing, whichever
+      // store produced it: a custom store's entry can never be trusted more
+      // loosely than a file entry, however the store author built their read
+      // path. An entry that fails degrades to `invalid` — fail-to-miss.
+      const entry = readTraceEntry(read.entry);
+      read =
+        entry === undefined
+          ? { status: 'invalid', reason: 'the store returned a non-trace-1 entry' }
+          : { ...read, entry };
     }
     if (read.status !== 'hit') {
       this.info = this.missed(read.status === 'miss' ? 'no-entry' : 'invalid-entry', 0);

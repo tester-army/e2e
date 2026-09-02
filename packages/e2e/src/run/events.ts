@@ -4,7 +4,7 @@
  * Every event is plain JSON data — the same records the report persists and
  * the worker IPC already carries, so a host can stream them over any wire
  * without touching live handles. The list reporter consumes exactly this
- * stream (`listReporterSink`, report/list.ts), so the CLI's rendering and a
+ * stream (`ListReporter.handle`, report/list.ts), so the CLI's rendering and a
  * host's dashboard can never drift: there is one dispatch, not two. The
  * report stays the canonical record; the stream exists so consumers can
  * render progress while the run is still going.
@@ -76,13 +76,16 @@ export interface RunEventHeader {
 
 export type RunEvent = RunEventHeader & RunEventFact;
 
+/** The fact of one event type, for a consumer that handles types one at a time. */
+export type RunEventOf<Type extends RunEventFact['type']> = Extract<RunEventFact, { type: Type }>;
+
 /**
  * An event consumer. Must not block; a throw — or, when it returns a
  * promise, a rejection — quarantines the sink. An async sink observes events
  * in emit order but cannot delay them; ordering between its own pending
- * handlers is its own responsibility. Any other return value is ignored.
+ * handlers is its own responsibility.
  */
-export type RunEventSink = (event: RunEvent) => unknown;
+export type RunEventSink = (event: RunEvent) => void | Promise<void>;
 
 /** Strips the live target from a result, keeping its stable identity. */
 export function toEventResult(record: ResultRecord): RunEventResult {

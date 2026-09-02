@@ -17,7 +17,9 @@ describe('createRunEventEmitter', () => {
 
   it('stamps a monotonic seq starting at 1 and an ISO timestamp', () => {
     const events: RunEvent[] = [];
-    const emit = createRunEventEmitter([(event) => events.push(event)]);
+    const emit = createRunEventEmitter([(event) => {
+        events.push(event);
+      }]);
     emit(fact(1));
     emit(fact(2));
     expect(events.map((event) => event.seq)).toEqual([1, 2]);
@@ -34,7 +36,9 @@ describe('createRunEventEmitter', () => {
         broken += 1;
         throw new Error('broken host sink');
       },
-      (event) => events.push(event),
+      (event) => {
+        events.push(event);
+      },
     ]);
     expect(() => emit(fact(1))).not.toThrow();
     emit(fact(2));
@@ -51,7 +55,9 @@ describe('createRunEventEmitter', () => {
         calls += 1;
         throw new Error('async broken sink');
       },
-      (event) => events.push(event),
+      (event) => {
+        events.push(event);
+      },
     ]);
     emit(fact(1));
     // The rejection settles on a later tick; quarantine must land before the
@@ -65,7 +71,9 @@ describe('createRunEventEmitter', () => {
 
   it('emits JSON-serializable events', () => {
     const events: RunEvent[] = [];
-    const emit = createRunEventEmitter([(event) => events.push(event)]);
+    const emit = createRunEventEmitter([(event) => {
+        events.push(event);
+      }]);
     emit(fact(7));
     const roundTripped = JSON.parse(JSON.stringify(events[0]));
     expect(roundTripped).toEqual(events[0]);

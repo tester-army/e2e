@@ -14,6 +14,7 @@ export type {
   RunEvent,
   RunEventFact,
   RunEventHeader,
+  RunEventOf,
   RunEventResult,
   RunEventSink,
   RunExitCode,

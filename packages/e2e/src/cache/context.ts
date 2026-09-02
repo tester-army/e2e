@@ -20,7 +20,7 @@ import {
   type TraceCacheKind,
 } from './identity.ts';
 import { FileTraceCacheStore, MAX_CACHE_WIRE_BYTES, type TraceCacheStore } from './store.ts';
-import { readTraceEntry, type ActionTrace } from './trace.ts';
+import type { ActionTrace } from './trace.ts';
 import type { JsonValue } from '../types.ts';
 
 /** One trace write held back until the attempt confirms or implicates it. */
@@ -90,35 +90,11 @@ export async function flushStagedTraces(
 }
 
 /**
- * Re-validates every hit a custom store returns through the same trace-1
- * framing the file store uses (`readTraceEntry`). The harness owns the trust
- * boundary structurally: a remote entry can never be trusted more loosely
- * than a local one, however the store author built their read path. An entry
- * that fails validation degrades to `invalid` — fail-to-miss, never an error.
- */
-function validatedStore(inner: TraceCacheStore): TraceCacheStore {
-  return {
-    get writable() {
-      return inner.writable;
-    },
-    read: async (keyHash) => {
-      const result = await inner.read(keyHash);
-      if (result.status !== 'hit') return result;
-      const entry = readTraceEntry(result.entry);
-      return entry === undefined
-        ? { status: 'invalid', reason: 'the store returned a non-trace-1 entry' }
-        : { ...result, entry };
-    },
-    write: (keyHash, payload) => inner.write(keyHash, payload),
-    ...(inner.delete === undefined ? {} : { delete: (keyHash: string) => inner.delete!(keyHash) }),
-  };
-}
-
-/**
  * Builds one attempt's cache context, or undefined when the cache is off.
  * A configured custom store replaces the file store wholesale — that is the
- * seam a cloud-shared store (Redis, an API) plugs into; its hits are
- * re-validated by the harness (`validatedStore`).
+ * seam a cloud-shared store (Redis, an API) plugs into. Its hits are
+ * re-validated at the one read site (`StepTraceSession.tryReplay`), like
+ * every other store's.
  */
 export function createAgentCacheContext(options: {
   readonly cache: ResolvedCacheConfig;
@@ -130,13 +106,12 @@ export function createAgentCacheContext(options: {
   const mode = options.cache.mode;
   if (mode === 'off') return undefined;
   const store =
-    options.cache.store === undefined
-      ? new FileTraceCacheStore({
-          directory: options.cache.dir,
-          maxBytes: MAX_CACHE_WIRE_BYTES,
-          writable: mode === 'read-write',
-        })
-      : validatedStore(options.cache.store);
+    options.cache.store ??
+    new FileTraceCacheStore({
+      directory: options.cache.dir,
+      maxBytes: MAX_CACHE_WIRE_BYTES,
+      writable: mode === 'read-write',
+    });
   const project = projectIdentity(options.projectId);
   const nextCallIndex = createCallIndexer();
   return {

@@ -55,7 +55,9 @@ describe('run events', () => {
         agent: oneTapExecutor,
         cache: 'off' as const,
       },
-      runOptions: { onEvent: (event) => events.push(event) },
+      runOptions: { onEvent: (event) => {
+        events.push(event);
+      } },
     });
   }, 120_000);
 
@@ -138,7 +140,9 @@ describe('run events: run lifecycle hygiene', () => {
           agent: oneTapExecutor,
           cache: 'off' as const,
         },
-        runOptions: { onEvent: (event) => events.push(event) },
+        runOptions: { onEvent: (event) => {
+        events.push(event);
+      } },
       });
       expect(outcome.exitCode).not.toBe(0);
       expect(outcome.status).toBe('error');
@@ -153,6 +157,39 @@ describe('run events: run lifecycle hygiene', () => {
       expect(finished.reportPath).toBeUndefined();
       // The in-memory report is the only complete record and carries the error.
       expect(outcome.report.run.errors.some((entry) => entry.phase === 'report')).toBe(true);
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+
+  it('a cancellation before any test starts ends the run as interrupted without collecting', async () => {
+    const app = await startFixtureApp();
+    const project = createProject({ 'tests/events.e2e.ts': SUITE });
+    const events: RunEvent[] = [];
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'] as const,
+          agent: oneTapExecutor,
+          cache: 'off' as const,
+        },
+        runOptions: {
+          interruptSignal: AbortSignal.abort(),
+          onEvent: (event) => {
+            events.push(event);
+          },
+        },
+      });
+      expect(outcome.exitCode).toBe(130);
+      expect(outcome.status).toBe('interrupted');
+      expect(outcome.results).toHaveLength(0);
+      const types = events.map((event) => event.type);
+      expect(types).toEqual(['run-started', 'run-finished']);
+      // The report is still the canonical record of the cancelled run.
+      expect(outcome.reportPath).toBeDefined();
     } finally {
       project.cleanup();
       await app.close();

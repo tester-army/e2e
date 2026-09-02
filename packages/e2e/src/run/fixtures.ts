@@ -90,7 +90,6 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
           `credential "${secret.name}" is not configured`,
         );
       }
-      taint.value = true;
       const password = credential.password;
       const plaintext = typeof password === 'function' ? await password() : password;
       if (typeof plaintext !== 'string' || plaintext === '') {
@@ -99,6 +98,9 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
           `credential "${secret.name}" provider did not return a non-empty string`,
         );
       }
+      // Only a value that exists can reach the screen: a failed provider
+      // leaves nothing to taint the viewport with.
+      taint.value = true;
       // A provider-resolved value joins redaction the moment it exists.
       ledger.register(secret.name, plaintext);
       return plaintext;
@@ -477,11 +479,11 @@ function joinAgentContext(
  * Provider-backed values join through the resolver at fill time.
  */
 function attemptSecretLedger(environment: AttemptEnvironment): SecretLedger {
-  const ledger = new SecretLedger();
-  for (const [name, credential] of environment.config.credentials) {
-    if (typeof credential.password === 'string') ledger.register(name, credential.password);
-  }
-  return ledger;
+  return new SecretLedger(
+    [...environment.config.credentials].flatMap(([name, { password }]) =>
+      typeof password === 'string' ? [[name, password] as const] : [],
+    ),
+  );
 }
 
 /** Navigation needs a real app URL; the placeholder base never leaves the harness. */

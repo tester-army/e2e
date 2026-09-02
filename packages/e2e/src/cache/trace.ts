@@ -36,6 +36,11 @@ export const MAX_TRACE_DESCRIPTOR_CHARS = 300;
  */
 export const MAX_TRACE_INPUT_CHARS = 4_096;
 
+/** Caps prose at `maxChars`, marking the cut with an ellipsis. */
+export function bound(text: string, maxChars: number): string {
+  return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
+}
+
 const SCROLL_DIRECTIONS: ReadonlySet<string> = new Set(['up', 'down', 'left', 'right']);
 
 /**

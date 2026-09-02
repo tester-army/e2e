@@ -2,7 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/backend/surface.ts';
-import { describeTarget, TraceRecorder } from '../../src/cache/recorder.ts';
+import { describeTarget } from '../../src/agent/actions.ts';
+import { TraceRecorder } from '../../src/cache/recorder.ts';
 import { buildTraceEntry, MAX_TRACE_INPUT_CHARS, readTraceEntry } from '../../src/cache/trace.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 

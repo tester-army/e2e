@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
-import type { ResultRecord, ResultStatus, AttemptRecord } from '../../src/run/records.ts';
+import type { RunEventFact, RunEventResult } from '../../src/run/events.ts';
+import type { ResultStatus, AttemptRecord } from '../../src/run/records.ts';
 
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
@@ -39,10 +40,10 @@ function result(overrides: {
   selected?: boolean;
   attempts?: AttemptRecord[];
   skipReason?: string;
-}): ResultRecord {
+}): RunEventResult {
   return {
     test: { titlePath: overrides.title ?? ['suite', 'case'], id: overrides.id ?? 'test-1' },
-    target: { name: 'chromium' },
+    target: { name: 'chromium', platform: 'web' },
     status: overrides.status,
     selected: overrides.selected ?? true,
     skip:
@@ -50,13 +51,41 @@ function result(overrides: {
         ? undefined
         : { reason: overrides.skipReason },
     attempts: overrides.attempts ?? [attempt()],
-  } as unknown as ResultRecord;
+  } as unknown as RunEventResult;
+}
+
+function runStarted(overrides: { ci?: boolean; targets?: string[]; projectRoot?: string } = {}): RunEventFact {
+  return {
+    type: 'run-started',
+    runId: 'run-1',
+    projectId: 'project',
+    projectRoot: overrides.projectRoot ?? '/project',
+    ci: overrides.ci ?? false,
+    targets: overrides.targets ?? ['chromium'],
+  };
+}
+
+function finished(record: RunEventResult): RunEventFact {
+  return { type: 'test-finished', result: record };
+}
+
+function runFinished(overrides: { status?: 'passed' | 'failed' | 'error'; exitCode?: 0 | 1 | 2; reportPath?: string } = {}): RunEventFact {
+  return {
+    type: 'run-finished',
+    status: overrides.status ?? 'passed',
+    exitCode: overrides.exitCode ?? 0,
+    ...(overrides.reportPath === undefined ? {} : { reportPath: overrides.reportPath }),
+  };
+}
+
+function testStarted(testId: string, title: string, target: string): RunEventFact {
+  return { type: 'test-started', testId, title, target };
 }
 
 describe('ListReporter', () => {
   it('prints the run header with targets and CI marker', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onRunStart({ runId: 'run-1', targets: ['chromium', 'firefox'], ci: true });
+    new ListReporter(output).handle(runStarted({ targets: ['chromium', 'firefox'], ci: true }));
     expect(lines[0]).toContain('e2e run run-1');
     expect(lines[0]).toContain('chromium, firefox');
     expect(lines[0]).toContain('[CI]');
@@ -65,47 +94,47 @@ describe('ListReporter', () => {
 
   it('omits the CI marker outside CI', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onRunStart({ runId: 'run-1', targets: ['chromium'], ci: false });
+    new ListReporter(output).handle(runStarted({ ci: false }));
     expect(lines[0]).not.toContain('[CI]');
   });
 
   it('renders a passed result with title path, target, and total duration', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onResult(
+    new ListReporter(output).handle(finished(
       result({ status: 'passed', title: ['auth', 'signs in'], attempts: [attempt({ durationMs: 80 })] }),
-    );
+    ));
     expect(lines[0]).toContain('\u2713 auth \u203a signs in');
     expect(lines[0]).toContain('[chromium] 80ms');
   });
 
   it('sums durations across attempts and marks flaky results', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onResult(
+    new ListReporter(output).handle(finished(
       result({
         status: 'flaky',
         attempts: [attempt({ durationMs: 100, status: 'failed' }), attempt({ durationMs: 50 })],
       }),
-    );
+    ));
     expect(lines[0]).toContain('(flaky)');
     expect(lines[0]).toContain('150ms');
   });
 
   it('renders skipped results with the skip reason', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onResult(result({ status: 'skipped', skipReason: 'wip feature' }));
+    new ListReporter(output).handle(finished(result({ status: 'skipped', skipReason: 'wip feature' })));
     expect(lines[0]).toContain('- suite \u203a case');
     expect(lines[0]).toContain('skipped: wip feature');
   });
 
   it('suppresses deselected skipped results entirely', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onResult(result({ status: 'skipped', selected: false }));
+    new ListReporter(output).handle(finished(result({ status: 'skipped', selected: false })));
     expect(lines).toEqual([]);
   });
 
   it('renders failures with the last attempt error message indented', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onResult(
+    new ListReporter(output).handle(finished(
       result({
         status: 'failed',
         attempts: [
@@ -120,7 +149,7 @@ describe('ListReporter', () => {
           }),
         ],
       }),
-    );
+    ));
     expect(lines[0]).toContain('\u2717 suite \u203a case');
     expect(lines[0]).toContain('failed');
     expect(lines[1]).toBe('    expected visible');
@@ -173,8 +202,8 @@ describe('ListReporter', () => {
       );
       const { lines, output } = capture();
       const reporter = new ListReporter(output);
-      reporter.onRunStart({ runId: 'run-1', targets: ['web'], ci: false, projectRoot: dir });
-      reporter.onResult(
+      reporter.handle(runStarted({ targets: ['web'], projectRoot: dir }));
+      reporter.handle(finished(
         result({
           status: 'failed',
           attempts: [
@@ -190,7 +219,7 @@ describe('ListReporter', () => {
             }),
           ],
         }),
-      );
+      ));
       const text = lines.join('\n');
       expect(text).toContain('at login.e2e.ts:2:22');
       expect(text).toContain('> 2 | await expect(status).toContainText("Welcome");');
@@ -205,20 +234,20 @@ describe('ListReporter', () => {
   it('counts timed-out and interrupted results as failures in the summary', () => {
     const { lines, output } = capture();
     const reporter = new ListReporter(output);
-    reporter.onResult(result({ status: 'timed-out' }));
-    reporter.onResult(result({ status: 'interrupted' }));
-    reporter.onRunEnd({ status: 'failed', exitCode: 1, reportPath: '.e2e/report.json' });
+    reporter.handle(finished(result({ status: 'timed-out' })));
+    reporter.handle(finished(result({ status: 'interrupted' })));
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '.e2e/report.json' }));
     expect(lines.join('\n')).toContain('2 failed');
   });
 
   it('summarizes mixed outcomes and the report path', () => {
     const { lines, output } = capture();
     const reporter = new ListReporter(output);
-    reporter.onResult(result({ status: 'passed' }));
-    reporter.onResult(result({ status: 'flaky' }));
-    reporter.onResult(result({ status: 'failed' }));
-    reporter.onResult(result({ status: 'skipped', skipReason: 'x' }));
-    reporter.onRunEnd({ status: 'failed', exitCode: 1, reportPath: '.e2e/report.json' });
+    reporter.handle(finished(result({ status: 'passed' })));
+    reporter.handle(finished(result({ status: 'flaky' })));
+    reporter.handle(finished(result({ status: 'failed' })));
+    reporter.handle(finished(result({ status: 'skipped', skipReason: 'x' })));
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '.e2e/report.json' }));
     const summary = lines[lines.length - 2];
     expect(summary).toContain('1 passed');
     expect(summary).toContain('1 failed');
@@ -247,12 +276,12 @@ describe('ListReporter', () => {
     it('shows a running test on start and removes it on result', () => {
       const { chunks, output } = liveCapture();
       const reporter = new ListReporter(output, { live: true });
-      reporter.onTestStart({ id: 't1', title: 'signs in', target: 'web' });
+      reporter.handle(testStarted('t1', 'signs in', 'web'));
       const status = chunks.join('');
       expect(status).toContain('signs in');
       // The running marker is the first spinner frame until the timer advances.
       expect(status).toContain('\u280B');
-      reporter.onResult(result({ status: 'passed', title: ['signs in'], attempts: [attempt()] }));
+      reporter.handle(finished(result({ status: 'passed', title: ['signs in'], attempts: [attempt()] })));
       // The block above the result line is erased before the result prints.
       expect(chunks.some((chunk) => chunk.includes('\u001b[1A\u001b[0J'))).toBe(true);
     });
@@ -260,14 +289,14 @@ describe('ListReporter', () => {
     it('tracks waiting, running, and completed counts in the progress line', () => {
       const { chunks, output } = liveCapture();
       const reporter = new ListReporter(output, { live: true });
-      reporter.onPlan({ total: 5 });
+      reporter.handle({ type: 'plan', total: 5 });
       expect(chunks.at(-1)).toContain('0/5 done \u00b7 0 running \u00b7 5 waiting');
-      reporter.onTestStart({ id: 't1', title: 'first', target: 'chromium' });
-      reporter.onTestStart({ id: 't2', title: 'second', target: 'chromium' });
+      reporter.handle(testStarted('t1', 'first', 'chromium'));
+      reporter.handle(testStarted('t2', 'second', 'chromium'));
       expect(chunks.at(-1)).toContain('0/5 done \u00b7 2 running \u00b7 3 waiting');
-      reporter.onResult(result({ status: 'passed', title: ['first'], id: 't1' }));
+      reporter.handle(finished(result({ status: 'passed', title: ['first'], id: 't1' })));
       expect(chunks.at(-1)).toContain('1/5 done \u00b7 1 running \u00b7 3 waiting');
-      reporter.onRunEnd({ status: 'passed', exitCode: 0, reportPath: 'r.json' });
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
       const text = chunks.join('');
       expect(text).toContain('1 passed');
     });
@@ -275,36 +304,72 @@ describe('ListReporter', () => {
     it('never writes control sequences when live rendering is off', () => {
       const { chunks, output } = liveCapture();
       const reporter = new ListReporter(output, { live: false });
-      reporter.onTestStart({ id: 't1', title: 'signs in', target: 'web' });
-      reporter.onResult(result({ status: 'passed' }));
-      reporter.onRunEnd({ status: 'passed', exitCode: 0, reportPath: 'r.json' });
+      reporter.handle(testStarted('t1', 'signs in', 'web'));
+      reporter.handle(finished(result({ status: 'passed' })));
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
       expect(chunks.join('')).not.toContain('\u001b[');
     });
 
     it('stays silent for output sinks without a raw channel', () => {
       const { lines, output } = capture();
       const reporter = new ListReporter(output, { live: true });
-      reporter.onTestStart({ id: 't1', title: 'signs in', target: 'web' });
+      reporter.handle(testStarted('t1', 'signs in', 'web'));
       expect(lines).toEqual([]);
     });
   });
 
+  it('renders a full lifecycle from events alone', () => {
+    const { lines, output } = capture();
+    const reporter = new ListReporter(output);
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle({ type: 'plan', total: 1 });
+    reporter.handle(testStarted('test-1', 'a test', 'web'));
+    reporter.handle(finished(result({ status: 'passed', title: ['a test'] })));
+    reporter.handle(runFinished({ reportPath: '/x/.e2e/report.json' }));
+    const text = lines.join('\n');
+    expect(text).toContain('e2e run run-1');
+    expect(text).toContain('a test');
+    expect(text).toContain('1 passed');
+    expect(text).toContain('report: /x/.e2e/report.json');
+  });
+
+  it('renders a config failure: run-error then run-finished, no run-started', () => {
+    const { lines, output } = capture();
+    const reporter = new ListReporter(output);
+    reporter.handle({
+      type: 'run-error',
+      error: {
+        category: 'configuration',
+        code: 'INVALID_CONFIG',
+        message: 'unknown config key "nope"',
+        retryable: false,
+        phase: 'config',
+      },
+    });
+    reporter.handle(runFinished({ status: 'error', exitCode: 2 }));
+    const text = lines.join('\n');
+    expect(text).toContain('configuration error');
+    expect(text).toContain('unknown config key "nope"');
+    expect(text).toContain('no tests executed');
+    expect(text).toContain('report: (not written)');
+  });
+
   it('prints "no tests executed" when nothing ran', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onRunEnd({ status: 'passed', exitCode: 0, reportPath: 'r.json' });
+    new ListReporter(output).handle(runFinished({ reportPath: 'r.json' }));
     expect(lines.join('\n')).toContain('no tests executed');
   });
 
   it('sanitizes control characters in titles and bounds long fields', () => {
     const { lines, output } = capture();
-    new ListReporter(output).onResult(
+    new ListReporter(output).handle(finished(
       result({ status: 'passed', title: ['bad\u0007title\u001b[31m'] }),
-    );
+    ));
     expect(lines[0]).not.toContain('\u0007');
     const { lines: longLines, output: longOutput } = capture();
-    new ListReporter(longOutput).onResult(
+    new ListReporter(longOutput).handle(finished(
       result({ status: 'passed', title: ['x'.repeat(20_000)] }),
-    );
+    ));
     expect(Buffer.byteLength(longLines[0] ?? '', 'utf8')).toBeLessThan(10_000);
   });
 });

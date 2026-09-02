@@ -2,11 +2,11 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AgentCacheContext } from '../../src/cache/context.ts';
-import { buildTraceEntry, type ActionTrace } from '../../src/cache/trace.ts';
+import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
 import { StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 
-function fakeContext(read: () => Promise<never>): AgentCacheContext {
+function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContext {
   return {
     mode: 'read-write',
     store: {
@@ -62,6 +62,18 @@ describe('StepTraceSession', () => {
       totalActions: 0,
     });
     expect(session.replayedPrefix).toBeUndefined();
+  });
+
+  it('degrades a hit that is not a trace-1 entry to a miss, whichever store returned it', async () => {
+    const malformed = { schemaVersion: 'trace-1', payload: { actions: 'not a list' } } as unknown as TraceEntry;
+    const session = makeSession(fakeContext(async () => ({ status: 'hit', entry: malformed, bytes: 1 })));
+    await expect(session.tryReplay(host)).resolves.toBeUndefined();
+    expect(session.cacheInfo).toEqual({
+      mode: 'missed',
+      reason: 'invalid-entry',
+      replayedActions: 0,
+      totalActions: 0,
+    });
   });
 
   it('never stages a trace with no start anchor', () => {

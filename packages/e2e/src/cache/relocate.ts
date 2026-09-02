@@ -13,7 +13,7 @@
  */
 
 import type { SemanticNode } from '../backend/surface.ts';
-import { describeTarget } from './recorder.ts';
+import { describeTarget } from '../agent/actions.ts';
 import type { TraceTargetDescriptor } from './trace.ts';
 
 /**

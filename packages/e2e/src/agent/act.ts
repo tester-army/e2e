@@ -55,8 +55,8 @@ import {
   type AgentObservation,
 } from './observation.ts';
 import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
+import { describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { summarizeAction, type RecordableAction } from '../cache/recorder.ts';
 import { StepTraceSession, type StepCacheHost } from './step-cache.ts';
 
 /** Everything one dispatched step is, resolved before the step opens. */
@@ -193,9 +193,6 @@ class ActDispatch {
    * disagree about what "the step's signal" means.
    */
   private readonly stepSignal: AbortSignal;
-  /** One bound prose builder shared by every action's `detail` hook. */
-  private readonly summarize = (action: RecordableAction): string =>
-    summarizeAction(action, this.redact, this.runtime.config.testIdAttribute);
   /**
    * Serializes observations and actions in call order. An executor (or an AI
    * SDK loop running parallel tool calls) that issues a second action before
@@ -836,7 +833,7 @@ class ActDispatch {
         { api: this.spec.api, kind: 'backend', phase: 'agent.action', name },
         body,
         (committed) => ({
-          detail: this.summarize(committed),
+          detail: describeAction(committed, this.redact, this.runtime.config.testIdAttribute).summary,
         }),
       );
     } catch (cause) {

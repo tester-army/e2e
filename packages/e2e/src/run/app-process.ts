@@ -17,8 +17,12 @@ export class AppProcess {
     private readonly readyUrl: string,
   ) {}
 
-  /** Spawns the process group and waits for the ready URL. */
-  async start(): Promise<void> {
+  /**
+   * Spawns the process group and waits for the ready URL. An aborted `signal`
+   * ends the wait early and takes the process down with it; the caller reads
+   * the signal to learn the run was interrupted.
+   */
+  async start(signal?: AbortSignal): Promise<void> {
     const env: Record<string, string> = {};
     for (const key of INHERITED_ENV) {
       const value = process.env[key];
@@ -40,6 +44,10 @@ export class AppProcess {
     const startupTimeout = this.command.startupTimeout ?? 60_000;
     const deadline = Date.now() + startupTimeout;
     for (;;) {
+      if (signal?.aborted === true) {
+        await this.stop();
+        return;
+      }
       if (spawnError !== undefined) {
         throw new InfrastructureError(
           'APP_UNREACHABLE',
@@ -66,7 +74,7 @@ export class AppProcess {
           `app was not reachable at ${this.readyUrl} within ${startupTimeout} ms`,
         );
       }
-      await sleep(250);
+      await sleep(250, signal).catch(() => undefined);
     }
   }
 
