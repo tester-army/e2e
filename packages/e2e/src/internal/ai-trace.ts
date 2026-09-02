@@ -174,15 +174,24 @@ interface CallState {
   readonly runId: string;
   /** Open steps by the SDK's per-generation step index. */
   readonly openSteps: Map<number, OpenStep>;
-  /** Steps the run held before this generation started. */
-  readonly offset: number;
-  readonly membership: RunMembership | undefined;
+  /** The run's step allocator, shared by every generation in the run. */
+  readonly run: RunCounter;
 }
 
-/** How many steps a step-scoped run has accumulated across generations. */
-interface RunMembership {
+/**
+ * Per-run step allocation. Numbers are taken when a step starts, not
+ * reserved when a generation starts, so generations a custom executor
+ * overlaps inside one step interleave without ever sharing a number.
+ */
+interface RunCounter {
   readonly runId: string;
   steps: number;
+}
+
+/** The generation and step a tool is executing under, for nested runs. */
+interface ToolAncestry {
+  readonly runId: string;
+  readonly stepId: string | undefined;
 }
 
 /**
@@ -198,11 +207,14 @@ export class AiTraceRecorder {
    * rather than starting its own, so a viewer's run list reads as the test's
    * step list. Keyed by scope identity, which is fresh per step.
    */
-  private readonly stepRuns = new WeakMap<AiTraceScope, RunMembership>();
+  private readonly stepRuns = new WeakMap<AiTraceScope, RunCounter>();
   private runs: AiTraceRun[] = [];
   private steps: AiTraceStep[] = [];
-  /** Tool calls currently executing, innermost last, for nested-run parents. */
-  private readonly toolStack: { readonly runId: string; readonly stepId: string | undefined }[] = [];
+  /**
+   * The tool a generation is being made from, carried by async context so
+   * tools that execute in parallel each see only their own ancestry.
+   */
+  private readonly toolAncestry = new AsyncLocalStorage<ToolAncestry>();
   private disposed = false;
 
   /** The integration object to hand to `registerTelemetry`. */
@@ -215,16 +227,11 @@ export class AiTraceRecorder {
     onStepEnd: (event) => this.onStepEnd(event as unknown as StepEndEvent),
     onEnd: (event) => this.onEnd(event as unknown as EndEvent),
     onError: (event) => this.onError(event as ErrorEvent | undefined),
-    executeTool: async ({ callId, execute }) => {
+    executeTool: ({ callId, execute }) => {
       const state = this.calls.get(callId);
       if (state === undefined) return execute();
       const open = [...state.openSteps.values()].at(-1);
-      this.toolStack.push({ runId: state.runId, stepId: open?.id });
-      try {
-        return await execute();
-      } finally {
-        this.toolStack.pop();
-      }
+      return this.toolAncestry.run({ runId: state.runId, stepId: open?.id }, () => execute());
     },
   };
 
@@ -272,7 +279,7 @@ export class AiTraceRecorder {
   private onStart(event: StartEvent): void {
     if (this.disposed) return;
     if (event.operationId !== 'ai.generateText' && event.operationId !== 'ai.streamText') return;
-    const parent = this.toolStack.at(-1);
+    const parent = this.toolAncestry.getStore();
     const scope = currentAiTraceScope();
     // A generation made inside a tool is its own nested run, never a
     // continuation of the step's run, so the parent link stays meaningful.
@@ -280,21 +287,13 @@ export class AiTraceRecorder {
       scope !== undefined && scope.api !== undefined && parent === undefined ? scope : undefined;
     const existing = stepScope === undefined ? undefined : this.stepRuns.get(stepScope);
     if (existing !== undefined) {
-      this.calls.set(event.callId, {
-        runId: existing.runId,
-        openSteps: new Map(),
-        offset: existing.steps,
-        membership: existing,
-      });
+      this.calls.set(event.callId, { runId: existing.runId, openSteps: new Map(), run: existing });
       return;
     }
-    const runId = randomUUID();
-    let membership: RunMembership | undefined;
-    if (stepScope !== undefined) {
-      membership = { runId, steps: 0 };
-      this.stepRuns.set(stepScope, membership);
-    }
-    this.calls.set(event.callId, { runId, openSteps: new Map(), offset: 0, membership });
+    const run: RunCounter = { runId: randomUUID(), steps: 0 };
+    if (stepScope !== undefined) this.stepRuns.set(stepScope, run);
+    const runId = run.runId;
+    this.calls.set(event.callId, { runId, openSteps: new Map(), run });
     this.runs.push({
       id: runId,
       started_at: new Date().toISOString(),
@@ -308,10 +307,8 @@ export class AiTraceRecorder {
   private onStepStart(event: StepStartEvent): void {
     const state = this.calls.get(event.callId);
     if (state === undefined) return;
-    const stepNumber = state.offset + event.stepNumber;
-    if (state.membership !== undefined) {
-      state.membership.steps = Math.max(state.membership.steps, stepNumber + 1);
-    }
+    const stepNumber = state.run.steps;
+    state.run.steps += 1;
     const open: OpenStep = {
       id: randomUUID(),
       runId: state.runId,

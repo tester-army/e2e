@@ -174,6 +174,79 @@ describe('AiTraceRecorder', () => {
     expect(steps).toHaveLength(5);
   });
 
+  it('numbers the steps of generations that overlap inside one step without collisions', async () => {
+    const recorder = new AiTraceRecorder();
+    const t = recorder.telemetry;
+    const start = (callId: string) => t.onStart?.({ callId, operationId: 'ai.generateText' } as never);
+    const stepStart = (callId: string, stepNumber: number) =>
+      t.onStepStart?.({ callId, stepNumber, provider: 'p', modelId: 'm', instructions: 's', messages: [] } as never);
+    const stepEnd = (callId: string, stepNumber: number) =>
+      t.onStepEnd?.({ callId, stepNumber, content: [], finishReason: 'stop', usage: {}, response: {} } as never);
+    await withAiTraceScope(SCOPE, () =>
+      withAiTraceStep('agent.act', 'parallel brain', async () => {
+        // A custom executor firing two multi-step generations at once.
+        await start('a');
+        await start('b');
+        await stepStart('a', 0);
+        await stepStart('b', 0);
+        await stepEnd('a', 0);
+        await stepStart('a', 1);
+        await stepEnd('b', 0);
+        await stepStart('b', 1);
+        await stepEnd('a', 1);
+        await stepEnd('b', 1);
+        await t.onEnd?.({ callId: 'a' } as never);
+        await t.onEnd?.({ callId: 'b' } as never);
+      }),
+    );
+    const { runs, steps } = recorder.drain();
+    expect(runs).toHaveLength(1);
+    expect(steps.every((step) => step.run_id === runs[0]!.id)).toBe(true);
+    expect(steps.map((step) => step.step_number).toSorted()).toEqual([1, 2, 3, 4]);
+  });
+
+  it('attributes a nested generation to the tool that made it, even when tools overlap', async () => {
+    const recorder = new AiTraceRecorder();
+    const t = recorder.telemetry;
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    for (const callId of ['A', 'B']) {
+      await t.onStart?.({ callId, operationId: 'ai.generateText' } as never);
+      await t.onStepStart?.({
+        callId,
+        stepNumber: 0,
+        provider: 'p',
+        modelId: 'm',
+        instructions: undefined,
+        messages: [],
+      } as never);
+    }
+    // Tool A starts first but its nested generation lands after tool B's.
+    await Promise.all([
+      t.executeTool!({
+        callId: 'A',
+        toolCallId: 'ta',
+        execute: async () => {
+          await delay(15);
+          await generation(recorder, 'innerA');
+        },
+      } as never),
+      t.executeTool!({
+        callId: 'B',
+        toolCallId: 'tb',
+        execute: async () => {
+          await delay(1);
+          await generation(recorder, 'innerB');
+        },
+      } as never),
+    ]);
+    const { runs, steps } = recorder.drain({ all: true });
+    const [outerA, outerB, innerB, innerA] = runs;
+    expect(innerB!.parent_run_id).toBe(outerB!.id);
+    expect(innerA!.parent_run_id).toBe(outerA!.id);
+    expect(innerA!.parent_step_id).toBe(steps.find((step) => step.run_id === outerA!.id)!.id);
+    expect(innerB!.parent_step_id).toBe(steps.find((step) => step.run_id === outerB!.id)!.id);
+  });
+
   it('ignores operations that are not text generations', async () => {
     const recorder = new AiTraceRecorder();
     await recorder.telemetry.onStart?.({ callId: 'e', operationId: 'ai.embed' } as never);
