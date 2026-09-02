@@ -111,6 +111,50 @@ pnpm --filter @e2edev/testbed run test:headed
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 
+## Inspecting agent runs with unbox-ai
+
+`e2e run --ai-trace` records every model call of a run to `.e2e/ai-trace.json`
+in the AI SDK devtools database shape (`{ runs[], steps[] }`). One run per
+agent step, named `<test title> · <api> "<label>"`; one entry per model round
+trip (an `act` turn, a `waitFor` poll, a judgment repair round) with the exact
+prompt, the tool definitions and their JSON schemas, the response, usage, model
+latency, and provider metadata. Recorder: `src/internal/ai-trace.ts` (an AI SDK
+`registerTelemetry` integration, attributed through an async-local scope set
+in `run/execute.ts` and `run/steps.ts`; workers drain on `unit-done`).
+
+Use [unbox-ai](https://github.com/tester-army/unbox-ai) to read it — never
+`cat` or Read the file, it is megabytes of resent context. The skill in
+`.claude/skills/unbox-ai/SKILL.md` has the full workflow and recipes (other
+agents: `npx skills add tester-army/unbox-ai`). Start wide, then drill:
+
+```bash
+E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace --no-cache
+npx unbox-ai runs packages/testbed/.e2e/ai-trace.json            # one line per agent step
+npx unbox-ai summary packages/testbed/.e2e/ai-trace.json --run 3 # one step: turns, tokens, caching
+npx unbox-ai tools packages/testbed/.e2e/ai-trace.json --run 3   # what the agent called, and how often
+npx unbox-ai event packages/testbed/.e2e/ai-trace.json 2 --run 3 # one turn's new messages
+npx unbox-ai compare packages/testbed/.e2e/ai-trace.json --run 3 --run 4 --trajectory
+```
+
+This is how to debug an agentic step: a wrong node id, a loop guard firing, a
+prompt or tool description change, or where the tokens went. Reach for it
+before changing prompts in `src/agent/`, and again after, with `compare`. In
+integration tests, pass `runOptions: { aiTrace: true }` and read the file from
+the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
+
+- Steps the trace cache replays make no model call and leave no run; use
+  `--no-cache` when you want the whole flow traced.
+- Cost shows as `-` in unbox-ai (the devtools shape carries none); the AI
+  Gateway's `marketCost` is in each step's `output.providerMetadata`, and the
+  `--debug` step table prints dollars.
+- Live view while a suite runs: `npx unbox-ai devtools` in the project
+  directory, then `E2E_DEVTOOLS=1 ... test:agent -- --workers 1` (the testbed
+  agent config registers `@ai-sdk/devtools`; that recorder is one database
+  per process, hence one worker). Prefer `--ai-trace` for anything to keep.
+- "Trace" means three things here: the trace cache (`trace-1`, recorded
+  actions under `.e2e/cache/`), the Playwright trace artifact, and this AI
+  trace. Say which.
+
 ## Gotchas
 
 - Status prose drifts. `packages/e2e/README.md` and `spec/README.md` can claim

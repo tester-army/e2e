@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "unbox-ai": {
+      "source": "tester-army/unbox-ai",
+      "sourceType": "github",
+      "skillPath": "skills/unbox-ai/SKILL.md",
+      "computedHash": "79fd1e2cb7323ddc01dd58e964fec42709166ad8455185f0669d62f865f7cfdc"
+    }
+  }
+}
