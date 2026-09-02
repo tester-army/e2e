@@ -869,6 +869,16 @@ export type CacheReadResult =
   | { readonly status: 'miss' }
   | { readonly status: 'invalid'; readonly reason: string; readonly bytes?: number };
 
+/** Wraps one trace as a fresh entry, for a custom store's write path. */
+export function buildTraceEntry(payload: ActionTrace): TraceEntry;
+
+/**
+ * Reads one document as a `trace-1` entry, or returns undefined when it is
+ * not one this runner can trust. A custom store validates its read path with
+ * exactly this — the same framing the default file store uses.
+ */
+export function readTraceEntry(document: unknown): TraceEntry | undefined;
+
 /**
  * The entry store. The default is one file per key digest under
  * `.e2e/cache/`; a custom implementation (a shared remote cache) replaces it
