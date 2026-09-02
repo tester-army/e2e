@@ -152,12 +152,15 @@ export class TargetWorker {
   }
 
   private async shutdown(): Promise<void> {
-    // The backend belongs to this worker's executor on both transports.
-    try {
-      await this.executor?.dispose();
-    } catch {
-      // dispose is best-effort cleanup
-    }
+    // The backend belongs to this worker's executor on both transports. Its
+    // disposal records run errors after the last unit drained, so they ship
+    // on a final message of their own; dispose itself never throws.
+    const executor = this.executor;
+    if (executor !== undefined) await executor.dispose();
+    this.host.emit({
+      type: 'shutdown-done',
+      runErrors: executor === undefined ? [] : this.drainRunErrors(executor),
+    });
     this.host.finished();
   }
 }

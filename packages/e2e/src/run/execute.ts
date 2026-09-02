@@ -124,12 +124,8 @@ export class TargetExecutor implements SerialHost {
     this.options.events?.onResult?.(result);
   }
 
-  /** Builds one backend operation context; defaults to a non-aborting signal. */
-  private op(
-    attemptId: string,
-    timeoutMs: number,
-    signal: AbortSignal = NEVER_ABORTS,
-  ): OperationContext {
+  /** Builds one backend operation context. */
+  private op(attemptId: string, timeoutMs: number, signal: AbortSignal): OperationContext {
     return { signal, timeoutMs, runId: this.options.runId, attemptId };
   }
 
@@ -152,52 +148,71 @@ export class TargetExecutor implements SerialHost {
     // instead of re-running a broken boot per test. Init outlives any single
     // attempt, so it aborts on worker interrupt, not on one test's deadline.
     this.backendReady ??= this.debug.time('backend.init', () =>
-      this.lifecycle(`initializing backend ${backend?.name ?? "none"}`, this.config.launchTimeout, 'LAUNCH_TIMEOUT', () =>
-        init({
-          runId: this.options.runId,
-          targetName: this.target.name,
-          app: {
-            ...(this.config.app.configured ? { baseUrl: this.config.app.base.href } : {}),
-            allowedOrigins: this.config.app.allowedOrigins,
-          },
-          testIdAttribute: this.config.testIdAttribute,
-          headed: this.options.headed,
-          signal: this.interruptSignal,
-        }),
+      this.lifecycle(
+        `initializing backend ${backend?.name ?? 'none'}`,
+        this.config.launchTimeout,
+        'LAUNCH_TIMEOUT',
+        this.interruptSignal,
+        (signal) =>
+          init({
+            runId: this.options.runId,
+            targetName: this.target.name,
+            app: {
+              ...(this.config.app.configured ? { baseUrl: this.config.app.base.href } : {}),
+              allowedOrigins: this.config.app.allowedOrigins,
+            },
+            testIdAttribute: this.config.testIdAttribute,
+            headed: this.options.headed,
+            signal,
+          }),
       ),
     );
     return this.backendReady;
   }
 
   /**
-   * Runs one lifecycle call on the backend seam: bounded by the given budget,
-   * synchronous throws included, and translated onto the runner taxonomy so a
-   * backend failing outside its contract is infrastructure, never a test error.
+   * Runs one lifecycle call on the backend seam within the given budget. The
+   * signal handed to `run` follows `parent` and is aborted the moment the call
+   * fails, timeout included, so a hook that outlived its budget is told to
+   * stop instead of running on into the retry. Synchronous throws are caught,
+   * and every failure is translated onto the runner taxonomy: a backend
+   * failing outside its contract is infrastructure, never a test error.
    */
-  private lifecycle<T>(
+  private async lifecycle<T>(
     label: string,
     timeoutMs: number,
     code: 'LAUNCH_TIMEOUT' | 'CLEANUP_TIMEOUT',
-    run: () => Promise<T>,
+    parent: AbortSignal,
+    run: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
-    return withTimeout(
-      Promise.resolve().then(run),
-      timeoutMs,
-      () => new InfrastructureError(code, `${label} timed out`),
-    ).catch((cause: unknown) => {
+    const scope = new AbortController();
+    try {
+      return await withTimeout(
+        Promise.resolve().then(() => run(AbortSignal.any([parent, scope.signal]))),
+        timeoutMs,
+        () => new InfrastructureError(code, `${label} timed out`),
+      );
+    } catch (cause) {
+      scope.abort();
       throw translateBackendError(cause, ` while ${label}`);
-    });
+    }
   }
 
-  /** Disposes the backend at worker end of life, bounded by the cleanup budget. */
+  /**
+   * Disposes the backend at worker end of life, bounded by the cleanup budget.
+   * Runs whether or not `init` did: a backend may hold resources it acquired
+   * lazily, and the contract makes `dispose` safe to call on a cold backend.
+   */
   async dispose(): Promise<void> {
     const disposeBackend = this.target.backend?.dispose?.bind(this.target.backend);
-    if (disposeBackend === undefined || this.backendReady === undefined) return;
+    if (disposeBackend === undefined) return;
     try {
-      await withTimeout(
-        disposeBackend(),
+      await this.lifecycle(
+        'disposing the backend',
         this.config.cleanupTimeout,
-        () => new InfrastructureError('CLEANUP_TIMEOUT', 'backend dispose timed out'),
+        'CLEANUP_TIMEOUT',
+        NEVER_ABORTS,
+        () => disposeBackend(),
       );
     } catch (cause) {
       this.runErrors.push({ error: serializeError(classifyError(cause), { phase: 'cleanup' }) });
@@ -359,7 +374,6 @@ export class TargetExecutor implements SerialHost {
     // so refs never cross attempts.
     await this.initBackendOnce();
     const backend = this.target.backend;
-    const launchOperation = this.op(attemptId, this.config.launchTimeout, signal);
     // Session restore rides the backend's neutral state capability. Checked
     // before any per-attempt isolation opens, so a misconfigured session never
     // orphans a started attempt.
@@ -369,30 +383,38 @@ export class TargetExecutor implements SerialHost {
         `target "${this.target.name}" has no backend state capability for session restore`,
       );
     }
-    const startAttempt = backend?.startAttempt?.bind(backend);
-    if (startAttempt !== undefined) {
-      await this.debug.time('session.launch', () =>
-        this.lifecycle(`starting an attempt on backend ${backend?.name ?? "none"}`, this.config.launchTimeout, 'LAUNCH_TIMEOUT', () =>
-          startAttempt({ attemptId, artifactsDir, signal }),
-        ),
-      );
-    }
     const session = createBackendSession({ backend, targetName: this.target.name });
-    const launch = <T>(label: string, run: () => Promise<T>) =>
-      this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', run);
+    const launch = <T>(label: string, run: (launchSignal: AbortSignal) => Promise<T>) =>
+      this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', signal, run);
+    const launchOp = (launchSignal: AbortSignal) =>
+      this.op(attemptId, this.config.launchTimeout, launchSignal);
     try {
+      const startAttempt = backend?.startAttempt?.bind(backend);
+      if (startAttempt !== undefined) {
+        await this.debug.time('session.launch', () =>
+          launch(`starting an attempt on backend ${backend?.name ?? 'none'}`, (launchSignal) =>
+            startAttempt({ attemptId, artifactsDir, signal: launchSignal }),
+          ),
+        );
+      }
       if (pair.options.session !== undefined) {
         const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
-        await launch('restoring the session', () => session.restoreState!(state, launchOperation));
+        await launch('restoring the session', (launchSignal) =>
+          session.restoreState!(state, launchOp(launchSignal)),
+        );
       }
       if (this.config.artifacts.includes('trace') && session.artifacts.startTrace !== undefined) {
         // An explicitly configured trace is a contract; the default set is best-effort.
-        const starting = launch('starting the trace', () => session.artifacts.startTrace!(launchOperation));
+        const starting = launch('starting the trace', (launchSignal) =>
+          session.artifacts.startTrace!(launchOp(launchSignal)),
+        );
         if (this.config.artifactsExplicit) await starting;
         else await starting.catch(() => undefined);
       }
     } catch (cause) {
-      // The attempt's isolation is open: end it, or the retry opens a second one.
+      // The attempt's isolation is open, or a timed-out startAttempt may still
+      // open it: end it within the cleanup budget, or the retry opens a second
+      // one. A backend without startAttempt makes this a no-op.
       await this.endAttempt(session, attemptId).catch(() => undefined);
       throw cause;
     }
@@ -401,8 +423,12 @@ export class TargetExecutor implements SerialHost {
 
   /** Ends one attempt's isolation within the cleanup budget. */
   private endAttempt(session: TargetSession, attemptId: string): Promise<void> {
-    return this.lifecycle('ending the attempt', this.config.cleanupTimeout, 'CLEANUP_TIMEOUT', () =>
-      session.close(this.op(attemptId, this.config.cleanupTimeout)),
+    return this.lifecycle(
+      'ending the attempt',
+      this.config.cleanupTimeout,
+      'CLEANUP_TIMEOUT',
+      NEVER_ABORTS,
+      (signal) => session.close(this.op(attemptId, this.config.cleanupTimeout, signal)),
     );
   }
 
@@ -416,8 +442,12 @@ export class TargetExecutor implements SerialHost {
   ): Promise<void> {
     if (this.config.artifacts.includes('trace') && session.artifacts.stopTrace !== undefined) {
       try {
-        const tracePath = await this.lifecycle('stopping the trace', this.config.cleanupTimeout, 'CLEANUP_TIMEOUT', () =>
-          session.artifacts.stopTrace!(this.op(attemptId, this.config.cleanupTimeout)),
+        const tracePath = await this.lifecycle(
+          'stopping the trace',
+          this.config.cleanupTimeout,
+          'CLEANUP_TIMEOUT',
+          NEVER_ABORTS,
+          (signal) => session.artifacts.stopTrace!(this.op(attemptId, this.config.cleanupTimeout, signal)),
         );
         artifactSink.register('trace', tracePath);
       } catch (cause) {

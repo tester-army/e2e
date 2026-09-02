@@ -117,6 +117,17 @@ export interface UnitDoneMessage {
   readonly debug?: DebugSnapshot;
 }
 
+/**
+ * The worker's last word before it exits: backend disposal happens after the
+ * final unit drained its errors, so its outcome rides here.
+ */
+export interface ShutdownDoneMessage {
+  readonly type: 'shutdown-done';
+  readonly runErrors: readonly RunError[];
+  /** Phase timings drained from this worker since the last unit. */
+  readonly debug?: DebugSnapshot;
+}
+
 export interface FatalMessage {
   readonly type: 'fatal';
   readonly error: SerializedError;
@@ -129,6 +140,7 @@ export type WorkerToMain =
   | ResultMessage
   | SerialGroupMessage
   | UnitDoneMessage
+  | ShutdownDoneMessage
   | FatalMessage;
 
 /** Strips the live target from a result for transport. */

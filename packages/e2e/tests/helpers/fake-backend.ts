@@ -41,6 +41,8 @@ export interface FakeBackendBehavior {
   onStartAttempt?(context: BackendAttemptContext, attemptIndex: number): void | Promise<void>;
   /** Throw to fail attempt close. */
   onEndAttempt?(attemptIndex: number): void | Promise<void>;
+  /** Throw to fail worker-end disposal. */
+  onDispose?(): void | Promise<void>;
   /** Throw to fail navigation (app.open). */
   onNavigate?(url: string, attemptIndex: number): void | Promise<void>;
   /** Overrides locate; default resolves one stable node. */
@@ -155,6 +157,7 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
     async dispose() {
       disposes += 1;
       events.push('dispose');
+      await behavior.onDispose?.();
     },
     async observe(operation) {
       record('observe', operation);

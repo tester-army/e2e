@@ -62,7 +62,13 @@ test('restores the seeded counter', { session: 'seeded' }, async ({ screen }) =>
 
 /** A two-node screen: a counter value and a button that increments it. */
 function toyBackend(
-  options: { withLocate?: boolean; withFixtures?: boolean; withState?: boolean; withIsolation?: boolean } = {},
+  options: {
+    withLocate?: boolean;
+    withFixtures?: boolean;
+    withState?: boolean;
+    withIsolation?: boolean;
+    withoutInit?: boolean;
+  } = {},
 ) {
   const lifecycle: string[] = [];
   const fixtureCalls: string[] = [];
@@ -74,9 +80,13 @@ function toyBackend(
   const backend = defineBackend({
     name: 'toy-device',
     spiVersion: 1,
-    async init() {
-      lifecycle.push('init');
-    },
+    ...(options.withoutInit === true
+      ? {}
+      : {
+          async init() {
+            lifecycle.push('init');
+          },
+        }),
     ...(options.withIsolation !== true
       ? {}
       : {
@@ -320,6 +330,28 @@ test('second attempt also starts fresh', async ({ screen }) => {
       ]);
       expect(toy.lifecycle.filter((e) => e === 'endAttempt')).toHaveLength(2);
       assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('disposes a backend that declares no init', async () => {
+    const toy = toyBackend({ withLocate: true, withoutInit: true });
+    const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+      });
+      expect(outcome.exitCode).toBe(0);
+      // Worker-end disposal is unconditional: resources acquired lazily, with
+      // no init hook to gate on, are still released.
+      expect(toy.lifecycle).toEqual(['dispose']);
     } finally {
       project.cleanup();
     }

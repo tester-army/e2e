@@ -241,7 +241,8 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
       // Infrastructure failures are not retry-eligible: one attempt despite retries: 2.
       expect(result.attempts).toHaveLength(1);
       expect(outcome.exitCode).toBe(3);
-      expect(fake.stats().attemptsEnded).toBe(0);
+      // A failed launch still ends the attempt it may have half-opened.
+      expect(fake.stats().attemptsEnded).toBe(1);
       expect(fake.stats().disposes).toBe(1);
       project.cleanup();
     },
@@ -300,6 +301,10 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
       expect(result.status).toBe('failed');
       expect(result.attempts[0]!.error?.code).toBe('LAUNCH_TIMEOUT');
       expect(result.attempts[0]!.error?.category).toBe('infrastructure');
+      // The hook that outlived its budget was told to stop, and the isolation
+      // it may have opened was ended, so nothing of it can race a retry.
+      expect(fake.attempts[0]!.signal.aborted).toBe(true);
+      expect(fake.stats().attemptsEnded).toBe(1);
       project.cleanup();
     },
     60_000,
@@ -323,6 +328,33 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
       expect(attempt.cleanup).toBe('failed');
       expect(attempt.secondaryErrors.some((error) => error.phase === 'cleanup')).toBe(true);
       expect(outcome.exitCode).toBe(0);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a failing dispose is a cleanup run error and fails the run',
+    async () => {
+      const fake = createFakeBackend({
+        onDispose() {
+          throw new Error('device lease release exploded');
+        },
+      });
+      const { outcome, project } = await runProject(
+        { 'tests/dispose-fail.e2e.ts': PASSING_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake) },
+      );
+      expect(resultByTitle(outcome, 'taps a node').status).toBe('passed');
+      // Disposal happens after the last unit reported, so its error rides the
+      // worker's final message; it must still reach the report and exit code.
+      const disposal = outcome.report.run.errors.find((entry) =>
+        entry.message.includes('device lease release exploded'),
+      );
+      expect(disposal?.phase).toBe('cleanup');
+      expect(disposal?.category).toBe('infrastructure');
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
       project.cleanup();
     },
     60_000,

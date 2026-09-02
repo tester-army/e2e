@@ -61,14 +61,17 @@ class ChildProcessRunner implements UnitRunner {
     });
     this.child.on('message', (message) => events.onMessage(message as WorkerToMain));
     this.exit = new Promise<void>((resolve) => {
-      this.child.once('exit', (code, signal) => {
+      // 'close', not 'exit': it fires once the IPC channel has drained, so
+      // every message the worker sent (its shutdown-done included) has been
+      // delivered before the scheduler treats the worker as gone.
+      this.child.once('close', (code, signal) => {
         this.exited = true;
         events.onExit(`code ${String(code)}, signal ${String(signal)}`);
         resolve();
       });
     });
     this.child.once('error', () => {
-      // spawn failures surface through the exit event
+      // spawn failures surface through the close event
     });
     this.post({ type: 'bootstrap', bootstrap });
   }

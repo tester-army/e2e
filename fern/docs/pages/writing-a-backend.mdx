@@ -97,8 +97,10 @@ never silently.
 `init` runs once per worker before the first attempt, outside every step
 budget: boot devices and download runtimes there. `startAttempt`/`endAttempt`
 bracket one test attempt and carry the attempt's artifact directory; give each
-test a fresh surface here (a new browser context, a reset app). `dispose` runs
-at worker shutdown.
+test a fresh surface here (a new browser context, a reset app). When
+`startAttempt` fails or exceeds `launchTimeout`, its `context.signal` aborts and
+`endAttempt` runs right behind it, so stop promptly and keep `endAttempt`
+idempotent. `dispose` runs at worker shutdown whether or not `init` ran.
 
 ### Nodes and refs
 

@@ -460,6 +460,11 @@ class Scheduler {
         this.wakeUp();
         break;
       }
+      case 'shutdown-done': {
+        for (const runError of message.runErrors) this.options.events.onRunError(runError);
+        if (message.debug !== undefined) this.options.events.onDebug?.(message.debug);
+        break;
+      }
       case 'fatal': {
         this.options.events.onRunError({ error: message.error });
         worker.runner.kill();

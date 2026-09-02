@@ -67,9 +67,9 @@ what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 | Hook | When | Budget |
 | --- | --- | --- |
 | `init(info)` | once per worker, before the first attempt | `launchTimeout`; failure is infrastructure |
-| `startAttempt(context)` | before every attempt; `context.artifactsDir` is where artifacts go | `launchTimeout` |
+| `startAttempt(context)` | before every attempt; `context.artifactsDir` is where artifacts go | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
 | `endAttempt()` | after every attempt, idempotent | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
-| `dispose()` | worker shutdown | `cleanupTimeout`; failure is a run error |
+| `dispose()` | worker shutdown, whether or not `init` ran | `cleanupTimeout`; failure is a run error |
 
 ```ts
 export interface BackendInitInfo {

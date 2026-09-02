@@ -198,6 +198,11 @@ export interface BackendAttemptContext {
   readonly attemptId: string;
   /** Absolute directory every artifact of this attempt is written under. */
   readonly artifactsDir: string;
+  /**
+   * Aborts with the attempt, and the moment `startAttempt` fails or exceeds
+   * the launch timeout: a hook still running then must stop, because the
+   * harness ends the attempt's isolation right behind it and may retry.
+   */
   readonly signal: AbortSignal;
 }
 
@@ -316,7 +321,10 @@ export interface Backend {
   startAttempt?(context: BackendAttemptContext): Promise<void>;
   /** After each attempt, bounded by the cleanup timeout: tear that isolation down. */
   endAttempt?(): Promise<void>;
-  /** Worker shutdown, bounded by the cleanup timeout; failure is a run error. */
+  /**
+   * Worker shutdown, bounded by the cleanup timeout; failure is a run error.
+   * Runs whether or not `init` ran, so it MUST tolerate a cold backend.
+   */
   dispose?(): Promise<void>;
 }
 
