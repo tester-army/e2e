@@ -74,8 +74,13 @@ export interface RunEventHeader {
 
 export type RunEvent = RunEventHeader & RunEventFact;
 
-/** An event consumer. Must not block; a throw quarantines the sink. */
-export type RunEventSink = (event: RunEvent) => void;
+/**
+ * An event consumer. Must not block; a throw — or, when it returns a
+ * promise, a rejection — quarantines the sink. An async sink observes events
+ * in emit order but cannot delay them; ordering between its own pending
+ * handlers is its own responsibility. Any other return value is ignored.
+ */
+export type RunEventSink = (event: RunEvent) => unknown;
 
 /** Strips the live target from a result, keeping its stable identity. */
 export function toEventResult(record: ResultRecord): RunEventResult {
@@ -104,7 +109,10 @@ export function createRunEventEmitter(
     for (const sink of active) {
       if (quarantined.has(sink)) continue;
       try {
-        sink(event);
+        const result = sink(event);
+        // An async sink's rejection must neither surface as an unhandled
+        // rejection nor keep the sink subscribed.
+        if (result instanceof Promise) result.catch(() => quarantined.add(sink));
       } catch {
         quarantined.add(sink);
       }

@@ -159,13 +159,14 @@ export function readTraceEntry(document: unknown): TraceEntry | undefined {
   }
   const raw = document as Record<string, unknown>;
   if (raw['schemaVersion'] !== TRACE_SCHEMA_VERSION) return undefined;
+  // Provenance must be present and parseable, not synthesized: a custom store
+  // returning a document without it is returning something this runner never
+  // wrote, and fail-to-miss is the only safe answer.
+  const createdAt = raw['createdAt'];
+  if (typeof createdAt !== 'string' || Number.isNaN(Date.parse(createdAt))) return undefined;
   const payload = readActionTrace(raw['payload']);
   if (payload === undefined) return undefined;
-  return {
-    schemaVersion: TRACE_SCHEMA_VERSION,
-    createdAt: typeof raw['createdAt'] === 'string' ? raw['createdAt'] : '',
-    payload,
-  };
+  return { schemaVersion: TRACE_SCHEMA_VERSION, createdAt, payload };
 }
 
 function readActionTrace(document: unknown): ActionTrace | undefined {

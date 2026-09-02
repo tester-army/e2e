@@ -17,7 +17,8 @@ import {
   ConfigurationError,
   exitCodeForCategory,
   serializeError,
-  type E2EError,
+  E2EError,
+  errorMessage,
 } from '../internal/errors.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
@@ -104,10 +105,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   let appProcess: AppProcess | undefined;
   let sessionStore: SessionStore | undefined;
 
-  const finish = async (exitCode: RunExitCode): Promise<RunOutcome> => {
-    const status =
-      exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
-    const report = buildReport({
+  const statusOf = (exitCode: RunExitCode): RunOutcome['status'] =>
+    exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
+
+  const buildRunReport = (status: RunOutcome['status'], exitCode: RunExitCode) =>
+    buildReport({
       runId,
       config,
       startedAt,
@@ -118,15 +120,36 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       runErrors,
       targetProvenance,
     });
+
+  const finish = async (exitCode: RunExitCode): Promise<RunOutcome> => {
+    let status = statusOf(exitCode);
+    let report = buildRunReport(status, exitCode);
     if (config !== undefined) {
       const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
-      reportPath = path.join(path.dirname(artifactsRoot), 'report.json');
+      const target = path.join(path.dirname(artifactsRoot), 'report.json');
       try {
-        await writeJsonReport(reportPath, report);
+        await writeJsonReport(target, report);
+        // Advertised only once the file exists: a host must never be handed a
+        // path to a report that was not written.
+        reportPath = target;
       } catch (cause) {
-        recordRunError(classifyError(cause), 'report');
+        // A lost canonical report is an infrastructure run error, not a
+        // footnote or a test failure: it joins the exit code and the returned
+        // in-memory report. The file is not retried — the destination just
+        // failed — so the in-memory document is the only complete record.
+        const error = new E2EError(
+          'infrastructure',
+          'REPORT_WRITE_FAILED',
+          `the canonical report could not be written: ${errorMessage(cause)}`,
+          { cause },
+        );
+        recordRunError(error, 'report');
+        exitCode = combineExitCodes([exitCode, exitCodeForCategory(error.category)]);
+        status = statusOf(exitCode);
+        report = buildRunReport(status, exitCode);
       }
     }
+    setCredentialRegistry(undefined);
     emit({ type: 'run-finished', status, exitCode, ...(reportPath !== undefined ? { reportPath } : {}) });
     if (options.reporters?.includes('json') === true) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
