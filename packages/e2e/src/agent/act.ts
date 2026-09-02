@@ -451,10 +451,14 @@ class ActDispatch {
     let endNodes: AgentObservation['nodes'];
     try {
       endNodes = (await this.observeSettled()).nodes;
-    } catch {
+    } catch (cause) {
+      // Cancellation and the other runtime hard stops are the step's truth
+      // even when they land during cache bookkeeping; only a surface that
+      // cannot be observed is absorbed, by staging nothing.
+      if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) throw cause;
       return;
     }
-    this.stepCache.stage(this.explanation, await this.currentPath(), endNodes);
+    await this.stepCache.stage(this.explanation, await this.currentPath(), endNodes);
   }
 
   /** Evicts a consumed replay entry after a non-passed settle. */

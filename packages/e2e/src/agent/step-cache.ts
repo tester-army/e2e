@@ -15,7 +15,8 @@ import type { SemanticNode } from '../backend/surface.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
-import type { ReplayedPrefix, StepVerdict } from './executor.ts';
+import { isAgentError } from './error.ts';
+import { RUNTIME_CODES, type ReplayedPrefix, type StepVerdict } from './executor.ts';
 import { replayTrace, verifyAnchors, type ReplayHost } from './replay.ts';
 
 /**
@@ -58,6 +59,13 @@ export class StepTraceSession {
    * observation, so a replay must reproduce the step's effect to pass alone.
    */
   private startNodes: ReadonlyMap<string, SemanticNode> | undefined;
+  /**
+   * True when the baseline could not be captured for a reason that is not the
+   * step's own hard stop. The step still runs — an executor that never looks
+   * at the screen owes the cache nothing — but nothing is staged: a trace
+   * without its baseline has no anchors, and would replay on mechanics alone.
+   */
+  private baselineUnavailable = false;
   /** Original producer of a fully replayed trace, kept as write provenance. */
   private replaySource: { name: string; version?: string } | undefined;
   /**
@@ -115,7 +123,17 @@ export class StepTraceSession {
     // Captured before any action for the write's start-path precondition, and
     // doubling as the replay decision's current path.
     this.startPath = await host.currentPath();
-    if (this.recorder !== undefined) this.startNodes = await host.observeSettledNodes();
+    if (this.recorder !== undefined) {
+      try {
+        this.startNodes = await host.observeSettledNodes();
+      } catch (cause) {
+        // Runtime hard stops (timeout, cancellation) are the step's truth and
+        // propagate; anything else means the surface cannot be observed right
+        // now, which is the executor's business, not the cache's.
+        if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) throw cause;
+        this.baselineUnavailable = true;
+      }
+    }
     if (!this.cache.replayEligible) return undefined;
     let read: Awaited<ReturnType<typeof this.cache.store.read>>;
     try {
@@ -221,12 +239,12 @@ export class StepTraceSession {
    * so anchors are recorded only for a step that ended where it began (or on
    * a surface without a location at all, where they are the only check).
    */
-  stage(
+  async stage(
     verdictSummary: string | undefined,
     endPath: string | undefined,
     endNodes: ReadonlyMap<string, SemanticNode> | undefined,
-  ): void {
-    if (this.recorder === undefined) return;
+  ): Promise<void> {
+    if (this.recorder === undefined || this.baselineUnavailable) return;
     if (this.repairedAfterEndMismatch) {
       // Every recorded action ran and the effect was still missing, and the
       // executor had to act further to get there: the recorded flow is proven
@@ -235,7 +253,9 @@ export class StepTraceSession {
       // replay forever. Evict instead; the next pass records a clean flow.
       // A hand-off the executor settled without acting is different: the
       // flow was fine and only the anchors were stale, so it heals below.
-      void this.cache.store.delete?.(this.keyHash).catch(() => undefined);
+      // Awaited so the step does not close — and a later read cannot be
+      // served the stale flow — before the eviction has settled.
+      await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
       return;
     }
     const endAnchors =

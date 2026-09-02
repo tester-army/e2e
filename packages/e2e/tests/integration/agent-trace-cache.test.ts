@@ -471,6 +471,60 @@ describe('trace cache: only a verification step confirms a write', () => {
   }, 120_000);
 });
 
+const TOOLS_ONLY_SUITE = `import { test } from 'e2e';
+
+test('tools-only step', async ({ agent }) => {
+  await agent.act('do the work with your own tools');
+});
+`;
+
+/** Never observes, never acts: the shape of an executor that only uses its own tools. */
+function toolsOnlyExecutor(record: ExecutorRecord): StepExecutor {
+  return {
+    name: 'tools-only-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      return { status: 'passed' as const, summary: 'done without the screen' };
+    },
+  };
+}
+
+describe('trace cache: a backend-independent executor is not gated by the cache', () => {
+  let app: FixtureApp;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+  }, 60_000);
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('runs the executor with caching on, without an opened app, and stages nothing', async () => {
+    const project = createProject({ 'tests/tools.e2e.ts': TOOLS_ONLY_SUITE });
+    try {
+      const record: ExecutorRecord = { calls: 0, prefixes: [] };
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['json'] as const,
+          agent: toolsOnlyExecutor(record),
+          cache: 'read-write' as const,
+        },
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(record.calls).toBe(1);
+      expect(record.prefixes).toEqual([undefined]);
+      expect(existsSync(cacheDir(project))).toBe(false);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+});
+
 describe('trace cache: modes that never write', () => {
   let app: FixtureApp;
 
