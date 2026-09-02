@@ -8,3 +8,4 @@
 .e2e/report.json
 .e2e/report.html
 bench/.next/
+tmp-host-demo/

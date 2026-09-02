@@ -16,7 +16,8 @@
     "test:selenium": "node node_modules/e2e/dist/cli/bin.js run --config e2e.selenium.config.ts",
     "bench:build": "next build bench",
     "bench:serve": "next start bench -p 4273",
-    "test:bench": "pnpm run bench:build && node node_modules/e2e/dist/cli/bin.js run --config e2e.bench.config.ts"
+    "test:bench": "pnpm run bench:build && node node_modules/e2e/dist/cli/bin.js run --config e2e.bench.config.ts",
+    "demo:host": "pnpm run bench:build && node host-demo.mjs"
   },
   "dependencies": {
     "@e2edev/playwright": "workspace:*",
