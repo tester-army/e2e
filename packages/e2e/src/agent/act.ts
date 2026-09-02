@@ -187,6 +187,16 @@ class ActDispatch {
   /** Aborts the executor on any hard stop, so a step never outlives its clock. */
   private readonly stepAbort = new AbortController();
   /**
+   * The one signal everything inside the step aborts with: the attempt's
+   * cancellation or the step's own hard stop. Built once in the constructor
+   * so the executor context, the replay host, and the settle clock can never
+   * disagree about what "the step's signal" means.
+   */
+  private readonly stepSignal: AbortSignal;
+  /** One bound prose builder shared by every action's `detail` hook. */
+  private readonly summarize = (action: RecordableAction): string =>
+    summarizeAction(action, this.redact, this.runtime.config.testIdAttribute);
+  /**
    * Serializes observations and actions in call order. An executor (or an AI
    * SDK loop running parallel tool calls) that issues a second action before
    * the first settles would otherwise resolve both targets against the same
@@ -218,6 +228,7 @@ class ActDispatch {
     private readonly runtime: AgentContext,
     private readonly spec: DispatchSpec,
   ) {
+    this.stepSignal = AbortSignal.any([runtime.signal, this.stepAbort.signal]);
     this.timeoutMs = resolveTimeout(spec.timeout, runtime.config.timeout);
     this.deadline = runtime.engine.deadline(this.timeoutMs);
     this.maxActions = resolveBoundedBudget(
@@ -282,7 +293,7 @@ class ActDispatch {
       },
       target: this.runtime.target,
       ...(replayedPrefix === undefined ? {} : { replayedPrefix }),
-      signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
+      signal: this.stepSignal,
       // Resolved on first read, so executors that bring their own model (or
       // none) never pay for — or fail on — config model resolution.
       get model() {
@@ -402,10 +413,12 @@ class ActDispatch {
   /** The replay engine's narrow view of this dispatch. */
   private replayHost(): StepCacheHost {
     return {
-      observeNodes: async () => (await this.observeLatest()).nodes,
-      latestShape: () => (this.latest === undefined ? undefined : observationShape(this.latest)),
+      observe: async () => {
+        const observation = await this.observeLatest();
+        return { nodes: observation.nodes, shape: observationShape(observation) };
+      },
       actions: this.buildActions(),
-      signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
+      signal: this.stepSignal,
       remainingMs: () => this.deadline.remaining(),
       redact: this.redact,
       testIdAttribute: this.runtime.config.testIdAttribute,
@@ -744,7 +757,7 @@ class ActDispatch {
               // The step's own hard stop must interrupt a settle sleep too —
               // the attempt signal alone would let settling outlive the step
               // by one poll interval.
-              signal: AbortSignal.any([this.runtime.signal, this.stepAbort.signal]),
+              signal: this.stepSignal,
             })
           : this.captureObservation(),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
@@ -823,7 +836,7 @@ class ActDispatch {
         { api: this.spec.api, kind: 'backend', phase: 'agent.action', name },
         body,
         (committed) => ({
-          detail: summarizeAction(committed, this.redact, this.runtime.config.testIdAttribute),
+          detail: this.summarize(committed),
         }),
       );
     } catch (cause) {

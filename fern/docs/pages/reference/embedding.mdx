@@ -70,9 +70,14 @@ carries the full result record with the live target flattened to
 `{ name, platform }`, so every payload survives `JSON.stringify`.
 
 The sink must not block and must not throw: a sink that throws is quarantined
-for the rest of the run — the run is never affected, and the sink is not
-called again. Redaction happens before events are built; secret values never
-appear in the stream.
+for the rest of the run, and a sink whose returned promise rejects is
+quarantined once the rejection settles — events emitted before then may still
+reach it. Either way the run is never affected. `run-finished` carries
+`reportPath` only when the canonical report was actually written: it is
+absent when the write failed (an infrastructure run error that also joins the
+exit code) and on a configuration failure, where no report exists at all.
+Redaction happens before events are built; secret values never appear in the
+stream.
 
 ## Hosted caching
 

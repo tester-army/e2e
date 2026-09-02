@@ -31,12 +31,16 @@ const RELOCATION_RETRY_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 /** Ceiling on one action's relocation, inside whatever the deadline allows. */
 const RELOCATION_TIMEOUT_MS = 15_000;
 
+/** One fresh capture: the node map plus its id-independent shape. */
+export interface ReplayObservation {
+  readonly nodes: ReadonlyMap<string, SemanticNode>;
+  readonly shape: string;
+}
+
 /** What the replay engine needs from the dispatch, and nothing more. */
 export interface ReplayHost {
-  /** Captures a fresh observation and returns its node map. */
-  observeNodes(): Promise<ReadonlyMap<string, SemanticNode>>;
-  /** Id-independent shape of the newest observation, for settle detection. */
-  latestShape(): string | undefined;
+  /** Captures a fresh observation; the shape drives settle detection. */
+  observe(): Promise<ReplayObservation>;
   /** The step's policed action grammar; targets are fresh-observation ids. */
   readonly actions: ExecutorActions;
   readonly signal: AbortSignal;
@@ -191,7 +195,7 @@ async function relocate(
       return { kind: 'failed', failure: 'target-not-found' };
     }
     await sleep(delay, host.signal);
-    nodes = await host.observeNodes();
+    nodes = (await host.observe()).nodes;
   }
 }
 
@@ -203,12 +207,13 @@ async function relocate(
  * executor-facing observe uses (observation.ts); replay reads raw
  * observations and buys its settling here, on its own schedule.
  */
-function settledNodes(host: ReplayHost): Promise<ReadonlyMap<string, SemanticNode>> {
-  return settleObservation(
-    () => host.observeNodes(),
-    () => host.latestShape(),
+async function settledNodes(host: ReplayHost): Promise<ReadonlyMap<string, SemanticNode>> {
+  const settled = await settleObservation(
+    () => host.observe(),
+    (observation) => observation.shape,
     host,
   );
+  return settled.nodes;
 }
 
 /**

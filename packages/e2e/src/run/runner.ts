@@ -90,15 +90,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const targetProvenance = new Map<string, TargetProvenance>();
   // The event stream is the run's single spine: the list reporter is just one
   // sink on it, beside the host's, so the CLI and a host can never see
-  // different stories.
-  const listReporter =
-    options.quiet === true || options.reporters?.includes('json') === true
-      ? undefined
-      : new ListReporter();
-  const emit = createRunEventEmitter([
-    listReporter === undefined ? undefined : listReporterSink(listReporter),
-    options.onEvent,
-  ]);
+  // different stories. The reporter set is config truth (CLI overrides are
+  // merged during resolution); until config resolves, the options-level value
+  // stands in so a config-failure run still renders.
+  const quiet = options.quiet === true;
+  const listSinkFor = (reporters: readonly ('list' | 'json')[]) =>
+    quiet || reporters.includes('json') ? undefined : listReporterSink(new ListReporter());
+  let jsonReport = options.reporters?.includes('json') === true;
+  let emit = createRunEventEmitter([listSinkFor(options.reporters ?? ['list']), options.onEvent]);
 
   let config: ResolvedConfig | undefined;
   let reportPath: string | undefined;
@@ -151,7 +150,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     setCredentialRegistry(undefined);
     emit({ type: 'run-finished', status, exitCode, ...(reportPath !== undefined ? { reportPath } : {}) });
-    if (options.reporters?.includes('json') === true) {
+    if (jsonReport) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
     if (debug.enabled) {
@@ -191,9 +190,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       });
     });
   } catch (cause) {
-    recordRunError(classifyError(cause), 'config');
-    return finish(exitCodeForCategory(classifyError(cause).category));
+    const error = classifyError(cause);
+    recordRunError(error, 'config');
+    return finish(exitCodeForCategory(error.category));
   }
+
+  // From here the resolved reporter set is the truth for rendering.
+  emit = createRunEventEmitter([listSinkFor(config.reporters), options.onEvent]);
+  jsonReport = config.reporters.includes('json');
 
   setCredentialRegistry(config.credentials);
   emit({
@@ -205,13 +209,16 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     targets: config.targets.map((target) => target.name),
   });
 
-  try {
-    if (config.app.command !== undefined) {
-      appProcess = new AppProcess(config.app.command, config.projectRoot, config.app.readyUrl);
+  // From here the run owns external resources. The body only ever returns an
+  // exit code; teardown always runs before the terminal `run-finished`, and
+  // `finish()` is provably called exactly once on every path.
+  const executeRun = async (): Promise<RunExitCode> => {
+    if (config!.app.command !== undefined) {
+      appProcess = new AppProcess(config!.app.command, config!.projectRoot, config!.app.readyUrl);
       await debug.time('app.start', () => appProcess!.start());
     }
 
-    const resolvedConfig = config;
+    const resolvedConfig = config!;
     let planned: { collection: Collection; selection: Selection };
     try {
       planned = await debug.time('collect', async () => {
@@ -232,14 +239,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       const error = classifyError(cause);
       recordRunError(error, 'collection');
-      return finish(exitCodeForCategory(error.category));
+      return exitCodeForCategory(error.category);
     }
     const { collection, selection } = planned;
 
     emit({ type: 'plan', total: selection.pairs.length });
 
-    const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
-    const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
+    const artifactsRoot = resolveArtifactsRoot(resolvedConfig, options.artifactsDir);
+    const sessionsRoot = path.join(resolvedConfig.projectRoot, '.e2e', 'sessions');
     const store = SessionStore.create(runId, sessionsRoot);
     sessionStore = store;
 
@@ -263,7 +270,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // boundary (it may hold live backend handles), so it runs in-process
     // against one worker. Either way the scheduler is the only engine.
     const transport =
-      config.configPath === undefined
+      resolvedConfig.configPath === undefined
         ? {
             workers: 1,
             spawn: inProcessSpawner({
@@ -277,11 +284,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             }),
           }
         : {
-            workers: config.workers,
+            workers: resolvedConfig.workers,
             spawn: childProcessSpawner({
-              configPath: config.configPath,
-              projectRoot: config.projectRoot,
-              configDigest: config.configDigest,
+              configPath: resolvedConfig.configPath,
+              projectRoot: resolvedConfig.projectRoot,
+              configDigest: resolvedConfig.configDigest,
               cli,
               runId,
               artifactsRoot,
@@ -329,22 +336,37 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       process.removeListener('SIGTERM', onSignal);
       externalSignal?.removeEventListener('abort', onExternalAbort);
     }
+
+    const codes = resultExitCodes(results);
+    for (const runError of runErrors) {
+      codes.push(exitCodeForCategory(runError.error.category));
+    }
+    if (interruptController.signal.aborted) codes.push(130);
+    return combineExitCodes(codes);
+  };
+
+  let exitCode: RunExitCode;
+  try {
+    exitCode = await executeRun();
   } catch (cause) {
     const error = classifyError(cause);
     recordRunError(error);
-    const exitCodes = [exitCodeForCategory(error.category), ...resultExitCodes(results)];
-    return finish(combineExitCodes(exitCodes));
-  } finally {
+    exitCode = combineExitCodes([exitCodeForCategory(error.category), ...resultExitCodes(results)]);
+  }
+  // Teardown before the terminal event: `run-finished` must mean the app
+  // process and session store are gone. Failures are recorded, never thrown —
+  // the outcome must survive its own cleanup.
+  try {
     sessionStore?.cleanup();
+  } catch (cause) {
+    recordRunError(classifyError(cause));
+  }
+  try {
     await appProcess?.stop();
+  } catch (cause) {
+    recordRunError(classifyError(cause));
   }
-
-  const codes = resultExitCodes(results);
-  for (const runError of runErrors) {
-    codes.push(exitCodeForCategory(runError.error.category));
-  }
-  if (interruptController.signal.aborted) codes.push(130);
-  return finish(combineExitCodes(codes));
+  return finish(exitCode);
 }
 
 /**

@@ -22,8 +22,7 @@ function fakeContext(read: () => Promise<never>): AgentCacheContext {
 
 function makeHost(paths: string[]): StepCacheHost {
   return {
-    observeNodes: async () => new Map(),
-    latestShape: () => 'stable',
+    observe: async () => ({ nodes: new Map(), shape: 'stable' }),
     actions: { navigate: async () => undefined } as unknown as ExecutorActions,
     signal: new AbortController().signal,
     remainingMs: () => 60_000,

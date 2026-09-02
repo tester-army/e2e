@@ -11,8 +11,10 @@
  *
  * The emitter is the single writer: it stamps `seq` and `at`, so ordering
  * survives any transport that preserves per-connection order. A sink that
- * throws is quarantined for the rest of the run — a broken consumer must
- * never fail a run or be invoked again with later events it would misorder.
+ * throws is quarantined for the rest of the run; a sink whose returned
+ * promise rejects is quarantined once the rejection settles, so events
+ * emitted before then may still reach it. Either way a broken consumer can
+ * never fail the run.
  */
 
 import type { SerializedError } from '../internal/errors.ts';

@@ -143,6 +143,9 @@ export interface TraceEntry {
   readonly payload: ActionTrace;
 }
 
+/** The shape `timestamp()` writes: an ISO 8601 UTC instant. */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+
 /** Wraps one trace as a fresh entry. */
 export function buildTraceEntry(payload: ActionTrace): TraceEntry {
   return { schemaVersion: TRACE_SCHEMA_VERSION, createdAt: timestamp(), payload };
@@ -159,11 +162,12 @@ export function readTraceEntry(document: unknown): TraceEntry | undefined {
   }
   const raw = document as Record<string, unknown>;
   if (raw['schemaVersion'] !== TRACE_SCHEMA_VERSION) return undefined;
-  // Provenance must be present and parseable, not synthesized: a custom store
-  // returning a document without it is returning something this runner never
+  // Provenance must be the ISO instant this runner writes (`timestamp()`),
+  // not synthesized and not merely something Date.parse tolerates: a custom
+  // store returning anything else is returning a document this runner never
   // wrote, and fail-to-miss is the only safe answer.
   const createdAt = raw['createdAt'];
-  if (typeof createdAt !== 'string' || Number.isNaN(Date.parse(createdAt))) return undefined;
+  if (typeof createdAt !== 'string' || !ISO_INSTANT.test(createdAt)) return undefined;
   const payload = readActionTrace(raw['payload']);
   if (payload === undefined) return undefined;
   return { schemaVersion: TRACE_SCHEMA_VERSION, createdAt, payload };

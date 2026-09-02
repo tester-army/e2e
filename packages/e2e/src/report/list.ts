@@ -354,7 +354,7 @@ export class ListReporter {
   onRunEnd(info: {
     status: string;
     exitCode: number;
-    reportPath: string;
+    reportPath?: string;
     errors?: readonly RunError[];
   }): void {
     this.status.erase();
@@ -381,7 +381,7 @@ export class ListReporter {
     if (ai !== undefined) {
       this.output.write(this.pc.dim(`${ai} \u00b7 ${this.runAi.calls} model calls`));
     }
-    this.output.write(this.pc.dim(`report: ${info.reportPath}`));
+    this.output.write(this.pc.dim(`report: ${info.reportPath ?? '(not written)'}`));
   }
 }
 
@@ -425,7 +425,7 @@ export function listReporterSink(reporter: ListReporter): RunEventSink {
         reporter.onRunEnd({
           status: event.status,
           exitCode: event.exitCode,
-          reportPath: event.reportPath ?? '(not written)',
+          ...(event.reportPath === undefined ? {} : { reportPath: event.reportPath }),
           errors,
         });
         break;

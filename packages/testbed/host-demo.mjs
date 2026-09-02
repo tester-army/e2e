@@ -8,7 +8,8 @@
  *
  *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed run demo:host
  *
- * Prereq: the bench app is built (`pnpm run bench:build`).
+ * (`demo:host` builds the bench app first; running this file directly needs
+ * a prior `pnpm run bench:build`.)
  */
 
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -48,7 +49,15 @@ writeFileSync(
 );
 
 // ---- 3. Host-owned app process (the platform owns the target, not e2e) ----
-const server = spawn('pnpm', ['run', 'bench:serve'], { cwd: import.meta.dirname, stdio: 'ignore' });
+// Detached so the whole group can be killed: pnpm does not reliably forward
+// signals to the `next start` child, and an orphan on :4273 would serve later
+// runs from a stale process (same reason the runner's AppProcess kills the
+// group).
+const server = spawn('pnpm', ['run', 'bench:serve'], {
+  cwd: import.meta.dirname,
+  stdio: 'ignore',
+  detached: true,
+});
 try {
   for (let tries = 0; ; tries += 1) {
     if (tries > 60) throw new Error('bench app did not come up');
@@ -115,5 +124,11 @@ try {
   }
   console.log('trace cache entries:', entries);
 } finally {
-  server.kill();
+  if (server.pid !== undefined) {
+    try {
+      process.kill(-server.pid);
+    } catch {
+      server.kill();
+    }
+  }
 }
