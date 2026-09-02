@@ -16,7 +16,8 @@ const REMINDERS_CONTEXT = [
   'type_text tool and set submit to true to commit it with Return, which also',
   'opens the next empty row; keep going for the next name. Tap Done in the top',
   'bar when the batch is complete. Tap the circle at the left of a row to',
-  'complete a reminder; completed reminders leave the open list. Swipe a row',
+  'complete a reminder; a completed row stays visible with a filled circle',
+  'until the list is left, so judge completion by the circle. Swipe a row',
   'far left with the swipe tool to delete it: from x=350 to x=20 at the row',
   'centre y. Do not conclude blocked when the title field is invisible.',
 ].join(' ');
@@ -42,8 +43,7 @@ test(
       await expect(device.locator(`text="${name}"`).first()).toBeVisible();
     }
     await agent.act('mark the "Buy milk" reminder as completed');
-    await expect(device.locator('text="Buy milk"')).toBeHidden();
-    await agent.assert('"Walk the dog" and "Pay rent" are still open reminders');
+    await agent.assert('"Buy milk" is marked completed while "Walk the dog" and "Pay rent" are still open');
     await agent.act('delete the "Walk the dog" reminder');
     await expect(device.locator('text="Walk the dog"')).toBeHidden();
     await agent.act('delete the "Pay rent" reminder so the list ends empty');
@@ -68,12 +68,11 @@ test(
     expect(listed.reminders.map((n) => n.trim())).toEqual(names);
 
     await agent.act('complete every reminder whose name starts with a vowel (Apples, Eggs)');
-    await expect(device.locator('text="Apples"')).toBeHidden();
-    await expect(device.locator('text="Eggs"')).toBeHidden();
+    await agent.assert('"Apples" and "Eggs" are marked completed and the other six reminders are still open');
     await expect(device.locator('text="Bananas"').first()).toBeVisible();
 
-    await agent.act('delete all six remaining reminders so the list ends empty');
-    for (const name of ['Bananas', 'Coffee beans', 'Dish soap', 'Flour', 'Garlic', 'Honey']) {
+    await agent.act('delete every reminder in the list, completed ones included, so the list ends empty');
+    for (const name of names) {
       await expect(device.locator(`text="${name}"`)).toBeHidden();
     }
   },
