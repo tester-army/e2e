@@ -11,11 +11,13 @@
   "include": [
     "e2e.bench.config.ts",
     "e2e.config.ts",
+    "e2e.device.config.ts",
     "e2e.public.config.ts",
     "e2e.selenium.config.ts",
     "e2e.tester-army.config.ts",
     "fixtures/**/*.ts",
     "tests-bench/**/*.ts",
+    "tests-device/**/*.ts",
     "tests-public/**/*.ts",
     "tests-selenium/**/*.ts",
     "tests-tester-army/**/*.ts",

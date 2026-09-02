@@ -502,6 +502,13 @@ export interface TestFixtures {
   readonly app: App;
   readonly screen: Screen;
   readonly platform: Platform;
+  /**
+   * The web capability fixture. Transitional: it is the one platform surface
+   * still declared in core, because web is driver-provided today. When
+   * playwright becomes a backend (RFC0002 migration) `web` moves to a backend
+   * contribution and is declared by augmentation like any other platform
+   * fixture (`device`, `desktop`), leaving only the universal fixtures here.
+   */
   readonly web: Web;
 }
 
