@@ -519,7 +519,9 @@ export class TargetExecutor implements SerialHost {
         artifacts: artifacts.sink,
         priorSteps,
         agentContext: pair.options.agentContext,
-        opened: shared?.opened ?? { value: false },
+        // A backend surface is observable from the first step: there is no
+        // page to navigate to, so nothing gates screen/web behind app.open().
+        opened: shared?.opened ?? { value: this.target.backend !== undefined },
         saveSession,
         ...(cache === undefined ? {} : { cache }),
         debug: this.debug,

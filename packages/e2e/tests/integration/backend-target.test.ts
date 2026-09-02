@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { defineBackend } from '../../src/backend/index.ts';
+import { defineBackend, type BackendFixtureContext } from '../../src/backend/index.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import type { SemanticNode } from '../../src/driver/index.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -30,12 +30,31 @@ test('screen is unavailable on a backend without location', async ({ app, screen
 });
 `;
 
+const DETERMINISTIC_SUITE = `import { test, expect } from 'e2e';
+
+test('screen and expect drive the toy device over locate', async ({ screen }) => {
+  await screen.getByRole('button', { name: 'Increment' }).tap();
+  await screen.getByRole('button', { name: 'Increment' }).tap();
+  await expect(screen.getByRole('status')).toHaveText('2');
+});
+`;
+
+const FIXTURE_SUITE = `import { test, expect } from 'e2e';
+
+test('a contributed fixture runs with harness discipline', async (fixtures) => {
+  const device = (fixtures as unknown as { device: { reset(): Promise<string>; shake(): Promise<string> } }).device;
+  await expect(await device.reset()).toBe('reset-done');
+  await expect(await device.shake()).toBe('shaken');
+});
+`;
+
 /** A two-node screen: a counter value and a button that increments it. */
-function toyBackend() {
+function toyBackend(options: { withLocate?: boolean; withFixtures?: boolean } = {}) {
   const lifecycle: string[] = [];
+  const fixtureCalls: string[] = [];
   let count = 0;
   const nodes = (): SemanticNode[] => [
-    { ref: { id: 'counter', revision: '' }, role: 'status', name: 'count', value: String(count) },
+    { ref: { id: 'counter', revision: '' }, role: 'status', name: 'count', text: String(count) },
     { ref: { id: 'increment', revision: '' }, role: 'button', name: 'Increment' },
   ];
   const backend = defineBackend({
@@ -56,8 +75,43 @@ function toyBackend() {
         count += 1;
       },
     },
+    ...(options.withLocate !== true
+      ? {}
+      : {
+          async locate(expression) {
+            // Toy resolution: match by role, and by name when the query has one.
+            if (expression.kind !== 'query') return [];
+            const value = expression.query.value;
+            const role =
+              expression.query.kind === 'role' && value.kind === 'string' ? value.value : undefined;
+            const name =
+              expression.query.name?.kind === 'string' ? expression.query.name.value : undefined;
+            return nodes().filter(
+              (node) =>
+                (role === undefined || node.role === role) &&
+                (name === undefined || node.name === name),
+            );
+          },
+        }),
+    ...(options.withFixtures !== true
+      ? {}
+      : {
+          fixtures: {
+            device: (context: BackendFixtureContext) => ({
+              async reset() {
+                fixtureCalls.push(`reset:${context.targetName}`);
+                count = 0;
+                return 'reset-done';
+              },
+              async shake() {
+                fixtureCalls.push('shake');
+                return 'shaken';
+              },
+            }),
+          },
+        }),
   });
-  return { backend, lifecycle, current: () => count };
+  return { backend, lifecycle, fixtureCalls, current: () => count };
 }
 
 /** Observes, taps until the counter reads the goal, verifies, concludes. */
@@ -67,8 +121,7 @@ const tapper: StepExecutor = {
   async runStep(context) {
     for (let round = 0; round < 5; round += 1) {
       const observation = await context.observe();
-      const match = /#counter status "count" value="(\d+)"/.exec(observation.text) ??
-        /value="(\d+)"/.exec(observation.text);
+      const match = /#counter status "count" text="(\d+)"/.exec(observation.text);
       const value = Number(match?.[1] ?? Number.NaN);
       if (value === 2) {
         return { status: 'passed', summary: `counter reached 2 after ${round} taps` };
@@ -124,6 +177,81 @@ describe('backend targets', () => {
       const result = outcome.results[0];
       const message = result?.attempts.at(-1)?.error?.message ?? '';
       expect(message).toMatch(/no backend capability|UNSUPPORTED/i);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('runs the deterministic screen/expect tier over backend.locate', async () => {
+    const toy = toyBackend({ withLocate: true });
+    const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(toy.current()).toBe(2);
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('runs a contributed fixture with harness step discipline', async () => {
+    const toy = toyBackend({ withFixtures: true });
+    const project = createProject({ 'tests/fixture.e2e.ts': FIXTURE_SUITE });
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(outcome.exitCode).toBe(0);
+      expect(toy.fixtureCalls).toEqual(['reset:toy-sim', 'shake']);
+      // Every contributed call is a recorded step, named <fixture>.<method>.
+      const steps = outcome.results[0]?.attempts[0]?.steps ?? [];
+      const names = steps.map((step) => step.api);
+      expect(names).toContain('device.reset');
+      expect(names).toContain('device.shake');
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('gates an undeclared fixture at selection via requires', async () => {
+    const toy = toyBackend(); // no fixtures declared
+    const project = createProject({
+      'tests/req.e2e.ts': `import { test } from 'e2e';
+
+test('needs device', { requires: ['device'] }, async () => {});
+`,
+    });
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+        passWithNoTests: true,
+      });
+      const result = outcome.results[0];
+      expect(result?.status).toBe('skipped');
+      expect(result?.skip?.cause).toBe('capability-unavailable');
     } finally {
       project.cleanup();
     }

@@ -7,18 +7,21 @@
  * the graded-degradation rule, not a silent no-op.
  */
 
-import type {
-  DriverAgentActions,
-  DriverApp,
-  DriverArtifacts,
-  DriverScreen,
-  DriverSession,
-  Observation,
-  OperationContext,
-  SemanticNode,
+import {
+  DriverError,
+  type DriverAgentActions,
+  type DriverApp,
+  type DriverArtifacts,
+  type DriverScreen,
+  type DriverSession,
+  type LocatorAction,
+  type NodeRef,
+  type Observation,
+  type OperationContext,
+  type SemanticNode,
 } from '../driver/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
-import type { BackendHandle } from './index.ts';
+import type { BackendActions, BackendHandle } from './index.ts';
 
 export interface BackendSessionOptions {
   readonly backend: BackendHandle | undefined;
@@ -100,26 +103,70 @@ export function createBackendSession(options: BackendSessionOptions): DriverSess
     },
   };
 
+  // Locate results, cached by id so `read(ref)` answers from the resolution
+  // that minted the ref. A read against an older resolution is NODE_STALE,
+  // which the engine treats as retryable: it re-resolves and reads again.
+  let locateRevision = 0;
+  let located = new Map<string, SemanticNode>();
+
+  const performAction = async (
+    ref: NodeRef,
+    action: LocatorAction,
+    operation: OperationContext,
+  ): Promise<void> => {
+    const verbs: BackendActions | undefined = backend?.actions;
+    switch (action.kind) {
+      case 'tap': {
+        const tap = verbs?.tap ?? unsupported(targetName, 'tap');
+        await tap.call(verbs, { ref }, operation);
+        return;
+      }
+      case 'fill': {
+        const type = verbs?.type ?? unsupported(targetName, 'type');
+        await type.call(verbs, { ref }, action.value, operation);
+        return;
+      }
+      case 'press': {
+        const press = verbs?.press ?? unsupported(targetName, 'press');
+        await press.call(verbs, { ref }, action.key, operation);
+        return;
+      }
+      case 'selectOption': {
+        const select = verbs?.select ?? unsupported(targetName, 'select');
+        await select.call(verbs, { ref }, String(action.value), operation);
+        return;
+      }
+      default:
+        unsupported(targetName, `the "${action.kind}" action`);
+    }
+  };
+
   const screen: DriverScreen = {
-    async resolve() {
-      unsupported(targetName, 'locators (screen)');
-    },
-    async read() {
-      unsupported(targetName, 'locators (screen)');
-    },
-    async perform(ref, action, operation) {
-      if (action.kind === 'press') {
-        const press = backend?.actions?.press ?? unsupported(targetName, 'press');
-        await press.call(backend?.actions, { ref }, action.key, operation);
-        return;
+    async resolve(expression, operation) {
+      const locate = backend?.locate ?? unsupported(targetName, 'locators (screen)');
+      const nodes = await locate.call(backend, expression, operation);
+      locateRevision += 1;
+      const locateRev = `l${locateRevision}`;
+      located = new Map();
+      const refs: NodeRef[] = [];
+      for (const node of nodes) {
+        const stamped = stampRevision(node, locateRev);
+        located.set(stamped.ref.id, stamped);
+        refs.push(stamped.ref);
       }
-      if (action.kind === 'selectOption') {
-        const select = backend?.actions?.select ?? unsupported(targetName, 'select');
-        await select.call(backend?.actions, { ref }, String(action.value), operation);
-        return;
-      }
-      unsupported(targetName, `the "${action.kind}" action`);
+      return refs;
     },
+    async read(ref) {
+      if (backend?.locate === undefined) unsupported(targetName, 'locators (screen)');
+      const node = located.get(ref.id);
+      if (node === undefined || node.ref.revision !== ref.revision) {
+        throw new DriverError('NODE_STALE', `node ${ref.id} is stale; re-resolve`, {
+          retryable: true,
+        });
+      }
+      return node;
+    },
+    perform: performAction,
     async swipe() {
       unsupported(targetName, 'swipe');
     },

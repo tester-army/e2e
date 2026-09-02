@@ -13,17 +13,33 @@
  * of silently demoting itself to a lower tier.
  */
 
-import type { NodeRef, OperationContext, SemanticNode } from '../driver/index.ts';
+import type { LocatorExpression, NodeRef, OperationContext, SemanticNode } from '../driver/index.ts';
 import { backendBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ScrollDirection } from '../types.ts';
 
 /**
- * Capability names. Independent except for one edge: actions ⇒ observation.
- * A `location` capability (deterministic locators for `screen`/`expect`) is
- * designed in RFC0002 but not declared until the harness wires it.
+ * Capability names: the closed harness capabilities plus one name per
+ * contributed fixture. Dependencies: actions and location require
+ * observation (their refs live in the same semantic space).
  */
-export type BackendCapability = 'observation' | 'actions';
+export type BackendCapability = 'observation' | 'actions' | 'location' | (string & {});
+
+/** Context handed to a contributed fixture factory, once per attempt. */
+export interface BackendFixtureContext {
+  readonly targetName: string;
+  /** Per-call operation budget: the action timeout plus the attempt signal. */
+  operation(): OperationContext;
+}
+
+/**
+ * A contributed fixture: any record of async methods. The harness owns how
+ * every call runs — a recorded, timeout-bounded step named
+ * `<fixture>.<method>` — and never learns what the methods mean.
+ */
+export type BackendFixtureFactory = (
+  context: BackendFixtureContext,
+) => Readonly<Record<string, (...args: never[]) => Promise<unknown>>>;
 
 /** Run identity handed to `init`, once per worker before the first step. */
 export interface BackendInitInfo {
@@ -86,6 +102,22 @@ export interface Backend {
   observe?(context: OperationContext): Promise<BackendSnapshot>;
   /** capability: actions — requires observation (targets are observation refs). */
   readonly actions?: BackendActions;
+  /**
+   * capability: location — requires observation. Deterministic locator
+   * resolution for the `screen`/`expect` tier: resolve one expression to the
+   * nodes it currently matches. The harness owns polling, strictness, and
+   * staleness; a backend resolves once, immediately.
+   */
+  locate?(
+    expression: LocatorExpression,
+    context: OperationContext,
+  ): Promise<readonly SemanticNode[]>;
+  /**
+   * Named deterministic surfaces this backend contributes to TestFixtures
+   * (a device fixture, a desktop fixture — anything). Keys become fixture
+   * and capability names; `requires: ['<name>']` gates at selection.
+   */
+  readonly fixtures?: Readonly<Record<string, BackendFixtureFactory>>;
   /** Once per worker, before the first step; boot devices here, not in a step budget. */
   init?(info: BackendInitInfo): Promise<void>;
   /** Worker shutdown, bounded by the cleanup timeout; failure is a run error. */
@@ -98,7 +130,21 @@ export interface BackendHandle extends Backend {
   readonly capabilities: ReadonlySet<BackendCapability>;
 }
 
-const KNOWN_KEYS = new Set(['name', 'spiVersion', 'observe', 'actions', 'init', 'dispose']);
+const KNOWN_KEYS = new Set([
+  'name',
+  'spiVersion',
+  'observe',
+  'actions',
+  'locate',
+  'fixtures',
+  'init',
+  'dispose',
+]);
+
+/** Universal fixture names a contribution may never shadow. */
+const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'web', 'session']);
+
+const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 
 const ACTION_VERBS = new Set(['tap', 'type', 'press', 'select', 'scroll', 'navigate']);
 
@@ -144,6 +190,44 @@ export function defineBackend(spec: Backend): BackendHandle {
       );
     }
     capabilities.add('actions');
+  }
+  if (spec.locate !== undefined) {
+    if (typeof spec.locate !== 'function') {
+      throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": locate must be a function`);
+    }
+    if (!capabilities.has('observation')) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `backend "${spec.name}" declares locate without observe`,
+      );
+    }
+    capabilities.add('location');
+  }
+  if (spec.fixtures !== undefined) {
+    if (typeof spec.fixtures !== 'object' || spec.fixtures === null) {
+      throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": fixtures must be an object`);
+    }
+    for (const [fixture, factory] of Object.entries(spec.fixtures)) {
+      if (!FIXTURE_NAME_PATTERN.test(fixture)) {
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `backend "${spec.name}": fixture name "${fixture}" must be a lower-camel identifier`,
+        );
+      }
+      if (RESERVED_FIXTURES.has(fixture)) {
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `backend "${spec.name}": fixture name "${fixture}" shadows a universal fixture`,
+        );
+      }
+      if (typeof factory !== 'function') {
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `backend "${spec.name}": fixtures.${fixture} must be a factory function`,
+        );
+      }
+      capabilities.add(fixture);
+    }
   }
   for (const hook of ['init', 'dispose'] as const) {
     if (spec[hook] !== undefined && typeof spec[hook] !== 'function') {
