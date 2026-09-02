@@ -99,7 +99,6 @@ describe('trace cache: record then zero-turn replay', () => {
       appUrl: app.url,
       config: {
         tests: 'tests/**/*.e2e.ts',
-        reporters: ['json'] as const,
         agent: twoTapExecutor(record),
         cache: 'read-write' as const,
       },
@@ -176,7 +175,6 @@ describe('trace cache: divergence hands the step over mid-step', () => {
       appUrl: app.url,
       config: {
         tests: 'tests/**/*.e2e.ts',
-        reporters: ['json'] as const,
         agent: twoTapExecutor(record),
         cache: 'read-write' as const,
       },
@@ -252,7 +250,6 @@ describe('trace cache: unconfirmed traces are withheld and poisoned entries evic
       appUrl: app.url,
       config: {
         tests: 'tests/**/*.e2e.ts',
-        reporters: ['json'] as const,
         agent: twoTapExecutor(record),
         cache: 'read-write' as const,
       },
@@ -321,7 +318,6 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'] as const,
           agent: twoTapExecutor(record),
         },
       });
@@ -340,7 +336,6 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'] as const,
           agent: twoTapExecutor(record),
           cache: 'read-write' as const,
         },
@@ -364,7 +359,6 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'] as const,
           agent: twoTapExecutor(record),
           cache: 'read-only' as const,
         },
@@ -385,7 +379,6 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'] as const,
           agent: twoTapExecutor(record),
           cache: 'read-write' as const,
         },

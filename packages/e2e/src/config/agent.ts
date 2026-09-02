@@ -2,6 +2,7 @@
 
 import type { LanguageModel } from 'ai';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
+import { boundedInt } from './validate.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
 import type { AgentConfig, E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
@@ -93,6 +94,9 @@ const AGENT_KEYS = new Set([
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
 
+/** Default observation byte budget, shared with the report's pre-config fallback limits. */
+export const DEFAULT_OBSERVATION_BYTES = 1_048_576;
+
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Hard ceilings mirroring spec/schema/report-v1.schema.json `limits`. */
@@ -150,7 +154,7 @@ export function resolveAgentConfig(
   const maxModelCalls = boundedInt(agent?.maxModelCalls, 'agent.maxModelCalls', 1, 100) ?? 25;
   const maxObservationBytes =
     boundedInt(agent?.maxObservationBytes, 'agent.maxObservationBytes', 1_024, 16_777_216) ??
-    1_048_576;
+    DEFAULT_OBSERVATION_BYTES;
 
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
@@ -197,11 +201,6 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
   return resolved as unknown as ResolvedBaseLimits;
 }
 
-/**
- * True when a config value is a live AI SDK language model instance. The check
- * is structural, exactly like the AI SDK's own model handling, so instances
- * from any realm or provider package are accepted.
- */
 /** True for the closed `vision` value set, wherever it is supplied. */
 export function isVisionMode(value: unknown): value is VisionMode {
   return typeof value === 'boolean' || value === 'fallback' || value === 'only';
@@ -221,6 +220,11 @@ export function asSdkLanguageModel(instance: ModelInstance): SdkLanguageModel {
   return instance as SdkLanguageModel;
 }
 
+/**
+ * True when a config value is a live AI SDK language model instance. The check
+ * is structural, exactly like the AI SDK's own model handling, so instances
+ * from any realm or provider package are accepted.
+ */
 export function isModelInstance(value: unknown): value is ModelInstance {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -276,7 +280,7 @@ function resolveModel(
   }
   const provider = requireNonEmpty(model.provider, `${label}.provider`);
   const id = requireNonEmpty(model.id, `${label}.id`);
-  return gatewayModel(provider, id, model.endpoint, model.apiKeyEnv, env);
+  return gatewayModel(provider, id, model.endpoint, model.apiKeyEnv, env, label);
 }
 
 /** Splits `provider/model-id` at the first slash. */
@@ -298,6 +302,7 @@ function parseModelReference(
     undefined,
     undefined,
     env,
+    label,
   );
 }
 
@@ -307,14 +312,15 @@ function gatewayModel(
   endpoint: string | undefined,
   apiKeyEnv: string | undefined,
   env: NodeJS.ProcessEnv,
+  label: string,
 ): ResolvedModel {
-  const keyEnv = validateApiKeyEnv(apiKeyEnv);
+  const keyEnv = validateApiKeyEnv(apiKeyEnv, label);
   const apiKey = firstNonEmpty(env[keyEnv], env[GATEWAY_API_KEY_ENV]);
   return {
     kind: 'gateway',
     provider,
     id,
-    endpoint: validateEndpoint(endpoint),
+    endpoint: validateEndpoint(endpoint, label),
     apiKeyEnv: keyEnv,
     apiKey,
   };
@@ -324,28 +330,28 @@ function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
   return values.find((value) => value !== undefined && value.trim() !== '');
 }
 
-function validateEndpoint(endpoint: string | undefined): string | undefined {
+function validateEndpoint(endpoint: string | undefined, label: string): string | undefined {
   if (endpoint === undefined) return undefined;
   let parsed: URL;
   try {
     parsed = new URL(endpoint);
   } catch {
-    throw new ConfigurationError('INVALID_CONFIG', `invalid agent.model.endpoint "${endpoint}"`);
+    throw new ConfigurationError('INVALID_CONFIG', `invalid ${label}.endpoint "${endpoint}"`);
   }
   if (parsed.protocol === 'https:') return parsed.href;
   if (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)) return parsed.href;
   throw new ConfigurationError(
     'INVALID_CONFIG',
-    `agent.model.endpoint must use HTTPS unless it is a loopback host: ${endpoint}`,
+    `${label}.endpoint must use HTTPS unless it is a loopback host: ${endpoint}`,
   );
 }
 
-function validateApiKeyEnv(apiKeyEnv: string | undefined): string {
+function validateApiKeyEnv(apiKeyEnv: string | undefined, label: string): string {
   if (apiKeyEnv === undefined) return DEFAULT_API_KEY_ENV;
   if (!ENV_NAME_PATTERN.test(apiKeyEnv)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `agent.model.apiKeyEnv must be a valid environment variable name, got "${apiKeyEnv}"`,
+      `${label}.apiKeyEnv must be a valid environment variable name, got "${apiKeyEnv}"`,
     );
   }
   return apiKeyEnv;
@@ -369,22 +375,6 @@ function resolveContext(context: string | undefined, maxBytes: number): string |
 function requireNonEmpty(value: unknown, label: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label} is required`);
-  }
-  return value;
-}
-
-function boundedInt(
-  value: number | undefined,
-  label: string,
-  min: number,
-  max: number,
-): number | undefined {
-  if (value === undefined) return undefined;
-  if (!Number.isSafeInteger(value) || value < min || value > max) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${label} must be an integer from ${min} through ${max}`,
-    );
   }
   return value;
 }

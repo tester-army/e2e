@@ -116,7 +116,6 @@ describe('agent judgment tier', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'],
           agent: { model, context: 'This is the e2e fixture application.' },
         },
       },

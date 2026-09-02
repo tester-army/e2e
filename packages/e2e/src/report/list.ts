@@ -384,7 +384,7 @@ export class ListReporter {
   }
 
   private runFinished(event: RunEventOf<'run-finished'>): void {
-    this.status.erase();
+    this.status.stop();
     // Run-level errors never arrive as results: they abort before, between, or
     // after test execution. Without this the console shows only a bare exit
     // code and the reason lives solely in report.json.

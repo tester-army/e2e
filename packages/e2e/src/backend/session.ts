@@ -232,7 +232,7 @@ export function createBackendSession(options: BackendSessionOptions): TargetSess
       if (action.kind === 'dragTo') rejectSupersededLocate(action.target);
       await guard(`the "${action.kind}" action`, backend?.perform)(ref, action, operation);
     },
-    swipe: guard('swipe', backend?.swipe),
+    swipe: guard('swipe gestures', backend?.swipe),
     // The backend outlives the attempt; only the per-attempt isolation ends
     // here, exactly once. dispose() belongs to the worker.
     close: guard('attempt end', async (operation) => {

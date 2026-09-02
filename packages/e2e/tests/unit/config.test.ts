@@ -41,6 +41,22 @@ describe('resolveConfig', () => {
     expect(config.testIdAttribute).toBe('data-testid');
   });
 
+  it('applies the config bounds to CLI overrides too', () => {
+    expect(() =>
+      resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { workers: 0 } }),
+    ).toThrow(/--workers must be an integer from 1 through 1024/);
+    expect(() =>
+      resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { retries: 11 } }),
+    ).toThrow(/--retries must be an integer from 0 through 10/);
+    expect(
+      resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { workers: 3 } }).workers,
+    ).toBe(3);
+  });
+
+  it('rejects a non-array targets value as INVALID_CONFIG', () => {
+    expect(() => resolve({ targets: {} as never })).toThrow(/targets must be a non-empty array/);
+  });
+
   it('uses CI defaults for retries and workers', () => {
     const config = resolve({}, { ...BASE_ENV, CI: '1' } as NodeJS.ProcessEnv);
     expect(config.retries).toBe(1);

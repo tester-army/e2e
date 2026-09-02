@@ -7,11 +7,13 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
 import { isStepExecutor } from '../agent/executor.ts';
+import { boundedInt, positiveInt } from './validate.ts';
 import type {
   AgentConfig,
   CacheMode,
   CommandConfig,
   E2EConfig,
+  ModelInstance,
   Platform,
   SecretProvider,
   TraceCacheStore,
@@ -95,12 +97,15 @@ export interface ResolvedCacheConfig {
   readonly dir: string;
 }
 
+/**
+ * Flags that replace config keys, so workers re-resolving the config file
+ * apply them too. `--headed` and `--artifacts` are run options, not config
+ * overrides, and travel separately.
+ */
 export interface CliOverrides {
   retries?: number;
   workers?: number;
   reporters?: readonly ('list' | 'json')[];
-  headed?: boolean;
-  artifactsDir?: string;
   /** Trace cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
 }
@@ -191,9 +196,14 @@ export function resolveConfig(
   const assertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout') ?? 5_000;
   const cleanupTimeout = positiveInt(raw.cleanupTimeout, 'cleanupTimeout') ?? 30_000;
 
-  const retries = cli.retries ?? boundedInt(raw.retries, 'retries', 0, 10) ?? (ci ? 1 : 0);
+  // CLI overrides obey the same bounds as the config keys they replace: a
+  // `--workers 0` would otherwise plan work no worker can ever take.
+  const retries =
+    boundedInt(cli.retries, '--retries', 0, 10) ??
+    boundedInt(raw.retries, 'retries', 0, 10) ??
+    (ci ? 1 : 0);
   const workers =
-    cli.workers ??
+    boundedInt(cli.workers, '--workers', 1, 1024) ??
     boundedInt(raw.workers, 'workers', 1, 1024) ??
     (ci ? 1 : Math.max(1, Math.floor(os.availableParallelism() / 2)));
 
@@ -336,29 +346,6 @@ function isTraceCacheStore(value: unknown): value is TraceCacheStore {
   );
 }
 
-function positiveInt(value: number | undefined, label: string): number | undefined {
-  if (value === undefined) return undefined;
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label} must be a positive safe integer`);
-  }
-  return value;
-}
-
-function boundedInt(
-  value: number | undefined,
-  label: string,
-  min: number,
-  max: number,
-): number | undefined {
-  if (value === undefined) return undefined;
-  if (!Number.isSafeInteger(value) || value < min || value > max) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${label} must be an integer from ${min} through ${max}`,
-    );
-  }
-  return value;
-}
 
 function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app'] {
   if (raw.app !== undefined) {
@@ -471,8 +458,8 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
         'e.g. targets: [{ name, platform, backend }]',
     );
   }
-  if (raw.targets.length === 0) {
-    throw new ConfigurationError('INVALID_CONFIG', 'targets must not be empty');
+  if (!Array.isArray(raw.targets) || raw.targets.length === 0) {
+    throw new ConfigurationError('INVALID_CONFIG', 'targets must be a non-empty array');
   }
   const seen = new Set<string>();
   return raw.targets.map((target, index) => {
@@ -576,24 +563,34 @@ function resolveCredentials(
  * identity before the JSON clone, so they never enter the digest and cannot
  * make it nondeterministic across processes.
  */
+/** The digest-stable identity of a live model instance. */
+function modelIdentity(model: ModelInstance): Record<string, string> {
+  return {
+    provider: model.provider,
+    modelId: model.modelId,
+    specificationVersion: model.specificationVersion,
+  };
+}
+
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // `agent` may be the executor itself; its digest identity is name/version,
   // which is exactly what survives the function-stripping JSON clone below.
+  // Every model slot is reduced to its identity: a live instance carries
+  // provider settings (and possibly credentials) that must never be digested.
   const rawAgent = raw.agent;
-  const rawModel = rawAgent === undefined || isStepExecutor(rawAgent) ? undefined : rawAgent.model;
-  const forClone: E2EConfig = isModelInstance(rawModel)
-    ? {
-        ...raw,
-        agent: {
-          ...(rawAgent as AgentConfig),
-          model: {
-            provider: rawModel.provider,
-            modelId: rawModel.modelId,
-            specificationVersion: rawModel.specificationVersion,
-          },
-        },
-      }
-    : raw;
+  const forClone: E2EConfig =
+    rawAgent === undefined || isStepExecutor(rawAgent)
+      ? raw
+      : {
+          ...raw,
+          agent: {
+            ...rawAgent,
+            ...(isModelInstance(rawAgent.model) ? { model: modelIdentity(rawAgent.model) } : {}),
+            ...(isModelInstance(rawAgent.visionModel)
+              ? { visionModel: modelIdentity(rawAgent.visionModel) }
+              : {}),
+          } as AgentConfig,
+        };
   const sanitized: Record<string, unknown> = {
     ...(structuredCloneJsonSafe(forClone) as Record<string, unknown>),
     projectId,

@@ -1,10 +1,11 @@
 /** e2e CLI (spec 06-cli.md). */
 
-import { Command, InvalidArgumentError } from 'commander';
+import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import { run } from '../run/runner.ts';
 import { init } from './init.ts';
 
-function parsePositiveInt(value: string): number {
+/** Shape check only; the config resolver applies each flag's bounds. */
+function parseNonNegativeInt(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new InvalidArgumentError('must be a nonnegative integer');
@@ -34,6 +35,9 @@ function isTagMode(value: string): value is 'any' | 'all' {
 function createProgram(): Command {
   const program = new Command('e2e');
   program.description('open, local-first standard for agentic end-to-end testing');
+  // Commander would exit(1) on a usage error itself; spec 06-cli.md reserves 1
+  // for product failures and 2 for CLI errors, so exits are decided in main.
+  program.exitOverride();
 
   program
     .command('init')
@@ -52,8 +56,8 @@ function createProgram(): Command {
     .option('--tag <tag>', 'repeatable tag filter', (value: string, previous: string[] = []) => [...previous, value])
     .option('--tag-mode <mode>', 'tag composition: any or all', 'any')
     .option('--headed', 'request visible UI when the backend supports it')
-    .option('--retries <n>', 'replace resolved retry count', parsePositiveInt)
-    .option('--workers <n>', 'replace worker count', parsePositiveInt)
+    .option('--retries <n>', 'replace resolved retry count', parseNonNegativeInt)
+    .option('--workers <n>', 'replace worker count', parseNonNegativeInt)
     .option('--reporter <ids>', 'comma-separated reporters: list, json', parseList)
     .option('--artifacts <dir>', 'artifact root, default .e2e/artifacts')
     .option('--no-cache', 'run without the trace cache, overriding the config')
@@ -101,6 +105,7 @@ function createProgram(): Command {
           headed: options.headed,
           retries: options.retries,
           workers: options.workers,
+          // Validated above; the filter is the type narrowing, not a second check.
           reporters: reporter?.filter(isReporter),
           artifactsDir: options.artifacts,
           noCache: options.cache === false,
@@ -121,6 +126,12 @@ export async function main(argv: readonly string[]): Promise<void> {
   try {
     await program.parseAsync([...argv]);
   } catch (cause) {
+    if (cause instanceof CommanderError) {
+      // Commander has already written its diagnostic. `--help` and
+      // `--version` exit 0; every usage error is a CLI error: exit 2.
+      process.exitCode = cause.exitCode === 0 ? 0 : 2;
+      return;
+    }
     process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
     process.exitCode = 2;
   }

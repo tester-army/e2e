@@ -3,7 +3,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { tsImport } from 'tsx/esm/api';
+import { register, type NamespacedUnregister } from 'tsx/esm/api';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 
@@ -48,10 +48,27 @@ export function discoverConfig(cwd: string, explicitPath?: string): DiscoveredCo
   return { configPath: undefined, projectRoot: path.resolve(cwd) };
 }
 
-/** Imports a TypeScript/ESM module with erasable-syntax support. */
-export async function importModule(absolutePath: string, cacheKey?: string): Promise<unknown> {
-  const url = pathToFileURL(absolutePath).href + (cacheKey === undefined ? '' : `?e2e=${cacheKey}`);
-  return tsImport(url, import.meta.url);
+/**
+ * The process-wide TypeScript loader, registered on first use. `tsImport`
+ * would register a fresh, never-removed loader hook per call - once per
+ * collected file and once per realm, so every import would slow every later
+ * one. One namespaced registration serves them all.
+ */
+let loader: NamespacedUnregister | undefined;
+let imports = 0;
+
+/**
+ * Imports a TypeScript/ESM module with erasable-syntax support. Every call
+ * evaluates the module afresh: the query carries the caller's key (what the
+ * instance is for) plus a process-unique sequence, so a realm never receives
+ * another realm's module instance and a second `run()` in one process sees
+ * the config file as it is now.
+ */
+export async function importModule(absolutePath: string, cacheKey = 'module'): Promise<unknown> {
+  imports += 1;
+  const url = `${pathToFileURL(absolutePath).href}?e2e=${cacheKey}-${imports}`;
+  loader ??= register({ namespace: 'e2e' });
+  return loader.import(url, import.meta.url);
 }
 
 /** Loads and returns the raw default export of a config module. */

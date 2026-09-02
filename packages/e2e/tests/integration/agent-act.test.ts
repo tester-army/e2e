@@ -112,7 +112,6 @@ describe('agent.act with a hand-rolled step executor', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'],
           agent: scriptedExecutor(),
         },
       },

@@ -77,7 +77,6 @@ describe('agent vision (judgments)', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'],
           agent: { model, visionModel },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },

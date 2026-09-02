@@ -107,6 +107,18 @@ export class LiveStatus {
   }
 
   /**
+   * Ends the live block for good: entries still running (an interrupt, a
+   * crashed worker) are dropped and the spinner timer is cleared, so nothing
+   * repaints after the final summary in a long-lived programmatic caller.
+   */
+  stop(): void {
+    this.running.clear();
+    if (this.timer !== undefined) clearInterval(this.timer);
+    this.timer = undefined;
+    this.erase();
+  }
+
+  /**
    * Repaints the block below the permanent log. An entry may span several
    * lines (test header, current step, recent calls); the marker goes on the
    * first line and every line is clamped so the row count stays exact.

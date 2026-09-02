@@ -82,6 +82,23 @@ describe('e2e run argument parsing', () => {
     expect(String(stderrSpy.mock.calls.at(-1)?.[0])).toContain('unknown reporter "teamcity"');
   });
 
+  it('exits 2 on an unknown option or command without running, and 0 on --help', async () => {
+    await invoke('run', '--nope');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+
+    process.exitCode = undefined;
+    await invoke('frobnicate');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+
+    process.exitCode = undefined;
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await invoke('--help');
+    stdoutSpy.mockRestore();
+    expect(process.exitCode).toBe(0);
+  });
+
   it('parses numeric --retries and --workers', async () => {
     await invoke('run', '--retries', '2', '--workers', '4');
     const options = lastRunOptions();

@@ -84,7 +84,6 @@ describe('agent policy and error classification', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'],
           agent: { model },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },
@@ -108,7 +107,7 @@ describe('agent policy and error classification', () => {
 
     const missing = await runProject(
       { 'tests/no-model.e2e.ts': NO_MODEL_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', reporters: ['json'] } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts' } },
     );
     unconfigured = missing.outcome;
     unconfiguredProject = missing.project;
@@ -189,7 +188,6 @@ test.describe('group', { serial: true }, () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          reporters: ['json'],
           agent: { model },
         },
       },

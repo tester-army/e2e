@@ -522,7 +522,16 @@ export function defineBackend(spec: Backend): BackendHandle {
       }
       capabilities.add(fixture);
     }
-    handle['fixtures'] = { ...spec.fixtures };
+    // Bound like every other member, so a class-based backend keeps `this`
+    // in its fixture factories too.
+    handle['fixtures'] = Object.freeze(
+      Object.fromEntries(
+        Object.entries(spec.fixtures).map(([fixture, factory]) => [
+          fixture,
+          (factory as (...args: unknown[]) => unknown).bind(spec),
+        ]),
+      ),
+    );
   }
   if (spec.state !== undefined) {
     handle['state'] = nestedManifest(name, 'state', spec.state, ['capture', 'restore']);

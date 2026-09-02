@@ -3,6 +3,7 @@
 import os from 'node:os';
 import { BACKEND_SPI_VERSION, type BackendSpiVersion } from '../backend/contract.ts';
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
+import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
 import type { AgentErrorCode } from '../types.ts';
 import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
@@ -313,7 +314,7 @@ function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
     durationMs: member.durationMs,
     steps: member.status === 'skipped' ? [] : member.steps.map(serializeStep),
     error: member.error === undefined ? undefined : serializeErrorRecord(member.error),
-    skip: member.skip,
+    skip: member.status === 'skipped' ? member.skip : undefined,
     secondaryErrors: member.secondaryErrors.map(serializeErrorRecord),
   };
 }
@@ -334,7 +335,7 @@ function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
     platform: group.platform,
     memberTestIds: group.memberTestIds,
     status: group.status,
-    skip: group.skip,
+    skip: group.status === 'skipped' ? group.skip : undefined,
     attempts: group.attempts.map(serializeSerialAttempt),
   };
 }
@@ -419,29 +420,45 @@ function computeSummary(results: readonly ResultRecord[]): ReportSummary {
 function deriveRunStatus(
   status: BuildReportOptions['status'],
   results: readonly ResultRecord[],
+  serialGroups: readonly SerialGroupRecord[],
 ): BuildReportOptions['status'] | 'blocked' {
   if (status !== 'failed' && status !== 'error') return status;
-  const notPassed = results.filter(
-    (result) =>
-      result.status === 'failed' ||
-      result.status === 'timed-out' ||
-      result.status === 'interrupted',
-  );
-  if (notPassed.length === 0) return status;
-  const blockable = notPassed.every((result) => {
-    const code = result.attempts.at(-1)?.error?.code;
-    return code !== undefined && BLOCKABLE_CODES.has(code as AgentErrorCode);
-  });
-  return blockable ? 'blocked' : status;
+  // Serial members carry no attempts of their own; their failing error lives
+  // on the group's last attempt (or its failing member).
+  const groupCode = new Map<string, string | undefined>();
+  for (const group of serialGroups) {
+    const attempt = group.attempts.at(-1);
+    const member = attempt?.members.find(
+      (candidate) => candidate.status !== 'passed' && candidate.status !== 'skipped',
+    );
+    groupCode.set(group.id, member?.error?.code ?? attempt?.error?.code);
+  }
+  let sawFailure = false;
+  for (const result of results) {
+    if (
+      result.status !== 'failed' &&
+      result.status !== 'timed-out' &&
+      result.status !== 'interrupted'
+    ) {
+      continue;
+    }
+    sawFailure = true;
+    const code =
+      result.serialGroupId === undefined
+        ? result.attempts.at(-1)?.error?.code
+        : groupCode.get(result.serialGroupId);
+    if (code === undefined || !BLOCKABLE_CODES.has(code as AgentErrorCode)) return status;
+  }
+  return sawFailure ? 'blocked' : status;
 }
 
-/** Fallback limits used when the run failed before config resolution. */
+/**
+ * Fallback limits used when the run failed before config resolution: the
+ * resolver's own defaults, so the report never disagrees with the config.
+ */
 const DEFAULT_LIMITS: ReportLimits = {
-  maxAgentContextBytes: 16_384,
-  maxLedgerBytes: 8_192,
-  maxObservationBytes: 1_048_576,
-  maxEventsPerStep: 1_000,
-  maxModelTokensPerCall: 64_000,
+  ...resolveLimits({}),
+  maxObservationBytes: DEFAULT_OBSERVATION_BYTES,
 };
 
 /** Aggregates observed usage against the resolved limits (13-reporting.md). */
@@ -520,7 +537,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
           serializeTarget(config, target, options.targetProvenance.get(target.name)),
         );
 
-  const results = [...options.results]
+  const results = options.results
     .toSorted(compareResults)
     .map((result) => serializeResult(config, result));
 
@@ -541,7 +558,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         name: 'e2e',
         version: packageVersion(import.meta.url, '../../package.json', '0.0.0'),
       },
-      status: deriveRunStatus(options.status, options.results),
+      status: deriveRunStatus(options.status, options.results, options.serialGroups),
       exitCode: options.exitCode,
       startedAt: options.startedAt,
       finishedAt: timestamp(),

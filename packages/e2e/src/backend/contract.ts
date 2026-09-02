@@ -130,8 +130,7 @@ export interface SemanticNode {
 
 /**
  * Viewport point in CSS pixels, origin at the top-left of the viewport.
- * Reserved surface with a named consumer: vision-pointing executors dispatch
- * coordinate taps through it.
+ * Reserved for coordinate-addressed actions; no runner surface consumes it yet.
  */
 export interface ViewportPoint {
   readonly x: number;
