@@ -54,11 +54,15 @@ const VERDICT_RULES = `Verdict rules:
 const WIND_DOWN_TURNS = 5;
 
 /**
- * Remaining step time under which the loop takes the verdict it can get. A
- * slow provider turn runs tens of seconds; concluding with the model's own
- * summary beats a verdict-less STEP_TIMEOUT every time.
+ * Ceiling on the remaining step time under which the loop takes the verdict it
+ * can get. A slow provider turn runs tens of seconds; concluding with the
+ * model's own summary beats a verdict-less STEP_TIMEOUT every time. The
+ * effective window is a quarter of the step's budget, capped here, so a short
+ * step keeps most of its clock for work instead of losing half of it to the
+ * wind-down.
  */
 const CLOCK_WIND_DOWN_MS = 60_000;
+const CLOCK_WIND_DOWN_FRACTION = 4;
 
 /** Transcript ceiling per step; enough for every turn without unbounded logs. */
 const MAX_TRANSCRIPT_CHARS = 262_144;
@@ -106,9 +110,11 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
       // The AI SDK is an optional peer; load it before anything touches it —
       // including the context's gateway-model getter below.
       const ai = await loadAiSdk();
-      const configured =
-        context.model === undefined ? undefined : asSdkLanguageModel(context.model);
-      const model: LanguageModel | undefined = options.model ?? configured;
+      // The context's model getter resolves the configured model on read, so
+      // an executor that brought its own never touches (or fails on) it.
+      const model: LanguageModel | undefined =
+        options.model ??
+        (context.model === undefined ? undefined : asSdkLanguageModel(context.model));
       if (model === undefined) {
         throw new AgentError(
           'MODEL_UNAVAILABLE',
@@ -130,6 +136,7 @@ class LoopRun {
   private noticedLowClock = false;
   private readonly transcript: string[] = [];
   private readonly maxTurns: number;
+  private readonly windDownMs: number;
 
   constructor(
     private readonly ai: AiSdk,
@@ -142,6 +149,10 @@ class LoopRun {
     this.maxTurns = Math.min(
       options.maxTurns ?? context.budgets.maxModelCalls,
       context.budgets.maxModelCalls,
+    );
+    this.windDownMs = Math.min(
+      CLOCK_WIND_DOWN_MS,
+      Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
     );
   }
 
@@ -257,7 +268,7 @@ class LoopRun {
     const turnsLeft = this.maxTurns - stepNumber;
     // Never on the very first turn: a deliberately short step timeout still
     // deserves one working turn before the clock takes the verdict.
-    const lowClock = stepNumber > 0 && this.context.budgets.remainingMs() < CLOCK_WIND_DOWN_MS;
+    const lowClock = stepNumber > 0 && this.context.budgets.remainingMs() < this.windDownMs;
     if (lowClock && this.noticedLowClock !== true) {
       this.noticedLowClock = true;
       prepared = appendNotice(

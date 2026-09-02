@@ -26,11 +26,16 @@ import type {
   VisionDegradation,
 } from '../run/steps.ts';
 import type { VisionMode } from '../types.ts';
-import { AgentError, toAgentError } from './error.ts';
+import { AgentError } from './error.ts';
 import type { StepExecutor } from './executor.ts';
-import { checkStepClock, instrumentPhase, retryingObserve, type PhaseSpec } from './phases.ts';
-
-export { toAgentError };
+import {
+  boundedOperation,
+  checkStepClock,
+  instrumentPhase,
+  recordPolicyEvent,
+  retryingObserve,
+  type PhaseSpec,
+} from './phases.ts';
 import { serializeLedger, type LedgerContext } from './ledger.ts';
 import {
   imageTokenUpperBound,
@@ -91,8 +96,7 @@ export interface InvocationOptions {
    * Whether masked viewport pixels travel alongside the semantic tree.
    * Additive in every mode: the tree is always sent, and pixel evidence
    * degrades away under taint or unprovable masking rather than failing the
-   * call. `'fallback'` starts tree-only and can be escalated once, by a caller
-   * that has a signal the tree was not enough.
+   * call. `'fallback'` behaves as `false` for the judgment methods.
    */
   readonly vision: VisionMode;
 }
@@ -152,19 +156,13 @@ export class Invocation {
   private visionInput = false;
   private visionDegraded: VisionDegradation | undefined;
   /**
-   * Whether pixels are currently part of this invocation's requests.
-   *
-   * It is the one piece of invocation state that moves: `'fallback'` starts on
-   * the tree and is escalated at most once, so both the observation request and
-   * the model choice follow from a single value instead of each deriving the
-   * tier for itself.
-   */
-  /**
    * Whether this invocation asks for pixel evidence. Readable so a caller can
    * tell that comparing successive observation trees is meaningless here: an
    * animation the tree cannot see is still a change a vision call must judge.
    */
-  pixelTier: boolean;
+  readonly pixelTier: boolean;
+  /** Byte size of the invariant system message, measured once. */
+  private readonly systemBytes: number;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -173,6 +171,7 @@ export class Invocation {
     this.deadline = runtime.engine.deadline(options.timeoutMs);
     this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = buildSystem(options.task, runtime.agentContext);
+    this.systemBytes = tokenUpperBound(this.system);
     this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
     agentTrace(
       () =>
@@ -328,7 +327,7 @@ export class Invocation {
     // fuller node map means a better hit-test for the point that comes back.
     if (this.treeWithheld) return config.agent.maxObservationBytes;
     const overhead =
-      tokenUpperBound(this.system) +
+      this.systemBytes +
       this.ledger.bytes +
       INSTRUCTION_RESERVE +
       (this.pixelTier ? PIXEL_RESERVE : 0);
@@ -417,15 +416,7 @@ export class Invocation {
 
   /** Records one policy decision as a child event. */
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void {
-    this.runtime.steps.recordEvent({
-      kind: 'policy',
-      startedAt: timestamp(),
-      durationMs: 0,
-      status: decision === 'allowed' ? 'passed' : 'failed',
-      name,
-      decision,
-      ...(code === undefined ? {} : { code }),
-    });
+    recordPolicyEvent(this.runtime.steps, name, decision, code);
   }
 
   /** Records one polling round as a child event. */
@@ -446,9 +437,7 @@ export class Invocation {
    * hung observation cannot consume the invocation's whole clock.
    */
   operation(): ReturnType<LocatorEngine['operation']> {
-    return this.runtime.engine.operation(
-      Math.max(1, Math.min(this.runtime.config.actionTimeout, this.deadline.remaining())),
-    );
+    return boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline);
   }
 
   /** Fails when the invocation deadline has elapsed (see checkStepClock). */

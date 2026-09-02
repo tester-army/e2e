@@ -8,7 +8,7 @@ import { sleep } from '../internal/time.ts';
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
 
 /** Why pixels the caller asked for are not part of this observation. */
-export type PixelsWithheld = 'MASKING_UNPROVEN';
+type PixelsWithheld = 'MASKING_UNPROVEN';
 
 /** Masked pixel evidence cleared for model input. */
 export interface AgentPixels extends ObservationPixels {
@@ -75,11 +75,15 @@ export function prepareObservation(
   if (truncated) lines.push(TRUNCATION_MARKER);
 
   const text = lines.join('\n');
+  // Every emitted line was measured with its newline; the join has one fewer
+  // and the marker was measured up front, so the size is known without a
+  // second pass over the whole tree text.
+  const textBytes = Math.max(0, bytes + (truncated ? markerBytes : 0) - 1);
   const pixels = clearPixels(observation);
   return {
     revision: observation.revision,
     text,
-    bytes: encoder.encode(text).byteLength,
+    bytes: textBytes,
     nodes,
     viewport: observation.viewport,
     truncated,

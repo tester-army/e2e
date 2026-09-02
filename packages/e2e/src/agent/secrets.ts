@@ -6,11 +6,11 @@ import { AgentError, toAgentError } from './error.ts';
 import type { AgentContext } from './invocation.ts';
 
 /**
- * The narrow surface a secret fill needs from its step machinery. Both the
- * locate/judgment tier (Invocation) and the executor socket (ActDispatch)
- * satisfy it, so the authorization policy has exactly one implementation.
+ * The narrow surface a secret fill needs from its step machinery: the act
+ * dispatch is its one caller today, and any future tier that fills secrets
+ * satisfies the same three members rather than re-deriving the policy.
  */
-export interface SecretFillHost {
+interface SecretFillHost {
   readonly session: TargetSession;
   operation(): OperationContext;
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void;

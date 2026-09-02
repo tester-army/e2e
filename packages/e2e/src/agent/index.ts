@@ -13,13 +13,12 @@ import { isVisionMode } from '../config/agent.ts';
 import { TestError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
-import { AgentError, isAgentError } from './error.ts';
+import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
 import { observationShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
-  toAgentError,
   type AgentContext,
   type InvocationOptions,
 } from './invocation.ts';
@@ -194,7 +193,11 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           const observation = await invocation.observe();
           const judgment = await askJudgment(invocation, assertion, observation);
           invocation.note({ explanation: judgment.explanation });
-          const screenshot = await captureEvidence(invocation, options?.screenshot);
+          // Spec 03-assertions.md: the report keeps the redacted screenshot
+          // whenever `screenshot` allows it, on a passing judgment too.
+          const screenshot = evidenceAllowed(invocation, options?.screenshot)
+            ? await captureEvidence(invocation)
+            : undefined;
           if (judgment.result) return;
           throw new AgentError('ASSERTION_FAILED', judgment.explanation, (screenshot === undefined ? {} : { screenshot }));
         },
@@ -203,19 +206,22 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   };
 
   /**
-   * Captures redacted judgment evidence. Pixel evidence is omitted for the rest
-   * of the attempt once any secret has been filled: an untrusted app may mirror
-   * a secret anywhere on screen, so rectangle masking cannot prove redaction.
+   * Whether judgment evidence may be captured. Pixel evidence is omitted for
+   * the rest of the attempt once any secret has been filled: an untrusted app
+   * may mirror a secret anywhere on screen, so rectangle masking cannot prove
+   * redaction. The denial is recorded whether or not a capture follows.
    */
-  async function captureEvidence(
-    invocation: Invocation,
-    requested: boolean | undefined,
-  ): Promise<string | undefined> {
-    if (requested === false) return undefined;
+  function evidenceAllowed(invocation: Invocation, requested: boolean | undefined): boolean {
+    if (requested === false) return false;
     if (runtime.taint.value) {
       invocation.recordPolicy('assert.screenshot', 'denied', 'PIXEL_TAINTED');
-      return undefined;
+      return false;
     }
+    return true;
+  }
+
+  /** Captures redacted judgment evidence; best-effort, never fails the step. */
+  async function captureEvidence(invocation: Invocation): Promise<string | undefined> {
     try {
       const relative = await invocation.session.artifacts.screenshot(
         'assert',
@@ -279,7 +285,12 @@ async function waitForNextJudgment(
         `waitFor exhausted its model-call budget; last judgment: ${options.lastExplanation}`,
       );
     }
-    const remainder = Math.min(tickMs, invocation.deadline.remaining());
+    // Nothing is judged before the interval elapses, so nothing is observed
+    // before it either: the first wait covers what remains of the interval,
+    // and only then does the loop poll the tree at the change cadence.
+    const untilInterval = options.intervalMs - (Date.now() - judgedAt);
+    const wait = untilInterval > 0 ? untilInterval : tickMs;
+    const remainder = Math.min(wait, invocation.deadline.remaining());
     if (remainder > 0) await sleep(remainder, options.signal);
     // An observation can outlive the deadline it was bounded by, and the bare
     // timeout it then reports would drop the judgment the author needs. The

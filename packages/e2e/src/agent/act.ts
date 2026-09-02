@@ -12,7 +12,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BackendError, type SemanticNode } from '../backend/surface.ts';
+import { BackendError, type OperationContext, type SemanticNode } from '../backend/surface.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { Deadline } from '../internal/time.ts';
@@ -54,7 +54,7 @@ import {
   settleObservation,
   type AgentObservation,
 } from './observation.ts';
-import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
+import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
 import { describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { StepTraceSession, type StepCacheHost } from './step-cache.ts';
@@ -210,6 +210,8 @@ class ActDispatch {
   private sdkModel: ModelInstance | undefined;
   private sdkModelResolved = false;
   private transcript: string | undefined;
+  /** Set by `finish()`: late executor accounting must not land on the next step. */
+  private closed = false;
   private inputTokens = 0;
   private outputTokens = 0;
   private estimatedCostUsd: number | undefined;
@@ -548,6 +550,9 @@ class ActDispatch {
    * the call past the limit records, then hard-stops the step.
    */
   private recordModelCall(usage: ExecutorModelCall | undefined): void {
+    // An executor abandoned by a hard stop can still report late; the step it
+    // belonged to is closed, and the recorder's active step is now another.
+    if (this.closed) return;
     this.metrics.modelCalls += 1;
     const inputTokens = usage?.inputTokens ?? 0;
     const outputTokens = usage?.outputTokens ?? 0;
@@ -593,6 +598,7 @@ class ActDispatch {
    * ceiling the grammar enforces.
    */
   private recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void {
+    if (this.closed) return;
     this.checkpoint();
     this.runtime.steps.recordEvent({
       kind: 'backend',
@@ -618,6 +624,7 @@ class ActDispatch {
 
   /** Attaches metrics, model provenance, and the verdict explanation to the step. */
   finish(): void {
+    this.closed = true;
     const cacheInfo = this.stepCache?.cacheInfo;
     this.runtime.steps.attachAgentDetails({
       metrics: { ...this.metrics },
@@ -635,7 +642,9 @@ class ActDispatch {
     const stepId = this.runtime.steps.currentStepId ?? 'act';
     const name = `transcript-${stepId.replace(/[^A-Za-z0-9_-]+/g, '-')}.txt`;
     try {
-      writeFileSync(join(this.runtime.artifacts.dir, name), this.transcript, 'utf8');
+      // Model prose and project-tool output are not model input, but they
+      // are a log: the same redactor that guards the tree guards the file.
+      writeFileSync(join(this.runtime.artifacts.dir, name), this.redact(this.transcript), 'utf8');
       this.runtime.steps.attachArtifact(this.runtime.artifacts.register('log', name));
     } catch {
       // The transcript is best-effort debug detail; never fail the step for it.
@@ -669,16 +678,8 @@ class ActDispatch {
     return this.runtime.engine.session;
   }
 
-  /**
-   * One backend operation's budget: `actionTimeout`, capped by the step clock.
-   * Bounding each call independently is what keeps a single screen that never
-   * settles from consuming the whole step — the hang costs one action
-   * timeout and a clearly attributed failure, not the test budget.
-   */
-  private operation() {
-    return this.runtime.engine.operation(
-      Math.max(1, Math.min(this.runtime.config.actionTimeout, this.deadline.remaining())),
-    );
+  private operation(): OperationContext {
+    return boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline);
   }
 
   /** Resolves the configured model once; executors that never read it never pay. */
@@ -919,17 +920,8 @@ class ActDispatch {
     });
   }
 
-  /** Records one policy decision as a child event, mirroring the locate tier. */
   private recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void {
-    this.runtime.steps.recordEvent({
-      kind: 'policy',
-      startedAt: timestamp(),
-      durationMs: 0,
-      status: decision === 'allowed' ? 'passed' : 'failed',
-      name,
-      decision,
-      ...(code === undefined ? {} : { code }),
-    });
+    recordPolicyEvent(this.runtime.steps, name, decision, code);
   }
 
   private async navigate(url: string): Promise<void> {

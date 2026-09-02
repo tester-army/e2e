@@ -9,7 +9,7 @@
 
 import type { JSONSchema7 } from 'ai';
 
-export interface JudgmentResponse {
+interface JudgmentResponse {
   readonly protocolVersion: 'agent-judgment-1';
   readonly result: boolean;
   readonly explanation: string;

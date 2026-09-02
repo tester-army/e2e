@@ -126,7 +126,7 @@ describe('secret fill policy under a hostile executor', () => {
         expect(call.prompt).not.toContain('admin-pass');
         expect(call.toolResults.join('\n')).not.toContain('admin-pass');
       }
-      expect(loopCalls[0]!.prompt).toContain('"kind": "secret"');
+      expect(loopCalls[0]!.prompt).toContain('"kind":"secret"');
       // ...and not in the persisted transcript either.
       const log = result.attempts.at(-1)!.artifacts.find((a) => a.kind === 'log');
       expect(log?.path).toBeDefined();

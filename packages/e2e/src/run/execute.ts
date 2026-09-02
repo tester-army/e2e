@@ -704,9 +704,8 @@ export class TargetExecutor implements SerialHost {
       }
     }
 
-    // Serial members register into the group's directory; the group settles
-    // it once, after closing the shared session.
-    if (shared === undefined) await artifacts.settle();
+    // Size and digest land asynchronously; the record is read right after.
+    await artifacts.settle();
     record.durationMs = Date.now() - startedMs;
     record.steps = [...steps.all()];
 

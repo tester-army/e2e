@@ -69,7 +69,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
           : `Execute this test step: ${context.step.instruction}`,
       ];
       if (context.step.params !== undefined) {
-        parts.push(`Step parameters:\n${JSON.stringify(context.step.params, null, 2)}`);
+        parts.push(`Step parameters:\n${JSON.stringify(context.step.params)}`);
       }
       if (context.replayedPrefix !== undefined) {
         parts.push(formatReplayedPrefix(context.replayedPrefix));
@@ -238,13 +238,15 @@ function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelper
 }
 
 /**
- * Compacts stale screen snapshots out of the tool-result history.
+ * Compacts stale screen snapshots out of the history: the initial prompt's
+ * `Current screen` and every tool result's `Updated screen`.
  *
  * Only the newest observations describe the screen the model is acting on;
  * every older tree is dead weight that grows the prompt linearly with turn
- * count. Stale snapshot results keep their first line (what the action did)
- * and lose the tree. Returns the input array unchanged when there is nothing
- * to compact, so the caller can skip the messages override entirely.
+ * count - and the very first tree, in the user prompt, is the oldest of all.
+ * A stale snapshot keeps what preceded the tree (the instruction, or what
+ * the action did) and loses the tree. Returns the input array unchanged when
+ * there is nothing to compact, so the caller can skip the messages override.
  */
 function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
   const total = messages.reduce(
@@ -254,28 +256,50 @@ function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
   let stale = total - SNAPSHOT_PRESERVE_COUNT;
   if (stale <= 0) return messages;
   return messages.map((message) => {
-    if (stale <= 0 || message.role !== 'tool') return message;
+    if (stale <= 0) return message;
+    if (message.role === 'user') {
+      if (typeof message.content === 'string') {
+        if (!SNAPSHOT_PATTERN.test(message.content)) return message;
+        stale -= 1;
+        return { ...message, content: elideSnapshot(message.content) };
+      }
+      const content = message.content.map((part) => {
+        if (stale <= 0 || part.type !== 'text' || !SNAPSHOT_PATTERN.test(part.text)) return part;
+        stale -= 1;
+        return { ...part, text: elideSnapshot(part.text) };
+      });
+      return { ...message, content };
+    }
+    if (message.role !== 'tool') return message;
     const texts = snapshotParts(message);
     if (!texts.some((text) => text !== undefined)) return message;
     const content = message.content.map((part, index) => {
       const text = texts[index];
       if (text === undefined || stale <= 0) return part;
       stale -= 1;
-      const firstLine = text.split('\n', 1)[0] ?? '';
-      return {
-        ...part,
-        output: {
-          type: 'text' as const,
-          value: `${firstLine}\n[stale screen snapshot elided; act on the newest observation]`,
-        },
-      };
+      return { ...part, output: { type: 'text' as const, value: elideSnapshot(text) } };
     });
     return { ...message, content };
   });
 }
 
+/** Everything before the snapshot marker, then the elision notice in place of the tree. */
+function elideSnapshot(text: string): string {
+  const at = text.search(SNAPSHOT_PATTERN);
+  const head = at <= 0 ? (text.split('\n', 1)[0] ?? '') : text.slice(0, at).trimEnd();
+  return `${head}\n[stale screen snapshot elided; act on the newest observation]`;
+}
+
 /** Per-part snapshot text of one message; undefined for non-snapshot parts. */
 function snapshotParts(message: ModelMessage): (string | undefined)[] {
+  if (message.role === 'user') {
+    if (typeof message.content === 'string') {
+      return [SNAPSHOT_PATTERN.test(message.content) ? message.content : undefined];
+    }
+    return message.content.map((part) =>
+      part.type === 'text' && SNAPSHOT_PATTERN.test(part.text) ? part.text : undefined,
+    );
+  }
   if (message.role !== 'tool') return [];
   return message.content.map((part) => {
     if (part.type !== 'tool-result') return undefined;
@@ -300,6 +324,9 @@ function validateUserTools(
     if (name === 'complete_step') {
       throw new AgentError('POLICY_DENIED', 'the complete_step tool name is reserved');
     }
+    if (defined.tool.execute === undefined) {
+      throw new AgentError('POLICY_DENIED', `tool "${name}" has no execute function`);
+    }
   }
   return tools;
 }
@@ -307,8 +334,10 @@ function validateUserTools(
 /**
  * Wraps project tools so they run the same accounting pipeline as the
  * grammar: every call is recorded, a mutating tool consumes an action-budget
- * slot, and a budget hard stop ends the loop instead of leaking as a tool
- * error the model talks past.
+ * slot - refused before it runs once the ceiling is reached, consumed whether
+ * it succeeds or fails, exactly like a grammar action - and a runtime hard
+ * stop ends the loop. Any other failure goes back to the model as text it can
+ * react to, never as a provider failure of the step.
  */
 function wrapUserTools(
   context: StepExecutorContext,
@@ -320,30 +349,42 @@ function wrapUserTools(
     // A tool scoped to other platforms is not offered, so the model never
     // learns a verb the surface cannot honor.
     if (!toolAppliesTo(defined, context.target.platform)) continue;
-    // defineTool rejected any tool without execute at definition time.
-    const execute = defined.tool.execute?.bind(defined.tool);
-    if (execute === undefined) throw new Error(`tool "${name}" has no execute; defineTool must reject it`);
+    // validateUserTools rejected any tool without execute at construction.
+    const execute = defined.tool.execute!.bind(defined.tool);
+    const mutates = defined.annotations.mutates;
     wrapped[name] = {
       ...defined.tool,
       execute: async (input: never, executionOptions: never) => {
         if (helpers.concluding()) {
           return 'The step is already concluding; no further actions run.';
         }
+        if (mutates && context.budgets.actionsUsed() >= context.budgets.maxActions) {
+          const stop = new AgentError(
+            'STEP_BUDGET_EXHAUSTED',
+            `the step exhausted its action budget of ${context.budgets.maxActions}`,
+          );
+          helpers.reportHardStop(stop);
+          return `HARD STOP (${stop.code}): ${stop.message}`;
+        }
         const startedMs = Date.now();
+        let attempted = false;
         try {
-          const result = await execute(input, executionOptions);
-          context.budgets.recordToolCall({
-            name,
-            mutates: defined.annotations.mutates,
-            durationMs: Date.now() - startedMs,
-          });
-          return result;
+          attempted = true;
+          return await execute(input, executionOptions);
         } catch (cause) {
           if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
             helpers.reportHardStop(cause);
             return `HARD STOP (${cause.code}): ${cause.message}`;
           }
-          throw cause;
+          return `Tool "${name}" failed: ${cause instanceof Error ? cause.message : String(cause)}`;
+        } finally {
+          if (attempted) {
+            try {
+              context.budgets.recordToolCall({ name, mutates, durationMs: Date.now() - startedMs });
+            } catch (cause) {
+              if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) helpers.reportHardStop(cause);
+            }
+          }
         }
       },
     } as ToolSet[string];

@@ -11,8 +11,41 @@ import { E2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { POLL_INTERVAL_MS, sleep, type Deadline } from '../internal/time.ts';
 import { agentTrace } from '../internal/trace.ts';
+import type { LocatorEngine } from '../locator/engine.ts';
 import type { StepEvent, StepRecorder } from '../run/steps.ts';
 import { AgentError, toAgentError } from './error.ts';
+
+/**
+ * One backend operation's budget: `actionTimeout`, capped by the step clock.
+ * Bounding each call independently is what keeps a single screen that never
+ * settles from consuming the whole step: the hang costs one action timeout and
+ * a clearly attributed failure, not the test budget.
+ */
+export function boundedOperation(
+  engine: LocatorEngine,
+  actionTimeout: number,
+  deadline: Deadline,
+): OperationContext {
+  return engine.operation(Math.max(1, Math.min(actionTimeout, deadline.remaining())));
+}
+
+/** Records one policy decision as a child event of the current step. */
+export function recordPolicyEvent(
+  steps: StepRecorder,
+  name: string,
+  decision: 'allowed' | 'denied',
+  code?: string,
+): void {
+  steps.recordEvent({
+    kind: 'policy',
+    startedAt: timestamp(),
+    durationMs: 0,
+    status: decision === 'allowed' ? 'passed' : 'failed',
+    name,
+    decision,
+    ...(code === undefined ? {} : { code }),
+  });
+}
 
 /** The step recorder and optional debug trace a phase reports into. */
 export interface PhaseHost {
