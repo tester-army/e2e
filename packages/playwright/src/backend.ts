@@ -20,24 +20,15 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
     spiVersion: 1,
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
-    endAttempt: () => surface.endAttempt(),
-    dispose: () => surface.dispose(),
+    endAttempt: (context) => surface.endAttempt(context),
+    dispose: (context) => surface.dispose(context),
     observe: (operation, observeOptions) => surface.observe(operation, observeOptions),
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
-    actions: {
-      tap: (target, operation) => surface.perform(target.ref, { kind: 'tap' }, operation),
-      type: (target, value, operation) =>
-        surface.perform(target.ref, { kind: 'fill', value, sensitive: false }, operation),
-      press: (target, key, operation) => surface.perform(target.ref, { kind: 'press', key }, operation),
-      select: (target, value, operation) =>
-        surface.perform(target.ref, { kind: 'selectOption', value }, operation),
-      scroll: (direction, target, operation) => surface.scroll(direction, target, operation),
+    app: {
       navigate: (url, operation) => surface.navigate(url, operation),
       back: (operation) => surface.back(operation),
-    },
-    app: {
       restart: (operation) => surface.restart(operation),
       clearState: (operation) => surface.clearState(operation),
     },

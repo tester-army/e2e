@@ -718,12 +718,15 @@ export interface AppConfig {
   allowProduction?: boolean;
 }
 
+/**
+ * A web target. The browser surface is its `backend` (`playwright()` from
+ * `@e2edev/playwright`); browser choice and viewport are options of that
+ * backend, never target keys.
+ */
 export interface WebTarget {
   name: string;
   platform: 'web';
-  driver?: 'playwright' | DriverHandle;
-  browser?: 'chromium' | 'firefox' | 'webkit';
-  viewport?: { width: number; height: number };
+  backend?: BackendHandle;
 }
 
 /**
@@ -918,7 +921,6 @@ export interface E2EConfig {
   projectId?: string;
   app?: AppConfig;
   targets?: readonly Target[];
-  browser?: 'chromium' | 'firefox' | 'webkit';
   tests?: string | readonly string[];
   timeout?: number;
   launchTimeout?: number;
@@ -927,7 +929,7 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   retries?: number;
   workers?: number;
-  artifacts?: readonly ('trace' | 'screenshot' | 'video')[];
+  artifacts?: readonly ('trace' | 'screenshot')[];
   reporters?: readonly ('list' | 'json')[];
   screen?: {
     testIdAttribute?: string;

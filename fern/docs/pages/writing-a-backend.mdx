@@ -44,7 +44,7 @@ manifest synchronously at config load, freezes it, computes its capability set,
 and stamps the brand that makes the handle acceptable in a target.
 
 ```ts title="src/index.ts"
-import { defineBackend, type BackendHandle } from 'e2e/backend';
+import { BackendError, defineBackend, type BackendHandle } from 'e2e/backend';
 
 export function hyperdrive(options: { device: string }): BackendHandle {
   const client = createClient(options);
@@ -53,16 +53,24 @@ export function hyperdrive(options: { device: string }): BackendHandle {
     version: '1.0.0',
     spiVersion: 1,
     async init(info) { await client.boot(); },
-    async dispose() { await client.shutdown(); },
+    async dispose(context) { await client.shutdown({ signal: context.signal }); },
     async observe() { return { nodes: await client.snapshot() }; },
-    actions: {
-      tap: (target) => client.tap(target.ref.id),
-      type: (target, value) => client.type(target.ref.id, value),
-      scroll: (direction) => client.scroll(direction),
+    async perform(ref, action) {
+      switch (action.kind) {
+        case 'tap': return client.tap(ref.id);
+        case 'fill': return client.type(ref.id, action.value);
+        default:
+          throw new BackendError('UNSUPPORTED_CAPABILITY', `hyperdrive cannot ${action.kind}`, { retryable: false });
+      }
     },
+    async swipe(direction) { await client.scroll(direction); },
   });
 }
 ```
+
+`version` is required: it is recorded as provenance and keys the trace cache,
+so a backend that resolves nodes differently never replays another version's
+traces.
 
 ```ts title="e2e.config.ts"
 targets: [{ name: 'phone', platform: 'ios', backend: hyperdrive({ device: 'iPhone 16' }) }],
@@ -84,40 +92,52 @@ never silently.
 | Member | Capability | Unlocks |
 | --- | --- | --- |
 | `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
-| `actions.{tap,type,press,select,scroll,navigate,back}` | `actions` (needs `observe`) | harness-routed grammar verbs, `app.open()`, `app.back()` |
+| `perform(ref, action, context)` | `actions` (needs `observe`) | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, node `scroll`) and the full `Locator` action set |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
-| `perform(ref, action, context)` | with `locate` | the full `Locator` action set; without it tap/fill/press/select route through the verbs |
-| `swipe(direction, momentum, context)` | with `locate` | `screen.swipe`, `scrollUntilVisible` |
+| `swipe(direction, momentum, context)` | - (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
 | `artifacts.{screenshot,startTrace?,stopTrace?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']` |
-| `app.{restart?,clearState?}` | - | `app.restart()`, `app.clearState()` |
+| `app.{navigate?,back?,restart?,clearState?}` | - | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `url(context)` | - | trace start anchors, the secret-fill origin check |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
+The agent derives its toolset from this manifest: a verb whose member is
+absent is never offered to the model, so a surface that cannot navigate simply
+has no `navigate` verb. Every node action, whether the agent or a `Locator`
+asked for it, arrives as one `LocatorAction` on `perform`, so you implement
+each action once; throw `UNSUPPORTED_CAPABILITY` for a kind the surface cannot
+express. `state`, `artifacts`, and `app` are closed manifests too: an unknown
+key in any of them fails at config load.
+
 `init` runs once per worker before the first attempt, outside every step
-budget: boot devices and download runtimes there. `startAttempt`/`endAttempt`
-bracket one test attempt and carry the attempt's artifact directory; give each
-test a fresh surface here (a new browser context, a reset app). When
-`startAttempt` fails or exceeds `launchTimeout`, its `context.signal` aborts and
-`endAttempt` runs right behind it, so stop promptly and keep `endAttempt`
-idempotent. `dispose` runs at worker shutdown whether or not `init` ran.
+budget: boot devices and download runtimes there. A config-held handle can
+outlive an in-process worker, so `init` may run again after `dispose` on the
+same handle and must work on a disposed backend as on a fresh one.
+`startAttempt`/`endAttempt` bracket one test attempt and carry the attempt's
+artifact directory; give each test a fresh surface here (a new browser
+context, a reset app). When `startAttempt` fails or exceeds `launchTimeout`,
+its `context.signal` aborts and `endAttempt` runs right behind it, so stop
+promptly and keep `endAttempt` idempotent. `endAttempt` and `dispose` receive a
+`BackendCleanupContext` (`{ signal, timeoutMs }`) whose `signal` aborts when
+the `cleanupTimeout` budget is spent. `dispose` runs at worker shutdown whether
+or not `init` ran.
 
 ### Nodes and refs
 
 `observe` and `locate` return `SemanticNode` trees. Ids are yours and must be
 unique for the surface's lifetime; the harness stamps revisions onto them and
 enforces the staleness rule (act on the newest observation only), so you never
-implement it. `perform` and the grammar verbs receive `{ id, revision }`;
-look the id up and throw `NODE_STALE` when it no longer binds.
+implement it. `perform` receives `{ id, revision }`; look the id up and throw
+`NODE_STALE` when it no longer binds.
 
 ### Vision-only surfaces
 
 A surface that offers screenshots and coordinates but no semantic tree (a
 desktop shell, a canvas app, a computer-use agent) declares `observe` returning
 a pixels-only snapshot (`nodes: []` plus `pixels`) and acts through agent-side
-coordinate tools, since the grammar verbs take observation refs it cannot hand
-out. That is the tools-only tier for actions: deterministic tool replay is what
-it gets, and nothing else in the harness changes.
+coordinate tools, since `perform` takes observation refs it cannot hand out.
+That is the tools-only tier for actions: deterministic tool replay is what it
+gets, and nothing else in the harness changes.
 
 ### State is a credential
 
@@ -164,8 +184,8 @@ export const test = base.extend<{ device: Device }>();
 ```
 
 The factory's `context` carries what a fixture legitimately needs from the
-harness and nothing else: the app's base URL and origin policy (`app.resolveUrl`
-enforces it), the configured timeouts, `operation()` budgets, `attachArtifact`
+harness and nothing else: the app's base URL (absent when none is configured)
+and origin policy (`app.resolveUrl` enforces it), the configured timeouts, `operation()` budgets, `attachArtifact`
 and `attachViewport` for the current step, `locator(expression)` and
 `screen(scope)` to mint core locators from a platform selector or a nested
 document, and `expectable(target, factory)` to attach an expectation surface so

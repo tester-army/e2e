@@ -49,7 +49,7 @@ selection, they do not bypass it. A path outside the project root is
 | `--target <ids>` | comma-separated list | every configured target | Selects targets by name. An unknown ID is `UNKNOWN_TARGET`. Empty entries are dropped. |
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
-| `--headed` | boolean | `false` | Requests visible UI when the driver supports it |
+| `--headed` | boolean | `false` | Requests visible UI when the backend supports it |
 | `--retries <n>` | nonnegative integer | resolved config value | Replaces the retry count |
 | `--workers <n>` | nonnegative integer | resolved config value | Replaces the worker count |
 | `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`. |
@@ -75,7 +75,7 @@ npx --no-install e2e run --reporter json --workers 4 --retries 2
 
 | Reporter | Writes |
 | --- | --- |
-| `list` | Human-readable progress to the terminal. On a TTY the live status block also shows each running step and its latest model or driver call, and every finished agent step prints one permanent line with its duration and model-call count. Control characters are stripped and each untrusted field is capped at 8 KiB. |
+| `list` | Human-readable progress to the terminal. On a TTY the live status block also shows each running step and its latest model or backend call, and every finished agent step prints one permanent line with its duration and model-call count. Control characters are stripped and each untrusted field is capped at 8 KiB. |
 | `json` | The report document to stdout. Cannot be combined with `list`. |
 
 Every run atomically writes `.e2e/report.json` under the artifact parent
@@ -83,7 +83,7 @@ regardless of the selected reporters. A reporter can never change run status.
 
 ### Signals
 
-On the first interrupt signal the runner aborts active model and driver work,
+On the first interrupt signal the runner aborts active model and backend work,
 runs bounded teardown, writes a partial report with `status: interrupted`, and
 exits 130. A second signal may force immediate exit.
 
@@ -94,7 +94,7 @@ exits 130. A second signal may force immediate exit.
 | 0 | All selected tests passed, were flaky, or were explicitly skipped |
 | 1 | Final test or setup failure, or test timeout |
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
-| 3 | Driver, browser, app process, model provider, artifact, or cleanup infrastructure failure |
+| 3 | Backend, app process, model provider, artifact, or cleanup infrastructure failure |
 | 4 | Internal runner invariant or unhandled runner error |
 | 130 | Interrupted by a user or CI signal |
 

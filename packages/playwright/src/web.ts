@@ -8,13 +8,15 @@
  * Layering rule: policy and validation (`resolveUrl`, JSON checks, cookie
  * origins, the download trigger) run outside `surface.guard`, so a runner
  * error keeps its classification and only Playwright faults are translated.
+ * The origin policy itself is never re-implemented here: `context.app.
+ * resolveUrl` is the one place that says which URLs the app admits.
  */
 
 import type { Download, Route } from 'playwright';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import type { BackendFixtureContext, OperationContext, TextPattern } from 'e2e/backend';
 import {
-  ConfigurationError,
+  causeMessage,
   Deadline,
   describePattern,
   matchesText,
@@ -26,7 +28,7 @@ import {
   validateJsonValue,
   type NormalizedBaseUrl,
 } from 'e2e/internal';
-import type { Dialog, DialogHandler } from './dialogs.ts';
+import type { DialogHandler } from './dialogs.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
@@ -139,9 +141,7 @@ export interface Web extends Expectable<WebExpectation> {
   /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
   /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
-  onDialog(
-    handler: 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>),
-  ): Promise<() => Promise<void>>;
+  onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
   /** Runs a trigger and waits for its download. */
   waitForDownload(
     trigger: () => Promise<void>,
@@ -175,25 +175,24 @@ interface StoredRoute {
 export function createWebFixture(surface: PlaywrightSurface, context: BackendFixtureContext): Web {
   const routes: StoredRoute[] = [];
 
-  /** Relative URLs and URL matching need the configured base; absent, that is a config error. */
-  const base = (): NormalizedBaseUrl => {
-    if (context.app.baseUrl === undefined) {
-      throw new ConfigurationError(
-        'APP_URL_REQUIRED',
-        'this call needs an app URL: set app.url in e2e.config.ts or the APP_URL environment variable',
-      );
-    }
-    return normalizeBaseUrl(context.app.baseUrl);
-  };
+  /**
+   * Relative URLs and URL matching need the configured base. Resolving the
+   * empty reference yields the base itself, and lets the harness raise
+   * `APP_URL_REQUIRED` when there is none.
+   */
+  const base = (): NormalizedBaseUrl => normalizeBaseUrl(context.app.resolveUrl(''));
 
-  /** A navigation's budget: the call's own timeout or the action timeout, clamped to the test. */
+  /**
+   * A navigation's budget: the call's own timeout, else the test timeout the
+   * harness gives `app.open` - a document load is not an action and must not
+   * be cut at the action timeout.
+   */
   const navigation = (
-    label: string,
     options: { timeout?: number } | undefined,
     run: (operation: OperationContext) => Promise<void>,
   ): Promise<void> => {
-    const operation = context.operation(options?.timeout);
-    return surface.guard(operation, label, () => run(operation));
+    const operation = context.operation(options?.timeout ?? context.timeouts.test);
+    return surface.guard(operation, 'navigation', () => run(operation));
   };
 
   /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
@@ -203,11 +202,12 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
   const currentUrl = () => surface.url(context.operation());
   const currentTitle = () =>
     surface.guard(context.operation(), 'title', () => surface.requirePage().title());
+  const expectation = createWebExpectation({ currentUrl, currentTitle, base, deadlineFor, context });
 
   const web: Omit<Web, keyof Expectable<WebExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
-      return navigation('navigation', options, async (operation) => {
+      return navigation(options, async (operation) => {
         const page = await surface.ensurePage();
         await page.goto(resolved, {
           waitUntil: options?.waitUntil ?? 'load',
@@ -216,38 +216,21 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
       });
     },
     reload: (options) =>
-      navigation('navigation', options, async (operation) => {
+      navigation(options, async (operation) => {
         await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
     back: (options) =>
-      navigation('navigation', options, async (operation) => {
+      navigation(options, async (operation) => {
         await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
     forward: (options) =>
-      navigation('navigation', options, async (operation) => {
+      navigation(options, async (operation) => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
       }),
     url: currentUrl,
     title: currentTitle,
-    async waitForURL(url, options) {
-      const target = base();
-      const label = typeof url === 'string' ? url : String(url);
-      let current = '';
-      await pollCondition({
-        deadline: deadlineFor(options?.timeout),
-        signal: context.signal,
-        negated: false,
-        evaluate: async () => {
-          current = await currentUrl();
-          return urlMatches(current, url, target);
-        },
-        onTimeout: async () =>
-          new TestError(
-            'ASSERTION_FAILED',
-            `waitForURL timed out; expected ${label}, current URL is ${current}`,
-          ),
-      });
-    },
+    // The same poll as `expect(web).toHaveURL`, exposed as a wait.
+    waitForURL: (url, options) => expectation.toHaveURL(url, options),
     locator(selector) {
       if (typeof selector !== 'string' || selector.length === 0) {
         throw new TestError('INVALID_LOCATOR', 'web.locator() requires a nonempty selector');
@@ -279,6 +262,9 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
     route(pattern, handler) {
       const wirePattern = toRoutePattern(pattern);
       const predicate = (url: URL) => routePatternMatches(wirePattern, url.href);
+      // Playwright never surfaces a throwing route handler to the test, so a
+      // contract violation (no decision, two decisions) or a failing handler
+      // is latched on the surface and fails the next step with its real cause.
       const pwHandler = async (route: Route): Promise<void> => {
         let decided = false;
         const decide = (name: string) => {
@@ -287,14 +273,13 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
           }
           decided = true;
         };
+        const postData = route.request().postData();
         const publicRoute: WebRoute = {
           request: {
             url: route.request().url(),
             method: route.request().method(),
             headers: route.request().headers(),
-            ...(route.request().postData() !== null
-              ? { postData: route.request().postData()! }
-              : {}),
+            ...(postData === null ? {} : { postData }),
           },
           fulfill: async (response) => {
             decide('fulfill');
@@ -317,13 +302,21 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
             await route.abort();
           },
         };
-        await handler(publicRoute);
-        if (!decided) {
-          await route.abort();
-          throw new TestError(
-            'ACTION_FAILED',
-            'route handler returned without calling fulfill, continue, or abort',
+        try {
+          await handler(publicRoute);
+          if (!decided) {
+            throw new TestError(
+              'ACTION_FAILED',
+              'route handler returned without calling fulfill, continue, or abort',
+            );
+          }
+        } catch (cause) {
+          surface.latch.latch(
+            cause instanceof Error
+              ? cause
+              : new TestError('ACTION_FAILED', `route handler failed: ${causeMessage(cause)}`),
           );
+          if (!decided) await route.abort().catch(() => undefined);
         }
       };
       return surface.guard(context.operation(), 'route', async () => {
@@ -381,26 +374,21 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
       }),
     setCookies(cookies) {
       const scheme = base().origin.startsWith('https') ? 'https' : 'http';
+      // The harness's origin policy decides which cookie targets are admitted;
+      // a domain cookie is checked as the origin it would be sent to.
       for (const cookie of cookies) {
-        const originSource = cookie.url ?? `${scheme}://${cookie.domain?.replace(/^\./, '')}`;
-        let origin: string;
-        try {
-          origin = new URL(originSource).origin;
-        } catch {
-          throw new ConfigurationError('POLICY_DENIED', `invalid cookie target: ${originSource}`);
-        }
-        if (!context.app.allowedOrigins.includes(origin)) {
-          throw new ConfigurationError('POLICY_DENIED', `cookie origin ${origin} is not in allowedOrigins`);
-        }
+        context.app.resolveUrl(
+          cookie.url === undefined ? `${scheme}://${cookie.domain.replace(/^\./, '')}` : cookie.url,
+        );
       }
       return surface.guard(context.operation(), 'setCookies', async () => {
         await surface.requireContext().addCookies(
           cookies.map((cookie) => ({
             name: cookie.name,
             value: cookie.value,
-            ...(cookie.url !== undefined
-              ? { url: cookie.url }
-              : { domain: cookie.domain!, path: cookie.path ?? '/' }),
+            ...(cookie.url === undefined
+              ? { domain: cookie.domain, path: cookie.path ?? '/' }
+              : { url: cookie.url }),
             ...(cookie.expires !== undefined ? { expires: cookie.expires } : {}),
             ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
             ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
@@ -459,9 +447,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
     },
   };
 
-  return context.expectable(web, () =>
-    createWebExpectation({ currentUrl, currentTitle, base, deadlineFor, context }),
-  );
+  return context.expectable(web, () => expectation);
 }
 
 interface ExpectationDeps {

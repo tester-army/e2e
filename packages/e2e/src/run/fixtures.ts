@@ -113,7 +113,11 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
         customExecutor: environment.config.agent.executor !== undefined,
         models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
-        target: { name: environment.target.name, platform: environment.target.platform },
+        target: {
+          name: environment.target.name,
+          platform: environment.target.platform,
+          verbs: environment.session.verbs,
+        },
         priorSteps: environment.priorSteps,
         agentContext: joinAgentContext(
           environment.config.agent.context,
@@ -310,12 +314,18 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 /** Longest label a fixture argument may contribute to the report. */
 const LABEL_LIMIT = 80;
 
+/** Method names whose string argument is typed input, labelled by length only. */
+const INPUT_METHODS = new Set(['type', 'fill', 'insertText']);
+
 /**
  * Step label heuristic: the first string or pattern argument, if any. Fixture
  * arguments are report-visible by this rule; secret material travels as
- * `Secret` handles, never as strings, so it cannot land here.
+ * `Secret` handles, never as strings, so it cannot land here. Typed input is
+ * the exception: it is user data, so only its length is recorded.
  */
-function labelFor(args: readonly unknown[]): string {
+function labelFor(api: string, args: readonly unknown[]): string {
+  const method = api.slice(api.lastIndexOf('.') + 1);
+  if (INPUT_METHODS.has(method) && typeof args[0] === 'string') return `${args[0].length} chars`;
   for (const arg of args) {
     if (typeof arg === 'string') return arg.length > LABEL_LIMIT ? `${arg.slice(0, LABEL_LIMIT)}...` : arg;
     if (arg instanceof RegExp) return String(arg);
@@ -375,7 +385,7 @@ function recordedSurface<T extends object>(
             // Recorded as the failed step it was, then rethrown as it was thrown:
             // a synchronous caller must not receive a promise in place of a throw.
             environment.steps
-              .run(options.kind, api, labelFor(args), () => Promise.reject(cause))
+              .run(options.kind, api, labelFor(api, args), () => Promise.reject(cause))
               .catch(() => undefined);
             throw cause;
           }
@@ -384,7 +394,7 @@ function recordedSurface<T extends object>(
             release();
             return result;
           }
-          return environment.steps.run(options.kind, api, labelFor(args), () => {
+          return environment.steps.run(options.kind, api, labelFor(api, args), () => {
             release();
             const pending = Promise.resolve(result);
             if (!options.bounded) return pending;
@@ -472,17 +482,20 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
   const { config, steps } = environment;
   const allowed = config.app.allowedOrigins;
 
+  /** One recorded navigation: policy-resolved against the base URL, on the test budget. */
+  const navigate = (api: string, label: string, target: string | undefined): Promise<void> =>
+    steps.run('app', api, label, async () => {
+      requireAppUrl(config);
+      const resolved =
+        target === undefined
+          ? config.app.base.href
+          : resolveNavigationUrl(target, config.app.base, allowed).url;
+      await engine.session.app.open(resolved, engine.operation(config.timeout));
+    });
+
   return {
-    async open(openPath?: string): Promise<void> {
-      await steps.run('app', 'app.open', openPath ?? '/', async () => {
-        requireAppUrl(config);
-        const resolved =
-          openPath === undefined
-            ? config.app.base.href
-            : resolveNavigationUrl(openPath, config.app.base, allowed).url;
-        await engine.session.app.open(resolved, engine.operation(config.timeout));
-      });
-    },
+    open: (openPath?: string) => navigate('app.open', openPath ?? '/', openPath),
+    deepLink: (url: string) => navigate('app.deepLink', url, url),
     async restart(): Promise<void> {
       await steps.run('app', 'app.restart', '', async () => {
         await engine.session.app.restart(engine.operation(config.timeout));
@@ -496,13 +509,6 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
     async back(): Promise<void> {
       await steps.run('app', 'app.back', '', async () => {
         await engine.session.app.back(engine.operation());
-      });
-    },
-    async deepLink(url: string): Promise<void> {
-      await steps.run('app', 'app.deepLink', url, async () => {
-        requireAppUrl(config);
-        const resolved = resolveNavigationUrl(url, config.app.base, allowed).url;
-        await engine.session.app.open(resolved, engine.operation(config.timeout));
       });
     },
     async screenshot(label?: string): Promise<string> {

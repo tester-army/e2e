@@ -66,6 +66,8 @@ export interface FakeBackendBehavior {
   state?: boolean;
   /** Declares the artifacts capability (screenshot only). */
   artifacts?: boolean;
+  /** Declares a viewport swipe, unlocking the agent's scroll verb. */
+  swipe?: boolean;
   /** Throw to fail state restore after startAttempt succeeded. */
   onRestore?(state: BackendState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
@@ -164,18 +166,16 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
       await behavior.observe?.(operation, current);
       return { nodes: [tree], viewport: { width: 1280, height: 720, scale: 1 } };
     },
-    actions: {
-      async tap(target, operation) {
-        record(`actions.tap(${target.ref.id})`, operation);
-      },
-      async type(target, value, operation) {
-        record(`actions.type(${target.ref.id},${value.length})`, operation);
-      },
-      async scroll(direction, _target, operation) {
-        record(`actions.scroll(${direction})`, operation);
-      },
+    ...(behavior.swipe === true
+      ? {
+          async swipe(direction: string, _momentum: unknown, operation: OperationContext) {
+            record(`swipe(${direction})`, operation);
+          },
+        }
+      : {}),
+    app: {
       async navigate(url, operation) {
-        record(`actions.navigate(${url})`, operation);
+        record(`app.navigate(${url})`, operation);
         await behavior.onNavigate?.(url, current);
       },
     },

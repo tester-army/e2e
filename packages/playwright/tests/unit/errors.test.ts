@@ -43,29 +43,25 @@ describe('translatePwError', () => {
 
   it('maps a timeout to a non-retryable OPERATION_TIMEOUT', () => {
     const error = translatePwError(pwTimeout('waiting for locator'), 'observe');
-    expect(error.code).toBe('OPERATION_TIMEOUT');
-    expect(error.retryable).toBe(false);
+    expect(error).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
   });
 });
 
 describe('navigationStaleOr', () => {
   it.each(NAVIGATION_RACES)('reports a capture that lost its document as retryable: %s', (text) => {
     const error = navigationStaleOr(new Error(text), 'observe');
-    expect(error.code).toBe('NODE_STALE');
-    expect(error.retryable).toBe(true);
+    expect(error).toMatchObject({ code: 'NODE_STALE', retryable: true });
     expect(error.message).toContain('observe:');
   });
 
   it('keeps a timeout a timeout: a capture that ran out of budget is not a race', () => {
     const error = navigationStaleOr(pwTimeout('observation capture timed out'), 'observe');
-    expect(error.code).toBe('OPERATION_TIMEOUT');
-    expect(error.retryable).toBe(false);
+    expect(error).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
   });
 
   it('leaves every other failure a non-retryable BACKEND_FAILURE', () => {
     const error = navigationStaleOr(new Error('protocol error'), 'observe');
-    expect(error.code).toBe('BACKEND_FAILURE');
-    expect(error.retryable).toBe(false);
+    expect(error).toMatchObject({ code: 'BACKEND_FAILURE', retryable: false });
   });
 
   it('never reclassifies a backend error the capture already classified', () => {
@@ -79,12 +75,20 @@ describe('navigationStaleOr', () => {
 describe('staleOr', () => {
   it.each(NAVIGATION_RACES)('treats a navigation race like a stale node: %s', (text) => {
     const error = staleOr(new Error(text), 'read');
-    expect(error.code).toBe('NODE_STALE');
-    expect(error.retryable).toBe(true);
+    expect(error).toMatchObject({ code: 'NODE_STALE', retryable: true });
   });
 
   it('still reports detachment and misses as stale', () => {
-    expect(staleOr(new Error('element is not attached to the DOM'), 'read').code).toBe('NODE_STALE');
-    expect(staleOr(pwTimeout('waiting for element'), 'read').retryable).toBe(true);
+    expect(staleOr(new Error('element is not attached to the DOM'), 'read')).toMatchObject({
+      code: 'NODE_STALE',
+      retryable: true,
+    });
+  });
+
+  it('keeps a timeout a timeout: locate resolves once and never waits', () => {
+    expect(staleOr(pwTimeout('waiting for element'), 'read')).toMatchObject({
+      code: 'OPERATION_TIMEOUT',
+      retryable: false,
+    });
   });
 });

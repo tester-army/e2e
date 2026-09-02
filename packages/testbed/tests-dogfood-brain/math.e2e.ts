@@ -1,5 +1,5 @@
 /**
- * Driverless dogfood: the math-brain executor never touches the page — no
+ * Backendless dogfood: the math-brain executor never touches the page — no
  * app.open, no observations, no grammar actions. The first test should pass
  * on the executor's own tools; the second should conclude failed honestly,
  * because booking flights is not something a calculator can do.

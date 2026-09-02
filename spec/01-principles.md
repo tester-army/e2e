@@ -18,7 +18,7 @@ control is progressive disclosure, not mandatory ceremony.
 
 ### One canonical contract
 
-The root import is `e2e`; backend authoring is `e2e/driver`. Canonical public
+The root import is `e2e`; backend authoring is `e2e/backend`. Canonical public
 types live under `spec/api`, wire formats under `spec/schema`, and behavioral
 requirements in this specification. Examples never define behavior by accident.
 
@@ -37,7 +37,7 @@ moves through the ledger.
 
 ### The standard owns semantics
 
-Drivers implement immediate queries, reads, actionability, input dispatch,
+Backends implement immediate queries, reads, actionability, input dispatch,
 observation, state, and artifacts. The runner owns waiting, strictness, retries,
 lifecycle, policy, caching, and reporting. Backend defaults cannot change a
 portable test's observable semantics.
@@ -46,7 +46,7 @@ portable test's observable semantics.
 
 Targets identify execution environments. Platforms describe the environment;
 capabilities describe available family-specific APIs. The portable core stays
-small, while versioned driver profiles and namespaced capability fixtures allow
+small, while versioned backend profiles and namespaced capability fixtures allow
 new environments without changing test primitives.
 
 ### Local-first means accountless

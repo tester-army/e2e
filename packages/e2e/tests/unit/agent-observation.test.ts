@@ -6,13 +6,14 @@ function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
 }
 
-function observation(tree: SemanticNode, complete = true): Observation {
+function observation(tree: SemanticNode, pixels?: Observation['pixels']): Observation {
   return {
     revision: 'r1',
     capturedAt: '2026-01-01T00:00:00.000Z',
     tree,
     viewport: { width: 1280, height: 720, scale: 1 },
-    redaction: { secureNodeCount: 1, maskedRegionCount: 0, complete },
+    redaction: { secureNodeCount: 1, maskedRegionCount: 0 },
+    ...(pixels === undefined ? {} : { pixels }),
   };
 }
 
@@ -20,14 +21,17 @@ const NO_SECRETS = new Map<string, string>();
 const TEST_ID = 'data-testid';
 
 describe('prepareObservation', () => {
-  it('rejects an observation whose masking the driver cannot prove', () => {
-    expect(() =>
-      prepareObservation(observation(node('root'), false), {
-        secrets: NO_SECRETS,
-        maxBytes: 4_096,
-        testIdAttribute: TEST_ID,
-      }),
-    ).toThrow(/masking is complete/);
+  it('withholds pixels whose masking the backend cannot prove and keeps the tree', () => {
+    const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
+    const prepared = prepareObservation(observation(node('root'), pixels), {
+      secrets: NO_SECRETS,
+      maxBytes: 4_096,
+      testIdAttribute: TEST_ID,
+    });
+    // One secure node, zero masked regions: the image is not provably redacted.
+    expect(prepared.pixels).toBeUndefined();
+    expect(prepared.pixelsWithheld).toBe('MASKING_UNPROVEN');
+    expect(prepared.text).toBe('#root');
   });
 
   it('serializes the tree with node references and indentation', () => {

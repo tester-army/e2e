@@ -154,10 +154,21 @@ export interface ReplayedPrefix {
   readonly uncertainAction?: string;
 }
 
+/** One verb of the action grammar. */
+export type ExecutorVerb = keyof ExecutorActions;
+
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
-  /** The target this step runs on; tool packs scope themselves by its platform. */
-  readonly target: { readonly name: string; readonly platform: Platform };
+  /**
+   * The target this step runs on. Tool packs scope themselves by its platform;
+   * `verbs` is the subset of the action grammar the backend declared, so an
+   * executor offers a model exactly the vocabulary the surface can honor.
+   */
+  readonly target: {
+    readonly name: string;
+    readonly platform: Platform;
+    readonly verbs: ReadonlySet<ExecutorVerb>;
+  };
   /**
    * Present when a cached replay ran part of this step before handing it
    * over. Absent on a cache miss or when caching is off.

@@ -23,7 +23,7 @@ mobile example that is filtered out of the v0 target matrix.
 
 ## Isolation conventions
 
-The runner isolates driver/client attempts, not Orbit's database. The task
+The runner isolates backend/client attempts, not Orbit's database. The task
 examples use separately seeded boards so parallel tests do not mutate the same
 records. Real suites should use per-test tenants, unique entities, isolated
 fixtures, or serial groups for shared backend workflows.

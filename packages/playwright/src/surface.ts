@@ -14,6 +14,7 @@ import {
   BackendError,
   type BackendAppInfo,
   type BackendAttemptContext,
+  type BackendCleanupContext,
   type BackendInitInfo,
   type BackendObserveOptions,
   type BackendSnapshot,
@@ -33,18 +34,21 @@ import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { frameSelectors, projectExpression } from './locators.ts';
 import { captureDocument, toSemanticNode } from './observation.ts';
-import { capturePixels, type PixelCapture } from './observe.ts';
+import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
 import { readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
 import {
+  cancelled,
   DEFAULT_VIEWPORT,
+  ErrorLatch,
   invalidState,
   message,
   navigationStaleOr,
-  performElementSwipe,
   performViewportSwipe,
+  raceAbort,
   sanitizeFilename,
   staleOr,
   translatePwError,
+  withinCleanupBudget,
   type ActionTarget,
 } from './support.ts';
 
@@ -73,8 +77,29 @@ const STATE_FORMAT = 'playwright-storage-state';
 /** Default budget Playwright applies to context operations that carry no explicit timeout. */
 const CONTEXT_DEFAULT_TIMEOUT_MS = 30_000;
 
-/** The shape Playwright accepts as a context's seeded storage. */
-type StorageState = NonNullable<NonNullable<Parameters<Browser['newContext']>[0]>['storageState']>;
+/** What a Playwright trace records; one setting for every context a trace spans. */
+const TRACE_OPTIONS = { screenshots: true, snapshots: true } as const;
+
+/**
+ * The object shape Playwright accepts as a context's seeded storage. The
+ * string alternative is a file path, which a session envelope must never be
+ * able to point the browser at, so it is excluded from the type as well as
+ * checked at runtime.
+ */
+type StorageState = Exclude<
+  NonNullable<NonNullable<Parameters<Browser['newContext']>[0]>['storageState']>,
+  string
+>;
+
+/** True for the storage-state object shape; a string (a file path) or anything else is refused. */
+function isStorageState(data: unknown): data is StorageState {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    Array.isArray((data as { cookies?: unknown }).cookies) &&
+    Array.isArray((data as { origins?: unknown }).origins)
+  );
+}
 
 export interface PlaywrightOptions {
   /** Browser engine; defaults to chromium. */
@@ -84,7 +109,12 @@ export interface PlaywrightOptions {
 }
 
 export class PlaywrightSurface {
-  readonly dialogs = new DialogRouter();
+  /**
+   * Errors raised where nobody awaits them (dialog routing, route handlers)
+   * wait here and fail the next step that enters the surface.
+   */
+  readonly latch = new ErrorLatch();
+  readonly dialogs = new DialogRouter(this.latch);
 
   private readonly browserName: BrowserName;
   private readonly pool = new BrowserPool();
@@ -99,6 +129,8 @@ export class PlaywrightSurface {
   private refCounter = 0;
   private artifactCounter = 0;
   private tracing = false;
+  /** Trace segments already written for this attempt; a trace cannot span two contexts. */
+  private traceSegments = 0;
   /** Locator-backed refs from `locate`; they hold no live handles. */
   private readonly refs = new Map<string, ActionTarget>();
   /**
@@ -136,32 +168,53 @@ export class PlaywrightSurface {
     }
   }
 
-  /** Opens one fresh browser context for the attempt. */
+  /**
+   * Opens one fresh browser context for the attempt. A second call while a
+   * context is open is a harness bug, not a relaunch: honouring it would leak
+   * the first context and leave the dialog router listening to both.
+   */
   async startAttempt(context: BackendAttemptContext): Promise<void> {
+    if (this.context !== null) {
+      throw new BackendError('INVALID_STATE', 'an attempt is already running', { retryable: false });
+    }
     this.artifactsDir = context.artifactsDir;
+    this.artifactCounter = 0;
+    this.traceSegments = 0;
     this.dialogs.reset();
     await this.openContext(undefined);
   }
 
-  /** Closes the attempt's context and releases every ref it minted. Idempotent. */
-  async endAttempt(): Promise<void> {
-    if (this.tracing && this.context !== null) {
-      await this.context.tracing.stop().catch(() => undefined);
-      this.tracing = false;
-    }
-    await this.context?.close().catch(() => undefined);
-    this.context = null;
-    this.page = null;
+  /**
+   * Closes the attempt's context and releases every ref it minted, within the
+   * cleanup budget: once `context.signal` aborts, the surface stops waiting on
+   * Playwright and abandons the close. Idempotent, and a no-op before
+   * `startAttempt`.
+   */
+  async endAttempt(context: BackendCleanupContext): Promise<void> {
+    await this.closeContext(context);
     PlaywrightSurface.disposeGeneration(this.observationRefs);
     this.observationRefs = new Map();
     this.refs.clear();
   }
 
-  /** Closes the shared browser process. Idempotent. */
-  async dispose(): Promise<void> {
-    await this.endAttempt();
+  /** Closes the shared browser process within the cleanup budget. Idempotent, and safe cold. */
+  async dispose(context: BackendCleanupContext): Promise<void> {
+    await this.endAttempt(context);
     this.browser = null;
-    await this.pool.dispose();
+    await withinCleanupBudget(this.pool.dispose(), context);
+  }
+
+  /** Stops any trace and closes the current context, best-effort, within the budget. */
+  private async closeContext(budget: BackendCleanupContext): Promise<void> {
+    const context = this.context;
+    this.context = null;
+    this.page = null;
+    if (context === null) return;
+    if (this.tracing) {
+      this.tracing = false;
+      await withinCleanupBudget(context.tracing.stop(), budget);
+    }
+    await withinCleanupBudget(context.close(), budget);
   }
 
   private requireBrowser(): Browser {
@@ -201,7 +254,7 @@ export class PlaywrightSurface {
   // --- page access shared with the web fixture ---
 
   requirePage(): Page {
-    this.dialogs.throwPending();
+    this.latch.throwPending();
     if (this.page === null || this.page.isClosed()) {
       throw invalidState('no app page is open; call app.open() or web.goto() first');
     }
@@ -209,6 +262,7 @@ export class PlaywrightSurface {
   }
 
   requireContext(): BrowserContext {
+    this.latch.throwPending();
     if (this.context === null) throw invalidState('no attempt is running');
     return this.context;
   }
@@ -221,16 +275,36 @@ export class PlaywrightSurface {
     return this.page;
   }
 
-  get attemptArtifactsDir(): string {
-    return this.artifactsDir;
-  }
-
-  /** Closes the current context and opens a fresh one, seeded or clean. */
+  /**
+   * Closes the current context and opens a fresh one, seeded or clean. Every
+   * ref minted so far pointed into the closed context, so all of them are
+   * released: a later `perform` on one reads as stale, never as a dead target.
+   *
+   * A Playwright trace is bound to one context, so an active trace is closed
+   * as its own segment (`trace/trace-part<n>.zip`, alongside the final
+   * `trace/trace.zip`) and recording resumes on the new context. `tracing`
+   * stays truthful throughout: false while no context exists, true again only
+   * once the new context records.
+   */
   private async replaceContext(storageState: StorageState | undefined): Promise<void> {
-    await this.requireContext().close();
+    const context = this.requireContext();
+    const resumeTrace = this.tracing;
+    if (this.tracing) {
+      this.tracing = false;
+      this.traceSegments += 1;
+      await context.tracing.stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute });
+    }
     this.context = null;
     this.page = null;
+    PlaywrightSurface.disposeGeneration(this.observationRefs);
+    this.observationRefs = new Map();
+    this.refs.clear();
+    await context.close();
     await this.openContext(storageState);
+    if (resumeTrace) {
+      await this.requireContext().tracing.start(TRACE_OPTIONS);
+      this.tracing = true;
+    }
   }
 
   private requireBaseUrl(): string {
@@ -240,14 +314,11 @@ export class PlaywrightSurface {
     return this.app.baseUrl;
   }
 
-  private checkOperation(operation: OperationContext): void {
-    if (operation.signal.aborted) {
-      throw new BackendError('CANCELLED', 'operation cancelled', { retryable: false });
-    }
-  }
-
   /**
-   * Checks cancellation, runs fn, and translates raw errors at the contract
+   * The single entry of every operation: rethrows an error latched on an
+   * unawaited path, refuses a cancelled operation, races `fn` against the
+   * operation signal so an abort mid-call surfaces as `CANCELLED` instead of
+   * waiting out Playwright, and translates raw errors at the contract
    * boundary. `translate` overrides the default translation for operations
    * with a documented retryable failure mode.
    */
@@ -255,11 +326,12 @@ export class PlaywrightSurface {
     operation: OperationContext,
     label: string,
     fn: () => Promise<T>,
-    translate: (cause: unknown, label: string) => BackendError = translatePwError,
+    translate: (cause: unknown, label: string) => Error = translatePwError,
   ): Promise<T> {
-    this.checkOperation(operation);
+    this.latch.throwPending();
+    if (operation.signal.aborted) throw cancelled(`${label} cancelled`);
     try {
-      return await fn();
+      return await raceAbort(fn(), operation.signal, label);
     } catch (cause) {
       throw translate(cause, label);
     }
@@ -403,21 +475,6 @@ export class PlaywrightSurface {
     );
   }
 
-  /** Grammar scroll: the viewport or one observed node, without momentum. */
-  scroll(
-    direction: ScrollDirection,
-    target: { readonly ref: NodeRef } | undefined,
-    operation: OperationContext,
-  ): Promise<void> {
-    return this.guard(operation, 'scroll', async () => {
-      if (target !== undefined) {
-        await performElementSwipe(this.lookupRef(target.ref), direction, 'none', operation.timeoutMs);
-        return;
-      }
-      await performViewportSwipe(this.requirePage(), direction, 'none');
-    });
-  }
-
   private async validateFrames(expression: LocatorExpression): Promise<void> {
     const page = this.requirePage();
     for (const selector of frameSelectors(expression)) {
@@ -457,18 +514,31 @@ export class PlaywrightSurface {
     return { relative, absolute };
   }
 
+  /** Redacted at the source: secure fields in every frame are masked, as in observation pixels. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
     return this.guard(operation, 'screenshot', async () => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
-      await page.screenshot({ path: absolute, timeout: operation.timeoutMs });
+      await page.screenshot({
+        path: absolute,
+        timeout: operation.timeoutMs,
+        ...maskOptions(secureFieldMasks(page)),
+      });
       return relative;
     });
   }
 
+  /** Reserves one trace file under the attempt directory. */
+  private tracePath(name: string): { relative: string; absolute: string } {
+    const relative = path.posix.join('trace', `${name}.zip`);
+    const absolute = path.join(this.artifactsDir, relative);
+    mkdirSync(path.dirname(absolute), { recursive: true });
+    return { relative, absolute };
+  }
+
   startTrace(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'trace', async () => {
-      await this.requireContext().tracing.start({ screenshots: true, snapshots: true });
+      await this.requireContext().tracing.start(TRACE_OPTIONS);
       this.tracing = true;
     });
   }
@@ -476,9 +546,7 @@ export class PlaywrightSurface {
   stopTrace(operation: OperationContext): Promise<string> {
     return this.guard(operation, 'trace', async () => {
       const context = this.requireContext();
-      const relative = path.posix.join('trace', 'trace.zip');
-      const absolute = path.join(this.artifactsDir, relative);
-      mkdirSync(path.dirname(absolute), { recursive: true });
+      const { relative, absolute } = this.tracePath('trace');
       await context.tracing.stop({ path: absolute });
       this.tracing = false;
       return relative;
@@ -506,12 +574,12 @@ export class PlaywrightSurface {
       }
       // A string here would be read by Playwright as a file path; a session
       // envelope must never be able to point the browser at the filesystem.
-      if (typeof state.data !== 'object' || state.data === null) {
+      if (!isStorageState(state.data)) {
         throw new BackendError('INVALID_STATE', 'state data must be a storage-state object', {
           retryable: false,
         });
       }
-      await this.replaceContext(state.data as StorageState);
+      await this.replaceContext(state.data);
     });
   }
 

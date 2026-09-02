@@ -13,6 +13,9 @@
       ],
       "e2e/driver": [
         "./spec/api/driver.d.ts"
+      ],
+      "@e2edev/playwright": [
+        "./spec/api/playwright.d.ts"
       ]
     },
     "strict": true,

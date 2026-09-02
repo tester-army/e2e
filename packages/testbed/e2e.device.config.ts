@@ -1,6 +1,6 @@
 /**
  * Opt-in device suite on the RFC0002 backend contract: an honest iOS target
- * with no driver, no browser, and no placeholder app URL. The stock
+ * with no browser backend and no placeholder app URL. The stock
  * createAgent brain runs over the agent-device backend; deterministic device
  * management (network, permissions, location) is the contributed `device`
  * fixture. Run manually:

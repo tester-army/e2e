@@ -25,7 +25,7 @@ const EXPRESSION: LocatorExpression = {
 
 interface ScreenScript {
   resolve?: Array<(() => readonly NodeRef[]) | 'stale' | 'frame' | 'failure' | 'foreign-stale'>;
-  read?: Array<(() => SemanticNode) | 'stale' | 'failure' | 'foreign-stale'>;
+  read?: Array<(() => SemanticNode) | 'stale' | 'stale-retryable' | 'failure' | 'foreign-stale'>;
   perform?: Array<(() => void) | 'stale' | 'committed' | 'not-actionable' | 'foreign-stale'>;
 }
 
@@ -50,8 +50,7 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
     return step;
   };
   const session = {
-    screen: {
-      async resolve() {
+      async locate() {
         const step = next(script.resolve, 'resolve');
         if (step === undefined || typeof step === 'function') return step?.() ?? [REF];
         if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
@@ -65,6 +64,7 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
         if (step === undefined || typeof step === 'function') return step?.() ?? NODE;
         if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: false });
         if (step === 'foreign-stale') throw foreignStale(false);
+        if (step === 'stale-retryable') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
         throw new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false });
       },
       async perform() {
@@ -79,7 +79,6 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
         throw new BackendError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
       },
       async swipe() {},
-    },
   } as unknown as TargetSession;
   const engine = new LocatorEngine({
     session,
@@ -92,6 +91,21 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
   });
   return { engine, calls };
 }
+
+describe('LocatorEngine read retry contract', () => {
+  it('re-resolves a read whose ref a concurrent resolution superseded', async () => {
+    const { engine, calls } = makeEngine({ read: ['stale-retryable', () => NODE] });
+    expect(await engine.read(EXPRESSION)).toEqual(NODE);
+    expect(calls.resolve).toBe(2);
+    expect(calls.read).toBe(2);
+  });
+
+  it('translates a non-retryable stale read without retrying', async () => {
+    const { engine, calls } = makeEngine({ read: ['stale'] });
+    await expect(engine.read(EXPRESSION)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(calls.read).toBe(1);
+  });
+});
 
 describe('LocatorEngine resolve retry contract', () => {
   it('retries retryable frame misses until the backend recovers', async () => {

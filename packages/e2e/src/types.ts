@@ -615,7 +615,7 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   retries?: number;
   workers?: number;
-  artifacts?: readonly ('trace' | 'screenshot' | 'video')[];
+  artifacts?: readonly ('trace' | 'screenshot')[];
   reporters?: readonly ('list' | 'json')[];
   screen?: {
     testIdAttribute?: string;

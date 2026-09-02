@@ -174,6 +174,82 @@ export function invalidState(text: string): BackendError {
   return new BackendError('INVALID_STATE', text, { retryable: false });
 }
 
+export function cancelled(text: string): BackendError {
+  return new BackendError('CANCELLED', text, { retryable: false });
+}
+
+/**
+ * Holds one error raised on a path nobody awaits - a native dialog nobody
+ * handled, a route handler that broke its contract - until the next step
+ * enters the surface, which then fails with the real cause. Rethrows once:
+ * the failure belongs to the step that observes it, not to every later one.
+ */
+export class ErrorLatch {
+  private pending: Error | null = null;
+
+  /** Latches an error; the first one wins until it is thrown or reset. */
+  latch(error: Error): void {
+    this.pending ??= error;
+  }
+
+  /** Rethrows the latched error once, if any. */
+  throwPending(): void {
+    if (this.pending !== null) {
+      const error = this.pending;
+      this.pending = null;
+      throw error;
+    }
+  }
+
+  reset(): void {
+    this.pending = null;
+  }
+}
+
+/**
+ * Awaits `promise` unless `signal` aborts first, in which case the wait ends
+ * with `CANCELLED`. The underlying work is not stopped - Playwright offers no
+ * handle to cancel an in-flight call - so its eventual rejection is absorbed
+ * rather than surfacing as an unhandled rejection.
+ */
+export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal, label: string): Promise<T> {
+  if (signal.aborted) {
+    promise.catch(() => undefined);
+    return Promise.reject(cancelled(`${label} cancelled`));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      promise.catch(() => undefined);
+      reject(cancelled(`${label} cancelled`));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
+
+/**
+ * Best-effort cleanup wait: resolves when `promise` settles, when `signal`
+ * aborts, or when `timeoutMs` elapses, whichever comes first. Cleanup never
+ * throws through here; a close that outlives its budget is simply abandoned.
+ */
+export function withinCleanupBudget(
+  promise: Promise<unknown>,
+  budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const settle = (): void => {
+      clearTimeout(timer);
+      budget.signal.removeEventListener('abort', settle);
+      resolve();
+    };
+    const timer = setTimeout(settle, Math.max(0, budget.timeoutMs));
+    budget.signal.addEventListener('abort', settle, { once: true });
+    promise.then(settle, settle);
+  });
+}
+
 /**
  * True for an error that already carries its classification: a `BackendError`
  * from any module copy, or a runner error (policy, validation, timeout). Those
@@ -186,9 +262,36 @@ export function isClassified(cause: unknown): cause is Error {
   return cause instanceof Error && cause.name === 'BackendError';
 }
 
+/**
+ * How a Playwright failure maps onto the error contract. Every translator in
+ * this package and in `actions.ts` follows this table:
+ *
+ * | Playwright failure                                              | Code                      |
+ * | --------------------------------------------------------------- | ------------------------- |
+ * | already a BackendError / runner error                           | passed through untouched  |
+ * | `TimeoutError` on a read, navigation, or artifact call          | OPERATION_TIMEOUT         |
+ * | `TimeoutError` on an action, log ends before the input dispatch | NOT_ACTIONABLE            |
+ * | `TimeoutError` on an action, log shows the dispatch started     | ACTION_MAY_HAVE_COMMITTED |
+ * | element detached / not attached / no element / resolved hidden  | NODE_STALE (retryable)    |
+ * | execution context destroyed / frame detached by a navigation    | NODE_STALE (retryable)    |
+ * | not an input / not editable / not checkable                     | NOT_ACTIONABLE            |
+ * | strict mode violation, anything else                            | BACKEND_FAILURE           |
+ *
+ * The action split is read from the call log Playwright appends to a timeout
+ * message: `performing <x> action`, `<x> action done`, and `waiting for
+ * scheduled navigations to finish` are only logged once the input is being (or
+ * has been) dispatched, so a timeout whose log reaches them is uncertain and
+ * the harness must not blindly repeat it. Every earlier line (`waiting for
+ * element to be visible, enabled and stable`, `scrolling into view if
+ * needed`, `retrying <x> action`) precedes dispatch and is a plain
+ * actionability miss.
+ */
+export const POST_DISPATCH_PATTERN =
+  /performing \w+ action|\w+ action done|waiting for scheduled navigations to finish/i;
+
 /** Translates an unexpected Playwright error at the contract boundary. */
-export function translatePwError(cause: unknown, operation: string): BackendError {
-  if (isClassified(cause)) return cause as BackendError;
+export function translatePwError(cause: unknown, operation: string): Error {
+  if (isClassified(cause)) return cause;
   if (isPwTimeout(cause)) {
     return new BackendError('OPERATION_TIMEOUT', `${operation} timed out: ${message(cause)}`, {
       retryable: false,
@@ -222,7 +325,7 @@ function isNavigationRace(cause: unknown): boolean {
  * of failing the call. Timeouts keep their meaning: an observation that cannot
  * be captured in time is not a race.
  */
-export function navigationStaleOr(cause: unknown, operation: string): BackendError {
+export function navigationStaleOr(cause: unknown, operation: string): Error {
   if (!isClassified(cause) && isNavigationRace(cause)) {
     return new BackendError('NODE_STALE', `${operation}: ${message(cause)}`, {
       retryable: true,
@@ -232,11 +335,15 @@ export function navigationStaleOr(cause: unknown, operation: string): BackendErr
   return translatePwError(cause, operation);
 }
 
-/** Like translatePwError, but detachment/miss failures become retryable NODE_STALE. */
-export function staleOr(cause: unknown, operation: string): BackendError {
-  if (isClassified(cause)) return cause as BackendError;
+/**
+ * Like translatePwError, but detachment/miss failures become retryable
+ * NODE_STALE. A timeout stays a timeout: `locate` resolves once and never
+ * waits, so a `TimeoutError` there is a budget that ran out, not a miss.
+ */
+export function staleOr(cause: unknown, operation: string): Error {
+  if (isClassified(cause)) return cause;
   const text = message(cause);
-  if (STALE_PATTERN.test(text) || isNavigationRace(cause) || isPwTimeout(cause)) {
+  if (STALE_PATTERN.test(text) || isNavigationRace(cause)) {
     return new BackendError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
   }
   return translatePwError(cause, operation);

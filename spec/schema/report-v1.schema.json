@@ -266,24 +266,6 @@
             },
             "required": ["observationRevision", "explanation"]
           }
-        },
-        {
-          "if": { "properties": { "api": { "const": "web.setViewport" } } },
-          "then": {
-            "properties": {
-              "viewport": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["width", "height", "scale"],
-                "properties": {
-                  "width": { "type": "integer", "minimum": 1 },
-                  "height": { "type": "integer", "minimum": 1 },
-                  "scale": { "type": "number", "exclusiveMinimum": 0 }
-                }
-              }
-            },
-            "required": ["viewport"]
-          }
         }
       ]
     },
@@ -497,7 +479,7 @@
         "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "artifactCapabilities": {
           "type": "array",
-          "items": { "enum": ["screenshot", "trace", "video"] },
+          "items": { "enum": ["screenshot", "trace"] },
           "uniqueItems": true
         },
         "stateCapability": { "type": "boolean" },

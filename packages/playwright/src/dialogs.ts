@@ -6,7 +6,7 @@
 
 import type { Dialog as PwDialog } from 'playwright';
 import { BackendError } from 'e2e/backend';
-import { message } from './support.ts';
+import { ErrorLatch, message } from './support.ts';
 
 /** A native dialog as a test's handler sees it. */
 export interface Dialog {
@@ -25,12 +25,17 @@ interface Registration {
 
 export class DialogRouter {
   private registrations: Registration[] = [];
-  private latched: BackendError | null = null;
+
+  /**
+   * `latch` is shared with the surface: a dialog failure and a route-handler
+   * failure surface through one check at the next step.
+   */
+  constructor(private readonly latch: ErrorLatch = new ErrorLatch()) {}
 
   /** Forgets every handler and any latched error; called per attempt. */
   reset(): void {
     this.registrations = [];
-    this.latched = null;
+    this.latch.reset();
   }
 
   /**
@@ -48,21 +53,19 @@ export class DialogRouter {
 
   /** Rethrows an error latched by an unhandled or failing dialog handler. */
   throwPending(): void {
-    if (this.latched !== null) {
-      const error = this.latched;
-      this.latched = null;
-      throw error;
-    }
+    this.latch.throwPending();
   }
 
   /** Routes one native dialog to the newest registered handler. */
   async dispatch(dialog: PwDialog): Promise<void> {
     const handler = this.registrations.at(-1)?.handler;
     if (handler === undefined) {
-      this.latched = new BackendError(
-        'INVALID_STATE',
-        `unhandled ${dialog.type()} dialog: ${dialog.message()}`,
-        { retryable: false },
+      this.latch.latch(
+        new BackendError(
+          'INVALID_STATE',
+          `unhandled ${dialog.type()} dialog: ${dialog.message()}`,
+          { retryable: false },
+        ),
       );
       await dialog.dismiss().catch(() => undefined);
       return;
@@ -81,10 +84,11 @@ export class DialogRouter {
       else if (handler === 'dismiss') await dialog.dismiss();
       else await handler(publicDialog);
     } catch (cause) {
-      this.latched = new BackendError(
-        'BACKEND_FAILURE',
-        `dialog handler failed: ${message(cause)}`,
-        { retryable: false, cause },
+      this.latch.latch(
+        new BackendError('BACKEND_FAILURE', `dialog handler failed: ${message(cause)}`, {
+          retryable: false,
+          cause,
+        }),
       );
     }
   }

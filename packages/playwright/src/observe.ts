@@ -1,6 +1,6 @@
 /** Masked pixel capture for an observation (spec 14-security.md). */
 
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 import type { ObservationPixels, OperationContext } from 'e2e/backend';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
@@ -13,7 +13,23 @@ import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 const PIXEL_CAPTURE_TIMEOUT_MS = 10_000;
 
 /** Opaque fill covering every masked region. */
-const MASK_COLOR = '#000000';
+export const MASK_COLOR = '#000000';
+
+/**
+ * One mask locator per frame Playwright can reach, covering every secure
+ * field. Sweeping every frame rather than only the frames an observation
+ * walked makes the masked set a superset of the observed secure set - the
+ * direction that is safe. Shared by the observation pixels and the artifact
+ * screenshot so both are redacted at the source by the same rule.
+ */
+export function secureFieldMasks(page: Page): Locator[] {
+  return page.frames().map((frame) => frame.locator(SECURE_FIELD_SELECTOR));
+}
+
+/** Screenshot options that apply the secure-field masks; empty when there is no frame to mask. */
+export function maskOptions(masks: readonly Locator[]): Partial<{ mask: Locator[]; maskColor: string }> {
+  return masks.length === 0 ? {} : { mask: [...masks], maskColor: MASK_COLOR };
+}
 
 export interface PixelCapture {
   readonly pixels: ObservationPixels;
@@ -25,10 +41,8 @@ export interface PixelCapture {
  *
  * Secure fields are covered before the image leaves the backend and the covered
  * regions are counted, so the runner can prove the image is at least as redacted
- * as the tree. The sweep runs over every frame Playwright can reach rather than
- * only the frames the observation walked, which makes the masked set a superset
- * of the observed secure set — the direction that is safe, and the one the
- * runner's clearance check requires.
+ * as the tree (the runner's clearance check requires the masked set to be a
+ * superset of the observed secure set, which `secureFieldMasks` guarantees).
  *
  * `scale: 'css'` keeps the image in the CSS pixel space every observed node rect
  * already uses, which is what lets the runner hit-test a point against the same
@@ -39,7 +53,7 @@ export async function capturePixels(
   operation: OperationContext,
   viewport: { readonly width: number; readonly height: number },
 ): Promise<PixelCapture> {
-  const masks = page.frames().map((frame) => frame.locator(SECURE_FIELD_SELECTOR));
+  const masks = secureFieldMasks(page);
   // A frame that detaches mid-sweep contributes nothing to the count, which can
   // only push the observation toward withholding the image.
   const counts = await Promise.all(masks.map((mask) => mask.count().catch(() => 0)));
@@ -49,7 +63,7 @@ export async function capturePixels(
     animations: 'disabled',
     caret: 'hide',
     timeout: Math.max(1, Math.min(operation.timeoutMs, PIXEL_CAPTURE_TIMEOUT_MS)),
-    ...(masks.length === 0 ? {} : { mask: masks, maskColor: MASK_COLOR }),
+    ...maskOptions(masks),
   });
   const data = new Uint8Array(image);
   // The bytes are the authority on their own size. `scale: 'css'` is asked for

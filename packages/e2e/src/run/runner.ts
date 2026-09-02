@@ -21,8 +21,7 @@ import {
 } from '../internal/errors.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
-import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
+import { buildReport, describeTarget, type Report1Document, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
@@ -312,36 +311,21 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
 /**
  * Grades one target from its backend declaration and validates the configured
- * artifacts against it; returns the report provenance. A target without a
- * backend is agent-tools-only and honestly reports no capabilities.
+ * artifacts against it; returns the report provenance.
  */
 function validateBackend(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
-  const backend = target.backend;
-  const artifactCapabilities: ('screenshot' | 'trace' | 'video')[] = [];
-  if (backend?.artifacts !== undefined) {
-    artifactCapabilities.push('screenshot');
-    if (backend.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
-  }
+  const provenance = describeTarget(target);
   // The default artifact set is best-effort: a backend without evidence
   // capture simply records none. Asking for one explicitly is a contract.
   for (const artifact of config.artifactsExplicit ? config.artifacts : []) {
-    if (!artifactCapabilities.includes(artifact)) {
+    if (!provenance.artifactCapabilities.includes(artifact)) {
       throw new ConfigurationError(
         'UNSUPPORTED_ARTIFACT',
-        `target "${target.name}" (backend ${backend?.name ?? 'none'}) does not support the configured "${artifact}" artifact`,
+        `target "${target.name}" (backend ${provenance.backend.name}) does not support the configured "${artifact}" artifact`,
       );
     }
   }
-  return {
-    backend: {
-      name: backend?.name ?? 'none',
-      version: backend?.version ?? 'unversioned',
-      spiVersion: BACKEND_SPI_VERSION,
-    },
-    capabilities: [...(backend?.capabilities ?? [])].toSorted(),
-    artifactCapabilities,
-    stateCapability: backend?.state !== undefined,
-  };
+  return provenance;
 }
 
 function resultExitCodes(results: readonly ResultRecord[]): number[] {

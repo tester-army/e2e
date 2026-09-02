@@ -45,9 +45,8 @@ Run files in parallel with `--workers`, or set `workers` in the config.
 
 ## Agent steps
 
-Deterministic tests need no model. Agent steps — `agent.tap`, `click`, `type`,
-`longPress`, `scroll`, `scrollTo`, `waitFor`, `extract`, and `assert` — require
-one:
+Deterministic tests need no model. Agent steps — `agent.act`, `assert`,
+`waitFor`, and `extract` — require one:
 
 ```ts
 export default defineConfig({

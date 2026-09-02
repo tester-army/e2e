@@ -50,9 +50,13 @@ test-target result (including filtered/skipped pairs), all attempts, steps,
 artifacts, errors, cleanup outcomes, and selection counts.
 Target provenance includes the backend name/version/contract version, the
 declared capability set (harness capabilities plus contributed fixture names),
-artifact capabilities, state capability, origin, and production policy. It
-carries no platform noun: a step that changes the viewport records the
-resulting viewport on that step, and nothing else about the surface is assumed.
+artifact capabilities, state capability, origin, and production policy.
+`artifactCapabilities` lists the configurable kinds a backend can produce on
+request, `screenshot` and `trace`; `video` is not a configurable capability,
+though it remains a valid kind for a fixture to attach. The report carries no
+platform noun and no backend method name: a step that changes the viewport
+records the resulting viewport on that step as an optional field, and nothing
+else about the surface is assumed.
 
 The only inventory exception is collection failure before expansion due to the
 discovered-result limit. That error report contains no results and zero summary

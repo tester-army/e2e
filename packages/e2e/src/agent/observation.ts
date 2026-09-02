@@ -4,7 +4,6 @@ import type { Observation, ObservationPixels, SemanticNode } from '../backend/su
 import { sanitizeText } from '../internal/errors.ts';
 import { createRedactor } from '../internal/redact.ts';
 import { sleep } from '../internal/time.ts';
-import { AgentError } from './error.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
@@ -35,9 +34,10 @@ export interface AgentObservation {
 /**
  * Turns one raw backend observation into redacted model input.
  *
- * An observation whose masking the backend cannot prove is rejected before it
- * reaches a model or disk. Registered secret values are additionally replaced
- * by their stable secret name.
+ * Pixels whose masking the backend cannot prove (fewer masked regions than
+ * secure nodes) are withheld before they reach a model or disk; the semantic
+ * tree never carries secure values. Registered secret values are additionally
+ * replaced by their stable secret name.
  */
 export function prepareObservation(
   observation: Observation,
@@ -47,13 +47,6 @@ export function prepareObservation(
     testIdAttribute: string;
   },
 ): AgentObservation {
-  if (!observation.redaction.complete) {
-    throw new AgentError(
-      'POLICY_DENIED',
-      'the backend could not prove observation masking is complete; the observation was discarded',
-    );
-  }
-
   const nodes = new Map<string, SemanticNode>();
   indexNodes(observation.tree, nodes);
 

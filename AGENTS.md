@@ -27,7 +27,9 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 - `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
   `e2e/backend` contract. Core knows the contract and never a backend's
   internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
-  `src/` (grep for them; zero hits is the invariant).
+  `src/` (grep for them; zero hits is the invariant). The one exception is the
+  `e2e init` scaffold template in `src/cli/init.ts`, which writes the user's
+  config and so names `@e2edev/playwright` as text.
   - `src/run/` runner core (scheduler, units, workers, retries, sessions),
     `src/collect/` registration+selection, `src/locator/` locator AST/engine,
     `src/agent/` the agent (the `act` executor socket plus the judgment

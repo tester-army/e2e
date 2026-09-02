@@ -14,24 +14,28 @@ export function defineBackend(spec: Backend): BackendHandle;
 export function isBackendHandle(value: unknown): value is BackendHandle;
 ```
 
-Validation fails with `INVALID_CONFIG`, never a silent demotion: unknown keys,
-`actions` or `locate` without `observe`, `perform`/`swipe` without `locate`,
-malformed `state`/`artifacts`/`app`, a fixture name that is not a lower-camel
-identifier or shadows a universal fixture (`agent`, `app`, `screen`,
-`platform`, `session`), or a `spiVersion` other than `1`.
+Validation fails with `INVALID_CONFIG`, never a silent demotion: a missing or
+empty `version`, a `spiVersion` other than `1`, an unknown top-level key,
+`perform`, `locate`, or `swipe` without `observe`, a `state`, `artifacts`, or
+`app` manifest that is not an object, carries an unknown key, or has a
+non-function member (`state` needs both `capture` and `restore`; `artifacts`
+needs `screenshot`, and `startTrace`/`stopTrace` come together), or a fixture
+name that is not a lower-camel identifier or shadows a universal fixture
+(`agent`, `app`, `screen`, `platform`, `session`). Every function on the handle
+is bound to the spec it came from, so a class instance is as valid a body as an
+object literal.
 
 ## Backend
 
 ```ts
 export interface Backend {
   readonly name: string;
-  readonly version?: string;
+  readonly version: string;
   readonly spiVersion: 1;
 
   observe?(context: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot>;
-  readonly actions?: BackendActions;
-  locate?(expression: LocatorExpression, context: OperationContext): Promise<readonly SemanticNode[]>;
   perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
+  locate?(expression: LocatorExpression, context: OperationContext): Promise<readonly SemanticNode[]>;
   swipe?(direction: ScrollDirection, momentum: Momentum | undefined, context: OperationContext): Promise<void>;
   readonly fixtures?: Readonly<Record<string, BackendFixtureFactory>>;
   readonly state?: BackendStateCapability;
@@ -41,23 +45,32 @@ export interface Backend {
 
   init?(info: BackendInitInfo): Promise<void>;
   startAttempt?(context: BackendAttemptContext): Promise<void>;
-  endAttempt?(): Promise<void>;
-  dispose?(): Promise<void>;
+  endAttempt?(context: BackendCleanupContext): Promise<void>;
+  dispose?(context: BackendCleanupContext): Promise<void>;
 }
 ```
+
+`version` is required and non-empty. It is recorded as provenance in the report
+and is part of the trace cache identity: a backend that resolves nodes
+differently must never replay another version's traces.
 
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay |
-| `actions` | `actions` | `observe` | grammar verbs for the agent, `app.open()`, `app.back()` |
+| `perform` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, node `scroll`) and the `Locator` action set with platform actionability checks |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
-| `perform` | - | `locate` | the full `Locator` action set with platform actionability checks |
-| `swipe` | - | `locate` | `screen.swipe`, `scrollUntilVisible` |
+| `swipe` | - | `observe` | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
 | `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']` |
-| `app` | - | - | `app.restart()`, `app.clearState()` |
+| `app` | - | - | `app.open()` and the agent's `navigate` verb (`navigate`), `app.back()` (`back`), `app.restart()`, `app.clearState()` |
 | `url` | - | - | trace start anchors, the secret-fill origin check |
+
+The agent offers the model only the verbs the backend declares: `tap`, `type`,
+`press`, `select`, and `type_secret` need `perform`; `scroll` needs `swipe`
+(a scroll aimed at a node is `perform` with `{ kind: 'swipe' }`); `navigate`
+needs `app.navigate`. An undeclared verb is absent from the toolset rather than
+a runtime surprise.
 
 `backend.capabilities` is the computed `ReadonlySet` of capability names and is
 what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
@@ -66,16 +79,16 @@ what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 
 | Hook | When | Budget |
 | --- | --- | --- |
-| `init(info)` | once per worker, before the first attempt | `launchTimeout`; failure is infrastructure |
+| `init(info)` | once per worker, before the first attempt; runs again after `dispose` when a config-held handle outlives an in-process worker, so it must work on a disposed backend as on a fresh one | `launchTimeout`; `info.signal` aborts on interrupt or timeout; failure is infrastructure |
 | `startAttempt(context)` | before every attempt; `context.artifactsDir` is where artifacts go | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
-| `endAttempt()` | after every attempt, idempotent | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
-| `dispose()` | worker shutdown, whether or not `init` ran | `cleanupTimeout`; failure is a run error |
+| `endAttempt(context)` | after every attempt, idempotent, and safe after a failed `startAttempt` | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure marks cleanup failed, the test keeps its status |
+| `dispose(context)` | worker shutdown, whether or not `init` ran | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure is a run error |
 
 ```ts
 export interface BackendInitInfo {
   readonly runId: string;
   readonly targetName: string;
-  readonly app: { readonly baseUrl: string; readonly allowedOrigins: readonly string[] };
+  readonly app: { readonly baseUrl?: string; readonly allowedOrigins: readonly string[] };
   readonly testIdAttribute: string;
   readonly headed: boolean;
   readonly signal: AbortSignal;
@@ -86,7 +99,15 @@ export interface BackendAttemptContext {
   readonly artifactsDir: string;
   readonly signal: AbortSignal;
 }
+
+export interface BackendCleanupContext {
+  readonly signal: AbortSignal;
+  readonly timeoutMs: number;
+}
 ```
+
+`app.baseUrl` is absent when the project configured no app URL. A surface that
+needs one fails the call that needs it; it never navigates to a placeholder.
 
 ## Observation
 
@@ -108,20 +129,42 @@ screenshot-and-coordinates surface is observable.
 ## Actions
 
 ```ts
-export interface BackendActions {
-  tap?(target: { ref: NodeRef }, context: OperationContext): Promise<void>;
-  type?(target: { ref: NodeRef }, value: string, context: OperationContext): Promise<void>;
-  press?(target: { ref: NodeRef }, key: string, context: OperationContext): Promise<void>;
-  select?(target: { ref: NodeRef }, value: string, context: OperationContext): Promise<void>;
-  scroll?(direction: ScrollDirection, target: { ref: NodeRef } | undefined, context: OperationContext): Promise<void>;
+export type LocatorAction =
+  | { kind: 'tap' | 'doubleTap' | 'check' | 'uncheck' | 'clear' | 'focus' | 'hover' | 'scrollIntoView' }
+  | { kind: 'longPress'; durationMs?: number }
+  | { kind: 'fill'; value: string; sensitive: boolean }
+  | { kind: 'press'; key: string }
+  | { kind: 'selectOption'; value: SelectOption }
+  | { kind: 'setInputFiles'; paths: readonly string[] }
+  | { kind: 'dragTo'; target: NodeRef }
+  | { kind: 'swipe'; direction: ScrollDirection; momentum?: Momentum };
+```
+
+`perform(ref, action, context)` performs exactly one action on a ref this
+backend minted, from the newest observation or from `locate` (both live in one
+id space), with the platform's actionability checks. The agent's grammar verbs
+and the `screen` tier's actions both bottom out here, so a surface implements
+each action once. Throw a retryable `NODE_STALE` when the ref no longer binds
+and `ACTION_MAY_HAVE_COMMITTED` when input may have reached the app; the harness
+never blindly repeats an uncertain mutation. An action kind the surface cannot
+express fails with `UNSUPPORTED_CAPABILITY`.
+
+The grammar is closed. Anything beyond it is an agent-side `defineTool`.
+
+## App
+
+```ts
+export interface BackendApp {
   navigate?(url: string, context: OperationContext): Promise<void>;
   back?(context: OperationContext): Promise<void>;
+  restart?(context: OperationContext): Promise<void>;
+  clearState?(context: OperationContext): Promise<void>;
 }
 ```
 
-The grammar is closed. Declare the verbs the surface supports; an absent verb
-fails a step action with `UNSUPPORTED_CAPABILITY` and the model is told.
-Anything beyond the grammar is an agent-side `defineTool`.
+`navigate` receives a URL the harness already resolved against the base URL and
+the origin policy, and is absent on a surface without addressable locations.
+Node actions never live here; they are `perform`.
 
 ## Errors
 
@@ -131,6 +174,9 @@ export class BackendError extends Error {
   readonly code: BackendErrorCode;
   readonly retryable: boolean;
 }
+
+export const BACKEND_ERROR_CODES: readonly BackendErrorCode[];
+export const RETRYABLE_BACKEND_ERROR_CODES: ReadonlySet<BackendErrorCode>; // NODE_STALE, FRAME_NOT_FOUND
 
 export type BackendErrorCode =
   | 'NODE_STALE' | 'FRAME_NOT_FOUND' | 'FRAME_AMBIGUOUS' | 'NOT_ACTIONABLE'
@@ -149,8 +195,9 @@ export type BackendErrorCode =
 | `INVALID_STATE` | `APP_NOT_OPEN` | no |
 | `BACKEND_FAILURE`, any non-`BackendError` | infrastructure `BACKEND_FAILURE` | no |
 
-Retryability is closed to the two repeatable-read codes; a retryable claim on
-any other code is coerced to a non-retryable `BACKEND_FAILURE`.
+Retryability is closed to `RETRYABLE_BACKEND_ERROR_CODES`, the two
+repeatable-read codes; a retryable claim on any other code is coerced to a
+non-retryable `BACKEND_FAILURE`.
 
 ## State
 
@@ -174,6 +221,20 @@ at run end, and never logs, reports, digests, or sends it to a model. A backend
 must not persist, cache, log, or echo a snapshot, and `restore` replaces the
 surface's persisted state rather than merging into it.
 
+## Artifacts
+
+```ts
+export interface BackendArtifacts {
+  screenshot(label: string | undefined, context: OperationContext): Promise<string>;
+  startTrace?(context: OperationContext): Promise<void>;
+  stopTrace?(context: OperationContext): Promise<string>;
+}
+```
+
+Every returned path is relative to the `artifactsDir` the backend received in
+`startAttempt`. `screenshot` masks secure fields at the source. `startTrace`
+and `stopTrace` are declared together or not at all.
+
 ## Contributed fixtures
 
 ```ts
@@ -181,7 +242,7 @@ export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
 
 export interface BackendFixtureContext {
   readonly targetName: string;
-  readonly app: { baseUrl: string; allowedOrigins: readonly string[]; resolveUrl(url: string): string };
+  readonly app: { baseUrl?: string; allowedOrigins: readonly string[]; resolveUrl(url: string): string };
   readonly timeouts: { test: number; action: number; assertion: number };
   readonly signal: AbortSignal;
   operation(timeoutMs?: number): OperationContext;
@@ -197,15 +258,18 @@ The harness records every async method call on a contributed fixture as a
 `<fixture>.<method>` step, labelled with the first string argument, bounded by
 `actionTimeout` or the call's own `{ timeout }` option, and aborted with the
 attempt. Synchronous members are accessors and pass through; nested plain
-objects are namespaces (`web.keyboard.press`). `expectable` attaches an
-expectation surface so `expect(fixture)` returns it, with every matcher recorded
-as an `expect.<matcher>` assertion step. Type the fixture in tests with
-`test.extend<{ name: Type }>()`.
+objects are namespaces (`web.keyboard.press`). `app.resolveUrl` throws
+`APP_URL_REQUIRED` when no app URL is configured and `POLICY_DENIED` for a
+disallowed origin or scheme, so a fixture never re-implements the policy the
+harness owns. `expectable` attaches an expectation surface so `expect(fixture)`
+returns it, with every matcher recorded as an `expect.<matcher>` assertion
+step. Type the fixture in tests with `test.extend<{ name: Type }>()`.
 
 ## Vocabulary
 
 `OperationContext`, `TextPattern`, `SemanticQuery`, `LocatorExpression`,
 `NodeRef`, `SemanticNode`, `ObservationPixels`, `LocatorAction`,
+`BACKEND_SPI_VERSION`, `BACKEND_ERROR_CODES`, `RETRYABLE_BACKEND_ERROR_CODES`,
 `OBSERVED_NAME_LIMIT`, and `OBSERVED_TEXT_LIMIT` are exported from
 `e2e/backend` and are the platform-neutral words every backend speaks. The
 `selector` expression kind carries a platform-native selector string (CSS or

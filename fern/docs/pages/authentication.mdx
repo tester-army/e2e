@@ -80,9 +80,11 @@ from the environment.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   app: { url: 'http://127.0.0.1:3000' },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   credentials: {
     admin: {
       username: 'admin@example.test',

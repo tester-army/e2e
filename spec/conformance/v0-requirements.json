@@ -8,7 +8,7 @@
       { "id": "SDK-TYPES-003", "source": "api/type-tests.ts", "requirement": "Async describe callbacks are rejected by the type surface." },
       { "id": "SDK-TYPES-004", "source": "examples", "requirement": "Every canonical example type-checks without implementation-only types." },
       { "id": "SDK-TYPES-005", "source": "02-test-api.md", "requirement": "Setup-only and ordinary fixture authority remain type-distinct." },
-      { "id": "SDK-TYPES-006", "source": "api/e2e.d.ts", "requirement": "Driver handles and secret handles are nominal and nonforgeable." }
+      { "id": "SDK-TYPES-006", "source": "api/e2e.d.ts", "requirement": "Backend handles and secret handles are nominal and nonforgeable." }
     ],
     "runner-0.1": [
       { "id": "RUNNER-CONFIG-001", "source": "05-config.md", "requirement": "Project/config discovery, unknown-key rejection, and precedence are deterministic." },

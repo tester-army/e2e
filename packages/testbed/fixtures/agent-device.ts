@@ -2,8 +2,9 @@
  * agent-device as an RFC0002 backend: the typed, model-free body of an iOS
  * target. It contributes
  *
- * - observation (accessibility snapshot) and the tap/type/scroll grammar, so
- *   `agent.act` and the judgment tier run over the simulator;
+ * - observation (accessibility snapshot), `perform` for tap and fill, and a
+ *   viewport `swipe`, so `agent.act` and the judgment tier run over the
+ *   simulator with exactly the tap/type/scroll grammar;
  * - a contributed `device` fixture — deterministic device management the
  *   harness records and bounds like any other step: network, permissions,
  *   location, appearance, home. This is the primitive that must NOT live in
@@ -14,7 +15,7 @@
  */
 
 import { createAgentDeviceClient } from 'agent-device';
-import { defineBackend, type BackendSnapshot } from 'e2e/backend';
+import { BackendError, defineBackend, type BackendSnapshot } from 'e2e/backend';
 import { defineTool, type DefinedTool } from 'e2e/agent';
 import { tool } from 'ai';
 import { readFileSync } from 'node:fs';
@@ -109,6 +110,7 @@ export function agentDevice(options: AgentDeviceOptions): {
 
   const backend = defineBackend({
     name: 'agent-device',
+    version: '0.1.0',
     spiVersion: 1,
     async init() {
       // Boot the simulator once per worker, outside every step budget, so
@@ -122,17 +124,26 @@ export function agentDevice(options: AgentDeviceOptions): {
     async observe() {
       return toBackendSnapshot(await snapshotWithRetry(client));
     },
-    actions: {
-      async tap(target) {
-        await client.interactions.press({ ref: `@${target.ref.id}` });
-      },
-      async type(target, value) {
-        // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-        await client.interactions.fill({ ref: `@${target.ref.id}`, text: value });
-      },
-      async scroll(direction) {
-        await client.interactions.scroll({ direction });
-      },
+    async perform(ref, action) {
+      switch (action.kind) {
+        case 'tap':
+          await client.interactions.press({ ref: `@${ref.id}` });
+          return;
+        case 'fill':
+          // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
+          await client.interactions.fill({ ref: `@${ref.id}`, text: action.value });
+          return;
+        case 'swipe':
+          await client.interactions.scroll({ direction: action.direction });
+          return;
+        default:
+          throw new BackendError('UNSUPPORTED_CAPABILITY', `agent-device cannot perform "${action.kind}"`, {
+            retryable: false,
+          });
+      }
+    },
+    async swipe(direction) {
+      await client.interactions.scroll({ direction });
     },
     fixtures: {
       // Returns a Device (see the interface); the object literal also

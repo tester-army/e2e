@@ -212,7 +212,7 @@ export class TargetExecutor implements SerialHost {
         this.config.cleanupTimeout,
         'CLEANUP_TIMEOUT',
         NEVER_ABORTS,
-        () => disposeBackend(),
+        (signal) => disposeBackend({ signal, timeoutMs: this.config.cleanupTimeout }),
       );
     } catch (cause) {
       this.runErrors.push({ error: serializeError(classifyError(cause), { phase: 'cleanup' }) });

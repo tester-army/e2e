@@ -4,10 +4,11 @@
  * A backend never talks to a model. It declares capabilities - observation,
  * actions, location, state, artifacts, contributed fixtures - and the harness
  * grades what a target can do from what its backend declares: observation
- * unlocks the judgment tier and prompt snapshots, actions unlock the
- * harness-routed grammar verbs, location unlocks `screen`/`expect`. Every
- * piece of model-facing vocabulary is an agent-side `defineTool`; a target
- * with no backend at all is valid and simply runs everything opaque.
+ * unlocks the judgment tier and prompt snapshots, `perform` unlocks the
+ * harness-routed node actions (the agent's grammar verbs and the `screen`
+ * tier's actions alike), location unlocks `screen`/`expect`. Every piece of
+ * model-facing vocabulary is an agent-side `defineTool`; a target with no
+ * backend at all is valid and simply runs everything opaque.
  *
  * Core knows this contract and never a backend's internals: no platform noun
  * appears here. A document backend, a simulator backend, and a desktop backend
@@ -33,7 +34,14 @@ import {
 } from './contract.ts';
 
 export type * from './contract.ts';
-export { BACKEND_SPI_VERSION, BackendError, OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from './contract.ts';
+export {
+  BACKEND_ERROR_CODES,
+  BACKEND_SPI_VERSION,
+  BackendError,
+  OBSERVED_NAME_LIMIT,
+  OBSERVED_TEXT_LIMIT,
+  RETRYABLE_BACKEND_ERROR_CODES,
+} from './contract.ts';
 export type {
   Expectable,
   JsonValue,
@@ -47,8 +55,8 @@ export type {
 
 /**
  * Capability names: the closed harness capabilities plus one name per
- * contributed fixture. Dependencies: actions and location require
- * observation (their refs live in the same semantic space).
+ * contributed fixture. `actions` is `perform`; `location` is `locate`. Both
+ * require observation, because their refs live in the observation's id space.
  */
 export type BackendCapability =
   | 'observation'
@@ -168,8 +176,18 @@ export interface BackendArtifacts {
   stopTrace?(context: OperationContext): Promise<string>;
 }
 
-/** App lifecycle hooks behind the universal `app` fixture. */
+/**
+ * App-level hooks behind the universal `app` fixture and the agent's
+ * `navigate` verb. Node actions never live here; they are `perform`.
+ */
 export interface BackendApp {
+  /**
+   * Opens one URL the harness already resolved against the base URL and the
+   * origin policy. Absent on a surface without addressable locations.
+   */
+  navigate?(url: string, context: OperationContext): Promise<void>;
+  /** Navigates back once in the surface's history. */
+  back?(context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state, and relaunches. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and relaunches. */
@@ -185,7 +203,7 @@ export interface BackendInitInfo {
   readonly testIdAttribute: string;
   /** Whether the run asked for a visible surface (`--headed`). */
   readonly headed: boolean;
-  /** Aborts on interrupt; init must stop promptly. */
+  /** Aborts on interrupt and when init exceeds the launch timeout; init must stop promptly. */
   readonly signal: AbortSignal;
 }
 
@@ -204,6 +222,17 @@ export interface BackendAttemptContext {
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+}
+
+/**
+ * Budget of one cleanup hook (`endAttempt`, `dispose`). `signal` aborts when
+ * the budget is exhausted, so a hook that cannot finish in time stops instead
+ * of running on into the next attempt's setup.
+ */
+export interface BackendCleanupContext {
+  readonly signal: AbortSignal;
+  /** Remaining cleanup budget when the call starts. */
+  readonly timeoutMs: number;
 }
 
 export interface BackendObserveOptions {
@@ -225,46 +254,15 @@ export interface BackendSnapshot {
   readonly maskedRegionCount?: number;
 }
 
-/**
- * The typed verb set. Targets are refs the backend minted, from the newest
- * observation or from `locate`: both live in one id space, so a verb looks a
- * ref up the same way whichever tier minted it. Declare the verbs the surface
- * supports; an absent verb fails a step action with `UNSUPPORTED_CAPABILITY`
- * instead of letting a model flail against it.
- *
- * Error contract (load-bearing for trace replay): throw a retryable
- * `NODE_STALE`-coded error when a ref no longer binds, and an
- * `ACTION_MAY_HAVE_COMMITTED`-coded error when input may have reached the
- * app - the harness never blindly repeats an uncertain mutation.
- */
-export interface BackendActions {
-  tap?(target: { readonly ref: NodeRef }, context: OperationContext): Promise<void>;
-  type?(
-    target: { readonly ref: NodeRef },
-    value: string,
-    context: OperationContext,
-  ): Promise<void>;
-  press?(target: { readonly ref: NodeRef }, key: string, context: OperationContext): Promise<void>;
-  select?(
-    target: { readonly ref: NodeRef },
-    value: string,
-    context: OperationContext,
-  ): Promise<void>;
-  scroll?(
-    direction: ScrollDirection,
-    target: { readonly ref: NodeRef } | undefined,
-    context: OperationContext,
-  ): Promise<void>;
-  navigate?(url: string, context: OperationContext): Promise<void>;
-  /** Navigates back once in the surface's history. */
-  back?(context: OperationContext): Promise<void>;
-}
-
 /** The body of one target: typed, model-free, capability-graded. */
 export interface Backend {
   readonly name: string;
-  /** Implementation version, recorded as provenance and in cache identity. */
-  readonly version?: string;
+  /**
+   * Implementation version, recorded as provenance and part of the trace
+   * cache identity: a backend that resolves nodes differently must not replay
+   * another version's traces, so an unversioned backend is not accepted.
+   */
+  readonly version: string;
   /**
    * Contract version literal. Additive optional members never bump it;
    * changed required semantics do.
@@ -272,27 +270,34 @@ export interface Backend {
   readonly spiVersion: BackendSpiVersion;
   /** capability: observation. */
   observe?(context: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot>;
-  /** capability: actions - requires observation (targets are observation refs). */
-  readonly actions?: BackendActions;
+  /**
+   * capability: actions - requires observation. Performs exactly one action
+   * on a ref this backend minted, from the newest observation or from
+   * `locate` (both live in one id space), with the platform's actionability
+   * checks. The agent's grammar verbs (tap, type, press, select, node scroll)
+   * and the `screen` tier's actions both bottom out here, so a surface
+   * implements each action once.
+   *
+   * Error contract (load-bearing for trace replay): throw a retryable
+   * `NODE_STALE`-coded error when a ref no longer binds, and an
+   * `ACTION_MAY_HAVE_COMMITTED`-coded error when input may have reached the
+   * app - the harness never blindly repeats an uncertain mutation.
+   */
+  perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
   /**
    * capability: location - requires observation. Deterministic locator
    * resolution for the `screen`/`expect` tier: resolve one expression to the
    * nodes it currently matches. The harness owns polling, strictness, and
-   * staleness; a backend resolves once, immediately. Located ids share the
-   * id space of observed ids, so `perform` and the grammar verbs accept either.
+   * staleness; a backend resolves once, immediately.
    */
   locate?(
     expression: LocatorExpression,
     context: OperationContext,
   ): Promise<readonly SemanticNode[]>;
   /**
-   * Performs one deterministic action on a located node, with the platform's
-   * actionability checks. Without it the location tier routes tap/fill/press/
-   * select through the grammar verbs and reports every other action as
-   * unsupported.
+   * Viewport-level swipe behind the agent's `scroll` verb, `screen.swipe`,
+   * and `scrollUntilVisible`; requires observation.
    */
-  perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
-  /** Viewport-level swipe behind `screen.swipe` and `scrollUntilVisible`. */
   swipe?(
     direction: ScrollDirection,
     momentum: Momentum | undefined,
@@ -308,24 +313,32 @@ export interface Backend {
   readonly state?: BackendStateCapability;
   /** capability: artifacts - screenshots and traces under the attempt directory. */
   readonly artifacts?: BackendArtifacts;
-  /** App lifecycle behind `app.restart()` and `app.clearState()`. */
+  /** App-level hooks: navigate, back, restart, clearState. */
   readonly app?: BackendApp;
   /**
    * Current top-level URL of the surface, when the platform has one. Enables
    * trace start anchors and the secret-fill origin check.
    */
   url?(context: OperationContext): Promise<string>;
-  /** Once per worker, before the first step; boot devices here, not in a step budget. */
+  /**
+   * Once per worker, before the first step; boot devices here, not in a step
+   * budget. The same handle can be booted again after `dispose`: a config-held
+   * handle outlives an in-process worker, so init MUST work on a disposed
+   * backend as it does on a fresh one.
+   */
   init?(info: BackendInitInfo): Promise<void>;
   /** Before each attempt: set up per-test isolation. */
   startAttempt?(context: BackendAttemptContext): Promise<void>;
-  /** After each attempt, bounded by the cleanup timeout: tear that isolation down. */
-  endAttempt?(): Promise<void>;
   /**
-   * Worker shutdown, bounded by the cleanup timeout; failure is a run error.
-   * Runs whether or not `init` ran, so it MUST tolerate a cold backend.
+   * After each attempt, within the cleanup budget: tear that isolation down.
+   * MUST be idempotent, and safe to call after a failed `startAttempt`.
    */
-  dispose?(): Promise<void>;
+  endAttempt?(context: BackendCleanupContext): Promise<void>;
+  /**
+   * Worker shutdown, within the cleanup budget; failure is a run error. Runs
+   * whether or not `init` ran, so it MUST tolerate a cold backend.
+   */
+  dispose?(context: BackendCleanupContext): Promise<void>;
 }
 
 /** A validated backend: branded, frozen, capabilities computed. */
@@ -334,12 +347,12 @@ export interface BackendHandle extends Backend {
   readonly capabilities: ReadonlySet<BackendCapability>;
 }
 
-const KNOWN_KEYS = new Set([
+/** Every key a backend may declare; anything else is rejected at config load. */
+const KNOWN_KEYS = [
   'name',
   'version',
   'spiVersion',
   'observe',
-  'actions',
   'locate',
   'perform',
   'swipe',
@@ -352,16 +365,18 @@ const KNOWN_KEYS = new Set([
   'startAttempt',
   'endAttempt',
   'dispose',
-]);
+] as const satisfies readonly (keyof Backend)[];
 
-/** Universal fixture names a contribution may never shadow. */
-const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'session']);
+/** Keys of the nested manifests, closed like the top level. */
+const NESTED_KEYS = {
+  state: ['capture', 'restore'],
+  artifacts: ['screenshot', 'startTrace', 'stopTrace'],
+  app: ['navigate', 'back', 'restart', 'clearState'],
+} as const;
 
-const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
-
-const ACTION_VERBS = new Set(['tap', 'type', 'press', 'select', 'scroll', 'navigate', 'back']);
-
-const OPTIONAL_FUNCTION_MEMBERS = [
+const FUNCTION_MEMBERS = [
+  'observe',
+  'locate',
   'perform',
   'swipe',
   'url',
@@ -371,10 +386,57 @@ const OPTIONAL_FUNCTION_MEMBERS = [
   'dispose',
 ] as const;
 
+/** Universal fixture names a contribution may never shadow. */
+const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'session']);
+
+const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
+
+function invalid(name: string, detail: string): ConfigurationError {
+  return new ConfigurationError('INVALID_CONFIG', `backend "${name}": ${detail}`);
+}
+
+/**
+ * Validates one nested manifest (`state`, `artifacts`, `app`): a plain object
+ * whose keys are closed and whose declared members are functions. Returns a
+ * copy with every member bound to the manifest, so class-based bodies work.
+ */
+function nestedManifest<K extends keyof typeof NESTED_KEYS>(
+  name: string,
+  key: K,
+  value: unknown,
+  required: readonly string[] = [],
+): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) {
+    throw invalid(name, `${key} must be an object`);
+  }
+  const allowed: readonly string[] = NESTED_KEYS[key];
+  const source = value as Record<string, unknown>;
+  for (const member of Object.keys(source)) {
+    if (!allowed.includes(member)) {
+      throw invalid(name, `${key} has unknown key "${member}"; expected one of ${allowed.join(', ')}`);
+    }
+  }
+  const bound: Record<string, unknown> = {};
+  for (const member of allowed) {
+    const fn = source[member];
+    if (fn === undefined) {
+      if (required.includes(member)) throw invalid(name, `${key}.${member} must be a function`);
+      continue;
+    }
+    if (typeof fn !== 'function') throw invalid(name, `${key}.${member} must be a function`);
+    bound[member] = fn.bind(source);
+  }
+  return bound;
+}
+
 /**
  * Validates a backend and computes its capability set. Runs synchronously at
  * config load and fails loud: a misspelled member or an undeclared dependency
  * is `INVALID_CONFIG`, never a silent demotion to a lower tier.
+ *
+ * The handle is assembled member by member from the known keys, reading
+ * through the prototype chain and binding every function to the spec, so a
+ * class instance (own state fields included) is as valid a body as a literal.
  */
 export function defineBackend(spec: Backend): BackendHandle {
   if (typeof spec !== 'object' || spec === null) {
@@ -383,172 +445,93 @@ export function defineBackend(spec: Backend): BackendHandle {
   if (typeof spec.name !== 'string' || spec.name.trim() === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'backend.name must be a non-empty string');
   }
-  if (spec.version !== undefined && (typeof spec.version !== 'string' || spec.version === '')) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `backend "${spec.name}": version must be a non-empty string when present`,
-    );
+  const name = spec.name;
+  if (typeof spec.version !== 'string' || spec.version.trim() === '') {
+    throw invalid(name, 'version must be a non-empty string; it is provenance and keys the trace cache');
   }
   if (spec.spiVersion !== BACKEND_SPI_VERSION) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `backend "${spec.name}" declares spiVersion ${String(spec.spiVersion)}; this runner supports ${BACKEND_SPI_VERSION}`,
+    throw invalid(
+      name,
+      `declares spiVersion ${String(spec.spiVersion)}; this runner supports ${BACKEND_SPI_VERSION}`,
     );
   }
-  for (const key of Object.keys(spec)) {
-    if (!KNOWN_KEYS.has(key)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}" has unknown key "${key}" - tools belong on the agent, not the backend`,
-      );
+  // A literal's unknown key is a misspelling or a misplaced tool; a class
+  // instance's own fields are its state, so only literals are checked.
+  if (Object.getPrototypeOf(spec) === Object.prototype) {
+    const known: readonly string[] = KNOWN_KEYS;
+    for (const key of Object.keys(spec)) {
+      if (!known.includes(key)) {
+        throw invalid(name, `unknown key "${key}" - tools belong on the agent, not the backend`);
+      }
     }
   }
+  for (const member of FUNCTION_MEMBERS) {
+    if (spec[member] !== undefined && typeof spec[member] !== 'function') {
+      throw invalid(name, `${member} must be a function`);
+    }
+  }
+
   const capabilities = new Set<BackendCapability>();
-  if (spec.observe !== undefined) {
-    if (typeof spec.observe !== 'function') {
-      throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": observe must be a function`);
-    }
-    capabilities.add('observation');
-  }
-  if (spec.actions !== undefined) {
-    validateActions(spec.name, spec.actions);
+  if (spec.observe !== undefined) capabilities.add('observation');
+  if (spec.perform !== undefined) {
     if (!capabilities.has('observation')) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}" declares actions without observe: action targets are observation refs`,
-      );
+      throw invalid(name, 'declares perform without observe: action targets are observation refs');
     }
     capabilities.add('actions');
   }
   if (spec.locate !== undefined) {
-    if (typeof spec.locate !== 'function') {
-      throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": locate must be a function`);
-    }
     if (!capabilities.has('observation')) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}" declares locate without observe`,
-      );
+      throw invalid(name, 'declares locate without observe: located nodes share the observation id space');
     }
     capabilities.add('location');
   }
-  if ((spec.perform !== undefined || spec.swipe !== undefined) && spec.locate === undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `backend "${spec.name}" declares perform/swipe without locate: they act on located nodes`,
-    );
+  if (spec.swipe !== undefined && !capabilities.has('observation')) {
+    throw invalid(name, 'declares swipe without observe');
+  }
+
+  const handle: Record<string, unknown> = { name, version: spec.version, spiVersion: spec.spiVersion };
+  for (const member of FUNCTION_MEMBERS) {
+    const fn = spec[member];
+    if (fn !== undefined) handle[member] = fn.bind(spec);
   }
   if (spec.fixtures !== undefined) {
     if (typeof spec.fixtures !== 'object' || spec.fixtures === null) {
-      throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": fixtures must be an object`);
+      throw invalid(name, 'fixtures must be an object');
     }
     for (const [fixture, factory] of Object.entries(spec.fixtures)) {
       if (!FIXTURE_NAME_PATTERN.test(fixture)) {
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `backend "${spec.name}": fixture name "${fixture}" must be a lower-camel identifier`,
-        );
+        throw invalid(name, `fixture name "${fixture}" must be a lower-camel identifier`);
       }
       if (RESERVED_FIXTURES.has(fixture)) {
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `backend "${spec.name}": fixture name "${fixture}" shadows a universal fixture`,
-        );
+        throw invalid(name, `fixture name "${fixture}" shadows a universal fixture`);
       }
       if (typeof factory !== 'function') {
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `backend "${spec.name}": fixtures.${fixture} must be a factory function`,
-        );
+        throw invalid(name, `fixtures.${fixture} must be a factory function`);
       }
       capabilities.add(fixture);
     }
+    handle['fixtures'] = { ...spec.fixtures };
   }
   if (spec.state !== undefined) {
-    if (
-      typeof spec.state !== 'object' ||
-      spec.state === null ||
-      typeof spec.state.capture !== 'function' ||
-      typeof spec.state.restore !== 'function'
-    ) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}": state must be { capture, restore }`,
-      );
-    }
+    handle['state'] = nestedManifest(name, 'state', spec.state, ['capture', 'restore']);
     capabilities.add('state');
   }
   if (spec.artifacts !== undefined) {
-    if (
-      typeof spec.artifacts !== 'object' ||
-      spec.artifacts === null ||
-      typeof spec.artifacts.screenshot !== 'function'
-    ) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}": artifacts must declare a screenshot function`,
-      );
+    const artifacts = nestedManifest(name, 'artifacts', spec.artifacts, ['screenshot']);
+    if ((artifacts['startTrace'] === undefined) !== (artifacts['stopTrace'] === undefined)) {
+      throw invalid(name, 'artifacts.startTrace and stopTrace must be declared together');
     }
-    if ((spec.artifacts.startTrace === undefined) !== (spec.artifacts.stopTrace === undefined)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}": artifacts.startTrace and stopTrace must be declared together`,
-      );
-    }
+    handle['artifacts'] = artifacts;
     capabilities.add('artifacts');
   }
-  if (spec.app !== undefined) {
-    if (typeof spec.app !== 'object' || spec.app === null) {
-      throw new ConfigurationError('INVALID_CONFIG', `backend "${spec.name}": app must be an object`);
-    }
-    for (const hook of ['restart', 'clearState'] as const) {
-      if (spec.app[hook] !== undefined && typeof spec.app[hook] !== 'function') {
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `backend "${spec.name}": app.${hook} must be a function`,
-        );
-      }
-    }
-  }
-  for (const member of OPTIONAL_FUNCTION_MEMBERS) {
-    if (spec[member] !== undefined && typeof spec[member] !== 'function') {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${spec.name}": ${member} must be a function`,
-      );
-    }
-  }
+  if (spec.app !== undefined) handle['app'] = nestedManifest(name, 'app', spec.app);
+
+  // Assembled key by key above, so the record is a Backend by construction.
   return Object.freeze({
-    ...spec,
+    ...handle,
     [backendBrand]: true as const,
     capabilities,
-  });
-}
-
-function validateActions(name: string, actions: BackendActions): void {
-  if (typeof actions !== 'object' || actions === null) {
-    throw new ConfigurationError('INVALID_CONFIG', `backend "${name}": actions must be an object`);
-  }
-  let declared = 0;
-  for (const [verb, handler] of Object.entries(actions)) {
-    if (!ACTION_VERBS.has(verb)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `backend "${name}": unknown action verb "${verb}" - the grammar is closed; anything else is an agent tool`,
-      );
-    }
-    if (handler === undefined) continue;
-    if (typeof handler !== 'function') {
-      throw new ConfigurationError('INVALID_CONFIG', `backend "${name}": actions.${verb} must be a function`);
-    }
-    declared += 1;
-  }
-  if (declared === 0) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `backend "${name}" declares an actions object with no verbs; omit it instead`,
-    );
-  }
+  }) as unknown as BackendHandle;
 }
 
 /** True for a defineBackend-branded handle, across realms. */

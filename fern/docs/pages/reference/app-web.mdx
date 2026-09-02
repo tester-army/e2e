@@ -116,7 +116,7 @@ match needs `app.url`; without it the call fails with `APP_URL_REQUIRED`.
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` selects the readiness condition and defaults to the driver default. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
+| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` selects the readiness condition and defaults to the backend default. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
 | `reload(options?)` | One history reload | `ACTION_FAILED` |
 | `back(options?)` | One history entry back | `ACTION_FAILED` |
 | `forward(options?)` | One history entry forward | `ACTION_FAILED` |

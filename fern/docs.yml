@@ -111,3 +111,5 @@ redirects:
     destination: /writing-tests
   - source: /troubleshooting
     destination: /reference/errors
+  - source: /writing-a-driver
+    destination: /writing-a-backend

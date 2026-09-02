@@ -83,7 +83,7 @@ the call site.
    errors" is reconstructed from `web.route` on the request side.
 5. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
    `tabpanel`, so radio groups and selects need `web.locator`.
-6. **The reference driver is detected by anti-bot.** `/hobbit/login` redirects to
+6. **The reference backend is detected by anti-bot.** `/hobbit/login` redirects to
    a block page on load; the aspirational test is `skip`ped and the block pinned.
 
 ### Closed

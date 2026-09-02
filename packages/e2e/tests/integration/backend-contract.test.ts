@@ -361,6 +361,32 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   );
 
   it(
+    'boots the same handle again after dispose when an in-process worker is retired for another target',
+    async () => {
+      const fake = createFakeBackend();
+      const { outcome, project } = await runProject(
+        { 'tests/two-targets.e2e.ts': PASSING_TEST },
+        {
+          appUrl: APP_URL,
+          config: fakeConfig(fake, {
+            targets: [
+              { name: 'first', platform: 'web', backend: fake.backend },
+              { name: 'second', platform: 'web', backend: fake.backend },
+            ],
+          }),
+        },
+      );
+      expect(outcome.exitCode).toBe(0);
+      // One in-process worker at a time: the first target's worker is disposed
+      // before the second boots, on the very same config-held handle.
+      const lifecycle = fake.events.filter((event) => event === 'init' || event === 'dispose');
+      expect(lifecycle).toEqual(['init', 'dispose', 'init', 'dispose']);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'reaching a fixture the backend does not contribute is a configuration error',
     async () => {
       const fake = createFakeBackend();

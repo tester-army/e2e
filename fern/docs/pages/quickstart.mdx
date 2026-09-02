@@ -35,11 +35,17 @@ Requires Node.js 20.19 or newer.
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
-      app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-      targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+      specVersion: '0.1',
+      app: {
+        url: process.env.APP_URL ?? 'http://localhost:3000',
+      },
+      // The runner ships no intelligence: you construct the agent and pass it in.
+      // createAgent builds the built-in one; its model comes from E2E_MODEL.
       agent: createAgent({
         system: 'You are a thorough QA agent. Verify every outcome on screen.',
       }),
+      // The runner knows no platform: a target is served by the backend you pass.
+      targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
     });
     ```
 
@@ -62,7 +68,7 @@ Requires Node.js 20.19 or newer.
 
     ```ts title="tests/signup.e2e.ts"
     import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+    import { expect } from 'e2e';
 
     test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
       await app.open('/');

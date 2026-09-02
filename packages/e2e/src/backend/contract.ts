@@ -180,26 +180,37 @@ export type LocatorAction =
       readonly momentum?: Momentum;
     };
 
-export type BackendErrorCode =
-  | 'NODE_STALE'
-  | 'FRAME_NOT_FOUND'
-  | 'FRAME_AMBIGUOUS'
-  | 'NOT_ACTIONABLE'
-  | 'ACTION_MAY_HAVE_COMMITTED'
-  | 'OPERATION_TIMEOUT'
-  | 'CANCELLED'
-  | 'UNSUPPORTED_CAPABILITY'
-  | 'INVALID_STATE'
-  | 'BACKEND_FAILURE';
+/** The closed backend error code set; the type is derived from it, so the two cannot drift. */
+export const BACKEND_ERROR_CODES = [
+  'NODE_STALE',
+  'FRAME_NOT_FOUND',
+  'FRAME_AMBIGUOUS',
+  'NOT_ACTIONABLE',
+  'ACTION_MAY_HAVE_COMMITTED',
+  'OPERATION_TIMEOUT',
+  'CANCELLED',
+  'UNSUPPORTED_CAPABILITY',
+  'INVALID_STATE',
+  'BACKEND_FAILURE',
+] as const;
 
-const LEGAL_RETRYABLE: ReadonlySet<BackendErrorCode> = new Set(['NODE_STALE', 'FRAME_NOT_FOUND']);
+export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
+
+/**
+ * The only codes that may be retryable: both describe a repeatable read. Any
+ * other retryable claim, from this module's class or a foreign copy of it, is
+ * coerced to a non-retryable `BACKEND_FAILURE`.
+ */
+export const RETRYABLE_BACKEND_ERROR_CODES: ReadonlySet<BackendErrorCode> = new Set([
+  'NODE_STALE',
+  'FRAME_NOT_FOUND',
+]);
 
 /**
  * The error contract a backend throws across the seam. Retryability is closed
- * to the two codes that describe a repeatable read (`NODE_STALE`,
- * `FRAME_NOT_FOUND`); any other retryable claim is coerced to a non-retryable
- * `BACKEND_FAILURE` so a backend can never talk the harness into repeating an
- * action that may have committed.
+ * to `RETRYABLE_BACKEND_ERROR_CODES`; any other retryable claim is coerced to
+ * a non-retryable `BACKEND_FAILURE` so a backend can never talk the harness
+ * into repeating an action that may have committed.
  */
 export class BackendError extends Error {
   readonly code: BackendErrorCode;
@@ -212,7 +223,7 @@ export class BackendError extends Error {
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = 'BackendError';
-    if (options.retryable && !LEGAL_RETRYABLE.has(code)) {
+    if (options.retryable && !RETRYABLE_BACKEND_ERROR_CODES.has(code)) {
       this.code = 'BACKEND_FAILURE';
       this.retryable = false;
       return;

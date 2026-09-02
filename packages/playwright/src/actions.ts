@@ -8,6 +8,7 @@ import {
   message,
   performElementSwipe,
   performPointerDrag,
+  POST_DISPATCH_PATTERN,
   type ActionTarget,
 } from './support.ts';
 
@@ -86,24 +87,53 @@ export async function dispatchLocatorAction(
       }
       return;
     }
-    case 'swipe': {
+    case 'swipe':
+      // The agent's node scroll and `screen` swipes both arrive here: a wheel
+      // gesture over the node, sized by its own box.
       await performElementSwipe(target, action.direction, action.momentum ?? 'none', timeout);
       return;
-    }
   }
 }
 
-/** Classifies a failed action onto the error contract: stale, not actionable, or a backend fault. */
-export function classifyActionError(cause: unknown, action: LocatorAction): BackendError {
-  if (isClassified(cause)) return cause as BackendError;
-  const text = message(cause);
+/**
+ * Whether a failure of this action may carry the value it was given. A
+ * sensitive fill's plaintext must never leave the backend: its message is
+ * scrubbed and the raw Playwright error - whose stack the report would
+ * otherwise print - is not attached as a cause.
+ */
+function isSensitive(action: LocatorAction): action is LocatorAction & { kind: 'fill'; sensitive: true } {
+  return action.kind === 'fill' && action.sensitive;
+}
+
+/** Scrubs a sensitive fill value out of text that is about to leave the backend. */
+function redactSensitive(text: string, action: LocatorAction): string {
+  if (!isSensitive(action) || action.value.length === 0) return text;
+  return text.replaceAll(action.value, '[redacted]');
+}
+
+/**
+ * Classifies a failed action onto the error contract (see the table above
+ * `POST_DISPATCH_PATTERN` in support.ts): stale, not actionable, possibly
+ * committed, or a backend fault.
+ */
+export function classifyActionError(rawCause: unknown, action: LocatorAction): Error {
+  if (isClassified(rawCause)) return rawCause;
+  const text = redactSensitive(message(rawCause), action);
+  const cause = isSensitive(action) ? undefined : rawCause;
   if (/strict mode violation/i.test(text)) {
     return new BackendError('BACKEND_FAILURE', text, { retryable: false, cause });
   }
   if (/element (is |was )?(detached|not attached)/i.test(text)) {
     return new BackendError('NODE_STALE', text, { retryable: true, cause });
   }
-  if (/Timeout .*exceeded/i.test(text) || isPwTimeout(cause)) {
+  if (/Timeout .*exceeded/i.test(text) || isPwTimeout(rawCause)) {
+    if (POST_DISPATCH_PATTERN.test(text)) {
+      return new BackendError(
+        'ACTION_MAY_HAVE_COMMITTED',
+        `${action.kind} timed out after its input was dispatched: ${text}`,
+        { retryable: false, cause },
+      );
+    }
     return new BackendError(
       'NOT_ACTIONABLE',
       `${action.kind} did not become actionable in time: ${text}`,

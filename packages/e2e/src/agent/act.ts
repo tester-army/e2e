@@ -323,7 +323,7 @@ class ActDispatch {
         this.commitTargeted(
           'tap',
           target,
-          (node) => this.session.actions.tap({ ref: node.ref }, this.operation()),
+          (node) => this.session.perform(node.ref, { kind: 'tap' }, this.operation()),
           (node) => this.stepCache?.record({ name: 'tap', node }),
         ),
       type: (target, value) => {
@@ -333,7 +333,8 @@ class ActDispatch {
         return this.commitTargeted(
           'type',
           target,
-          (node) => this.session.actions.type({ ref: node.ref }, value, false, this.operation()),
+          (node) =>
+            this.session.perform(node.ref, { kind: 'fill', value, sensitive: false }, this.operation()),
           (node) => this.stepCache?.record({ name: 'type', node, value }),
         );
       },
@@ -345,7 +346,7 @@ class ActDispatch {
         return this.commitTargeted(
           'press',
           target,
-          (node) => this.session.screen.perform(node.ref, { kind: 'press', key }, this.operation()),
+          (node) => this.session.perform(node.ref, { kind: 'press', key }, this.operation()),
           (node) => this.stepCache?.record({ name: 'press', node, key }),
         );
       },
@@ -356,8 +357,7 @@ class ActDispatch {
         return this.commitTargeted(
           'selectOption',
           target,
-          (node) =>
-            this.session.screen.perform(node.ref, { kind: 'selectOption', value }, this.operation()),
+          (node) => this.session.perform(node.ref, { kind: 'selectOption', value }, this.operation()),
           (node) => this.stepCache?.record({ name: 'select', node, value }),
         );
       },
@@ -423,7 +423,7 @@ class ActDispatch {
     const currentUrl = this.session.url;
     if (currentUrl === undefined) return undefined;
     try {
-      const url = new URL(await currentUrl.call(this.session, this.operation()));
+      const url = new URL(await currentUrl(this.operation()));
       return `${url.pathname}${url.search}`;
     } catch {
       return undefined;
@@ -864,7 +864,7 @@ class ActDispatch {
     if (target === undefined) {
       await this.runAction(
         'scroll',
-        () => this.session.actions.scroll(direction, {}, this.operation()),
+        () => this.session.swipe(direction, undefined, this.operation()),
         () => this.stepCache?.record({ name: 'scroll', direction }),
       );
       return;
@@ -872,7 +872,7 @@ class ActDispatch {
     await this.commitTargeted(
       'scroll',
       target,
-      (node) => this.session.actions.scroll(direction, { target: node.ref }, this.operation()),
+      (node) => this.session.perform(node.ref, { kind: 'swipe', direction }, this.operation()),
       (node) => this.stepCache?.record({ name: 'scroll', direction, node }),
     );
   }
@@ -905,7 +905,11 @@ class ActDispatch {
           secret,
           node,
         );
-        await this.session.actions.type({ ref: node.ref }, plaintext, true, this.operation());
+        await this.session.perform(
+          node.ref,
+          { kind: 'fill', value: plaintext, sensitive: true },
+          this.operation(),
+        );
         this.runtime.taint.value = true;
       },
       // Recorded by stable name only; replay re-runs the full authorization.

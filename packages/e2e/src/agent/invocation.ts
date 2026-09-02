@@ -5,6 +5,7 @@
  * explicit deadline, a model-call budget, and no shared model transcript.
  */
 
+import type { StepExecutorContext } from './executor.ts';
 import type { JSONSchema7 } from 'ai';
 import type { AgentCacheContext } from '../cache/context.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
@@ -24,7 +25,7 @@ import type {
   StepRecorder,
   VisionDegradation,
 } from '../run/steps.ts';
-import type { Platform, VisionMode } from '../types.ts';
+import type { VisionMode } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
 import type { StepExecutor } from './executor.ts';
 import { checkStepClock, instrumentPhase, retryingObserve, type PhaseSpec } from './phases.ts';
@@ -59,7 +60,7 @@ export interface AgentContext {
   readonly models: ModelRouter;
   readonly config: ResolvedConfig;
   /** The target this attempt runs on. */
-  readonly target: { readonly name: string; readonly platform: Platform };
+  readonly target: StepExecutorContext['target'];
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
   /** Trusted project context: config.agent.context then test/group agentContext. */

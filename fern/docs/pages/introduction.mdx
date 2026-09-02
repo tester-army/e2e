@@ -10,9 +10,11 @@ secrets, and the report. The thinking is yours to control.
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   app: { url: 'http://localhost:3000' },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   agent: createAgent({
     system: 'You are a thorough QA agent. Verify every outcome on screen.',
   }),

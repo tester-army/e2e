@@ -79,6 +79,7 @@ function toyBackend(
   ];
   const backend = defineBackend({
     name: 'toy-device',
+    version: '1.0.0',
     spiVersion: 1,
     ...(options.withoutInit === true
       ? {}
@@ -104,11 +105,11 @@ function toyBackend(
     async observe() {
       return { nodes: nodes() };
     },
-    actions: {
-      async tap(target) {
-        if (target.ref.id !== 'increment') throw new Error(`no such node ${target.ref.id}`);
-        count += 1;
-      },
+    async perform(ref, action) {
+      if (ref.id !== 'increment' || action.kind !== 'tap') {
+        throw new Error(`cannot ${action.kind} node ${ref.id}`);
+      }
+      count += 1;
     },
     ...(options.withLocate !== true
       ? {}
@@ -166,6 +167,12 @@ const tapper: StepExecutor = {
   name: 'toy-tapper',
   version: '1',
   async runStep(context) {
+    // The executor is told exactly which grammar the surface honors: perform
+    // gives tap/type/press/select, and this toy has no swipe or navigate.
+    const verbs = [...context.target.verbs].toSorted();
+    if (context.target.platform !== 'ios' || verbs.join() !== 'press,select,tap,type,typeSecret') {
+      return { status: 'failed', summary: `unexpected target ${context.target.platform} ${verbs.join()}` };
+    }
     for (let round = 0; round < 5; round += 1) {
       const observation = await context.observe();
       const match = /#counter status "count" text="(\d+)"/.exec(observation.text);

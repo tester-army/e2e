@@ -120,14 +120,6 @@ function matchesTags(
   return tags.some((tag) => options.tags.includes(tag));
 }
 
-function backendCapabilities(target: ResolvedTarget): readonly Capability[] {
-  // Targets are graded from the backend's declared capability set:
-  // observation, actions, location, state, artifacts, and one name per
-  // contributed fixture. Selection runs at config load, before any backend
-  // boots, which is exactly why the manifest is computed synchronously.
-  return [...(target.backend?.capabilities ?? [])];
-}
-
 /**
  * Expands the collection into test-target pairs and applies focus, tag,
  * platform, capability, session, and serial-closure rules.
@@ -254,8 +246,11 @@ function classifyPair(
     };
   }
 
-  const capabilities = backendCapabilities(target);
-  const missing = options.requires.filter((capability) => !capabilities.includes(capability));
+  // Targets are graded from the backend's declared capability set: harness
+  // tiers plus one name per contributed fixture. Selection runs at config
+  // load, before any backend boots, which is why the manifest is synchronous.
+  const capabilities = target.backend?.capabilities;
+  const missing = options.requires.filter((capability) => capabilities?.has(capability) !== true);
   if (missing.length > 0) {
     return {
       ...base,

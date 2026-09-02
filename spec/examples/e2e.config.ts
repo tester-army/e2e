@@ -1,4 +1,5 @@
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   specVersion: '0.1',
@@ -15,11 +16,11 @@ export default defineConfig({
   },
 
   targets: [
-    { name: 'web', platform: 'web', browser: 'chromium' },
+    { name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) },
   ],
 
   timeout: 120_000,
-  artifacts: ['trace', 'screenshot', 'video'],
+  artifacts: ['trace', 'screenshot'],
   cache: process.env.CI ? 'read-only' : 'read-write',
 
   credentials: {

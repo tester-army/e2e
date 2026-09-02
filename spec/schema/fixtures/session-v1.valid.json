@@ -13,7 +13,7 @@
   "createdAt": "2026-07-24T12:00:00.000Z",
   "expiresAt": "2026-07-24T13:00:00.000Z",
   "state": {
-    "format": "playwright-state",
+    "format": "playwright-storage-state",
     "version": 1,
     "algorithm": "A256GCM",
     "iv": "AAAAAAAAAAAAAAAA",

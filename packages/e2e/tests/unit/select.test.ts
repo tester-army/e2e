@@ -127,7 +127,7 @@ describe('select', () => {
     });
     // Capabilities are the backend's declared set: harness tiers plus one name
     // per contributed fixture. This backend contributes `web`, not `device`.
-    const backend = defineBackend({ name: 'toy', spiVersion: 1, fixtures: { web: () => ({}) } });
+    const backend = defineBackend({ name: 'toy', version: '1.0.0', spiVersion: 1, fixtures: { web: () => ({}) } });
     const selection = select(col, config({ targets: [{ name: 'web', platform: 'web', backend }] }));
     const device = selection.pairs.find((pair) => pair.test.title === 'needs device')!;
     expect(device.disposition).toBe('skip');

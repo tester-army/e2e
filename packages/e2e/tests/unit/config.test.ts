@@ -12,7 +12,7 @@ function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEn
 }
 
 function fakeBackend() {
-  return defineBackend({ name: 'fake', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+  return defineBackend({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }) });
 }
 
 describe('CI mode', () => {

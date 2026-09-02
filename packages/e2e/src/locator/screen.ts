@@ -135,7 +135,7 @@ class ScreenImpl implements Screen {
   async swipe(options: SwipeOptions): Promise<void> {
     await this.context.steps.run('screen', 'screen.swipe', options.direction, async () => {
       const { engine } = this.context;
-      await engine.session.screen.swipe(options.direction, options.momentum, engine.operation());
+      await engine.session.swipe(options.direction, options.momentum, engine.operation());
     });
   }
 
@@ -164,7 +164,7 @@ class ScreenImpl implements Screen {
               `target did not become visible while scrolling: ${describeExpression(internals.expression)}`,
             );
           }
-          await engine.session.screen.swipe(direction, 'slow', engine.operation());
+          await engine.session.swipe(direction, 'slow', engine.operation());
           await sleep(POLL_INTERVAL_MS, engine.signal);
         }
       },
@@ -291,16 +291,18 @@ class LocatorImpl extends ScreenImpl implements Locator {
     if (internals === undefined) {
       throw new TestError('INVALID_LOCATOR', 'dragTo requires an e2e locator target');
     }
-    return this.action('locator.dragTo', async () => {
-      const { engine } = this.context;
-      const deadline = engine.deadline(options?.timeout);
-      const targetRef = await engine.resolveExactlyOne(internals.expression, deadline);
-      await engine.perform(
+    // The drop target resolves inside the retry, so a superseded target ref
+    // is re-resolved along with the source instead of looping until timeout.
+    return this.action('locator.dragTo', () =>
+      this.context.engine.perform(
         this.expression,
-        { kind: 'dragTo', target: targetRef },
-        deadline.remaining(),
-      );
-    });
+        async (deadline) => ({
+          kind: 'dragTo',
+          target: await this.context.engine.resolveExactlyOne(internals.expression, deadline),
+        }),
+        options?.timeout,
+      ),
+    );
   }
 
   scrollIntoView(options?: ActionOptions): Promise<void> {

@@ -1,6 +1,11 @@
 /** Runner-owned error taxonomy and exit-code mapping (spec 06-cli.md). */
 
-import { BackendError, type BackendErrorCode } from '../backend/contract.ts';
+import {
+  BACKEND_ERROR_CODES,
+  BackendError,
+  RETRYABLE_BACKEND_ERROR_CODES,
+  type BackendErrorCode,
+} from '../backend/contract.ts';
 
 /** Message of an arbitrary thrown value, for diagnostics that must not throw. */
 export function errorMessage(cause: unknown): string {
@@ -39,20 +44,6 @@ export interface SerializedError {
 /** Marks classified errors so instances survive isolated module realms. */
 const E2E_ERROR_MARKER = Symbol.for('e2e.error.v1');
 
-/** The closed backend error code set, used to recognize a foreign instance. */
-const BACKEND_ERROR_CODES: ReadonlySet<string> = new Set([
-  'NODE_STALE',
-  'FRAME_NOT_FOUND',
-  'FRAME_AMBIGUOUS',
-  'NOT_ACTIONABLE',
-  'ACTION_MAY_HAVE_COMMITTED',
-  'OPERATION_TIMEOUT',
-  'CANCELLED',
-  'UNSUPPORTED_CAPABILITY',
-  'INVALID_STATE',
-  'BACKEND_FAILURE',
-]);
-
 /**
  * Normalizes a backend failure, including one thrown by another copy of the
  * backend module.
@@ -61,7 +52,8 @@ const BACKEND_ERROR_CODES: ReadonlySet<string> = new Set([
  * registry than the runner, so its `BackendError` is a different class and
  * `instanceof` misses it. Detection is therefore structural, keyed on the
  * closed code set: without this, every out-of-tree backend's typed failures
- * silently degrade to a generic error and lose their taxonomy.
+ * silently degrade to a generic error and lose their taxonomy. A foreign
+ * instance is held to the same retryability rule as the local class.
  */
 export function asBackendError(
   value: unknown,
@@ -69,9 +61,16 @@ export function asBackendError(
   if (value instanceof BackendError) return value;
   if (!(value instanceof Error) || value.name !== 'BackendError') return undefined;
   const code = (value as unknown as { code?: unknown }).code;
-  if (typeof code !== 'string' || !BACKEND_ERROR_CODES.has(code)) return undefined;
-  const retryable = (value as unknown as { retryable?: unknown }).retryable;
-  return { code: code as BackendErrorCode, message: value.message, retryable: retryable === true };
+  if (!isBackendErrorCode(code)) return undefined;
+  const retryable = (value as unknown as { retryable?: unknown }).retryable === true;
+  if (retryable && !RETRYABLE_BACKEND_ERROR_CODES.has(code)) {
+    return { code: 'BACKEND_FAILURE', message: value.message, retryable: false };
+  }
+  return { code, message: value.message, retryable };
+}
+
+function isBackendErrorCode(value: unknown): value is BackendErrorCode {
+  return typeof value === 'string' && (BACKEND_ERROR_CODES as readonly string[]).includes(value);
 }
 
 /** Base class for every runner-classified error. */

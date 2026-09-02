@@ -45,7 +45,7 @@ export interface Agent {
 ## Budgets
 
 Model calls count every model request including repair rounds. Action steps count
-committed driver actions. Every timeout is additionally capped by the remaining
+committed backend actions. Every timeout is additionally capped by the remaining
 test timeout.
 
 | Method | Model calls | Action steps | Default timeout |
@@ -197,9 +197,9 @@ cheap, and its node references are what keep a step auditable.
 
 Pixel evidence degrades instead of failing the call. It is withheld, and the tree
 sent alone, when the viewport is pixel-tainted by a secret fill
-(`visionDegraded: "PIXEL_TAINTED"` on the step), when the driver masked fewer
+(`visionDegraded: "PIXEL_TAINTED"` on the step), when the backend masked fewer
 regions than the secure fields it observed (`MASKING_UNPROVEN`), or when the
-driver cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
+backend cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
 pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
 
 `options.vision` and `assert`'s `options.screenshot` are unrelated: `screenshot`

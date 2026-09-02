@@ -145,7 +145,11 @@ export default defineConfig({ agent: scripted });
 
 `ctx.actions` is the whole action surface (`tap`, `type`, `typeSecret`,
 `press`, `select`, `scroll`, `navigate`) and `ctx.observe()` is the only view
-of the app.
+of the app. `ctx.target.verbs` is the subset of those verbs the target's backend
+declared (a backend with `perform` gives `tap`/`type`/`typeSecret`/`press`/
+`select`, `swipe` gives `scroll`, `app.navigate` gives `navigate`); offer a model
+exactly that vocabulary, as the built-in agent does, rather than a verb the
+surface can only reject.
 Secrets in params arrive as name-only placeholders; `actions.typeSecret(target,
 name)` performs the authorized fill without the plaintext ever passing through
 your code or a model.

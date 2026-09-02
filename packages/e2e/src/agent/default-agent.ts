@@ -26,7 +26,7 @@ Rules:
 - Work only toward the given step; do not start the next step or explore beyond it.
 - Use the tools to inspect and act. Node ids like "n42" are valid only for the newest observation; after any action, use ids from the latest "Updated screen" snapshot.
 - Issue at most ONE mutating tool call per turn: every mutation refreshes the screen and invalidates all earlier node ids, so a second action batched in the same turn targets a stale screen and fails.
-- Never invent node ids. If the target is not on screen, scroll or navigate to find it, or conclude.`;
+- Never invent node ids. If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude.`;
 
 /** How many trailing screen snapshots stay verbatim in the transcript. */
 const SNAPSHOT_PRESERVE_COUNT = 2;
@@ -104,9 +104,15 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
   ].join('\n');
 }
 
-/** The default toolset: thin AI SDK tools over the harness action grammar. */
+/**
+ * The default toolset: thin AI SDK tools over the harness action grammar,
+ * limited to the verbs the target's backend declared. A verb the surface cannot
+ * honor is not offered at all, so the model never learns vocabulary it can only
+ * be rejected on.
+ */
 function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelpers): ToolSet {
   const { guard } = helpers;
+  const { verbs } = context.target;
 
   /** Re-observes after a mutating action so the model always sees the result. */
   const acted = async (description: string): Promise<string> => {
@@ -123,84 +129,7 @@ function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelper
   // cached instance here cannot race the optional-peer loader.
   const { tool } = aiSdk();
 
-  return {
-    tap: tool({
-      description: 'Tap or click one node.',
-      inputSchema: z.object({ target }),
-      execute: ({ target: id }) =>
-        guard(async () => {
-          await context.actions.tap({ id });
-          return acted(`Tapped #${id}.`);
-        }),
-    }),
-    type: tool({
-      description: 'Type a plain-text value into one input node. Replaces the current value.',
-      inputSchema: z.object({ target, value: z.string() }),
-      execute: ({ target: id, value }) =>
-        guard(async () => {
-          await context.actions.type({ id }, value);
-          return acted(`Typed into #${id}.`);
-        }),
-    }),
-    press: tool({
-      description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
-      inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
-      execute: ({ target: id, key }) =>
-        guard(async () => {
-          await context.actions.press({ id }, key);
-          return acted(`Pressed ${key} on #${id}.`);
-        }),
-    }),
-    select: tool({
-      description: 'Pick one option from a select-like control by its visible label.',
-      inputSchema: z.object({ target, value: z.string().min(1) }),
-      execute: ({ target: id, value }) =>
-        guard(async () => {
-          await context.actions.select({ id }, value);
-          return acted(`Selected "${value}" in #${id}.`);
-        }),
-    }),
-    scroll: tool({
-      description: 'Scroll the viewport, or one scrollable node when target is given.',
-      inputSchema: z.object({
-        direction: z.enum(['up', 'down', 'left', 'right']),
-        target: target.optional(),
-      }),
-      execute: ({ direction, target: id }) =>
-        guard(async () => {
-          await context.actions.scroll(direction, id === undefined ? undefined : { id });
-          return acted(`Scrolled ${direction}.`);
-        }),
-    }),
-    navigate: tool({
-      description: 'Navigate to a URL or app-relative path within the allowed origins.',
-      inputSchema: z.object({ url: z.string().min(1) }),
-      execute: ({ url }) =>
-        guard(async () => {
-          await context.actions.navigate(url);
-          return acted(`Navigated to ${url}.`);
-        }),
-    }),
-    // Offered only when the step declared secrets: an empty vocabulary is
-    // better than a tool the model can only be rejected on.
-    ...(context.step.secrets.length === 0
-      ? {}
-      : {
-          type_secret: tool({
-            description:
-              'Fill one declared secret credential into a secure input field; the plaintext never passes through you. Available: ' +
-              context.step.secrets
-                .map((secret) => `"${secret.name}" (${secret.purpose})`)
-                .join(', ') +
-              '.',
-            inputSchema: z.object({ target, name: z.string().min(1) }),
-            execute: ({ target: id, name }) =>
-              guard(async () => {
-                await context.actions.typeSecret({ id }, name);
-                return acted(`Filled secret "${name}" into #${id}.`);
-              }),
-          }),
-        }),
+  const tools: ToolSet = {
     observe: tool({
       description: 'Capture a fresh observation of the current screen without acting.',
       inputSchema: z.object({}),
@@ -211,6 +140,101 @@ function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelper
         }),
     }),
   };
+  if (verbs.has('tap')) {
+    tools['tap'] = tool({
+      description: 'Tap or click one node.',
+      inputSchema: z.object({ target }),
+      execute: ({ target: id }) =>
+        guard(async () => {
+          await context.actions.tap({ id });
+          return acted(`Tapped #${id}.`);
+        }),
+    });
+  }
+  if (verbs.has('type')) {
+    tools['type'] = tool({
+      description: 'Type a plain-text value into one input node. Replaces the current value.',
+      inputSchema: z.object({ target, value: z.string() }),
+      execute: ({ target: id, value }) =>
+        guard(async () => {
+          await context.actions.type({ id }, value);
+          return acted(`Typed into #${id}.`);
+        }),
+    });
+  }
+  if (verbs.has('press')) {
+    tools['press'] = tool({
+      description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
+      inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
+      execute: ({ target: id, key }) =>
+        guard(async () => {
+          await context.actions.press({ id }, key);
+          return acted(`Pressed ${key} on #${id}.`);
+        }),
+    });
+  }
+  if (verbs.has('select')) {
+    tools['select'] = tool({
+      description: 'Pick one option from a select-like control by its visible label.',
+      inputSchema: z.object({ target, value: z.string().min(1) }),
+      execute: ({ target: id, value }) =>
+        guard(async () => {
+          await context.actions.select({ id }, value);
+          return acted(`Selected "${value}" in #${id}.`);
+        }),
+    });
+  }
+  if (verbs.has('scroll')) {
+    const direction = z.enum(['up', 'down', 'left', 'right']);
+    // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
+    tools['scroll'] = verbs.has('tap')
+      ? tool({
+          description: 'Scroll the viewport, or one scrollable node when target is given.',
+          inputSchema: z.object({ direction, target: target.optional() }),
+          execute: ({ direction: way, target: id }) =>
+            guard(async () => {
+              await context.actions.scroll(way, id === undefined ? undefined : { id });
+              return acted(`Scrolled ${way}.`);
+            }),
+        })
+      : tool({
+          description: 'Scroll the viewport.',
+          inputSchema: z.object({ direction }),
+          execute: ({ direction: way }) =>
+            guard(async () => {
+              await context.actions.scroll(way);
+              return acted(`Scrolled ${way}.`);
+            }),
+        });
+  }
+  if (verbs.has('navigate')) {
+    tools['navigate'] = tool({
+      description: 'Navigate to a URL or app-relative path within the allowed origins.',
+      inputSchema: z.object({ url: z.string().min(1) }),
+      execute: ({ url }) =>
+        guard(async () => {
+          await context.actions.navigate(url);
+          return acted(`Navigated to ${url}.`);
+        }),
+    });
+  }
+  // Offered only when the step declared secrets and the surface can fill: an
+  // empty vocabulary is better than a tool the model can only be rejected on.
+  if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
+    tools['type_secret'] = tool({
+      description:
+        'Fill one declared secret credential into a secure input field; the plaintext never passes through you. Available: ' +
+        context.step.secrets.map((secret) => `"${secret.name}" (${secret.purpose})`).join(', ') +
+        '.',
+      inputSchema: z.object({ target, name: z.string().min(1) }),
+      execute: ({ target: id, name }) =>
+        guard(async () => {
+          await context.actions.typeSecret({ id }, name);
+          return acted(`Filled secret "${name}" into #${id}.`);
+        }),
+    });
+  }
+  return tools;
 }
 
 /**
@@ -296,11 +320,9 @@ function wrapUserTools(
     // A tool scoped to other platforms is not offered, so the model never
     // learns a verb the surface cannot honor.
     if (!toolAppliesTo(defined, context.target.platform)) continue;
+    // defineTool rejected any tool without execute at definition time.
     const execute = defined.tool.execute?.bind(defined.tool);
-    if (execute === undefined) {
-      wrapped[name] = defined.tool;
-      continue;
-    }
+    if (execute === undefined) throw new Error(`tool "${name}" has no execute; defineTool must reject it`);
     wrapped[name] = {
       ...defined.tool,
       execute: async (input: never, executionOptions: never) => {

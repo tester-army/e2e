@@ -36,8 +36,32 @@ export interface ReportSource {
 export interface TargetProvenance {
   backend: { name: string; version: string; spiVersion: BackendSpiVersion };
   capabilities: string[];
-  artifactCapabilities: ('screenshot' | 'trace' | 'video')[];
+  artifactCapabilities: ('screenshot' | 'trace')[];
   stateCapability: boolean;
+}
+
+/**
+ * What a target's backend declaration says about it: the one description the
+ * runner grades against and the report records. A target without a backend is
+ * agent-tools-only and honestly reports no capabilities.
+ */
+export function describeTarget(target: ResolvedTarget): TargetProvenance {
+  const backend = target.backend;
+  const artifactCapabilities: TargetProvenance['artifactCapabilities'] = [];
+  if (backend?.artifacts !== undefined) {
+    artifactCapabilities.push('screenshot');
+    if (backend.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
+  }
+  return {
+    backend: {
+      name: backend?.name ?? 'none',
+      version: backend?.version ?? 'unversioned',
+      spiVersion: backend?.spiVersion ?? BACKEND_SPI_VERSION,
+    },
+    capabilities: [...(backend?.capabilities ?? [])].toSorted(),
+    artifactCapabilities,
+    stateCapability: backend?.state !== undefined,
+  };
 }
 
 export interface BuildReportOptions {
@@ -338,6 +362,8 @@ function serializeTarget(
   target: ResolvedTarget,
   provenance: TargetProvenance | undefined,
 ): ReportTarget {
+  // Provenance exists for every selected target; an unselected one is
+  // described from its declaration the same way.
   return {
     id: target.name,
     index: target.index,
@@ -346,14 +372,7 @@ function serializeTarget(
     environment: config.app.environment,
     allowProduction: config.app.allowProduction,
     testIdAttribute: config.testIdAttribute,
-    backend: provenance?.backend ?? {
-      name: target.backend?.name ?? 'none',
-      version: target.backend?.version ?? 'unversioned',
-      spiVersion: BACKEND_SPI_VERSION,
-    },
-    capabilities: provenance?.capabilities ?? [...(target.backend?.capabilities ?? [])].toSorted(),
-    artifactCapabilities: provenance?.artifactCapabilities ?? [],
-    stateCapability: provenance?.stateCapability ?? target.backend?.state !== undefined,
+    ...(provenance ?? describeTarget(target)),
   };
 }
 

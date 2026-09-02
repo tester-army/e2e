@@ -50,7 +50,7 @@ the one that drives each target. `npx e2e init` writes a starter config.
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024 |
-| `artifacts` | `readonly ('trace' \| 'screenshot' \| 'video')[]` | `['screenshot', 'trace']` | those three kinds |
+| `artifacts` | `readonly ('trace' \| 'screenshot')[]` | `['screenshot', 'trace']` | those two kinds |
 | `reporters` | `readonly ('list' \| 'json')[]` | `['list']` | those two IDs; `json` cannot be combined with `list` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object | see [agent](#agent) | - |
@@ -60,8 +60,9 @@ the one that drives each target. `npx e2e init` writes a starter config.
 
 Every numeric value must be a safe integer.
 
-`video` is not a supported artifact: requesting it fails before collection with
-`UNSUPPORTED_ARTIFACT`.
+`artifacts` accepts `screenshot` and `trace` only; `video` is not a
+configurable artifact kind. A configured kind the target's backend cannot
+produce fails before collection with `UNSUPPORTED_ARTIFACT`.
 Every run writes `.e2e/report.json` regardless of the selected reporters.
 
 ## app

@@ -89,7 +89,7 @@ async function currentOrigin(host: SecretFillHost): Promise<string> {
   }
   let href: string;
   try {
-    href = await url.call(host.session, host.operation());
+    href = await url(host.operation());
   } catch (cause) {
     throw toAgentError(cause);
   }

@@ -81,7 +81,7 @@ export class LocatorEngine {
   ): Promise<readonly NodeRef[]> {
     for (;;) {
       try {
-        return await this.session.screen.resolve(expression, this.operationWithin(deadline));
+        return await this.session.locate(expression, this.operationWithin(deadline));
       } catch (cause) {
         if (asBackendError(cause)?.retryable === true && !deadline.expired()) {
           await sleep(POLL_INTERVAL_MS, this.options.signal);
@@ -135,13 +135,24 @@ export class LocatorEngine {
     return this.resolveOnce(expression, deadline);
   }
 
-  /** Reads one node snapshot. */
+  /**
+   * Reads one node snapshot. A concurrent locator can supersede the ref
+   * between resolve and read; that is a repeatable race, so it re-resolves
+   * while the deadline remains instead of failing the test.
+   */
   async read(expression: LocatorExpression): Promise<SemanticNode> {
-    const ref = await this.resolveForRead(expression);
-    try {
-      return await this.session.screen.read(ref, this.operation());
-    } catch (cause) {
-      throw translateBackendError(cause, expression);
+    const deadline = this.deadline(this.options.actionTimeout);
+    for (;;) {
+      const ref = await this.resolveForRead(expression);
+      try {
+        return await this.session.read(ref, this.operationWithin(deadline));
+      } catch (cause) {
+        const backendError = asBackendError(cause);
+        if (backendError?.code === 'NODE_STALE' && backendError.retryable && !deadline.expired()) {
+          continue;
+        }
+        throw translateBackendError(cause, expression);
+      }
     }
   }
 
@@ -153,7 +164,7 @@ export class LocatorEngine {
     const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
     if (ref === null) return { node: null, count: 0 };
     try {
-      const node = await this.session.screen.read(ref, this.operationWithin(deadline));
+      const node = await this.session.read(ref, this.operationWithin(deadline));
       return { node, count: 1 };
     } catch (cause) {
       if (asBackendError(cause)?.code === 'NODE_STALE') {
@@ -166,18 +177,20 @@ export class LocatorEngine {
   /**
    * Performs exactly one action against exactly one match. Stale nodes are
    * re-resolved while the deadline remains; a possibly committed action is
-   * never repeated.
+   * never repeated. An action that itself names other nodes (dragTo) is built
+   * per attempt, so its refs are re-resolved together with the source.
    */
   async perform(
     expression: LocatorExpression,
-    action: LocatorAction,
+    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     timeoutMs?: number,
   ): Promise<void> {
     const deadline = this.deadline(timeoutMs);
     for (;;) {
       const ref = await this.resolveExactlyOne(expression, deadline);
+      const resolved = typeof action === 'function' ? await action(deadline) : action;
       try {
-        await this.session.screen.perform(ref, action, this.operationWithin(deadline));
+        await this.session.perform(ref, resolved, this.operationWithin(deadline));
         return;
       } catch (cause) {
         const backendError = asBackendError(cause);

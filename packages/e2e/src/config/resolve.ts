@@ -66,7 +66,7 @@ export interface ResolvedConfig {
   readonly cleanupTimeout: number;
   readonly retries: number;
   readonly workers: number;
-  readonly artifacts: readonly ('trace' | 'screenshot' | 'video')[];
+  readonly artifacts: readonly ('trace' | 'screenshot')[];
   /** True when `artifacts` was set in config, so a backend that cannot produce one is an error. */
   readonly artifactsExplicit: boolean;
   readonly reporters: readonly ('list' | 'json')[];
@@ -197,7 +197,7 @@ export function resolveConfig(
     throw new ConfigurationError('INVALID_CONFIG', 'artifacts must be an array of artifact kinds');
   }
   for (const artifact of artifacts) {
-    if (!['screenshot', 'trace', 'video'].includes(artifact)) {
+    if (!['screenshot', 'trace'].includes(artifact)) {
       throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${artifact}"`);
     }
   }

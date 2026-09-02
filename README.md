@@ -10,7 +10,7 @@ import { test } from 'e2e';
 
 test('user can sign up', async ({ app, agent }) => {
   await app.open();
-  await agent.tap('the sign up button');
+  await agent.act('tap the sign up button');
   await agent.assert('the dashboard is visible');
 });
 ```

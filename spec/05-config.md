@@ -24,29 +24,36 @@ original TypeScript source location for load and execution errors.
 
 ## Minimal config
 
-No file is needed for one web target:
+`targets` is REQUIRED and there is no implicit target: the runner knows no
+platform, so every target names the backend that serves it. The smallest
+useful config is one web target on the playwright backend from
+`@e2edev/playwright`:
 
-```bash
-APP_URL=http://localhost:3000 npx --no-install e2e run
+```ts
+import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default defineConfig({
+  app: { url: 'http://localhost:3000' },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+});
 ```
 
-This creates target `web`, platform `web`, browser `chromium`, and driver
-`playwright`.
-
-The effective base URL is `app.url`, then `APP_URL`; one is REQUIRED. There is
-no target-level URL override in `web-0.1`. `readyUrl` defaults to the effective
-base URL. The runner passes the fully resolved app/security/query context to
-every driver launch.
+The effective base URL is `app.url`, then `APP_URL`; it is REQUIRED once a test
+calls `app.open()` and optional otherwise. There is no target-level URL
+override. `readyUrl` defaults to the effective base URL. The runner passes the
+resolved app URL, origin policy, and query context to every backend's `init`.
 
 The base URL uses WHATWG URL parsing/serialization and MUST NOT contain
 userinfo, query, or fragment. Host uses IDNA ASCII form and default ports are
 removed. Its pathname is normalized for dot segments and retained as the app
 base path.
 
-An explicit config:
+A fuller config:
 
 ```ts
 import { defineConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   specVersion: '0.1',
@@ -58,7 +65,7 @@ export default defineConfig({
     },
   },
   targets: [
-    { name: 'web', platform: 'web', browser: 'chromium' },
+    { name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) },
   ],
 });
 ```
@@ -117,7 +124,7 @@ Every run writes the canonical JSON report regardless of renderer selection.
 (02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
 that can send pixels requires a model that accepts image input.
 
-`actionTimeout` bounds every driver operation, including each observation and
+`actionTimeout` bounds every backend operation, including each observation and
 action inside an agent step (16-executors.md): the step deadline caps the
 whole step, `actionTimeout` caps each call within it.
 
@@ -131,29 +138,26 @@ forced to `read-only`.
 
 ## Targets and capabilities
 
-v0 accepts web driver targets and backend targets. A driver target that
-requests a non-web platform is a configuration error; it is never silently
-ignored.
+A target (RFC0002) is `{ name, platform, backend? }`. The runner itself
+resolves, launches, and downloads nothing: whatever the platform, the surface
+is the `backend` value, a `defineBackend(...)` handle from `e2e/backend`. The
+web backend is `playwright()` from `@e2edev/playwright`; a device or desktop
+backend plugs into the same seam. There is no top-level `browser` key and no
+`driver` or `browser` target key; browser choice and viewport are options of
+the playwright backend.
 
-A backend target (RFC0002) declares `{ name, platform, backend? }` with no
-driver: no browser is resolved, launched, or downloaded, and `app.url` is
-optional when every target is a backend target. The `backend` value is a
-`defineBackend(...)` handle from `e2e/backend`; its declared capabilities
-(observation, actions) grade what the target serves. A test that
+A backend's declared capabilities (observation, actions, location, state,
+artifacts, contributed fixtures) grade what the target serves. A test that
 uses a fixture the backend does not support fails loud with
 `UNSUPPORTED_CAPABILITY` — at selection when statically known, at first use
-otherwise. A backend target with no backend at all serves only the agent
-fixture, with every action opaque to the harness.
+otherwise. A target with no backend at all serves only the agent fixture, with
+every action opaque to the harness, and `app.url` is optional for it.
 
-Before collection, the runner reads each driver's static platform, fixture,
-artifact, and state capabilities. Configured artifacts unsupported by a driver
-fail before collection. After collection/selection, any selected setup or
-session consumer on a driver without state capability fails before launch.
+Before collection, the runner reads each backend's capability set, artifact
+capabilities, and state capability. Configured artifacts unsupported by a
+backend fail before collection. After collection/selection, any selected setup
+or session consumer on a backend without state capability fails before launch.
 Capability names are distinct from platform names.
-
-`browser` config applies only to the implicit web target. An explicit target's
-field wins. Defining both top-level `browser` and explicit `targets` is an error
-to avoid an ignored setting.
 
 ## App process
 
