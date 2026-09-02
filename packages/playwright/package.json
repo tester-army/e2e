@@ -26,8 +26,8 @@
   "homepage": "https://github.com/tester-army/e2e/tree/main/packages/playwright#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
-    "access": "public",
-    "provenance": true,
+    "access": "restricted",
+    "provenance": false,
     "tag": "beta"
   },
   "type": "module",

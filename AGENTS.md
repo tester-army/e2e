@@ -127,6 +127,16 @@ pnpm --filter @e2edev/testbed run test:headed
   new actions SHA-pinned.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
+- **Releases are private until the public launch.** `pnpm release` publishes
+  RESTRICTED through `scripts/publish-private.mjs`, which renames the core
+  package to `@e2edev/e2e` in the published tarball only — the repo keeps the
+  name `e2e` everywhere (spec, fixtures, self-reference). A private consumer
+  MUST alias: `"e2e": "npm:@e2edev/e2e@^x"` plus `"@e2edev/playwright"`; the
+  alias key satisfies the driver's `e2e` peer and its `e2e/...` imports.
+  `release:public` is the plain changesets publish for launch day; restore
+  `access: "public"` / `provenance: true` in both publishConfigs and the
+  workflow env with it. The in-repo `access: "restricted"` doubles as a
+  safety: a hand-run publish of the unscoped name fails outright.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
   entry. Peer ranges point one way only (backend -> `e2e`, widened to `>=x <1`);
   making them mutual or narrow forces changesets to bump both packages to a

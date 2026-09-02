@@ -55,4 +55,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+          # Provenance requires public access; the private phase publishes
+          # restricted (scripts/publish-private.mjs). Restore on public launch.
+          NPM_CONFIG_PROVENANCE: false
