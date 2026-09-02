@@ -16,8 +16,7 @@
     "test:selenium": "node node_modules/e2e/dist/cli/bin.js run --config e2e.selenium.config.ts",
     "bench:build": "next build bench",
     "bench:serve": "next start bench -p 4273",
-    "test:bench": "pnpm run bench:build && node node_modules/e2e/dist/cli/bin.js run --config e2e.bench.config.ts",
-    "test:device": "node node_modules/e2e/dist/cli/bin.js run --config e2e.device.config.ts"
+    "test:bench": "pnpm run bench:build && node node_modules/e2e/dist/cli/bin.js run --config e2e.bench.config.ts"
   },
   "dependencies": {
     "@e2edev/playwright": "workspace:*",
@@ -32,7 +31,6 @@
     "@types/react-dom": "19.2.5",
     "ai": "7.0.37",
     "typescript": "7.0.2",
-    "zod": "4.4.3",
-    "agent-device": "0.20.10"
+    "zod": "4.4.3"
   }
 }
