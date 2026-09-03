@@ -41,8 +41,14 @@ export function createAttemptArtifacts(options: {
   currentStepId?: () => string | undefined;
   /** Host store every artifact is handed to once complete; undefined keeps files local only. */
   store?: ArtifactStore;
-  /** Report identity handed to the store with each artifact. */
-  identity?: { readonly runId: string; readonly testId: string };
+  /**
+   * Report identity handed to the store with each artifact. `attemptId` is
+   * the attempt the REPORT files the artifact under; a serial member's
+   * artifacts land on the group attempt's record, so its store identity is the
+   * group's id while its own ids (`<attemptId>:artifact:N`) still mint from
+   * the member. Defaults to `attemptId`.
+   */
+  identity?: { readonly runId: string; readonly testId: string; readonly attemptId?: string };
 }): AttemptArtifacts {
   const dir = path.join(options.artifactsRoot, ...options.segments);
   mkdirSync(dir, { recursive: true });
@@ -96,7 +102,7 @@ export function createAttemptArtifacts(options: {
               path: reportPath,
               runId: options.identity?.runId ?? '',
               testId: options.identity?.testId ?? '',
-              attemptId: options.attemptId,
+              attemptId: options.identity?.attemptId ?? options.attemptId,
               ...(stepId === undefined ? {} : { stepId }),
             });
             if (typeof ref === 'string' && ref !== '') record.ref = ref;

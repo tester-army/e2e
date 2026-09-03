@@ -12,6 +12,7 @@ import type { CollectedTest } from '../collect/collect.ts';
 import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
 import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
+import type { ArtifactStore } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import type { AttemptContext } from './execute.ts';
 import type { ArtifactSink } from './fixtures.ts';
@@ -35,6 +36,12 @@ import { INTERRUPTED_BEFORE_START, pairResult } from './units.ts';
 export interface SharedSerialSession {
   readonly session: TargetSession;
   /**
+   * The group attempt's report id. Member artifacts are filed under this
+   * attempt in the report, so a member's store identity uses it rather than
+   * the member's own private attempt id.
+   */
+  readonly attemptId: string;
+  /**
    * Report segments of the group attempt directory. The shared session writes
    * every artifact there, so members resolve artifact paths against it rather
    * than against their own attempt directory.
@@ -48,6 +55,9 @@ export interface SharedSerialSession {
 export interface SerialHost {
   readonly target: ResolvedTarget;
   readonly artifactsRoot: string;
+  readonly runId: string;
+  /** The configured artifact store, so group-owned artifacts (the shared trace) upload like any other. */
+  readonly artifactStore: ArtifactStore | undefined;
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
   launchSession(
@@ -167,6 +177,10 @@ async function runSerialAttempt(
     artifactsRoot: host.artifactsRoot,
     segments: artifactSegments,
     attemptId,
+    ...(host.artifactStore === undefined ? {} : { store: host.artifactStore }),
+    // A group-owned artifact (the shared trace) is identified by the group,
+    // the same identity its report path uses.
+    identity: { runId: host.runId, testId: first.test.serialId ?? first.test.id, attemptId },
   });
   const record: SerialAttemptRecord = {
     id: attemptId,
@@ -194,6 +208,7 @@ async function runSerialAttempt(
   try {
     shared = {
       session: await host.launchSession(first, attemptId, artifacts.dir, host.interruptSignal),
+      attemptId,
       artifactSegments,
       priorSteps: [],
     };

@@ -68,6 +68,25 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     expect(record.sha256).toBe(put.sha256);
   });
 
+  it('hands the store the report-owning attempt id while artifact ids still mint from the member', async () => {
+    const store = capturing();
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: root(),
+      segments: ['web', 'group', 'attempt-0'],
+      attemptId: 'member-private',
+      store,
+      identity: { runId: 'run', testId: 'group', attemptId: 'group-attempt' },
+    });
+    writeFileSync(path.join(artifacts.dir, 'shot.png'), 'x');
+    artifacts.sink.register('screenshot', 'shot.png');
+    await artifacts.settle();
+    // The report files a serial member's artifacts under the group attempt: a
+    // store correlating by attempt must see that id, not a private one absent
+    // from the report.
+    expect(store.puts[0]!.attemptId).toBe('group-attempt');
+    expect(artifacts.records[0]!.id).toBe('member-private:artifact:0');
+  });
+
   it('keeps the local record and omits ref when the store fails, without throwing', async () => {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),

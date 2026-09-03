@@ -21,6 +21,7 @@ import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts'
 import type { CollectedFile } from '../collect/collect.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
+import type { ArtifactStore } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
 import { createBackendSession } from '../backend/session.ts';
@@ -77,6 +78,12 @@ export type AttemptContext =
 /** Executes every selected pair for one target sequentially. */
 export class TargetExecutor implements SerialHost {
   readonly target: ResolvedTarget;
+  get runId(): string {
+    return this.options.runId;
+  }
+  get artifactStore(): ArtifactStore | undefined {
+    return this.config.artifactStore;
+  }
   readonly artifactsRoot: string;
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
@@ -579,7 +586,9 @@ export class TargetExecutor implements SerialHost {
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
-      identity: { runId: this.options.runId, testId: pair.test.id },
+      // A serial member's artifacts are filed under the group attempt in the
+      // report, so that is the attempt a store must see for them.
+      identity: { runId: this.options.runId, testId: pair.test.id, attemptId: shared?.attemptId ?? attemptId },
     });
 
     const record: AttemptRecord = {
