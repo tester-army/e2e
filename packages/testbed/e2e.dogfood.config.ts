@@ -7,7 +7,8 @@
 
 import { defineConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
-import { createAgent, defineTool } from 'e2e/agent';
+import { defineTool } from 'e2e/agent';
+import { loadAgent } from './fixtures/agent-module.ts';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
@@ -56,7 +57,7 @@ export default defineConfig({
   targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   timeout: 300_000,
   actionTimeout: 90_000,
-  agent: createAgent({
+  agent: await loadAgent({
     model: gateway(process.env.E2E_MODEL ?? 'google/gemini-3-flash'),
     tools: { seed_expenses: seedExpenses, reset_expenses: resetExpenses },
     system:

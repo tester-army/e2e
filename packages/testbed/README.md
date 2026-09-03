@@ -39,6 +39,19 @@ pnpm --filter @e2edev/testbed app     # run the playground manually
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;
 artifacts under `.e2e/artifacts/`.
 
+## Agentic suites need an agent
+
+The runner and this testbed ship no step executor. Every suite with
+`agent.act()` steps loads one from `E2E_AGENT_MODULE`: a module path whose
+default export (or `createAgent`) builds a `StepExecutor` from
+`{ model?, tools?, system?, providerOptions? }` — for TesterArmy, the private
+`@testerarmy/e2e-agent` package. Judgment-only suites run without it.
+
+```bash
+E2E_AGENT_MODULE=/path/to/tester-army/packages/e2e-agent/src/index.ts \
+  AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:long
+```
+
 ## Agentic suite
 
 `test:agent` spends real model calls, so it is opt-in and never runs in CI. It
@@ -76,6 +89,62 @@ The devtools recorder names runs after their first prompt and keeps one
 database per process, hence `--workers 1`; the `--ai-trace` file names runs
 after the test and step and merges every worker, so use it for anything you
 want to keep or compare.
+
+## Long-flow bench
+
+`test:long` measures the agent's context management and step hand-off on very
+long flows against the prebuilt Next.js bench app: a procurement cycle of
+fifteen dependent `agent.act` steps over forty-row tables (later steps refer
+back to "the supplier you added"), and a six-page, eighteen-field onboarding
+wizard completed in a single `agent.act`. Every act is verified with a
+deterministic `expect`, so a wrong verdict cannot pass. The config runs with
+the trace cache off; every step is a live model flow.
+
+```bash
+pnpm --filter @e2edev/testbed run bench:build
+AI_GATEWAY_API_KEY=... E2E_MODEL=google/gemini-3.8-flash \
+  pnpm --filter @e2edev/testbed test:long -- --debug --ai-trace
+node bench-summary.mjs .e2e/report.json            # per step: calls, tokens, cost, model time
+node bench-compare.mjs before/report.json .e2e/report.json   # step-by-step deltas between two runs
+npx unbox-ai runs .e2e/ai-trace.json               # drill into one step's turns
+```
+
+`test:handoff` is the hand-off stress: the same app with a 2 KiB ledger
+budget (`limits.maxLedgerBytes`), so twenty steps overrun it the way fifty
+would at the default. The desk issues a ticket whose code, colour and desk
+number appear once; the gate, many steps later on a page that shows none of
+them, must be told all three. Re-issuing the ticket at the desk hands out a new
+code, so a step that goes back to look instead of remembering fails the
+assertion. With the default agent the gate step reads them from the compacted
+ledger entry of the desk step (`saw:`/`noted:`).
+
+Two variants of the long bench measure run-to-run reliability rather than
+cost: `test:long:cache` records on the first run and replays afterwards (the
+ticket test's random code forces a replay divergence and a hand-off to the
+agent every run), and `test:long:jitter` starts the app with
+`BENCH_JITTER_MS=2500`, so every mutation answers after a random 0.2–2.5 s
+delay. `bench-repeat.mjs` runs any config N times and tallies pass rates per
+test with the first failing step of every failed run:
+
+```bash
+AI_GATEWAY_API_KEY=... node bench-repeat.mjs --config e2e.long-jitter.config.ts \
+  --runs 10 --model openai/gpt-5.6-luna --cache off --out /tmp/repeat-jitter
+```
+
+`test:hostile` (and `test:hostile:cache`) is the hostile bench: flows built
+from the shapes that made real TesterArmy runs fail. A library whose deletes
+and moves show up four seconds late, behind a consent banner, with two
+documents of the same name; a note form whose first save fails with a 503 and
+whose Save is disabled until async validation passes; an 8 s and a 25 s
+report; a sync that never completes (the test asserts an honest failure within
+budget, never a pass); same-named controls in three tabs; and payment fields
+that re-format every keystroke. Every case must pass on every run, and the
+hanging sync must fail on every run.
+
+Compare runs on the same model: provider latency varies by an order of
+magnitude between models and between evenings, so tokens and model calls are
+the stable measures, wall time is not. Check `lsof -iTCP:4273` before a run: a
+bench server left over from an earlier run serves the previous build.
 
 ## Known gaps (seleniumbase.io suite)
 

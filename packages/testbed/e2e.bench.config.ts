@@ -1,5 +1,6 @@
 import { defineConfig, type CacheMode } from 'e2e';
 import { playwright } from '@e2edev/playwright';
+import { loadAgent } from './fixtures/agent-module.ts';
 
 const CACHE_MODES = ['off', 'read-only', 'read-write'] as const;
 
@@ -37,6 +38,7 @@ export default defineConfig({
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
+    executor: await loadAgent(),
     model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
   },
   // The bench exists to exercise the trace cache: run once to record, again

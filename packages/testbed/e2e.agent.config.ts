@@ -1,5 +1,6 @@
 import { defineConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
+import { loadAgent } from './fixtures/agent-module.ts';
 
 /**
  * Live trace view: `E2E_DEVTOOLS=1` registers the AI SDK devtools recorder,
@@ -45,6 +46,7 @@ export default defineConfig({
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
+    executor: await loadAgent(),
     model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
     // Visual grounding is a much higher bar than accepting an image: the flash
     // model above judges a drawn chart correctly and still points at a map pin

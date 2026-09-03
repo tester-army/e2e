@@ -8,6 +8,7 @@
 
 import { defineConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
+import { loadAgent } from './fixtures/agent-module.ts';
 
 export default defineConfig({
   specVersion: '0.1',
@@ -25,6 +26,7 @@ export default defineConfig({
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
+    executor: await loadAgent(),
     model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
   },
 });

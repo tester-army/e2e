@@ -1,5 +1,6 @@
 import { defineConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
+import { loadAgent } from './fixtures/agent-module.ts';
 
 /**
  * Long-running agentic journey against the production tester.army site.
@@ -30,6 +31,7 @@ export default defineConfig({
   timeout: 600_000,
   actionTimeout: 90_000,
   agent: {
+    executor: await loadAgent(),
     model: process.env.E2E_MODEL ?? 'anthropic/claude-haiku-4.5',
     maxSteps: 40,
     maxModelCalls: 40,

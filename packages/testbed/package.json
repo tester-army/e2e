@@ -17,6 +17,12 @@
     "bench:build": "next build bench",
     "bench:serve": "next start bench -p 4273",
     "test:bench": "pnpm run bench:build && node node_modules/e2e/dist/cli/bin.js run --config e2e.bench.config.ts",
+    "test:long": "node node_modules/e2e/dist/cli/bin.js run --config e2e.long.config.ts",
+    "test:handoff": "node node_modules/e2e/dist/cli/bin.js run --config e2e.handoff.config.ts",
+    "test:hostile": "node node_modules/e2e/dist/cli/bin.js run --config e2e.hostile.config.ts",
+    "test:hostile:cache": "node node_modules/e2e/dist/cli/bin.js run --config e2e.hostile-cache.config.ts",
+    "test:long:cache": "node node_modules/e2e/dist/cli/bin.js run --config e2e.long-cache.config.ts",
+    "test:long:jitter": "node node_modules/e2e/dist/cli/bin.js run --config e2e.long-jitter.config.ts",
     "test:device": "node node_modules/e2e/dist/cli/bin.js run --config e2e.device.config.ts",
     "demo:host": "pnpm run bench:build && node host-demo.mjs"
   },

@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
+import { jitter } from '../../../lib/jitter';
 import { addExpense } from '../../../lib/store';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  await jitter();
   const body = await request.json();
   const category = body.category === 'Meals' || body.category === 'Office' ? body.category : 'Travel';
   const title = String(body.title ?? '').trim();

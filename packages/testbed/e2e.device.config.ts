@@ -1,7 +1,7 @@
 /**
  * Opt-in device suite on the RFC0002 backend contract: an honest iOS target
- * with no browser backend and no placeholder app URL. The stock
- * createAgent brain runs over the agent-device backend; deterministic device
+ * with no browser backend and no placeholder app URL. The agent named by
+ * E2E_AGENT_MODULE runs over the agent-device backend; deterministic device
  * management (network, permissions, location) is the contributed `device`
  * fixture. Run manually:
  *
@@ -13,7 +13,7 @@
  */
 
 import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
+import { loadAgent } from './fixtures/agent-module.ts';
 import { createGateway } from 'ai';
 import { agentDevice } from './fixtures/agent-device.ts';
 
@@ -29,7 +29,7 @@ export default defineConfig({
   workers: 1,
   cache: 'off',
   agent: {
-    executor: createAgent({ tools }),
+    executor: await loadAgent({ tools }),
     model: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
       process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna',
     ),

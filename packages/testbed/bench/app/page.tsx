@@ -22,6 +22,18 @@ export default function HomePage() {
           <li>
             <Link href="/settings">Settings</Link>
           </li>
+          <li>
+            <Link href="/procure/suppliers">Procurement</Link>
+          </li>
+          <li>
+            <Link href="/onboarding">Onboarding</Link>
+          </li>
+          <li>
+            <Link href="/handoff">Ticket desk</Link>
+          </li>
+          <li>
+            <Link href="/hostile/library">Hostile library</Link>
+          </li>
         </ul>
       </nav>
     </main>
