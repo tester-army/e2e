@@ -9,7 +9,7 @@ import { test as base } from '@e2edev/e2e';
 import type { Device } from './device.ts';
 
 export { agentDevice } from './backend.ts';
-export type { AgentDeviceOptions, AgentDevicePlatform } from './surface.ts';
+export type { AgentDeviceOptions, AgentDevicePlatform, InstallAppOptions, InstalledApp } from './surface.ts';
 export type { BiometricSensor, Device, DeviceOrientation, DevicePermission, ForegroundApp } from './device.ts';
 
 /**

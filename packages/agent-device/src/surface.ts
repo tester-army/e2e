@@ -61,6 +61,13 @@ export interface AgentDeviceOptions {
    * `app.clearState` are not declared.
    */
   readonly app?: string;
+  /**
+   * Build to install on the device once per worker, before the first attempt:
+   * an iOS `.app` bundle or an Android `.apk`, resolved against the working
+   * directory. Without `app`, the installed bundle id or package becomes the
+   * app opened fresh at the start of every attempt.
+   */
+  readonly appPath?: string;
   /** Simulator or emulator to use, by name or id; agent-device picks a booted one otherwise. */
   readonly device?: string;
   /**
@@ -74,6 +81,32 @@ export interface AgentDeviceOptions {
    * is cheaper on screens with long lists.
    */
   readonly snapshot?: 'full' | 'interactive';
+}
+
+/** How `installApp` puts a build on the device. */
+export interface InstallAppOptions {
+  /**
+   * Bundle id or package of the build. `reinstall` needs one: agent-device
+   * removes that app before installing. Defaults to the pinned app.
+   */
+  readonly app?: string;
+  /** Remove the installed app first so the build starts with no data. */
+  readonly reinstall?: boolean;
+}
+
+/** What an install put on the device, as agent-device identified it. */
+export interface InstalledApp {
+  /** The bundle id or package to open the app by. */
+  readonly app: string;
+  readonly bundleId?: string;
+}
+
+/** The install fields this backend reads off agent-device's response. */
+interface RawInstallResult {
+  readonly app: string;
+  readonly appId?: string;
+  readonly bundleId?: string;
+  readonly package?: string;
 }
 
 /** The snapshot fields this backend reads off agent-device's response. */
@@ -125,6 +158,8 @@ export class AgentDeviceSurface {
   private generation = new Map<string, ProjectedNode>();
   private idCounter = 0;
   private appIdentity: string | undefined;
+  /** The app `appPath` installed at init, when no `app` option names one. */
+  private installedApp: string | undefined;
   /**
    * Commands still running on the device. agent-device takes no abort
    * signal, so a cancelled or timed-out call is only abandoned by its
@@ -140,7 +175,12 @@ export class AgentDeviceSurface {
 
   /** Whether the manifest declares app restart and state clearing. */
   get managesApp(): boolean {
-    return this.options.app !== undefined;
+    return this.options.app !== undefined || this.options.appPath !== undefined;
+  }
+
+  /** The app opened fresh per attempt: the `app` option, else the build `appPath` installed. */
+  get pinnedApp(): string | undefined {
+    return this.options.app ?? this.installedApp;
   }
 
   /** Whether an attempt is running on this surface right now. */
@@ -202,6 +242,13 @@ export class AgentDeviceSurface {
         }),
       info.signal,
     );
+    if (this.options.appPath === undefined) return;
+    const installed = await this.installApp(
+      this.options.appPath,
+      this.options.app === undefined ? {} : { app: this.options.app },
+      info.signal,
+    );
+    if (this.options.app === undefined) this.installedApp = installed.app;
   }
 
   async startAttempt(context: BackendAttemptContext): Promise<void> {
@@ -211,8 +258,9 @@ export class AgentDeviceSurface {
     await this.settleInflight(context.signal);
     this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0 };
     this.generation = new Map();
-    if (this.options.app === undefined) return;
-    await this.openApp(this.options.app, true, context.signal);
+    const app = this.pinnedApp;
+    if (app === undefined) return;
+    await this.openApp(app, true, context.signal);
   }
 
   async endAttempt(_context: BackendCleanupContext): Promise<void> {
@@ -226,6 +274,7 @@ export class AgentDeviceSurface {
     this.attempt = undefined;
     this.generation = new Map();
     this.appIdentity = undefined;
+    this.installedApp = undefined;
     if (client === undefined) return;
     await withinCleanupBudget(client.sessions.close().catch(() => undefined), context);
   }
@@ -245,6 +294,33 @@ export class AgentDeviceSurface {
     );
     this.appIdentity = result.appBundleId ?? result.appName ?? app;
     this.generation = new Map();
+  }
+
+  /**
+   * Installs a build on the session's device. `reinstall` removes the app
+   * named by `options.app` (else the pinned app) first, so the build starts
+   * with no data; a plain install replaces the binary and keeps its data.
+   */
+  async installApp(appPath: string, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
+    const resolved = path.resolve(appPath);
+    const selection = {
+      platform: this.options.platform,
+      ...(this.options.device === undefined ? {} : { device: this.options.device }),
+    };
+    const app = options.app ?? (options.reinstall === true ? this.pinnedApp : undefined);
+    if (options.reinstall === true && app === undefined) {
+      throw invalidState('reinstall needs an app: pass `app`, or pin one with the backend option `app` or `appPath`');
+    }
+    const result = (await this.command(
+      `install ${resolved}`,
+      (client) =>
+        options.reinstall === true && app !== undefined
+          ? client.apps.reinstall({ ...selection, app, appPath: resolved })
+          : client.apps.install({ ...selection, ...(app === undefined ? {} : { app }), appPath: resolved }),
+      signal,
+    )) as RawInstallResult;
+    const identity = result.bundleId ?? result.package ?? result.appId;
+    return { app: identity ?? result.app, ...(identity === undefined ? {} : { bundleId: identity }) };
   }
 
   private async snapshot(operation: OperationContext, interactiveOnly: boolean): Promise<RawSnapshot> {
@@ -451,13 +527,14 @@ export class AgentDeviceSurface {
   }
 
   async restart(operation: OperationContext): Promise<void> {
-    if (this.options.app === undefined) throw unsupported('app.restart needs the backend option `app`');
-    await this.openApp(this.options.app, true, operation.signal);
+    const app = this.pinnedApp;
+    if (app === undefined) throw unsupported('app.restart needs the backend option `app` or `appPath`');
+    await this.openApp(app, true, operation.signal);
   }
 
   async clearState(operation: OperationContext): Promise<void> {
-    const app = this.options.app;
-    if (app === undefined) throw unsupported('app.clearState needs the backend option `app`');
+    const app = this.pinnedApp;
+    if (app === undefined) throw unsupported('app.clearState needs the backend option `app` or `appPath`');
     await this.command(
       'clear app state',
       (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),

@@ -46,6 +46,7 @@ Options:
 | --- | --- |
 | `platform` | `'ios'` or `'android'`. |
 | `app` | Bundle id, package, or display name opened fresh at the start of every attempt. Also unlocks `app.restart()` and `app.clearState()`. |
+| `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the working directory. Without `app`, the installed bundle id or package is the app opened per attempt. |
 | `device` | Simulator or emulator name or id; a booted one is picked otherwise. |
 | `session` | agent-device session name; defaults to `e2e-<target name>`. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
@@ -104,9 +105,15 @@ test('shows the version offline in dark mode', async ({ agent, device, screen })
 
 Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
 `clearLocation`, `setAppearance`, `setOrientation`, `setBiometrics`,
-`enrollBiometrics`, `openApp`, `closeApp`, `foregroundApp`, `home`, `back`,
-`alert`, `dismissKeyboard`, `clipboard`, `setClipboard`, and the `locator`
-accessor.
+`enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `foregroundApp`,
+`home`, `back`, `alert`, `dismissKeyboard`, `clipboard`, `setClipboard`, and
+the `locator` accessor.
+
+`installApp(appPath, { app, reinstall })` puts a build on the device from a
+test, for upgrade and fresh-install paths the `appPath` option cannot express.
+A plain install replaces the binary and keeps its data; `reinstall: true`
+removes the app named by `app` (default: the pinned app) first. It resolves to
+the bundle id or package to `openApp` the build by.
 
 ## Agent tools
 

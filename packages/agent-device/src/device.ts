@@ -6,7 +6,7 @@
  */
 
 import type { BackendFixtureContext, Locator } from '@e2edev/e2e/backend';
-import type { AgentDeviceSurface } from './surface.ts';
+import type { AgentDeviceSurface, InstallAppOptions, InstalledApp } from './surface.ts';
 
 /** Permissions agent-device can grant, deny, or reset on an open app. */
 export type DevicePermission =
@@ -57,6 +57,13 @@ export interface Device {
   setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
   /** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
+  /**
+   * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
+   * against the working directory) on the device. `reinstall: true` removes
+   * the app first so it starts with no data; a plain install replaces the
+   * binary and keeps its data. Resolves to the identity to `openApp` it by.
+   */
+  installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /** Brings an app to the foreground; `relaunch` restarts it fresh. */
   openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
   /** Closes the session's current app. */
@@ -143,6 +150,9 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Backen
         (client) => client.settings.update({ setting: sensor, state: enrolled ? 'enroll' : 'unenroll' }),
         signal,
       );
+    },
+    async installApp(appPath, options) {
+      return surface.installApp(appPath, options ?? {}, signal);
     },
     async openApp(app, options) {
       await surface.openApp(app, options?.relaunch === true, signal);

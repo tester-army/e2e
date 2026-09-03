@@ -140,6 +140,56 @@ describe('lifecycle', () => {
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
   });
 
+  it('installs the build once per init and opens what it installed when no app is pinned', async () => {
+    const h = harness({ appPath: './build/App.app' }, false);
+    h.fake.respond('apps.install', () => ({
+      app: './build/App.app',
+      appPath: path.resolve('./build/App.app'),
+      platform: 'ios',
+      bundleId: 'com.example.app',
+      identifiers: {},
+    }));
+    expect(Object.keys(h.backend.app!).toSorted()).toEqual(['back', 'clearState', 'restart']);
+    await openAttempt(h);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
+    expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: path.resolve('./build/App.app') });
+    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', relaunch: true });
+
+    await h.backend.endAttempt!(cleanup());
+    await h.backend.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
+    expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
+
+    await h.backend.app!.clearState!(operation());
+    expect(h.fake.lastArgs('settings.update')).toEqual({ setting: 'clear-app-state', state: 'clear', app: 'com.example.app' });
+
+    // A new worker installs again: the build on the device is the worker's.
+    await h.backend.dispose!(cleanup());
+    await openAttempt(h);
+    expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(2);
+  });
+
+  it('installs under the pinned app and device, and keeps opening the pinned app', async () => {
+    const h = harness({ app: 'com.example.app', appPath: '/builds/app.apk', device: 'Pixel 8', platform: 'android' });
+    h.fake.respond('apps.install', () => ({ app: 'com.example.app', appPath: '/builds/app.apk', platform: 'android', identifiers: {} }));
+    await openAttempt(h);
+    expect(h.fake.lastArgs('apps.install')).toEqual({
+      platform: 'android',
+      device: 'Pixel 8',
+      app: 'com.example.app',
+      appPath: '/builds/app.apk',
+    });
+    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'android', device: 'Pixel 8', relaunch: true });
+  });
+
+  it('fails init when the install fails, before anything is opened', async () => {
+    const h = harness({ appPath: './missing.app' }, false);
+    h.fake.respond('apps.install', () => {
+      throw new Error('no such file: missing.app');
+    });
+    await expect(openAttempt(h)).rejects.toMatchObject({ code: 'BACKEND_FAILURE' });
+    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install']);
+  });
+
   it('refuses a second startAttempt while one runs and treats cold cleanup as a no-op', async () => {
     const h = harness();
     await expect(h.backend.endAttempt!(cleanup())).resolves.toBeUndefined();
@@ -527,6 +577,28 @@ describe('device fixture', () => {
     expect(fixture(h).locator('id=About')).toEqual({ minted: true });
     expect(minted).toEqual([{ kind: 'selector', selector: 'id=About' }]);
     expect(h.fake.calls.length).toBe(before);
+  });
+
+  it('installs a build from a test, replacing by default and removing first on reinstall', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('apps.install', () => ({ app: './b/App.app', appPath: '/b/App.app', platform: 'ios', bundleId: 'com.example.app', identifiers: {} }));
+    h.fake.respond('apps.reinstall', () => ({ app: 'com.example.app', appPath: '/b/App.app', platform: 'ios', identifiers: {} }));
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    expect(await device.installApp('./b/App.app')).toEqual({ app: 'com.example.app', bundleId: 'com.example.app' });
+    expect(await device.installApp('/b/App.app', { reinstall: true })).toEqual({ app: 'com.example.app' });
+    expect(await device.installApp('/b/App.app', { app: 'com.other', reinstall: true })).toEqual({ app: 'com.example.app' });
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.install', { platform: 'ios', appPath: path.resolve('./b/App.app') }],
+      ['apps.reinstall', { platform: 'ios', app: 'Settings', appPath: '/b/App.app' }],
+      ['apps.reinstall', { platform: 'ios', app: 'com.other', appPath: '/b/App.app' }],
+    ]);
+
+    const free = harness({}, false);
+    await openAttempt(free);
+    await expect(fixture(free).installApp('/b/App.app', { reinstall: true })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    expect(free.fake.methods()).toEqual(['devices.boot']);
   });
 
   it('issues one settings or system command per method', async () => {

@@ -40,6 +40,7 @@ a deterministic check that names a platform label is scoped with
 | --- | --- | --- | --- |
 | `platform` | `'ios' \| 'android'` | required | Which device family the target boots. |
 | `app` | `string` | none | App opened fresh at the start of every attempt: a bundle id, a package name, or a display name. Declares `app.restart()` and `app.clearState()`. |
+| `appPath` | `string` | none | An iOS `.app` bundle or Android `.apk`, resolved against the working directory, installed once per worker after boot and before the first attempt. Without `app`, the installed bundle id or package is the app opened per attempt. |
 | `device` | `string` | a booted device | Simulator or emulator name or id. |
 | `session` | `string` | `e2e-<target name>` | agent-device session. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
@@ -60,7 +61,7 @@ targets with `workers: 1`: workers share one simulator.
 | `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` within a node, `dragTo`, and `focus` on editable fields (a touch surface focuses by tapping, and a tap on a control would activate it). A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child; `check` and `uncheck` need the tree to expose the checked state, which Android switches do not. `selectOption`, `setInputFiles`, `scrollIntoView`, focus on a control, and other keys are `UNSUPPORTED_CAPABILITY`. |
 | `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible unless `hidden: true` is requested. |
 | `swipe` | Viewport scroll in four directions. |
-| `app` | `back`; `restart` and `clearState` when `app` is pinned. No `navigate`: a device has no app URL. |
+| `app` | `back`; `restart` and `clearState` when `app` or `appPath` is pinned. No `navigate`: a device has no app URL. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`: every secure field's bounds are painted black first, and a screenshot that cannot be redacted fails instead of being written. No traces. |
 | `url` | `app://device/<bundle id>/<screen title>`, the trace cache's anchor; the cache compares pathnames, so the app identity is in the path. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
@@ -91,6 +92,7 @@ export interface Device {
   setOrientation(orientation: DeviceOrientation): Promise<void>;
   setBiometrics(sensor: 'faceid' | 'touchid' | 'fingerprint', result: 'match' | 'nonmatch'): Promise<void>;
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
+  installApp(appPath: string, options?: { app?: string; reinstall?: boolean }): Promise<{ app: string; bundleId?: string }>;
   openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
   closeApp(): Promise<void>;
   foregroundApp(): Promise<{ name: string; bundleId?: string }>;
@@ -107,6 +109,17 @@ Every async method is a recorded step named `device.<method>`, bounded by
 `config.actionTimeout` and the attempt signal, and never involves a model. A
 failure is `BACKEND_FAILURE` with agent-device's message; a command the
 platform cannot run is `UNSUPPORTED_CAPABILITY`.
+
+`installApp` puts a build on the device from inside a test, for upgrade and
+fresh-install paths the `appPath` option cannot express. A plain install
+replaces the binary and keeps its data; `reinstall: true` removes the app named
+by `app` (default: the pinned app) first, and is `INVALID_STATE` when neither
+names one. It resolves to the bundle id or package to `openApp` the build by.
+
+```ts
+const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
+await device.openApp(app);
+```
 
 `locator` is a synchronous accessor: it mints a core `Locator` from an
 agent-device selector, for nodes the closed `screen` vocabulary cannot name.
