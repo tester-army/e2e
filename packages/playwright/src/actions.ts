@@ -2,6 +2,7 @@
 
 import { BackendError, type LocatorAction, type NodeRef } from 'e2e/backend';
 import {
+  type Actionable,
   asActionable,
   isClassified,
   isPwTimeout,
@@ -63,7 +64,7 @@ export async function dispatchLocatorAction(
     case 'selectOption': {
       const value = action.value;
       if (typeof value === 'string') {
-        await locator.selectOption({ label: value }, { timeout });
+        await locator.selectOption({ label: await resolveOptionLabel(locator, value) }, { timeout });
       } else if (value.index !== undefined) {
         await locator.selectOption({ index: value.index }, { timeout });
       } else {
@@ -144,4 +145,38 @@ export function classifyActionError(rawCause: unknown, action: LocatorAction): E
     return new BackendError('NOT_ACTIONABLE', text, { retryable: false, cause });
   }
   return new BackendError('BACKEND_FAILURE', text, { retryable: false, cause });
+}
+
+/**
+ * The option label to select for a label the caller named. An exact label
+ * wins; otherwise the one option whose label matches case-insensitively, then
+ * the one it prefixes, then the one that contains it. A model reads
+ * `option "A4 copy paper 80g (NP-A4-80)"` and asks for "A4 copy paper 80g";
+ * refusing that on punctuation buys a failed action and a keyboard fallback,
+ * not safety — an ambiguous match is still refused, and a control that is not
+ * a `<select>` keeps the label as given.
+ */
+async function resolveOptionLabel(locator: Actionable, label: string): Promise<string> {
+  let labels: string[] | null = null;
+  try {
+    labels = await locator.evaluate((element: Element): string[] | null =>
+      element instanceof HTMLSelectElement
+        ? Array.from(element.options).map((option) => option.label || option.text)
+        : null,
+    );
+  } catch {
+    labels = null;
+  }
+  if (!Array.isArray(labels) || labels.includes(label)) return label;
+  const wanted = label.trim().toLowerCase();
+  const unique = (test: (candidate: string) => boolean): string | undefined => {
+    const hits = labels.filter((candidate) => test(candidate.trim().toLowerCase()));
+    return hits.length === 1 ? hits[0] : undefined;
+  };
+  return (
+    unique((candidate) => candidate === wanted) ??
+    unique((candidate) => candidate.startsWith(wanted)) ??
+    unique((candidate) => candidate.includes(wanted)) ??
+    label
+  );
 }

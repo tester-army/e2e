@@ -43,6 +43,7 @@ interface Rect {
  */
 export type Actionable = Pick<
   PwLocator,
+  | 'evaluate'
   | 'click'
   | 'dblclick'
   | 'fill'

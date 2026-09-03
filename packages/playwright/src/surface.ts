@@ -9,7 +9,7 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, Page } from 'playwright';
+import type { Browser, BrowserContext, ElementHandle, Page, Request } from 'playwright';
 import {
   BackendError,
   type BackendAppInfo,
@@ -54,6 +54,13 @@ import {
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_STORED_REFS = 2048;
+
+/** Requests an observation waits for; ported from the shape Playwright MCP settles on. */
+const SETTLE_REQUEST_TYPES: ReadonlySet<string> = new Set(['xhr', 'fetch', 'document']);
+/** How long after an action its effects may still start requests. */
+const ACTION_EFFECT_WINDOW_MS = 120;
+/** Longest an observation waits for action-triggered responses. */
+const SETTLE_REQUESTS_TIMEOUT_MS = 5_000;
 
 /**
  * Safety valve on nodes in one observation. The contract has no way to report
@@ -141,6 +148,8 @@ export class PlaywrightSurface {
    * in-flight observation still references.
    */
   private observationRefs = new Map<string, ActionTarget>();
+  /** Data requests set off by actions since the last observation. */
+  private readonly actionRequests = new Set<Request>();
 
   constructor(options: PlaywrightOptions) {
     this.browserName = options.browser ?? 'chromium';
@@ -456,9 +465,11 @@ export class PlaywrightSurface {
       operation,
       action.kind,
       () => {
-        this.requirePage();
-        return dispatchLocatorAction(this.lookupRef(ref), action, operation.timeoutMs, (other) =>
-          this.lookupRef(other),
+        const page = this.requirePage();
+        return this.trackingRequests(page, () =>
+          dispatchLocatorAction(this.lookupRef(ref), action, operation.timeoutMs, (other) =>
+            this.lookupRef(other),
+          ),
         );
       },
       (cause) => classifyActionError(cause, action),
@@ -470,9 +481,64 @@ export class PlaywrightSurface {
     momentum: Momentum | undefined,
     operation: OperationContext,
   ): Promise<void> {
-    return this.guard(operation, 'swipe', () =>
-      performViewportSwipe(this.requirePage(), direction, momentum ?? 'none'),
+    return this.guard(operation, 'swipe', () => {
+      const page = this.requirePage();
+      return this.trackingRequests(page, () =>
+        performViewportSwipe(page, direction, momentum ?? 'none'),
+      );
+    });
+  }
+
+  /**
+   * Runs one action while collecting the requests it set off — during the
+   * action and for a short window after it, which is when a framework's
+   * effects fire — so the next observation can wait for their responses. An
+   * action whose effect is a request the app is still waiting on would
+   * otherwise be observed before the effect exists, and a model told "nothing
+   * changed" repeats the action. Only data requests count: a stylesheet or an
+   * analytics beacon settles nothing the tree shows.
+   */
+  private async trackingRequests<T>(page: Page, action: () => Promise<T>): Promise<T> {
+    const started: Request[] = [];
+    const collect = (request: Request): void => {
+      if (SETTLE_REQUEST_TYPES.has(request.resourceType())) started.push(request);
+    };
+    page.on('request', collect);
+    try {
+      return await action();
+    } finally {
+      // Detached after the effect window even when the action failed: a
+      // failed click can still have fired a request the retry must wait on.
+      setTimeout(() => {
+        page.off('request', collect);
+        for (const request of started) this.actionRequests.add(request);
+      }, ACTION_EFFECT_WINDOW_MS);
+    }
+  }
+
+  /**
+   * Waits, bounded, for the responses of requests earlier actions set off.
+   * A response that never arrives (a long poll, a stream) costs the budget
+   * once and is forgotten; the tree is then read as it is.
+   */
+  private async awaitActionRequests(): Promise<void> {
+    // The effect window may still be open; give it time to hand over.
+    await new Promise((resolve) => setTimeout(resolve, ACTION_EFFECT_WINDOW_MS));
+    if (this.actionRequests.size === 0) return;
+    const pending = [...this.actionRequests];
+    this.actionRequests.clear();
+    const settled = Promise.all(
+      pending.map((request) =>
+        request
+          .response()
+          .then((response) => response?.finished())
+          .catch(() => undefined),
+      ),
     );
+    await Promise.race([
+      settled,
+      new Promise((resolve) => setTimeout(resolve, SETTLE_REQUESTS_TIMEOUT_MS)),
+    ]);
   }
 
   private async validateFrames(expression: LocatorExpression): Promise<void> {
@@ -619,6 +685,7 @@ export class PlaywrightSurface {
         timeout: Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS),
       })
       .catch(() => undefined);
+    await this.awaitActionRequests();
     const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
     const generation = new Map<string, ActionTarget>();
     // The screenshot masks by sweeping the page's frames, so it needs nothing
@@ -640,7 +707,10 @@ export class PlaywrightSurface {
           {
             testIdAttribute: this.testIdAttribute,
             allowedOrigins: this.app.allowedOrigins,
-            mintId: () => this.mintId(),
+            idSeed: () => this.refCounter + 1,
+            advanceIds: (nextId) => {
+              this.refCounter = Math.max(this.refCounter, nextId - 1);
+            },
             commit: (id: string, element: ElementHandle<Element>) => {
               generation.set(id, { kind: 'element', element });
             },

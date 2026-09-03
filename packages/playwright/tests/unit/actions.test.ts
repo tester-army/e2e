@@ -121,6 +121,38 @@ function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }) {
   return { locator, target, wheel };
 }
 
+describe('selectOption label resolution', () => {
+  const lookup = () => {
+    throw new Error('no second target');
+  };
+  const withOptions = (labels: string[] | null) => {
+    const { locator, target } = stubLocator();
+    (locator as unknown as { evaluate: unknown }).evaluate = vi.fn(async () => labels);
+    return { locator, target };
+  };
+
+  it('keeps an exact label', async () => {
+    const { locator, target } = withOptions(['A4 copy paper 80g (NP-A4-80)', 'A3 copy paper 90g (NP-A3-90)']);
+    await dispatchLocatorAction(target, { kind: 'selectOption', value: 'A3 copy paper 90g (NP-A3-90)' }, 7, lookup);
+    expect(locator.selectOption.mock.calls[0]).toEqual([{ label: 'A3 copy paper 90g (NP-A3-90)' }, { timeout: 7 }]);
+  });
+
+  it('resolves the one option a shorter label prefixes, case-insensitively', async () => {
+    const { locator, target } = withOptions(['A4 copy paper 80g (NP-A4-80)', 'A3 copy paper 90g (NP-A3-90)']);
+    await dispatchLocatorAction(target, { kind: 'selectOption', value: 'a4 copy paper 80g' }, 7, lookup);
+    expect(locator.selectOption.mock.calls[0]).toEqual([{ label: 'A4 copy paper 80g (NP-A4-80)' }, { timeout: 7 }]);
+  });
+
+  it('refuses an ambiguous match and a non-select control keeps the label as given', async () => {
+    const ambiguous = withOptions(['Paper A', 'Paper B']);
+    await dispatchLocatorAction(ambiguous.target, { kind: 'selectOption', value: 'Paper' }, 7, lookup);
+    expect(ambiguous.locator.selectOption.mock.calls[0]).toEqual([{ label: 'Paper' }, { timeout: 7 }]);
+    const custom = withOptions(null);
+    await dispatchLocatorAction(custom.target, { kind: 'selectOption', value: 'paper a' }, 7, lookup);
+    expect(custom.locator.selectOption.mock.calls[0]).toEqual([{ label: 'paper a' }, { timeout: 7 }]);
+  });
+});
+
 describe('dispatchLocatorAction', () => {
   const lookup = () => {
     throw new Error('no second target in these cases');

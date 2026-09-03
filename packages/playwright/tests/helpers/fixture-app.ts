@@ -50,12 +50,31 @@ const STATE = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * A button whose only effect is a request the app then renders: the shape of
+ * every save, submit, and toggle that talks to a server. The result appears
+ * only once the response lands, well after the click resolves.
+ */
+const FETCH = `<!doctype html>
+<html>
+<head><title>Fixture Fetch</title></head>
+<body>
+<h1>Fetch</h1>
+<button id="load" onclick="fetch('/delayed').then((r) => r.text()).then((t) => { document.getElementById('result').textContent = t; })">Load result</button>
+<output id="result" role="status" aria-label="Result">idle</output>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/form': FORM,
   '/login': LOGIN,
   '/state': STATE,
+  '/fetch': FETCH,
 };
+
+/** Delay before `/delayed` answers: longer than any DOM settle, shorter than the request settle budget. */
+const DELAYED_RESPONSE_MS = 1_800;
 
 /** Delay before `/slow` answers, long enough for a caller to cancel first. */
 const SLOW_RESPONSE_MS = 5_000;
@@ -69,6 +88,14 @@ export interface FixtureApp {
 export function startFixtureApp(): Promise<FixtureApp> {
   const server: Server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://fixture.test');
+    if (url.pathname === '/delayed') {
+      const timer = setTimeout(() => {
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('loaded from server');
+      }, DELAYED_RESPONSE_MS);
+      request.on('close', () => clearTimeout(timer));
+      return;
+    }
     if (url.pathname === '/slow') {
       const timer = setTimeout(() => {
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
