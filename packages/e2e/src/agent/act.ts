@@ -57,7 +57,7 @@ import {
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
 import { describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { StepTraceSession, type StepCacheHost } from './step-cache.ts';
+import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 
 /** Everything one dispatched step is, resolved before the step opens. */
 interface DispatchSpec {
@@ -133,33 +133,27 @@ export async function runAssertStep(
 
 /**
  * Opens the step, tries a cached replay, delegates to the executor when the
- * cache misses or diverges, settles the verdict, and — on a pass in
- * read-write mode — stages the step's action trace for attempt-end
- * settlement. A step that settles non-passed after consuming a cached replay
- * evicts that entry, so a poisoned flow re-records instead of replaying
- * forever; cancellation evicts nothing, exactly like an interrupted attempt.
- * An assert is a verification step: its passing is what confirms the traces
- * staged before it at attempt end (cache/context.ts).
+ * cache misses or diverges, settles the verdict, and hands the outcome to the
+ * cache session, which owns the stage-or-evict decision
+ * (`StepTraceSession.conclude`). An assert is a verification step: its
+ * passing is what confirms the traces staged before it at attempt end
+ * (cache/context.ts).
  */
 async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<void> {
   await runtime.steps.run('agent', spec.api, spec.instruction, async () => {
     const dispatch = new ActDispatch(runtime, spec);
     try {
+      let verdict: StepVerdict;
       try {
-        let verdict: StepVerdict;
-        try {
-          verdict = await dispatch.run();
-        } catch (cause) {
-          throw dispatch.settleThrown(toAgentError(cause));
-        }
-        dispatch.settle(validateVerdict(verdict, runtime.executor.name));
-        await dispatch.stageTrace();
+        verdict = await dispatch.run();
       } catch (cause) {
-        if (!(isAgentError(cause) && cause.code === 'CANCELLED')) {
-          await dispatch.evictConsumedReplay();
-        }
-        throw cause;
+        throw dispatch.settleThrown(toAgentError(cause));
       }
+      dispatch.settle(validateVerdict(verdict, runtime.executor.name));
+      await dispatch.conclude('passed');
+    } catch (cause) {
+      await dispatch.conclude(isAgentError(cause) && cause.code === 'CANCELLED' ? 'cancelled' : 'failed');
+      throw cause;
     } finally {
       dispatch.finish();
     }
@@ -254,7 +248,7 @@ class ActDispatch {
     this.stepCache =
       cache === undefined || stepIndex === undefined
         ? undefined
-        : new StepTraceSession({
+        : new StepTraceSession(this.cacheHost(), {
             cache,
             instruction: spec.instruction,
             params: spec.params,
@@ -404,15 +398,13 @@ class ActDispatch {
   }
 
   private async dispatchStep(): Promise<StepVerdict> {
-    if (this.stepCache !== undefined) {
-      const replayed = await this.stepCache.begin(this.replayHost());
-      if (replayed !== undefined) return replayed;
-    }
+    const replayed = await this.stepCache?.begin();
+    if (replayed !== undefined) return replayed;
     return this.runtime.executor.runStep(this.context());
   }
 
   /** The cache session's narrow view of this dispatch. */
-  private replayHost(): StepCacheHost {
+  private cacheHost(): StepCacheHost {
     return {
       observe: async () => (await this.observeLatest()).nodes,
       observeSettled: async () => (await this.observeSettled()).nodes,
@@ -437,14 +429,9 @@ class ActDispatch {
     }
   }
 
-  /** Stages the step's recorded trace for attempt-end settlement (`StepTraceSession.stage`). */
-  async stageTrace(): Promise<void> {
-    await this.stepCache?.stage(this.explanation);
-  }
-
-  /** Evicts a consumed replay entry after a non-passed settle. */
-  async evictConsumedReplay(): Promise<void> {
-    await this.stepCache?.evictOnFailure();
+  /** Hands the settled outcome to the cache session, which stages, evicts, or does nothing. */
+  async conclude(outcome: StepOutcome): Promise<void> {
+    await this.stepCache?.conclude(outcome, this.explanation);
   }
 
   /** Maps the executor's verdict onto the runner outcome. Fail-closed on hard stops. */

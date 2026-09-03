@@ -68,17 +68,17 @@ export function createAgentFixture(runtime: AgentContext): Agent {
    * confirms the action traces staged before it (cache/context.ts).
    */
   const step = async <Value>(
-    options: InvocationOptions & StepRunOptions,
+    options: InvocationOptions,
     label: string,
     body: (invocation: Invocation) => Promise<Value>,
-  ): Promise<Value> => {
-    const { verifies = false, ...invocationOptions } = options;
-    return runtime.steps.run(
+    stepOptions: StepRunOptions = {},
+  ): Promise<Value> =>
+    runtime.steps.run(
       'agent',
       options.api,
       label,
       async () => {
-        const invocation = new Invocation(runtime, { ...invocationOptions, label });
+        const invocation = new Invocation(runtime, { ...options, label });
         try {
           return await body(invocation);
         } catch (cause) {
@@ -87,9 +87,8 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           invocation.finish();
         }
       },
-      { verifies },
+      stepOptions,
     );
-  };
 
   /** One judgment call against a fresh observation. */
   const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
@@ -108,7 +107,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.waitFor',
-          verifies: true,
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: resolveBoundedBudget(
@@ -134,6 +132,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
             });
           }
         },
+        { verifies: true },
       );
     },
 
@@ -197,7 +196,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.assert',
-          verifies: true,
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: 1,
@@ -216,6 +214,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           if (judgment.result) return;
           throw new AgentError('ASSERTION_FAILED', judgment.explanation, (screenshot === undefined ? {} : { screenshot }));
         },
+        { verifies: true },
       );
     },
   };

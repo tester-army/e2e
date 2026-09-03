@@ -11,28 +11,26 @@
 import type { ActionTrace, TraceEntry } from './trace.ts';
 
 /**
+ * Whether two recorded locations are the same page. Pathname only, at both
+ * ends of a trace: a volatile query string (`?utm=…`, a cache-busting stamp)
+ * must not break zero-turn, and the relocated targets and end anchors — not
+ * the query — are what prove the screen is the one the flow was proven on.
+ */
+export function samePathname(a: string, b: string): boolean {
+  return pathnameOf(a) === pathnameOf(b);
+}
+
+function pathnameOf(path: string): string {
+  return path.split('?')[0] ?? path;
+}
+
+/**
  * Whether a trace establishes its own starting point by navigating first.
  * Such a trace needs no start-path precondition — and a trace with neither
  * anchor can never replay at all, so it is not worth writing.
  */
 export function opensWithNavigate(trace: ActionTrace): boolean {
   return trace.actions.find((action) => action.name !== 'tool')?.name === 'navigate';
-}
-
-/**
- * Pathname-only comparison of a live path against a recorded anchor: volatile
- * query strings (tracking parameters, cache busters) must break neither the
- * start precondition nor the end postcondition. Both anchors use this one
- * rule, so an entry that replays also finalizes under the same reading of
- * "the same page". An unknown live path is not evidence against the anchor.
- */
-export function samePathname(current: string | undefined, recorded: string): boolean {
-  if (current === undefined) return true;
-  return pathnameOf(current) === pathnameOf(recorded);
-}
-
-function pathnameOf(value: string): string {
-  return value.split('?')[0] ?? value;
 }
 
 /**
@@ -48,8 +46,8 @@ export type TraceReplayDecision =
 /**
  * Decides whether one entry replays for the current step. A trace that does
  * not open with a navigate carries a start-path precondition: the app must
- * be where the recording began, or the recorded actions would run against a
- * different screen than they were proven on.
+ * be on the page where the recording began, or the recorded actions would
+ * run against a different screen than they were proven on.
  */
 export function decideTraceReplay(
   entry: TraceEntry,
@@ -58,11 +56,7 @@ export function decideTraceReplay(
   if (entry.payload.truncated === true) return { action: 'miss', reason: 'truncated' };
   if (!opensWithNavigate(entry.payload)) {
     const startPath = entry.payload.startPath;
-    if (
-      startPath === undefined ||
-      currentPath === undefined ||
-      !samePathname(currentPath, startPath)
-    ) {
+    if (startPath === undefined || currentPath === undefined || !samePathname(startPath, currentPath)) {
       return { action: 'miss', reason: 'wrong-context' };
     }
   }

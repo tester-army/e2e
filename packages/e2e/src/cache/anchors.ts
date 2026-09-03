@@ -8,20 +8,33 @@
  * produced an unnamed record — and self-finalize with nothing checking the
  * effect. Anchors restore the check as data: the descriptors of nodes that
  * were on screen when the step passed and were not there when it began. They
- * are the step's own delta, compared through the same projection replay
- * relocates targets by, so a replay must reproduce the recorded effect — not
- * just the recorded clicks — before it may pass on its own.
+ * are the step's own delta, checked by the relocation vocabulary
+ * (`relocate.ts`) with two deliberate differences: every recorded field must
+ * be equal, text included, and presence is enough — uniqueness is not asked.
  */
 
 import type { SemanticNode } from '../backend/surface.ts';
 import { describeTarget } from '../agent/actions.ts';
-import { isRelocatableDescriptor, withoutTestId } from './relocate.ts';
+import {
+  describeNodes,
+  descriptorTiers,
+  fieldsEqual,
+  type DescriptorField,
+  type DescriptorMatchOptions,
+} from './relocate.ts';
 import { MAX_TRACE_ANCHORS, type TraceTargetDescriptor } from './trace.ts';
 
-export interface AnchorOptions {
-  readonly redact: (text: string) => string;
-  readonly testIdAttribute: string;
-}
+export type AnchorOptions = DescriptorMatchOptions;
+
+/**
+ * Every field an anchor records. Unlike target relocation, text is never
+ * optional here: for a target, text is a fallback identity and a relabeled
+ * button is still the button, but for an anchor the text *is* the effect (a
+ * status reading "saved" rather than "empty"), so a looser match would pass a
+ * step whose save never took. The structural selector is left out — anchors
+ * ask whether an effect is visible, never where it sits in the document.
+ */
+const ANCHOR_FIELDS: readonly DescriptorField[] = ['role', 'name', 'text', 'testId', 'placeholder', 'inputPurpose'];
 
 /**
  * Derives the end anchors of one step: relocatable descriptors present in the
@@ -30,8 +43,7 @@ export interface AnchorOptions {
  * accessible name is usually the concatenation of its children's, so it
  * repeats what the leaves already say — and on a list-heavy screen those
  * repeats would crowd the one status line that names the effect out of the
- * cap. The structural selector is dropped — anchors ask whether an effect is
- * visible, never where it sits in the document.
+ * cap.
  */
 export function describeAnchors(
   startNodes: ReadonlyMap<string, SemanticNode>,
@@ -58,72 +70,42 @@ export function describeAnchors(
 }
 
 /**
- * Whether every anchor is present in a fresh observation. The observation is
- * projected once and each anchor is looked up in it. Unlike target
- * relocation, every recorded field must match — text included, whenever the
- * anchor has any: for a target, text is a fallback identity and a relabeled
- * button is still the button, but for an anchor the text *is* the effect (a
- * status reading "saved" rather than "empty"), so a looser match would pass a
- * step whose save never took. Presence, not uniqueness: two matching nodes
- * are the effect twice over. A recorded test id that churned per render is
- * forgiven when the remaining fields still identify the node — the same
- * concession relocation makes, for the same reason.
+ * Whether every anchor is present in a fresh observation: some tier of the
+ * anchor (`descriptorTiers` — so a test id that churned per render is
+ * forgiven when the remaining fields still identify the node) equals some
+ * candidate on every anchor field. Two matching nodes are the effect twice
+ * over, not an ambiguity.
  */
 export function anchorsPresent(
   anchors: readonly TraceTargetDescriptor[],
   nodes: ReadonlyMap<string, SemanticNode>,
   options: AnchorOptions,
 ): boolean {
-  const candidates: TraceTargetDescriptor[] = [];
-  for (const node of nodes.values()) {
-    const descriptor = anchorDescriptor(node, options);
-    if (descriptor !== undefined) candidates.push(descriptor);
-  }
-  return anchors.every((anchor) => present(anchor, candidates));
-}
-
-function present(anchor: TraceTargetDescriptor, candidates: readonly TraceTargetDescriptor[]): boolean {
-  if (candidates.some((candidate) => fieldsEqual(anchor, candidate))) return true;
-  if (anchor.testId === undefined) return false;
-  const semantic = withoutTestId(anchor);
-  return isRelocatableDescriptor(semantic) && candidates.some((candidate) => fieldsEqual(semantic, candidate));
-}
-
-const ANCHOR_FIELDS = ['role', 'name', 'text', 'testId', 'placeholder', 'inputPurpose'] as const;
-
-/** Every field the anchor recorded must be present and equal on the candidate. */
-function fieldsEqual(anchor: TraceTargetDescriptor, candidate: TraceTargetDescriptor): boolean {
-  return ANCHOR_FIELDS.every(
-    (field) => anchor[field] === undefined || candidate[field] === anchor[field],
+  const candidates = describeNodes(nodes, options).map((node) => node.descriptor);
+  return anchors.every((anchor) =>
+    descriptorTiers(anchor).some((tier) =>
+      candidates.some((candidate) => fieldsEqual(tier, candidate, ANCHOR_FIELDS)),
+    ),
   );
 }
 
 /** One node's anchor projection, or undefined when it could identify nothing. */
-function anchorDescriptor(
-  node: SemanticNode,
-  options: AnchorOptions,
-): TraceTargetDescriptor | undefined {
+function anchorDescriptor(node: SemanticNode, options: AnchorOptions): TraceTargetDescriptor | undefined {
   const described = describeTarget(node, options.redact, options.testIdAttribute);
-  if (described === undefined || !isRelocatableDescriptor(described)) return undefined;
+  if (described === undefined || descriptorTiers(described).length === 0) return undefined;
   const { selector: _selector, ...anchor } = described;
   return anchor;
 }
 
 /**
- * Set key for one descriptor: field order is fixed, so equal descriptors share
- * a key. The test id is left out whenever the other fields identify the node:
- * an app that mints test ids per render would otherwise make every unchanged
- * control look new after a re-render, and the noise would crowd the real
- * effect out of the capped anchor list. A node only a test id identifies
- * keeps it — without it the key would be empty.
+ * Set key for one descriptor: its loosest identifying tier over the anchor
+ * fields, in fixed order. Keying on the semantic tier whenever it identifies
+ * the node means an app that mints test ids per render cannot make every
+ * unchanged control look new after a re-render and crowd the real effect out
+ * of the capped list; a node only a test id identifies keeps it.
  */
 function anchorKey(descriptor: TraceTargetDescriptor): string {
-  return JSON.stringify([
-    descriptor.role,
-    descriptor.name,
-    descriptor.text,
-    isRelocatableDescriptor(withoutTestId(descriptor)) ? undefined : descriptor.testId,
-    descriptor.placeholder,
-    descriptor.inputPurpose,
-  ]);
+  const tiers = descriptorTiers(descriptor);
+  const loosest = tiers[tiers.length - 1] ?? descriptor;
+  return JSON.stringify(ANCHOR_FIELDS.map((field) => loosest[field]));
 }

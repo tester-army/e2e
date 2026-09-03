@@ -1,22 +1,38 @@
 /**
  * One step's trace-cache session (RFC0001 layer 3, cache-in decision): key
- * derivation, the replay attempt, live recording, and staging — everything
- * cache-shaped about one dispatched act step, kept beside the dispatch rather
- * than threaded through it. The dispatch owns budgets, the grammar, and the
- * verdict; this class owns nothing but the cache — including the two looks at
- * the screen that bracket the step and become the trace's postcondition.
+ * derivation, the replay attempt, live recording, and the stage-or-evict
+ * decision once the step has settled — everything cache-shaped about one
+ * dispatched act step, kept beside the dispatch rather than threaded through
+ * it. The dispatch owns budgets, the grammar, and the verdict; this class owns
+ * nothing but the cache.
+ *
+ * Cost: in read-write mode the session takes two settled looks at the screen
+ * the executor never asked for — one before any action, one after the passing
+ * verdict — because the trace's end anchors are the delta between them. A
+ * read-only run pays neither.
  */
 
 import { describeAnchors } from '../cache/anchors.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
-import { decideTraceReplay, opensWithNavigate, samePathname, type TraceReplayMissReason } from '../cache/decide.ts';
+import {
+  decideTraceReplay,
+  opensWithNavigate,
+  samePathname,
+  type TraceReplayMissReason,
+} from '../cache/decide.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
-import { readTraceEntry } from '../cache/trace.ts';
+import { readTraceEntry, type ActionTrace, type TraceEntry } from '../cache/trace.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
 import { isRuntimeHardStop, type ReplayedPrefix, type StepVerdict } from './executor.ts';
-import { replayTrace, verifyAnchors, type ObservedNodes, type ReplayHost } from './replay.ts';
+import {
+  replayTrace,
+  verifyAnchors,
+  type ObservedNodes,
+  type ReplayHost,
+  type ReplayOutcome,
+} from './replay.ts';
 
 /**
  * The replay host plus the one session-level probe replay itself never needs:
@@ -40,13 +56,21 @@ export interface StepCacheOptions {
   readonly stepIndex: number;
 }
 
+/** How the step settled, as the write-side decision sees it. */
+export type StepOutcome = 'passed' | 'failed' | 'cancelled';
+
+type HandOffReason = ReplayedPrefix['stopReason'];
+
+type EntryRead =
+  | { readonly status: 'hit'; readonly entry: TraceEntry }
+  | { readonly status: 'miss'; readonly reason: 'no-entry' | 'invalid-entry' };
+
 export class StepTraceSession {
+  private readonly host: StepCacheHost;
   private readonly cache: AgentCacheContext;
   private readonly keyHash: string;
   private readonly recorder: TraceRecorder | undefined;
   private readonly options: StepCacheOptions;
-  /** The dispatch's host, held from `begin` so staging can probe the end state. */
-  private host: StepCacheHost | undefined;
   private info: StepCacheInfo | undefined;
   private prefix: ReplayedPrefix | undefined;
   private startPath: string | undefined;
@@ -60,21 +84,21 @@ export class StepTraceSession {
    * no anchors and would replay on mechanics alone.
    */
   private startNodes: ObservedNodes | undefined;
-  /** Original producer of a fully replayed trace, kept as write provenance. */
-  private replaySource: { name: string; version?: string } | undefined;
   /**
-   * The replayed trace's original verdict prose, kept for the re-stage. The
-   * step's own summary after a replay is the synthesized "replayed N
+   * The trace a full replay reproduced, kept for the re-stage: its executor
+   * is the write's provenance, and its summary is the original verdict prose.
+   * The step's own summary after a replay is the synthesized "replayed N
    * actions…" wrapper; storing that would nest the summary one level deeper
    * on every replay until the bound truncated it.
    */
-  private replaySummary: string | undefined;
+  private replayed: ActionTrace | undefined;
   /** True once a cached entry's actions were run this step, fully or partly. */
   private consumedReplay = false;
   /** Grammar actions recorded so far when an end-mismatch hand-off happened. */
   private actionsAtEndMismatch: number | undefined;
 
-  constructor(options: StepCacheOptions) {
+  constructor(host: StepCacheHost, options: StepCacheOptions) {
+    this.host = host;
     this.options = options;
     this.cache = options.cache;
     this.keyHash = options.cache.claimKeyHash('act', options.instruction, options.params);
@@ -108,42 +132,24 @@ export class StepTraceSession {
   }
 
   /**
-   * Opens the session on the step's host: captures the write-side
-   * preconditions — the start path and, when this step may write, the
-   * baseline screen — then attempts a zero-turn replay. Returns the
-   * self-finalized verdict on a full replay; undefined dispatches the
-   * executor — after a miss from the top, after a divergence mid-step with
-   * `replayedPrefix` set. Every failure to replay is a miss, never an error;
-   * only runtime hard stops propagate.
+   * Opens the step: captures the write-side preconditions — the start path
+   * and, when this step may write, the baseline screen — then attempts a
+   * zero-turn replay. Returns the self-finalized verdict on a full replay
+   * whose postcondition holds; undefined dispatches the executor — after a
+   * miss from the top, after a divergence mid-step with `replayedPrefix` set.
+   * Every failure to replay is a miss, never an error; only runtime hard stops
+   * propagate.
    */
-  async begin(host: StepCacheHost): Promise<StepVerdict | undefined> {
-    this.host = host;
+  async begin(): Promise<StepVerdict | undefined> {
     // Captured before any action for the write's start-path precondition, and
     // doubling as the replay decision's current path.
-    this.startPath = await host.currentPath();
-    if (this.recorder !== undefined) this.startNodes = await probeScreen(host);
+    this.startPath = await this.host.currentPath();
+    if (this.recorder !== undefined) this.startNodes = await probeScreen(this.host);
     if (!this.cache.replayEligible) return undefined;
-    let read: Awaited<ReturnType<typeof this.cache.store.read>>;
-    try {
-      read = await this.cache.store.read(this.keyHash);
-    } catch {
-      // A store outage is a slower run, never a failed test: the read
-      // degrades to a miss and the live executor runs.
-      read = { status: 'invalid', reason: 'store read failed' };
-    }
-    if (read.status === 'hit') {
-      // Every hit is re-validated through the trace-1 framing, whichever
-      // store produced it: a custom store's entry can never be trusted more
-      // loosely than a file entry, however the store author built their read
-      // path. An entry that fails degrades to `invalid` — fail-to-miss.
-      const entry = readTraceEntry(read.entry);
-      read =
-        entry === undefined
-          ? { status: 'invalid', reason: 'the store returned a non-trace-1 entry' }
-          : { ...read, entry };
-    }
-    if (read.status !== 'hit') {
-      this.info = this.missed(read.status === 'miss' ? 'no-entry' : 'invalid-entry', 0);
+
+    const read = await this.readEntry();
+    if (read.status === 'miss') {
+      this.info = this.missed(read.reason, 0);
       return undefined;
     }
     const trace = read.entry.payload;
@@ -152,52 +158,109 @@ export class StepTraceSession {
       this.info = this.missed(decision.reason, trace.actions.length);
       return undefined;
     }
-    const outcome = await replayTrace(host, trace);
+
+    const outcome = await replayTrace(this.host, trace);
     this.consumedReplay = true;
-    if (outcome.completed) {
-      // The recorded end path and end anchors are the trace's postcondition:
-      // a flow whose destination changed, or whose effect is not on screen
-      // again, replays mechanically but must not pass on its own — the
-      // executor gets the step and judges the live state instead. Actions
-      // that all ran prove the clicks happened; only the anchors prove the
-      // save took.
-      const endMismatch =
-        (trace.endPath !== undefined && !samePathname(await host.currentPath(), trace.endPath)) ||
-        !(await verifyAnchors(host, trace.endAnchors ?? []));
-      if (!endMismatch) {
-        this.replaySource = { ...trace.executor };
-        this.replaySummary = trace.summary;
-        this.info = {
-          mode: 'self-finalized',
-          replayedActions: outcome.executed,
-          totalActions: outcome.total,
-        };
-        return {
-          status: 'passed',
-          summary: `replayed ${outcome.executed} recorded action(s) zero-turn from the trace cache; recorded verdict: ${trace.summary}`,
-        };
-      }
-      this.prefix = {
-        replayedActions: outcome.summaries,
-        totalActions: outcome.total,
-        stopReason: 'end-mismatch',
-      };
-      this.actionsAtEndMismatch = this.recorder?.recordedCount ?? 0;
-      this.info = {
-        mode: 'agent-concluded',
-        reason: 'end-mismatch',
-        replayedActions: outcome.executed,
-        totalActions: outcome.total,
-      };
-      return undefined;
-    }
-    const stopReason = outcome.stopReason ?? 'action-failed';
+    // Actions that all ran prove the clicks happened; only the postcondition
+    // proves the save took. A flow whose destination changed, or whose effect
+    // is not on screen again, hands off like any other divergence.
+    const stopReason: HandOffReason | undefined = outcome.completed
+      ? (await this.endStateMatches(trace))
+        ? undefined
+        : 'end-mismatch'
+      : (outcome.stopReason ?? 'action-failed');
+    if (stopReason === undefined) return this.selfFinalize(trace, outcome);
     if (outcome.executed === 0) {
       // A prefix that performed nothing is a miss with a name, not a hand-off:
       // the executor starts from the top and owes the notice nothing.
       this.info = this.missed(stopReason, outcome.total);
       return undefined;
     }
+    this.handOff(outcome, stopReason);
+    return undefined;
+  }
+
+  /**
+   * Closes the session once the step has settled. The whole write-side
+   * decision lives here, in read-write mode only:
+   *
+   * - passed, after an end-mismatch the executor had to act to repair: evict.
+   *   Every recorded action ran and the effect was still missing, so the
+   *   recorded flow is proven not to produce it. Re-staging would freeze the
+   *   failed flow plus its repair — a typo, its deletion, the retype — as the
+   *   thing to replay forever; the next pass records a clean flow instead. A
+   *   hand-off the executor settled without acting is different: the flow was
+   *   fine and only the anchors were stale, so it heals by re-staging.
+   * - passed otherwise: stage the recorded trace for attempt-end settlement.
+   * - failed after consuming a replay: evict. Without this, a diverged replay
+   *   whose step then fails stages nothing — and the poisoned entry would
+   *   replay its bad prefix on every future first attempt.
+   * - cancelled: nothing, exactly like an interrupted attempt.
+   */
+  async conclude(outcome: StepOutcome, verdictSummary: string | undefined): Promise<void> {
+    const recorder = this.recorder;
+    if (recorder === undefined) return;
+    switch (outcome) {
+      case 'cancelled':
+        return;
+      case 'failed':
+        if (this.consumedReplay) await this.evict();
+        return;
+      case 'passed':
+        if (this.repairedAfterEndMismatch(recorder)) await this.evict();
+        else await this.stage(recorder, verdictSummary);
+        return;
+    }
+  }
+
+  /**
+   * One store read, revalidated through the trace-1 framing whichever store
+   * produced it: a custom store's entry can never be trusted more loosely
+   * than a file entry, however the store author built their read path. A
+   * store outage is a slower run, never a failed test — every failure to read
+   * degrades to a miss.
+   */
+  private async readEntry(): Promise<EntryRead> {
+    let read: Awaited<ReturnType<AgentCacheContext['store']['read']>>;
+    try {
+      read = await this.cache.store.read(this.keyHash);
+    } catch {
+      return { status: 'miss', reason: 'invalid-entry' };
+    }
+    if (read.status === 'miss') return { status: 'miss', reason: 'no-entry' };
+    if (read.status === 'invalid') return { status: 'miss', reason: 'invalid-entry' };
+    const entry = readTraceEntry(read.entry);
+    return entry === undefined ? { status: 'miss', reason: 'invalid-entry' } : { status: 'hit', entry };
+  }
+
+  /**
+   * The trace's postcondition against the live screen: the recorded end path
+   * (pathname only, when the live location is known) and every recorded end
+   * anchor present again.
+   */
+  private async endStateMatches(trace: ActionTrace): Promise<boolean> {
+    if (trace.endPath !== undefined) {
+      const current = await this.host.currentPath();
+      if (current !== undefined && !samePathname(current, trace.endPath)) return false;
+    }
+    return verifyAnchors(this.host, trace.endAnchors ?? []);
+  }
+
+  private selfFinalize(trace: ActionTrace, outcome: ReplayOutcome): StepVerdict {
+    this.replayed = trace;
+    this.info = {
+      mode: 'self-finalized',
+      replayedActions: outcome.executed,
+      totalActions: outcome.total,
+    };
+    return {
+      status: 'passed',
+      summary: `replayed ${outcome.executed} recorded action(s) zero-turn from the trace cache; recorded verdict: ${trace.summary}`,
+    };
+  }
+
+  private handOff(outcome: ReplayOutcome, stopReason: HandOffReason): void {
+    if (stopReason === 'end-mismatch') this.actionsAtEndMismatch = this.recorder?.recordedCount ?? 0;
     this.prefix = {
       replayedActions: outcome.summaries,
       totalActions: outcome.total,
@@ -210,57 +273,36 @@ export class StepTraceSession {
       replayedActions: outcome.executed,
       totalActions: outcome.total,
     };
-    return undefined;
   }
 
   /**
-   * Stages this step's recorded trace after a passed verdict, in read-write
-   * mode only. The write is deferred, not immediate: the trace is confirmed
-   * or evicted at attempt end (`flushStagedTraces`), because the
-   * verification step after this one — not the verdict alone — is what
-   * proves the flow reached the right state. A replayed step re-stages its
-   * own entry with fresh descriptors, which is how staleness self-heals.
+   * Stages the recorded trace for attempt-end settlement. The write is
+   * deferred, not immediate: the trace is confirmed or evicted at attempt end
+   * (`flushStagedTraces`), because the verification step after this one — not
+   * the verdict alone — is what proves the flow reached the right state. A
+   * replayed step re-stages its own entry with fresh descriptors, which is
+   * how staleness self-heals.
    *
    * The end path and a fresh settled observation are the trace's
-   * postcondition — the state the step passed in — captured here, only when a
-   * write can actually happen, so read-only runs pay no extra backend call.
-   * The delta between the baseline and the passing observation becomes the
-   * end anchors. When the step moved to another pathname the whole screen is
-   * the delta and the path is the postcondition, so anchors are recorded only
-   * for a step that ended where it began (or on a surface without a location
-   * at all, where they are the only check). A postcondition that cannot be
-   * captured stages nothing: a trace without its check would replay on
-   * mechanics alone.
+   * postcondition — the state the step passed in. The delta between the
+   * baseline and the passing observation becomes the end anchors. When the
+   * step moved to another pathname the whole screen is the delta and the path
+   * is the postcondition, so anchors are recorded only for a step that ended
+   * where it began (or on a surface without a location at all, where they are
+   * the only check). A postcondition that cannot be captured stages nothing:
+   * a trace without its check would replay on mechanics alone.
    */
-  async stage(verdictSummary: string | undefined): Promise<void> {
-    const host = this.host;
-    if (this.recorder === undefined || host === undefined) return;
-    if (this.repairedAfterEndMismatch) {
-      // Every recorded action ran and the effect was still missing, and the
-      // executor had to act further to get there: the recorded flow is proven
-      // not to produce its effect. Re-staging would freeze the failed flow
-      // plus its repair — a typo, its deletion, the retype — as the thing to
-      // replay forever. Evict instead; the next pass records a clean flow.
-      // A hand-off the executor settled without acting is different: the
-      // flow was fine and only the anchors were stale, so it heals below.
-      await this.evict();
-      return;
-    }
+  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
     if (this.startNodes === undefined) return;
-    const endNodes = await probeScreen(host);
+    const endNodes = await probeScreen(this.host);
     if (endNodes === undefined) return;
-    const endPath = await host.currentPath();
-    const endAnchors = movedPathname(this.startPath, endPath)
-      ? undefined
-      : describeAnchors(this.startNodes, endNodes, {
-          redact: this.options.redact,
-          testIdAttribute: this.options.testIdAttribute,
-        });
-    const trace = this.recorder.finalize({
-      executor: this.replaySource ?? this.options.executor,
-      // A self-finalized replay re-stages the ORIGINAL verdict prose; the
-      // step's own summary is the synthesized replay wrapper.
-      summary: this.replaySummary ?? verdictSummary ?? 'step passed',
+    const endPath = await this.host.currentPath();
+    const moved =
+      this.startPath !== undefined && endPath !== undefined && !samePathname(this.startPath, endPath);
+    const endAnchors = moved ? undefined : describeAnchors(this.startNodes, endNodes, this.options);
+    const trace = recorder.finalize({
+      executor: this.replayed?.executor ?? this.options.executor,
+      summary: this.replayed?.summary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
       ...(endAnchors === undefined ? {} : { endAnchors }),
@@ -274,17 +316,6 @@ export class StepTraceSession {
   }
 
   /**
-   * Evicts the entry whose replay this step consumed, called when the step
-   * settles non-passed. Without this, a diverged replay whose step then fails
-   * stages nothing — and the poisoned entry would replay its bad prefix on
-   * every future first attempt.
-   */
-  async evictOnFailure(): Promise<void> {
-    if (!this.consumedReplay || this.cache.mode !== 'read-write') return;
-    await this.evict();
-  }
-
-  /**
    * Awaited so the step does not close — and a later read cannot be served
    * the stale flow — before the eviction has settled. The cache is
    * disposable; a failed eviction is a slower next run only.
@@ -293,14 +324,11 @@ export class StepTraceSession {
     await this.cache.store.delete?.(this.keyHash).catch(() => undefined);
   }
 
-  private get repairedAfterEndMismatch(): boolean {
-    return (
-      this.actionsAtEndMismatch !== undefined &&
-      (this.recorder?.recordedCount ?? 0) > this.actionsAtEndMismatch
-    );
+  private repairedAfterEndMismatch(recorder: TraceRecorder): boolean {
+    return this.actionsAtEndMismatch !== undefined && recorder.recordedCount > this.actionsAtEndMismatch;
   }
 
-  private missed(reason: TraceReplayMissReason | ReplayedPrefix['stopReason'], totalActions: number): StepCacheInfo {
+  private missed(reason: TraceReplayMissReason | HandOffReason, totalActions: number): StepCacheInfo {
     return { mode: 'missed', reason, replayedActions: 0, totalActions };
   }
 }
@@ -318,9 +346,4 @@ async function probeScreen(host: StepCacheHost): Promise<ObservedNodes | undefin
     if (isRuntimeHardStop(cause)) throw cause;
     return undefined;
   }
-}
-
-/** True only when both locations are known and their pathnames differ. */
-function movedPathname(start: string | undefined, end: string | undefined): boolean {
-  return start !== undefined && end !== undefined && !samePathname(start, end);
 }
