@@ -29,8 +29,8 @@ same ambient OS authority as the runner.
 
 The runner owns immutable agent policy `policy-0.3`. System policy precedes
 project context, ledger data, app content, and model output. No lower-trust
-input can add tools, origins, credentials, budget, filesystem access, network
-destinations, or production permission.
+input can add tools, origins, credentials, budget, filesystem access, or
+network destinations.
 
 Every proposed model tool call is parsed into a closed schema and authorized by
 the runner immediately before execution. Unknown tools/fields, malformed
@@ -58,9 +58,9 @@ Subresource loading is the app's responsibility, but the agent cannot inspect
 or interact with a cross-origin frame unless that origin is allowed. Downloads
 cannot be reopened or executed by an agent in v0.
 
-Production execution requires explicit config as described in 05-config.md.
-The report records that opt-in. Production permission does not permit new
-origins, secret scopes, model-proposed/portable raw-coordinate actions, or
+The report records the resolved `environment` of every target as described
+in 05-config.md. No environment relaxes policy: a `production` target gets no
+new origins, secret scopes, model-proposed/portable raw-coordinate actions, or
 policy bypass. Trusted deterministic `web.mouse` remains a web capability and
 is reported normally.
 

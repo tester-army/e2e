@@ -1,6 +1,6 @@
 {
   "specVersion": "0.1",
-  "suiteVersion": "0.9.0",
+  "suiteVersion": "0.10.0",
   "profiles": {
     "sdk-0.1": [
       { "id": "SDK-TYPES-001", "source": "api/e2e.d.ts", "requirement": "Canonical SDK declarations compile in strict TypeScript." },
@@ -26,7 +26,7 @@
       { "id": "RUNNER-PROCESS-001", "source": "05-config.md", "requirement": "App process startup, safe environment, readiness, process-group shutdown, and force kill are bounded." },
       { "id": "RUNNER-CLI-001", "source": "06-cli.md", "requirement": "Flags, reporter behavior, unconditional JSON report, and exit precedence match the contract." },
       { "id": "RUNNER-SECURITY-001", "source": "14-security.md", "requirement": "Prompt and tool injection cannot expand runner policy or execute unknown tools." },
-      { "id": "RUNNER-SECURITY-002", "source": "14-security.md", "requirement": "Origin, redirect, frame, scheme, DNS/IP, HTTPS, and production policy fail closed." },
+      { "id": "RUNNER-SECURITY-002", "source": "14-security.md", "requirement": "Origin, redirect, frame, scheme, DNS/IP, and HTTPS policy fail closed." },
       { "id": "RUNNER-SECURITY-003", "source": "14-security.md", "requirement": "Credential handle, purpose, origin, revision, and destination checks precede plaintext resolution." },
       { "id": "RUNNER-SECURITY-004", "source": "14-security.md", "requirement": "Secret taint removes pixel/video evidence and textual secret redaction remains complete." },
       { "id": "RUNNER-SECURITY-005", "source": "14-security.md", "requirement": "The runner never claims to sandbox trusted code; untrusted execution requires an external no-secret boundary." },
@@ -81,7 +81,7 @@
       { "id": "REPORT-SCHEMA-001", "source": "schema/report-v1.schema.json", "requirement": "Positive and hostile report fixtures satisfy strict schema expectations." },
       { "id": "REPORT-SEMANTIC-001", "source": "13-reporting.md", "requirement": "Reference validator recomputes identity, order, status, summary, references, and usage." },
       { "id": "REPORT-PATH-001", "source": "13-reporting.md", "requirement": "All paths are relative POSIX, canonical, contained, and symlink safe." },
-      { "id": "REPORT-PROVENANCE-001", "source": "13-reporting.md", "requirement": "Target, backend, model, policy, environment, and production provenance is complete." },
+      { "id": "REPORT-PROVENANCE-001", "source": "13-reporting.md", "requirement": "Target, backend, model, policy, and environment provenance is complete." },
       { "id": "REPORT-ARTIFACT-001", "source": "13-reporting.md", "requirement": "Artifact producer, digest, size, redaction, and incomplete-evidence rules are exact." },
       { "id": "REPORT-PARTIAL-001", "source": "13-reporting.md", "requirement": "Interrupted/error runs atomically produce valid bounded partial reports." },
       { "id": "REPORT-HOSTILE-001", "source": "14-security.md", "requirement": "Hostile schema-valid reports cannot bypass semantic validation or renderer escaping." }

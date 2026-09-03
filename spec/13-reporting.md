@@ -50,7 +50,7 @@ test-target result (including filtered/skipped pairs), all attempts, steps,
 artifacts, errors, cleanup outcomes, and selection counts.
 Target provenance includes the backend name/version/contract version, the
 declared capability set (harness capabilities plus contributed fixture names),
-artifact capabilities, state capability, origin, and production policy.
+artifact capabilities, state capability, origin, and environment.
 `artifactCapabilities` lists the configurable kinds a backend can produce on
 request, `screenshot` and `trace`; `video` is not a configurable capability,
 though it remains a valid kind for a fixture to attach. The report carries no
