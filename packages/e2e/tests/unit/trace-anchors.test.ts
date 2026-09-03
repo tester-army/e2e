@@ -1,7 +1,7 @@
 /** End anchors: the step's delta as relocatable descriptors (RFC0001 cache-in). */
 
 import { describe, expect, it } from 'vitest';
-import { anchorPresent, describeAnchors } from '../../src/cache/anchors.ts';
+import { anchorsPresent, describeAnchors } from '../../src/cache/anchors.ts';
 import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/backend/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
@@ -118,24 +118,31 @@ describe('describeAnchors', () => {
   });
 });
 
-describe('anchorPresent', () => {
+describe('anchorsPresent', () => {
   const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
 
   it('requires every recorded field, text included, unlike target relocation', () => {
     // Same named node, different text: the effect is missing, so the anchor is.
-    expect(anchorPresent(savedAnchor, nodes([heading, emptyMarker]), options)).toBe(false);
-    expect(anchorPresent(savedAnchor, nodes([heading, savedMarker]), options)).toBe(true);
+    expect(anchorsPresent([savedAnchor], nodes([heading, emptyMarker]), options)).toBe(false);
+    expect(anchorsPresent([savedAnchor], nodes([heading, savedMarker]), options)).toBe(true);
   });
 
   it('is presence, not uniqueness', () => {
     const twin = node('m2', { role: 'status', name: 'Marker', text: 'saved' });
-    expect(anchorPresent(savedAnchor, nodes([savedMarker, twin]), options)).toBe(true);
+    expect(anchorsPresent([savedAnchor], nodes([savedMarker, twin]), options)).toBe(true);
+  });
+
+  it('requires every anchor, and holds trivially for none', () => {
+    const rowAnchor = { role: 'link', name: 'PB-Twin-Alpha' };
+    expect(anchorsPresent([savedAnchor, rowAnchor], nodes([savedMarker, row]), options)).toBe(true);
+    expect(anchorsPresent([savedAnchor, rowAnchor], nodes([savedMarker]), options)).toBe(false);
+    expect(anchorsPresent([], nodes([]), options)).toBe(true);
   });
 
   it('forgives a churned test id when the other fields still identify the node', () => {
     const anchor = { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-1a2b' };
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', attributes: { 'data-testid': 'row-9f8e' } });
-    expect(anchorPresent(anchor, nodes([rerendered]), options)).toBe(true);
-    expect(anchorPresent({ role: 'listitem', testId: 'row-1a2b' }, nodes([rerendered]), options)).toBe(false);
+    expect(anchorsPresent([anchor], nodes([rerendered]), options)).toBe(true);
+    expect(anchorsPresent([{ role: 'listitem', testId: 'row-1a2b' }], nodes([rerendered]), options)).toBe(false);
   });
 });

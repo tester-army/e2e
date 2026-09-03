@@ -58,13 +58,10 @@ export interface AgentCacheContext {
   readonly staged: StagedTraceWrite[];
 }
 
-/** How the attempt ended, as the write-settlement rule sees it. */
-export type AttemptCacheOutcome = 'passed' | 'failed' | 'interrupted';
-
 /**
  * Settles the attempt's staged trace writes. A staged trace is confirmed only
  * when a verification step — a deterministic assertion or an agent judgment
- * (`run/steps.ts`, `isVerificationStep`) — passed after it: an act's own
+ * (`run/steps.ts`, `StepRunOptions.verifies`) — passed after it: an act's own
  * verdict is the recording executor's opinion of its work, and a later act
  * passing says only that the executor coped with whatever state it found. A
  * passing attempt confirms nothing by itself, so a flow no assertion ever
@@ -72,16 +69,16 @@ export type AttemptCacheOutcome = 'passed' | 'failed' | 'interrupted';
  * what had been verified before the failure landed. An unconfirmed trace is
  * not merely withheld: its entry is evicted, so a cached flow implicated in
  * a failure — or one that was never checked — re-records on the next pass
- * instead of replaying a poisoned state forever. An interrupted attempt
- * implicates nothing — it writes nothing and evicts nothing.
+ * instead of replaying a poisoned state forever. The runner does not call
+ * this for an interrupted attempt: interruption implicates nothing, so it
+ * writes nothing and evicts nothing.
  */
 export async function flushStagedTraces(
   context: AgentCacheContext,
   lastVerifiedStepIndex: number,
-  outcome: AttemptCacheOutcome,
 ): Promise<void> {
   const staged = context.staged.splice(0);
-  if (context.mode !== 'read-write' || outcome === 'interrupted') return;
+  if (context.mode !== 'read-write') return;
   for (const write of staged) {
     const confirmed = write.stepIndex < lastVerifiedStepIndex;
     try {
@@ -97,7 +94,7 @@ export async function flushStagedTraces(
  * Builds one attempt's cache context, or undefined when the cache is off.
  * A configured custom store replaces the file store wholesale — that is the
  * seam a cloud-shared store (Redis, an API) plugs into. Its hits are
- * re-validated at the one read site (`StepTraceSession.tryReplay`), like
+ * re-validated at the one read site (`StepTraceSession.begin`), like
  * every other store's.
  */
 export function createAgentCacheContext(options: {

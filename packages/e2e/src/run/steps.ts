@@ -15,22 +15,6 @@ export type StepKind =
   | 'session'
   | 'resource';
 
-/** Agent methods that judge the screen rather than change it. */
-const AGENT_VERIFICATION_APIS: ReadonlySet<string> = new Set(['agent.assert', 'agent.waitFor']);
-
-/**
- * Whether a step checks state rather than producing it: a deterministic
- * assertion, a locator wait, or an agent judgment. Only such a step passing
- * can confirm a staged action trace (cache/context.ts) — an `agent.act`
- * passing is the executor's opinion of its own work, and an `app` or
- * `locator` action passing proves only that the action could be performed.
- */
-export function isVerificationStep(step: { readonly kind: StepKind; readonly api: string }): boolean {
-  if (step.kind === 'assertion') return true;
-  if (step.kind === 'locator') return step.api === 'locator.waitFor';
-  return step.kind === 'agent' && AGENT_VERIFICATION_APIS.has(step.api);
-}
-
 /**
  * Child event of one public step: polls, model calls, policy decisions.
  * `tool-proposal` (report-1) belongs to the planning tier and is not emitted
@@ -160,6 +144,20 @@ export type StepProgress =
     }
   | { readonly phase: 'event'; readonly api: string; readonly event: StepEvent };
 
+/** Per-step options for `StepRecorder.run`. */
+export interface StepRunOptions {
+  /**
+   * Whether the step checks state rather than producing it: a deterministic
+   * assertion, a locator wait, or an agent judgment. Only such a step passing
+   * can confirm a staged action trace (cache/context.ts) — an `agent.act`
+   * passing is the executor's opinion of its own work, and an `app` or
+   * `locator` action passing proves only that the action could be performed.
+   * Declared where the step is minted, so the rule cannot drift from the api
+   * names.
+   */
+  readonly verifies?: boolean;
+}
+
 export interface StepRecorderOptions {
   /** Caps events retained per step (resolved limits.maxEventsPerStep). */
   readonly maxEventsPerStep?: number;
@@ -172,6 +170,8 @@ export class StepRecorder {
   private activeStep: StepRecord | undefined;
   /** IDs of steps whose bodies are still executing. */
   private readonly running = new Set<string>();
+  /** Highest timeline index among passed verification steps, or -1 when none has. */
+  private lastVerified = -1;
   private readonly maxEventsPerStep: number;
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
 
@@ -193,8 +193,19 @@ export class StepRecorder {
     return this.activeStep?.index;
   }
 
+  /** Highest timeline index among passed verification steps, or -1 when none has. */
+  get lastVerifiedStepIndex(): number {
+    return this.lastVerified;
+  }
+
   /** Runs one public API call as a recorded top-level step. */
-  async run<T>(kind: StepKind, api: string, label: string, body: () => Promise<T>): Promise<T> {
+  async run<T>(
+    kind: StepKind,
+    api: string,
+    label: string,
+    body: () => Promise<T>,
+    options: StepRunOptions = {},
+  ): Promise<T> {
     const index = this.steps.length;
     const startedAt = timestamp();
     const startedMs = Date.now();
@@ -218,6 +229,7 @@ export class StepRecorder {
     try {
       const result = await body();
       record.durationMs = Date.now() - startedMs;
+      if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, index);
       return result;
     } catch (cause) {
       record.durationMs = Date.now() - startedMs;

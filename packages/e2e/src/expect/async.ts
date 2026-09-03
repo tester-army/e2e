@@ -116,7 +116,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
             ].join('\n'),
           ),
       });
-    });
+    }, { verifies: true });
   }
 
   /**

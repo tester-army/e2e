@@ -15,7 +15,7 @@
 
 import type { SemanticNode } from '../backend/surface.ts';
 import { describeTarget } from '../agent/actions.ts';
-import { isRelocatableDescriptor } from './relocate.ts';
+import { isRelocatableDescriptor, withoutTestId } from './relocate.ts';
 import { MAX_TRACE_ANCHORS, type TraceTargetDescriptor } from './trace.ts';
 
 export interface AnchorOptions {
@@ -58,7 +58,8 @@ export function describeAnchors(
 }
 
 /**
- * Whether one anchor is present in a fresh observation. Unlike target
+ * Whether every anchor is present in a fresh observation. The observation is
+ * projected once and each anchor is looked up in it. Unlike target
  * relocation, every recorded field must match — text included, whenever the
  * anchor has any: for a target, text is a fallback identity and a relabeled
  * button is still the button, but for an anchor the text *is* the effect (a
@@ -68,8 +69,8 @@ export function describeAnchors(
  * forgiven when the remaining fields still identify the node — the same
  * concession relocation makes, for the same reason.
  */
-export function anchorPresent(
-  anchor: TraceTargetDescriptor,
+export function anchorsPresent(
+  anchors: readonly TraceTargetDescriptor[],
   nodes: ReadonlyMap<string, SemanticNode>,
   options: AnchorOptions,
 ): boolean {
@@ -78,12 +79,14 @@ export function anchorPresent(
     const descriptor = anchorDescriptor(node, options);
     if (descriptor !== undefined) candidates.push(descriptor);
   }
+  return anchors.every((anchor) => present(anchor, candidates));
+}
+
+function present(anchor: TraceTargetDescriptor, candidates: readonly TraceTargetDescriptor[]): boolean {
   if (candidates.some((candidate) => fieldsEqual(anchor, candidate))) return true;
   if (anchor.testId === undefined) return false;
-  const { testId, ...semantic } = anchor;
-  void testId;
-  if (!isRelocatableDescriptor(semantic)) return false;
-  return candidates.some((candidate) => fieldsEqual(semantic, candidate));
+  const semantic = withoutTestId(anchor);
+  return isRelocatableDescriptor(semantic) && candidates.some((candidate) => fieldsEqual(semantic, candidate));
 }
 
 const ANCHOR_FIELDS = ['role', 'name', 'text', 'testId', 'placeholder', 'inputPurpose'] as const;
@@ -102,8 +105,7 @@ function anchorDescriptor(
 ): TraceTargetDescriptor | undefined {
   const described = describeTarget(node, options.redact, options.testIdAttribute);
   if (described === undefined || !isRelocatableDescriptor(described)) return undefined;
-  const { selector, ...anchor } = described;
-  void selector;
+  const { selector: _selector, ...anchor } = described;
   return anchor;
 }
 
@@ -116,12 +118,11 @@ function anchorDescriptor(
  * keeps it — without it the key would be empty.
  */
 function anchorKey(descriptor: TraceTargetDescriptor): string {
-  const { testId, ...semantic } = descriptor;
   return JSON.stringify([
     descriptor.role,
     descriptor.name,
     descriptor.text,
-    isRelocatableDescriptor(semantic) ? undefined : testId,
+    isRelocatableDescriptor(withoutTestId(descriptor)) ? undefined : descriptor.testId,
     descriptor.placeholder,
     descriptor.inputPurpose,
   ]);

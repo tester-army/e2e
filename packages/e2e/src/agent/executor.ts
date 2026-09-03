@@ -18,7 +18,7 @@
  */
 
 import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
-import { AGENT_CODE_TABLE } from './error.ts';
+import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
 export type { BlockedCategory } from './error.ts';
 export { blockedCategoryOf } from './error.ts';
@@ -234,6 +234,16 @@ export const RUNTIME_CODES: ReadonlySet<AgentErrorCode> = new Set<AgentErrorCode
   'STEP_TIMEOUT',
   'CANCELLED',
 ]);
+
+/**
+ * Whether an error is one of the runtime's own hard stops. Such an error is
+ * the step's truth wherever it lands — inside a tool call, a cache probe, a
+ * replayed action — and is surfaced untouched rather than absorbed as a
+ * divergence, a miss, or an action failure.
+ */
+export function isRuntimeHardStop(cause: unknown): cause is AgentError {
+  return isAgentError(cause) && RUNTIME_CODES.has(cause.code);
+}
 
 /**
  * Codes a `blocked` verdict may carry — every code the table assigns a

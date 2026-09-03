@@ -385,7 +385,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
         onTimeout: () =>
           new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`),
       });
-    });
+    }, { verifies: true });
   }
 
   filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
