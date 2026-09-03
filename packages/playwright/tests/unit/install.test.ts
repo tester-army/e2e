@@ -51,6 +51,41 @@ describe('ensureBrowsersInstalled', () => {
     ]);
   });
 
+  it('installs against the run environment, not the process environment', async () => {
+    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/run-specific/browsers' };
+    const contexts: { env: NodeJS.ProcessEnv }[] = [];
+    await ensureBrowsersInstalled(['chromium'], {
+      log: () => {},
+      isInstalled: () => false,
+      env,
+      install: async (_names, context) => {
+        contexts.push({ env: context.env });
+      },
+    });
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.env['PLAYWRIGHT_BROWSERS_PATH']).toBe('/run-specific/browsers');
+  });
+
+  it('defers to the installer when the run points at another browser cache', async () => {
+    // The default detection cannot see a cache this process was not started
+    // with, so it declines a verdict: the CLI runs with the run's environment
+    // and is a no-op when the cache is already complete, and the headline is
+    // not printed because nothing is known to be missing.
+    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/elsewhere/browsers' };
+    const installed: BrowserName[][] = [];
+    const logs: string[] = [];
+    await ensureBrowsersInstalled(['chromium'], {
+      log: (line) => logs.push(line),
+      env,
+      install: async (names, context) => {
+        installed.push([...names]);
+        expect(context.env['PLAYWRIGHT_BROWSERS_PATH']).toBe('/elsewhere/browsers');
+      },
+    });
+    expect(installed).toEqual([['chromium']]);
+    expect(logs).toEqual([]);
+  });
+
   it('propagates installer failures', async () => {
     await expect(
       ensureBrowsersInstalled(['webkit'], {

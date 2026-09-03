@@ -7,8 +7,16 @@ import path from 'node:path';
 import { BackendError, InfrastructureError } from '@e2edev/e2e/backend';
 import { browserType, type BrowserName } from './browser-pool.ts';
 
-/** Returns true when the browser's executable exists on disk. */
-function isBrowserInstalled(name: BrowserName): boolean {
+/**
+ * Whether the browser's executable exists on disk, or undefined when this
+ * process cannot tell. Playwright resolves its browser cache from
+ * `PLAYWRIGHT_BROWSERS_PATH` at module load, so the in-process check is only
+ * authoritative when the run's environment agrees with this process's. A run
+ * pointed at another cache is left to the CLI, which resolves against the
+ * environment it is spawned with and is a no-op when nothing is missing.
+ */
+function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv): boolean | undefined {
+  if (env['PLAYWRIGHT_BROWSERS_PATH'] !== process.env['PLAYWRIGHT_BROWSERS_PATH']) return undefined;
   try {
     return existsSync(browserType(name).executablePath());
   } catch {
@@ -28,6 +36,8 @@ export interface InstallContext {
   readonly log: (line: string) => void;
   /** Aborts a download in progress. */
   readonly signal?: AbortSignal | undefined;
+  /** Environment the installer runs with: the run's, so it fills the cache the workers will launch from. */
+  readonly env: NodeJS.ProcessEnv;
 }
 
 export interface EnsureBrowsersOptions {
@@ -37,12 +47,17 @@ export interface EnsureBrowsersOptions {
    * the reporter rather than underneath it.
    */
   readonly log?: (line: string) => void;
-  /** Injected detection for tests; defaults to an executable existence check. */
-  readonly isInstalled?: (name: BrowserName) => boolean;
+  /**
+   * Injected detection for tests; defaults to an executable existence check.
+   * Undefined means "cannot tell here": the installer runs and decides.
+   */
+  readonly isInstalled?: (name: BrowserName) => boolean | undefined;
   /** Injected installer for tests; defaults to spawning the Playwright CLI. */
   readonly install?: (names: readonly BrowserName[], context: InstallContext) => Promise<void>;
   /** Aborts a download in progress; the run's interrupt owns it. */
   readonly signal?: AbortSignal;
+  /** The run's environment; defaults to this process's. */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -57,14 +72,20 @@ export async function ensureBrowsersInstalled(
   names: readonly BrowserName[],
   options: EnsureBrowsersOptions = {},
 ): Promise<void> {
-  const isInstalled = options.isInstalled ?? isBrowserInstalled;
-  const missing = [...new Set(names)].filter((name) => !isInstalled(name));
+  const env = options.env ?? process.env;
+  const isInstalled = options.isInstalled ?? ((name: BrowserName) => isBrowserInstalled(name, env));
+  const verdicts = new Map([...new Set(names)].map((name) => [name, isInstalled(name)] as const));
+  const missing = [...verdicts.keys()].filter((name) => verdicts.get(name) !== true);
   if (missing.length === 0) return;
+  // The headline is only honest when every listed browser is known to be
+  // absent; when the verdict is the CLI's, its own output tells the story
+  // and says nothing when there is nothing to fetch.
+  const knownMissing = missing.every((name) => verdicts.get(name) === false);
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-  log(`Downloading missing Playwright browsers (first run): ${missing.join(', ')}...`);
+  if (knownMissing) log(`Downloading missing Playwright browsers (first run): ${missing.join(', ')}...`);
   const install = options.install ?? runPlaywrightInstall;
-  await install(missing, { log, signal: options.signal });
-  log('Browser download complete.');
+  await install(missing, { log, signal: options.signal, env });
+  if (knownMissing) log('Browser download complete.');
 }
 
 /**
@@ -93,7 +114,10 @@ function forwardLines(stream: NodeJS.ReadableStream, log: (line: string) => void
 }
 
 /** Spawns `node <playwright>/cli.js install <names>`, narrating its output through `log`. */
-function runPlaywrightInstall(names: readonly BrowserName[], { log, signal }: InstallContext): Promise<void> {
+function runPlaywrightInstall(
+  names: readonly BrowserName[],
+  { log, signal, env }: InstallContext,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted === true) {
       reject(new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }));
@@ -101,6 +125,7 @@ function runPlaywrightInstall(names: readonly BrowserName[], { log, signal }: In
     }
     const child = spawn(process.execPath, [playwrightCliPath(), 'install', ...names], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env,
     });
     forwardLines(child.stdout, log);
     forwardLines(child.stderr, log);

@@ -89,6 +89,8 @@ what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 export interface BackendPrepareInfo {
   readonly runId: string;
   readonly targetName: string;
+  /** The run's environment, the one every worker starts with. */
+  readonly env: NodeJS.ProcessEnv;
   readonly signal: AbortSignal;
   readonly log: (line: string) => void;
 }

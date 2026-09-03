@@ -214,6 +214,14 @@ export interface BackendPrepareInfo {
   readonly runId: string;
   readonly targetName: string;
   /**
+   * The run's environment: what every worker is started with. A host may hand
+   * the run an environment other than the runner process's own, so anything
+   * provisioned here that a worker later looks up by environment (a browser
+   * cache location) must be resolved and spawned against this, not
+   * `process.env`.
+   */
+  readonly env: NodeJS.ProcessEnv;
+  /**
    * Aborts on interrupt only. Provisioning has no budget: a first-run
    * download is as long as the network makes it, and cutting it short would
    * fail every test behind it.

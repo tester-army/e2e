@@ -188,7 +188,7 @@ export class PlaywrightSurface {
    */
   async prepare(info: BackendPrepareInfo): Promise<void> {
     if (this.connect !== undefined) return;
-    await ensureBrowsersInstalled([this.browserName], { signal: info.signal, log: info.log });
+    await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
   }
 
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */

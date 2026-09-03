@@ -9,9 +9,40 @@ import {
   sanitizeText,
   serializeError,
   TestError,
+  translateProvisioningError,
   truncateUtf8,
 } from '../../src/internal/errors.ts';
 import { BackendError } from '../../src/backend/surface.ts';
+
+describe('translateProvisioningError', () => {
+  it('never yields a test error: a backend error of any code is infrastructure', () => {
+    const stale = translateProvisioningError(
+      new BackendError('NODE_STALE', 'ref gone', { retryable: true }),
+      ' while preparing',
+    );
+    expect(stale.category).toBe('infrastructure');
+    expect(stale.code).toBe('BACKEND_FAILURE');
+    expect(stale.message).toBe('ref gone while preparing');
+    const plain = translateProvisioningError(new Error('download failed'), ' while preparing');
+    expect(plain.category).toBe('infrastructure');
+    expect(plain.message).toBe('download failed while preparing');
+  });
+
+  it('keeps a cancellation a cancellation', () => {
+    const cancelled = translateProvisioningError(
+      new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }),
+    );
+    expect(cancelled.category).toBe('infrastructure');
+    expect(cancelled.code).toBe('CANCELLED');
+  });
+
+  it('keeps the category of a harness-classified error', () => {
+    const config = translateProvisioningError(new ConfigurationError('INVALID_CONFIG', 'no such browser'));
+    expect(config.category).toBe('configuration');
+    const infra = translateProvisioningError(new InfrastructureError('BROWSER_INSTALL_FAILED', 'exit 1'));
+    expect(infra.code).toBe('BROWSER_INSTALL_FAILED');
+  });
+});
 
 describe('exit code mapping', () => {
   it('maps categories per 06-cli.md', () => {

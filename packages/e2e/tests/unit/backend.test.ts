@@ -89,6 +89,7 @@ describe('defineBackend', () => {
     await handle.prepare?.({
       runId: 'run',
       targetName: 'toy',
+      env: {},
       signal: new AbortController().signal,
       log: () => {},
     });

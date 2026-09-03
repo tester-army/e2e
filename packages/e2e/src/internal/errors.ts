@@ -212,6 +212,20 @@ export function translateBackendError(cause: unknown, suffix = ''): E2EError {
   return new E2EError('infrastructure', 'BACKEND_FAILURE', errorMessage(cause), { cause });
 }
 
+/**
+ * Classifies a failure of a backend's `prepare` hook. Provisioning runs before
+ * any test exists, so nothing thrown there can be a test failure: a harness-
+ * classified error keeps the category its author chose (a `ConfigurationError`
+ * for an option the backend cannot honour), a backend cancellation stays a
+ * cancellation, and everything else - a `BackendError` of any code, a plain
+ * `Error` from an installer - is infrastructure.
+ */
+export function translateProvisioningError(cause: unknown, suffix = ''): E2EError {
+  if (cause instanceof E2EError || isForeignE2EError(cause)) return classifyError(cause);
+  if (asBackendError(cause)?.code === 'CANCELLED') return translateBackendError(cause);
+  return new InfrastructureError('BACKEND_FAILURE', `${errorMessage(cause)}${suffix}`, { cause });
+}
+
 /** Classifies an arbitrary thrown value into an E2EError; unknown values become test failures. */
 export function classifyError(value: unknown): E2EError {
   if (value instanceof E2EError) return value;

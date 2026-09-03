@@ -85,9 +85,9 @@ function toyBackend(
     ...(options.withPrepare === undefined
       ? {}
       : {
-          async prepare(info: { log: (line: string) => void }) {
+          async prepare(info: { env: NodeJS.ProcessEnv; log: (line: string) => void }) {
             lifecycle.push('prepare');
-            info.log('provisioning toy device');
+            info.log(`provisioning toy device for ${info.env['TOY_CACHE'] ?? 'no cache'}`);
             if (options.withPrepare === 'fail') throw new Error('toolchain missing');
           },
         }),
@@ -387,7 +387,7 @@ test('second attempt also starts fresh', async ({ screen }) => {
           targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
           cache: 'off',
         },
-        env: { ...process.env, APP_URL: '', CI: '' },
+        env: { ...process.env, APP_URL: '', CI: '', TOY_CACHE: '/run/cache' },
         quiet: true,
         onEvent: (event) => {
           if (event.type === 'notice') {
@@ -399,7 +399,8 @@ test('second attempt also starts fresh', async ({ screen }) => {
       });
       expect(outcome.exitCode).toBe(0);
       expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose']);
-      expect(notices).toEqual([{ target: 'toy-sim', message: 'provisioning toy device' }]);
+      // The hook sees the run's environment, the one the workers start with.
+      expect(notices).toEqual([{ target: 'toy-sim', message: 'provisioning toy device for /run/cache' }]);
       expect(noticeSeq).toBeGreaterThan(0);
       expect(noticeSeq).toBeLessThan(firstTestSeq);
     } finally {

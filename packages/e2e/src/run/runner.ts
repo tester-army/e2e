@@ -19,7 +19,7 @@ import {
   errorMessage,
   exitCodeForCategory,
   serializeError,
-  translateBackendError,
+  translateProvisioningError,
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
@@ -321,8 +321,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       await debug.time('backend.prepare', () =>
         prepareBackends(
           selection.perTarget.map(({ target }) => target),
-          runId,
-          interrupted,
+          { runId, env, signal: interrupted },
           (target, message) => emit({ type: 'notice', target, message }),
         ),
       );
@@ -443,25 +442,25 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
  */
 async function prepareBackends(
   targets: readonly ResolvedTarget[],
-  runId: string,
-  signal: AbortSignal,
+  scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
   notice: (target: string, message: string) => void,
 ): Promise<void> {
   for (const target of targets) {
     const backend = target.backend;
     if (backend?.prepare === undefined) continue;
-    if (signal.aborted) return;
+    if (scope.signal.aborted) return;
     try {
+      // The same `env` the workers are started with: what prepare provisions
+      // must be where a worker's launch will look for it.
       await backend.prepare({
-        runId,
+        runId: scope.runId,
         targetName: target.name,
-        signal,
+        env: scope.env,
+        signal: scope.signal,
         log: (line) => notice(target.name, line),
       });
     } catch (cause) {
-      // Same taxonomy as the worker's lifecycle hooks: a backend failing to
-      // provision is infrastructure, never a test error.
-      throw translateBackendError(cause, ` while preparing backend ${backend.name} for target "${target.name}"`);
+      throw translateProvisioningError(cause, ` while preparing backend ${backend.name} for target "${target.name}"`);
     }
   }
 }
