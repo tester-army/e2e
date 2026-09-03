@@ -59,7 +59,7 @@ export interface Device {
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
    * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
-   * against the working directory) on the device. `reinstall: true` removes
+   * against the project root) on the device. `reinstall: true` removes
    * the app first so it starts with no data; a plain install replaces the
    * binary and keeps its data. Resolves to the identity to `openApp` it by.
    */

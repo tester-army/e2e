@@ -51,6 +51,7 @@ describe.skipIf(!enabled)('agent-device backend on a booted iOS simulator', () =
     await backend.init!({
       runId: 'run-sim',
       targetName: 'ios',
+      projectRoot: process.cwd(),
       app: { allowedOrigins: [] },
       testIdAttribute: 'data-testid',
       headed: true,

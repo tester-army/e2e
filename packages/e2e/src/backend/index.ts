@@ -210,6 +210,13 @@ export interface BackendApp {
 export interface BackendInitInfo {
   readonly runId: string;
   readonly targetName: string;
+  /**
+   * Directory relative paths in the config resolve against: the config file's
+   * directory, or the run's `cwd` for a programmatic config. A backend option
+   * naming a file (a build to install) resolves here, never against
+   * `process.cwd()`, which an in-process run does not change.
+   */
+  readonly projectRoot: string;
   readonly app: BackendAppInfo;
   /** Attribute the `testId` query resolves against. */
   readonly testIdAttribute: string;

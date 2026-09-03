@@ -106,6 +106,7 @@ describe('playwright backend over CDP', () => {
     await backend.init!({
       runId: 'run-cdp',
       targetName: 'web',
+      projectRoot: process.cwd(),
       app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
       testIdAttribute: 'data-testid',
       headed: false,
@@ -146,6 +147,7 @@ describe('playwright backend over CDP', () => {
     await backend.init!({
       runId: 'run-cdp',
       targetName: 'web',
+      projectRoot: process.cwd(),
       app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
       testIdAttribute: 'data-testid',
       headed: false,
@@ -198,6 +200,7 @@ describe('playwright backend over CDP', () => {
     const info = {
       runId: 'run-cdp',
       targetName: 'web',
+      projectRoot: process.cwd(),
       app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
       testIdAttribute: 'data-testid',
       headed: false,

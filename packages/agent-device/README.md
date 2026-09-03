@@ -46,7 +46,7 @@ Options:
 | --- | --- |
 | `platform` | `'ios'` or `'android'`. |
 | `app` | Bundle id, package, or display name opened fresh at the start of every attempt. Also unlocks `app.restart()` and `app.clearState()`. |
-| `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the working directory. Without `app`, the installed bundle id or package is the app opened per attempt. |
+| `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the project root. Without `app`, the installed bundle id or package is the app opened per attempt. |
 | `device` | Simulator or emulator name or id; a booted one is picked otherwise. |
 | `session` | agent-device session name; defaults to `e2e-<target name>`. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |

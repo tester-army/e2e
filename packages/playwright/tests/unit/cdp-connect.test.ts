@@ -13,6 +13,7 @@ function initInfo(signal = new AbortController().signal): BackendInitInfo {
   return {
     runId: 'run-cdp',
     targetName: 'web',
+    projectRoot: '/project',
     app: { baseUrl: 'http://localhost/', allowedOrigins: ['http://localhost'] },
     testIdAttribute: 'data-testid',
     headed: false,

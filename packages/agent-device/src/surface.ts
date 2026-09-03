@@ -63,9 +63,9 @@ export interface AgentDeviceOptions {
   readonly app?: string;
   /**
    * Build to install on the device once per worker, before the first attempt:
-   * an iOS `.app` bundle or an Android `.apk`, resolved against the working
-   * directory. Without `app`, the installed bundle id or package becomes the
-   * app opened fresh at the start of every attempt.
+   * an iOS `.app` bundle or an Android `.apk`, resolved against the project
+   * root (the config's directory). Without `app`, the installed bundle id or
+   * package becomes the app opened fresh at the start of every attempt.
    */
   readonly appPath?: string;
   /** Simulator or emulator to use, by name or id; agent-device picks a booted one otherwise. */
@@ -160,6 +160,8 @@ export class AgentDeviceSurface {
   private appIdentity: string | undefined;
   /** The app `appPath` installed at init, when no `app` option names one. */
   private installedApp: string | undefined;
+  /** Where relative build paths resolve; the run's project root once init has told us. */
+  private projectRoot = process.cwd();
   /**
    * Commands still running on the device. agent-device takes no abort
    * signal, so a cancelled or timed-out call is only abandoned by its
@@ -232,6 +234,7 @@ export class AgentDeviceSurface {
 
   async init(info: BackendInitInfo): Promise<void> {
     this.testIdAttribute = info.testIdAttribute;
+    this.projectRoot = info.projectRoot;
     this.client ??= this.createClient(this.options.session ?? `e2e-${info.targetName}`);
     await this.command(
       'boot',
@@ -302,7 +305,7 @@ export class AgentDeviceSurface {
    * with no data; a plain install replaces the binary and keeps its data.
    */
   async installApp(appPath: string, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
-    const resolved = path.resolve(appPath);
+    const resolved = path.resolve(this.projectRoot, appPath);
     const selection = {
       platform: this.options.platform,
       ...(this.options.device === undefined ? {} : { device: this.options.device }),

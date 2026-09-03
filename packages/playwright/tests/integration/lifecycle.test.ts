@@ -64,6 +64,7 @@ async function boot(backend: BackendHandle, app: FixtureApp): Promise<void> {
   await backend.init!({
     runId: 'run-pool',
     targetName: 'web',
+    projectRoot: process.cwd(),
     app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
     testIdAttribute: 'data-testid',
     headed: false,

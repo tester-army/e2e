@@ -18,6 +18,9 @@ import type { Device } from '../../src/device.ts';
 import { AgentDeviceSurface, type AgentDeviceOptions } from '../../src/surface.ts';
 import { createFakeClient, SETTINGS_SNAPSHOT, type FakeClient } from '../helpers/fake-client.ts';
 
+/** Deliberately not `process.cwd()`: relative build paths must resolve here, not there. */
+const PROJECT_ROOT = '/project';
+
 function operation(signal = new AbortController().signal): OperationContext {
   return { signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1' };
 }
@@ -30,6 +33,7 @@ async function boot(backend: BackendHandle, targetName = 'ios-simulator'): Promi
   await backend.init!({
     runId: 'run-1',
     targetName,
+    projectRoot: PROJECT_ROOT,
     app: { allowedOrigins: [] },
     testIdAttribute: 'data-testid',
     headed: false,
@@ -144,7 +148,7 @@ describe('lifecycle', () => {
     const h = harness({ appPath: './build/App.app' }, false);
     h.fake.respond('apps.install', () => ({
       app: './build/App.app',
-      appPath: path.resolve('./build/App.app'),
+      appPath: '/project/build/App.app',
       platform: 'ios',
       bundleId: 'com.example.app',
       identifiers: {},
@@ -152,7 +156,7 @@ describe('lifecycle', () => {
     expect(Object.keys(h.backend.app!).toSorted()).toEqual(['back', 'clearState', 'restart']);
     await openAttempt(h);
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
-    expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: path.resolve('./build/App.app') });
+    expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: '/project/build/App.app' });
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', relaunch: true });
 
     await h.backend.endAttempt!(cleanup());
@@ -590,7 +594,7 @@ describe('device fixture', () => {
     expect(await device.installApp('/b/App.app', { reinstall: true })).toEqual({ app: 'com.example.app' });
     expect(await device.installApp('/b/App.app', { app: 'com.other', reinstall: true })).toEqual({ app: 'com.example.app' });
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['apps.install', { platform: 'ios', appPath: path.resolve('./b/App.app') }],
+      ['apps.install', { platform: 'ios', appPath: '/project/b/App.app' }],
       ['apps.reinstall', { platform: 'ios', app: 'Settings', appPath: '/b/App.app' }],
       ['apps.reinstall', { platform: 'ios', app: 'com.other', appPath: '/b/App.app' }],
     ]);

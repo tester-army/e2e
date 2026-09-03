@@ -176,6 +176,7 @@ export class TargetExecutor implements SerialHost {
           init({
             runId: this.options.runId,
             targetName: this.target.name,
+            projectRoot: this.config.projectRoot,
             app: {
               ...(this.config.app.configured ? { baseUrl: this.config.app.base.href } : {}),
               allowedOrigins: this.config.app.allowedOrigins,

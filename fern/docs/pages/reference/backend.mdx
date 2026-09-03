@@ -88,6 +88,7 @@ what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 export interface BackendInitInfo {
   readonly runId: string;
   readonly targetName: string;
+  readonly projectRoot: string;
   readonly app: { readonly baseUrl?: string; readonly allowedOrigins: readonly string[] };
   readonly testIdAttribute: string;
   readonly headed: boolean;

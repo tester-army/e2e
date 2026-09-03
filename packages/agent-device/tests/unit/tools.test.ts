@@ -32,6 +32,7 @@ describe('agent tool pack', () => {
       backend.init!({
         runId: 'r',
         targetName,
+        projectRoot: '/project',
         app: { allowedOrigins: [] },
         testIdAttribute: 'data-testid',
         headed: false,
