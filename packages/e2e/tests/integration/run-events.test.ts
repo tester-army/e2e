@@ -187,7 +187,7 @@ describe('run events: run lifecycle hygiene', () => {
       expect(outcome.status).toBe('interrupted');
       expect(outcome.results).toHaveLength(0);
       const types = events.map((event) => event.type);
-      expect(types).toEqual(['run-started', 'run-finished']);
+      expect(types).toEqual(['run-started', 'run-interrupted', 'run-finished']);
       // The report is still the canonical record of the cancelled run.
       expect(outcome.reportPath).toBeDefined();
     } finally {

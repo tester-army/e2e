@@ -76,7 +76,16 @@ export interface ShutdownMessage {
   readonly type: 'shutdown';
 }
 
-export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage;
+/**
+ * A forced interrupt: dispose the backend now, beside whatever the running
+ * unit is still doing, and exit. The runner kills the worker once the cleanup
+ * budget is spent, so the backend gets exactly one bounded chance to let go.
+ */
+export interface TerminateMessage {
+  readonly type: 'terminate';
+}
+
+export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage;
 
 /**
  * `ResultRecord` minus the live target. Serializable as-is: `test` is a

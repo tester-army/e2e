@@ -89,11 +89,17 @@ interface FakeBehaviour {
   readonly failInit?: readonly string[];
   /** Targets whose workers hang in startup, never becoming ready or exiting. */
   readonly neverReady?: readonly string[];
+  /** Unit ids whose worker never finishes: a test that will not end on its own. */
+  readonly hangOn?: readonly string[];
+  /** Workers ignore `terminate` and have to be killed. */
+  readonly ignoreTerminate?: boolean;
 }
 
 class FakeFleet {
   readonly spawned: { targetName: string }[] = [];
   readonly unitsByWorker: RunUnitMessage[][] = [];
+  /** Control messages every worker received, in order. */
+  readonly control: MainToWorker['type'][] = [];
   live = 0;
   peakLive = 0;
 
@@ -142,12 +148,18 @@ class FakeRunner implements UnitRunner {
 
   send(message: MainToWorker): void {
     if (this.exited) return;
+    if (message.type !== 'run-unit') this.fleet.control.push(message.type);
     if (message.type === 'shutdown') {
       setTimeout(() => this.end('shut down'), 0);
       return;
     }
+    if (message.type === 'terminate') {
+      if (this.behaviour.ignoreTerminate !== true) setTimeout(() => this.end('terminated'), 0);
+      return;
+    }
     if (message.type !== 'run-unit') return;
     this.fleet.unitsByWorker[this.index]!.push(message);
+    if (this.behaviour.hangOn?.includes(message.unitId) === true) return;
     setTimeout(() => this.completeUnit(message), 0);
   }
 
@@ -192,7 +204,13 @@ async function run(
   selection: Selection,
   collection: Collection,
   fleet: FakeFleet,
-  overrides: { workers?: number; interruptSignal?: AbortSignal } = {},
+  overrides: {
+    workers?: number;
+    interruptSignal?: AbortSignal;
+    forceSignal?: AbortSignal;
+    interruptGraceMs?: number;
+    forceGraceMs?: number;
+  } = {},
 ): Promise<Collected> {
   const collected: Collected = { results: [], serialGroups: [], runErrors: [] };
   await runUnits({
@@ -200,8 +218,10 @@ async function run(
     collection,
     projectRoot: '/project',
     workers: overrides.workers ?? 2,
-    interruptGraceMs: 1_000,
+    interruptGraceMs: overrides.interruptGraceMs ?? 1_000,
     interruptSignal: overrides.interruptSignal ?? new AbortController().signal,
+    ...(overrides.forceSignal === undefined ? {} : { forceSignal: overrides.forceSignal }),
+    ...(overrides.forceGraceMs === undefined ? {} : { forceGraceMs: overrides.forceGraceMs }),
     spawn: fleet.spawn,
     events: {
       onResult: (result) => collected.results.push(result),
@@ -425,6 +445,55 @@ describe('scheduler fault handling', () => {
     for (const result of collected.results) expect(result.status).toBe('skipped');
     expect(collected.results.map((result) => result.test.id)).toContain('setup::user');
     expect(collected.runErrors.some((error) => error.error.code === 'WORKER_INIT_FAILED')).toBe(true);
+  });
+
+  it('a forced interrupt tears busy workers down at once instead of waiting out the grace', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    // Every unit hangs: without the force, the scheduler would wait the whole
+    // interrupt grace before killing the worker.
+    const fleet = new FakeFleet({ hangOn: ['file::web::tests/a.e2e.ts', 'file::web::tests/b.e2e.ts'] });
+    const interrupt = new AbortController();
+    const force = new AbortController();
+    const timers = [setTimeout(() => interrupt.abort(), 20), setTimeout(() => force.abort(), 40)];
+
+    const started = Date.now();
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(pairs.map((pair) => pair.test.file), pairs),
+      fleet,
+      { workers: 2, interruptSignal: interrupt.signal, forceSignal: force.signal, interruptGraceMs: 30_000 },
+    );
+    for (const timer of timers) clearTimeout(timer);
+
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(fleet.control).toContain('interrupt');
+    expect(fleet.control).toContain('terminate');
+    // The pairs never reported; a forced exit is the one that was asked for.
+    expect(collected.results.map((result) => result.status).toSorted()).toEqual(['skipped', 'skipped']);
+    expect(collected.runErrors).toEqual([]);
+  });
+
+  it('kills a worker that ignores a forced interrupt once the force budget is spent', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = [makePair(makeTest('tests/a.e2e.ts', 'a'), target)];
+    const fleet = new FakeFleet({ hangOn: ['file::web::tests/a.e2e.ts'], ignoreTerminate: true });
+    const interrupt = new AbortController();
+    const force = new AbortController();
+    const timers = [setTimeout(() => interrupt.abort(), 20), setTimeout(() => force.abort(), 40)];
+
+    const started = Date.now();
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts'], pairs),
+      fleet,
+      { workers: 1, interruptSignal: interrupt.signal, forceSignal: force.signal, interruptGraceMs: 30_000, forceGraceMs: 100 },
+    );
+    for (const timer of timers) clearTimeout(timer);
+
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(fleet.live).toBe(0);
+    expect(collected.results.map((result) => result.status)).toEqual(['skipped']);
   });
 
   it('terminates when interrupted while a worker is still starting', async () => {

@@ -63,6 +63,8 @@ export class TargetWorker {
   private runErrorWatermark = 0;
   /** Serializes message handling so units never overlap on one worker. */
   private queue: Promise<void> = Promise.resolve();
+  /** Disposal happens once, whichever of shutdown or terminate asks first. */
+  private shutdownOnce: Promise<void> | undefined;
 
   constructor(
     private readonly host: TargetWorkerHost,
@@ -99,6 +101,11 @@ export class TargetWorker {
     });
   }
 
+  /** The configured cleanup budget, once the config has loaded. */
+  get cleanupTimeoutMs(): number | undefined {
+    return this.deps?.config.cleanupTimeout;
+  }
+
   handle(message: MainToWorker): void {
     switch (message.type) {
       case 'interrupt':
@@ -110,7 +117,23 @@ export class TargetWorker {
       case 'shutdown':
         this.enqueue(() => this.shutdown());
         return;
+      case 'terminate':
+        this.terminate();
+        return;
     }
+  }
+
+  /**
+   * A forced interrupt. Disposal runs beside the running unit instead of
+   * queued behind it: the unit is exactly what a second interrupt refuses to
+   * wait for. Its later backend calls fail against a disposed backend, which
+   * no longer matters — nothing it reports from here on is kept.
+   */
+  private terminate(): void {
+    this.interruptController.abort();
+    this.shutdown().catch((cause: unknown) => {
+      this.host.fatal(cause);
+    });
   }
 
   private enqueue(work: () => Promise<void>): void {
@@ -165,7 +188,12 @@ export class TargetWorker {
     return delta;
   }
 
-  private async shutdown(): Promise<void> {
+  private shutdown(): Promise<void> {
+    this.shutdownOnce ??= this.disposeAndFinish();
+    return this.shutdownOnce;
+  }
+
+  private async disposeAndFinish(): Promise<void> {
     // The backend belongs to this worker's executor on both transports. Its
     // disposal records run errors after the last unit drained, so they ship
     // on a final message of their own; dispose itself never throws.

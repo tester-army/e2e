@@ -175,11 +175,25 @@ export class ListReporter {
       case 'run-error':
         this.errors.push(event.error);
         break;
+      case 'run-interrupted':
+        this.runInterrupted(event);
+        break;
       case 'run-finished':
         this.runFinished(event);
         break;
     }
   };
+
+  /** Acknowledged immediately, so a bounded teardown is not mistaken for a hang. */
+  private runInterrupted(event: RunEventOf<'run-interrupted'>): void {
+    this.writeAboveStatus(
+      this.pc.yellow(
+        event.mode === 'graceful'
+          ? 'interrupted: stopping the running test and tearing down (interrupt again to force)'
+          : 'interrupted again: tearing every worker down now',
+      ),
+    );
+  }
 
   private runStarted(event: RunEventOf<'run-started'>): void {
     this.projectRoot = event.projectRoot;

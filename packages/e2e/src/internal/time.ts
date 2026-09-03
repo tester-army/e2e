@@ -109,3 +109,27 @@ export async function withTimeout<T>(
     if (timer !== undefined) clearTimeout(timer);
   }
 }
+
+/**
+ * Races a promise against an abort signal; on abort invokes onAbort to build
+ * the error. The promise is left running: the caller is abandoning it.
+ */
+export async function withAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+  onAbort: () => Error,
+): Promise<T> {
+  if (signal.aborted) throw onAbort();
+  let listener: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        listener = () => reject(onAbort());
+        signal.addEventListener('abort', listener, { once: true });
+      }),
+    ]);
+  } finally {
+    if (listener !== undefined) signal.removeEventListener('abort', listener);
+  }
+}

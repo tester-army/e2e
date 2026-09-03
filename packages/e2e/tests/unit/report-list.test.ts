@@ -92,6 +92,17 @@ describe('ListReporter', () => {
     expect(lines).toHaveLength(1);
   });
 
+  it('acknowledges each interrupt the moment it lands', () => {
+    const { lines, output } = capture();
+    const reporter = new ListReporter(output);
+    reporter.handle({ type: 'run-interrupted', mode: 'graceful' });
+    reporter.handle({ type: 'run-interrupted', mode: 'forced' });
+    expect(lines).toEqual([
+      'interrupted: stopping the running test and tearing down (interrupt again to force)',
+      'interrupted again: tearing every worker down now',
+    ]);
+  });
+
   it('omits the CI marker outside CI', () => {
     const { lines, output } = capture();
     new ListReporter(output).handle(runStarted({ ci: false }));

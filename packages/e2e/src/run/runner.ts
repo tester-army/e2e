@@ -94,6 +94,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   /** The in-process recorder; child-process workers own their own. */
   let aiTraceRecorder: AiTraceRecorder | undefined;
   const interruptController = new AbortController();
+  const forceController = new AbortController();
   const runErrors: RunError[] = [];
   const results: ResultRecord[] = [];
   const serialGroups: SerialGroupRecord[] = [];
@@ -382,6 +383,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         spawn: transport.spawn,
         interruptGraceMs: config.timeout + config.cleanupTimeout,
         interruptSignal: interrupted,
+        forceSignal: forceController.signal,
+        // The worker's own disposal is bounded by the cleanup budget; the
+        // margin lets a worker that used all of it still report and exit
+        // before the kill lands.
+        forceGraceMs: config.cleanupTimeout + 1_000,
         events: {
           onResult: (result) => {
             results.push(result);
@@ -404,35 +410,58 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   // The interrupt bridge is armed for the whole body — app startup, collection,
-  // scheduling — so a host's cancellation lands wherever the run is, not only
-  // once the scheduler happens to be running. From here the run owns external
-  // resources. Failures anywhere are recorded, never thrown — the outcome must
-  // survive its own execution and its own cleanup — and teardown always runs
-  // before the terminal `run-finished`, so that event means the app process
-  // and session store are gone.
+  // scheduling, teardown, the report — so a host's cancellation lands wherever
+  // the run is, not only once the scheduler happens to be running. From here
+  // the run owns external resources. Failures anywhere are recorded, never
+  // thrown — the outcome must survive its own execution and its own cleanup —
+  // and teardown always runs before the terminal `run-finished`, so that
+  // event means the app process and session store are gone.
+  //
+  // Process signals escalate. The first interrupts: the running test ends,
+  // its teardown runs, workers dispose their backends and exit. The second
+  // forces: every worker disposes now and is killed after the cleanup budget.
+  // The third gives up on the run itself — the last resort for a teardown
+  // that is stuck. The handlers stay installed through the report, because
+  // Node's default for an unhandled signal is to exit on the spot, which
+  // would leave workers orphaned mid-test and the report unwritten.
   const externalSignal = options.interruptSignal;
-  const onInterrupt = () => interruptController.abort();
-  if (externalSignal?.aborted === true) interruptController.abort();
-  externalSignal?.addEventListener('abort', onInterrupt, { once: true });
-  process.once('SIGINT', onInterrupt);
-  process.once('SIGTERM', onInterrupt);
+  const interrupt = (mode: 'graceful' | 'forced'): void => {
+    const controller = mode === 'graceful' ? interruptController : forceController;
+    if (controller.signal.aborted) return;
+    controller.abort();
+    emit({ type: 'run-interrupted', mode });
+  };
+  const onExternalAbort = (): void => interrupt('graceful');
+  let signals = 0;
+  const onSignal = (): void => {
+    signals += 1;
+    if (signals === 1) interrupt('graceful');
+    else if (signals === 2) interrupt('forced');
+    else process.exit(130);
+  };
+  if (externalSignal?.aborted === true) interrupt('graceful');
+  externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
   try {
-    await executeRun();
-  } catch (cause) {
-    recordFailure(cause);
-  } finally {
-    process.removeListener('SIGINT', onInterrupt);
-    process.removeListener('SIGTERM', onInterrupt);
-    externalSignal?.removeEventListener('abort', onInterrupt);
-  }
-  for (const teardown of [() => sessionStore?.cleanup(), () => appProcess?.stop()]) {
     try {
-      await teardown();
+      await executeRun();
     } catch (cause) {
       recordFailure(cause);
     }
+    for (const teardown of [() => sessionStore?.cleanup(), () => appProcess?.stop()]) {
+      try {
+        await teardown();
+      } catch (cause) {
+        recordFailure(cause);
+      }
+    }
+    return await finish();
+  } finally {
+    process.removeListener('SIGINT', onSignal);
+    process.removeListener('SIGTERM', onSignal);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
   }
-  return finish();
 }
 
 /**

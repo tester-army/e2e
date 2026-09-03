@@ -69,8 +69,9 @@ class InProcessRunner implements UnitRunner {
 
   send(message: MainToWorker): void {
     if (this.exited) return;
-    // Interrupts must land even while winding down, so in-flight work aborts.
-    if (this.closing && message.type !== 'interrupt') return;
+    // Interrupts must land even while winding down, so in-flight work aborts;
+    // a forced teardown likewise, so the backend lets go now.
+    if (this.closing && message.type !== 'interrupt' && message.type !== 'terminate') return;
     this.worker.handle(message);
   }
 

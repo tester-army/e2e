@@ -16,7 +16,7 @@ import {
 import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
-import { Deadline, withTimeout } from '../internal/time.ts';
+import { Deadline, withAbort, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import type { CollectedFile } from '../collect/collect.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
@@ -677,15 +677,28 @@ export class TargetExecutor implements SerialHost {
         await (registered.fn as SetupFn)(fixtures);
       };
 
+      // The interrupt is raced here, not only threaded through the fixtures:
+      // a body that is not touching the harness at that moment (a plain
+      // sleep, a third-party call) would otherwise hold the attempt until its
+      // own timeout — minutes, on a device target. The body is abandoned with
+      // the worker; the attempt records the interrupt and moves to cleanup.
       try {
         await this.debug.time('test.body', () =>
-          withTimeout(mainWork(), Math.max(1, testDeadline.remaining()), () => {
-            timedOut = true;
-            attemptAbort.abort();
-            return new TestTimeoutError(
-              `test timed out after ${pair.options.timeout} ms in phase ${phase}`,
-            );
-          }),
+          withTimeout(
+            withAbort(
+              mainWork(),
+              this.interruptSignal,
+              () => new E2EError('interrupted', 'INTERRUPTED', `run interrupted in phase ${phase}`),
+            ),
+            Math.max(1, testDeadline.remaining()),
+            () => {
+              timedOut = true;
+              attemptAbort.abort();
+              return new TestTimeoutError(
+                `test timed out after ${pair.options.timeout} ms in phase ${phase}`,
+              );
+            },
+          ),
         );
       } catch (cause) {
         recordFailure(cause, phase);

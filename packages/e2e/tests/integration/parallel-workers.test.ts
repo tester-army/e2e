@@ -236,7 +236,9 @@ test('sleeps a long time', { timeout: 8000 }, async ({ app }) => {
       expect(outcome.exitCode).toBe(130);
       expect(outcome.status).toBe('interrupted');
       const result = resultByTitle(outcome, 'sleeps a long time');
-      expect(['interrupted', 'timed-out', 'skipped']).toContain(result.status);
+      // The body is a plain sleep that never calls the harness: the interrupt
+      // still ends the attempt at once, well before the 8 s test timeout.
+      expect(['interrupted', 'skipped']).toContain(result.status);
       project.cleanup();
     },
     120_000,

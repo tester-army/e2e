@@ -61,6 +61,7 @@ type RunEventFact =
   | { type: 'test-finished'; result: RunEventResult }
   | { type: 'serial-group'; group: SerialGroupRecord }
   | { type: 'run-error'; error: SerializedError }
+  | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
@@ -71,6 +72,10 @@ child events (observations, model calls, backend actions, policy decisions) as
 they happen — the same feed the list reporter renders. `test-finished`
 carries the full result record with the live target flattened to
 `{ name, platform }`, so every payload survives `JSON.stringify`.
+`run-interrupted` is emitted once when `interruptSignal` aborts or the process
+receives its first `SIGINT`/`SIGTERM` (`graceful`), and once more if a second
+signal forces every worker to tear down at once (`forced`); see
+[Signals](/reference/cli#signals).
 
 The sink must not block and must not throw: a sink that throws is quarantined
 for the rest of the run, and a sink whose returned promise rejects is

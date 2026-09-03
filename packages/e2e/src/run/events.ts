@@ -68,6 +68,15 @@ export type RunEventFact =
   | { readonly type: 'serial-group'; readonly group: SerialGroupRecord }
   | { readonly type: 'run-error'; readonly error: SerializedError }
   | {
+      /**
+       * An interrupt landed. `graceful`: the running test is interrupted and
+       * its teardown runs. `forced` (a second interrupt): every worker tears
+       * its backend down at once and is killed after the cleanup budget.
+       */
+      readonly type: 'run-interrupted';
+      readonly mode: 'graceful' | 'forced';
+    }
+  | {
       readonly type: 'run-finished';
       readonly status: 'passed' | 'failed' | 'error' | 'interrupted';
       readonly exitCode: RunExitCode;

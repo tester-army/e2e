@@ -26,12 +26,21 @@ import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './s
  */
 let outbox: Promise<void> = Promise.resolve();
 
+/**
+ * How long an orphaned worker gets to dispose its backend before it exits
+ * regardless, on top of the cleanup budget that disposal itself is bounded by.
+ */
+const ORPHAN_EXIT_MARGIN_MS = 5_000;
+
+/** The cleanup budget assumed before the config has loaded. */
+const DEFAULT_CLEANUP_TIMEOUT_MS = 30_000;
+
 function send(message: WorkerToMain): void {
   outbox = outbox.then(
     () =>
       new Promise<void>((resolve) => {
         try {
-          if (process.send === undefined) resolve();
+          if (process.send === undefined || !process.connected) resolve();
           else process.send(message, undefined, undefined, () => resolve());
         } catch {
           // channel already closed; nothing left to deliver
@@ -131,6 +140,21 @@ function main(): void {
   process.on('unhandledRejection', (cause) => fatal(cause));
 
   let worker: TargetWorker | undefined;
+
+  // The channel closes when the runner is gone: killed by a second interrupt,
+  // crashed, or exited before this worker. A worker nobody is listening to
+  // must not keep driving a device or a browser: it tears its backend down
+  // right away (nothing it could still report would be kept) and exits, by
+  // force once the cleanup budget is spent.
+  process.on('disconnect', () => {
+    if (worker === undefined) {
+      process.exit(1);
+    }
+    worker.handle({ type: 'terminate' });
+    const budget = (worker.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS) + ORPHAN_EXIT_MARGIN_MS;
+    setTimeout(() => process.exit(1), budget).unref();
+  });
+
   process.on('message', (message: ChildProcessInbound) => {
     if (message.type === 'bootstrap') {
       // This worker owns its trace outright, so each drain point (unit-done,

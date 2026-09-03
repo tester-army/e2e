@@ -93,9 +93,19 @@ with `npx unbox-ai .e2e/ai-trace.json`; see [Your own agent](/agents#inspect-a-r
 
 ### Signals
 
-On the first interrupt signal the runner aborts active model and backend work,
-runs bounded teardown, writes a partial report with `status: interrupted`, and
-exits 130. A second signal may force immediate exit.
+Signals escalate. The first `SIGINT` or `SIGTERM` (Ctrl-C) interrupts: the
+running test ends at once with status `interrupted` — even a body that is not
+calling the harness at that moment — its `afterEach` hooks and session close
+run within the cleanup budget, every worker disposes its backend and exits,
+and the runner writes a partial report with `status: interrupted` and exits
+130. A second signal forces: every worker disposes its backend right away
+instead of finishing its test, and is killed once the cleanup budget is spent;
+the report is still written. A third signal exits on the spot, the last resort
+for a teardown that is itself stuck.
+
+A worker whose runner disappears (killed, crashed) never runs on by itself: it
+disposes its backend and exits within the cleanup budget, so a device or a
+browser is not driven by a process nobody is listening to.
 
 ## Exit codes
 
