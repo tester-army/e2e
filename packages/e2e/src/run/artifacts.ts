@@ -2,9 +2,10 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import type { ArtifactStore } from '../types.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
 
@@ -27,7 +28,9 @@ export interface AttemptArtifacts {
 /**
  * Creates the artifact directory for one attempt and a sink that registers
  * produced files under report-relative paths, measuring and hashing them
- * asynchronously.
+ * asynchronously. With a `store`, each complete artifact is also handed to it
+ * right then — as produced, not at run end — and the store's reference lands
+ * on the record as `ref`.
  */
 export function createAttemptArtifacts(options: {
   artifactsRoot: string;
@@ -36,6 +39,10 @@ export function createAttemptArtifacts(options: {
   attemptId: string;
   /** When provided, artifacts are attributed to the currently running step. */
   currentStepId?: () => string | undefined;
+  /** Host store every artifact is handed to once complete; undefined keeps files local only. */
+  store?: ArtifactStore;
+  /** Report identity handed to the store with each artifact. */
+  identity?: { readonly runId: string; readonly testId: string };
 }): AttemptArtifacts {
   const dir = path.join(options.artifactsRoot, ...options.segments);
   mkdirSync(dir, { recursive: true });
@@ -56,14 +63,47 @@ export function createAttemptArtifacts(options: {
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       };
       records.push(record);
+      const reportPath = path.posix.join(...options.segments, relativePath);
       pending.push(
-        measure(absolute).then((measured) => {
-          // A file that never appeared is recorded without size or digest.
-          if (measured === undefined) return;
-          record.path = path.posix.join(...options.segments, relativePath);
-          record.size = measured.size;
-          record.sha256 = measured.sha256;
-        }),
+        (async () => {
+          // Without a store the file is streamed for its size and digest only;
+          // with one it is read whole, since the store needs the bytes anyway,
+          // and hashed from that same buffer. A file that never appeared is
+          // recorded without size or digest either way.
+          if (options.store === undefined) {
+            const measured = await measure(absolute);
+            if (measured === undefined) return;
+            record.path = reportPath;
+            record.size = measured.size;
+            record.sha256 = measured.sha256;
+            return;
+          }
+          const bytes = await readFile(absolute).catch(() => undefined);
+          if (bytes === undefined) return;
+          record.path = reportPath;
+          record.size = bytes.byteLength;
+          record.sha256 = createHash('sha256').update(bytes).digest('hex');
+          // The store's failure is its own: the record keeps its local path and
+          // simply carries no ref, and the run is never failed by evidence
+          // that did not upload.
+          try {
+            const { ref } = await options.store.put({
+              kind,
+              mediaType: record.mediaType,
+              bytes,
+              size: record.size,
+              sha256: record.sha256,
+              path: reportPath,
+              runId: options.identity?.runId ?? '',
+              testId: options.identity?.testId ?? '',
+              attemptId: options.attemptId,
+              ...(stepId === undefined ? {} : { stepId }),
+            });
+            if (typeof ref === 'string' && ref !== '') record.ref = ref;
+          } catch {
+            // best-effort by contract
+          }
+        })(),
       );
       return id;
     },

@@ -144,7 +144,9 @@ reported by the provider.
 
 Artifacts have generated IDs and contained relative paths. Their media type,
 kind, redaction status, and producer are recorded. Persisted artifacts also have
-byte size, SHA-256 digest, and path. `redaction: incomplete` artifacts MUST NOT
+byte size, SHA-256 digest, and path, and — when the run configured an
+`ArtifactStore` that accepted the artifact — the store's own reference as
+`ref` beside the path. `redaction: incomplete` artifacts MUST NOT
 be persisted or exposed to a model; their report entry has no path, size, or
 digest to avoid a secret-value oracle.
 

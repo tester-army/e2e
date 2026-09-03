@@ -9,6 +9,8 @@ import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '..
 import { isStepExecutor } from '../agent/executor.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import type {
+  ArtifactsConfig,
+  ArtifactStore,
   AgentConfig,
   CacheMode,
   CommandConfig,
@@ -73,8 +75,10 @@ export interface ResolvedConfig {
   readonly retries: number;
   readonly workers: number;
   readonly artifacts: readonly ('trace' | 'screenshot')[];
-  /** True when `artifacts` was set in config, so a backend that cannot produce one is an error. */
+  /** True when artifact kinds were set in config, so a backend that cannot produce one is an error. */
   readonly artifactsExplicit: boolean;
+  /** Host store every produced artifact is handed to; undefined keeps files local only. */
+  readonly artifactStore: ArtifactStore | undefined;
   readonly reporters: readonly ('list' | 'json')[];
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
@@ -207,15 +211,7 @@ export function resolveConfig(
     boundedInt(raw.workers, 'workers', 1, 1024) ??
     (ci ? 1 : Math.max(1, Math.floor(os.availableParallelism() / 2)));
 
-  const artifacts = raw.artifacts ?? (['screenshot', 'trace'] as const);
-  if (!Array.isArray(artifacts)) {
-    throw new ConfigurationError('INVALID_CONFIG', 'artifacts must be an array of artifact kinds');
-  }
-  for (const artifact of artifacts) {
-    if (!['screenshot', 'trace'].includes(artifact)) {
-      throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${artifact}"`);
-    }
-  }
+  const { artifacts, artifactsExplicit, artifactStore } = resolveArtifactsConfig(raw);
   const reporters = cli.reporters ?? raw.reporters ?? (['list'] as const);
   if (!Array.isArray(reporters)) {
     throw new ConfigurationError('INVALID_CONFIG', 'reporters must be an array of reporter ids');
@@ -259,7 +255,8 @@ export function resolveConfig(
     retries,
     workers,
     artifacts,
-    artifactsExplicit: raw.artifacts !== undefined,
+    artifactsExplicit,
+    artifactStore,
     reporters,
     testIdAttribute,
     agent,
@@ -333,6 +330,74 @@ function resolveCacheConfig(
     store,
     dir: path.resolve(projectRoot, dir ?? path.join('.e2e', 'cache')),
   };
+}
+
+const ARTIFACT_KINDS = ['screenshot', 'trace'] as const;
+const ARTIFACTS_KEYS = new Set(['kinds', 'store']);
+
+/**
+ * Resolves the `artifacts` key: a bare array of kinds, or `{ kinds, store }`
+ * where `store` is the host seam every produced artifact is handed to
+ * (spec 13-reporting.md). Kinds default to screenshot and trace; a store is a
+ * live value validated structurally, like `cache.store`.
+ */
+function resolveArtifactsConfig(raw: E2EConfig): {
+  artifacts: readonly ('trace' | 'screenshot')[];
+  artifactsExplicit: boolean;
+  artifactStore: ArtifactStore | undefined;
+} {
+  const value: unknown = raw.artifacts;
+  let kinds: unknown = value;
+  let store: ArtifactStore | undefined;
+  if (value !== undefined && !Array.isArray(value)) {
+    if (!isArtifactsObject(value)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'artifacts must be an array of artifact kinds or { kinds, store }',
+      );
+    }
+    for (const key of Object.keys(value)) {
+      if (!ARTIFACTS_KEYS.has(key)) {
+        throw new ConfigurationError('INVALID_CONFIG', `unknown artifacts config key "${key}"`);
+      }
+    }
+    kinds = value.kinds;
+    store = value.store;
+    if (store !== undefined && !isArtifactStore(store)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'artifacts.store must implement ArtifactStore: { put(artifact) }',
+      );
+    }
+  }
+  const explicit = kinds !== undefined;
+  const resolved = (kinds ?? ARTIFACT_KINDS) as readonly unknown[];
+  if (!Array.isArray(resolved)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'artifacts kinds must be an array of artifact kinds');
+  }
+  for (const artifact of resolved) {
+    if (!(ARTIFACT_KINDS as readonly unknown[]).includes(artifact)) {
+      throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${String(artifact)}"`);
+    }
+  }
+  return {
+    artifacts: resolved as readonly ('trace' | 'screenshot')[],
+    artifactsExplicit: explicit,
+    artifactStore: store,
+  };
+}
+
+/** The `{ kinds, store }` form, as opposed to the bare kinds array. */
+function isArtifactsObject(value: unknown): value is ArtifactsConfig {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isArtifactStore(value: unknown): value is ArtifactStore {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { put?: unknown }).put === 'function'
+  );
 }
 
 /** Structural store check, mirroring how executors and models are detected. */
@@ -595,6 +660,12 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
     ...(structuredCloneJsonSafe(forClone) as Record<string, unknown>),
     projectId,
   };
+  // An artifact store is a live value: only the kinds are configuration, so
+  // the array and object forms digest identically and a host store never
+  // enters the digest.
+  if (isArtifactsObject(raw.artifacts)) {
+    sanitized['artifacts'] = raw.artifacts.kinds ?? [...ARTIFACT_KINDS];
+  }
   if (raw.credentials !== undefined) {
     sanitized['credentials'] = Object.fromEntries(
       Object.entries(raw.credentials).map(([name, credential]) => [

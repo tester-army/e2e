@@ -50,7 +50,7 @@ the one that drives each target. `npx e2e init` writes a starter config.
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024 |
-| `artifacts` | `readonly ('trace' \| 'screenshot')[]` | `['screenshot', 'trace']` | those two kinds |
+| `artifacts` | kinds array or `{ kinds?, store? }` | `['screenshot', 'trace']` | those two kinds; `store` is an [`ArtifactStore`](#artifacts) |
 | `reporters` | `readonly ('list' \| 'json')[]` | `['list']` | those two IDs; `json` cannot be combined with `list` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object | see [agent](#agent) | - |
@@ -63,6 +63,31 @@ Every numeric value must be a safe integer.
 `artifacts` accepts `screenshot` and `trace` only; `video` is not a
 configurable artifact kind. A configured kind the target's backend cannot
 produce fails before collection with `UNSUPPORTED_ARTIFACT`.
+
+### artifacts
+
+The object form adds a **store**, the cloud seam for evidence the way
+`cache.store` is for traces:
+
+```ts
+artifacts: {
+  kinds: ['screenshot', 'trace'],
+  store: {
+    async put(artifact) {
+      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?
+      const key = await bucket.upload(artifact.path, artifact.bytes);
+      return { ref: key };
+    },
+  },
+},
+```
+
+A host store receives every artifact the moment it is complete on disk — as
+produced, not after the run — and returns its own reference, which the report
+records as the artifact's `ref` beside the local path. A failed `put` never
+fails the run; the record simply carries no `ref`. Like every live value, a
+store never crosses a process boundary, so it runs in-process
+(`rawConfig`).
 Every run writes `.e2e/report.json` regardless of the selected reporters.
 
 ## app

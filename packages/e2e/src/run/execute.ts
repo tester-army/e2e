@@ -578,6 +578,8 @@ export class TargetExecutor implements SerialHost {
         [this.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
       attemptId,
       currentStepId: () => steps.currentStepId,
+      ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
+      identity: { runId: this.options.runId, testId: pair.test.id },
     });
 
     const record: AttemptRecord = {

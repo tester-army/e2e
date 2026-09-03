@@ -261,5 +261,43 @@ describe('resolveConfig', () => {
     });
     expect(a.configDigest).toBe(b.configDigest);
   });
-});
 
+  describe('artifacts config', () => {
+    const APP = { app: { url: 'https://app.test' } };
+    it('defaults kinds and leaves the store unset for the array form', () => {
+      const resolved = resolve({ ...APP });
+      expect(resolved.artifacts).toEqual(['screenshot', 'trace']);
+      expect(resolved.artifactsExplicit).toBe(false);
+      expect(resolved.artifactStore).toBeUndefined();
+      expect(resolve({ ...APP, artifacts: ['trace'] }).artifactsExplicit).toBe(true);
+    });
+
+    it('accepts { kinds, store } and keeps the live store out of the digest', () => {
+      const store = { put: async () => ({ ref: 'x' }) };
+      const withStore = resolve({ ...APP, artifacts: { kinds: ['screenshot'], store } });
+      expect(withStore.artifacts).toEqual(['screenshot']);
+      expect(withStore.artifactsExplicit).toBe(true);
+      expect(withStore.artifactStore).toBe(store);
+      // Same kinds, with and without a store, digest identically: the store is
+      // a live value, not configuration.
+      expect(withStore.configDigest).toBe(resolve({ ...APP, artifacts: ['screenshot'] }).configDigest);
+      // A store alone keeps the default kinds and is not "explicit".
+      const storeOnly = resolve({ ...APP, artifacts: { store } });
+      expect(storeOnly.artifacts).toEqual(['screenshot', 'trace']);
+      expect(storeOnly.artifactsExplicit).toBe(false);
+    });
+
+    it('rejects unknown keys, a non-store store, and unknown kinds in either form', () => {
+      expect(() => resolve({ ...APP, artifacts: { kinds: ['trace'], ttl: 1 } as never })).toThrow(
+        /unknown artifacts config key "ttl"/,
+      );
+      expect(() => resolve({ ...APP, artifacts: { store: { upload: true } } as never })).toThrow(
+        /artifacts.store must implement ArtifactStore/,
+      );
+      expect(() => resolve({ ...APP, artifacts: { kinds: ['video'] } as never })).toThrow(
+        /unknown artifact kind "video"/,
+      );
+      expect(() => resolve({ ...APP, artifacts: ['video'] as never })).toThrow(/unknown artifact kind "video"/);
+    });
+  });
+});

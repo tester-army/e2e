@@ -592,6 +592,49 @@ export interface CacheConfig {
   dir?: string;
 }
 
+/**
+ * One produced artifact as handed to an `ArtifactStore`, the moment it is
+ * complete on disk: its bytes, digest, and report identity. `path` is the
+ * report-relative path the record carries, stable across runs of the same
+ * test, so a host may use it as its own key.
+ */
+export interface StoredArtifact {
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly mediaType: string;
+  readonly bytes: Uint8Array;
+  readonly size: number;
+  readonly sha256: string;
+  /** Report-relative path with `/` separators. */
+  readonly path: string;
+  readonly runId: string;
+  readonly testId: string;
+  readonly attemptId: string;
+  /** The step that produced it, when one was running. */
+  readonly stepId?: string;
+}
+
+/**
+ * Where artifacts go. The default keeps them under the artifacts directory,
+ * and the report records their paths. A host-supplied store (object storage,
+ * an API) receives every artifact as it is produced — not after the run — and
+ * returns its own reference, which the report records as the artifact's
+ * `ref` beside the local path. The cloud seam for evidence, the way
+ * `TraceCacheStore` is for traces. A failed `put` never fails the run: the
+ * record simply carries no `ref`. Like every live value, a store never
+ * crosses a process boundary.
+ */
+export interface ArtifactStore {
+  put(artifact: StoredArtifact): Promise<{ readonly ref: string }>;
+}
+
+/** Artifact configuration: which kinds to capture, and where they go. */
+export interface ArtifactsConfig {
+  /** Kinds to capture; defaults to screenshot and trace. */
+  kinds?: readonly ('trace' | 'screenshot')[];
+  /** Host store every produced artifact is handed to; undefined keeps files local only. */
+  store?: ArtifactStore;
+}
+
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   /**
@@ -624,7 +667,8 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   retries?: number;
   workers?: number;
-  artifacts?: readonly ('trace' | 'screenshot')[];
+  /** Artifact kinds, or `{ kinds, store }` to also hand every artifact to a host store. */
+  artifacts?: readonly ('trace' | 'screenshot')[] | ArtifactsConfig;
   reporters?: readonly ('list' | 'json')[];
   screen?: {
     testIdAttribute?: string;

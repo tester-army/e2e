@@ -111,7 +111,7 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `cleanupTimeout` | 30,000 ms | same |
 | `retries` | 0 | 1 |
 | `workers` | logical CPU based | 1 |
-| `artifacts` | screenshot, trace | screenshot, trace |
+| `artifacts` | screenshot, trace (or `{ kinds, store }`) | screenshot, trace |
 | `reporters` | list | list |
 | `agent.maxSteps` | 25 | 25 |
 | `agent.maxModelCalls` | 25 | 25 |

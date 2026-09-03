@@ -15,6 +15,8 @@ export interface ArtifactRecord {
   path?: string;
   size?: number;
   sha256?: string;
+  /** The configured `ArtifactStore`'s reference for this artifact, when one accepted it. */
+  ref?: string;
   redaction: 'none' | 'complete';
   producer: ArtifactProducer;
 }

@@ -957,7 +957,8 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   retries?: number;
   workers?: number;
-  artifacts?: readonly ('trace' | 'screenshot')[];
+  /** Artifact kinds, or `{ kinds, store }` to also hand every artifact to a host store. */
+  artifacts?: readonly ('trace' | 'screenshot')[] | ArtifactsConfig;
   reporters?: readonly ('list' | 'json')[];
   screen?: {
     testIdAttribute?: string;
@@ -1010,6 +1011,39 @@ export interface E2EConfig {
  * never crosses a process boundary: workers re-resolve the config module.
  */
 export type SecretProvider = () => string | Promise<string>;
+
+/**
+ * One produced artifact as handed to an `ArtifactStore`, the moment it is
+ * complete on disk. `path` is the report-relative path the record carries.
+ */
+export interface StoredArtifact {
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly mediaType: string;
+  readonly bytes: Uint8Array;
+  readonly size: number;
+  readonly sha256: string;
+  readonly path: string;
+  readonly runId: string;
+  readonly testId: string;
+  readonly attemptId: string;
+  readonly stepId?: string;
+}
+
+/**
+ * Where artifacts go. A host-supplied store receives every artifact as it is
+ * produced and returns its own reference, recorded as the artifact's `ref`
+ * beside the local path. A failed `put` never fails the run. Like every live
+ * value, a store never crosses a process boundary.
+ */
+export interface ArtifactStore {
+  put(artifact: StoredArtifact): Promise<{ readonly ref: string }>;
+}
+
+/** Artifact configuration: which kinds to capture, and where they go. */
+export interface ArtifactsConfig {
+  kinds?: readonly ('trace' | 'screenshot')[];
+  store?: ArtifactStore;
+}
 
 /** Type-checks and returns an e2e configuration object. */
 export function defineConfig(config: E2EConfig): E2EConfig;

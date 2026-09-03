@@ -79,6 +79,7 @@
         "path": { "$ref": "#/$defs/relativePath" },
         "size": { "type": "integer", "minimum": 0 },
         "sha256": { "$ref": "#/$defs/sha256" },
+        "ref": { "type": "string", "minLength": 1 },
         "redaction": { "enum": ["complete", "not-required", "incomplete"] },
         "producer": {
           "oneOf": [
