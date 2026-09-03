@@ -1,6 +1,6 @@
 ---
 '@e2edev/playwright': patch
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 Ship package metadata for the registry: repository, homepage, bug tracker,

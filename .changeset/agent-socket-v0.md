@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 '@e2edev/playwright': patch
 ---
 
@@ -10,7 +10,7 @@ grammar (`tap`, `type`, `typeSecret`, `press`, `select`, `scroll`,
 `navigate`), budgets, deadlines, origin policy, and recording — and delegates
 only the thinking to a pluggable `StepExecutor`, configured as the `agent`
 value itself: `agent: createAgent({...})` or any hand-rolled executor (there
-is no `executor` key). The `e2e/agent` entrypoint exports `createAgent` (the
+is no `executor` key). The `@e2edev/e2e/agent` entrypoint exports `createAgent` (the
 built-in AI SDK tool-loop executor), `createToolLoopExecutor` (the chassis:
 verdict tool, hard stops, loop guards, wind-down, `--debug` transcripts), and
 `defineTool` for annotated project tools. Verdicts are ternary: `blocked` is first-class
@@ -34,5 +34,5 @@ Breaking changes:
   `maxActionStepsPerStep`, `maxEstimatedCostUsd`) are rejected.
 - `report-1` documents changed (limits/usage blocks, `blocked` statuses, new
   error codes); the conformance `suiteVersion` is now 0.2.0.
-- `verifyDriver` and its conformance types are removed from `e2e/driver`
+- `verifyDriver` and its conformance types are removed from `@e2edev/e2e/driver`
   until the harness can actually run vectors.

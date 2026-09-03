@@ -1,4 +1,4 @@
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 import { z } from 'zod';
 
 /**

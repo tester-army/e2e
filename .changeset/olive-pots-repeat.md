@@ -1,6 +1,6 @@
 ---
 '@e2edev/playwright': patch
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 Harden the boundary between the runner and an out-of-tree driver.

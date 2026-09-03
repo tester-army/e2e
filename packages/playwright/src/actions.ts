@@ -1,6 +1,6 @@
 /** Locator action dispatch for the Playwright backend. */
 
-import { BackendError, type LocatorAction, type NodeRef } from 'e2e/backend';
+import { BackendError, type LocatorAction, type NodeRef } from '@e2edev/e2e/backend';
 import {
   asActionable,
   isClassified,

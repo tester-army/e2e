@@ -5,7 +5,7 @@
  * because booking flights is not something a calculator can do.
  */
 
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test('computes with only its own tools, no driver involved', async ({ agent }) => {
   await agent.act(

@@ -10,7 +10,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('tours the tester.army marketing site end to end', async ({ app, web, screen, agent }) => {
   await app.open();

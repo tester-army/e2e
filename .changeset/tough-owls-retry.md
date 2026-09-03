@@ -1,5 +1,5 @@
 ---
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 Harden agent model calls against transient provider failures.

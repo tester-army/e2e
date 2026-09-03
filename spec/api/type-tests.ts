@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineConfig, test, type Agent, type TraceCacheStore } from 'e2e';
+import { defineConfig, test, type Agent, type TraceCacheStore } from '@e2edev/e2e';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;

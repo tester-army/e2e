@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import * as clack from '@clack/prompts';
 
-const CONFIG_TEMPLATE = `import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
+const CONFIG_TEMPLATE = `import { defineConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -24,7 +24,7 @@ export default defineConfig({
 `;
 
 const EXAMPLE_TEMPLATE = `import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('app opens', async ({ app, web }) => {
   await app.open();

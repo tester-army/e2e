@@ -1,5 +1,5 @@
 /**
- * Runner<->backend contract tests (RFC0002, `e2e/backend`). Drives the real
+ * Runner<->backend contract tests (RFC0002, `@e2edev/e2e/backend`). Drives the real
  * runner with an instrumented in-memory backend so the guarantees out-of-tree
  * backends rely on - lifecycle order, operation contexts, error mapping,
  * capability gating - can never silently regress.
@@ -29,7 +29,7 @@ function fakeConfig(fake: FakeBackendHandle, extra: Partial<E2EConfig> = {}): E2
   } as E2EConfig;
 }
 
-const PASSING_TEST = `import { test } from 'e2e';
+const PASSING_TEST = `import { test } from '@e2edev/e2e';
 
 test('taps a node', async ({ app, screen }) => {
   await app.open('/');
@@ -37,7 +37,7 @@ test('taps a node', async ({ app, screen }) => {
 });
 `;
 
-const OBSERVE_TEST = `import { test } from 'e2e';
+const OBSERVE_TEST = `import { test } from '@e2edev/e2e';
 
 test('asserts a node', async ({ app, agent }) => {
   await app.open('/');
@@ -45,7 +45,7 @@ test('asserts a node', async ({ app, agent }) => {
 });
 `;
 
-const WAIT_TEST = `import { test } from 'e2e';
+const WAIT_TEST = `import { test } from '@e2edev/e2e';
 
 test('waits for a condition', async ({ app, agent }) => {
   await app.open('/');
@@ -93,7 +93,7 @@ describe('runner <-> backend contract', () => {
       const fake = createFakeBackend();
       const files = {
         'tests/one.e2e.ts': PASSING_TEST,
-        'tests/two.e2e.ts': `import { test } from 'e2e';
+        'tests/two.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test('second test', async ({ app }) => {
   await app.open('/');
@@ -182,7 +182,7 @@ test('third test', async ({ app }) => {
       const fake = createFakeBackend();
       // Attempts run in fresh module realms, so first-attempt state lives on disk.
       const file = `import { existsSync, writeFileSync } from 'node:fs';
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test('flaky against backend', { retries: 1 }, async ({ app }) => {
   await app.open('/');
@@ -390,7 +390,7 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
     'reaching a fixture the backend does not contribute is a configuration error',
     async () => {
       const fake = createFakeBackend();
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test('needs web', async ({ app, web }) => {
   await app.open('/');
@@ -417,14 +417,14 @@ test('needs web', async ({ app, web }) => {
       const fake = createFakeBackend({ state: false });
       // Setup tests only run when a selected test depends on their session.
       const files = {
-        'tests/no-state.setup.e2e.ts': `import { test } from 'e2e';
+        'tests/no-state.setup.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test.setup('capture session', { sessions: ['acct'] }, async ({ app, session }) => {
   await app.open('/');
   await session.save('acct');
 });
 `,
-        'tests/wants-session.e2e.ts': `import { test } from 'e2e';
+        'tests/wants-session.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test('wants session', { session: 'acct' }, async ({ app }) => {
   await app.open('/');
@@ -449,14 +449,14 @@ test('wants session', { session: 'acct' }, async ({ app }) => {
     async () => {
       const fake = createFakeBackend({ state: true });
       const files = {
-        'tests/auth.setup.e2e.ts': `import { test } from 'e2e';
+        'tests/auth.setup.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test.setup('capture session', { sessions: ['acct'] }, async ({ app, session }) => {
   await app.open('/');
   await session.save('acct');
 });
 `,
-        'tests/uses-session.e2e.ts': `import { test } from 'e2e';
+        'tests/uses-session.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test('consumes session', { session: 'acct' }, async ({ app }) => {
   await app.open('/');
@@ -642,14 +642,14 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
         },
       });
       const files = {
-        'tests/auth.setup.e2e.ts': `import { test } from 'e2e';
+        'tests/auth.setup.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test.setup('capture session', { sessions: ['acct'] }, async ({ app, session }) => {
   await app.open('/');
   await session.save('acct');
 });
 `,
-        'tests/uses-session.e2e.ts': `import { test } from 'e2e';
+        'tests/uses-session.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test('consumes session', { session: 'acct' }, async ({ app }) => {
   await app.open('/');
@@ -674,7 +674,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     'runs a contributed fixture with harness discipline: steps, namespaces, accessors, bounds, matchers, artifacts',
     async () => {
       const fake = createFakeBackend({ fixtures: true });
-      const file = `import { test, expect } from 'e2e';
+      const file = `import { test, expect } from '@e2edev/e2e';
 
 test('drives the gadget', async (fixtures) => {
   const gadget = (fixtures as any).gadget;
@@ -734,7 +734,7 @@ test('bounds a hanging fixture call', async (fixtures) => {
     'gates requires against the declared capability set at selection',
     async () => {
       const fake = createFakeBackend({ fixtures: true });
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test('needs gadget', { requires: ['gadget'] }, async () => {});
 test('needs web', { requires: ['web'] }, async () => {});
@@ -756,7 +756,7 @@ test('needs web', { requires: ['web'] }, async () => {});
     'registers a backend screenshot as an attempt artifact and reports unsupported gestures honestly',
     async () => {
       const fake = createFakeBackend({ artifacts: true });
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test('takes evidence', async ({ app }) => {
   await app.open('/');

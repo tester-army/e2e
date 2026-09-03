@@ -6,7 +6,7 @@ Contributions are always welcome, no matter how large or small.
 
 This project is a pnpm monorepo containing:
 
-- `packages/e2e` — the published `e2e` package (SDK, runner, CLI, driver SPI)
+- `packages/e2e` — the published `@e2edev/e2e` package (SDK, runner, CLI, driver SPI)
 - `packages/playwright` — the published `@e2edev/playwright` reference web driver
 - `packages/testbed` — private dogfood suite that consumes the built packages
 - `spec/` — the normative contract, `fern/` — the docs site
@@ -77,7 +77,7 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `e2e` or `@e2edev/playwright`, add a changeset:
+If your change affects `@e2edev/e2e` or `@e2edev/playwright`, add a changeset:
 
 ```sh
 pnpm changeset
@@ -88,6 +88,17 @@ private and skipped entirely (`privatePackages: false`), so it never gets a
 version bump, a changelog, or a git tag.
 
 ### Publishing to npm
+
+The packages are in a private phase: all three publish to npmjs under the
+`@e2edev` organization scope with `publishConfig.access: "restricted"`, so
+only members of the org (and tokens scoped to it) can install them. Provenance
+is off because npm only issues attestations for public packages. The release
+workflow authenticates with the `NPM_TOKEN` repository secret, which must be a
+granular access token with read/write on the `@e2edev` scope (packages and
+scopes, not just a single package, so a first publish of a new package works).
+To publish by hand, `npm login` as an org member and run `pnpm run release`.
+The `e2e` CLI binary keeps its unscoped name; the unscoped `e2e` package on
+npmjs is unrelated, so consumers must run it as `npx --no-install e2e`.
 
 Everything ships to the `beta` dist-tag while the surface stabilizes, so npm's
 `latest` is not moved. The root `release` script passes `--tag beta`, and both
@@ -103,7 +114,7 @@ Two caveats worth knowing:
   the tag you ask for. A brand-new package therefore lands on `latest` once no
   matter what, and `latest` can only be moved afterwards, never removed.
 - Versions stay plain 0.x. Changesets pre mode is deliberately unused: a
-  prerelease version falls outside the driver's `e2e` peer range, forcing a major
+  prerelease version falls outside the driver's `@e2edev/e2e` peer range, forcing a major
   bump of `@e2edev/playwright` on every runner minor. Widening the range does not
   help — node-semver only lets a prerelease satisfy a comparator set when some
   comparator with the same `major.minor.patch` also carries a prerelease, so

@@ -19,7 +19,7 @@ import {
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import type { RunEvent } from '../../src/run/events.ts';
 
-const SUITE = `import { test, expect } from 'e2e';
+const SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test('increments once', async ({ app, agent, screen }) => {
   await app.open();

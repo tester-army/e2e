@@ -1,4 +1,4 @@
-import { test, expect } from 'e2e';
+import { test, expect } from '@e2edev/e2e';
 
 /**
  * Deterministic-heavy tests: a stable, hot feature area where `screen` is

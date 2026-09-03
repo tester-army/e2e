@@ -1,5 +1,5 @@
 ---
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 CLI, config, and report correctness:

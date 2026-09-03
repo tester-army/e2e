@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
-import { BackendError, TestError } from 'e2e/backend';
+import { BackendError, TestError } from '@e2edev/e2e/backend';
 import { staleOr, translateError } from '../../src/errors.ts';
 
 describe('error translation', () => {

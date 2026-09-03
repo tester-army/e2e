@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { BackendCleanupContext, BackendHandle, OperationContext } from 'e2e/backend';
+import type { BackendCleanupContext, BackendHandle, OperationContext } from '@e2edev/e2e/backend';
 import { playwright } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 

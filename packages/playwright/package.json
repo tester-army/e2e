@@ -26,8 +26,8 @@
   "homepage": "https://github.com/tester-army/e2e/tree/main/packages/playwright#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
-    "access": "public",
-    "provenance": true,
+    "access": "restricted",
+    "provenance": false,
     "tag": "beta"
   },
   "type": "module",
@@ -51,11 +51,11 @@
     "playwright": "1.61.1"
   },
   "peerDependencies": {
-    "e2e": ">=0.1.0 <1"
+    "@e2edev/e2e": ">=0.1.0 <1"
   },
   "devDependencies": {
     "@types/node": "26.1.1",
-    "e2e": "workspace:*",
+    "@e2edev/e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   },

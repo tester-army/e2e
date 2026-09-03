@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 Fill-time secret providers. A credential's `password` may now be a

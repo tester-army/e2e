@@ -1,8 +1,8 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
-The programmatic host surface lands as `e2e/run`. `run()` executes one
+The programmatic host surface lands as `@e2edev/e2e/run`. `run()` executes one
 complete run in-process — no `process.exit`, external `AbortSignal`
 cancellation, the full report-1 document returned in memory — and the new
 `onEvent` option streams every lifecycle fact (`run-started`, `plan`,

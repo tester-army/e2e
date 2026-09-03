@@ -6,7 +6,7 @@ same ownership rules but are not part of `sdk-0.1`.
 ## Credentials
 
 ```ts
-import { credentials } from 'e2e';
+import { credentials } from '@e2edev/e2e';
 
 const admin = credentials.user('admin');
 admin.username; // readable

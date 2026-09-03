@@ -5,7 +5,7 @@
  * polling, strictness, and staleness stay with the runner.
  */
 
-import { BackendError, matchesText, type LocatorExpression, type SemanticQuery } from 'e2e/backend';
+import { BackendError, matchesText, type LocatorExpression, type SemanticQuery } from '@e2edev/e2e/backend';
 import { isWithin, type ProjectedNode } from './nodes.ts';
 import { compileSelector } from './selector.ts';
 

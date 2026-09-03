@@ -1,4 +1,4 @@
-import { test, expect } from 'e2e';
+import { test, expect } from '@e2edev/e2e';
 
 /**
  * Both tiers in one test — the expected authoring style, not a smell:

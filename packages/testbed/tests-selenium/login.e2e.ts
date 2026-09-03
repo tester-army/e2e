@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from 'e2e';
+import { expect, credentials } from '@e2edev/e2e';
 
 /**
  * seleniumbase.io/simple/login is a sign-in form with four distinct rejection

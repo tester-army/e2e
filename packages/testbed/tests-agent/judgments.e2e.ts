@@ -5,7 +5,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 import { z } from 'zod';
 
 test('assert judges seeded state, mixed with deterministic steps', async ({

@@ -1,5 +1,5 @@
 ---
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 `buildTraceEntry` and `readTraceEntry` are exported for custom

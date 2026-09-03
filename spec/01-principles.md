@@ -18,7 +18,7 @@ control is progressive disclosure, not mandatory ceremony.
 
 ### One canonical contract
 
-The root import is `e2e`; backend authoring is `e2e/backend`. Canonical public
+The root import is `e2e`; backend authoring is `@e2edev/e2e/backend`. Canonical public
 types live under `spec/api`, wire formats under `spec/schema`, and behavioral
 requirements in this specification. Examples never define behavior by accident.
 

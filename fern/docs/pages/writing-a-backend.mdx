@@ -5,7 +5,7 @@ subtitle: How the runner talks to a surface, and what it takes to add a new one.
 
 Everything in `e2e` above the backend is portable. `test`, `expect`, `screen`,
 `app`, and the agent tiers never touch a browser, a simulator, or a device: they
-speak one narrow contract from `e2e/backend`, and a backend is the package that
+speak one narrow contract from `@e2edev/e2e/backend`, and a backend is the package that
 maps it onto a real surface.
 
 `@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
@@ -48,7 +48,7 @@ manifest synchronously at config load, freezes it, computes its capability set,
 and stamps the brand that makes the handle acceptable in a target.
 
 ```ts title="src/index.ts"
-import { BackendError, defineBackend, type BackendHandle } from 'e2e/backend';
+import { BackendError, defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
 
 export function hyperdrive(options: { device: string }): BackendHandle {
   const client = createClient(options);
@@ -81,7 +81,7 @@ targets: [{ name: 'phone', platform: 'ios', backend: hyperdrive({ device: 'iPhon
 ```
 
 <Callout intent="note">
-Depend on `e2e/backend` only, and take `e2e` as a **peer** dependency, never a
+Depend on `@e2edev/e2e/backend` only, and take `e2e` as a **peer** dependency, never a
 regular one: the backend and the runner must agree on one copy of the error
 classes. Everything the spec requires a backend to reproduce exactly is exported
 there: the runner error taxonomy (`TestError`, `ConfigurationError`,
@@ -186,7 +186,7 @@ fixtures: {
 ```
 
 ```ts title="tests/fixtures.ts"
-import { test as base } from 'e2e';
+import { test as base } from '@e2edev/e2e';
 import type { Device } from 'e2e-backend-hyperdrive';
 
 export const test = base.extend<{ device: Device }>();

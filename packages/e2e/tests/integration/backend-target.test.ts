@@ -15,21 +15,21 @@ import { createProject } from '../helpers/run-project.ts';
 const builtRunnerModule = new URL('../../dist/run/runner.js', import.meta.url).href;
 const { run } = (await import(builtRunnerModule)) as typeof import('../../src/run/runner.ts');
 
-const SUITE = `import { test } from 'e2e';
+const SUITE = `import { test } from '@e2edev/e2e';
 
 test('agent drives the toy device', async ({ agent }) => {
   await agent.act('increment the counter to 2');
 });
 `;
 
-const SCREEN_SUITE = `import { test, expect } from 'e2e';
+const SCREEN_SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test('screen is unavailable on a backend without location', async ({ screen }) => {
   await expect(screen.getByRole('button')).toBeVisible();
 });
 `;
 
-const DETERMINISTIC_SUITE = `import { test, expect } from 'e2e';
+const DETERMINISTIC_SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test('screen and expect drive the toy device over locate', async ({ screen }) => {
   await screen.getByRole('button', { name: 'Increment' }).tap();
@@ -38,7 +38,7 @@ test('screen and expect drive the toy device over locate', async ({ screen }) =>
 });
 `;
 
-const FIXTURE_SUITE = `import { test, expect } from 'e2e';
+const FIXTURE_SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test('a contributed fixture runs with harness discipline', async (fixtures) => {
   const device = (fixtures as unknown as { device: { reset(): Promise<string>; shake(): Promise<string> } }).device;
@@ -47,7 +47,7 @@ test('a contributed fixture runs with harness discipline', async (fixtures) => {
 });
 `;
 
-const STATE_SUITE = `import { test, expect } from 'e2e';
+const STATE_SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test.setup('seed the counter', { sessions: ['seeded'] }, async ({ screen, session }) => {
   await screen.getByRole('button', { name: 'Increment' }).tap();
@@ -307,7 +307,7 @@ describe('backend targets', () => {
 
   it('resets per-attempt state via startAttempt/endAttempt isolation', async () => {
     const toy = toyBackend({ withLocate: true, withIsolation: true });
-    const suite = `import { test, expect } from 'e2e';
+    const suite = `import { test, expect } from '@e2edev/e2e';
 
 test('first attempt starts fresh', async ({ screen }) => {
   await screen.getByRole('button', { name: 'Increment' }).tap();
@@ -367,7 +367,7 @@ test('second attempt also starts fresh', async ({ screen }) => {
   it('gates an undeclared fixture at selection via requires', async () => {
     const toy = toyBackend(); // no fixtures declared
     const project = createProject({
-      'tests/req.e2e.ts': `import { test } from 'e2e';
+      'tests/req.e2e.ts': `import { test } from '@e2edev/e2e';
 
 test('needs device', { requires: ['device'] }, async () => {});
 `,

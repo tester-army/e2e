@@ -1,6 +1,6 @@
 ---
 '@e2edev/playwright': minor
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 Locate nodes that no query can name, and observe shadow roots and `data:` frames.

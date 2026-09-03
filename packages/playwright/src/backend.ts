@@ -2,11 +2,11 @@
  * The Playwright backend for e2e (RFC0002): a browser body built with the
  * public `defineBackend`, validated by the same rules and graded by the same
  * capabilities as any other backend. Core imports nothing from here; this
- * package imports the contract from `e2e/backend` and contributes the `web`
+ * package imports the contract from `@e2edev/e2e/backend` and contributes the `web`
  * fixture the way a device backend contributes `device`.
  */
 
-import { ConfigurationError, defineBackend, type BackendHandle } from 'e2e/backend';
+import { ConfigurationError, defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';

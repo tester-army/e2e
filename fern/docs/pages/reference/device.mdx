@@ -5,7 +5,7 @@ subtitle: The device fixture and backend options @e2edev/agent-device contribute
 
 `@e2edev/agent-device` is the mobile backend: iOS simulators and Android
 emulators through [agent-device](https://github.com/callstack/agent-device),
-against the same `e2e/backend` contract the browser backend implements. `agent`,
+against the same `@e2edev/e2e/backend` contract the browser backend implements. `agent`,
 `app`, `screen`, and `expect` work as they do everywhere; this page covers what
 is specific to a device target. Import `test` from the package to have `device`
 typed; declare `requires: ['device']` in portable suites.
@@ -13,8 +13,8 @@ typed; declare `requires: ['device']` in portable suites.
 ## Backend
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
+import { defineConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 

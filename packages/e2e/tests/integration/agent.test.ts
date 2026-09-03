@@ -14,7 +14,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const AGENT_SUITE = `import { test, expect } from 'e2e';
+const AGENT_SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test('judgments and polling', async ({ app, agent, screen }) => {
   await app.open();

@@ -8,7 +8,7 @@ The canonical `sdk-0.1` declarations are
 `test()` registers a test synchronously when its module is evaluated:
 
 ```ts
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test('user can sign up', async ({ app, agent }) => {
   await app.open();

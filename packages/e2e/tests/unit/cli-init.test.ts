@@ -28,7 +28,7 @@ describe('e2e init', () => {
 
     const example = readFileSync(path.join(dir, 'tests', 'example.e2e.ts'), 'utf8');
     expect(example).toContain("import { test } from '@e2edev/playwright'");
-    expect(example).toContain("import { expect } from 'e2e'");
+    expect(example).toContain("import { expect } from '@e2edev/e2e'");
     expect(config).toContain("backend: playwright(");
 
     const gitignore = readFileSync(path.join(dir, '.gitignore'), 'utf8');

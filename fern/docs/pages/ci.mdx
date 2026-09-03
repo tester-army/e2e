@@ -74,7 +74,7 @@ all come from your lockfile.
 ## What CI changes automatically
 
 CI mode is active when the `CI` environment variable is set and is not empty,
-`0`, or `false`. That is the only signal, so `CI=1 npx e2e run` reproduces CI
+`0`, or `false`. That is the only signal, so `CI=1 npx --no-install e2e run` reproduces CI
 behavior locally.
 
 | Setting | Local | CI | Why |

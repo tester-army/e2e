@@ -1,5 +1,5 @@
 ---
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 A failed canonical-report write is an infrastructure run error

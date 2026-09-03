@@ -1,4 +1,4 @@
-import { test, expect } from 'e2e';
+import { test, expect } from '@e2edev/e2e';
 
 /**
  * The canonical happy path: a pure agentic flow. Its source is portable;

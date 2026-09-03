@@ -7,8 +7,8 @@
 
 import type { Locator as PwLocator } from 'playwright';
 import { describe, expect, it, vi } from 'vitest';
-import { BackendError, type LocatorAction } from 'e2e/backend';
-import { TestError } from 'e2e/backend';
+import { BackendError, type LocatorAction } from '@e2edev/e2e/backend';
+import { TestError } from '@e2edev/e2e/backend';
 import { classifyActionError, dispatchLocatorAction } from '../../src/actions.ts';
 import type { ActionTarget } from '../../src/support.ts';
 

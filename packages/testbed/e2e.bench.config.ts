@@ -1,4 +1,4 @@
-import { defineConfig, type CacheMode } from 'e2e';
+import { defineConfig, type CacheMode } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 const CACHE_MODES = ['off', 'read-only', 'read-write'] as const;

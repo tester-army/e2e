@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 /**
  * seleniumbase.io/coffee is a Vue SPA: client-side routing, a cart that only

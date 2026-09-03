@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineBackend } from 'e2e/backend';
+import { defineBackend } from '@e2edev/e2e/backend';
 import { buildBackend } from '../../src/backend.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { agentDeviceTools } from '../../src/tools.ts';

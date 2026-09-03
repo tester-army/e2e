@@ -5,17 +5,17 @@ The browser backend for [`e2e`](https://www.npmjs.com/package/e2e), built on
 
 `e2e` ships no backend of its own: every target names the backend that drives
 it, and this package is the one for browsers. It implements the public
-`e2e/backend` contract, so a device or desktop backend plugs into the same
+`@e2edev/e2e/backend` contract, so a device or desktop backend plugs into the same
 seam with no privilege either way.
 
 ## Install
 
 ```bash
-npm install --save-dev e2e @e2edev/playwright
+npm install --save-dev @e2edev/e2e @e2edev/playwright
 ```
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -55,7 +55,7 @@ same runtime `test` as `e2e`'s.
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('signs in', async ({ app, screen, web }) => {
   await app.open('/login');

@@ -12,7 +12,7 @@ export function defineConfig(config: E2EConfig): E2EConfig;
 ```
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -33,7 +33,7 @@ stopping at the repository root. Both names in one directory is
 config file, the working directory is.
 
 A config file is required: the runner ships no backend, so `targets` must name
-the one that drives each target. `npx e2e init` writes a starter config.
+the one that drives each target. `npx --no-install e2e init` writes a starter config.
 
 ## Top level
 
@@ -150,7 +150,7 @@ Target names are required, unique, and limited to ASCII letters, digits, `_`,
 export interface Target {
   name: string;
   platform: Platform;
-  backend?: BackendHandle; // defineBackend(...) from 'e2e/backend'
+  backend?: BackendHandle; // defineBackend(...) from '@e2edev/e2e/backend'
 }
 ```
 

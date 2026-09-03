@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 Driver action events carry `detail`: bounded, redacted prose for what the

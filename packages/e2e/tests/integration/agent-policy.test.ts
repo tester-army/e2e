@@ -12,7 +12,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test, credentials } from 'e2e';
+const SUITE = `import { test, credentials } from '@e2edev/e2e';
 
 test('fills a secret into a password field', async ({ app, agent, screen }) => {
   await app.open();
@@ -38,7 +38,7 @@ test('repairs an extraction that fails the caller schema', async ({ app, agent }
 });
 `;
 
-const UNCONFIGURED_SUITE = `import { test, credentials } from 'e2e';
+const UNCONFIGURED_SUITE = `import { test, credentials } from '@e2edev/e2e';
 
 test('denies a credential that is not configured', async ({ app, screen }) => {
   await app.open();
@@ -46,7 +46,7 @@ test('denies a credential that is not configured', async ({ app, screen }) => {
 });
 `;
 
-const NO_MODEL_SUITE = `import { test } from 'e2e';
+const NO_MODEL_SUITE = `import { test } from '@e2edev/e2e';
 
 test('requires model configuration', async ({ app, agent }) => {
   await app.open();
@@ -169,7 +169,7 @@ describe('serial group artifacts', () => {
   let outcome: RunOutcome;
   let project: FixtureProject;
 
-  const SERIAL_SUITE = `import { test } from 'e2e';
+  const SERIAL_SUITE = `import { test } from '@e2edev/e2e';
 
 test.describe('group', { serial: true }, () => {
   test('captures evidence from a shared session', async ({ app, agent }) => {

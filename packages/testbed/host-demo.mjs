@@ -1,7 +1,7 @@
 /**
  * Embedding-host demo: tests defined as DATA (a hosted platform's DB-row
  * shape — natural-language steps, no test file authored by a human),
- * materialized into a suite and executed in-process through `e2e/run` with
+ * materialized into a suite and executed in-process through `@e2edev/e2e/run` with
  * `rawConfig` (one run per worker process, the hosted shape). Events stream
  * as they happen; artifacts are enumerated at test-finished (the upload
  * seam); the second invocation replays recorded acts zero-turn.
@@ -17,7 +17,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { playwright } from '@e2edev/playwright';
-import { run } from 'e2e/run';
+import { run } from '@e2edev/e2e/run';
 
 // ---- 1. The "DB rows": how a hosted platform stores a test ----------------
 // A step is data: a kind, an instruction, and optionally the name of a
@@ -46,7 +46,7 @@ rmSync(path.join(dir, 'tests'), { recursive: true, force: true });
 mkdirSync(path.join(dir, 'tests'), { recursive: true });
 writeFileSync(
   path.join(dir, 'tests', 'row.e2e.ts'),
-  `import { test, credentials } from 'e2e';\n\ntest(${JSON.stringify(testRow.title)}, async ({ web, agent }) => {\n  await web.goto('/login');\n${testRow.steps.map(stepSource).join('\n')}\n});\n`,
+  `import { test, credentials } from '@e2edev/e2e';\n\ntest(${JSON.stringify(testRow.title)}, async ({ web, agent }) => {\n  await web.goto('/login');\n${testRow.steps.map(stepSource).join('\n')}\n});\n`,
 );
 
 // ---- 3. Host-owned app process (the platform owns the target, not e2e) ----

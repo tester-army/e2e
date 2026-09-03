@@ -16,7 +16,7 @@
     "packages/e2e/tests/tmp-projects/**"
   ],
   "ignoreDependencies": [
-    "e2e",
+    "@e2edev/e2e",
     "@e2edev/playwright"
   ],
   "rules": {
@@ -24,7 +24,7 @@
     "dev-dependencies-in-production": "warn"
   },
   "ignoreUnresolvedImports": [
-    "e2e/run",
+    "@e2edev/e2e/run",
     "**/dist/**"
   ]
 }

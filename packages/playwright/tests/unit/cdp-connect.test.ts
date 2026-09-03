@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { BackendInitInfo } from 'e2e/backend';
+import type { BackendInitInfo } from '@e2edev/e2e/backend';
 import { playwright } from '../../src/index.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 

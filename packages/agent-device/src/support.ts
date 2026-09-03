@@ -1,6 +1,6 @@
 /** Shared helpers for the agent-device backend: abort racing, filenames, PNG headers, gestures, path anchors. */
 
-import { BackendError, type Momentum, type ScrollDirection } from 'e2e/backend';
+import { BackendError, type Momentum, type ScrollDirection } from '@e2edev/e2e/backend';
 
 export interface Point {
   readonly x: number;

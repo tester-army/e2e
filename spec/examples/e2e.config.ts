@@ -1,4 +1,4 @@
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({

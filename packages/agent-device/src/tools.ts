@@ -9,8 +9,8 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { defineTool, type DefinedTool, type ToolAnnotations } from 'e2e/agent';
-import { BackendError, type BackendHandle } from 'e2e/backend';
+import { defineTool, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
+import { BackendError, type BackendHandle } from '@e2edev/e2e/backend';
 import { surfaceOf } from './backend.ts';
 import type { AgentDeviceSurface } from './surface.ts';
 

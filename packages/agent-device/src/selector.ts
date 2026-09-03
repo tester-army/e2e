@@ -7,7 +7,7 @@
  */
 
 import { parseSelectorChain } from 'agent-device/selectors';
-import { BackendError } from 'e2e/backend';
+import { BackendError } from '@e2edev/e2e/backend';
 import { normalizeKind, type ProjectedNode } from './nodes.ts';
 import { message } from './errors.ts';
 

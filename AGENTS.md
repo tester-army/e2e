@@ -9,7 +9,7 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 
 - `spec/api/e2e.d.ts` (`sdk-0.1`) is canonical for the test API. `spec/api/
   driver.d.ts` (`driver-1`) describes the retired driver SPI: the runner now
-  speaks the backend contract (`e2e/backend`, RFC0002), and spec chapter 09 is
+  speaks the backend contract (`@e2edev/e2e/backend`, RFC0002), and spec chapter 09 is
   scheduled to retire into a backends chapter (RFC0002 migration step 5). Until
   then the spec and `src/backend/` intentionally diverge on that surface.
 - Wire output must validate against `spec/schema/*.schema.json`; integration
@@ -24,8 +24,8 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 
 ## Layout
 
-- `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
-  `e2e/backend` contract. Core knows the contract and never a backend's
+- `packages/e2e` — the published `@e2edev/e2e` package: SDK surface, runner, CLI,
+  `@e2edev/e2e/backend` contract. Core knows the contract and never a backend's
   internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
   `src/` (grep for them; zero hits is the invariant). The one exception is the
   `e2e init` scaffold template in `src/cli/init.ts`, which writes the user's
@@ -36,12 +36,12 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
     methods).
 - `packages/playwright` — the published `@e2edev/playwright` package: the
   browser backend, built with the public `defineBackend`, contributing the
-  `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
+  `web` fixture and `expect(web)`. It depends on `@e2edev/e2e` (peer), never the
   reverse; a target names it explicitly as `backend: playwright()`. There is
   no default backend and no well-known id registry in core. It imports from
-  `e2e/backend` only: the semantics the spec makes every backend reproduce
+  `@e2edev/e2e/backend` only: the semantics the spec makes every backend reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
-  are exported there, and there is no `e2e/internal` subpath.
+  are exported there, and there is no `@e2edev/e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the
@@ -60,16 +60,16 @@ pnpm test:testbed   # builds, then runs the real CLI against the playground app
 Focused work:
 
 ```bash
-pnpm --filter e2e run build
-pnpm --filter e2e run test:unit                       # unit only, no build
-pnpm --filter e2e exec vitest run tests/unit/scheduler.test.ts
-pnpm --filter e2e exec vitest run -t 'name fragment'
+pnpm --filter @e2edev/e2e run build
+pnpm --filter @e2edev/e2e run test:unit                       # unit only, no build
+pnpm --filter @e2edev/e2e exec vitest run tests/unit/scheduler.test.ts
+pnpm --filter @e2edev/e2e exec vitest run -t 'name fragment'
 pnpm --filter @e2edev/playwright run test
 pnpm --filter @e2edev/testbed run test:headed
 ```
 
 - Package `test` scripts do **not** build. Root `build` and `test` order the
-  packages explicitly rather than relying on topological sort, because `e2e`
+  packages explicitly rather than relying on topological sort, because `@e2edev/e2e`
   devDepends on the playwright backend for its browser-backed integration tests
   while the backend peer-depends on `e2e` — pnpm reports that cycle on every
   install.
@@ -105,7 +105,7 @@ pnpm --filter @e2edev/testbed run test:headed
   produces timeouts indistinguishable from real failures.
 - Integration tests write throwaway projects into
   `packages/e2e/tests/tmp-projects/` (gitignored) and import the runner from
-  `dist/` via a non-literal specifier so the fixture's `e2e` self-reference
+  `dist/` via a non-literal specifier so the fixture's `@e2edev/e2e` self-reference
   shares one registry. Stale `dist` means confusing failures — rebuild.
 - Testbed suites beyond the default one never gate a PR: `test:public` and
   `test:selenium` (real websites) run in no workflow, and `test:agent` /
@@ -177,7 +177,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
-  entry. Peer ranges point one way only (backend -> `e2e`, widened to `>=x <1`);
+  entry. Peer ranges point one way only (backend -> `@e2edev/e2e`, widened to `>=x <1`);
   making them mutual or narrow forces changesets to bump both packages to a
   major on every release.
 - The root `release` script publishes with `--tag beta`, so releases land on the
@@ -188,11 +188,16 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
   `--tag`, so a brand-new package lands on `latest` once regardless.
   Do not switch to changesets pre mode to get a real prerelease version: it is
-  outside the backend's `e2e` peer range, which majors `@e2edev/playwright` on
+  outside the backend's `@e2edev/e2e` peer range, which majors `@e2edev/playwright` on
   every runner minor and rewrites the peer range. Widening the range does not
   rescue it — node-semver only lets a prerelease satisfy a comparator set when a
   comparator with the same `major.minor.patch` carries a prerelease, so
   `0.3.0-beta.0` satisfies neither `>=0.1.0-0 <1` nor `*`. Never hand-edit a
   package `version` or `CHANGELOG.md`; `changesets/action` owns both.
+- Private phase: every package publishes restricted under the `@e2edev`
+  scope (`e2e` -> `@e2edev/e2e`; entry points follow the name). Provenance
+  is off (npm only attests public packages) and the release job authenticates
+  with the `NPM_TOKEN` secret. The unscoped `e2e` on npmjs is a foreign package:
+  never document a bare `npx e2e`, always `npx --no-install e2e`.
 - Private packages are skipped entirely by changesets (`privatePackages: false`),
   so `@e2edev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.

@@ -6,7 +6,7 @@ Write tests in ordinary TypeScript. Describe the parts that are tedious to
 select in plain language, and keep deterministic control everywhere else.
 
 ```ts
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test('user can sign up', async ({ app, agent }) => {
   await app.open();

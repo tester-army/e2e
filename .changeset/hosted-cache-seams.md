@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 Two hosted-cache seams. A host-supplied `cache.store` is now exempt from the

@@ -1,7 +1,7 @@
 /** LocatorExpression -> Playwright locator projection. */
 
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
-import { BackendError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/backend';
+import { BackendError, type LocatorExpression, type SemanticQuery, type TextPattern } from '@e2edev/e2e/backend';
 
 type PwScope = Page | FrameLocator | PwLocator;
 

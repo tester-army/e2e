@@ -3,7 +3,7 @@ title: Embedding (e2e/run)
 description: Run the runner programmatically and stream structured events.
 ---
 
-`e2e/run` is the host surface: everything a program embedding the runner — a
+`@e2edev/e2e/run` is the host surface: everything a program embedding the runner — a
 hosted platform, a CI wrapper, an IDE — needs to start runs, stream progress,
 and read outcomes in-process. The CLI is a thin consumer of exactly this
 surface. It is host tooling, not part of the sdk-0.1 test API: it can grow in
@@ -11,7 +11,7 @@ minor releases, and `report.json` (report-1) stays the canonical record of a
 run.
 
 ```ts
-import { run } from 'e2e/run';
+import { run } from '@e2edev/e2e/run';
 
 const outcome = await run({
   cwd: '/path/to/project',

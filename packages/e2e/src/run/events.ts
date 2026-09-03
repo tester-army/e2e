@@ -1,5 +1,5 @@
 /**
- * Structured run events (`e2e/run`): the run's single event spine.
+ * Structured run events (`@e2edev/e2e/run`): the run's single event spine.
  *
  * Every event is plain JSON data — the same records the report persists and
  * the worker IPC already carries, so a host can stream them over any wire

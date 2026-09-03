@@ -690,9 +690,9 @@ export interface DriverHandle extends DriverManifest {
 }
 
 /**
- * A validated backend from `defineBackend` (`e2e/backend`, RFC0002): the
+ * A validated backend from `defineBackend` (`@e2edev/e2e/backend`, RFC0002): the
  * typed, model-free body of one target. Opaque here; the full contract lives
- * on the `e2e/backend` entry point.
+ * on the `@e2edev/e2e/backend` entry point.
  */
 export interface BackendHandle {
   readonly [backendBrand]: true;

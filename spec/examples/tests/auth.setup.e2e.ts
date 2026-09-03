@@ -1,4 +1,4 @@
-import { test, credentials } from 'e2e';
+import { test, credentials } from '@e2edev/e2e';
 
 /**
  * Setup tests run first once per selected target and produce declared sessions.

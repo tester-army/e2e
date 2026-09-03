@@ -5,7 +5,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('activates named toggles despite churning ids', async ({ web, agent, screen }) => {
   await web.goto('/stale');

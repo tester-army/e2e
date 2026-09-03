@@ -15,7 +15,7 @@ import type {
   LocatorExpression,
   OperationContext,
   SemanticNode,
-} from 'e2e/backend';
+} from '@e2edev/e2e/backend';
 import { playwright } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';

@@ -8,10 +8,10 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "e2e": [
+      "@e2edev/e2e": [
         "./spec/api/e2e.d.ts"
       ],
-      "e2e/driver": [
+      "@e2edev/e2e/driver": [
         "./spec/api/driver.d.ts"
       ],
       "@e2edev/playwright": [

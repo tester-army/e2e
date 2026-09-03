@@ -2,7 +2,7 @@
 
 Status: informative for `sdk-0.1` (the socket ships; conformance IDs land with
 a later suite version). Canonical types: the executor section of
-[api/e2e.d.ts](./api/e2e.d.ts), including `BLOCKABLE_CODES`. The `e2e/agent`
+[api/e2e.d.ts](./api/e2e.d.ts), including `BLOCKABLE_CODES`. The `@e2edev/e2e/agent`
 value exports (`createAgent`, `defineTool`) are package API documented in the
 product docs; they are not spec-canonical in this version. Direction: RFC0001.
 
@@ -126,10 +126,10 @@ level: step, run, and process.
 ## The golden path: `createAgent`
 
 The `agent` config value accepts the agent itself. The built-in one is a
-constructor from `e2e/agent`:
+constructor from `@e2edev/e2e/agent`:
 
 ```ts
-import { createAgent, defineTool } from 'e2e/agent';
+import { createAgent, defineTool } from '@e2edev/e2e/agent';
 
 export default defineConfig({
   agent: createAgent({
@@ -179,7 +179,7 @@ already speaks AI SDK tools:
 ```ts
 import { ToolLoopAgent } from 'ai';
 import { createAgentDeviceTools } from 'agent-device/ai-sdk';
-import type { StepExecutor } from 'e2e';
+import type { StepExecutor } from '@e2edev/e2e';
 
 export function deviceExecutor(): StepExecutor {
   return {

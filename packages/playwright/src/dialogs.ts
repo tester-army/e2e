@@ -5,7 +5,7 @@
  */
 
 import type { Dialog as PwDialog } from 'playwright';
-import { BackendError } from 'e2e/backend';
+import { BackendError } from '@e2edev/e2e/backend';
 import { ErrorLatch, message } from './support.ts';
 
 /** A native dialog as a test's handler sees it. */

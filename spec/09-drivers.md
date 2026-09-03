@@ -10,10 +10,10 @@ that map e2e-owned semantics onto an automation backend.
 separately from the runner so that a project targeting another backend does not
 pay for a browser download. Community drivers use their own package names,
 conventionally `e2e-driver-*`, and create instances with `defineDriver` from
-`e2e/driver`.
+`@e2edev/e2e/driver`.
 
 ```ts
-import { defineDriver } from 'e2e/driver';
+import { defineDriver } from '@e2edev/e2e/driver';
 
 export const hyperdrive = () =>
   defineDriver({
@@ -283,7 +283,7 @@ operation deadline remains; it MUST NOT retry another driver error in place.
 
 ## Conformance
 
-The conformance harness is planned and not part of the shipped `e2e/driver`
+The conformance harness is planned and not part of the shipped `@e2edev/e2e/driver`
 API: no stub is published, and the verifier function appears in the SPI only
 when it can actually run vectors. When it lands, the harness boots the
 versioned reference application — the caller supplies a target factory; the

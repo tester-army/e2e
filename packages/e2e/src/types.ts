@@ -675,7 +675,7 @@ export interface E2EConfig {
   };
   /**
    * Either the agent options block, or the agent itself: `createAgent(...)`
-   * from `e2e/agent`, or any hand-rolled `StepExecutor` (RFC0001 layer 4).
+   * from `@e2edev/e2e/agent`, or any hand-rolled `StepExecutor` (RFC0001 layer 4).
    * With an agent value, the model falls back to `E2E_MODEL` and every other
    * option keeps its default. Agents never cross a process boundary: workers
    * re-resolve the config module and construct their own, exactly like model

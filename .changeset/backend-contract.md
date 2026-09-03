@@ -1,8 +1,8 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
-The backend contract (RFC0002): `e2e/backend` ships `defineBackend`, and
+The backend contract (RFC0002): `@e2edev/e2e/backend` ships `defineBackend`, and
 targets accept `{ name, platform, backend }` with no driver — no browser is
 resolved or launched, and `app.url` becomes optional when every target is a
 backend target. A backend declares its capabilities: `observe()`

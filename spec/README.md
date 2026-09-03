@@ -58,7 +58,7 @@ Required conformance IDs:
 
 - npm package and CLI: `e2e`;
 - root SDK import: `e2e`;
-- backend authoring import: `e2e/backend`;
+- backend authoring import: `@e2edev/e2e/backend`;
 - reference web backend: `@e2edev/playwright` (`playwright()`);
 - default tests: `tests/**/*.e2e.ts`;
 - config: `e2e.config.ts` or `e2e.config.mts`.
@@ -66,7 +66,7 @@ Required conformance IDs:
 ## Minimal test
 
 ```ts
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test('user can sign up', async ({ app, agent }) => {
   await app.open();

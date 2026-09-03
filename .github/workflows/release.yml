@@ -17,8 +17,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # Required for npm trusted publishing (OIDC).
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,5 +52,7 @@ jobs:
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Granular npm access token with read/write on the @e2edev scope.
+          # The packages publish as restricted (private phase), so there is no
+          # provenance attestation: npm only attests public packages.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true

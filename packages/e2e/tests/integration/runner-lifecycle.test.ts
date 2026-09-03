@@ -20,7 +20,7 @@ describe('runner lifecycle', () => {
     'runs hooks in specification order',
     async () => {
       const hooksFile = `import { appendFileSync } from 'node:fs';
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
 
@@ -67,7 +67,7 @@ test.describe('group', () => {
   it(
     'skips scope tests when beforeAll fails and reports hook-failed',
     async () => {
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test.describe('broken scope', () => {
   test.beforeAll(() => {
@@ -95,7 +95,7 @@ test('independent survives', async ({ app }) => {
     'runs afterAll for a realm a failing test discards',
     async () => {
       const file = `import { appendFileSync } from 'node:fs';
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
 
@@ -136,7 +136,7 @@ test('second passes', async ({ app }) => {
     'runs suite hooks for serial groups and setup tests',
     async () => {
       const file = `import { appendFileSync } from 'node:fs';
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
 
@@ -201,7 +201,7 @@ test('consumer', { session: 'seeded' }, async ({ app }) => {
   it(
     'skips every serial member behind a failing beforeAll and fails the group',
     async () => {
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test.describe('wizard', { serial: true }, () => {
   test.beforeAll(() => {
@@ -231,7 +231,7 @@ test.describe('wizard', { serial: true }, () => {
     'keeps the failed attempts when a retry hits a beforeAll failure',
     async () => {
       const file = `import { existsSync, writeFileSync } from 'node:fs';
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test.beforeAll(() => {
   if (existsSync(process.env.RETRY_MARKER!)) throw new Error('second realm cannot boot');
@@ -260,7 +260,7 @@ test('fails then cannot retry', { retries: 1 }, async ({ app }) => {
     'retries failed attempts in fresh realms and reports flaky',
     async () => {
       const file = `import { existsSync, writeFileSync } from 'node:fs';
-import { test } from 'e2e';
+import { test } from '@e2edev/e2e';
 
 test('flaky test', { retries: 2 }, async ({ app }) => {
   await app.open();
@@ -288,7 +288,7 @@ test('flaky test', { retries: 2 }, async ({ app }) => {
   it(
     'times out slow tests and still reports afterward',
     async () => {
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test('sleeps forever', { timeout: 1500 }, async ({ app }) => {
   await app.open();
@@ -307,7 +307,7 @@ test('sleeps forever', { timeout: 1500 }, async ({ app }) => {
   it(
     'produces sessions in setup tests and restores them for consumers',
     async () => {
-      const setupFile = `import { test, expect } from 'e2e';
+      const setupFile = `import { test, expect } from '@e2edev/e2e';
 
 test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, screen, session }) => {
   await app.open('/storage');
@@ -317,7 +317,7 @@ test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, screen, sessi
 });
 `;
       const consumerFile = `import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('starts with the seeded state', { session: 'seeded' }, async ({ app, screen, web }) => {
   await app.open('/storage');
@@ -353,7 +353,7 @@ test('without a session starts clean', async ({ app, screen }) => {
   it(
     'skips session consumers when their setup fails',
     async () => {
-      const file = `import { test } from 'e2e';
+      const file = `import { test } from '@e2edev/e2e';
 
 test.setup('failing setup', { sessions: ['broken'] }, async ({ app }) => {
   await app.open();
@@ -382,7 +382,7 @@ test('unrelated still runs', async ({ app }) => {
   it(
     'runs serial groups as one unit with shared state and predecessor skips',
     async () => {
-      const file = `import { test, expect } from 'e2e';
+      const file = `import { test, expect } from '@e2edev/e2e';
 
 test.describe('wizard', { serial: true }, () => {
   let shared = 0;
@@ -440,7 +440,7 @@ test.describe('wizard', { serial: true }, () => {
     'reports config errors as exit 2 without executing tests',
     async () => {
       const { outcome, project } = await runProject(
-        { 'tests/none.e2e.ts': `import { test } from 'e2e';\ntest('x', async () => {});\n` },
+        { 'tests/none.e2e.ts': `import { test } from '@e2edev/e2e';\ntest('x', async () => {});\n` },
         {
           appUrl: app.url,
           config: { reporters: ['json', 'list'] as never },

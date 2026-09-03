@@ -1,8 +1,8 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright backend. */
 
 import type { ElementHandle, Locator as PwLocator, Page } from 'playwright';
-import { BackendError, type Momentum, type ScrollDirection } from 'e2e/backend';
-import { ConfigurationError, InfrastructureError, TestError } from 'e2e/backend';
+import { BackendError, type Momentum, type ScrollDirection } from '@e2edev/e2e/backend';
+import { ConfigurationError, InfrastructureError, TestError } from '@e2edev/e2e/backend';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 

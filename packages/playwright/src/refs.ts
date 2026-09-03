@@ -10,7 +10,7 @@
  * an in-flight observation still references.
  */
 
-import { BackendError, type NodeRef } from 'e2e/backend';
+import { BackendError, type NodeRef } from '@e2edev/e2e/backend';
 import type { ActionTarget } from './support.ts';
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */

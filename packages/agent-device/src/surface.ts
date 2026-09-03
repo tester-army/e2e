@@ -26,7 +26,7 @@ import {
   type OperationContext,
   type ScrollDirection,
   type SemanticNode,
-} from 'e2e/backend';
+} from '@e2edev/e2e/backend';
 import { staleOr, translateError } from './errors.ts';
 import { resolveExpression } from './locate.ts';
 import { isWithin, projectSnapshot, screenTitle, type ProjectedNode, type ProjectedSnapshot, type RawNode } from './nodes.ts';

@@ -5,7 +5,7 @@
  * contributes a surface, it does not re-export the test API.
  */
 
-import { test as base } from 'e2e';
+import { test as base } from '@e2edev/e2e';
 import type { Web } from './web.ts';
 
 export { playwright } from './backend.ts';

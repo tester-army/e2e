@@ -1,7 +1,7 @@
 /** Masked pixel capture for an observation (spec 14-security.md). */
 
 import type { Locator, Page } from 'playwright';
-import type { ObservationPixels, OperationContext } from 'e2e/backend';
+import type { ObservationPixels, OperationContext } from '@e2edev/e2e/backend';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /**

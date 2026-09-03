@@ -5,7 +5,7 @@
  * `device.<method>` step bounded by the action timeout.
  */
 
-import type { BackendFixtureContext, Locator } from 'e2e/backend';
+import type { BackendFixtureContext, Locator } from '@e2edev/e2e/backend';
 import type { AgentDeviceSurface } from './surface.ts';
 
 /** Permissions agent-device can grant, deny, or reset on an open app. */

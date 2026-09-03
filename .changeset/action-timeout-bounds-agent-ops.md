@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 `actionTimeout` now bounds every driver operation inside agent steps —

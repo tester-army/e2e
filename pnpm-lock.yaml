@@ -42,15 +42,15 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@e2edev/e2e':
+        specifier: workspace:*
+        version: link:../e2e
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
       ai:
         specifier: 7.0.37
         version: 7.0.37(zod@4.4.3)
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -107,12 +107,12 @@ importers:
         specifier: 1.61.1
         version: 1.61.1
     devDependencies:
+      '@e2edev/e2e':
+        specifier: workspace:*
+        version: link:../e2e
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -125,12 +125,12 @@ importers:
       '@e2edev/agent-device':
         specifier: workspace:*
         version: link:../agent-device
+      '@e2edev/e2e':
+        specifier: workspace:*
+        version: link:../e2e
       '@e2edev/playwright':
         specifier: workspace:*
         version: link:../playwright
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
       next:
         specifier: 16.3.4
         version: 16.3.4(@types/node@26.1.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 /**
  * Three failure surfaces: a page that is only an error illustration, a page

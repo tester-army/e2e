@@ -15,7 +15,7 @@ APP_URL=http://localhost:3000 e2e run
 ```
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -26,7 +26,7 @@ export default defineConfig({
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('user signs in', async ({ app, screen, web }) => {
   await app.open('/login');

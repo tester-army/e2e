@@ -10,7 +10,7 @@ import {
   OBSERVED_TEXT_LIMIT,
   type NodeRef,
   type SemanticNode,
-} from 'e2e/backend';
+} from '@e2edev/e2e/backend';
 import {
   readDocumentSemanticsFunction,
   SECURE_FIELD_SELECTOR,

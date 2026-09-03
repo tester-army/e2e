@@ -1,4 +1,4 @@
-import { test, expect } from 'e2e';
+import { test, expect } from '@e2edev/e2e';
 
 /**
  * Cross-platform strategies, side by side:

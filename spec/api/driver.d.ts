@@ -12,7 +12,7 @@ import type {
   SelectOption,
   ScrollDirection,
   Target,
-} from 'e2e';
+} from '@e2edev/e2e';
 
 export interface OperationContext {
   readonly signal: AbortSignal;

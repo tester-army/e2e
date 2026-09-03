@@ -11,10 +11,10 @@ Requires Node.js 20.19 or newer.
   <Step title="Install">
     <CodeBlocks>
       ```bash title="npm"
-      npm install --save-dev e2e @e2edev/playwright ai
+      npm install --save-dev @e2edev/e2e @e2edev/playwright ai
       ```
       ```bash title="pnpm"
-      pnpm add -D e2e @e2edev/playwright ai
+      pnpm add -D @e2edev/e2e @e2edev/playwright ai
       ```
     </CodeBlocks>
 
@@ -26,12 +26,12 @@ Requires Node.js 20.19 or newer.
 
   <Step title="Define your agent">
     ```bash
-    npx e2e init
+    npx --no-install e2e init
     ```
 
     ```ts title="e2e.config.ts"
-    import { defineConfig } from 'e2e';
-    import { createAgent } from 'e2e/agent';
+    import { defineConfig } from '@e2edev/e2e';
+    import { createAgent } from '@e2edev/e2e/agent';
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
@@ -68,7 +68,7 @@ Requires Node.js 20.19 or newer.
 
     ```ts title="tests/signup.e2e.ts"
     import { test } from '@e2edev/playwright';
-    import { expect } from 'e2e';
+    import { expect } from '@e2edev/e2e';
 
     test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
       await app.open('/');
@@ -93,17 +93,17 @@ Requires Node.js 20.19 or newer.
 
   <Step title="Run">
     ```bash
-    E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx e2e run
+    E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e run
     ```
 
     Missing browsers download automatically on the first run.
 
     ```bash
-    npx e2e run tests/signup.e2e.ts   # one file
-    npx e2e run --tag smoke           # by tag
-    npx e2e run --headed              # watch it happen
-    npx e2e run --debug               # save full agent transcripts
-    npx e2e run --ai-trace            # record every model call for a trace viewer
+    npx --no-install e2e run tests/signup.e2e.ts   # one file
+    npx --no-install e2e run --tag smoke           # by tag
+    npx --no-install e2e run --headed              # watch it happen
+    npx --no-install e2e run --debug               # save full agent transcripts
+    npx --no-install e2e run --ai-trace            # record every model call for a trace viewer
     ```
 
     Every run writes `.e2e/report.json`: results, attempts, steps, artifacts,

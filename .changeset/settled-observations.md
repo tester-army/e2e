@@ -1,5 +1,5 @@
 ---
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 Executor-facing observations always settle. Every `observe()` an executor

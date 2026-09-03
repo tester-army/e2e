@@ -20,7 +20,7 @@ import {
 } from '../helpers/run-project.ts';
 import type { AiTraceDocument } from '../../src/internal/ai-trace.ts';
 
-const SUITE = `import { test, expect } from 'e2e';
+const SUITE = `import { test, expect } from '@e2edev/e2e';
 
 test('default agent increments the counter', async ({ app, agent, screen }) => {
   await app.open();
@@ -157,7 +157,7 @@ describe('--ai-trace on child-process workers', () => {
     // A worker re-loads the config module itself, so the scripted model is
     // built inside the config file from the shared helper.
     const helper = fileURLToPath(new URL('../helpers/fake-loop-model.ts', import.meta.url));
-    const configSource = `import { defineConfig } from 'e2e';
+    const configSource = `import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 import { installFakeLoopModel } from ${JSON.stringify(helper)};
 

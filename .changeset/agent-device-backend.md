@@ -4,7 +4,7 @@
 
 New package: `@e2edev/agent-device`, the mobile backend for `e2e`, built on
 [agent-device](https://github.com/callstack/agent-device). It implements the
-public `e2e/backend` contract for iOS simulators and Android emulators the
+public `@e2edev/e2e/backend` contract for iOS simulators and Android emulators the
 same way `@e2edev/playwright` does for browsers, and core learns nothing new.
 
 - `agentDevice({ platform, app?, device?, session?, snapshot? })` returns a

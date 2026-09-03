@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { BackendHandle, OperationContext, SemanticNode } from 'e2e/backend';
+import type { BackendHandle, OperationContext, SemanticNode } from '@e2edev/e2e/backend';
 import { agentDevice } from '../../src/index.ts';
 
 const enabled = process.env['E2E_AGENT_DEVICE_SIMULATOR'] === '1';

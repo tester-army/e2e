@@ -1,6 +1,6 @@
 ---
 '@e2edev/playwright': minor
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 Move the Playwright driver into its own `@e2edev/playwright` package.
@@ -13,7 +13,7 @@ the default for web targets; the runner now loads the driver from
 **Upgrading:** install the driver alongside the runner.
 
 ```bash
-npm install --save-dev e2e @e2edev/playwright
+npm install --save-dev @e2edev/e2e @e2edev/playwright
 ```
 
 A target that names the driver without the package installed now fails config

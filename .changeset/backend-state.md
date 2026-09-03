@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 Backends can carry platform-neutral **state** (RFC0002 step 2', part 1):

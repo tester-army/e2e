@@ -1,5 +1,5 @@
 /**
- * Programmatic host surface (`e2e/run`): run the runner in-process and stream
+ * Programmatic host surface (`@e2edev/e2e/run`): run the runner in-process and stream
  * structured events, without shelling out to the CLI. This is how an
  * embedding host — a hosted platform, a CI wrapper, an IDE — drives runs.
  *

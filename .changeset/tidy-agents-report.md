@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 The list reporter narrates agent runs live. While a test runs, the status

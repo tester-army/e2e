@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 `ArtifactStore`: the cloud seam for evidence, the way `TraceCacheStore` is for

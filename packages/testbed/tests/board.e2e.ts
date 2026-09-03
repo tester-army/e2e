@@ -1,4 +1,4 @@
-import { test, expect } from 'e2e';
+import { test, expect } from '@e2edev/e2e';
 
 test('hover reveals the card menu action', async ({ app, screen }) => {
   await app.open('/board');

@@ -14,7 +14,7 @@
  */
 
 import { normalizeAgentDeviceError } from 'agent-device';
-import { BackendError, ConfigurationError, InfrastructureError, TestError } from 'e2e/backend';
+import { BackendError, ConfigurationError, InfrastructureError, TestError } from '@e2edev/e2e/backend';
 import { cancelled } from './support.ts';
 
 /**

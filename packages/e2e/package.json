@@ -1,5 +1,5 @@
 {
-  "name": "e2e",
+  "name": "@e2edev/e2e",
   "version": "0.1.0",
   "description": "Reference runner for the e2e agentic end-to-end testing standard",
   "keywords": [
@@ -24,8 +24,8 @@
   "homepage": "https://github.com/tester-army/e2e#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
-    "access": "public",
-    "provenance": true,
+    "access": "restricted",
+    "provenance": false,
     "tag": "beta"
   },
   "type": "module",

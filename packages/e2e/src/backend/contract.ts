@@ -1,7 +1,7 @@
 /**
  * The backend contract vocabulary (RFC0002): the platform-neutral types every
  * backend speaks and the harness consumes. A backend imports these from
- * `e2e/backend`; core never imports anything from a backend.
+ * `@e2edev/e2e/backend`; core never imports anything from a backend.
  *
  * Everything here is capability vocabulary - semantic nodes, locator
  * expressions, action kinds, the error contract - never a platform noun. A

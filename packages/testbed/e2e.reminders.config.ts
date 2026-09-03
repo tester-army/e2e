@@ -11,8 +11,8 @@
  * dozens of model calls and minutes of simulator time.
  */
 
-import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
+import { defineConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 import { createGateway } from 'ai';

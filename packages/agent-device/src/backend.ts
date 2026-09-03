@@ -2,13 +2,13 @@
  * The agent-device backend for e2e (RFC0002): a mobile body built with the
  * public `defineBackend`, validated by the same rules and graded by the same
  * capabilities as any other backend. Core imports nothing from here; this
- * package imports the contract from `e2e/backend` and contributes the
+ * package imports the contract from `@e2edev/e2e/backend` and contributes the
  * `device` fixture the way the browser backend contributes `web`.
  */
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { defineBackend, type BackendHandle } from 'e2e/backend';
+import { defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
 import { createDeviceFixture } from './device.ts';
 import { AgentDeviceSurface, type AgentDeviceOptions, type ClientFactory } from './surface.ts';
 

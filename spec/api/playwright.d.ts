@@ -5,7 +5,7 @@
  * part of the SDK contract; only the factory shape a target consumes is.
  */
 
-import type { BackendHandle } from 'e2e';
+import type { BackendHandle } from '@e2edev/e2e';
 
 export interface PlaywrightOptions {
   browser?: 'chromium' | 'firefox' | 'webkit';

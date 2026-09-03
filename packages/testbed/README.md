@@ -38,7 +38,7 @@ tests.
 ## Commands
 
 ```bash
-pnpm --filter e2e build            # the testbed runs the built runner
+pnpm --filter @e2edev/e2e build            # the testbed runs the built runner
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
 pnpm --filter @e2edev/testbed test:public   # real websites, not in CI

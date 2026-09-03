@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 The located agent verbs and the locator cache are removed. `agent.act` is the

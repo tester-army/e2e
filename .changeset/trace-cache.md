@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 The adaptive trace cache (`trace-1`) lands. Each passing `agent.act()` step

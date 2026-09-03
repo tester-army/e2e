@@ -1,5 +1,5 @@
 ---
-'e2e': patch
+'@e2edev/e2e': patch
 ---
 
 Write the spec-mandated `A256GCM` algorithm name in session envelopes.

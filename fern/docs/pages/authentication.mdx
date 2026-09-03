@@ -10,7 +10,7 @@ ordinary tests declare which state they want.
 <CodeBlocks>
 ```ts title="tests/auth.setup.e2e.ts"
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from 'e2e';
+import { expect, credentials } from '@e2edev/e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
   const admin = credentials.user('admin');
@@ -28,7 +28,7 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
 ```
 ```ts title="tests/dashboard.e2e.ts"
 import { test } from '@e2edev/playwright';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, web }) => {
   await app.open('/dashboard');
@@ -79,7 +79,7 @@ Never hardcode a password in a test. Declare it in config and source the value
 from the environment.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -98,7 +98,7 @@ Config is trusted project code, so reading `process.env` there is expected. You
 can also override either field per run without touching the file:
 
 ```bash
-E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx e2e run
+E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx --no-install e2e run
 ```
 
 The variable name is the credential name uppercased, with every
@@ -107,7 +107,7 @@ non-alphanumeric character replaced by `_`.
 ## The password is a handle, not a string
 
 ```ts
-import { credentials } from 'e2e';
+import { credentials } from '@e2edev/e2e';
 
 const admin = credentials.user('admin');
 

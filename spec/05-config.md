@@ -30,7 +30,7 @@ useful config is one web target on the playwright backend from
 `@e2edev/playwright`:
 
 ```ts
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -61,7 +61,7 @@ traces would replay across them.
 A fuller config:
 
 ```ts
-import { defineConfig } from 'e2e';
+import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -151,7 +151,7 @@ because it is not a committed file cache and states its own trust through its
 
 A target (RFC0002) is `{ name, platform, backend? }`. The runner itself
 resolves, launches, and downloads nothing: whatever the platform, the surface
-is the `backend` value, a `defineBackend(...)` handle from `e2e/backend`. The
+is the `backend` value, a `defineBackend(...)` handle from `@e2edev/e2e/backend`. The
 web backend is `playwright()` from `@e2edev/playwright`; a device or desktop
 backend plugs into the same seam. There is no top-level `browser` key and no
 `driver` or `browser` target key; browser choice and viewport are options of

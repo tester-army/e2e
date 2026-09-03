@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 ---
 
 `e2e run --ai-trace` records every model call of a run to `.e2e/ai-trace.json`

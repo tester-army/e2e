@@ -1,5 +1,5 @@
 ---
-'e2e': minor
+'@e2edev/e2e': minor
 '@e2edev/playwright': minor
 ---
 
@@ -10,7 +10,7 @@ backend it wrote.
 
 Removed:
 
-- `e2e/driver`, `defineDriver`, and every driver-SPI type; the `driver:` and
+- `@e2edev/e2e/driver`, `defineDriver`, and every driver-SPI type; the `driver:` and
   `browser:` target keys; the top-level `browser` config key; the implicit
   zero-config web target. `targets` is required and a target is
   `{ name, platform, backend? }`.
@@ -55,13 +55,13 @@ Added:
   with observation, actions, location, state, artifacts, and the contributed
   `web` fixture. `browser` and `viewport` are its options. It also exports
   `test` typed with `web`; `expect` and `credentials` still come from `e2e`.
-- `e2e/backend` exports `BACKEND_ERROR_CODES` and
+- `@e2edev/e2e/backend` exports `BACKEND_ERROR_CODES` and
   `RETRYABLE_BACKEND_ERROR_CODES` (`NODE_STALE`, `FRAME_NOT_FOUND`).
-- `e2e/backend` exports the semantics the spec requires every backend to
+- `@e2edev/e2e/backend` exports the semantics the spec requires every backend to
   reproduce exactly: `TestError`, `ConfigurationError`, `InfrastructureError`,
   `matchesText`, `toTextPattern`, `describePattern`, `urlMatches`,
-  `pollCondition`, `Deadline`, and `validateJsonValue`. The `e2e/internal`
-  subpath is removed; a backend package depends on `e2e/backend` only.
+  `pollCondition`, `Deadline`, and `validateJsonValue`. The `@e2edev/e2e/internal`
+  subpath is removed; a backend package depends on `@e2edev/e2e/backend` only.
 - `defineTool` accepts `platforms` to scope a tool pack to targets by
   platform, and `StepExecutorContext.target` names the target a step runs on.
 
@@ -82,7 +82,7 @@ export default defineConfig({
 });
 ```
 
-A backend written against the earlier `e2e/backend` draft moves its `actions`
+A backend written against the earlier `@e2edev/e2e/backend` draft moves its `actions`
 verbs onto `perform` (switch on `action.kind`), its viewport `scroll` onto
 `swipe`, its `navigate`/`back` under `app`, declares `version`, and accepts
 the cleanup context on `endAttempt`/`dispose`.

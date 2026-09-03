@@ -3,12 +3,12 @@ title: e2e/backend
 subtitle: The backend contract a target's surface implements, and the fixture context it contributes through.
 ---
 
-`e2e/backend` is the authoring import for a backend. `defineBackend` validates
+`@e2edev/e2e/backend` is the authoring import for a backend. `defineBackend` validates
 the body synchronously at config load, freezes it, computes its capability set,
 and returns the branded handle a target accepts.
 
 ```ts
-import { defineBackend, type BackendHandle } from 'e2e/backend';
+import { defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
 
 export function defineBackend(spec: Backend): BackendHandle;
 export function isBackendHandle(value: unknown): value is BackendHandle;
@@ -295,6 +295,6 @@ step. Type the fixture in tests with `test.extend<{ name: Type }>()`.
 `NodeRef`, `SemanticNode`, `ObservationPixels`, `LocatorAction`,
 `BACKEND_SPI_VERSION`, `BACKEND_ERROR_CODES`, `RETRYABLE_BACKEND_ERROR_CODES`,
 `OBSERVED_NAME_LIMIT`, `OBSERVED_TEXT_LIMIT`, and the shared semantics above are exported from
-`e2e/backend` and are the platform-neutral words every backend speaks. The
+`@e2edev/e2e/backend` and are the platform-neutral words every backend speaks. The
 `selector` expression kind carries a platform-native selector string (CSS or
 XPath on a document platform); `frame` scopes a query into a nested document.

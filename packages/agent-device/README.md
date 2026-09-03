@@ -2,14 +2,14 @@
 
 The mobile backend for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [agent-device](https://github.com/callstack/agent-device): iOS simulators and
-Android emulators through the same `e2e/backend` contract the browser backend
+Android emulators through the same `@e2edev/e2e/backend` contract the browser backend
 implements. A test written against `screen`, `expect`, `app`, and `agent` runs
 on a device target unchanged; nothing in `e2e` core knows this package exists.
 
 ## Install
 
 ```bash
-npm install --save-dev e2e @e2edev/agent-device
+npm install --save-dev @e2edev/e2e @e2edev/agent-device
 ```
 
 `agent-device` needs Xcode with an iOS simulator runtime, or the Android SDK
@@ -17,8 +17,8 @@ with an emulator. Run `npx agent-device doctor` once before handing the target
 to the runner.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
+import { defineConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 
@@ -91,7 +91,7 @@ Deterministic device management, recorded as `device.<method>` steps. Import
 
 ```ts
 import { test } from '@e2edev/agent-device';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
   await device.setAppearance('dark');

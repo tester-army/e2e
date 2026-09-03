@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { test } from '@e2edev/agent-device';
-import { expect } from 'e2e';
+import { expect } from '@e2edev/e2e';
 
 const REMINDERS_CONTEXT = [
   'Reminders app mechanics, verified on this simulator: the accessibility tree',
