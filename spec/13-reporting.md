@@ -50,10 +50,7 @@ test-target result (including filtered/skipped pairs), all attempts, steps,
 artifacts, errors, cleanup outcomes, and selection counts.
 Target provenance includes the backend name/version/contract version, the
 declared capability set (harness capabilities plus contributed fixture names),
-artifact capabilities, state capability, origin, and environment. The target's
-`allowProduction` field is retained for `report-1` readers and is derived:
-`true` exactly when `environment` is `production`. It leaves the wire format
-in the next schema version.
+artifact capabilities, state capability, origin, and environment.
 `artifactCapabilities` lists the configurable kinds a backend can produce on
 request, `screenshot` and `trace`; `video` is not a configurable capability,
 though it remains a valid kind for a fixture to attach. The report carries no

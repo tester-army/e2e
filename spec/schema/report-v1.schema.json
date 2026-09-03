@@ -459,14 +459,13 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "index", "platform", "baseOrigin", "environment", "allowProduction", "testIdAttribute", "backend", "capabilities", "artifactCapabilities", "stateCapability"],
+      "required": ["id", "index", "platform", "baseOrigin", "environment", "testIdAttribute", "backend", "capabilities", "artifactCapabilities", "stateCapability"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
         "platform": { "type": "string", "minLength": 1 },
         "baseOrigin": { "type": "string", "format": "uri" },
         "environment": { "enum": ["test", "staging", "production"] },
-        "allowProduction": { "type": "boolean" },
         "testIdAttribute": { "type": "string", "minLength": 1 },
         "backend": {
           "type": "object",
