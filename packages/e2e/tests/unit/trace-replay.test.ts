@@ -43,6 +43,7 @@ function makeHost(options: {
     observe: async () => ({
       nodes: new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n])),
       shape: 'stable',
+      parents: new Map(),
     }),
     actions,
     signal: new AbortController().signal,

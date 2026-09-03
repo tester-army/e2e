@@ -34,6 +34,8 @@ const RELOCATION_TIMEOUT_MS = 15_000;
 /** One fresh capture: the node map plus its id-independent shape. */
 export interface ReplayObservation {
   readonly nodes: ReadonlyMap<string, SemanticNode>;
+  /** Parent id of every non-root node; relocation checks a recorded container key against it. */
+  readonly parents: ReadonlyMap<string, string>;
   readonly shape: string;
 }
 
@@ -178,11 +180,12 @@ async function relocate(
   descriptor: TraceTargetDescriptor,
 ): Promise<{ kind: 'found'; id: string } | { kind: 'failed'; failure: ReplayHandOffReason }> {
   const startedMs = Date.now();
-  let nodes = await settledNodes(host);
+  let observation = await settledObservation(host);
   for (let attempt = 0; ; attempt += 1) {
-    const result = relocateDescriptor(descriptor, nodes, {
+    const result = relocateDescriptor(descriptor, observation.nodes, {
       redact: host.redact,
       testIdAttribute: host.testIdAttribute,
+      parents: observation.parents,
     });
     if (result.kind === 'found') return result;
     if (result.failure === 'target-ambiguous') return { kind: 'failed', failure: result.failure };
@@ -195,7 +198,7 @@ async function relocate(
       return { kind: 'failed', failure: 'target-not-found' };
     }
     await sleep(delay, host.signal);
-    nodes = (await host.observe()).nodes;
+    observation = await host.observe();
   }
 }
 
@@ -207,13 +210,12 @@ async function relocate(
  * executor-facing observe uses (observation.ts); replay reads raw
  * observations and buys its settling here, on its own schedule.
  */
-async function settledNodes(host: ReplayHost): Promise<ReadonlyMap<string, SemanticNode>> {
-  const settled = await settleObservation(
+async function settledObservation(host: ReplayHost): Promise<ReplayObservation> {
+  return settleObservation(
     () => host.observe(),
     (observation) => observation.shape,
     host,
   );
-  return settled.nodes;
 }
 
 /**

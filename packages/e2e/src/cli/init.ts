@@ -5,7 +5,6 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 
 const CONFIG_TEMPLATE = `import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
@@ -13,11 +12,14 @@ export default defineConfig({
   app: {
     url: process.env.APP_URL ?? 'http://localhost:3000',
   },
-  // The runner ships no intelligence: you construct the agent and pass it in.
-  // createAgent builds the built-in one; its model comes from E2E_MODEL.
-  agent: createAgent({
-    system: 'You are a thorough QA agent. Verify every outcome on screen.',
-  }),
+  // The runner ships no intelligence. Deterministic tests and the judgment
+  // calls (agent.assert, agent.waitFor, agent.extract) need only a model, read
+  // from E2E_MODEL. agent.act() needs a step executor: build one on the
+  // chassis from 'e2e/agent' (createToolLoopExecutor) or plug in a package
+  // that provides one, and pass it as agent.executor.
+  agent: {
+    model: process.env.E2E_MODEL,
+  },
   // The runner knows no platform: a target is served by the backend you pass.
   targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
 });
@@ -31,7 +33,8 @@ test('app opens', async ({ app, web }) => {
   await expect(web).toHaveURL('/');
 });
 
-// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
+// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set; agent.act additionally
+// needs agent.executor in the config:
 // test('the agent drives a flow', async ({ app, agent }) => {
 //   await app.open();
 //   await agent.act('one goal in plain language');

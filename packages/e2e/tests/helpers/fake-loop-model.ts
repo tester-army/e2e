@@ -16,6 +16,8 @@ export interface LoopCall {
   readonly toolNames: readonly string[];
   /** Text of the first user message: instruction, params, initial screen. */
   readonly prompt: string;
+  /** Text of every user message, oldest first: the prompt, screen updates, notices. */
+  readonly userTexts: readonly string[];
   /** Text outputs of every executed tool so far, oldest first. */
   readonly toolResults: readonly string[];
   /** The newest tool result, or '' on the first turn. */
@@ -57,10 +59,12 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
   return createScriptedInstance('fake-loop', 'scripted-loop', async (options: RawOptions) => {
     turn += 1;
     const toolResults = collectToolResults(options.prompt);
+    const userTexts = collectUserTexts(options.prompt);
     const call: LoopCall = {
       turn,
       toolNames: (options.tools ?? []).map((tool) => tool.name).toSorted(),
-      prompt: firstUserText(options.prompt),
+      prompt: userTexts[0] ?? '',
+      userTexts,
       toolResults,
       lastToolResult: toolResults[toolResults.length - 1] ?? '',
     };
@@ -75,16 +79,20 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
   });
 }
 
-function firstUserText(prompt: readonly RawMessage[]): string {
+function collectUserTexts(prompt: readonly RawMessage[]): string[] {
+  const texts: string[] = [];
   for (const message of prompt) {
     if (message.role !== 'user') continue;
-    if (typeof message.content === 'string') return message.content;
-    return message.content
-      .filter((part) => part.type === 'text' && part.text !== undefined)
-      .map((part) => part.text)
-      .join('\n');
+    texts.push(
+      typeof message.content === 'string'
+        ? message.content
+        : message.content
+            .filter((part) => part.type === 'text' && part.text !== undefined)
+            .map((part) => part.text)
+            .join('\n'),
+    );
   }
-  return '';
+  return texts;
 }
 
 /** Extracts the text value of every tool-result part, oldest first. */

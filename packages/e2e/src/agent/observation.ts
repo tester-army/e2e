@@ -22,6 +22,8 @@ export interface AgentObservation {
   readonly text: string;
   readonly bytes: number;
   readonly nodes: ReadonlyMap<string, SemanticNode>;
+  /** Parent id of every non-root node, for the container a target sits in. */
+  readonly parents: ReadonlyMap<string, string>;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
   /** Present only when the backend captured pixels and masking checks out. */
@@ -47,7 +49,8 @@ export function prepareObservation(
   },
 ): AgentObservation {
   const nodes = new Map<string, SemanticNode>();
-  indexNodes(observation.tree, nodes);
+  const parents = new Map<string, string>();
+  indexNodes(observation.tree, nodes, parents);
 
   const redact = options.redact;
   const lines: string[] = [];
@@ -61,7 +64,7 @@ export function prepareObservation(
 
   const emit = (node: SemanticNode, depth: number): void => {
     if (truncated) return;
-    const line = formatNode(node, depth, redact, options.testIdAttribute);
+    const line = formatNode(node, depth, redact, options.testIdAttribute, nameEchoesContent(node));
     const size = encoder.encode(`${line}\n`).byteLength;
     if (lines.length > 0 && bytes + size > budget) {
       truncated = true;
@@ -81,6 +84,7 @@ export function prepareObservation(
     text,
     bytes: encoder.encode(text).byteLength,
     nodes,
+    parents,
     viewport: observation.viewport,
     truncated,
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
@@ -120,10 +124,13 @@ function formatNode(
   depth: number,
   redact: (text: string) => string,
   testIdAttribute: string,
+  nameFromContent = false,
 ): string {
   const parts: string[] = [`#${node.ref.id}`];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
-  if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(redact(node.name)));
+  if (node.name !== undefined && node.name !== '' && !nameFromContent) {
+    parts.push(JSON.stringify(redact(node.name)));
+  }
   const text = node.text === undefined ? '' : collapse(node.text);
   if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
   // Disambiguators the model needs when role and name repeat. The backend has
@@ -149,6 +156,41 @@ function formatNode(
     .map(([key]) => key);
   if (states.length > 0) parts.push(`[${states.join(' ')}]`);
   return `${' '.repeat(Math.min(depth, MAX_INDENT_DEPTH))}${parts.join(' ')}`;
+}
+
+/**
+ * True when a container's accessible name is nothing but its children's names
+ * and text run together — a list item or table row named from its content.
+ * The children are rendered on their own lines, so the name would repeat every
+ * one of them: on a forty-row table that is half the observation. The check
+ * mirrors name-from-content: each child contributes its own name or text and,
+ * having contributed, is not descended into.
+ */
+export function nameEchoesContent(node: SemanticNode): boolean {
+  const name = node.name;
+  const children = node.children;
+  if (name === undefined || name === '' || children === undefined || children.length === 0) {
+    return false;
+  }
+  const target = squash(name);
+  let echoed = '';
+  const visit = (parent: SemanticNode): boolean => {
+    for (const child of parent.children ?? []) {
+      const own = child.name !== undefined && child.name !== '' ? child.name : child.text;
+      if (own !== undefined && own !== '') {
+        echoed += squash(own);
+        if (!target.startsWith(echoed)) return false;
+        continue;
+      }
+      if (!visit(child)) return false;
+    }
+    return true;
+  };
+  return visit(node) && echoed === target;
+}
+
+function squash(text: string): string {
+  return text.replace(/\s+/g, '');
 }
 
 /**
@@ -214,7 +256,14 @@ function collapse(text: string): string {
   return sanitizeText(text).replace(/\s+/g, ' ').trim();
 }
 
-function indexNodes(node: SemanticNode, into: Map<string, SemanticNode>): void {
+function indexNodes(
+  node: SemanticNode,
+  into: Map<string, SemanticNode>,
+  parents: Map<string, string>,
+): void {
   into.set(node.ref.id, node);
-  for (const child of node.children ?? []) indexNodes(child, into);
+  for (const child of node.children ?? []) {
+    parents.set(child.ref.id, node.ref.id);
+    indexNodes(child, into, parents);
+  }
 }

@@ -11,6 +11,7 @@ import type { FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
+import { plainAgent } from '../helpers/plain-agent.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';
 
@@ -85,7 +86,7 @@ describe('agent policy and error classification', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model },
+          agent: { executor: plainAgent(), model },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },
       },
@@ -190,7 +191,7 @@ test.describe('group', { serial: true }, () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model },
+          agent: { executor: plainAgent(), model },
         },
       },
     );

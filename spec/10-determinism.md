@@ -53,10 +53,22 @@ ledger; independent tests never do. Deterministic and agentic top-level steps
 append structured entries containing method, sanitized label, status, and an
 optional handoff.
 
-Each handoff is at most 700 UTF-8 bytes. Before an agent invocation, the runner
-serializes newest entries until the complete ledger context reaches resolved
-`maxLedgerBytes`, default 8 KiB,
-then drops oldest entries and prepends their count. Entries are presented in
+A handoff has two accounts of the step. The runner's: the committed actions
+in order (`did`) and the text that appeared on screen between the step's first
+and last observation (`saw`). The executor's: the facts it chose to note
+(`noted`) and its summary (`observed`). Each handoff is at most 700 UTF-8
+bytes; `saw` and `noted` together at most 240.
+
+Before an agent invocation, the runner serializes the ledger within resolved
+`maxLedgerBytes`, default 8 KiB, by value rather than by age alone. Every
+entry has a compact form (head plus `saw` and `noted`; consecutive passed
+checks fold into one line) and agentic entries a full form. The three newest
+agentic entries are rendered in full. Over budget, the runner drops entries
+oldest-first within ascending value — folded checks, then agentic entries
+without facts, then entries with facts, then the newest — and marks each gap
+with the omitted positions. Remaining agentic entries are upgraded to full,
+newest first, while room remains. A fact an early step surfaced therefore
+outlives the prose of the steps after it. Entries are presented in
 chronological order. There is no recursive model summary, so cost is bounded
 and compaction is deterministic.
 
@@ -116,14 +128,22 @@ and the host that supplied it states its own trust through the store's
 
 An entry (`schemaVersion: "trace-1"`) wraps one `ActionTrace`: the recorded
 actions, each with a durable target descriptor (role, name, testid,
-placeholder, structural selector — captured at commit time from the node the
-action actually ran against), JSON-safe secret-free input, and a one-line
-prose summary; plus producer provenance and the page path the step began on.
+placeholder, structural selector, and the key of the row or list item the
+node sat in — captured at commit time from the node the action actually ran
+against), JSON-safe secret-free input, and a one-line prose summary; plus
+producer provenance and the page path the step began on. Relocation requires
+the container key to hold when one was recorded: ten rows each with a "Delete"
+button are ten identical descriptors, and the row's first text is what makes
+one of them this one.
 Secret plaintext MUST NOT appear anywhere in an entry — a secret fill is
 recorded by its stable name only, and every recorded string passes the run's
 secret redactor first. A mutation the grammar cannot reproduce (a mutating
 project tool) is recorded as a **gap marker**, so replay can never silently
-skip a state change.
+skip a state change. So is a typed value that appears neither in the step's
+instruction nor in its params: it was derived at run time — from the screen,
+from an earlier step's hand-off — and belongs to that run, so replay performs
+the actions before it and hands the step over rather than typing a value the
+application may not issue again.
 
 The key names the exact context the trace was recorded in: project, test,
 target/driver/app identity, step kind, the digests of the normalized
@@ -150,9 +170,12 @@ authorization, and recording all apply identically. Each targeted action
 re-finds its node from the recorded descriptor against a fresh observation;
 exactly one node must match or the replay diverges. A full successful replay
 self-finalizes the step as passed — gated by the trace's postcondition: when
-a recorded end path exists, the live pathname must still match it, so a
-recorded flow whose destination changed hands off (`end-mismatch`) instead of
-passing on mechanics alone. Any divergence — a gap, a moved or
+a recorded end path exists, the live pathname must still match it, and the
+text the recorded run saw appear on screen (`endTexts`) must appear again,
+waited for up to the recorded step's own duration plus a margin (`endWaitMs`,
+bounded by the step clock). A recorded flow whose destination changed, or
+whose outcome does not return, hands off (`end-mismatch`) instead of passing
+on mechanics alone. Any divergence — a gap, a moved or
 ambiguous target, a rejected action — hands the step to the executor
 mid-step with a `replayedPrefix` notice (16-executors.md); the executor
 continues from live state. Runtime hard stops (budget, timeout, cancel) are

@@ -46,6 +46,8 @@ import {
   type StepVerdict,
 } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
+import { isDerivedValue } from './derived.ts';
+import { appearedText } from './handoff.ts';
 import { serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import {
@@ -55,9 +57,12 @@ import {
   type AgentObservation,
 } from './observation.ts';
 import { checkStepClock, instrumentPhase, retryingObserve } from './phases.ts';
-import { describeAction, type RecordableAction } from './actions.ts';
+import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { StepTraceSession, type StepCacheHost } from './step-cache.ts';
+
+/** Margin added to a recorded step's duration when replay waits for its end state. */
+const END_STATE_MARGIN_MS = 10_000;
 
 /** Everything one dispatched step is, resolved before the step opens. */
 interface DispatchSpec {
@@ -181,7 +186,13 @@ class ActDispatch {
     ledgerBytes: 0,
   };
   private latest: AgentObservation | undefined;
+  /** The step's first observation; what appeared since is the step's visible outcome. */
+  private first: AgentObservation | undefined;
+  private firstPath: string | undefined;
+  private lastPath: string | undefined;
+  private readonly startedMs = Date.now();
   private explanation: string | undefined;
+  private facts: readonly string[] = [];
   /** First budget/timeout/cancel failure; runtime truth outranks the verdict. */
   private hardStop: AgentError | undefined;
   /** Aborts the executor on any hard stop, so a step never outlives its clock. */
@@ -402,7 +413,13 @@ class ActDispatch {
   private async dispatchStep(): Promise<StepVerdict> {
     if (this.stepCache !== undefined) {
       const replayed = await this.stepCache.tryReplay(this.replayHost());
-      if (replayed !== undefined) return replayed;
+      if (replayed !== undefined) {
+        // A zero-turn replay ends on its last action; one settled look at the
+        // outcome is what the step hands to the steps after it (`saw`), and
+        // it is this run's outcome — never the run the trace was recorded on.
+        await this.observe();
+        return replayed;
+      }
     }
     return this.runtime.executor.runStep(this.context());
   }
@@ -412,7 +429,7 @@ class ActDispatch {
     return {
       observe: async () => {
         const observation = await this.observeLatest();
-        return { nodes: observation.nodes, shape: observationShape(observation) };
+        return { nodes: observation.nodes, parents: observation.parents, shape: observationShape(observation) };
       },
       actions: this.buildActions(),
       signal: this.stepSignal,
@@ -438,9 +455,22 @@ class ActDispatch {
   /** Stages the step's recorded trace for attempt-end settlement. */
   async stageTrace(): Promise<void> {
     if (this.stepCache === undefined || !this.stepCache.wantsStage) return;
-    // The end path is the trace's postcondition; captured only when a write
-    // can actually happen, so read-only runs pay no extra backend call.
-    this.stepCache.stage(this.explanation, await this.currentPath());
+    // The end path and the text that appeared are the trace's postcondition;
+    // captured only when a write can actually happen, so read-only runs pay
+    // no extra backend call. The wait budget is what the live run needed,
+    // plus a margin for a slower day.
+    this.stepCache.stage(this.explanation, await this.currentPath(), {
+      // The hand-off's overflow marker ("+3 more") is not screen text.
+      texts: this.appeared().filter((text) => !/^\+\d+ more$/.test(text)),
+      waitMs: Date.now() - this.startedMs + END_STATE_MARGIN_MS,
+    });
+  }
+
+  /** What appeared on screen over the step, for the hand-off and the trace's end state. */
+  private appeared(): string[] {
+    return appearedText(this.first, this.latest, this.redact, {
+      navigated: this.firstPath !== this.lastPath,
+    });
   }
 
   /** Evicts a consumed replay entry after a non-passed settle. */
@@ -475,6 +505,7 @@ class ActDispatch {
       throw this.invented(settled.errorCode);
     }
     this.explanation = settled.summary;
+    this.facts = settled.facts ?? [];
     if (settled.status === 'passed') return;
     const code =
       settled.errorCode !== undefined && settled.errorCode in CATEGORY_BY_CODE
@@ -625,6 +656,10 @@ class ActDispatch {
       ...(cacheInfo === undefined ? {} : { cache: cacheInfo }),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.latest !== undefined ? { observationRevision: this.latest.revision } : {}),
+      handoff: {
+        appeared: this.appeared(),
+        noted: this.facts.map((fact) => this.redact(fact)),
+      },
     });
     this.writeTranscript();
   }
@@ -729,11 +764,17 @@ class ActDispatch {
    */
   private async observe(): Promise<ExecutorObservation> {
     const observation = await this.serialized(() => this.observeNow(true));
+    // The location is read after the settled capture, so it names the document
+    // the tree describes; a backend without one simply leaves it out.
+    const path = await this.currentPath();
+    this.firstPath ??= path;
+    this.lastPath = path;
     return {
       revision: observation.revision,
       text: observation.text,
       truncated: observation.truncated,
       viewport: observation.viewport,
+      ...(path === undefined ? {} : { path: this.redact(path) }),
     };
   }
 
@@ -759,6 +800,7 @@ class ActDispatch {
           : this.captureObservation(),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
+    this.first ??= observation;
     this.latest = observation;
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     return observation;
@@ -840,7 +882,15 @@ class ActDispatch {
       this.checkpoint(cause);
       throw cause;
     }
-    this.stepCache?.record(action);
+    if (this.stepCache === undefined) return;
+    // A typed value the step derived at run time is this run's data, not the
+    // flow's: it is recorded as a gap so replay hands over before it rather
+    // than typing a value the app may not issue again.
+    if (action.name === 'type' && isDerivedValue(action.value, this.spec.instruction, this.spec.params)) {
+      this.stepCache.recordGap('type (run-time value)');
+      return;
+    }
+    this.stepCache.record(action);
   }
 
   /** One action against a resolved node; a stale ref asks for a re-observe. */
@@ -851,8 +901,14 @@ class ActDispatch {
   ): Promise<void> {
     return this.runAction(name, async () => {
       const node = this.resolveTarget(target);
+      // The container the node sits in is captured with it: that is what
+      // tells this row's "Delete" from the next row's when the flow replays.
+      const latest = this.latest;
+      const within =
+        latest === undefined ? undefined : containerKey(node.ref.id, latest.nodes, latest.parents, this.redact);
       try {
-        return await perform(node);
+        const action = await perform(node);
+        return within === undefined ? action : { ...action, within };
       } catch (cause) {
         if (cause instanceof BackendError && cause.code === 'NODE_STALE') {
           throw new AgentError(

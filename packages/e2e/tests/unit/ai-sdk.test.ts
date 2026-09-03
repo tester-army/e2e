@@ -4,7 +4,7 @@
  * constructed in config code (which primes the cache in its realm's module
  * copy) and the runner's synchronous gateway-model seam would otherwise see
  * two separate caches. Found live by dogfooding: a config-file
- * `createAgent()` with a gateway model crashed the runner-realm `aiSdk()`
+ * an executor built in config with a gateway model crashed the runner-realm `aiSdk()`
  * with "has not been loaded".
  */
 

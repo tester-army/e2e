@@ -16,6 +16,7 @@ import {
 } from '../helpers/fake-model.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
+import { plainAgent } from '../helpers/plain-agent.ts';
 
 const SUITE = `import { test, credentials, expect } from 'e2e';
 
@@ -78,7 +79,7 @@ describe('agent vision (judgments)', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model, visionModel },
+          agent: { executor: plainAgent(), model, visionModel },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },
       },

@@ -45,11 +45,23 @@ const PAGES: Record<string, string> = {
   <input id="prefilled" aria-label="Prefilled" value="hello-value" />
 
   <script>
-    setTimeout(() => {
-      const late = document.createElement('button');
-      late.textContent = 'Late arrival';
-      document.body.appendChild(late);
-    }, 400);
+    const later = new URLSearchParams(location.search).has('later');
+    if (!later) {
+      setTimeout(() => {
+        const late = document.createElement('button');
+        late.textContent = 'Late arrival';
+        document.body.appendChild(late);
+      }, 400);
+    }
+    // Only when asked: an element that lands well after any settle window,
+    // for tests of waiting rather than of settling.
+    if (later) {
+      setTimeout(() => {
+        const later = document.createElement('button');
+        later.textContent = 'Later arrival';
+        document.body.appendChild(later);
+      }, 3000);
+    }
   </script>
 </body>
 </html>`,

@@ -114,7 +114,7 @@ prompt. Sign-in is an ordinary `act` flow with `Secret` params; setup
 sessions (11-lifecycle.md) provide the authentication fast path. With a
 custom executor configured, `agent.assert` also dispatches
 through the socket as an `assert`-kind step (default failure code
-`ASSERTION_FAILED`); the built-in path keeps the single-judgment tier below.
+`ASSERTION_FAILED`) when `agent.judgments` is `'executor'`; by default the single-judgment tier below judges, whatever executor runs `act`.
 Current release: structured output (`options.schema`) and `vision`
 are not implemented for `act` and reject with `UNSUPPORTED_CAPABILITY`; the
 action vocabulary is `tap`, `type`, `typeSecret`, `press`, `select`,

@@ -203,3 +203,46 @@ describe('observationShape', () => {
     );
   });
 });
+
+describe('content-echo names', () => {
+  it('omits a container name that only repeats its children', () => {
+    const echoed = {
+      revision: 'r1',
+      capturedAt: 't',
+      viewport: { width: 100, height: 100, scale: 1 },
+      redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
+      tree: {
+        ref: { id: 'n1', revision: 'r1' },
+        role: 'list',
+        name: 'Expenses',
+        children: [
+          {
+            ref: { id: 'n2', revision: 'r1' },
+            role: 'listitem',
+            name: 'Taxi — $42.00 (Travel)ApprovedDelete Taxi',
+            children: [
+              { ref: { id: 'n3', revision: 'r1' }, text: 'Taxi — $42.00 (Travel)' },
+              { ref: { id: 'n4', revision: 'r1' }, text: 'Approved' },
+              { ref: { id: 'n5', revision: 'r1' }, role: 'button', name: 'Delete Taxi' },
+            ],
+          },
+          {
+            ref: { id: 'n6', revision: 'r1' },
+            role: 'listitem',
+            name: 'Labelled explicitly',
+            children: [{ ref: { id: 'n7', revision: 'r1' }, text: 'Something else' }],
+          },
+        ],
+      },
+    };
+    const prepared = prepareObservation(echoed as never, {
+      redact: (text) => text,
+      maxBytes: 65_536,
+      testIdAttribute: 'data-testid',
+    });
+    expect(prepared.text).toContain('#n1 list "Expenses"');
+    expect(prepared.text).toContain(' #n2 listitem\n');
+    expect(prepared.text).toContain('#n6 listitem "Labelled explicitly"');
+    expect(prepared.text).toContain('#n5 button "Delete Taxi"');
+  });
+});

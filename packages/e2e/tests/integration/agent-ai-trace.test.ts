@@ -5,6 +5,7 @@
  * child-process workers.
  */
 
+import { plainAgent } from '../helpers/plain-agent.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,7 +79,7 @@ describe('--ai-trace on the in-process transport', () => {
       { 'tests/loop.e2e.ts': SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { model } },
+        config: { tests: 'tests/**/*.e2e.ts', agent: { executor: plainAgent(), model } },
         runOptions: { aiTrace: true },
       },
     );
@@ -124,7 +125,7 @@ describe('--ai-trace on the in-process transport', () => {
       tools: { name: string; description?: string; parameters?: { type?: string } }[];
     };
     expect(input.prompt[0]!.role).toBe('system');
-    expect(String(input.prompt[0]!.content)).toContain('autonomous end-to-end testing agent');
+    expect(String(input.prompt[0]!.content)).toContain('test agent executing exactly one step');
     expect(String(input.prompt.find((message) => message.role === 'user')!.content)).toContain(
       'increment the counter once',
     );
@@ -157,15 +158,17 @@ describe('--ai-trace on child-process workers', () => {
     // A worker re-loads the config module itself, so the scripted model is
     // built inside the config file from the shared helper.
     const helper = fileURLToPath(new URL('../helpers/fake-loop-model.ts', import.meta.url));
+    const executorHelper = fileURLToPath(new URL('../helpers/plain-agent.ts', import.meta.url));
     const configSource = `import { defineConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 import { installFakeLoopModel } from ${JSON.stringify(helper)};
+import { plainAgent } from ${JSON.stringify(executorHelper)};
 
 export default defineConfig({
   app: { url: process.env.APP_URL! },
   targets: [{ name: 'web', platform: 'web', backend: playwright() }],
   workers: 2,
-  agent: { model: installFakeLoopModel(${RESPONDER_SOURCE}) },
+  agent: { executor: plainAgent(), model: installFakeLoopModel(${RESPONDER_SOURCE}) },
 });
 `;
     const result = await runProjectWithConfigFile(

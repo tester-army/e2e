@@ -9,7 +9,7 @@
 import type { AgentCacheContext } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
-import { readTraceEntry } from '../cache/trace.ts';
+import { readTraceEntry, type ActionTrace } from '../cache/trace.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
@@ -134,11 +134,15 @@ export class StepTraceSession {
     const outcome = await replayTrace(host, trace);
     this.consumedReplay = true;
     if (outcome.completed) {
-      // The recorded end path is the trace's postcondition: a flow whose
-      // destination changed replays mechanically but must not pass on its
-      // own — the executor gets the step and judges the live state instead.
+      // The recorded end state is the trace's postcondition. The path must
+      // still match, and the text the recorded run saw appear must appear
+      // again — waited for, since the recorded run waited for it too (a
+      // report that takes half a minute is replayed as a click, and the
+      // click alone proves nothing). A flow whose outcome does not return
+      // hands off; the executor judges the live state instead.
       const endMismatch =
-        trace.endPath !== undefined && !samePathname(await host.currentPath(), trace.endPath);
+        (trace.endPath !== undefined && !samePathname(await host.currentPath(), trace.endPath)) ||
+        !(await this.endStateReturned(host, trace));
       if (!endMismatch) {
         this.replaySource = { ...trace.executor };
         this.replaySummary = trace.summary;
@@ -195,7 +199,11 @@ export class StepTraceSession {
    * proves the flow reached the right state. A replayed step re-stages its
    * own entry with fresh descriptors, which is how staleness self-heals.
    */
-  stage(verdictSummary: string | undefined, endPath: string | undefined): void {
+  stage(
+    verdictSummary: string | undefined,
+    endPath: string | undefined,
+    endState?: { readonly texts: readonly string[]; readonly waitMs: number },
+  ): void {
     if (this.recorder === undefined) return;
     const trace = this.recorder.finalize({
       executor: this.replaySource ?? this.options.executor,
@@ -204,6 +212,7 @@ export class StepTraceSession {
       summary: this.replaySummary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
+      ...(endState === undefined ? {} : { endTexts: endState.texts, endWaitMs: endState.waitMs }),
     });
     if (trace === undefined) return;
     // A trace with no start anchor — no recorded path (a surface without a URL)
@@ -211,6 +220,24 @@ export class StepTraceSession {
     // Writing it would be pure store traffic, so it is not written at all.
     if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
     this.cache.staged.push({ keyHash: this.keyHash, trace, stepIndex: this.options.stepIndex });
+  }
+
+  /**
+   * Whether the text the recorded run saw appear is on screen again, waiting
+   * up to the recorded duration (bounded by the step clock) for it to land.
+   * A trace without recorded end text is judged by its path alone.
+   */
+  private async endStateReturned(host: StepCacheHost, trace: ActionTrace): Promise<boolean> {
+    const wanted = (trace.endTexts ?? []).map(normalizeText).filter((text) => text !== '');
+    if (wanted.length === 0) return true;
+    const budgetMs = Math.min(trace.endWaitMs ?? 0, Math.max(0, host.remainingMs() - END_STATE_RESERVE_MS));
+    const deadline = Date.now() + budgetMs;
+    for (;;) {
+      const shape = normalizeText((await host.observe()).shape);
+      if (wanted.every((text) => shape.includes(text))) return true;
+      if (Date.now() >= deadline || host.signal.aborted) return false;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(END_STATE_POLL_MS, deadline - Date.now())));
+    }
   }
 
   /**
@@ -232,6 +259,15 @@ export class StepTraceSession {
   private missed(reason: TraceReplayMissReason | ReplayedPrefix['stopReason'], totalActions: number): StepCacheInfo {
     return { mode: 'missed', reason, replayedActions: 0, totalActions };
   }
+}
+
+/** Poll cadence while a replay waits for the recorded end state to return. */
+const END_STATE_POLL_MS = 500;
+/** Step clock kept back from that wait, so a hand-off still has room to act. */
+const END_STATE_RESERVE_MS = 20_000;
+
+function normalizeText(text: string): string {
+  return text.replace(/\s+/g, ' ').toLowerCase();
 }
 
 /** Pathname-only comparison: volatile query strings must not break zero-turn. */

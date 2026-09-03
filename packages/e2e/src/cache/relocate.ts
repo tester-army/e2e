@@ -13,7 +13,7 @@
  */
 
 import type { SemanticNode } from '../backend/surface.ts';
-import { describeTarget } from '../agent/actions.ts';
+import { containerKey, describeTarget } from '../agent/actions.ts';
 import type { TraceTargetDescriptor } from './trace.ts';
 
 /**
@@ -22,7 +22,7 @@ import type { TraceTargetDescriptor } from './trace.ts';
  * change, because an entry recorded under different rules could relocate to a
  * different node.
  */
-export const REPLAY_POLICY_VERSION = 'conservative/2';
+export const REPLAY_POLICY_VERSION = 'conservative/3';
 
 export type RelocationFailure = 'target-not-found' | 'target-ambiguous';
 
@@ -51,7 +51,12 @@ const IDENTITY_FIELDS = ['role', 'name', 'testId', 'placeholder', 'inputPurpose'
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, SemanticNode>,
-  options: { readonly redact: (text: string) => string; readonly testIdAttribute: string },
+  options: {
+    readonly redact: (text: string) => string;
+    readonly testIdAttribute: string;
+    /** Parent ids, so a recorded container key (`within`) can be checked. */
+    readonly parents?: ReadonlyMap<string, string>;
+  },
 ): RelocationResult {
   const strict = matchDescriptor(descriptor, nodes, options);
   if (strict.kind === 'found' || strict.failure === 'target-ambiguous') return strict;
@@ -64,7 +69,11 @@ export function relocateDescriptor(
 function matchDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, SemanticNode>,
-  options: { readonly redact: (text: string) => string; readonly testIdAttribute: string },
+  options: {
+    readonly redact: (text: string) => string;
+    readonly testIdAttribute: string;
+    readonly parents?: ReadonlyMap<string, string>;
+  },
 ): RelocationResult {
   const requireText = descriptor.testId === undefined && descriptor.name === undefined;
   if (requireText && descriptor.text === undefined && descriptor.placeholder === undefined) {
@@ -73,10 +82,17 @@ function matchDescriptor(
     return { kind: 'failed', failure: 'target-not-found' };
   }
   const matches: string[] = [];
+  const parents = options.parents ?? new Map<string, string>();
   for (const [id, node] of nodes) {
     const candidate = describeTarget(node, options.redact, options.testIdAttribute);
     if (candidate === undefined) continue;
     if (!fieldsMatch(descriptor, candidate, requireText)) continue;
+    // A recorded container key must hold: the same "Delete" in another row
+    // is a different control. Without parent links the key cannot be checked
+    // and the candidate is not trusted — fail closed, never guess a row.
+    if (descriptor.within !== undefined && containerKey(id, nodes, parents, options.redact) !== descriptor.within) {
+      continue;
+    }
     matches.push(id);
     if (matches.length > 1) return { kind: 'failed', failure: 'target-ambiguous' };
   }

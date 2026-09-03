@@ -140,7 +140,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           // A projection of the caller's schema lets the provider enforce the
           // shape; without one the repair loop is the only shape signal.
           const projected = await deriveJsonSchema(schema);
-          const observation = await invocation.observe();
+          const observation = await invocation.observe({ settle: true });
           let repair: PromptInput['repair'];
           for (;;) {
             const candidate = await invocation.ask({
@@ -191,7 +191,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         },
         assertion,
         async (invocation) => {
-          const observation = await invocation.observe();
+          const observation = await invocation.observe({ settle: true });
           const judgment = await askJudgment(invocation, assertion, observation);
           invocation.note({ explanation: judgment.explanation });
           const screenshot = await captureEvidence(invocation, options?.screenshot);

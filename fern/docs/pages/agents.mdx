@@ -10,7 +10,7 @@ agent changes how it decides, not what it is allowed to do.
 
 ## Pick a model
 
-There is no default model. `createAgent()` reads `E2E_MODEL`, a
+There is no default model. The `agent.model` setting, or `E2E_MODEL`, names a
 `provider/model-id` string routed through the Vercel AI Gateway, so one
 `E2E_MODEL_API_KEY` (or `AI_GATEWAY_API_KEY`) reaches any provider:
 
@@ -23,29 +23,98 @@ package works, including a local one:
 
 ```ts title="e2e.config.ts"
 import { openai } from '@ai-sdk/openai';
-import { createAgent } from 'e2e/agent';
 
 export default defineConfig({
-  agent: createAgent({ model: openai('gpt-5.4-mini') }),
+  agent: { model: openai('gpt-5.4-mini'), executor: myAgent },
 });
 ```
 
-The `agent` key also accepts an options block when you have nothing to
-construct: `agent: { model: 'anthropic/claude-sonnet-4.5', context: '...' }`
-runs `createAgent()` with those settings. `context` is a sentence or two of
-project vocabulary and reaches every `agent.*` call; `visionModel` pins a
-separate model for calls that carry pixels. The AI SDK (`ai`) is an optional
-peer dependency; deterministic suites and model-free executors never load it.
+The model alone runs the judgment tier: `agent.assert`, `agent.waitFor`, and
+`agent.extract` need nothing else. `agent.act()` needs a **step executor** too,
+and the runner ships none: pass yours as `agent.executor`, or set `agent` to
+the executor itself. A config without one runs every deterministic test and
+every judgment, and fails its first `agent.act()` with `INVALID_CONFIG`
+naming what is missing. `context` is a sentence or two of project vocabulary
+and reaches every `agent.*` call; `visionModel` pins a separate model for
+calls that carry pixels. The AI SDK (`ai`) is an optional peer dependency;
+deterministic suites and model-free executors never load it.
 
-## Add project tools
+## What the runner hands an executor
 
-`createAgent` builds the built-in agent extended with your tools (AI SDK
-tools with declared semantics), and the `agent` config value accepts the agent
-itself:
+Every `agent.act` step is one fresh call to `runStep(ctx)`. The context carries
+the instruction and its params, the ledger of completed steps, budgets, the
+model, and two things the executor talks to the app through: `ctx.observe()`
+and `ctx.actions`.
+
+An observation is the screen as a tree of nodes, one line per node
+(`#id role "name"`, attributes, `[states]`), redacted and size-bounded, with
+the current `path`. Node ids are stable: the backend stamps an id on each
+element the first time it is observed and reads it back on every later
+observation, so an element keeps its id for as long as it lives in the
+document, and an executor can diff screens instead of re-reading them. A
+combobox lists its options as child nodes. Observations settle before they
+are returned: the runner waits for the data requests earlier actions set off
+(bounded by 5 s) and then for the screen to hold still, so a save is observed
+with its result, never with the screen the click left behind. The same holds
+for `agent.assert`, `waitFor`, and `extract`.
+
+Between steps, the ledger hands over four things per step. Two are the
+runner's: a `did:` line built from the actions it recorded (`type "Nimbus
+Paper Co" into textbox "Supplier name"; tap button "Add supplier"`) and a
+`saw:` line quoting the text that appeared or changed on screen during the
+step (`Ticket TK-6830 · colour Amber · desk 8`). Two are the executor's:
+`noted:` facts it flagged in its verdict (`StepVerdict.facts`) and its
+`observed:` summary. A step the trace cache replayed hands over only what it
+did and showed on this run, never the verdict recorded earlier.
+
+The ledger has a byte budget, and long flows overrun it. Compaction keeps
+what later steps can act on: the three newest agent steps stay in full; every
+other step appears in compact form (its head plus `saw:` and `noted:`, with
+runs of passed checks folded into one line); over budget, the runner drops the
+least valuable entries first — folded checks, then steps that surfaced no
+facts, then steps with facts — middle first within each group, marking each
+gap. A ticket code issued in step two is still there at step fifty.
+
+## Run to run
+
+A test that passes once should pass fifty times when nothing changed. The
+runner removes the variance it can, for any executor:
+
+- Model calls made through the chassis sample at temperature 0, and
+  `providerOptions` pin a provider's thinking level so latency and reasoning
+  cost hold steady. Gateway models carry a stall guard: a response that has
+  not arrived in 120 s is abandoned and re-issued.
+- Every observation waits for the requests earlier actions set off and then
+  for the screen to hold still, as described above.
+- A `complete_step` issued alongside other tool calls is discarded: a verdict
+  has to follow the evidence it claims.
+- The trace cache replays a recorded step zero-turn and hands over to the
+  executor when the app diverged. A trace records the text that appeared over
+  the step and waits for it to return before it self-finalizes; a typed value
+  the step derived at run time (an app-issued code) is a hand-off point, never
+  replayed; and a control is relocated by the row it sat in, so same-named
+  buttons in different rows replay without a guess.
+
+What remains is the app's own nondeterminism and the executor's judgment.
+Pair every `agent.act` with an `expect`, keep `agent.assert` for judgments an
+`expect` cannot make, and keep the trace cache on.
+`packages/testbed/bench-repeat.mjs` in the repository runs a suite N times and
+tallies pass rates per test; that number, not a single green run, is the one
+to watch.
+
+## Build an executor on the chassis
+
+`createToolLoopExecutor` from `e2e/agent` is the chassis: the verdict tool,
+budget hard stops, loop guards, wind-down near the clock, discarded batched
+conclusions, model accounting, and `--debug` transcripts. You bring the tool
+vocabulary and the first prompt. The grammar an executor acts through is
+`ctx.actions` (`tap`, `type`, `typeSecret`, `press`, `select`, `scroll`,
+`navigate`); `ctx.target.verbs` is the subset the target's backend declared,
+so offer a model exactly that.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
-import { createAgent, defineTool } from 'e2e/agent';
+import { createToolLoopExecutor, defineTool } from 'e2e/agent';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -59,21 +128,43 @@ const seedCart = defineTool(
   { replay: 'none', mutates: true, secrets: false },
 );
 
+const myAgent = createToolLoopExecutor({
+  name: 'my-agent',
+  version: '1',
+  system: 'You are a QA agent executing one test step. Verify every outcome on screen.',
+  tools: (ctx, helpers) => ({
+    tap: tool({
+      description: 'Tap one node.',
+      inputSchema: z.object({ target: z.string() }),
+      execute: ({ target }) =>
+        helpers.guard(async () => {
+          await ctx.actions.tap({ id: target });
+          return `Tapped #${target}.\n\n${(await ctx.observe()).text}`;
+        }),
+    }),
+    seed_cart: seedCart.tool,
+  }),
+  buildPrompt: async (ctx) =>
+    `Execute this test step: ${ctx.step.instruction}\n\n${ctx.ledger}\n\nScreen:\n${(await ctx.observe()).text}`,
+  prepareMessages: (messages) => messages, // compact history, or return { messages, stop }
+});
+
 export default defineConfig({
   app: { url: process.env.APP_URL! },
-  agent: createAgent({ tools: { seedCart } }),
+  agent: { model: process.env.E2E_MODEL, executor: myAgent },
 });
 ```
 
-Now `agent.act('seed three items and check out')` can call your test API
-mid-flow. A tool that only makes sense on some targets declares them:
-`{ ..., platforms: ['ios', 'android'] }` keeps a swipe tool off a web target,
-and the model never sees a verb the surface cannot honor. `createAgent()` with no arguments is exactly what runs by default;
-`system` appends guidance, `model` overrides the config-resolved one.
+`defineTool` attaches the semantics the harness keys on (`replay`, `mutates`,
+`secrets`, optional `platforms`); `isDefinedTool` and `toolAppliesTo` let an
+executor merge project tools into its own set and keep a swipe tool off a web
+target. `prepareMessages` runs between turns: what it returns carries forward,
+and `{ messages, stop }` forces the conclusion when the executor has evidence
+the loop guards cannot see.
 
 ## Keep the loop, change the vocabulary
 
-`createToolLoopExecutor` is the chassis under the built-in agent: the verdict
+`createToolLoopExecutor` is the same chassis over a different vocabulary: the verdict
 tool, budget hard stops, loop guards, wind-down near the clock, model
 accounting, and `--debug` transcripts. Bring your own tool vocabulary and it
 does the rest. This is how you drive something that is not a browser, such as
@@ -148,7 +239,7 @@ export default defineConfig({ agent: scripted });
 of the app. `ctx.target.verbs` is the subset of those verbs the target's backend
 declared (a backend with `perform` gives `tap`/`type`/`typeSecret`/`press`/
 `select`, `swipe` gives `scroll`, `app.navigate` gives `navigate`); offer a model
-exactly that vocabulary, as the built-in agent does, rather than a verb the
+exactly that vocabulary rather than a verb the
 surface can only reject.
 Secrets in params arrive as name-only placeholders; `actions.typeSecret(target,
 name)` performs the authorized fill without the plaintext ever passing through

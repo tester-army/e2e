@@ -14,6 +14,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
+import { plainAgent } from '../helpers/plain-agent.ts';
 
 const SUITE = `import { test, expect } from 'e2e';
 
@@ -69,15 +70,6 @@ const INHERIT_SUITE = `import { test } from 'e2e';
 test('failed verdict inherits the runtime code', async ({ app, agent }) => {
   await app.open();
   await agent.act('tap twice', undefined, { maxSteps: 1 });
-});
-`;
-
-const LOOP_SUITE = `import { test, expect } from 'e2e';
-
-test('default agent increments the counter', async ({ app, agent, screen }) => {
-  await app.open();
-  await agent.act('increment the counter once and verify it shows 1');
-  await expect(screen.getByRole('status')).toHaveText('1');
 });
 `;
 
@@ -324,7 +316,10 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/assert.e2e.ts': ASSERT_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      {
+        appUrl: app.url,
+        config: { tests: 'tests/**/*.e2e.ts', agent: { executor, judgments: 'executor' } },
+      },
     );
     try {
       const result = resultByTitle(outcome, 'custom executor judges assertions');
@@ -558,7 +553,7 @@ describe('loop guards and transcripts', () => {
       { 'tests/loop-guard.e2e.ts': LOOP_GUARD_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { model } },
+        config: { tests: 'tests/**/*.e2e.ts', agent: { executor: plainAgent(), model } },
         runOptions: { debug: true },
       },
     );
@@ -588,7 +583,16 @@ describe('loop guards and transcripts', () => {
   }, 120_000);
 });
 
-describe('agent.act with the default ToolLoopAgent executor', () => {
+const BATCH_SUITE = `import { test, expect } from 'e2e';
+
+test('the agent batches two taps', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('increment the counter twice and verify it shows 2');
+  await expect(screen.getByRole('status')).toHaveText('2');
+});
+`;
+
+describe('chassis: batched actions and premature conclusions', () => {
   let app: FixtureApp;
   let outcome: RunOutcome;
   let project: FixtureProject;
@@ -596,34 +600,26 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
   beforeAll(async () => {
     app = await startFixtureApp();
     const model = installFakeLoopModel((call) => {
-      if (call.lastToolResult === '') {
-        // First turn: the prompt carries the instruction and initial screen.
+      if (call.turn === 1) {
+        // Two independent taps plus a conclusion in the same turn: the taps
+        // run, the conclusion judged a screen the model never saw.
         const id = nodeIdFor(call.prompt, /button "Increment"/);
-        return [{ toolName: 'tap', input: { target: id } }];
-      }
-      // The tap result carries the updated screen; conclude once it shows 1.
-      if (/Updated screen/.test(call.lastToolResult)) {
         return [
-          {
-            toolName: 'complete_step',
-            input: {
-              status: 'passed',
-              summary: 'tapped Increment and the counter shows 1',
-            },
-          },
+          { toolName: 'tap', input: { target: id } },
+          { toolName: 'tap', input: { target: id } },
+          { toolName: 'complete_step', input: { status: 'passed', summary: 'too early' } },
         ];
       }
-      throw new Error(`unexpected loop state: ${call.lastToolResult}`);
+      return [
+        {
+          toolName: 'complete_step',
+          input: { status: 'passed', summary: 'tapped Increment twice; the counter shows 2' },
+        },
+      ];
     });
     const result = await runProject(
-      { 'tests/loop.e2e.ts': LOOP_SUITE },
-      {
-        appUrl: app.url,
-        config: {
-          tests: 'tests/**/*.e2e.ts',
-          agent: { model, context: 'This is the e2e fixture application.' },
-        },
-      },
+      { 'tests/batch.e2e.ts': BATCH_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor: plainAgent(), model } } },
     );
     outcome = result.outcome;
     project = result.project;
@@ -634,42 +630,21 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
     await app?.close();
   });
 
-  it('drives the step through the tool loop to a passed verdict', () => {
-    expect(resultByTitle(outcome, 'default agent increments the counter').status).toBe('passed');
+  it('runs both taps against the same screen and discards the batched conclusion', () => {
+    const result = resultByTitle(outcome, 'the agent batches two taps');
+    expect(result.status).toBe('passed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+    expect(step.metrics!.actionSteps).toBe(2);
+    expect(step.metrics!.modelCalls).toBe(2);
+    expect(step.explanation).toBe('tapped Increment twice; the counter shows 2');
   });
 
-  it('offers the default toolset and concludes through complete_step', () => {
-    expect(loopCalls.length).toBeGreaterThanOrEqual(2);
-    expect(loopCalls[0]!.toolNames).toEqual([
-      'complete_step',
-      'navigate',
-      'observe',
-      'press',
-      'scroll',
-      'select',
-      'tap',
-      'type',
-    ]);
-    expect(loopCalls[0]!.prompt).toContain('increment the counter once');
-    expect(loopCalls[1]!.lastToolResult).toContain('Updated screen');
-  });
-
-  it('accounts executor model calls in the step metrics and provenance', () => {
-    const attempt = resultByTitle(outcome, 'default agent increments the counter').attempts.at(
-      -1,
-    )!;
-    const step = attempt.steps.find((candidate) => candidate.api === 'agent.act');
-    expect(step!.metrics!.modelCalls).toBeGreaterThanOrEqual(2);
-    expect(step!.metrics!.actionSteps).toBe(1);
-    expect(step!.model).toMatchObject({
-      provider: 'fake-loop',
-      model: 'scripted-loop',
-      tokenAccounting: 'provider',
-      calls: step!.metrics!.modelCalls,
-    });
-    expect(step!.model!.inputTokens).toBeGreaterThan(0);
-    expect(step!.events.filter((event) => event.kind === 'model')).toHaveLength(
-      step!.metrics!.modelCalls,
-    );
+  it('tells the model why the conclusion was discarded', () => {
+    const second = loopCalls[1]!;
+    expect(second.toolResults.filter((text) => text.startsWith('Tapped #'))).toHaveLength(2);
+    // Both taps ran: the plain executor's second tap result shows the counter at 2.
+    expect(second.toolResults.findLast((text) => text.startsWith('Tapped #'))).toMatch(/"Counter"[^\n]*"2"/);
+    expect(second.userTexts.at(-1)).toContain('[SYSTEM] Your complete_step was discarded');
   });
 });
+

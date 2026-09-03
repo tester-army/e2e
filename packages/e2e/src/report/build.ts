@@ -270,7 +270,9 @@ function relativeSource(
 const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
 
 function serializeStep(step: StepRecord): ReportStep {
-  const { error, ...rest } = step;
+  // The hand-off is prompt context for later steps, not part of the record.
+  const { error, handoff, ...rest } = step;
+  void handoff;
   return {
     ...rest,
     source: UNIMPLEMENTED_STEP_SOURCE,

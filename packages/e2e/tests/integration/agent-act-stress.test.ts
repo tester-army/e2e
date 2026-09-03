@@ -4,6 +4,7 @@
  * path with a config-file executor. Everything scripted — no model spend.
  */
 
+import { plainAgent } from '../helpers/plain-agent.ts';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -114,7 +115,7 @@ describe('secret fill policy under a hostile executor', () => {
       { 'tests/secret.e2e.ts': SECRET_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { model }, credentials: CREDS },
+        config: { tests: 'tests/**/*.e2e.ts', agent: { executor: plainAgent(), model }, credentials: CREDS },
         runOptions: { debug: true },
       },
     );
@@ -205,7 +206,7 @@ test('defiant model', async ({ app, agent }) => {
     const startedMs = Date.now();
     const { outcome, project } = await runProject(
       { 'tests/defiant.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { executor: plainAgent(), model } } },
     );
     try {
       const result = resultByTitle(outcome, 'defiant model');

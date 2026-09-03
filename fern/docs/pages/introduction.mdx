@@ -9,15 +9,13 @@ secrets, and the report. The thinking is yours to control.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
+import { createAgent } from '@acme/qa-agent'; // any StepExecutor: yours, or a package's
 
 export default defineConfig({
   app: { url: 'http://localhost:3000' },
   targets: [{ name: 'web', platform: 'web', backend: playwright() }],
-  agent: createAgent({
-    system: 'You are a thorough QA agent. Verify every outcome on screen.',
-  }),
+  agent: { model: process.env.E2E_MODEL, executor: createAgent() },
 });
 ```
 
@@ -56,10 +54,10 @@ and `expect` do exactly what they say, for free.
 
 ## What you get
 
-**You control the agent.** `createAgent()` is the built-in one. Give it your
-own tools, keep its loop with a different tool vocabulary (a device toolkit, an
-internal API), or replace it with anything that takes a step and returns a
-verdict. None of that changes the runner's side of the contract: observations
+**You control the agent.** The runner ships none. Build one on the
+`createToolLoopExecutor` chassis with your own tool vocabulary (a browser
+grammar, a device toolkit, an internal API), or plug in anything that takes a
+step and returns a verdict. None of that changes the runner's side of the contract: observations
 stay redacted, harness actions stay policed, and model budgets and the step
 deadline stay enforced.
 

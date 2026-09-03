@@ -7,8 +7,8 @@
  * budgets, or the report.
  *
  * This module never imports the AI SDK: a hand-rolled executor with no AI SDK
- * is a valid implementation. The AI-SDK golden path lives in
- * `default-agent.ts` behind the same interface.
+ * is a valid implementation. The runner ships no executor of its own; the
+ * AI SDK chassis in `tool-loop.ts` is what a project builds one on.
  *
  * Trust model: an executor is trusted project code, in the same trust domain
  * as the config module that constructed it — it may hold its own model and
@@ -48,6 +48,11 @@ export interface ExecutorObservation {
   readonly text: string;
   readonly truncated: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  /**
+   * The current location as path and query, redacted, when the backend
+   * reports one. Absent on backends without a location (a device screen).
+   */
+  readonly path?: string;
 }
 
 /** A node named by its id from the newest observation, e.g. `{ id: 'n42' }`. */
@@ -215,6 +220,12 @@ export interface StepVerdict {
   readonly status: StepVerdictStatus;
   readonly summary: string;
   readonly errorCode?: AgentErrorCode;
+  /**
+   * Values a later step may need, verbatim — codes the app generated, totals,
+   * names it displayed. Quoted to later steps as their own ledger line, which
+   * outlives the summary when the ledger compacts.
+   */
+  readonly facts?: readonly string[];
 }
 
 /** The brain socket: one step in, one verdict out. */

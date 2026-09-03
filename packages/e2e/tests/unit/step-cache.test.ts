@@ -22,7 +22,7 @@ function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContex
 
 function makeHost(paths: string[]): StepCacheHost {
   return {
-    observe: async () => ({ nodes: new Map(), shape: 'stable' }),
+    observe: async () => ({ nodes: new Map(), parents: new Map(), shape: 'stable' }),
     actions: { navigate: async () => undefined } as unknown as ExecutorActions,
     signal: new AbortController().signal,
     remainingMs: () => 60_000,
@@ -107,6 +107,51 @@ describe('StepTraceSession', () => {
     expect(verdict).toBeUndefined();
     expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
     expect(session.cacheInfo?.mode).toBe('agent-concluded');
+  });
+
+  it('waits for the recorded end text to appear before self-finalizing', async () => {
+    const context = entryContext({ endPath: '/customers', endTexts: ['Report ready: 12 rows'], endWaitMs: 5_000 });
+    const session = makeSession(context);
+    const shapes = ['loading…', 'loading…', 'Report ready: 12 rows exported'];
+    const observed: string[] = [];
+    const slowHost: StepCacheHost = {
+      ...makeHost(['/pricing', '/customers']),
+      observe: async () => {
+        const shape = shapes.length > 1 ? (shapes.shift() as string) : (shapes[0] as string);
+        observed.push(shape);
+        return { nodes: new Map(), parents: new Map(), shape };
+      },
+    };
+    const verdict = await session.tryReplay(slowHost);
+    expect(verdict?.status).toBe('passed');
+    expect(observed.at(-1)).toContain('Report ready');
+    expect(session.cacheInfo?.mode).toBe('self-finalized');
+  });
+
+  it('hands off when the recorded end text never returns within the recorded wait', async () => {
+    const context = entryContext({ endPath: '/customers', endTexts: ['Report ready: 12 rows'], endWaitMs: 300 });
+    const session = makeSession(context);
+    const stuckHost: StepCacheHost = {
+      ...makeHost(['/pricing', '/customers']),
+      observe: async () => ({ nodes: new Map(), parents: new Map(), shape: 'Generating report…' }),
+    };
+    const verdict = await session.tryReplay(stuckHost);
+    expect(verdict).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+  });
+
+  it('stages the end state the step reached, bounded, for the next replay to wait for', () => {
+    const context = fakeContext(async () => ({ status: 'miss' }));
+    const session = makeSession(context);
+    session.record({ name: 'navigate', url: '/customers' });
+    session.stage('done', '/customers', { texts: ['Report ready: 12 rows', 'x'.repeat(400)], waitMs: 33_400.6 });
+    const trace = context.staged[0]?.trace;
+    expect(trace?.endTexts?.[0]).toBe('Report ready: 12 rows');
+    expect(trace?.endTexts?.[1]?.length).toBeLessThanOrEqual(160);
+    expect(trace?.endWaitMs).toBe(33_401);
+    // Round trip through the stored shape keeps it.
+    const entry = buildTraceEntry(trace!);
+    expect(entry.payload.endTexts).toEqual(trace?.endTexts);
   });
 
   it('re-stages the original verdict prose, not the replay wrapper', async () => {

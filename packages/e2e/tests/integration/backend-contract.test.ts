@@ -5,6 +5,7 @@
  * capability gating - can never silently regress.
  */
 
+import { plainAgent } from '../helpers/plain-agent.ts';
 import { rmSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -532,10 +533,12 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(true, 'the Submit button is visible'));
       const { outcome, project } = await runProject(
         { 'tests/observe-race.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { executor: plainAgent(), model } }) },
       );
       expect(resultByTitle(outcome, 'asserts a node').status).toBe('passed');
-      expect(observeCalls).toBe(2);
+      // One failed capture, one successful one, plus the settle re-read that
+      // confirms the screen holds still before the judgment.
+      expect(observeCalls).toBeGreaterThanOrEqual(2);
       project.cleanup();
     },
     60_000,
@@ -552,7 +555,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(true, 'unreachable'));
       const { outcome, project } = await runProject(
         { 'tests/observe-broken.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { executor: plainAgent(), model } }) },
       );
       const result = resultByTitle(outcome, 'asserts a node');
       expect(result.status).toBe('failed');
@@ -580,7 +583,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(false, 'the Submit button is disabled'));
       const { outcome, project } = await runProject(
         { 'tests/observe-deadline.e2e.ts': WAIT_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { executor: plainAgent(), model } }) },
       );
       const result = resultByTitle(outcome, 'waits for a condition');
       expect(result.status).toBe('failed');

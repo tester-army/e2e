@@ -916,12 +916,13 @@ export interface CacheConfig {
   dir?: string;
 }
 
-/** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
+/** Agent options; `agent` also accepts a StepExecutor directly. */
 export interface AgentConfig {
   /**
    * The step executor `agent.act()` dispatches to, alongside the options — a
    * custom brain no longer forfeits `model`, budgets, or `context` (RFC0002).
-   * Omitted selects the built-in agent.
+   * The runner ships none: omitted, `agent.act()` fails with INVALID_CONFIG;
+   * the judgment tier still runs on `model` alone.
    */
   executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
@@ -933,6 +934,13 @@ export interface AgentConfig {
   context?: string;
   /** Project-wide default for the per-call `vision` option. */
   vision?: VisionMode;
+  /**
+   * Who judges `assert`, `waitFor`, and `extract`: `'model'` (default) runs
+   * the single-call judgment tier on `model`; `'executor'` routes them through
+   * `agent.executor` with `kind: 'assert'`, so the brain that plans flows
+   * also judges them. Requires `executor`.
+   */
+  judgments?: 'model' | 'executor';
 }
 
 export interface E2EConfig {
@@ -955,7 +963,7 @@ export interface E2EConfig {
   };
   /**
    * Either the agent options block, or the agent itself: any `StepExecutor`
-   * (RFC0001 layer 4), such as the package's `createAgent(...)`. With an
+   * (RFC0001 layer 4), such as one built with `createToolLoopExecutor`. With an
    * agent value, the model falls back to `E2E_MODEL` and every other option
    * keeps its default. Agents never cross a process boundary: workers
    * re-resolve the config module and construct their own, exactly like model
@@ -1035,6 +1043,8 @@ export interface ExecutorObservation {
   readonly text: string;
   readonly truncated: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  /** Current location as path and query, redacted; absent when the backend has none. */
+  readonly path?: string;
 }
 
 /** A node named by its id from the newest observation. */
@@ -1177,6 +1187,8 @@ export interface StepVerdict {
   readonly status: StepVerdictStatus;
   readonly summary: string;
   readonly errorCode?: AgentErrorCode;
+  /** Values a later step may need, verbatim; kept when the ledger compacts. */
+  readonly facts?: readonly string[];
 }
 
 /** The brain socket: one step in, one verdict out. */
@@ -1200,6 +1212,8 @@ export type BlockedCategory =
 
 /** The closed set of codes a `blocked` verdict may carry (chapter 16). */
 export const BLOCKABLE_CODES: ReadonlySet<AgentErrorCode>;
+/** Codes only the runtime assigns (budget, timeout, cancel); an executor may carry but never invent them. */
+export const RUNTIME_CODES: ReadonlySet<AgentErrorCode>;
 
 /** The blocked category a code names, or undefined when it is not blockable. */
 export function blockedCategoryOf(code: AgentErrorCode): BlockedCategory | undefined;

@@ -13,6 +13,7 @@ import { fakeCalls, installFakeModel, judgment, type FakeCall } from '../helpers
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
+import { plainAgent } from '../helpers/plain-agent.ts';
 
 const AGENT_SUITE = `import { test, expect } from 'e2e';
 
@@ -117,7 +118,7 @@ describe('agent judgment tier', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'],
-          agent: { model, context: 'This is the e2e fixture application.' },
+          agent: { executor: plainAgent(), model, context: 'This is the e2e fixture application.' },
         },
       },
     );

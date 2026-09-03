@@ -189,12 +189,85 @@ function validateModel(model: ResolvedModel): { endpoint: string; flavor: string
   return { endpoint: model.endpoint ?? DEFAULT_GATEWAY_ENDPOINT, flavor: 'ai-gateway' };
 }
 
+/**
+ * A model call that has produced nothing after this long is treated as
+ * stalled and re-issued. The SDK's own retries cover errors; a request that
+ * simply never answers is not an error, and without this one such request
+ * spends the step's whole clock. Legitimate slow answers on a loaded gateway
+ * run tens of seconds, so the guard sits well above them.
+ */
+export const MODEL_STALL_MS = 120_000;
+/** Attempts per call before a stall becomes the step's failure. */
+export const MODEL_STALL_ATTEMPTS = 3;
+
 /** Builds the AI SDK language model for one validated resolved model. */
 function instantiate(model: ResolvedModel): { languageModel: SdkLanguageModel } {
   if (model.kind === 'instance') return { languageModel: model.model };
   const { endpoint } = validateModel(model);
   const gateway = aiSdk().createGateway({ apiKey: model.apiKey as string, baseURL: endpoint });
-  return { languageModel: gateway.languageModel(`${model.provider}/${model.id}`) };
+  return {
+    languageModel: withStallGuard(gateway.languageModel(`${model.provider}/${model.id}`)),
+  };
+}
+
+/**
+ * Wraps a model so every generate is raced against `MODEL_STALL_MS` and
+ * re-issued on a stall. Applies to gateway references e2e constructs; a
+ * caller-supplied instance keeps whatever discipline its owner gave it.
+ */
+export function withStallGuard(
+  model: SdkLanguageModel,
+  stallMs = MODEL_STALL_MS,
+  attempts = MODEL_STALL_ATTEMPTS,
+): SdkLanguageModel {
+  const { wrapLanguageModel } = aiSdk();
+  return wrapLanguageModel({
+    model,
+    middleware: {
+      specificationVersion: 'v4',
+      wrapGenerate: async ({ doGenerate, params }) => {
+        let lastStall: Error | undefined;
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+          if (params.abortSignal?.aborted) throw params.abortSignal.reason;
+          const result = await raceStall(Promise.resolve(doGenerate()), stallMs, params.abortSignal);
+          if (result.kind === 'answered') return result.value;
+          lastStall = result.error;
+        }
+        throw lastStall ?? new Error('model call stalled');
+      },
+    },
+  }) as SdkLanguageModel;
+}
+
+async function raceStall<T>(
+  work: Promise<T>,
+  stallMs: number,
+  signal: AbortSignal | undefined,
+): Promise<{ kind: 'answered'; value: T } | { kind: 'stalled'; error: Error }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stalled = new Promise<{ kind: 'stalled'; error: Error }>((resolve) => {
+    timer = setTimeout(
+      () => resolve({ kind: 'stalled', error: new Error(`model call produced no answer within ${String(stallMs)} ms`) }),
+      stallMs,
+    );
+  });
+  const aborted = new Promise<never>((_, reject) => {
+    if (signal === undefined) return;
+    if (signal.aborted) reject(signal.reason);
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+  try {
+    return await Promise.race([
+      work.then((value) => ({ kind: 'answered' as const, value })),
+      stalled,
+      aborted,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    // A stalled request is abandoned; whatever it eventually does must not
+    // surface as an unhandled rejection.
+    work.catch(() => undefined);
+  }
 }
 
 interface UsageCarrier {

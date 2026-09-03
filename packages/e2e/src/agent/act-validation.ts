@@ -103,6 +103,10 @@ function projectSecrets(value: unknown, secrets: Map<string, Secret>, seen: Set<
 }
 
 /** Closes the verdict grammar: the executor cannot invent statuses or codes. */
+/** Bounds for the verdict's facts: a handful of short values, never prose. */
+const MAX_FACTS = 8;
+const MAX_FACT_CHARS = 120;
+
 export function validateVerdict(verdict: unknown, executorName: string): StepVerdict {
   const invalid = (issue: string): never => {
     throw new AgentError(
@@ -135,9 +139,20 @@ export function validateVerdict(verdict: unknown, executorName: string): StepVer
       `blocked requires a blockable errorCode (one of ${[...BLOCKABLE_CODES].join(', ')})`,
     );
   }
+  const facts = candidate['facts'];
+  if (facts !== undefined) {
+    if (!Array.isArray(facts) || facts.some((fact) => typeof fact !== 'string')) {
+      return invalid('facts must be an array of strings');
+    }
+  }
+  const kept = (facts as string[] | undefined)
+    ?.map((fact) => fact.trim().slice(0, MAX_FACT_CHARS))
+    .filter((fact) => fact !== '')
+    .slice(0, MAX_FACTS);
   return {
     status,
     summary: summary.trim().slice(0, MAX_SUMMARY_CHARS),
     ...(code === undefined ? {} : { errorCode: code }),
+    ...(kept === undefined || kept.length === 0 ? {} : { facts: kept }),
   };
 }

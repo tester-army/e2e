@@ -47,7 +47,7 @@ export type ResolvedModel =
 export interface ResolvedAgentConfig {
   /**
    * The step executor `agent.act()` dispatches to, configured as the `agent`
-   * value itself (`agent: createAgent(...)` or any StepExecutor); undefined
+   * value itself (any StepExecutor); undefined
    * selects the default AI SDK executor at fixture time. Like model
    * instances, an executor never crosses a process boundary: workers
    * re-resolve the config module.
@@ -67,6 +67,11 @@ export interface ResolvedAgentConfig {
   readonly context: string | undefined;
   /** Default for the per-call `vision` option; a per-call value always wins. */
   readonly vision: VisionMode;
+  /**
+   * Who judges `assert`/`waitFor`/`extract`: the single-call judgment tier on
+   * `model` (default), or the configured executor through the socket.
+   */
+  readonly judgments: 'model' | 'executor';
 }
 
 export interface ResolvedLimits {
@@ -89,6 +94,7 @@ const AGENT_KEYS = new Set([
   'maxObservationBytes',
   'context',
   'vision',
+  'judgments',
 ]);
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
@@ -127,7 +133,7 @@ export function resolveAgentConfig(
     if (typeof agent !== 'object' || agent === null || Array.isArray(agent)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        'agent must be an options object or the agent itself: createAgent(...) or any { name, runStep(context) }',
+        'agent must be an options object or the agent itself: any { name, runStep(context) }',
       );
     }
     for (const key of Object.keys(agent)) {
@@ -139,7 +145,7 @@ export function resolveAgentConfig(
       if (!isStepExecutor(agent.executor)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          'agent.executor must be a StepExecutor: createAgent(...) or any { name, runStep(context) }',
+          'agent.executor must be a StepExecutor: any { name, runStep(context) }',
         );
       }
       executor = agent.executor;
@@ -154,6 +160,16 @@ export function resolveAgentConfig(
 
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
+  const judgments = agent?.judgments ?? 'model';
+  if (judgments !== 'model' && judgments !== 'executor') {
+    throw new ConfigurationError('INVALID_CONFIG', "agent.judgments must be 'model' or 'executor'");
+  }
+  if (judgments === 'executor' && executor === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      "agent.judgments 'executor' needs agent.executor to be set",
+    );
+  }
   const vision = agent?.vision ?? false;
   if (!isVisionMode(vision)) {
     throw new ConfigurationError(
@@ -171,6 +187,7 @@ export function resolveAgentConfig(
     maxObservationBytes,
     context,
     vision,
+    judgments,
   };
 }
 

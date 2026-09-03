@@ -123,8 +123,8 @@ export function createFixtures(environment: AttemptEnvironment): FixtureGraph {
       agent ??= createAgentFixture({
         engine,
         steps: environment.steps,
-        executor: environment.config.agent.executor ?? lazyDefaultExecutor(),
-        customExecutor: environment.config.agent.executor !== undefined,
+        executor: environment.config.agent.executor ?? missingExecutor(),
+        customExecutor: environment.config.agent.judgments === 'executor',
         models: createModelRouter(environment.config.agent, createModelAdapter),
         config: environment.config,
         target: {
@@ -442,23 +442,23 @@ function recordedSurface<T extends object>(
 }
 
 /**
- * The built-in executor behind a dynamic import, so the optional `ai` peer
- * dependency loads only if an `agent.act()` step actually runs. Deterministic
- * suites and custom-executor projects never pay for - or fail on - it.
+ * The executor `agent.act()` dispatches to when the config named none. The
+ * runner ships no agent: the socket, the budgets, the observation pipeline,
+ * the ledger, and the trace cache are the standard, and the brain that runs
+ * on them is the project's to supply (`agent.executor`, or `agent` set to the
+ * executor itself). Judgment steps — `assert`, `waitFor`, `extract` — need
+ * only a model and keep working without one.
  */
-function lazyDefaultExecutor(): StepExecutor {
-  let executor: StepExecutor | undefined;
+function missingExecutor(): StepExecutor {
   return {
-    name: 'e2e-default-agent',
-    // Keep in lockstep with createAgent's version: cache provenance and model
-    // policyVersion record this wrapper, not the delegate it constructs.
-    version: '2',
-    async runStep(context) {
-      if (executor === undefined) {
-        const { createAgent } = await import('../agent/default-agent.ts');
-        executor = createAgent();
-      }
-      return executor.runStep(context);
+    name: 'no-executor',
+    version: '0',
+    runStep(): Promise<never> {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        'agent.act() needs a step executor and the config names none: set agent.executor to a StepExecutor ' +
+          '(for example one built with createToolLoopExecutor from e2e/agent), or set agent to the executor itself',
+      );
     },
   };
 }

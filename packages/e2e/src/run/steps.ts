@@ -86,6 +86,17 @@ export interface StepCacheInfo {
   totalActions: number;
 }
 
+/**
+ * What one step hands to the steps after it, beside the model's summary: the
+ * text the runner saw appear on screen during the step (app-generated codes,
+ * totals, confirmations — facts no model wrote) and the facts the model chose
+ * to note. Prompt context only; never part of the report.
+ */
+export interface StepHandoff {
+  readonly appeared: readonly string[];
+  readonly noted: readonly string[];
+}
+
 /** Agent-specific step detail attached while the step is still running. */
 export interface StepAgentDetails {
   metrics?: StepMetrics;
@@ -93,6 +104,7 @@ export interface StepAgentDetails {
   cache?: StepCacheInfo;
   observationRevision?: string;
   explanation?: string;
+  handoff?: StepHandoff;
   /** True when masked pixel evidence was model input, not just an artifact. */
   visionInput?: boolean;
   visionDegraded?: VisionDegradation;
@@ -115,6 +127,8 @@ export interface StepRecord {
   durationMs: number;
   observationRevision?: string;
   explanation?: string;
+  /** Prompt-only hand-off detail; the report never carries it. */
+  handoff?: StepHandoff;
   visionInput?: boolean;
   visionDegraded?: VisionDegradation;
   visionOnly?: boolean;
@@ -263,6 +277,7 @@ export class StepRecorder {
       current.observationRevision = details.observationRevision;
     }
     if (details.explanation !== undefined) current.explanation = details.explanation;
+    if (details.handoff !== undefined) current.handoff = details.handoff;
     if (details.visionInput !== undefined) current.visionInput = details.visionInput;
     if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
     if (details.visionOnly !== undefined) current.visionOnly = details.visionOnly;

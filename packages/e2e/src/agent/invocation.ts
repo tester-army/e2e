@@ -40,7 +40,12 @@ import {
   type ModelImage,
 } from './model/adapter.ts';
 import type { ModelRouter } from './model/router.ts';
-import { prepareObservation, type AgentObservation } from './observation.ts';
+import {
+  observationShape,
+  prepareObservation,
+  settleObservation,
+  type AgentObservation,
+} from './observation.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
 
@@ -223,20 +228,34 @@ export class Invocation {
     return instrumentPhase(this.runtime, { ...spec, api: this.options.api }, body, detail);
   }
 
-  /** Captures and redacts one fresh observation. */
-  async observe(): Promise<AgentObservation> {
+  /**
+   * Captures and redacts one fresh observation. A single-shot judgment
+   * (`assert`, `extract`) asks for a settled one: taken while the app is
+   * still reacting to the previous step it reads pre-render state and fails
+   * an assertion the very next frame would have passed — the shape of a
+   * flaky run. A polling caller (`waitFor`) reads raw; its next poll is the
+   * settle.
+   */
+  async observe(options: { settle?: boolean } = {}): Promise<AgentObservation> {
     this.checkDeadline();
     const pixels = this.pixelsRequested();
+    const capture = async (): Promise<AgentObservation> => {
+      const raw = await this.captureObservation(pixels);
+      return prepareObservation(raw, {
+        redact: this.runtime.redact,
+        maxBytes: this.observationByteBudget(),
+        testIdAttribute: this.runtime.config.testIdAttribute,
+      });
+    };
     const observation = await this.instrument(
       { kind: 'observation', phase: 'agent.observe' },
-      async () => {
-        const raw = await this.captureObservation(pixels);
-        return prepareObservation(raw, {
-          redact: this.runtime.redact,
-          maxBytes: this.observationByteBudget(),
-          testIdAttribute: this.runtime.config.testIdAttribute,
-        });
-      },
+      () =>
+        options.settle === true
+          ? settleObservation(capture, observationShape, {
+              remainingMs: () => this.deadline.remaining(),
+              signal: this.runtime.signal,
+            })
+          : capture(),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
     // Bytes the request carried, so a withheld tree reads as the zero it is.

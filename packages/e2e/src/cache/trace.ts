@@ -58,6 +58,8 @@ export interface TraceTargetDescriptor {
   readonly placeholder?: string;
   readonly selector?: string;
   readonly inputPurpose?: string;
+  /** Key of the container the target sat in (a row's first cell); relocation requires the same. */
+  readonly within?: string;
 }
 
 interface ActionBase {
@@ -138,9 +140,24 @@ export interface ActionTrace {
    * a recorded flow whose destination changed hands off instead of passing.
    */
   readonly endPath?: string;
+  /**
+   * Text that appeared on screen between the step's first and last
+   * observation on the recorded run — the visible outcome the step waited for
+   * (a "report ready" line, a new row). A full replay is complete only once
+   * this text is on screen again; until then it keeps looking, for at most
+   * `endWaitMs`, and hands off when it never shows.
+   */
+  readonly endTexts?: readonly string[];
+  /** How long the recorded run took from first action to passing verdict, plus margin. */
+  readonly endWaitMs?: number;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }
+
+/** Bounds on the recorded end state. */
+export const MAX_TRACE_END_TEXTS = 6;
+export const MAX_TRACE_END_TEXT_CHARS = 160;
+export const MAX_TRACE_END_WAIT_MS = 120_000;
 
 export interface TraceEntry {
   readonly schemaVersion: typeof TRACE_SCHEMA_VERSION;
@@ -208,6 +225,23 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   }
   const truncated = raw['truncated'];
   if (truncated !== undefined && typeof truncated !== 'boolean') return undefined;
+  const endTextsRaw = raw['endTexts'];
+  let endTexts: string[] | undefined;
+  if (endTextsRaw !== undefined) {
+    if (!Array.isArray(endTextsRaw) || endTextsRaw.length > MAX_TRACE_END_TEXTS) return undefined;
+    endTexts = [];
+    for (const item of endTextsRaw) {
+      if (typeof item !== 'string' || item === '' || item.length > MAX_TRACE_END_TEXT_CHARS) return undefined;
+      endTexts.push(item);
+    }
+  }
+  const endWaitMs = raw['endWaitMs'];
+  if (
+    endWaitMs !== undefined &&
+    (typeof endWaitMs !== 'number' || !Number.isInteger(endWaitMs) || endWaitMs < 0 || endWaitMs > MAX_TRACE_END_WAIT_MS)
+  ) {
+    return undefined;
+  }
 
   const actionsRaw = raw['actions'];
   if (!Array.isArray(actionsRaw) || actionsRaw.length === 0 || actionsRaw.length > MAX_TRACE_ACTIONS) {
@@ -229,6 +263,8 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     summary,
     ...(startPath === undefined ? {} : { startPath }),
     ...(endPath === undefined ? {} : { endPath }),
+    ...(endTexts === undefined || endTexts.length === 0 ? {} : { endTexts }),
+    ...(endWaitMs === undefined ? {} : { endWaitMs }),
     ...(truncated === undefined ? {} : { truncated }),
   };
 }
@@ -301,6 +337,7 @@ const DESCRIPTOR_FIELDS = [
   'placeholder',
   'selector',
   'inputPurpose',
+  'within',
 ] as const;
 
 function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {

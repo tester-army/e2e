@@ -1,13 +1,14 @@
 /**
  * The tool-loop chassis (RFC0001, layer 4): everything an AI SDK step
- * executor needs except its tool vocabulary. `createAgent` is this chassis
- * plus the grammar toolset; a device or API executor brings different
- * tools and inherits the whole discipline unchanged:
+ * executor needs except its tool vocabulary. A project's executor is this
+ * chassis plus its own toolset and prompt; a device or API executor brings
+ * different tools and inherits the whole discipline unchanged:
  *
  * - the `complete_step` verdict tool and the closed blocked-code policy;
  * - hard-stop handling (budget/timeout/cancel end the loop, never the model);
  * - loop guards (repeated calls and short cycles warn, then force a verdict);
  * - the wind-down notice and forced conclusion on the final turns;
+ * - a conclusion batched with other calls is discarded, never trusted;
  * - model-call accounting and a step transcript for `--debug`.
  */
 
@@ -46,9 +47,8 @@ const MODEL_ERROR_CODES = [
 const MODEL_BLOCKABLE_CODES = MODEL_ERROR_CODES.filter((code) => BLOCKABLE_CODES.has(code));
 
 const VERDICT_RULES = `Verdict rules:
-- When the step's goal is achieved, or you are certain it cannot be, call complete_step exactly once.
-- Verify outcomes with your tools before concluding; never guess success.
-- "passed" means the application behaved as the step required. "failed" means it did not. "blocked" means credentials, the environment, or test setup prevented a product verdict — blocked says nothing about the product and requires an errorCode.`;
+- When the step's goal is achieved, or you are certain it cannot be, call complete_step exactly once. Verify outcomes before concluding; never guess success.
+- passed: the application behaved as the step required. failed: it did not. blocked: credentials, the environment, or test setup prevented a product verdict — blocked says nothing about the product and requires an errorCode.`;
 
 /** Turns remaining when the loop warns the model to wrap up. */
 const WIND_DOWN_TURNS = 5;
@@ -93,8 +93,34 @@ export interface ToolLoopExecutorOptions {
   readonly buildPrompt: (context: StepExecutorContext) => string | Promise<string>;
   /** Upper bound on model turns; capped at the harness model-call budget. */
   readonly maxTurns?: number;
-  /** Between-turn history compaction; identity when omitted. */
-  readonly compactMessages?: (messages: ModelMessage[]) => ModelMessage[];
+  /** AI SDK provider options sent with every model call (thinking level, effort). */
+  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /**
+   * Between-turn history preparation: compaction, and anything the executor
+   * wants the model to read before its next turn (the default agent appends
+   * what changed on screen after a turn that acted). Runs before the loop's
+   * own notices; the returned history carries forward to later turns.
+   */
+  readonly prepareMessages?: (
+    messages: ModelMessage[],
+    turn: PreparedTurn,
+  ) => Promise<PreparedMessages> | PreparedMessages;
+}
+
+/**
+ * What `prepareMessages` hands back: the history for the next turn, and
+ * optionally a reason to stop — the executor has evidence the loop guards
+ * cannot see (a screen that no longer changes) that the step is not
+ * progressing. A stop forces the conclusion tool exactly like a loop guard.
+ */
+export type PreparedMessages = ModelMessage[] | { readonly messages: ModelMessage[]; readonly stop?: string };
+
+/** What an executor's `prepareMessages` learns about the turn that just ended. */
+export interface PreparedTurn {
+  /** Zero-based index of the turn about to run. */
+  readonly stepNumber: number;
+  /** Tool names the previous turn called, in order; empty on the first turn. */
+  readonly previousToolCalls: readonly string[];
 }
 
 /** Builds a step executor from a tool vocabulary and the shared loop chassis. */
@@ -124,6 +150,14 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
 /** One step's loop state and wiring; constructed fresh per runStep. */
 class LoopRun {
   private verdict: StepVerdict | undefined;
+  /**
+   * A verdict the model issued this turn, promoted to `verdict` once the turn
+   * ends without other tool calls beside it. A conclusion batched with actions
+   * judges a screen the model has not seen; it is discarded and the model is
+   * told, so a verdict always follows the evidence it claims.
+   */
+  private pendingVerdict: StepVerdict | undefined;
+  private discardedConclusion = false;
   private hardStop: AgentError | undefined;
   private guardStop: string | undefined;
   private noticedGuardReason: string | undefined;
@@ -156,11 +190,19 @@ class LoopRun {
       instructions: this.instructions(),
       tools,
       toolChoice: 'required',
+      // The same screen should produce the same decision run after run: a
+      // test that passes fifty times in a row is the product, and sampling
+      // noise is the cheapest source of a fifty-first that does not.
+      temperature: 0,
+      ...(this.options.providerOptions === undefined
+        ? {}
+        : { providerOptions: this.options.providerOptions as never }),
       stopWhen: [
         () => this.verdict !== undefined || this.hardStop !== undefined,
         this.ai.stepCountIs(this.maxTurns),
       ],
-      prepareStep: ({ messages, stepNumber }) => this.prepareTurn(messages, stepNumber),
+      prepareStep: ({ messages, stepNumber, steps }) =>
+        this.prepareTurn(messages, stepNumber, steps.at(-1)),
     });
     const identity = this.model as { provider?: string; modelId?: string };
     const prompt = await this.options.buildPrompt(this.context);
@@ -173,6 +215,7 @@ class LoopRun {
           turnStartedMs = Date.now();
         },
         onStepEnd: (step) => {
+          this.settleConclusion(step);
           this.recordTurn(step);
           const estimatedCostUsd = readCost(step.providerMetadata);
           this.context.budgets.recordModelCall({
@@ -240,20 +283,59 @@ class LoopRun {
   }
 
   /**
-   * Per-turn policy, in order: compact history, evaluate the loop guards,
-   * inject the wind-down notice, and — near the budget or after a guard stop —
-   * offer only the conclusion tool. Two forced turns, not one, so a rejected
+   * Promotes or discards the turn's conclusion. `complete_step` alone in its
+   * turn concludes; beside other calls it is dropped, because the model
+   * concluded before seeing what those calls did.
+   */
+  private settleConclusion(step: StepResult<ToolSet>): void {
+    const pending = this.pendingVerdict;
+    this.pendingVerdict = undefined;
+    if (pending === undefined) return;
+    const others = step.toolCalls.filter((call) => call.toolName !== 'complete_step');
+    if (others.length === 0) {
+      this.verdict ??= pending;
+      return;
+    }
+    this.discardedConclusion = true;
+  }
+
+  /**
+   * Per-turn policy, in order: the executor's history preparation, the
+   * loop guards, the wind-down notice, and — near the budget or after a guard
+   * stop — only the conclusion tool. Two forced turns, not one, so a rejected
    * verdict (blocked without a code) can be repaired.
    */
-  private prepareTurn(
+  private async prepareTurn(
     messages: ModelMessage[],
     stepNumber: number,
-  ): {
+    previous: StepResult<ToolSet> | undefined,
+  ): Promise<{
     messages?: ModelMessage[];
     activeTools?: string[];
     toolChoice?: { type: 'tool'; toolName: string };
-  } {
-    let prepared = this.options.compactMessages?.(messages) ?? messages;
+  }> {
+    let prepared = messages;
+    if (this.options.prepareMessages !== undefined) {
+      const result = await this.options.prepareMessages(messages, {
+        stepNumber,
+        previousToolCalls: previous?.toolCalls.map((call) => call.toolName) ?? [],
+      });
+      if (Array.isArray(result)) {
+        prepared = result;
+      } else {
+        prepared = result.messages;
+        if (result.stop !== undefined && this.guardStop === undefined) this.guardStop = result.stop;
+      }
+    }
+    if (this.discardedConclusion) {
+      this.discardedConclusion = false;
+      prepared = appendNotice(
+        prepared,
+        '[SYSTEM] Your complete_step was discarded: it was issued in the same turn as other ' +
+          'tool calls, so it judged a screen you had not seen. Review the results above, then ' +
+          'call complete_step on its own.',
+      );
+    }
     const turnsLeft = this.maxTurns - stepNumber;
     // Never on the very first turn: a deliberately short step timeout still
     // deserves one working turn before the clock takes the verdict.
@@ -317,18 +399,23 @@ class LoopRun {
     const { tool } = this.ai;
     return tool({
       description:
-        'Conclude the step with the final verdict. passed = the application behaved as required and you verified it. failed = the application did not behave as required. blocked = credentials, environment, or test setup prevented a product verdict; blocked requires errorCode.',
+        'Conclude the step. passed = the app behaved as required and you verified it; failed = it did not; blocked = credentials, environment, or setup prevented a verdict (requires errorCode).',
       inputSchema: z.object({
         status: z.enum(['passed', 'failed', 'blocked']),
-        summary: z
-          .string()
-          .min(1)
-          .max(500)
-          .describe('What you did and what you saw, in plain language'),
+        summary: z.string().min(1).max(500).describe('What you did and what you saw'),
         errorCode: z.enum(MODEL_ERROR_CODES).optional(),
+        facts: z
+          .array(z.string().min(1).max(120))
+          .max(8)
+          .optional()
+          .describe(
+            'Values a later step may need, verbatim: codes or numbers the app generated, names, totals. Omit when there are none.',
+          ),
       }),
       execute: async (input): Promise<string> => {
-        if (this.verdict !== undefined) return 'The step already concluded.';
+        if (this.verdict !== undefined || this.pendingVerdict !== undefined) {
+          return 'The step already concluded.';
+        }
         if (
           input.status === 'blocked' &&
           (input.errorCode === undefined ||
@@ -342,7 +429,7 @@ class LoopRun {
             'If the application itself misbehaved, use status "failed" instead.'
           );
         }
-        this.verdict = {
+        this.pendingVerdict = {
           status: input.status,
           summary: input.summary,
           // A passed verdict never carries a code; a redundant one from the
@@ -350,8 +437,9 @@ class LoopRun {
           ...(input.errorCode === undefined || input.status === 'passed'
             ? {}
             : { errorCode: input.errorCode }),
+          ...(input.facts === undefined || input.facts.length === 0 ? {} : { facts: input.facts }),
         };
-        return 'Step concluded.';
+        return 'Step concluded (discarded if this turn also issued other tool calls).';
       },
     });
   }

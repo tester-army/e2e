@@ -20,7 +20,7 @@ Requires Node.js 20.19 or newer.
 
     `e2e` is the runner and SDK. `@e2edev/playwright` is the browser backend:
     the runner itself knows no platform, so every target names the backend
-    that drives it. `ai` is the AI SDK the built-in agent runs on; it is an
+    that drives it. `ai` is the AI SDK model-backed steps run on; it is an
     optional peer, so a suite without agents can skip it.
   </Step>
 
@@ -31,7 +31,6 @@ Requires Node.js 20.19 or newer.
 
     ```ts title="e2e.config.ts"
     import { defineConfig } from 'e2e';
-    import { createAgent } from 'e2e/agent';
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
@@ -39,26 +38,27 @@ Requires Node.js 20.19 or newer.
       app: {
         url: process.env.APP_URL ?? 'http://localhost:3000',
       },
-      // The runner ships no intelligence: you construct the agent and pass it in.
-      // createAgent builds the built-in one; its model comes from E2E_MODEL.
-      agent: createAgent({
-        system: 'You are a thorough QA agent. Verify every outcome on screen.',
-      }),
+      // The runner ships no intelligence. A model (E2E_MODEL) runs the
+      // judgment calls; agent.act() also needs a step executor you build on
+      // the chassis from 'e2e/agent' or plug in from a package.
+      agent: {
+        model: process.env.E2E_MODEL,
+      },
       // The runner knows no platform: a target is served by the backend you pass.
       targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
     });
     ```
 
     This is the central decision in e2e: the runner does not come with an
-    agent baked in. You construct one and pass it. `createAgent` builds the
-    built-in tool-loop agent; `system` shapes how it works. Later you can hand
-    it your own tools, or replace it with a custom executor;
-    [Your own agent](/agents) covers both.
+    agent baked in. A model is enough for `agent.assert`, `agent.waitFor`, and
+    `agent.extract`; `agent.act()` needs a step executor you construct on the
+    `createToolLoopExecutor` chassis or take from a package, passed as
+    `agent.executor`. [Your own agent](/agents) covers it.
 
     The model comes from the `E2E_MODEL` environment variable as a
     `provider/model-id` string, routed through the Vercel AI Gateway so one
     `E2E_MODEL_API_KEY` reaches any provider. To use a provider directly, pass
-    an AI SDK model instance: `createAgent({ model: openai('gpt-5.4-mini') })`.
+    an AI SDK model instance: `agent: { model: openai('gpt-5.4-mini'), executor }`.
 
     The runner can also start your dev server: set `app.command`.
   </Step>

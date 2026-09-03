@@ -117,6 +117,7 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.maxModelCalls` | 25 | 25 |
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
 | `agent.vision` | false | false |
+| `agent.judgments` | `model` | `model` |
 | `agent.visionModel` | `agent.model` | `agent.model` |
 | `cache` | read-write | read-only (read-write on the file store is forced down) |
 | `cache.dir` | `.e2e/cache` | same |
@@ -208,12 +209,16 @@ remain active after opt-in.
 ## The agent value
 
 `agent` accepts either the options block or the agent itself: any value
-implementing `StepExecutor` (16-executors.md), such as the package's
-`createAgent(...)`. An executor is recognized structurally (`name` plus
-`runStep`), so the two shapes cannot collide. With an agent value the options
-keep their defaults and the model still resolves from `E2E_MODEL`, so the
-judgment methods keep working beside a custom agent. There is no `executor` key;
-the config digest records an agent value by its `name` and `version` only.
+implementing `StepExecutor` (16-executors.md). An executor is recognized
+structurally (`name` plus `runStep`), so the two shapes cannot collide. Inside
+the options block the executor is `agent.executor`, beside `model`, budgets,
+and `context`. The runner ships no executor: a config that names none runs
+deterministic tests and the judgment methods, and its first `agent.act()`
+fails with `INVALID_CONFIG`. `agent.judgments` chooses who judges `assert`,
+`waitFor`, and `extract`: `'model'` (default) runs the single-call judgment
+tier on `agent.model`, whatever executor runs `act`; `'executor'` routes them
+through `agent.executor` with `kind: 'assert'`. The config digest records an
+executor by its `name` and `version` only.
 
 ## Model configuration
 

@@ -592,12 +592,13 @@ export interface CacheConfig {
   dir?: string;
 }
 
-/** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
+/** Agent options; `agent` also accepts a StepExecutor directly. */
 export interface AgentConfig {
   /**
    * The step executor `agent.act()` dispatches to, alongside the options —
    * a custom brain no longer forfeits `model`, budgets, or `context`
-   * (RFC0002). Omitted selects the built-in agent.
+   * (RFC0002). The runner ships none: omitted, `agent.act()` fails with
+   * INVALID_CONFIG while the judgment tier still runs on `model` alone.
    */
   executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
@@ -609,6 +610,13 @@ export interface AgentConfig {
   context?: string;
   /** Project-wide default for the per-call `vision` option. */
   vision?: VisionMode;
+  /**
+   * Who judges `assert`, `waitFor`, and `extract`: `'model'` (default) runs
+   * the single-call judgment tier on `model`; `'executor'` routes them through
+   * `agent.executor` with `kind: 'assert'`, so the brain that plans flows
+   * also judges them. Requires `executor`.
+   */
+  judgments?: 'model' | 'executor';
 }
 
 export interface E2EConfig {
@@ -630,7 +638,7 @@ export interface E2EConfig {
     testIdAttribute?: string;
   };
   /**
-   * Either the agent options block, or the agent itself: `createAgent(...)`
+   * Either the agent options block, or the agent itself: any `StepExecutor`
    * from `e2e/agent`, or any hand-rolled `StepExecutor` (RFC0001 layer 4).
    * With an agent value, the model falls back to `E2E_MODEL` and every other
    * option keeps its default. Agents never cross a process boundary: workers

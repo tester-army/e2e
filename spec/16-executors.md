@@ -3,7 +3,7 @@
 Status: informative for `sdk-0.1` (the socket ships; conformance IDs land with
 a later suite version). Canonical types: the executor section of
 [api/e2e.d.ts](./api/e2e.d.ts), including `BLOCKABLE_CODES`. The `e2e/agent`
-value exports (`createAgent`, `defineTool`) are package API documented in the
+value exports (`createToolLoopExecutor`, `defineTool`) are package API documented in the
 product docs; they are not spec-canonical in this version. Direction: RFC0001.
 
 ## Philosophy
@@ -20,7 +20,7 @@ test tools fuse:
 
 The consequence is the portability promise: swapping executors changes only
 the thinking — never safety, budgets, recording, or what a report means. A
-test written against `agent.act` survives moving from the built-in agent to a
+test written against `agent.act` survives moving from one executor to a
 hand-rolled one, to a vendor's, and back.
 
 ## The socket
@@ -33,7 +33,8 @@ interface StepExecutor {
 }
 ```
 
-One step in, one verdict out. Two step kinds cross the socket: `act` (plan
+One step in, one verdict out. Two step kinds cross the socket, the second
+only when `agent.judgments` is `'executor'` (05-config.md): `act` (plan
 and execute a flow) and — when a custom executor is configured — `assert`
 (judge a condition without changing application state; a code-less failure
 maps to `ASSERTION_FAILED`). Deterministic kinds never cross it: screenshots
@@ -44,7 +45,8 @@ construction. The context provides:
   `Secret` param is projected to `{ kind: 'secret', name, purpose }`; the
   plaintext is only ever reachable through `actions.typeSecret`, which runs
   the full secret authorization policy of 14-security.md.
-- `observe()` — a fresh, redacted, size-bounded semantic observation.
+- `observe()` — a fresh, redacted, size-bounded semantic observation, with the
+  current location as `path` when the backend reports one.
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
   is checkpointed against the deadline and the action budget, policed, and
@@ -79,8 +81,10 @@ all is valid; the runner cannot tell the difference and does not care.
 
 ## Verdicts are ternary
 
-`passed | failed | blocked`, plus a plain-language `summary` and an optional
-`errorCode` from the closed agent code set.
+`passed | failed | blocked`, plus a plain-language `summary`, an optional
+`errorCode` from the closed agent code set, and optional `facts`: short values
+a later step may need, quoted verbatim into the ledger as `noted` (at most
+eight, 120 characters each), where they outlive the summary under compaction.
 
 - `failed` — the application did not behave as the step required.
 - `blocked` — something outside the product prevented a verdict. Blocked
@@ -119,55 +123,62 @@ continue to follow the error categories (configuration/infrastructure), so
 CI distinguishes "the app is broken" from "the test could not run" at every
 level: step, run, and process.
 
-## The golden path: `createAgent`
+## The golden path: `createToolLoopExecutor`
 
-The `agent` config value accepts the agent itself. The built-in one is a
-constructor from `e2e/agent`:
+The runner ships no agent. The `agent` config value accepts the executor
+itself (or `agent.executor` beside the options), and the package ships the
+chassis a project builds one on:
 
 ```ts
-import { createAgent, defineTool } from 'e2e/agent';
+import { createToolLoopExecutor, defineTool } from 'e2e/agent';
 
 export default defineConfig({
-  agent: createAgent({
-    model: gateway('anthropic/claude-sonnet-4-5'), // any AI SDK LanguageModel
-    system: 'Prefer keyboard interactions.',
-    tools: { seedCart },                           // defineTool values, merged in
-  }),
+  agent: {
+    model: gateway('anthropic/claude-sonnet-4-5'),   // any AI SDK LanguageModel
+    executor: createToolLoopExecutor({
+      name: 'my-agent',
+      system: 'You are a QA agent. Verify every outcome on screen.',
+      tools: (ctx, helpers) => ({ ...myGrammarTools(ctx, helpers), seedCart }),
+      buildPrompt: async (ctx) => `${ctx.step.instruction}\n\n${(await ctx.observe()).text}`,
+    }),
+  },
 });
 ```
 
-Every option is optional: `createAgent()` with no arguments is exactly the
-default the runner constructs when `agent` is an options block (or absent),
-with the model resolved from `agent.model`/`E2E_MODEL`.
+A project whose config names no executor still runs deterministic tests and
+the judgment tier (`assert`, `waitFor`, `extract`, which need only a model);
+its first `agent.act()` fails with `INVALID_CONFIG` naming the missing
+executor.
 
-The built-in executor is an AI SDK tool loop over the action grammar: mutating tools return the
-updated screen, stale screen snapshots are compacted out of the transcript, a
-wind-down notice fires near the turn budget and near the step clock, and the
-final turns offer only the `complete_step` verdict tool — a wandering model
-produces a real verdict, not a burned budget. Loop guards watch the tool-call
-transcript: literally re-issuing the same call, or cycling through the same
-short call sequence with identical inputs, first earns a notice and then
-forces the conclusion. A guard never invents a verdict — the model still
-writes its own summary; guards only stop it from spending further.
+**`createToolLoopExecutor`** is the chassis: the `complete_step` verdict tool
+and the closed blocked-code policy, hard stops (budget, timeout, cancel end
+the loop, never the model), loop guards (a literally repeated call or a short
+cycle of identical calls earns a notice, then forces the conclusion), a
+wind-down notice near the turn budget and near the step clock with the final
+turns offering only the verdict tool, model-call accounting, sampling at
+temperature 0, and a step transcript under `--debug`. A `complete_step`
+issued alongside other tool calls is discarded and the model is told why: a
+verdict always follows the evidence it claims. The caller supplies the tool
+vocabulary and the first prompt, and may supply `prepareMessages(messages,
+turn)` — between-turn history preparation that carries forward to later turns
+and may return `{ messages, stop }` to force the conclusion when the executor
+has evidence the guards cannot see — and `providerOptions` sent with every
+model call. A guard never invents a verdict; the model still writes its own
+summary.
 
 Under `--debug`, every planned step persists its executor transcript — turns,
 tool calls, truncated results — as a step-attributed `log` artifact, so a
 wandering step is diagnosed by reading, not guessing.
 
-The chassis behind `createAgent` is exported as **`createToolLoopExecutor`**:
-verdict tool, hard stops, loop guards, wind-down, forced conclusion, model
-accounting, and the transcript, with the tool vocabulary and prompt supplied
-by the caller. An executor for a different modality (a device toolkit, an API
-surface) is `createToolLoopExecutor({ name, system, tools, buildPrompt })` —
-`createAgent` itself is exactly that plus the web grammar toolset.
-
 `defineTool(tool, { replay, mutates, secrets })` attaches required semantics
 to an AI SDK tool. Undeclared semantics are not trusted: plain tools are
 rejected, and the annotations are what the policy layer keys on as it grows.
+`isDefinedTool` and `toolAppliesTo` are exported for executors that merge
+project tools into their own vocabulary.
 
 ## Replacing the toolset wholesale
 
-Because the socket is one interface and the built-in loop is ordinary AI SDK
+Because the socket is one interface and the chassis loop is ordinary AI SDK
 code, an executor may ignore `ctx.actions` and bring an entirely different
 tool source — for example, driving a real device through a toolkit that
 already speaks AI SDK tools:
@@ -215,5 +226,5 @@ This works without any change to the runner. Two honest caveats:
   end-to-end wants a driver for it (chapter 09), not just an executor.
 
 Deriving a trustworthy verdict from free text is the executor author's
-problem; the built-in loop solves it with an explicit `complete_step` tool,
+problem; the chassis solves it with an explicit `complete_step` tool,
 and that pattern is recommended over parsing `result.text`.

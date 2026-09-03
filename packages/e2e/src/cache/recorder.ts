@@ -21,6 +21,9 @@ import {
   bound,
   MAX_TRACE_ACTIONS,
   MAX_TRACE_DESCRIPTOR_CHARS,
+  MAX_TRACE_END_TEXT_CHARS,
+  MAX_TRACE_END_TEXTS,
+  MAX_TRACE_END_WAIT_MS,
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
   type ActionTrace,
@@ -72,6 +75,8 @@ export class TraceRecorder {
     readonly summary: string;
     readonly startPath?: string;
     readonly endPath?: string;
+    readonly endTexts?: readonly string[];
+    readonly endWaitMs?: number;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
@@ -88,6 +93,17 @@ export class TraceRecorder {
       ...(conclusion.endPath === undefined || conclusion.endPath === ''
         ? {}
         : { endPath: bound(conclusion.endPath, MAX_TRACE_DESCRIPTOR_CHARS) }),
+      ...(conclusion.endTexts === undefined || conclusion.endTexts.length === 0
+        ? {}
+        : {
+            endTexts: conclusion.endTexts
+              .slice(0, MAX_TRACE_END_TEXTS)
+              .map((text) => bound(this.redact(text), MAX_TRACE_END_TEXT_CHARS))
+              .filter((text) => text !== ''),
+          }),
+      ...(conclusion.endWaitMs === undefined
+        ? {}
+        : { endWaitMs: Math.min(MAX_TRACE_END_WAIT_MS, Math.max(0, Math.round(conclusion.endWaitMs))) }),
       ...(this.truncated ? { truncated: true } : {}),
     };
   }
