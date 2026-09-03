@@ -47,6 +47,12 @@ export function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): bool
   );
 }
 
+/** The semantic tier of a descriptor: every identity field but the test id. */
+export function withoutTestId(descriptor: TraceTargetDescriptor): TraceTargetDescriptor {
+  const { testId: _testId, ...semantic } = descriptor;
+  return semantic;
+}
+
 /**
  * Relocates one descriptor against the nodes of a fresh observation, in two
  * tiers, each exactly-one-or-diverge:
@@ -71,9 +77,7 @@ export function relocateDescriptor(
   const strict = matchDescriptor(descriptor, candidates);
   if (strict.kind === 'found' || strict.failure === 'target-ambiguous') return strict;
   if (descriptor.testId === undefined) return strict;
-  const { testId, ...semantic } = descriptor;
-  void testId;
-  return matchDescriptor(semantic, candidates);
+  return matchDescriptor(withoutTestId(descriptor), candidates);
 }
 
 export interface RelocationOptions {

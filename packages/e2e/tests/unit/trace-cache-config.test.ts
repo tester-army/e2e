@@ -139,7 +139,7 @@ describe('flushStagedTraces', () => {
     context.staged.push({ keyHash: KEY_A, trace: trace('one'), stepIndex: 1 });
     // A trailing act nothing asserted on: the attempt passing is not a check.
     context.staged.push({ keyHash: KEY_B, trace: trace('two'), stepIndex: 3 });
-    await flushStagedTraces(context, 2, 'passed');
+    await flushStagedTraces(context, 2);
     expect([...store.entries.keys()]).toEqual([KEY_A]);
     expect(context.staged).toHaveLength(0);
   });
@@ -148,7 +148,7 @@ describe('flushStagedTraces', () => {
     const store = memoryStore();
     const context = contextWith(store);
     context.staged.push({ keyHash: KEY_A, trace: trace('unchecked'), stepIndex: 1 });
-    await flushStagedTraces(context, -1, 'passed');
+    await flushStagedTraces(context, -1);
     expect(store.entries.size).toBe(0);
   });
 
@@ -158,21 +158,9 @@ describe('flushStagedTraces', () => {
     const context = contextWith(store);
     context.staged.push({ keyHash: KEY_A, trace: trace('confirmed'), stepIndex: 1 });
     context.staged.push({ keyHash: KEY_B, trace: trace('implicated'), stepIndex: 3 });
-    await flushStagedTraces(context, 3, 'failed');
+    await flushStagedTraces(context, 3);
     expect(store.entries.has(KEY_A)).toBe(true);
     expect(store.entries.has(KEY_B)).toBe(false);
-  });
-
-  it('neither writes nor evicts on an interrupted attempt', async () => {
-    const store = memoryStore();
-    store.entries.set(KEY_B, JSON.stringify(buildTraceEntry(trace('still good'))));
-    const context = contextWith(store);
-    context.staged.push({ keyHash: KEY_A, trace: trace('unwritten'), stepIndex: 1 });
-    context.staged.push({ keyHash: KEY_B, trace: trace('kept'), stepIndex: 3 });
-    await flushStagedTraces(context, 3, 'interrupted');
-    expect(store.entries.has(KEY_A)).toBe(false);
-    expect(store.entries.get(KEY_B)).toContain('still good');
-    expect(context.staged).toHaveLength(0);
   });
 
   it('claims distinct key hashes per occurrence of the same signature', () => {

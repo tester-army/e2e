@@ -44,11 +44,11 @@ function makeHost(options: {
     observations: 0,
     observe: async () => {
       host.observations += 1;
-      return {
-        nodes: new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n])),
-        shape: 'stable',
-      };
+      return new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n]));
     },
+    // Settled looks come from the same source; `host.observe` is read at call
+    // time so a test may swap the screen sequence in after construction.
+    observeSettled: () => host.observe(),
     actions,
     signal: new AbortController().signal,
     remainingMs: () => options.remainingMs ?? 60_000,
@@ -79,6 +79,22 @@ describe('verifyAnchors', () => {
     await expect(verifyAnchors(host, [{ role: 'button', name: 'Upgrade' }, savedAnchor])).resolves.toBe(false);
   });
 
+  it('treats a surface that cannot be observed as a mismatch, never as a step failure', async () => {
+    const host = makeHost({});
+    host.observe = async () => {
+      throw new Error('no surface to observe');
+    };
+    await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(false);
+  });
+
+  it('rethrows a runtime hard stop raised while looking', async () => {
+    const host = makeHost({});
+    host.observe = async () => {
+      throw new AgentError('STEP_TIMEOUT', 'out of time');
+    };
+    await expect(verifyAnchors(host, [savedAnchor])).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+  });
+
   it('waits out a slow effect before giving up', async () => {
     let shown = false;
     const host = makeHost({});
@@ -87,7 +103,7 @@ describe('verifyAnchors', () => {
       // Present from the second look on: the effect landed after the last action.
       const list = host.observations >= 3 ? [upgrade, saved] : [upgrade];
       shown = host.observations >= 3;
-      return { nodes: new Map(list.map((n) => [n.ref.id, n])), shape: 'stable' };
+      return new Map(list.map((n) => [n.ref.id, n]));
     };
     await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(true);
     expect(shown).toBe(true);

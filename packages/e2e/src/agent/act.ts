@@ -138,6 +138,8 @@ export async function runAssertStep(
  * settlement. A step that settles non-passed after consuming a cached replay
  * evicts that entry, so a poisoned flow re-records instead of replaying
  * forever; cancellation evicts nothing, exactly like an interrupted attempt.
+ * An assert is a verification step: its passing is what confirms the traces
+ * staged before it at attempt end (cache/context.ts).
  */
 async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<void> {
   await runtime.steps.run('agent', spec.api, spec.instruction, async () => {
@@ -161,7 +163,7 @@ async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Pro
     } finally {
       dispatch.finish();
     }
-  });
+  }, { verifies: spec.kind === 'assert' });
 }
 
 /**
@@ -403,26 +405,23 @@ class ActDispatch {
 
   private async dispatchStep(): Promise<StepVerdict> {
     if (this.stepCache !== undefined) {
-      const replayed = await this.stepCache.tryReplay(this.replayHost());
+      const replayed = await this.stepCache.begin(this.replayHost());
       if (replayed !== undefined) return replayed;
     }
     return this.runtime.executor.runStep(this.context());
   }
 
-  /** The replay engine's narrow view of this dispatch. */
+  /** The cache session's narrow view of this dispatch. */
   private replayHost(): StepCacheHost {
     return {
-      observe: async () => {
-        const observation = await this.observeLatest();
-        return { nodes: observation.nodes, shape: observationShape(observation) };
-      },
+      observe: async () => (await this.observeLatest()).nodes,
+      observeSettled: async () => (await this.observeSettled()).nodes,
       actions: this.buildActions(),
       signal: this.stepSignal,
       remainingMs: () => this.deadline.remaining(),
       redact: this.redact,
       testIdAttribute: this.runtime.config.testIdAttribute,
       currentPath: () => this.currentPath(),
-      observeSettledNodes: async () => (await this.observeSettled()).nodes,
     };
   }
 
@@ -438,27 +437,9 @@ class ActDispatch {
     }
   }
 
-  /**
-   * Stages the step's recorded trace for attempt-end settlement. The end path
-   * and a fresh settled observation are the trace's postcondition — the
-   * state the step passed in, captured only when a write can actually
-   * happen, so read-only runs pay no extra backend call. A postcondition
-   * that cannot be captured stages nothing: a trace without its check would
-   * replay on mechanics alone.
-   */
+  /** Stages the step's recorded trace for attempt-end settlement (`StepTraceSession.stage`). */
   async stageTrace(): Promise<void> {
-    if (this.stepCache === undefined || !this.stepCache.wantsStage) return;
-    let endNodes: AgentObservation['nodes'];
-    try {
-      endNodes = (await this.observeSettled()).nodes;
-    } catch (cause) {
-      // Cancellation and the other runtime hard stops are the step's truth
-      // even when they land during cache bookkeeping; only a surface that
-      // cannot be observed is absorbed, by staging nothing.
-      if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) throw cause;
-      return;
-    }
-    await this.stepCache.stage(this.explanation, await this.currentPath(), endNodes);
+    await this.stepCache?.stage(this.explanation);
   }
 
   /** Evicts a consumed replay entry after a non-passed settle. */
@@ -742,7 +723,9 @@ class ActDispatch {
    * is noise there — and it guarantees the model never reads a snapshot the
    * app is still reacting to, which a fast model turns into a repeated action
    * (double-committing a toggle) and a verdict judged on pre-render state.
-   * Replay reads raw (`observeLatest`) and settles on its own schedule.
+   * Replay's pre-action looks and the cache session's probes settle through
+   * the same path (`observeSettled`); only replay's polls between retries
+   * read raw (`observeLatest`).
    */
   private async observe(): Promise<ExecutorObservation> {
     const observation = await this.observeSettled();

@@ -191,9 +191,10 @@ interface SettleClock {
  * the step clock. An observation taken right after an action can be a
  * snapshot the app is still reacting to — a fetch-backed mutation re-renders
  * long after the action resolves — and acting or judging on it repeats
- * actions and passes steps on pre-render state. Both the executor-facing
- * observe (act.ts) and replay's pre-action wait (replay.ts) settle through
- * this one loop, so the pacing can never drift between them.
+ * actions and passes steps on pre-render state. The executor-facing observe
+ * (act.ts) settles through this loop, and replay's pre-action looks and the
+ * cache session's probes reach it through that same observe, so the pacing
+ * can never drift between them.
  */
 export async function settleObservation<T>(
   capture: () => Promise<T>,
