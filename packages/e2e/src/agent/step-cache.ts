@@ -65,6 +65,9 @@ type EntryRead =
   | { readonly status: 'hit'; readonly entry: TraceEntry }
   | { readonly status: 'miss'; readonly reason: 'no-entry' | 'invalid-entry' };
 
+/** Margin added to a recorded step's duration when replay waits for its end state. */
+const END_WAIT_MARGIN_MS = 10_000;
+
 export class StepTraceSession {
   private readonly host: StepCacheHost;
   private readonly cache: AgentCacheContext;
@@ -74,6 +77,7 @@ export class StepTraceSession {
   private info: StepCacheInfo | undefined;
   private prefix: ReplayedPrefix | undefined;
   private startPath: string | undefined;
+  private startedMs = Date.now();
   /**
    * The screen before any action, captured only when this step may write: the
    * staged trace's end anchors are the delta between this and the passing
@@ -141,6 +145,7 @@ export class StepTraceSession {
    * propagate.
    */
   async begin(): Promise<StepVerdict | undefined> {
+    this.startedMs = Date.now();
     // Captured before any action for the write's start-path precondition, and
     // doubling as the replay decision's current path.
     this.startPath = await this.host.currentPath();
@@ -243,7 +248,7 @@ export class StepTraceSession {
       const current = await this.host.currentPath();
       if (current !== undefined && !samePathname(current, trace.endPath)) return false;
     }
-    return verifyAnchors(this.host, trace.endAnchors ?? []);
+    return verifyAnchors(this.host, trace.endAnchors ?? [], trace.endWaitMs);
   }
 
   private selfFinalize(trace: ActionTrace, outcome: ReplayOutcome): StepVerdict {
@@ -306,6 +311,9 @@ export class StepTraceSession {
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
       ...(endAnchors === undefined ? {} : { endAnchors }),
+      // What the live run needed to reach its end state, plus room for a
+      // slower day: the budget a replay waits for the anchors to return.
+      ...(endAnchors === undefined ? {} : { endWaitMs: Date.now() - this.startedMs + END_WAIT_MARGIN_MS }),
     });
     if (trace === undefined) return;
     // A trace with no start anchor — no recorded path (a surface without a URL)

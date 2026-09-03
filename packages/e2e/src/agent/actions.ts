@@ -22,13 +22,72 @@ import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
-  | { readonly name: 'tap'; readonly node: SemanticNode }
-  | { readonly name: 'type'; readonly node: SemanticNode; readonly value: string }
-  | { readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string }
-  | { readonly name: 'press'; readonly node: SemanticNode; readonly key: string }
-  | { readonly name: 'select'; readonly node: SemanticNode; readonly value: string }
-  | { readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode }
+  | { readonly name: 'tap'; readonly node: SemanticNode; readonly within?: string }
+  | { readonly name: 'type'; readonly node: SemanticNode; readonly value: string; readonly within?: string }
+  | { readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string; readonly within?: string }
+  | { readonly name: 'press'; readonly node: SemanticNode; readonly key: string; readonly within?: string }
+  | { readonly name: 'select'; readonly node: SemanticNode; readonly value: string; readonly within?: string }
+  | { readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode; readonly within?: string }
   | { readonly name: 'navigate'; readonly url: string };
+
+/** Roles whose first text names the thing a control belongs to: a row's key, a list item's title. */
+const CONTAINER_ROLES: ReadonlySet<string> = new Set(['row', 'listitem', 'article', 'group', 'region', 'dialog', 'tabpanel']);
+/** Longest container key kept. */
+const MAX_WITHIN_CHARS = 80;
+
+/**
+ * The key of the nearest named container a node sits in — the first text of
+ * its row or list item — when that key says more than the node's own name.
+ * Ten rows each with a "Delete" button are ten identical descriptors; "Delete
+ * in the row that starts with Budget draft" is one.
+ */
+export function containerKey(
+  id: string,
+  nodes: ReadonlyMap<string, SemanticNode>,
+  parents: ReadonlyMap<string, string>,
+  redact: (text: string) => string,
+): string | undefined {
+  const node = nodes.get(id);
+  const own = node === undefined ? '' : squash(node.name ?? node.text ?? '');
+  let cursor = parents.get(id);
+  while (cursor !== undefined) {
+    const container = nodes.get(cursor);
+    if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
+      const key = firstLeafText(container);
+      if (key !== undefined) {
+        const clean = bound(redact(sanitizeText(key)).replace(/\s+/g, ' ').trim(), MAX_WITHIN_CHARS);
+        return clean === '' || squash(clean) === own ? undefined : clean;
+      }
+      return undefined;
+    }
+    cursor = parents.get(cursor);
+  }
+  return undefined;
+}
+
+/** Parent id of every non-root node, derived from the tree the node map indexes. */
+export function parentsOf(nodes: ReadonlyMap<string, SemanticNode>): ReadonlyMap<string, string> {
+  const parents = new Map<string, string>();
+  for (const node of nodes.values()) {
+    for (const child of node.children ?? []) parents.set(child.ref.id, node.ref.id);
+  }
+  return parents;
+}
+
+/** The first leaf's own text under a container, depth-first. */
+function firstLeafText(node: SemanticNode): string | undefined {
+  for (const child of node.children ?? []) {
+    const own = (child.children?.length ?? 0) === 0 ? (child.text ?? child.name ?? '').trim() : '';
+    if (own !== '') return own;
+    const deeper = firstLeafText(child);
+    if (deeper !== undefined) return deeper;
+  }
+  return undefined;
+}
+
+function squash(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
 
 /** How one committed action reads back: where it acted, and what it did. */
 export interface DescribedAction {
@@ -52,7 +111,10 @@ export function describeAction(
   testIdAttribute: string,
 ): DescribedAction {
   const node = 'node' in action ? action.node : undefined;
-  const target = node === undefined ? undefined : describeTarget(node, redact, testIdAttribute);
+  const within = 'within' in action ? action.within : undefined;
+  const described = node === undefined ? undefined : describeTarget(node, redact, testIdAttribute);
+  const target =
+    described === undefined || within === undefined ? described : { ...described, within: bound(within, MAX_WITHIN_CHARS) };
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redact(sanitizeText(value)));
   const prose = (() => {
@@ -114,6 +176,11 @@ export function describeTarget(
 }
 
 function describeForSummary(target: TraceTargetDescriptor | undefined): string {
+  const where = describeWhere(target);
+  return target?.within === undefined ? where : `${where} in ${JSON.stringify(bound(target.within, 40))}`;
+}
+
+function describeWhere(target: TraceTargetDescriptor | undefined): string {
   if (target === undefined) return 'the screen';
   const label = target.name ?? target.text ?? target.placeholder ?? target.testId ?? '';
   const role = target.role ?? 'node';

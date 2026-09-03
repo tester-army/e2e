@@ -44,7 +44,8 @@ construction. The context provides:
   `Secret` param is projected to `{ kind: 'secret', name, purpose }`; the
   plaintext is only ever reachable through `actions.typeSecret`, which runs
   the full secret authorization policy of 14-security.md.
-- `observe()` — a fresh, redacted, size-bounded semantic observation.
+- `observe()` — a fresh, redacted, size-bounded semantic observation, with the
+  current location as `path` when the backend reports one.
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
   is checkpointed against the deadline and the action budget, policed, and
@@ -136,6 +137,7 @@ export default defineConfig({
     model: gateway('anthropic/claude-sonnet-4-5'), // any AI SDK LanguageModel
     system: 'Prefer keyboard interactions.',
     tools: { seedCart },                           // defineTool values, merged in
+    providerOptions: { google: { thinkingConfig: { thinkingLevel: 'low' } } },
   }),
 });
 ```
@@ -161,13 +163,18 @@ wandering step is diagnosed by reading, not guessing.
 The chassis behind `createAgent` is exported as **`createToolLoopExecutor`**:
 verdict tool, hard stops, loop guards, wind-down, forced conclusion, model
 accounting, and the transcript, with the tool vocabulary and prompt supplied
-by the caller. An executor for a different modality (a device toolkit, an API
-surface) is `createToolLoopExecutor({ name, system, tools, buildPrompt })` —
-`createAgent` itself is exactly that plus the web grammar toolset.
+by the caller, plus `prepareMessages(messages, turn)` — between-turn history
+preparation that carries forward and may return `{ messages, stop }` to force
+the conclusion — and `providerOptions`. An
+executor for a different modality (a device toolkit, an API surface) is
+`createToolLoopExecutor({ name, system, tools, buildPrompt })` — `createAgent`
+itself is exactly that plus the web grammar toolset.
 
 `defineTool(tool, { replay, mutates, secrets })` attaches required semantics
 to an AI SDK tool. Undeclared semantics are not trusted: plain tools are
 rejected, and the annotations are what the policy layer keys on as it grows.
+`isDefinedTool` and `toolAppliesTo` are exported for executors that merge
+project tools into their own vocabulary.
 
 ## Replacing the toolset wholesale
 

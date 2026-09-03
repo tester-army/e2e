@@ -116,10 +116,12 @@ and the host that supplied it states its own trust through the store's
 
 An entry (`schemaVersion: "trace-1"`) wraps one `ActionTrace`: the recorded
 actions, each with a durable target descriptor (role, name, testid,
-placeholder, structural selector — captured at commit time from the node the
-action actually ran against), JSON-safe secret-free input, and a one-line
-prose summary; plus producer provenance, the page path the step began on, the
-page path it passed on, and its **end anchors**: the descriptors of nodes on
+placeholder, structural selector, and the key of the row or list item the
+node sat in — captured at commit time from the node the action actually ran
+against), JSON-safe secret-free input, and a one-line prose summary; plus
+producer provenance, the page path the step began on, the page path it passed
+on, how long the recorded run took to reach its end state (`endWaitMs`), and
+its **end anchors**: the descriptors of nodes on
 screen when the step passed that were absent when it began. Anchors are the
 recording run's verification made mechanical — the executor's final look at
 the screen, which the action list alone drops — and are recorded for a step
@@ -131,7 +133,13 @@ Secret plaintext MUST NOT appear anywhere in an entry — a secret fill is
 recorded by its stable name only, and every recorded string passes the run's
 secret redactor first. A mutation the grammar cannot reproduce (a mutating
 project tool) is recorded as a **gap marker**, so replay can never silently
-skip a state change.
+skip a state change. So is a typed value that appears neither in the step's
+instruction nor in its params: it was derived at run time — from the screen,
+from an earlier step's hand-off — and belongs to that run, so replay performs
+the actions before it and hands the step over rather than typing a value the
+application may not issue again. Relocation requires a recorded container key
+to hold: ten rows each with a "Delete" button are ten identical descriptors,
+and the row's first text is what makes one of them this one.
 
 The key names the exact context the trace was recorded in: project, test,
 target/driver/app identity, step kind, the digests of the normalized
@@ -166,7 +174,9 @@ exactly one node must match or the replay diverges. A full successful replay
 self-finalizes the step as passed — gated by the trace's postcondition: when
 a recorded end path exists, the live pathname must still match it, and every
 recorded end anchor must be present again (found, or ambiguous — presence,
-not uniqueness), waiting out a short settling backoff for a slow effect. A
+not uniqueness), waited for up to the recorded run's own duration plus a
+margin (`endWaitMs`, bounded by the step clock): the recorded run waited for
+its effect too, and the click alone proves nothing. A
 recorded flow whose destination changed, or whose actions all ran but whose
 effect is not on screen — a save that never committed, a form left unnamed —
 hands off (`end-mismatch`) instead of passing on mechanics alone. Any

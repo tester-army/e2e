@@ -46,6 +46,7 @@ import {
   type StepVerdict,
 } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
+import { isDerivedValue } from './derived.ts';
 import { serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import {
@@ -55,7 +56,7 @@ import {
   type AgentObservation,
 } from './observation.ts';
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
-import { describeAction, type RecordableAction } from './actions.ts';
+import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 
@@ -716,11 +717,15 @@ class ActDispatch {
    */
   private async observe(): Promise<ExecutorObservation> {
     const observation = await this.observeSettled();
+    // The location is read after the settled capture, so it names the document
+    // the tree describes; a backend without one simply leaves it out.
+    const path = await this.currentPath();
     return {
       revision: observation.revision,
       text: observation.text,
       truncated: observation.truncated,
       viewport: observation.viewport,
+      ...(path === undefined ? {} : { path: this.redact(path) }),
     };
   }
 
@@ -831,7 +836,15 @@ class ActDispatch {
       this.checkpoint(cause);
       throw cause;
     }
-    this.stepCache?.record(action);
+    if (this.stepCache === undefined) return;
+    // A typed value the step derived at run time is this run's data, not the
+    // flow's: it is recorded as a gap so replay hands over before it rather
+    // than typing a value the app may not issue again.
+    if (action.name === 'type' && isDerivedValue(action.value, this.spec.instruction, this.spec.params)) {
+      this.stepCache.recordGap('type (run-time value)');
+      return;
+    }
+    this.stepCache.record(action);
   }
 
   /** One action against a resolved node; a stale ref asks for a re-observe. */
@@ -842,8 +855,14 @@ class ActDispatch {
   ): Promise<void> {
     return this.runAction(name, async () => {
       const node = this.resolveTarget(target);
+      // The container the node sits in is captured with it: that is what
+      // tells this row's "Delete" from the next row's when the flow replays.
+      const latest = this.latest;
+      const within =
+        latest === undefined ? undefined : containerKey(node.ref.id, latest.nodes, latest.parents, this.redact);
       try {
-        return await perform(node);
+        const action = await perform(node);
+        return within === undefined ? action : { ...action, within };
       } catch (cause) {
         if (cause instanceof BackendError && cause.code === 'NODE_STALE') {
           throw new AgentError(

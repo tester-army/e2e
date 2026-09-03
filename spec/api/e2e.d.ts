@@ -1078,6 +1078,8 @@ export interface ExecutorObservation {
   readonly text: string;
   readonly truncated: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  /** Current location as path and query, redacted; absent when the backend has none. */
+  readonly path?: string;
 }
 
 /** A node named by its id from the newest observation. */
@@ -1243,6 +1245,8 @@ export type BlockedCategory =
 
 /** The closed set of codes a `blocked` verdict may carry (chapter 16). */
 export const BLOCKABLE_CODES: ReadonlySet<AgentErrorCode>;
+/** Codes only the runtime assigns (budget, timeout, cancel); an executor may carry but never invent them. */
+export const RUNTIME_CODES: ReadonlySet<AgentErrorCode>;
 
 /** The blocked category a code names, or undefined when it is not blockable. */
 export function blockedCategoryOf(code: AgentErrorCode): BlockedCategory | undefined;

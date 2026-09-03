@@ -553,7 +553,10 @@ describe('loop guards and transcripts', () => {
           },
         ];
       }
-      const id = nodeIdFor(call.prompt, /button "Increment"/);
+      // Node ids are stable, so the same tap keeps succeeding and every result
+      // carries a screen; the first prompt's screen is compacted away by the
+      // third turn, so the id is read from the newest result, as a model would.
+      const id = nodeIdFor(call.lastToolResult || call.prompt, /button "Increment"/);
       return [{ toolName: 'tap', input: { target: id } }];
     });
     const { outcome, project } = await runProject(

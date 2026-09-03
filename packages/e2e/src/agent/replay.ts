@@ -172,18 +172,35 @@ export async function replayTrace(host: ReplayHost, trace: ActionTrace): Promise
 export async function verifyAnchors(
   host: ReplayHost,
   anchors: readonly TraceTargetDescriptor[],
+  waitMs = 0,
 ): Promise<boolean> {
   if (anchors.length === 0) return true;
+  const startedMs = Date.now();
   try {
     const present = await pollSettled(host, (nodes) =>
       anchorsPresent(anchors, nodes, host) ? true : undefined,
     );
-    return present === true;
+    if (present === true) return true;
+    // The settling backoff covers a slow re-render; the recorded run may have
+    // waited far longer than that for its effect — a report that takes half a
+    // minute — and so does the replay, up to what the recording needed, while
+    // the step clock leaves room for a hand-off to act.
+    const deadline = startedMs + Math.min(waitMs, Math.max(0, host.remainingMs() - END_WAIT_RESERVE_MS));
+    while (Date.now() < deadline && !host.signal.aborted) {
+      await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
+      if (anchorsPresent(anchors, await host.observe(), host)) return true;
+    }
+    return false;
   } catch (cause) {
     if (isReplayFatal(cause, host.signal)) throw cause;
     return false;
   }
 }
+
+/** Poll cadence while a replay waits for the recorded end state beyond the settling backoff. */
+const END_WAIT_POLL_MS = 1_000;
+/** Step clock kept back from that wait, so a hand-off still has room to act. */
+const END_WAIT_RESERVE_MS = 20_000;
 
 /**
  * Relocates one descriptor against the settling screen. Only a missing target

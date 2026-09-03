@@ -48,6 +48,8 @@ export function bound(text: string, maxChars: number): string {
  * the whole screen keeps the first few in document order.
  */
 export const MAX_TRACE_ANCHORS = 8;
+/** Longest a replay waits for the recorded end state to return. */
+export const MAX_TRACE_END_WAIT_MS = 120_000;
 
 const SCROLL_DIRECTIONS: ReadonlySet<string> = new Set(['up', 'down', 'left', 'right']);
 
@@ -66,6 +68,8 @@ export interface TraceTargetDescriptor {
   readonly placeholder?: string;
   readonly selector?: string;
   readonly inputPurpose?: string;
+  /** Key of the container the target sat in (a row's first cell); relocation requires the same. */
+  readonly within?: string;
 }
 
 interface ActionBase {
@@ -155,6 +159,13 @@ export interface ActionTrace {
    * instead of passing on mechanics alone.
    */
   readonly endAnchors?: readonly TraceTargetDescriptor[];
+  /**
+   * How long the recorded run took from its first action to its passing
+   * verdict, plus a margin. A replay waits up to this long for the anchors to
+   * appear: the recorded run waited for its effect too (a report that takes
+   * half a minute), and the click alone proves nothing.
+   */
+  readonly endWaitMs?: number;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }
@@ -226,6 +237,13 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   const truncated = raw['truncated'];
   if (truncated !== undefined && typeof truncated !== 'boolean') return undefined;
 
+  const endWaitMs = raw['endWaitMs'];
+  if (
+    endWaitMs !== undefined &&
+    (typeof endWaitMs !== 'number' || !Number.isInteger(endWaitMs) || endWaitMs < 0 || endWaitMs > MAX_TRACE_END_WAIT_MS)
+  ) {
+    return undefined;
+  }
   const anchorsRaw = raw['endAnchors'];
   let endAnchors: TraceTargetDescriptor[] | undefined;
   if (anchorsRaw !== undefined) {
@@ -259,6 +277,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(startPath === undefined ? {} : { startPath }),
     ...(endPath === undefined ? {} : { endPath }),
     ...(endAnchors === undefined || endAnchors.length === 0 ? {} : { endAnchors }),
+    ...(endWaitMs === undefined ? {} : { endWaitMs }),
     ...(truncated === undefined ? {} : { truncated }),
   };
 }
@@ -331,6 +350,7 @@ const DESCRIPTOR_FIELDS = [
   'placeholder',
   'selector',
   'inputPurpose',
+  'within',
 ] as const;
 
 function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {

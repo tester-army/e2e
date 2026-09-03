@@ -1,8 +1,11 @@
 /**
  * The default step executor (RFC0001, layer 4 golden path): the tool-loop
- * chassis plus the grammar toolset. Every mutating tool returns the
- * updated screen; verdicts, budgets, hard stops, loop guards, wind-down, and
- * the transcript come from the chassis (`tool-loop.ts`) unchanged.
+ * chassis plus the grammar toolset, kept deliberately simple. Every mutating
+ * tool returns the updated screen; verdicts, budgets, hard stops, loop
+ * guards, wind-down, and the transcript come from the chassis
+ * (`tool-loop.ts`) unchanged. A richer brain (screen diffs, batching, its
+ * own operating rules) is the same chassis with a different toolset and
+ * `prepareMessages`.
  */
 
 import type { ModelMessage, ToolSet } from 'ai';
@@ -42,6 +45,8 @@ export interface CreateAgentOptions {
   readonly tools?: Readonly<Record<string, DefinedTool>>;
   /** Upper bound on model turns per step; defaults to the model-call budget. */
   readonly maxTurns?: number;
+  /** AI SDK provider options passed to every model call (e.g. a thinking level). */
+  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 }
 
 /** Builds the default AI SDK step executor. */
@@ -56,7 +61,8 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     ...(options.model === undefined ? {} : { model: options.model }),
     system,
     ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
-    compactMessages: compactSnapshotHistory,
+    ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
+    prepareMessages: compactSnapshotHistory,
     tools: (context, helpers) => ({
       ...wrapUserTools(context, helpers, userTools),
       ...buildGrammarTools(context, helpers),

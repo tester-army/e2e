@@ -97,8 +97,33 @@ export interface ToolLoopExecutorOptions {
   readonly buildPrompt: (context: StepExecutorContext) => string | Promise<string>;
   /** Upper bound on model turns; capped at the harness model-call budget. */
   readonly maxTurns?: number;
-  /** Between-turn history compaction; identity when omitted. */
-  readonly compactMessages?: (messages: ModelMessage[]) => ModelMessage[];
+  /** AI SDK provider options sent with every model call (thinking level, effort). */
+  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /**
+   * Between-turn history preparation: compaction, and anything the executor
+   * wants the model to read before its next turn. Runs before the loop's own
+   * notices; the returned history carries forward to later turns.
+   */
+  readonly prepareMessages?: (
+    messages: ModelMessage[],
+    turn: PreparedTurn,
+  ) => Promise<PreparedMessages> | PreparedMessages;
+}
+
+/**
+ * What `prepareMessages` hands back: the history for the next turn, and
+ * optionally a reason to stop — the executor has evidence the loop guards
+ * cannot see that the step is not progressing. A stop forces the conclusion
+ * tool exactly like a loop guard.
+ */
+export type PreparedMessages = ModelMessage[] | { readonly messages: ModelMessage[]; readonly stop?: string };
+
+/** What an executor's `prepareMessages` learns about the turn that just ended. */
+export interface PreparedTurn {
+  /** Zero-based index of the turn about to run. */
+  readonly stepNumber: number;
+  /** Tool names the previous turn called, in order; empty on the first turn. */
+  readonly previousToolCalls: readonly string[];
 }
 
 /** Builds a step executor from a tool vocabulary and the shared loop chassis. */
@@ -167,11 +192,15 @@ class LoopRun {
       instructions: this.instructions(),
       tools,
       toolChoice: 'required',
+      ...(this.options.providerOptions === undefined
+        ? {}
+        : { providerOptions: this.options.providerOptions as never }),
       stopWhen: [
         () => this.verdict !== undefined || this.hardStop !== undefined,
         this.ai.stepCountIs(this.maxTurns),
       ],
-      prepareStep: ({ messages, stepNumber }) => this.prepareTurn(messages, stepNumber),
+      prepareStep: ({ messages, stepNumber, steps }) =>
+        this.prepareTurn(messages, stepNumber, steps.at(-1)),
     });
     const identity = this.model as { provider?: string; modelId?: string };
     const prompt = await this.options.buildPrompt(this.context);
@@ -251,20 +280,33 @@ class LoopRun {
   }
 
   /**
-   * Per-turn policy, in order: compact history, evaluate the loop guards,
+   * Per-turn policy, in order: the executor's history preparation, the loop guards,
    * inject the wind-down notice, and — near the budget or after a guard stop —
    * offer only the conclusion tool. Two forced turns, not one, so a rejected
    * verdict (blocked without a code) can be repaired.
    */
-  private prepareTurn(
+  private async prepareTurn(
     messages: ModelMessage[],
     stepNumber: number,
-  ): {
+    previous: StepResult<ToolSet> | undefined,
+  ): Promise<{
     messages?: ModelMessage[];
     activeTools?: string[];
     toolChoice?: { type: 'tool'; toolName: string };
-  } {
-    let prepared = this.options.compactMessages?.(messages) ?? messages;
+  }> {
+    let prepared = messages;
+    if (this.options.prepareMessages !== undefined) {
+      const result = await this.options.prepareMessages(messages, {
+        stepNumber,
+        previousToolCalls: previous?.toolCalls.map((call) => call.toolName) ?? [],
+      });
+      if (Array.isArray(result)) {
+        prepared = result;
+      } else {
+        prepared = result.messages;
+        if (result.stop !== undefined && this.guardStop === undefined) this.guardStop = result.stop;
+      }
+    }
     const turnsLeft = this.maxTurns - stepNumber;
     // Never on the very first turn: a deliberately short step timeout still
     // deserves one working turn before the clock takes the verdict.

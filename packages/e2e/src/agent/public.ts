@@ -10,7 +10,15 @@ export { createAgent, type CreateAgentOptions } from './default-agent.ts';
 export {
   createToolLoopExecutor,
   type ToolLoopExecutorOptions,
+  type PreparedTurn,
+  type PreparedMessages,
   type ToolLoopHelpers,
 } from './tool-loop.ts';
-export { defineTool, type DefinedTool, type ToolAnnotations } from './tool.ts';
+export {
+  defineTool,
+  isDefinedTool,
+  toolAppliesTo,
+  type DefinedTool,
+  type ToolAnnotations,
+} from './tool.ts';
 export { AgentError, isAgentError } from './error.ts';

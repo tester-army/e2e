@@ -21,6 +21,7 @@ import {
   bound,
   MAX_TRACE_ACTIONS,
   MAX_TRACE_DESCRIPTOR_CHARS,
+  MAX_TRACE_END_WAIT_MS,
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
   type ActionTrace,
@@ -79,6 +80,8 @@ export class TraceRecorder {
     readonly endPath?: string;
     /** Already projected and capped by `describeAnchors`; recorded as given. */
     readonly endAnchors?: readonly TraceTargetDescriptor[];
+    /** How long the recorded run took to reach its end state, plus margin. */
+    readonly endWaitMs?: number;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
@@ -99,6 +102,9 @@ export class TraceRecorder {
       ...(conclusion.endAnchors === undefined || conclusion.endAnchors.length === 0
         ? {}
         : { endAnchors: conclusion.endAnchors }),
+      ...(conclusion.endWaitMs === undefined
+        ? {}
+        : { endWaitMs: Math.min(MAX_TRACE_END_WAIT_MS, Math.max(0, Math.round(conclusion.endWaitMs))) }),
       ...(this.truncated ? { truncated: true } : {}),
     };
   }

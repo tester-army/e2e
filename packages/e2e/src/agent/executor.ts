@@ -48,6 +48,11 @@ export interface ExecutorObservation {
   readonly text: string;
   readonly truncated: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  /**
+   * The current location as path and query, redacted, when the backend
+   * reports one. Absent on backends without a location (a device screen).
+   */
+  readonly path?: string;
 }
 
 /** A node named by its id from the newest observation, e.g. `{ id: 'n42' }`. */

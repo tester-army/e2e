@@ -22,6 +22,8 @@ export interface AgentObservation {
   readonly text: string;
   readonly bytes: number;
   readonly nodes: ReadonlyMap<string, SemanticNode>;
+  /** Parent id of every non-root node, for the container a target sits in. */
+  readonly parents: ReadonlyMap<string, string>;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
   /** Present only when the backend captured pixels and masking checks out. */
@@ -47,7 +49,8 @@ export function prepareObservation(
   },
 ): AgentObservation {
   const nodes = new Map<string, SemanticNode>();
-  indexNodes(observation.tree, nodes);
+  const parents = new Map<string, string>();
+  indexNodes(observation.tree, nodes, parents);
 
   const redact = options.redact;
   const lines: string[] = [];
@@ -85,6 +88,7 @@ export function prepareObservation(
     text,
     bytes: textBytes,
     nodes,
+    parents,
     viewport: observation.viewport,
     truncated,
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
@@ -215,7 +219,14 @@ export async function settleObservation<T>(
   return value;
 }
 
-function indexNodes(node: SemanticNode, into: Map<string, SemanticNode>): void {
+function indexNodes(
+  node: SemanticNode,
+  into: Map<string, SemanticNode>,
+  parents: Map<string, string>,
+): void {
   into.set(node.ref.id, node);
-  for (const child of node.children ?? []) indexNodes(child, into);
+  for (const child of node.children ?? []) {
+    parents.set(child.ref.id, node.ref.id);
+    indexNodes(child, into, parents);
+  }
 }

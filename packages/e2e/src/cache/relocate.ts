@@ -16,7 +16,7 @@
  */
 
 import type { SemanticNode } from '../backend/surface.ts';
-import { describeTarget } from '../agent/actions.ts';
+import { containerKey, describeTarget, parentsOf } from '../agent/actions.ts';
 import type { TraceTargetDescriptor } from './trace.ts';
 
 /**
@@ -148,8 +148,20 @@ export function relocateDescriptor(
   options: DescriptorMatchOptions,
 ): RelocationResult {
   const candidates = describeNodes(nodes, options);
+  // A recorded container key must hold: the same "Delete" in another row is
+  // a different control. Checked against the tree the candidates came from,
+  // never guessed.
+  const keyed =
+    descriptor.within === undefined
+      ? candidates
+      : (() => {
+          const parents = parentsOf(nodes);
+          return candidates.filter(
+            (candidate) => containerKey(candidate.id, nodes, parents, options.redact) === descriptor.within,
+          );
+        })();
   for (const tier of descriptorTiers(descriptor)) {
-    const result = matchTier(tier, candidates);
+    const result = matchTier(tier, keyed);
     if (result.kind === 'found' || result.failure === 'target-ambiguous') return result;
   }
   return { kind: 'failed', failure: 'target-not-found' };
