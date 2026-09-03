@@ -22,7 +22,7 @@ import { cancelled } from './support.ts';
  * from any module copy, or a runner error. Those cross the boundary untouched;
  * re-wrapping one would turn a `POLICY_DENIED` into an infrastructure failure.
  */
-export function isClassified(cause: unknown): cause is Error {
+function isClassified(cause: unknown): cause is Error {
   if (cause instanceof BackendError || cause instanceof TestError) return true;
   if (cause instanceof ConfigurationError || cause instanceof InfrastructureError) return true;
   return cause instanceof Error && cause.name === 'BackendError';

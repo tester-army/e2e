@@ -155,7 +155,7 @@ export function encodePng(image: DecodedPng): Uint8Array {
  * image; a rect entirely outside it masks nothing but still counts as
  * handled, because the field it covers is not on screen either.
  */
-export function maskRects(image: DecodedPng, rects: readonly Rect[]): void {
+function maskRects(image: DecodedPng, rects: readonly Rect[]): void {
   const { width, height, channels, pixels } = image;
   for (const rect of rects) {
     const x0 = Math.max(0, Math.floor(rect.x));

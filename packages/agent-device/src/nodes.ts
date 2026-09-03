@@ -146,7 +146,7 @@ const ANDROID_TITLE_IDS = [':id/collapsing_toolbar', ':id/action_bar', ':id/tool
  * both read as one vocabulary here, the Android package prefix dropped.
  * `role` is the fallback some platforms send instead.
  */
-export function kindOf(raw: RawNode): string {
+function kindOf(raw: RawNode): string {
   return normalizeKind(raw.type ?? raw.role ?? '');
 }
 
@@ -165,7 +165,7 @@ export function normalizeKind(type: string): string {
 }
 
 /** Contract role for one platform element type. */
-export function roleOf(kind: string, android = false): string | undefined {
+function roleOf(kind: string, android = false): string | undefined {
   if (kind === '') return undefined;
   if (android) return ANDROID_ROLE_MAP[kind] ?? (kind.endsWith('layout') ? 'group' : kind);
   return ROLE_MAP[kind] ?? kind;
