@@ -19,6 +19,7 @@ import {
   errorMessage,
   exitCodeForCategory,
   serializeError,
+  translateBackendError,
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
@@ -311,6 +312,26 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       targetProvenance.set(target.name, validateBackend(target, config));
     }
 
+    // Provisioning: a backend that must fetch something onto this machine (a
+    // first-run browser download) does it here, once per target and before
+    // any worker, outside every launch budget. Only an interrupt cuts it
+    // short, and its progress streams as `notice` events, so the reporter
+    // prints it instead of a worker's stderr fighting the live status block.
+    try {
+      await debug.time('backend.prepare', () =>
+        prepareBackends(
+          selection.perTarget.map(({ target }) => target),
+          runId,
+          interrupted,
+          (target, message) => emit({ type: 'notice', target, message }),
+        ),
+      );
+    } catch (cause) {
+      if (!interrupted.aborted) recordFailure(cause, 'launch');
+      return;
+    }
+    if (interrupted.aborted) return;
+
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A programmatic `rawConfig` cannot cross a process
     // boundary (it may hold live backend handles), so it runs in-process
@@ -413,6 +434,36 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
   }
   return finish();
+}
+
+/**
+ * Runs each target's `prepare` hook in turn. Sequential on purpose: two
+ * backends provisioning the same toolchain would race, and the notices of
+ * one download read better than two interleaved.
+ */
+async function prepareBackends(
+  targets: readonly ResolvedTarget[],
+  runId: string,
+  signal: AbortSignal,
+  notice: (target: string, message: string) => void,
+): Promise<void> {
+  for (const target of targets) {
+    const backend = target.backend;
+    if (backend?.prepare === undefined) continue;
+    if (signal.aborted) return;
+    try {
+      await backend.prepare({
+        runId,
+        targetName: target.name,
+        signal,
+        log: (line) => notice(target.name, line),
+      });
+    } catch (cause) {
+      // Same taxonomy as the worker's lifecycle hooks: a backend failing to
+      // provision is infrastructure, never a test error.
+      throw translateBackendError(cause, ` while preparing backend ${backend.name} for target "${target.name}"`);
+    }
+  }
 }
 
 /** Resolves the run's config: a supplied value, or the discovered file. */

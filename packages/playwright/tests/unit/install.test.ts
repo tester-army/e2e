@@ -32,6 +32,25 @@ describe('ensureBrowsersInstalled', () => {
     expect(logs[0]).not.toContain('firefox');
   });
 
+  it('hands the progress log and the signal to the installer', async () => {
+    const logs: string[] = [];
+    const controller = new AbortController();
+    await ensureBrowsersInstalled(['chromium'], {
+      log: (line) => logs.push(line),
+      isInstalled: () => false,
+      signal: controller.signal,
+      install: async (_names, context) => {
+        expect(context.signal).toBe(controller.signal);
+        context.log('|■■■■    |  50% of 171 MiB');
+      },
+    });
+    expect(logs).toEqual([
+      'Downloading missing Playwright browsers (first run): chromium...',
+      '|■■■■    |  50% of 171 MiB',
+      'Browser download complete.',
+    ]);
+  });
+
   it('propagates installer failures', async () => {
     await expect(
       ensureBrowsersInstalled(['webkit'], {

@@ -157,6 +157,9 @@ export class ListReporter {
       case 'plan':
         this.status.plan(event.total);
         break;
+      case 'notice':
+        this.writeAboveStatus(`${this.pc.dim('ℹ')} ${event.message}`);
+        break;
       case 'test-started':
         this.testStarted(event);
         break;

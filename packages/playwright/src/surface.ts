@@ -17,6 +17,7 @@ import {
   type BackendCleanupContext,
   type BackendInitInfo,
   type BackendObserveOptions,
+  type BackendPrepareInfo,
   type BackendSnapshot,
   type BackendState,
   type LocatorAction,
@@ -179,18 +180,25 @@ export class PlaywrightSurface {
 
   // --- lifecycle ---
 
+  /**
+   * Installs the browser engine on first run, once per run before any worker.
+   * A CDP attach uses the remote's browser, so only a local launch needs the
+   * engine here. The download narrates through `info.log` and is bounded by
+   * the run's interrupt alone, never by a launch budget.
+   */
+  async prepare(info: BackendPrepareInfo): Promise<void> {
+    if (this.connect !== undefined) return;
+    await ensureBrowsersInstalled([this.browserName], { signal: info.signal, log: info.log });
+  }
+
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
   async init(info: BackendInitInfo): Promise<void> {
     this.app = info.app;
     this.testIdAttribute = info.testIdAttribute;
     this.headed = info.headed;
-    // A CDP attach uses the remote's browser; only a local launch needs the
-    // engine installed here. Both boot steps honour the init signal: a
-    // first-run browser download and a launch or attach are the things here
-    // that can outlive a launch budget.
-    if (this.connect === undefined) {
-      await ensureBrowsersInstalled([this.browserName], { signal: info.signal });
-    }
+    // The engine was installed in `prepare`; a launch or attach is the one
+    // boot step left that can outlive a launch budget, and it honours the
+    // init signal.
     this.browser = await this.acquireBrowser(info.signal);
     this.booted = true;
   }

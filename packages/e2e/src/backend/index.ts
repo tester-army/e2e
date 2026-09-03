@@ -206,6 +206,27 @@ export interface BackendApp {
   clearState?(context: OperationContext): Promise<void>;
 }
 
+/**
+ * Facts handed to `prepare`, once per run and target in the runner process,
+ * before any worker exists.
+ */
+export interface BackendPrepareInfo {
+  readonly runId: string;
+  readonly targetName: string;
+  /**
+   * Aborts on interrupt only. Provisioning has no budget: a first-run
+   * download is as long as the network makes it, and cutting it short would
+   * fail every test behind it.
+   */
+  readonly signal: AbortSignal;
+  /**
+   * Reports one line of progress. The runner streams it as a `notice` run
+   * event, so it reaches the reporter and every host sink instead of being
+   * written to a worker's stderr underneath the live status block.
+   */
+  readonly log: (line: string) => void;
+}
+
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
 export interface BackendInitInfo {
   readonly runId: string;
@@ -333,6 +354,15 @@ export interface Backend {
    */
   url?(context: OperationContext): Promise<string>;
   /**
+   * Once per run and target, in the runner process, before any worker starts
+   * and outside every launch budget. Provision what the backend needs on this
+   * machine here (a first-run browser download, a toolchain fetch), so it
+   * happens once instead of per worker and its progress reaches the reporter
+   * through `info.log`. Failure is infrastructure and ends the run before any
+   * test executes.
+   */
+  prepare?(info: BackendPrepareInfo): Promise<void>;
+  /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held
    * handle outlives an in-process worker, so init MUST work on a disposed
@@ -373,6 +403,7 @@ const KNOWN_KEYS = [
   'artifacts',
   'app',
   'url',
+  'prepare',
   'init',
   'startAttempt',
   'endAttempt',
@@ -392,6 +423,7 @@ const FUNCTION_MEMBERS = [
   'perform',
   'swipe',
   'url',
+  'prepare',
   'init',
   'startAttempt',
   'endAttempt',

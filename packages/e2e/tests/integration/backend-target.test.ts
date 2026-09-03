@@ -68,6 +68,7 @@ function toyBackend(
     withState?: boolean;
     withIsolation?: boolean;
     withoutInit?: boolean;
+    withPrepare?: 'ok' | 'fail';
   } = {},
 ) {
   const lifecycle: string[] = [];
@@ -81,6 +82,15 @@ function toyBackend(
     name: 'toy-device',
     version: '1.0.0',
     spiVersion: 1,
+    ...(options.withPrepare === undefined
+      ? {}
+      : {
+          async prepare(info: { log: (line: string) => void }) {
+            lifecycle.push('prepare');
+            info.log('provisioning toy device');
+            if (options.withPrepare === 'fail') throw new Error('toolchain missing');
+          },
+        }),
     ...(options.withoutInit === true
       ? {}
       : {
@@ -359,6 +369,70 @@ test('second attempt also starts fresh', async ({ screen }) => {
       // Worker-end disposal is unconditional: resources acquired lazily, with
       // no init hook to gate on, are still released.
       expect(toy.lifecycle).toEqual(['dispose']);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('prepares a backend once in the runner, before any worker, narrating through notice events', async () => {
+    const toy = toyBackend({ withLocate: true, withPrepare: 'ok' });
+    const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
+    const notices: { target: string; message: string }[] = [];
+    let noticeSeq = 0;
+    let firstTestSeq = 0;
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+        onEvent: (event) => {
+          if (event.type === 'notice') {
+            notices.push({ target: event.target, message: event.message });
+            noticeSeq = event.seq;
+          }
+          if (event.type === 'test-started' && firstTestSeq === 0) firstTestSeq = event.seq;
+        },
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose']);
+      expect(notices).toEqual([{ target: 'toy-sim', message: 'provisioning toy device' }]);
+      expect(noticeSeq).toBeGreaterThan(0);
+      expect(noticeSeq).toBeLessThan(firstTestSeq);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('ends the run before any worker starts when prepare fails', async () => {
+    const toy = toyBackend({ withLocate: true, withPrepare: 'fail' });
+    const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
+    const errors: { message: string; phase: string | undefined }[] = [];
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          cache: 'off',
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+        onEvent: (event) => {
+          if (event.type === 'run-error') {
+            errors.push({ message: event.error.message, phase: event.error.phase });
+          }
+        },
+      });
+      expect(outcome.status).toBe('error');
+      expect(outcome.results).toEqual([]);
+      // No worker ever booted: nothing to init, nothing to dispose.
+      expect(toy.lifecycle).toEqual(['prepare']);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.message).toContain('toolchain missing');
+      expect(errors[0]?.phase).toBe('launch');
     } finally {
       project.cleanup();
     }

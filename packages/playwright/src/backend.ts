@@ -24,6 +24,7 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
     name: 'playwright',
     version: ownVersion(),
     spiVersion: 1,
+    prepare: (info) => surface.prepare(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),

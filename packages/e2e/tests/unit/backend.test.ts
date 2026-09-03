@@ -78,6 +78,23 @@ describe('defineBackend', () => {
     );
   });
 
+  it('binds prepare like every other lifecycle hook', async () => {
+    let boundToSpec = false;
+    const spec: Backend = observingBackend({
+      async prepare(this: unknown) {
+        boundToSpec = this === spec;
+      },
+    });
+    const handle = defineBackend(spec);
+    await handle.prepare?.({
+      runId: 'run',
+      targetName: 'toy',
+      signal: new AbortController().signal,
+      log: () => {},
+    });
+    expect(boundToSpec).toBe(true);
+  });
+
   it('accepts a class instance: prototype methods are found and bound to the body', async () => {
     let boundToApp = false;
     const app = {

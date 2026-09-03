@@ -55,6 +55,7 @@ that preserves per-connection order) and an ISO `at` timestamp.
 type RunEventFact =
   | { type: 'run-started'; runId; projectId; projectRoot; ci; targets }
   | { type: 'plan'; total }
+  | { type: 'notice'; target; message }
   | { type: 'test-started'; testId; title; target }
   | { type: 'step'; testId; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
@@ -63,6 +64,8 @@ type RunEventFact =
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
+`notice` carries one line of run-level progress outside any test — a
+backend's `prepare` hook narrating a first-run browser download, for example.
 `step` events stream each public step's `start` and `end` phases plus its
 child events (observations, model calls, backend actions, policy decisions) as
 they happen — the same feed the list reporter renders. `test-finished`

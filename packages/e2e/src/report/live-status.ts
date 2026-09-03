@@ -125,7 +125,8 @@ export class LiveStatus {
    */
   redraw(): void {
     if (this.raw === undefined) return;
-    const columns = process.stdout.columns ?? 100;
+    // A pty without a size reports 0 columns; treat it as unknown like undefined.
+    const columns = process.stdout.columns || 100;
     let payload = this.statusLines > 0 ? `${ESC}[${this.statusLines}A${ESC}[0J` : '';
     let rows = 0;
     let visible = 0;

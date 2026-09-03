@@ -47,6 +47,12 @@ export type RunEventFact =
     }
   | { readonly type: 'plan'; readonly total: number }
   | {
+      /** One line of run-level progress outside any test: backend provisioning, a first-run download. */
+      readonly type: 'notice';
+      readonly target: string;
+      readonly message: string;
+    }
+  | {
       readonly type: 'test-started';
       readonly testId: string;
       readonly title: string;

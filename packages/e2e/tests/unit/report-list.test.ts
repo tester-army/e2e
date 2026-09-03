@@ -301,6 +301,25 @@ describe('ListReporter', () => {
       expect(text).toContain('1 passed');
     });
 
+    it('prints a notice permanently above the live block', () => {
+      const { chunks, lines, output } = liveCapture();
+      const reporter = new ListReporter(output, { live: true });
+      reporter.handle({ type: 'plan', total: 2 });
+      reporter.handle({
+        type: 'notice',
+        target: 'web',
+        message: 'Downloading missing Playwright browsers (first run): chromium...',
+      });
+      expect(lines).toEqual(['ℹ Downloading missing Playwright browsers (first run): chromium...']);
+      // The progress line is erased before the notice prints and repainted after it,
+      // so a first-run download narrates in scrollback instead of under the block.
+      const eraseIndex = chunks.findIndex((chunk) => chunk.includes('\u001b[1A\u001b[0J'));
+      const noticeIndex = chunks.findIndex((chunk) => chunk.includes('Downloading'));
+      expect(eraseIndex).toBeGreaterThan(-1);
+      expect(eraseIndex).toBeLessThan(noticeIndex);
+      expect(chunks.at(-1)).toContain('0/2 done');
+    });
+
     it('never writes control sequences when live rendering is off', () => {
       const { chunks, output } = liveCapture();
       const reporter = new ListReporter(output, { live: false });
