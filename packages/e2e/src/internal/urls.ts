@@ -46,11 +46,13 @@ export function normalizeBaseUrl(raw: string): NormalizedBaseUrl {
 
 /**
  * Prepends a scheme to a schemeless URL. `localhost:3000` parses as scheme
- * `localhost:` under WHATWG rules, so only `scheme://` counts as explicit; the
+ * `localhost:` under WHATWG rules, so a `scheme:` prefix counts as explicit
+ * only when what follows the colon is not a port (`file:/tmp/app` stays a
+ * file URL and is rejected downstream; `localhost:3000/app` is a host). The
  * loopback check runs on the host the string would have under a scheme.
  */
 function withScheme(raw: string): string {
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw;
+  if (/^[a-z][a-z0-9+.-]*:(?!\d+(?:[/?#]|$))/i.test(raw)) return raw;
   let probe: URL;
   try {
     probe = new URL(`https://${raw}`);

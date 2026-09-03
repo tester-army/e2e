@@ -185,6 +185,11 @@ export interface ReportTarget {
   platform: string;
   baseOrigin: string;
   environment: string;
+  /**
+   * Retained for report-1 readers: the production gate is gone, so this is
+   * derived from the environment. It leaves the wire format in report-2.
+   */
+  allowProduction: boolean;
   testIdAttribute: string;
   backend: { name: string; version: string; spiVersion: BackendSpiVersion };
   capabilities: readonly string[];
@@ -370,6 +375,7 @@ function serializeTarget(
     platform: target.platform,
     baseOrigin: config.app.base.origin,
     environment: config.app.environment,
+    allowProduction: config.app.environment === 'production',
     testIdAttribute: config.testIdAttribute,
     ...(provenance ?? describeTarget(target)),
   };
