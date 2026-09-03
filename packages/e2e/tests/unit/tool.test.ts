@@ -55,8 +55,10 @@ describe('defineTool replay tiers (RFC0003)', () => {
     expect(defined.annotations.replay).toEqual({ mode: 'located', locate: ['target', 'anchor'] });
   });
 
-  it('rejects a located tier with no paths, blank paths, or duplicates', () => {
-    for (const locate of [[], [''], ['  '], ['a', 'a']]) {
+  it('rejects a located tier with no paths, blank paths, duplicates, or a sparse array', () => {
+    // eslint-disable-next-line no-sparse-arrays -- the hole is the case under test
+    const sparse: string[] = [, 'a'] as string[];
+    for (const locate of [[], [''], ['  '], ['a', 'a'], sparse]) {
       expect(() =>
         defineTool(tool, { replay: { mode: 'located', locate }, mutates: false, secrets: false }),
       ).toThrow(/locate/);

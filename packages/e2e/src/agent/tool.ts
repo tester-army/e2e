@@ -129,20 +129,23 @@ function normalizeReplay(replay: ToolAnnotations['replay'], mutates: boolean): T
       return { mode: replay.mode };
     case 'located': {
       const locate = (replay as { locate?: unknown }).locate;
+      // Materialized first: `some` skips the holes of a sparse array, which
+      // would let `[, 'a']` through and normalize a hole to undefined.
+      const paths = Array.isArray(locate) ? [...(locate as unknown[])] : undefined;
       if (
-        !Array.isArray(locate) ||
-        locate.length === 0 ||
-        locate.some((path) => typeof path !== 'string' || path.trim() === '')
+        paths === undefined ||
+        paths.length === 0 ||
+        paths.some((path) => typeof path !== 'string' || path.trim() === '')
       ) {
         throw new TestError(
           'INVALID_ARGUMENT',
           "the 'located' replay tier requires a non-empty locate: string[] of input paths",
         );
       }
-      if (new Set(locate).size !== locate.length) {
+      if (new Set(paths).size !== paths.length) {
         throw new TestError('INVALID_ARGUMENT', 'annotations.replay.locate paths must be unique');
       }
-      return { mode: 'located', locate: [...(locate as string[])] };
+      return { mode: 'located', locate: paths as string[] };
     }
     case 'fixed-model':
       if (mutates) {
