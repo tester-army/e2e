@@ -131,4 +131,91 @@ describe('playwright backend over CDP', () => {
     // Dispose detaches the CDP session; the remote the host owns is still alive.
     expect(chrome.proc.exitCode).toBeNull();
   }, 60_000);
+
+  it('reacquires a dropped remote at the next attempt by resolving the endpoint again', async () => {
+    let current = chrome;
+    let resolved = 0;
+    const backend: BackendHandle = playwright({
+      connect: {
+        cdpEndpoint: () => {
+          resolved += 1;
+          return current.endpoint;
+        },
+      },
+    });
+    await backend.init!({
+      runId: 'run-cdp',
+      targetName: 'web',
+      app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
+      testIdAttribute: 'data-testid',
+      headed: false,
+      signal: new AbortController().signal,
+    });
+    try {
+      await backend.startAttempt!({ attemptId: 'r1', artifactsDir, signal: new AbortController().signal });
+      await backend.app!.navigate!(`${app.url}/`, operation('r1'));
+      await backend.endAttempt!(cleanup());
+      expect(resolved).toBe(1);
+
+      // The host's session goes away: kill the remote and stand up a fresh one
+      // at a new endpoint, the way a per-run cloud session is re-provisioned.
+      chrome.proc.kill('SIGKILL');
+      await new Promise<void>((done) => chrome.proc.once('exit', () => done()));
+      const replacement = await launchRemoteChrome();
+      current = replacement;
+      chrome = replacement;
+
+      // The next attempt must not fail on the dead browser: it reacquires,
+      // running the resolver again, and works over the new session.
+      await backend.startAttempt!({ attemptId: 'r2', artifactsDir, signal: new AbortController().signal });
+      expect(resolved).toBe(2);
+      await backend.app!.navigate!(`${app.url}/`, operation('r2'));
+      const headings = await backend.locate!(
+        { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
+        operation('r2'),
+      );
+      expect(headings[0]?.name).toBe('Home');
+      await backend.endAttempt!(cleanup());
+    } finally {
+      await backend.dispose!(cleanup());
+    }
+  }, 90_000);
+
+  it('never caches a browser that connects after the init was cancelled', async () => {
+    let resolved = 0;
+    const controller = new AbortController();
+    const backend: BackendHandle = playwright({
+      connect: {
+        cdpEndpoint: () => {
+          resolved += 1;
+          // Cancel right after the endpoint is handed back, so the attach
+          // completes into an already-aborted init.
+          queueMicrotask(() => controller.abort());
+          return chrome.endpoint;
+        },
+      },
+    });
+    const info = {
+      runId: 'run-cdp',
+      targetName: 'web',
+      app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
+      testIdAttribute: 'data-testid',
+      headed: false,
+    };
+    await expect(backend.init!({ ...info, signal: controller.signal })).rejects.toMatchObject({
+      code: 'CANCELLED',
+    });
+    expect(resolved).toBe(1);
+
+    // A fresh init must provision again. Were the late browser cached, the pool
+    // would hand it back without consulting the resolver.
+    await backend.init!({ ...info, signal: new AbortController().signal });
+    try {
+      expect(resolved).toBe(2);
+    } finally {
+      await backend.dispose!(cleanup());
+    }
+    // And the remote the host owns was detached, not killed.
+    expect(chrome.proc.exitCode).toBeNull();
+  }, 60_000);
 });

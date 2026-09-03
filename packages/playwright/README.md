@@ -31,11 +31,14 @@ remote browser over CDP instead of launching a local one.
 ### Attaching to a remote browser (`connect`)
 
 Set `connect.cdpEndpoint` to attach over the Chrome DevTools Protocol rather
-than launch. The resolver is async and called at worker init (and again on any
-reconnect), so a hosted browser whose endpoint is provisioned per run — a cloud
-session URL that is not known at config load — resolves each time it is needed.
-CDP attach is chromium-only, and disposing the backend detaches the session
-without killing the remote process the host owns.
+than launch. The resolver is async and called at worker init, and again at the
+start of any attempt that finds the session dropped, so a hosted browser whose
+endpoint is provisioned per run — a cloud session URL that is not known at
+config load — resolves each time it is needed. The resolver receives an
+`AbortSignal` that fires when the init or attempt is cancelled or exceeds its
+budget; a browser that connects after that is detached, never used. CDP attach
+is chromium-only, and disposing the backend detaches the session without
+killing the remote process the host owns.
 
 ```ts
 backend: playwright({

@@ -57,6 +57,39 @@ describe('PlaywrightSurface CDP attach', () => {
     await expect(surface.init(initInfo())).rejects.toMatchObject({ code: 'BACKEND_FAILURE' });
   });
 
+  it('hands the init signal to the resolver', async () => {
+    let seen: AbortSignal | undefined;
+    const surface = new PlaywrightSurface({
+      connect: {
+        cdpEndpoint: (signal) => {
+          seen = signal;
+          return '   ';
+        },
+      },
+    });
+    await surface.init(initInfo()).catch(() => undefined);
+    expect(seen).toBeInstanceOf(AbortSignal);
+  });
+
+  it('cancels promptly while the resolver is still pending, without using its result', async () => {
+    const controller = new AbortController();
+    let settle: ((value: string) => void) | undefined;
+    const surface = new PlaywrightSurface({
+      connect: {
+        cdpEndpoint: (signal) =>
+          new Promise<string>((resolve) => {
+            settle = resolve;
+            signal.addEventListener('abort', () => resolve('ws://never-used'), { once: true });
+          }),
+      },
+    });
+    const pending = surface.init(initInfo(controller.signal));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    // The resolver was handed the same signal and saw the abort.
+    expect(settle).toBeDefined();
+  });
+
   it('honours an already-aborted signal before resolving the endpoint', async () => {
     const controller = new AbortController();
     controller.abort();
