@@ -275,7 +275,7 @@ describe('playwright backend lifecycle', () => {
     });
   });
 
-  it('reports a ref from a superseded observation as NODE_STALE', async () => {
+  it('keeps a node id across observations while its element lives, and reports it stale once it is gone', async () => {
     const backend = playwright();
     await withAttempt(backend, app, artifactsDir, 'o1', async () => {
       await backend.app!.navigate!(`${app.url}/form`, operation('o1'));
@@ -284,9 +284,19 @@ describe('playwright backend lifecycle', () => {
       expect(textbox).toBeDefined();
       await backend.perform!(textbox!.ref, { kind: 'fill', value: 'fresh', sensitive: false }, operation('o1'));
 
-      await backend.observe!(operation('o1'));
+      // The id is stamped on the element: a second look names the same
+      // textbox by the same id, and the earlier ref still acts on it.
+      const second = await backend.observe!(operation('o1'));
+      const again = [...walk(second.nodes[0]!)].find((node) => node.role === 'textbox');
+      expect(again!.ref.id).toBe(textbox!.ref.id);
+      await backend.perform!(textbox!.ref, { kind: 'fill', value: 'late', sensitive: false }, operation('o1'));
+
+      // A new document has none of the old elements: the id is gone with it.
+      await backend.app!.navigate!(`${app.url}/`, operation('o1'));
+      const third = await backend.observe!(operation('o1'));
+      expect([...walk(third.nodes[0]!)].some((node) => node.ref.id === textbox!.ref.id)).toBe(false);
       await expect(
-        backend.perform!(textbox!.ref, { kind: 'fill', value: 'late', sensitive: false }, operation('o1')),
+        backend.perform!(textbox!.ref, { kind: 'fill', value: 'gone', sensitive: false }, operation('o1')),
       ).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
     });
   });

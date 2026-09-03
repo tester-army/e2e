@@ -734,7 +734,8 @@ export class PlaywrightSurface {
           {
             testIdAttribute: this.testIdAttribute,
             allowedOrigins: this.app.allowedOrigins,
-            mintId: () => this.refs.mintId(),
+            idSeed: () => this.refs.idSeed(),
+            advanceIds: (nextId) => this.refs.advanceIds(nextId),
             commit: (id: string, element: ElementHandle<Element>) => {
               generation.set(id, { kind: 'element', element });
             },

@@ -37,8 +37,14 @@ export type DocumentHost = Pick<Frame, 'evaluateHandle'>;
 export interface CaptureDeps {
   readonly testIdAttribute: string;
   readonly allowedOrigins: readonly string[];
-  /** Mints one node id; the surface owns the id space. */
-  mintId(): string;
+  /**
+   * First numeric id the next document may stamp on a node it sees for the
+   * first time. The surface owns one id space for the whole session: stamped
+   * observation ids and minted locator ids never collide.
+   */
+  idSeed(): number;
+  /** Records the first id a captured document left unused. */
+  advanceIds(nextId: number): void;
   /** Publishes one element handle under its id in the generation being built. */
   commit(id: string, element: ElementHandle<Element>): void;
 }
@@ -75,10 +81,8 @@ export async function captureDocument(
   // A child document's handles are published only once it captured whole; a
   // frame that fails midway leaves no reachable ids behind.
   const staged: StagedRef[] = [];
-  const stage = (element: ElementHandle<Element>): string => {
-    const id = deps.mintId();
+  const stage = (id: string, element: ElementHandle<Element>): void => {
     staged.push([id, element]);
-    return id;
   };
   try {
     const captured = await captureInto(deps, stage, host, framePath, budget, deadline);
@@ -92,7 +96,7 @@ export async function captureDocument(
 
 async function captureInto(
   deps: CaptureDeps,
-  stage: (element: ElementHandle<Element>) => string,
+  stage: (id: string, element: ElementHandle<Element>) => void,
   host: DocumentHost,
   framePath: readonly string[],
   budget: number,
@@ -106,6 +110,7 @@ async function captureInto(
     mode: {
       kind: 'tree' as const,
       maxNodes: budget,
+      idSeed: deps.idSeed(),
       nameLimit: OBSERVED_NAME_LIMIT,
       textLimit: OBSERVED_TEXT_LIMIT,
     },
@@ -124,13 +129,24 @@ async function captureInto(
   });
   let elementsHandle: JSHandle | undefined;
   try {
-    const [nodes, elementsProperty] = await Promise.all([
+    const [nodes, ids, nextId, elementsProperty] = await Promise.all([
       captured.getProperty('nodes').then((handle) => handle.jsonValue()),
+      captured.getProperty('ids').then((handle) => handle.jsonValue()),
+      captured.getProperty('nextId').then((handle) => handle.jsonValue()),
       captured.getProperty('elements'),
     ]);
+    if (!Array.isArray(ids) || ids.length !== nodes.length || typeof nextId !== 'number') {
+      throw new BackendError('BACKEND_FAILURE', 'observation ids do not align with its nodes', {
+        retryable: false,
+      });
+    }
+    // Advanced before anything else can fail: a stamped element keeps its id
+    // even when this capture is abandoned, and a later document must not
+    // hand the same number to a different node.
+    deps.advanceIds(nextId);
     elementsHandle = elementsProperty;
     const elements = await collectElementHandles(elementsHandle, nodes.length);
-    const ids = elements.map((element) => stage(element));
+    elements.forEach((element, index) => stage(ids[index] as string, element));
     let nodeCount = nodes.length;
     const frameChildren = new Map<number, SemanticNode>();
     if (framePath.length < MAX_FRAME_DEPTH) {

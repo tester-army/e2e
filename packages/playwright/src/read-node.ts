@@ -54,6 +54,17 @@ interface RawObservation {
   nodes: RawObservedNode[];
   /** Live element handles positionally aligned with `nodes`. */
   elements: Element[];
+  /**
+   * Node ids positionally aligned with `nodes`. An id is stamped on the element
+   * the first time an observation includes it and read back on every later
+   * one, so the same element keeps the same id for as long as it lives in the
+   * document: two looks at an unchanged screen name its nodes identically, and
+   * an update can list exactly what changed. A re-created element (a framework
+   * re-mount, a new document) is a new node and gets a fresh id.
+   */
+  ids: string[];
+  /** The first id not yet handed out; the caller seeds the next document with it. */
+  nextId: number;
 }
 
 type SemanticMode =
@@ -61,6 +72,12 @@ type SemanticMode =
   | {
       kind: 'tree';
       maxNodes: number;
+      /**
+       * First numeric id available to nodes seen for the first time. The caller
+       * owns the id space across documents and frames, so ids never collide
+       * with those minted for another document or for locator resolution.
+       */
+      idSeed: number;
       /** Cuts each node's name at this length; the caller owns the contract value. */
       nameLimit: number;
       /** Cuts each node's text at this length; the caller owns the contract value. */
@@ -107,6 +124,8 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     'embed',
   ];
   const OPAQUE_TAGS = ['svg', 'math', 'canvas', 'video', 'audio'];
+  /** Options listed under one select; a country picker's tail is not worth the tokens. */
+  const MAX_SELECT_OPTIONS = 60;
 
   /**
    * How the active mode projects one node, expressed as data so `describe`
@@ -197,6 +216,14 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         return 'list';
       case 'table':
         return 'table';
+      // Rows and cells carry the structure a table's controls belong to: a
+      // "Delete" button means one thing per row, and only the row says which.
+      case 'tr':
+        return 'row';
+      case 'td':
+        return 'cell';
+      case 'th':
+        return 'columnheader';
       case 'dialog':
         return 'dialog';
       case 'output':
@@ -551,12 +578,30 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   const maxNodes = options.mode.maxNodes;
   const nodes: RawObservedNode[] = [];
   const elements: Element[] = [];
+  const ids: string[] = [];
+  let nextId = options.mode.idSeed;
   let truncated = false;
+
+  // The id lives on the element itself under a registry symbol: invisible to
+  // application code (no attribute, no enumerable property), gone with the
+  // element, and readable by every later observation of the same document.
+  const REF_KEY = Symbol.for('e2e.observation.ref');
+  const stamp = (el: Element): string => {
+    const carrier = el as Element & { [REF_KEY]?: string };
+    let id = carrier[REF_KEY];
+    if (id === undefined) {
+      id = `n${String(nextId)}`;
+      nextId += 1;
+      carrier[REF_KEY] = id;
+    }
+    return id;
+  };
 
   const include = (el: Element, parent: number, style = styleOf(el)): number => {
     const data = describe(el, style);
     nodes.push({ ...data, parent });
     elements.push(el);
+    ids.push(stamp(el));
     return nodes.length - 1;
   };
 
@@ -606,6 +651,26 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       }
       nextParent = include(el, parent, style);
     }
+    // A closed select paints none of its options, so the hidden test would
+    // drop every one of them — and a model shown `combobox "Category"` alone
+    // has to guess the labels it may pick. The options are what the control
+    // offers, so they are listed under it, bounded like any long list.
+    if (tag === 'select') {
+      const choices = Array.from((el as HTMLSelectElement).options).slice(0, MAX_SELECT_OPTIONS);
+      for (const option of choices) {
+        if (nodes.length >= maxNodes) {
+          truncated = true;
+          return;
+        }
+        const index = include(option, nextParent, styleOf(option));
+        const node = nodes[index]!;
+        // Listed on purpose, so not "hidden"; the label is the name and the
+        // value attribute is the app's internal token, not something to show.
+        node.states.hidden = false;
+        node.value = null;
+      }
+      return;
+    }
     if (OPAQUE_TAGS.indexOf(tag) !== -1) return;
     for (const child of Array.from(el.children)) walk(child, nextParent);
     // An open shadow root is part of what the user sees, so it is part of what
@@ -623,7 +688,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   include(element, -1);
   for (const child of Array.from(element.children)) walk(child, 0);
 
-  return { nodes, elements } as SemanticResult<Mode>;
+  return { nodes, elements, ids, nextId } as SemanticResult<Mode>;
 };
 
 /** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */

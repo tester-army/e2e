@@ -26,6 +26,16 @@ export class RefRegistry {
     return `n${this.counter}`;
   }
 
+  /** First id a captured document may stamp on a node it sees for the first time. */
+  idSeed(): number {
+    return this.counter + 1;
+  }
+
+  /** Records the first id a captured document left unused, so minting never reuses a stamped one. */
+  advanceIds(nextId: number): void {
+    this.counter = Math.max(this.counter, nextId - 1);
+  }
+
   /** Stores one located target under a fresh id, pruning the oldest past the bound. */
   storeLocated(target: ActionTarget): string {
     const id = this.mintId();
