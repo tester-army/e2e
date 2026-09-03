@@ -99,19 +99,17 @@ export interface AppConfig {
   readyUrl?: string;
   allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
-  allowProduction?: boolean;
   identity?: string;
 }
 ```
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `url` | `string` | `APP_URL` | One of the two is required, else `APP_URL_REQUIRED`. No userinfo, query, or fragment; HTTP only for loopback. |
+| `url` | `string` | `APP_URL` | One of the two is required, else `APP_URL_REQUIRED`. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; HTTP only for loopback. |
 | `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted |
 | `readyUrl` | `string` | the resolved base URL | Readiness probe; a status of 200-499 counts as ready |
 | `allowedOrigins` | `readonly string[]` | the origin of `url` | Each entry must be a serialized origin |
-| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts, otherwise required | Any other host without an explicit value is `ENVIRONMENT_REQUIRED` |
-| `allowProduction` | `boolean` | `false` | `environment: 'production'` without it is `PRODUCTION_NOT_ALLOWED` |
+| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts, otherwise `'production'` | A label for the report and the cache/session identity digest; it never gates a run |
 | `identity` | `string` | derived from the base URL's origin | Stable logical app identity for cache/session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one identity across genuinely different apps. The environment always joins the derived identity. |
 
 ### app.command

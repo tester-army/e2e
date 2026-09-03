@@ -529,7 +529,6 @@ export interface AppConfig {
   readyUrl?: string;
   allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
-  allowProduction?: boolean;
   /**
    * Stable logical identity of the app under test. By default cache and
    * session identity derive from the base URL's origin, so an ephemeral

@@ -134,15 +134,27 @@ describe('resolveConfig', () => {
     ).toThrow(/defineBackend/);
   });
 
-  it('defaults environment to test only for loopback/.localhost/.test hosts', () => {
+  it('defaults environment to test for loopback/.localhost/.test hosts and production elsewhere', () => {
     expect(resolve({ app: { url: 'https://app.test' } }).app.environment).toBe('test');
-    expect(() => resolve({ app: { url: 'https://staging.example.com' } })).toThrow(
-      /explicit app.environment/,
+    expect(resolve({ app: { url: 'http://localhost:3000' } }).app.environment).toBe('test');
+    expect(resolve({ app: { url: 'https://staging.example.com' } }).app.environment).toBe(
+      'production',
     );
     expect(
       resolve({ app: { url: 'https://staging.example.com', environment: 'staging' } }).app
         .environment,
     ).toBe('staging');
+    expect(() =>
+      resolve({ app: { url: 'https://app.test', environment: 'prod' as never } }),
+    ).toThrow(/invalid app.environment/);
+  });
+
+  it('accepts a schemeless app URL from config or APP_URL', () => {
+    expect(resolve({ app: { url: 'tester.army' } }).app.base.origin).toBe('https://tester.army');
+    expect(resolve({ app: { url: 'localhost:3000' } }).app.base.origin).toBe('http://localhost:3000');
+    expect(resolve({}, { ...BASE_ENV, APP_URL: 'tester.army' }).app.base.origin).toBe(
+      'https://tester.army',
+    );
   });
 
   it('accepts a provider-backed credential password; env override wins over it', () => {
@@ -196,15 +208,10 @@ describe('resolveConfig', () => {
     );
   });
 
-  it('rejects production without allowProduction', () => {
+  it('rejects the retired allowProduction key like any unknown app key', () => {
     expect(() =>
-      resolve({ app: { url: 'https://app.example.com', environment: 'production' } }),
-    ).toThrow(/allowProduction/);
-    expect(
-      resolve({
-        app: { url: 'https://app.example.com', environment: 'production', allowProduction: true },
-      }).app.allowProduction,
-    ).toBe(true);
+      resolve({ app: { url: 'https://app.example.com', allowProduction: true } } as never),
+    ).toThrow(/unknown app config key "allowProduction"/);
   });
 
   it('defaults allowedOrigins to the exact base origin', () => {

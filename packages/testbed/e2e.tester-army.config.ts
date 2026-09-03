@@ -17,8 +17,6 @@ export default defineConfig({
   projectId: 'testbed-tester-army',
   app: {
     url: 'https://tester.army',
-    environment: 'production',
-    allowProduction: true,
     allowedOrigins: [
       'https://tester.army',
       'https://www.tester.army',

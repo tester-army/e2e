@@ -31,29 +31,35 @@ Requires Node.js 20.19 or newer.
 
     ```ts title="e2e.config.ts"
     import { defineConfig } from '@e2edev/e2e';
-    import { createAgent } from '@e2edev/e2e/agent';
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
-      specVersion: '0.1',
-      app: {
-        url: process.env.APP_URL ?? 'http://localhost:3000',
-      },
-      // The runner ships no intelligence: you construct the agent and pass it in.
-      // createAgent builds the built-in one; its model comes from E2E_MODEL.
-      agent: createAgent({
-        system: 'You are a thorough QA agent. Verify every outcome on screen.',
-      }),
-      // The runner knows no platform: a target is served by the backend you pass.
-      targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
+      app: { url: 'localhost:3000' },
+      targets: [{ name: 'web', platform: 'web', backend: playwright() }],
     });
     ```
 
-    This is the central decision in e2e: the runner does not come with an
-    agent baked in. You construct one and pass it. `createAgent` builds the
-    built-in tool-loop agent; `system` shapes how it works. Later you can hand
-    it your own tools, or replace it with a custom executor;
-    [Your own agent](/agents) covers both.
+    Point `app.url` at your app. A scheme is optional: `localhost:3000`
+    becomes `http://localhost:3000` and `app.example.com` becomes
+    `https://app.example.com`. The runner knows no platform, so every target
+    names the backend that drives it.
+
+    Without an `agent` key the runner uses the built-in tool-loop agent. To
+    shape it, construct one and pass it:
+
+    ```ts title="e2e.config.ts"
+    import { createAgent } from '@e2edev/e2e/agent';
+
+    export default defineConfig({
+      // ...
+      agent: createAgent({
+        system: 'You are a thorough QA agent. Verify every outcome on screen.',
+      }),
+    });
+    ```
+
+    `system` shapes how it works. Later you can hand it your own tools, or
+    replace it with a custom executor; [Your own agent](/agents) covers both.
 
     The model comes from the `E2E_MODEL` environment variable as a
     `provider/model-id` string, routed through the Vercel AI Gateway so one

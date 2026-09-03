@@ -60,9 +60,7 @@ These appear in terminal output and in the report as plain string codes.
 | `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, backend }`, a `backend` that is not a `defineBackend` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
 | `APP_URL_REQUIRED` | Neither `app.url` nor `APP_URL` is set | configuration | 2 |
-| `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, or unparseable | configuration | 2 |
-| `ENVIRONMENT_REQUIRED` | A non-loopback host without an explicit `app.environment` | configuration | 2 |
-| `PRODUCTION_NOT_ALLOWED` | `environment: 'production'` without `allowProduction: true` | configuration | 2 |
+| `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, or unparseable | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
 | `UNSUPPORTED_ARTIFACT` | A configured artifact kind the target's backend cannot produce. `video` is not implemented by any first-party backend. | configuration | 2 |

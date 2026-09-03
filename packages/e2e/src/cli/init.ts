@@ -5,21 +5,11 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 
 const CONFIG_TEMPLATE = `import { defineConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  specVersion: '0.1',
-  app: {
-    url: process.env.APP_URL ?? 'http://localhost:3000',
-  },
-  // The runner ships no intelligence: you construct the agent and pass it in.
-  // createAgent builds the built-in one; its model comes from E2E_MODEL.
-  agent: createAgent({
-    system: 'You are a thorough QA agent. Verify every outcome on screen.',
-  }),
-  // The runner knows no platform: a target is served by the backend you pass.
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
+  app: { url: 'localhost:3000' },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
 });
 `;
 
@@ -114,6 +104,6 @@ export async function init(cwd: string, options: { yes?: boolean } = {}): Promis
     return 0;
   }
 
-  clack.outro('next: install @e2edev/playwright, then APP_URL=http://localhost:3000 npx --no-install e2e run');
+  clack.outro('next: point app.url in e2e.config.ts at your app, then npx --no-install e2e run');
   return 0;
 }

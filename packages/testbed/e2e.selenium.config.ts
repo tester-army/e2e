@@ -18,8 +18,6 @@ export default defineConfig({
   projectId: 'dev.e2e.testbed-selenium',
   app: {
     url: 'https://seleniumbase.io',
-    environment: 'production',
-    allowProduction: true,
     allowedOrigins: ['https://seleniumbase.io'],
   },
   tests: 'tests-selenium/**/*.e2e.ts',

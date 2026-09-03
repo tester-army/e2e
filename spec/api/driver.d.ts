@@ -244,7 +244,6 @@ export interface DriverContext {
     readonly baseUrl: string;
     readonly allowedOrigins: readonly string[];
     readonly environment: 'test' | 'staging' | 'production';
-    readonly allowProduction: boolean;
     readonly testIdAttribute: string;
   };
   readonly artifactsDir: string;

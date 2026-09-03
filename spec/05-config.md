@@ -45,7 +45,9 @@ override. `readyUrl` defaults to the effective base URL. The runner passes the
 resolved app URL, origin policy, and query context to every backend's `init`.
 
 The base URL uses WHATWG URL parsing/serialization and MUST NOT contain
-userinfo, query, or fragment. Host uses IDNA ASCII form and default ports are
+userinfo, query, or fragment. A base URL without a scheme gets `https://`, or
+`http://` when its host is loopback, so `tester.army` and `localhost:3000` are
+both accepted as written. Host uses IDNA ASCII form and default ports are
 removed. Its pathname is normalized for dot segments and retained as the app
 base path.
 
@@ -199,11 +201,10 @@ connection and redirect time to prevent DNS rebinding into loopback, private,
 link-local, or metadata ranges unless that exact private origin is explicitly
 allowed for the app.
 
-When `environment` is omitted, it defaults to `test` only for loopback,
-`.localhost`, and `.test` hosts. Other hosts require an explicit `test`,
-`staging`, or `production` value. A production target is rejected unless
-`allowProduction: true`; this opt-in is recorded in the report. Security rules
-remain active after opt-in.
+`environment` labels the target in the report and joins the cache and session
+identity digest; it never gates a run. When omitted, it defaults to `test` for
+loopback, `.localhost`, and `.test` hosts and to `production` for every other
+host. Security rules apply to every environment alike.
 
 ## The agent value
 

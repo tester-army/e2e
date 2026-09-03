@@ -185,7 +185,6 @@ export interface ReportTarget {
   platform: string;
   baseOrigin: string;
   environment: string;
-  allowProduction: boolean;
   testIdAttribute: string;
   backend: { name: string; version: string; spiVersion: BackendSpiVersion };
   capabilities: readonly string[];
@@ -371,7 +370,6 @@ function serializeTarget(
     platform: target.platform,
     baseOrigin: config.app.base.origin,
     environment: config.app.environment,
-    allowProduction: config.app.allowProduction,
     testIdAttribute: config.testIdAttribute,
     ...(provenance ?? describeTarget(target)),
   };

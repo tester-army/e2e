@@ -60,7 +60,6 @@ export interface ResolvedConfig {
     readonly readyUrl: string;
     readonly allowedOrigins: readonly string[];
     readonly environment: 'test' | 'staging' | 'production';
-    readonly allowProduction: boolean;
     readonly command: CommandConfig | undefined;
     /** Stable logical app identity; overrides the origin for cache/session keying. */
     readonly identity: string | undefined;
@@ -149,7 +148,6 @@ const APP_KEYS = new Set([
   'readyUrl',
   'allowedOrigins',
   'environment',
-  'allowProduction',
   'identity',
 ]);
 
@@ -441,7 +439,6 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
         readyUrl: 'http://127.0.0.1:1/',
         allowedOrigins: [],
         environment: 'test',
-        allowProduction: false,
         command: undefined,
         identity: undefined,
       };
@@ -454,25 +451,12 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
   const base = normalizeBaseUrl(rawUrl);
   const baseHost = new URL(base.href).hostname;
 
-  let environment = raw.app?.environment;
-  if (environment === undefined) {
-    if (!isImplicitTestHost(baseHost)) {
-      throw new ConfigurationError(
-        'ENVIRONMENT_REQUIRED',
-        `host ${baseHost} requires an explicit app.environment of "test", "staging", or "production"`,
-      );
-    }
-    environment = 'test';
-  }
+  // The environment is a label for the report and the cache/session identity
+  // digest, not a gate: a loopback, `.localhost`, or `.test` host is `test`,
+  // any other host is `production` unless the config says otherwise.
+  const environment = raw.app?.environment ?? (isImplicitTestHost(baseHost) ? 'test' : 'production');
   if (!['test', 'staging', 'production'].includes(environment)) {
     throw new ConfigurationError('INVALID_CONFIG', `invalid app.environment "${environment}"`);
-  }
-  const allowProduction = raw.app?.allowProduction ?? false;
-  if (environment === 'production' && !allowProduction) {
-    throw new ConfigurationError(
-      'PRODUCTION_NOT_ALLOWED',
-      'a production target is rejected unless allowProduction: true',
-    );
   }
 
   const allowedOrigins = raw.app?.allowedOrigins ?? [base.origin];
@@ -509,7 +493,6 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     readyUrl: raw.app?.readyUrl ?? base.href,
     allowedOrigins,
     environment,
-    allowProduction,
     command,
     identity,
   };

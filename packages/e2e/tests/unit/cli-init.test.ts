@@ -24,7 +24,8 @@ describe('e2e init', () => {
 
     const config = readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8');
     expect(config).toContain("defineConfig");
-    expect(config).toContain("specVersion: '0.1'");
+    expect(config).toContain("app: { url: 'localhost:3000' }");
+    expect(config).not.toContain('createAgent');
 
     const example = readFileSync(path.join(dir, 'tests', 'example.e2e.ts'), 'utf8');
     expect(example).toContain("import { test } from '@e2edev/playwright'");

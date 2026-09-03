@@ -25,6 +25,16 @@ describe('normalizeBaseUrl', () => {
 
   it('rejects non-http(s) schemes', () => {
     expect(() => normalizeBaseUrl('file:///tmp/app')).toThrow();
+    expect(() => normalizeBaseUrl('javascript:alert(1)')).toThrow(/must be http\(s\)/);
+  });
+
+  it('infers https for a schemeless host and http for a schemeless loopback host', () => {
+    expect(normalizeBaseUrl('tester.army').href).toBe('https://tester.army/');
+    expect(normalizeBaseUrl('www.tester.army/app').href).toBe('https://www.tester.army/app');
+    expect(normalizeBaseUrl('localhost:3000').origin).toBe('http://localhost:3000');
+    expect(normalizeBaseUrl('127.0.0.1:8080/base/').basePath).toBe('/base/');
+    expect(normalizeBaseUrl('[::1]:4000').origin).toBe('http://[::1]:4000');
+    expect(() => normalizeBaseUrl('tester.army?q=1')).toThrow(/query/);
   });
 });
 
