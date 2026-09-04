@@ -25,6 +25,11 @@ tests.
   on both unchanged; `ios` and `android` hold the label-bound deterministic
   checks. Needs a booted simulator, one AVD, and a model credential; steps
   replay from the trace cache on a second run. See "Device suite" below.
+- `e2e.conversation.config.ts` + `tests-conversation/` — opt-in suite on the
+  `@e2edev/conversation` backend: the e2e agent tests a small AI SDK support
+  agent (`fixtures/support-agent.ts`) with a money-transfer tool gated on
+  approval. Judgments on the reply are paired with hard checks on the recorded
+  tool calls and a ledger of transfers that actually ran. Needs `AI_GATEWAY_API_KEY`.
 - `e2e.reminders.config.ts` + `tests-reminders/` — opt-in iOS stress suite:
   long agentic sessions in the Reminders app (batch entry through the focused
   field, completion, swipe-to-delete, list management, an interruption), each

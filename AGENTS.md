@@ -42,6 +42,15 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   `@e2edev/e2e/backend` only: the semantics the spec makes every backend reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `@e2edev/e2e/internal` subpath.
+- `packages/conversation` — the published `@e2edev/conversation` package: the
+  backend that tests an AI agent by talking to it. It drives an AI SDK v7
+  agent (in-process via `DirectChatTransport`, a deployed `/api/chat` via
+  `DefaultChatTransport`, or a supplied `ChatTransport`), observes the
+  transcript as the semantic tree (a node per message, a `status` node per
+  tool call, Approve/Deny buttons when a gated tool pauses), sends by filling
+  the composer, and records tool calls. Contributes the `conversation` fixture
+  and `@e2edev/conversation/tools`. `ai` is a lazily loaded peer; unit tests
+  mock it, the integration test needs a gateway key (`E2E_CONVERSATION_LIVE=1`).
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the

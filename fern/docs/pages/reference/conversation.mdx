@@ -1,0 +1,123 @@
+---
+title: conversation
+subtitle: The conversation fixture and backend options @e2edev/conversation contributes for testing AI agents.
+---
+
+`@e2edev/conversation` is the conversation backend: it lets the e2e agent test
+another agent by talking to it. The e2e agent plays the user, the agent under
+test replies, and `agent`, `app`, `screen`, and `expect` work as they do
+everywhere. Built for agents written with the [AI SDK](https://ai-sdk.dev)
+(v7). Import `test` from the package to have `conversation` typed; declare
+`requires: ['conversation']` in portable suites.
+
+## Backend
+
+```ts title="e2e.config.ts"
+import { defineConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { conversation } from '@e2edev/conversation';
+import { conversationTools } from '@e2edev/conversation/tools';
+import { supportAgent } from './src/support-agent.ts';
+
+const chat = conversation({ agent: supportAgent, name: 'support' });
+
+export default defineConfig({
+  targets: [{ name: 'support', platform: 'conversation', backend: chat }],
+  workers: 1,
+  agent: { executor: createAgent({ tools: conversationTools(chat) }) },
+});
+```
+
+Name exactly one of `agent`, `api`, or `transport`.
+
+| Option | Type | Meaning |
+| --- | --- | --- |
+| `agent` | AI SDK v7 agent | Run in this process through the SDK's `DirectChatTransport`. No server. |
+| `api` | `string` | A deployed chat endpoint speaking the AI SDK UI message stream protocol, driven with `DefaultChatTransport`. Exercises what is shipped. |
+| `transport` | `ChatTransport` | A ready-made transport, for anything the two above cannot express. |
+| `name` | `string` | Label for reports and the trace anchor; defaults to the agent id. |
+| `history` | `UIMessage[]` | A prior transcript to start mid-conversation. User and assistant only: an agent owns its own system prompt, so a system-role seed is refused at config load. |
+| `headers` | `Record<string,string>` | Extra headers for the `api` transport. |
+
+The AI SDK is a peer dependency, loaded lazily, so importing the backend never
+forces the SDK on a project that only names it in config; a target that runs
+without `ai` installed fails with a clear message.
+
+### Capabilities
+
+| Contract member | On a conversation |
+| --- | --- |
+| `observe` | The transcript. One `application` root named after the agent; one node per message (role `user`, `assistant`, `system`) whose children are its text nodes and its tool parts; each tool call a `status` node named `tool <name>` whose text carries the state and a truncated input or output; a focused `textbox` composer. When the assistant pauses on a tool that needs approval, that tool node gains `Approve` and `Deny` `button` children and the composer is withheld, so the next move is a decision. |
+| `perform` | `fill` the composer, `press` Enter to send; `tap` Approve or Deny to answer a gated tool; `focus` is a no-op. `clear` empties the composer. Everything else is `UNSUPPORTED_CAPABILITY`. The default agent grammar drives a conversation with no custom tools. |
+| `locate` | `getByText`, `getByRole` (`textbox`, `button`, `status`, and the message roles, with `name`), `getByLabel`, `filter`, `first`/`last`. `getByPlaceholder`, `getByTestId`, and `getByDisplayValue` match nothing; a selector expression is `UNSUPPORTED_CAPABILITY`; a frame is `FRAME_NOT_FOUND`. |
+| `app` | `restart` starts a fresh conversation from the seeded history. No `navigate`, `back`, or `clearState`. |
+| `artifacts` | Not declared. The transcript is the record; `conversation.messages()` reads it. |
+| `url` | `app://conversation/<agent>/<status>`, the trace cache's anchor. |
+| `state` | Not declared. |
+
+## Tool approvals
+
+The crux of testing an agent is proving a dangerous action does not happen
+until it should. An AI SDK tool with `needsApproval` pauses the turn: the
+backend reports `awaiting-approval`, surfaces the paused tool with Approve and
+Deny controls, and executes nothing. Answering resumes the same turn. So a
+test can send a request, assert the tool is pending and the side effect has
+not occurred, then approve or deny and assert what followed.
+
+```ts
+test('never charges a card without confirmation', async ({ conversation }) => {
+  await conversation.send('buy the $200 plan');
+  expect(conversation.awaitingApproval()).toBe(true);
+  expect(charges.length).toBe(0);            // your side effect, untouched
+  await conversation.deny('charge');
+  expect(charges.length).toBe(0);            // still untouched
+});
+```
+
+Drive the gate through the fixture, not `agent.act`: `conversation.send` stops
+exactly at the pause, where an `agent.act` step is free to run past it and
+decide on its own.
+
+## Conversation
+
+```ts
+export interface Conversation {
+  send(text: string): Promise<void>;
+  approve(tool?: string, options?: { reason?: string }): Promise<void>;
+  deny(tool?: string, options?: { reason?: string }): Promise<void>;
+  toolCalls(name?: string): ToolCall[];
+  messages(): readonly UIMessageLike[];
+  lastText(): string;
+  status(): string;
+  awaitingApproval(): boolean;
+}
+```
+
+Every async method is a recorded step named `conversation.<method>`. `send`
+resolves when the assistant's turn finishes or pauses on an approval;
+`approve` and `deny` answer the pending gated tool (by name when several are
+pending) and resume it. `toolCalls` is the structured oracle: each entry has
+its `name`, `state`, `input`, `output`, and, for a gated tool, `approved`.
+
+Assert on side effects and tool calls, not prose. Read your own database or a
+ledger the agent writes, check `toolCalls`, and pair each `agent.assert`
+(which judges meaning) with one such hard check, so a reworded reply never
+turns the suite red and a real regression always does.
+
+## Agent tools
+
+`@e2edev/conversation/tools` exports `conversationTools(...backends)`:
+
+| Tool | Meaning |
+| --- | --- |
+| `send_message` | Say something to the assistant as the user and read its reply. |
+| `respond_to_approval` | Approve or deny the tool the assistant is waiting on. |
+
+Both are sugar over the grammar, scoped to the `conversation` platform, so a
+suite that mixes targets can hand one pack to one `createAgent`.
+
+## Secrets
+
+A conversation has no field the runner can fill and no origin it can check, so
+`type_secret` is denied on a conversation target. Give the agent under test
+its credentials through its own configuration.
