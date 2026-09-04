@@ -161,8 +161,16 @@ export class RealmManager {
    * hooks in reverse declaration order. A scope's afterAll therefore runs
    * when its last runnable member leaves it (spec 11-lifecycle.md), not when
    * the file ends: one describe's teardown never runs after a sibling's tests.
+   *
+   * Returns the first afterAll failure. Every failure is a run error, and the
+   * remaining hooks and scopes still run; the caller decides what the realm
+   * is still good for (spec: an afterAll failure discards the suite instance).
    */
-  async leaveFinished(realm: Realm, remaining: readonly TestTargetPair[]): Promise<void> {
+  async leaveFinished(
+    realm: Realm,
+    remaining: readonly TestTargetPair[],
+  ): Promise<SerializedError | undefined> {
+    let failure: SerializedError | undefined;
     const needed = new Set<Scope>();
     for (const pair of remaining) {
       // A pair the realm cannot find never runs here, so it holds nothing open.
@@ -177,15 +185,16 @@ export class RealmManager {
           await runHook(hook.kind, () => hook.fn(this.suiteFixtures()), this.options.cleanupTimeout);
         } catch (cause) {
           const error = classifyError(cause);
-          this.options.runErrors.push({
-            error: serializeError(
-              new E2EError('test', 'HOOK_FAILED', `afterAll failed: ${error.message}`, { cause }),
-              { phase: 'afterAll', scopeId: scopeId(scope) },
-            ),
-          });
+          const failed = serializeError(
+            new E2EError('test', 'HOOK_FAILED', `afterAll failed: ${error.message}`, { cause }),
+            { phase: 'afterAll', scopeId: scopeId(scope) },
+          );
+          this.options.runErrors.push({ error: failed });
+          failure ??= failed;
         }
       }
     }
+    return failure;
   }
 
   /** Closes every entered scope: the realm ends here. */

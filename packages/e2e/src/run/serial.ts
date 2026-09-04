@@ -289,8 +289,15 @@ async function runSerialAttempt(
     });
     record.artifacts.push(...memberAttempt.artifacts);
     if (memberAttempt.status !== 'passed') skipRemaining = predecessorFailed(memberIndex);
-    // Nested scopes close when their last member is done, as for ordinary tests.
-    await host.realms.leaveFinished(realm, members.slice(memberIndex + 1));
+    // Nested scopes close when their last member is done, as for ordinary
+    // tests. A failed afterAll discards the suite instance, and the group
+    // attempt is that instance: remaining members skip, as after a failed
+    // beforeAll, and the attempt fails without a retry.
+    const teardownFailure = await host.realms.leaveFinished(realm, members.slice(memberIndex + 1));
+    if (teardownFailure !== undefined && skipRemaining === undefined) {
+      hookFailure = teardownFailure;
+      skipRemaining = { cause: 'hook-failed', reason: teardownFailure.message };
+    }
   }
   await host.realms.leave(realm);
   await host.closeSession(shared.session, attemptId, record, artifacts.sink, record.secondaryErrors);

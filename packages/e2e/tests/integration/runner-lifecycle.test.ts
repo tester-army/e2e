@@ -548,6 +548,82 @@ test('top', async () => { log('body:top'); });
   );
 
   it(
+    'discards the realm after an afterAll failure so later tests start fresh',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from '@e2edev/e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeAll(() => log('beforeAll:file'));
+test.afterAll(() => log('afterAll:file'));
+
+test.describe('leaky', () => {
+  test.afterAll(() => {
+    log('afterAll:leaky');
+    throw new Error('teardown exploded');
+  });
+  test('first', async () => { log('body:first'); });
+});
+
+test('later', async () => { log('body:later'); });
+`;
+      const logPath = path.join('/tmp', `e2e-afterall-fail-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/afterallfail.e2e.ts': file }, { appUrl: app.url });
+      expect(resultByTitle(outcome, 'first').status).toBe('passed');
+      expect(resultByTitle(outcome, 'later').status).toBe('passed');
+      // The failed teardown ends that suite instance: the file scope closes
+      // and the next test gets a fresh realm with its own beforeAll.
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
+        'beforeAll:file',
+        'body:first',
+        'afterAll:leaky',
+        'afterAll:file',
+        'beforeAll:file',
+        'body:later',
+        'afterAll:file',
+      ]);
+      expect(outcome.report.run.errors.map((error) => [error.code, error.phase, error.scopeId])).toEqual([
+        ['HOOK_FAILED', 'afterAll', 'leaky'],
+      ]);
+      expect(outcome.exitCode).toBe(1);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'ends a serial group attempt when a nested afterAll fails, skipping the rest without a retry',
+    async () => {
+      const file = `import { test } from '@e2edev/e2e';
+
+test.describe('wizard', { serial: true, retries: 1 }, () => {
+  test.describe('inner', () => {
+    test.afterAll(() => {
+      throw new Error('inner teardown exploded');
+    });
+    test('step 1', async () => {});
+  });
+  test('step 2', async () => {});
+});
+`;
+      const { outcome, project } = await runProject({ 'tests/serialafterall.e2e.ts': file }, { appUrl: app.url });
+      const skipped = resultByTitle(outcome, 'step 2');
+      expect(skipped.status).toBe('skipped');
+      expect(skipped.skip?.cause).toBe('hook-failed');
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(group.status).toBe('failed');
+      expect(group.attempts).toHaveLength(1);
+      expect(group.attempts[0]!.error?.code).toBe('HOOK_FAILED');
+      expect(group.attempts[0]!.error?.phase).toBe('afterAll');
+      expect(outcome.exitCode).not.toBe(0);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'runs member hooks for every serial member and closes nested scopes as members finish',
     async () => {
       const file = `import { appendFileSync } from 'node:fs';

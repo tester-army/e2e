@@ -279,7 +279,17 @@ export class TargetExecutor implements SerialHost {
       realm = await this.runOrdinaryPair(pair, file, realm);
       // A scope's afterAll runs as soon as its last test in this realm is
       // done, so a describe's teardown never lands after a sibling's tests.
-      if (realm !== null) await this.realms.leaveFinished(realm, ordered.slice(index + 1));
+      if (realm !== null) {
+        const teardownFailure = await this.realms.leaveFinished(realm, ordered.slice(index + 1));
+        if (teardownFailure !== undefined) {
+          // Spec 11-lifecycle.md: an afterAll failure discards the suite
+          // instance. Later tests start in a fresh realm rather than on
+          // module state a failed teardown left behind; every scope whose
+          // beforeAll started still tears down first.
+          await this.realms.leave(realm);
+          realm = null;
+        }
+      }
     }
     if (realm !== null) await this.realms.leave(realm);
   }

@@ -101,7 +101,9 @@ retry, for every serial group, and for every setup test, so `beforeAll` runs
 again in each. A scope's `afterAll` runs as soon as its last runnable test in
 that realm is done, so one group's teardown never runs after a sibling group's
 tests. A realm that a failure discards runs `afterAll` for every scope whose
-`beforeAll` started.
+`beforeAll` started. A failing `afterAll` ends the realm too: later tests in the
+file start in a fresh one, and inside a serial group the remaining members are
+skipped with cause `hook-failed` and the group fails without a retry.
 
 `beforeEach` and the body share the test timeout. Each `afterEach` hook then
 gets its own `cleanupTimeout` budget with working fixtures, so teardown can

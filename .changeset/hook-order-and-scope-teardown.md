@@ -10,6 +10,8 @@ each scope's hooks were declared; before, a file-level hook declared below a
 A `describe`'s `afterAll` runs when its last test in the realm finishes rather
 than when the whole file ends, so one group's teardown no longer lands after a
 sibling group's tests. Sibling groups that share a title keep separate hooks.
+A failing `afterAll` discards the realm as the spec requires: later tests start
+fresh, and a serial group attempt ends with its remaining members skipped.
 
 Each `afterEach` hook gets its own `cleanupTimeout` budget with working
 fixtures: after a body timeout, teardown can still drive the app instead of

@@ -160,10 +160,34 @@ describe('realm hook lifecycle', () => {
     expect(runErrors.map((entry) => entry.error.scopeId)).toEqual(['broken']);
   });
 
+  it('reports the first afterAll failure after still running every remaining teardown hook', async () => {
+    const log: string[] = [];
+    const runErrors: RunError[] = [];
+    const realms = manager(runErrors);
+    const realm = realms.adopt(
+      await collectModule(async () => {
+        test.afterAll(() => void log.push('afterAll:file'));
+        test.describe('group', () => {
+          test.afterAll(() => void log.push('afterAll:group-first'));
+          test.afterAll(() => {
+            throw new Error('teardown exploded');
+          });
+          test('t', noop);
+        });
+      }),
+    );
+    await realms.enterScopes(realm, registered(realm, 'group', 't'));
+    const failure = await realms.leaveFinished(realm, []);
+    expect(failure).toMatchObject({ code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'group' });
+    expect(failure?.message).toContain('teardown exploded');
+    expect(log).toEqual(['afterAll:group-first', 'afterAll:file']);
+    expect(runErrors.map((entry) => entry.error)).toEqual([failure]);
+  });
+
   it('times out suite hooks against their budgets and names the file scope', async () => {
     const runErrors: RunError[] = [];
     const realms = manager(runErrors, { timeout: 20, cleanupTimeout: 20 });
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const realm = realms.adopt(
       await collectModule(async () => {
         test.beforeAll(() => sleep(500));
