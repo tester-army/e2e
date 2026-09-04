@@ -382,3 +382,24 @@ function entryContext(overrides: Partial<ActionTrace>): AgentCacheContext {
     staged: [],
   };
 }
+
+describe('destination path settling', () => {
+  it('self-finalizes when the recorded destination arrives after the replayed action', async () => {
+    const context = entryContext({ endPath: '/customers' });
+    // Start on /pricing; the first read after the replay still sees /pricing
+    // (the navigation has not committed), the next sees the destination.
+    const host = { ...makeHost(['/pricing', '/pricing', '/customers']), remainingMs: () => 60_000 };
+    const verdict = await makeSession(context, host).begin();
+    expect(verdict?.status).toBe('passed');
+    expect(verdict?.summary).toContain('zero-turn');
+  });
+
+  it('still hands off when the destination never arrives within the budget', async () => {
+    const context = entryContext({ endPath: '/customers' });
+    const host = { ...makeHost(['/pricing', '/pricing', '/pricing', '/pricing']), remainingMs: () => 250 };
+    const session = makeSession(context, host);
+    const verdict = await session.begin();
+    expect(verdict).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+  });
+});

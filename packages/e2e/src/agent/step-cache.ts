@@ -22,6 +22,7 @@ import {
 } from '../cache/decide.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { readTraceEntry, type ActionTrace, type TraceEntry } from '../cache/trace.ts';
+import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
@@ -67,6 +68,16 @@ type EntryRead =
 
 /** Margin added to a recorded step's duration when replay waits for its end state. */
 const END_WAIT_MARGIN_MS = 10_000;
+/**
+ * How long a replay waits for a recorded destination path to be the current
+ * one. A step that moved records no anchors: the path is its whole
+ * postcondition, and the replayed tap that starts the navigation returns
+ * before the new document commits. Reading the path once, right after the
+ * tap, hands every navigation off as an end-mismatch; polling with the
+ * settling backoff lets the destination arrive. Bounded like anchor polling.
+ */
+const END_PATH_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
+const END_PATH_TIMEOUT_MS = 15_000;
 
 export class StepTraceSession {
   private readonly host: StepCacheHost;
@@ -244,11 +255,27 @@ export class StepTraceSession {
    * anchor present again.
    */
   private async endStateMatches(trace: ActionTrace): Promise<boolean> {
-    if (trace.endPath !== undefined) {
-      const current = await this.host.currentPath();
-      if (current !== undefined && !samePathname(current, trace.endPath)) return false;
-    }
+    if (trace.endPath !== undefined && !(await this.pathSettles(trace.endPath))) return false;
     return verifyAnchors(this.host, trace.endAnchors ?? [], trace.endWaitMs);
+  }
+
+  /** Whether the current path becomes `endPath` within the settling backoff. */
+  private async pathSettles(endPath: string): Promise<boolean> {
+    const startedMs = Date.now();
+    for (let attempt = 0; ; attempt += 1) {
+      const current = await this.host.currentPath();
+      if (current === undefined || samePathname(current, endPath)) return true;
+      const delay = END_PATH_DELAYS_MS[attempt];
+      if (
+        delay === undefined ||
+        Date.now() - startedMs + delay > END_PATH_TIMEOUT_MS ||
+        this.host.remainingMs() <= delay ||
+        this.host.signal.aborted
+      ) {
+        return false;
+      }
+      await sleep(delay, this.host.signal);
+    }
   }
 
   private selfFinalize(trace: ActionTrace, outcome: ReplayOutcome): StepVerdict {
