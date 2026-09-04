@@ -12,7 +12,8 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { SecretLedger } from '../internal/redact.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import { Deadline, withTimeout } from '../internal/time.ts';
+import { withTimeout } from '../internal/time.ts';
+import type { AttemptBudget } from './budget.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import {
   createLocator,
@@ -40,10 +41,10 @@ export interface AttemptEnvironment {
   readonly target: ResolvedTarget;
   readonly session: TargetSession;
   readonly steps: StepRecorder;
-  readonly signal: AbortSignal;
+  /** The running phase's signal and deadline; read at call time, never captured. */
+  readonly budget: AttemptBudget;
   readonly runId: string;
   readonly attemptId: string;
-  readonly testDeadline: Deadline;
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
@@ -63,12 +64,11 @@ export function createFixtures(
 ): TestFixtures & { readonly session: SetupSession } {
   const engine = new LocatorEngine({
     session: environment.session,
-    signal: environment.signal,
+    budget: environment.budget,
     runId: environment.runId,
     attemptId: environment.attemptId,
     actionTimeout: environment.config.actionTimeout,
     assertionTimeout: environment.config.assertionTimeout,
-    testDeadline: environment.testDeadline,
   });
 
   /**
@@ -138,7 +138,6 @@ export function createFixtures(
         redact: ledger.redact,
         taint,
         artifacts: environment.artifacts,
-        signal: environment.signal,
         ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
         ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
       });
@@ -286,7 +285,10 @@ function fixtureContext(
       action: config.actionTimeout,
       assertion: config.assertionTimeout,
     },
-    signal: environment.signal,
+    // A getter, not a snapshot: the SPI promises the running phase's signal.
+    get signal() {
+      return engine.signal;
+    },
     operation: (timeoutMs) => engine.operation(timeoutMs),
     attachArtifact: (kind, relativePath) =>
       attachments.record(() =>

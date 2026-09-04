@@ -76,7 +76,6 @@ export interface AgentContext {
   /** Set once any secret is filled; the viewport stays pixel-tainted after. */
   readonly taint: { value: boolean };
   readonly artifacts: ArtifactSink;
-  readonly signal: AbortSignal;
   /** The attempt's trace cache, or undefined when caching is off. */
   readonly cache?: AgentCacheContext;
   /** `--debug` phase timings; absent when the caller collects none. */
@@ -251,7 +250,7 @@ export class Invocation {
       observe: (operation) => this.session.observe(operation, { pixels }),
       operation: () => this.operation(),
       guard: (cause) => this.checkDeadline(cause),
-      signal: this.runtime.signal,
+      signal: this.runtime.engine.signal,
       api: this.options.api,
     });
   }
@@ -365,7 +364,7 @@ export class Invocation {
               validate: request.validate,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
               maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
-              signal: this.runtime.signal,
+              signal: this.runtime.engine.signal,
               timeoutMs: Math.max(1, this.deadline.remaining()),
             }),
           (generated) => ({
@@ -434,7 +433,7 @@ export class Invocation {
   /** Fails when the invocation deadline has elapsed (see checkStepClock). */
   checkDeadline(cause?: unknown): void {
     checkStepClock({
-      signal: this.runtime.signal,
+      signal: this.runtime.engine.signal,
       deadline: this.deadline,
       api: this.options.api,
       timeoutMs: this.options.timeoutMs,

@@ -15,6 +15,7 @@ import {
 import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/locator/engine.ts';
 import { E2EError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
+import { AttemptBudget } from '../../src/run/budget.ts';
 
 const REF: NodeRef = { id: 'node-1', revision: 'rev-1' };
 const NODE: SemanticNode = { ref: REF, role: 'button', name: 'Submit' };
@@ -82,12 +83,11 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
   } as unknown as TargetSession;
   const engine = new LocatorEngine({
     session,
-    signal: new AbortController().signal,
+    budget: new AttemptBudget(new AbortController().signal, new Deadline(30_000)),
     runId: 'run-1',
     attemptId: 'attempt-1',
     actionTimeout: options.actionTimeout ?? 1_000,
     assertionTimeout: 1_000,
-    testDeadline: new Deadline(30_000),
   });
   return { engine, calls };
 }

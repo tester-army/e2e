@@ -128,7 +128,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
               since: observation,
               intervalMs,
               lastExplanation: judgment.explanation,
-              signal: runtime.signal,
+              signal: runtime.engine.signal,
             });
           }
         },

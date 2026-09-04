@@ -224,7 +224,7 @@ class ActDispatch {
     private readonly runtime: AgentContext,
     private readonly spec: DispatchSpec,
   ) {
-    this.stepSignal = AbortSignal.any([runtime.signal, this.stepAbort.signal]);
+    this.stepSignal = AbortSignal.any([runtime.engine.signal, this.stepAbort.signal]);
     this.timeoutMs = resolveTimeout(spec.timeout, runtime.config.timeout);
     this.deadline = runtime.engine.deadline(this.timeoutMs);
     this.maxActions = resolveBoundedBudget(
@@ -494,7 +494,7 @@ class ActDispatch {
     if (this.hardStop?.code === code) return true;
     switch (code) {
       case 'CANCELLED':
-        return this.runtime.signal.aborted;
+        return this.runtime.engine.signal.aborted;
       case 'STEP_TIMEOUT':
         return this.deadline.expired();
       case 'STEP_BUDGET_EXHAUSTED':
@@ -681,7 +681,7 @@ class ActDispatch {
   private checkpoint(cause?: unknown): void {
     try {
       checkStepClock({
-        signal: this.runtime.signal,
+        signal: this.runtime.engine.signal,
         deadline: this.deadline,
         api: this.spec.api,
         timeoutMs: this.timeoutMs,
@@ -766,7 +766,7 @@ class ActDispatch {
       observe: (operation) => this.session.observe(operation, { pixels: false }),
       operation: () => this.operation(),
       guard: (cause) => this.checkpoint(cause),
-      signal: this.runtime.signal,
+      signal: this.runtime.engine.signal,
       api: this.spec.api,
     });
     return prepareObservation(raw, {

@@ -574,6 +574,28 @@ describe('device fixture', () => {
     return h.backend.fixtures!['device']!(context) as Device;
   }
 
+  it('reads the harness signal per call, so teardown after a body timeout still drives the device', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const timedOut = new AbortController();
+    timedOut.abort();
+    let current = timedOut.signal;
+    const context = {
+      targetName: 'ios-simulator',
+      get signal() {
+        return current;
+      },
+      locator: () => undefined,
+    } as unknown as BackendFixtureContext;
+    const device = h.backend.fixtures!['device']!(context) as Device;
+    // The body's signal is dead...
+    await expect(device.home()).rejects.toMatchObject({ code: 'CANCELLED' });
+    // ...and the same fixture instance follows the harness into the afterEach budget.
+    current = new AbortController().signal;
+    await expect(device.home()).resolves.toBeUndefined();
+    expect(h.fake.methods().filter((method) => method === 'command.home')).toHaveLength(2);
+  });
+
   it('mints a core locator from an agent-device selector without a device round trip', async () => {
     const h = harness();
     await openAttempt(h);

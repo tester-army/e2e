@@ -87,16 +87,26 @@ export interface SetupSession {
 
 | Member | Signature | Fixtures | Runs |
 | --- | --- | --- | --- |
-| `test.beforeEach` | `beforeEach(fn: TestHookFn): void` | `TestFixtures` | Before each test attempt, outermost group first |
-| `test.afterEach` | `afterEach(fn: TestHookFn): void` | `TestFixtures` | After each test attempt, innermost group first, including after a failure |
+| `test.beforeEach` | `beforeEach(fn: TestHookFn): void` | `TestFixtures` | Before each test attempt, outermost group first, then in declaration order within a group |
+| `test.afterEach` | `afterEach(fn: TestHookFn): void` | `TestFixtures` | After each test attempt, innermost group first, then in reverse declaration order within a group, including after a failure or timeout |
 | `test.beforeAll` | `beforeAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, on first entry into the scope |
-| `test.afterAll` | `afterAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, when the realm ends |
+| `test.afterAll` | `afterAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, when the scope's last test in the realm finishes |
+
+Hook order follows scope nesting, not position in the file: a file-level
+`beforeEach` declared below a `test.describe` still runs before the group's
+own `beforeEach`, and a hook declared after a test still applies to it.
 
 A suite instance is one execution realm: the module is re-imported for every
 retry, for every serial group, and for every setup test, so `beforeAll` runs
-again in each. A realm ends when its tests are done or when a failure
-discards it, and `afterAll` runs either way for every scope whose `beforeAll`
-started.
+again in each. A scope's `afterAll` runs as soon as its last runnable test in
+that realm is done, so one group's teardown never runs after a sibling group's
+tests. A realm that a failure discards runs `afterAll` for every scope whose
+`beforeAll` started.
+
+`beforeEach` and the body share the test timeout. Each `afterEach` hook then
+gets its own `cleanupTimeout` budget with working fixtures, so teardown can
+still drive the app after the body timed out. A hook that overruns that budget
+fails, its fixture operations are cancelled, and the next hook still runs.
 
 A throw inside `beforeAll` or `afterAll` is reported as `HOOK_FAILED` and skips
 the suite's tests with cause `hook-failed`. Inside a serial group, a

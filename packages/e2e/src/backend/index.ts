@@ -108,7 +108,12 @@ export interface BackendFixtureContext {
     readonly action: number;
     readonly assertion: number;
   };
-  /** Aborts with the attempt. */
+  /**
+   * The running phase's signal: the attempt's through `beforeEach` and the
+   * body, then a fresh one per `afterEach` hook so teardown can still drive
+   * the app after a body timeout. Read it per call; a fixture factory that
+   * captures it once keeps a signal that is dead by teardown.
+   */
   readonly signal: AbortSignal;
   /** Per-call operation budget: the action timeout (or an explicit one) plus the attempt signal. */
   operation(timeoutMs?: number): OperationContext;

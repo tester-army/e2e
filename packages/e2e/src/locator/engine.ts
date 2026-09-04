@@ -16,6 +16,7 @@ import {
 } from '../internal/errors.ts';
 import { describeExpression } from './expression.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
+import type { AttemptBudget } from '../run/budget.ts';
 
 /** Canonical visibility predicate over a semantic node snapshot. */
 export function isNodeVisible(node: SemanticNode | null): boolean {
@@ -24,12 +25,12 @@ export function isNodeVisible(node: SemanticNode | null): boolean {
 
 interface EngineOptions {
   readonly session: TargetSession;
-  readonly signal: AbortSignal;
+  /** The running phase's signal and deadline, read per operation. */
+  readonly budget: AttemptBudget;
   readonly runId: string;
   readonly attemptId: string;
   readonly actionTimeout: number;
   readonly assertionTimeout: number;
-  readonly testDeadline: Deadline;
 }
 
 /** Per-attempt locator execution engine. */
@@ -40,8 +41,9 @@ export class LocatorEngine {
     return this.options.session;
   }
 
+  /** The running phase's signal: the attempt's through the body, a hook's own in teardown. */
   get signal(): AbortSignal {
-    return this.options.signal;
+    return this.options.budget.signal;
   }
 
   get assertionTimeout(): number {
@@ -53,17 +55,17 @@ export class LocatorEngine {
     return this.operationWithin(this.deadline(timeoutMs));
   }
 
-  /** Deadline for one action-family operation, capped by the test deadline. */
+  /** Deadline for one action-family operation, capped by the running phase's deadline. */
   deadline(timeoutMs?: number): Deadline {
     return Deadline.min(
       new Deadline(timeoutMs ?? this.options.actionTimeout),
-      this.options.testDeadline,
+      this.options.budget.deadline,
     );
   }
 
   private operationWithin(deadline: Deadline): OperationContext {
     return {
-      signal: this.options.signal,
+      signal: this.signal,
       timeoutMs: Math.max(1, deadline.remaining()),
       runId: this.options.runId,
       attemptId: this.options.attemptId,
@@ -80,7 +82,7 @@ export class LocatorEngine {
         return await this.session.locate(expression, this.operationWithin(deadline));
       } catch (cause) {
         if (asBackendError(cause)?.retryable === true && !deadline.expired()) {
-          await sleep(POLL_INTERVAL_MS, this.options.signal);
+          await sleep(POLL_INTERVAL_MS, this.signal);
           continue;
         }
         throw translateLocatorError(cause, expression);
@@ -102,7 +104,7 @@ export class LocatorEngine {
           `locator matched no nodes within ${describeExpression(expression)}`,
         );
       }
-      await sleep(POLL_INTERVAL_MS, this.options.signal);
+      await sleep(POLL_INTERVAL_MS, this.signal);
     }
   }
 

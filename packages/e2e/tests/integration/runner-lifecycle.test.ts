@@ -38,7 +38,15 @@ test.describe('group', () => {
   test('inside group', async ({ platform }) => {
     log('body:' + platform);
   });
+
+  // Declared after the test: still applies, after this scope's earlier hooks.
+  test.beforeEach(() => log('beforeEach:group-late'));
+  test.afterEach(() => log('afterEach:group-late'));
 });
+
+// File-scope hooks declared below the group still wrap the group's own hooks.
+test.beforeEach(() => log('beforeEach:file-late'));
+test.afterEach(() => log('afterEach:file-late'));
 `;
       const logPath = path.join('/tmp', `e2e-hooks-${Date.now()}.log`);
       process.env['HOOK_LOG'] = logPath;
@@ -52,9 +60,13 @@ test.describe('group', () => {
         'beforeAll:file',
         'beforeAll:group',
         'beforeEach:file',
+        'beforeEach:file-late',
         'beforeEach:group',
+        'beforeEach:group-late',
         'body:web',
+        'afterEach:group-late',
         'afterEach:group',
+        'afterEach:file-late',
         'afterEach:file',
         'afterAll:group',
         'afterAll:file',
@@ -468,6 +480,274 @@ test.describe('wizard', { serial: true }, () => {
       });
       expect(second.outcome.exitCode).toBe(0);
       second.project.cleanup();
+    },
+    120_000,
+  );
+  it(
+    'closes a scope when its last test finishes and keeps same-titled siblings apart',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from '@e2edev/e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeAll(() => log('beforeAll:file'));
+test.afterAll(() => log('afterAll:file'));
+
+test.describe('A', () => {
+  test.beforeAll(() => log('beforeAll:A'));
+  test.afterAll(() => log('afterAll:A'));
+  test.beforeEach(() => log('beforeEach:A'));
+  test('a1', async () => { log('body:a1'); });
+  test('a2', async () => { log('body:a2'); });
+});
+
+test.describe('B', () => {
+  test.beforeAll(() => log('beforeAll:B'));
+  test.afterAll(() => log('afterAll:B'));
+  test('b1', async () => { log('body:b1'); });
+});
+
+// A second group titled "A" is a scope of its own, not a re-entry of the first.
+test.describe('A', () => {
+  test.beforeAll(() => log('beforeAll:A2'));
+  test.afterAll(() => log('afterAll:A2'));
+  test.beforeEach(() => log('beforeEach:A2'));
+  test('a3', async () => { log('body:a3'); });
+});
+
+test('top', async () => { log('body:top'); });
+`;
+      const logPath = path.join('/tmp', `e2e-scopes-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/scopes.e2e.ts': file }, { appUrl: app.url });
+      expect(outcome.exitCode).toBe(0);
+      // A's teardown runs once a2 is done, before B enters; the file scope
+      // stays open across all of them and closes with the realm.
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
+        'beforeAll:file',
+        'beforeAll:A',
+        'beforeEach:A',
+        'body:a1',
+        'beforeEach:A',
+        'body:a2',
+        'afterAll:A',
+        'beforeAll:B',
+        'body:b1',
+        'afterAll:B',
+        'beforeAll:A2',
+        'beforeEach:A2',
+        'body:a3',
+        'afterAll:A2',
+        'body:top',
+        'afterAll:file',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'runs member hooks for every serial member and closes nested scopes as members finish',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from '@e2edev/e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeEach(() => log('beforeEach:file'));
+test.afterEach(() => log('afterEach:file'));
+
+test.describe('wizard', { serial: true }, () => {
+  test.beforeEach(() => log('beforeEach:wizard'));
+  test.afterEach(() => log('afterEach:wizard'));
+
+  test.describe('inner', () => {
+    test.beforeAll(() => log('beforeAll:inner'));
+    test.afterAll(() => log('afterAll:inner'));
+    test('step 1', async () => { log('body:step1'); });
+  });
+
+  test('step 2', async () => { log('body:step2'); });
+});
+`;
+      const logPath = path.join('/tmp', `e2e-serialhooks-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/serialhooks.e2e.ts': file }, { appUrl: app.url });
+      expect(outcome.exitCode).toBe(0);
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
+        'beforeAll:inner',
+        'beforeEach:file',
+        'beforeEach:wizard',
+        'body:step1',
+        'afterEach:wizard',
+        'afterEach:file',
+        'afterAll:inner',
+        'beforeEach:file',
+        'beforeEach:wizard',
+        'body:step2',
+        'afterEach:wizard',
+        'afterEach:file',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'fails in phase beforeEach without running the body, and still runs afterEach',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from '@e2edev/e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeEach(() => {
+  log('beforeEach');
+  throw new Error('setup boom');
+});
+test.afterEach(() => log('afterEach'));
+
+test('never runs', async () => { log('body'); });
+`;
+      const logPath = path.join('/tmp', `e2e-beforeeach-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/beforeeach.e2e.ts': file }, { appUrl: app.url });
+      const result = resultByTitle(outcome, 'never runs');
+      expect(result.status).toBe('failed');
+      expect(result.attempts[0]!.error?.phase).toBe('beforeEach');
+      expect(result.attempts[0]!.error?.message).toContain('setup boom');
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual(['beforeEach', 'afterEach']);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'makes an afterEach failure primary after a pass and secondary after a body failure',
+    async () => {
+      const file = `import { test, expect } from '@e2edev/e2e';
+
+test.afterEach(async ({ screen }) => {
+  // Fixtures keep working in teardown after the body failed.
+  await expect(screen.getByRole('heading', { name: 'Home' })).toBeVisible();
+  throw new Error('teardown boom');
+});
+
+test('passes', async ({ app }) => { await app.open(); });
+test('fails', async ({ app }) => { await app.open(); throw new Error('body boom'); });
+`;
+      const { outcome, project } = await runProject({ 'tests/aftereach.e2e.ts': file }, { appUrl: app.url });
+      const passes = resultByTitle(outcome, 'passes');
+      expect(passes.status).toBe('failed');
+      expect(passes.attempts[0]!.error?.phase).toBe('afterEach');
+      expect(passes.attempts[0]!.error?.message).toContain('teardown boom');
+      const fails = resultByTitle(outcome, 'fails');
+      expect(fails.attempts[0]!.error?.phase).toBe('body');
+      expect(fails.attempts[0]!.error?.message).toContain('body boom');
+      expect(fails.attempts[0]!.secondaryErrors.map((error) => [error.phase, error.message])).toEqual([
+        ['afterEach', 'teardown boom'],
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'gives afterEach a working fixture budget after the body timed out',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test, expect } from '@e2edev/e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.afterEach(async ({ screen }) => {
+  log('afterEach:start');
+  await expect(screen.getByRole('heading', { name: 'Home' })).toBeVisible();
+  log('afterEach:done');
+});
+
+test('sleeps forever', { timeout: 1500 }, async ({ app }) => {
+  await app.open();
+  await new Promise((resolve) => setTimeout(resolve, 60_000));
+});
+`;
+      const logPath = path.join('/tmp', `e2e-timeout-cleanup-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/timeoutcleanup.e2e.ts': file }, { appUrl: app.url });
+      const result = resultByTitle(outcome, 'sleeps forever');
+      expect(result.status).toBe('timed-out');
+      expect(result.attempts[0]!.error?.phase).toBe('body');
+      expect(result.attempts[0]!.secondaryErrors).toEqual([]);
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual(['afterEach:start', 'afterEach:done']);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'cancels an afterEach hook that overruns cleanupTimeout and still runs the next one',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from '@e2edev/e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+// Declared first, so it runs last: teardown is reverse declaration order.
+test.afterEach(() => log('afterEach:next'));
+
+test.afterEach(async () => {
+  log('afterEach:start');
+  await new Promise((resolve) => setTimeout(resolve, 60_000));
+  log('afterEach:done');
+});
+
+test('passes', async ({ app }) => { await app.open(); });
+`;
+      const logPath = path.join('/tmp', `e2e-cleanup-overrun-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject(
+        { 'tests/overrun.e2e.ts': file },
+        { appUrl: app.url, config: { cleanupTimeout: 1000 } },
+      );
+      const result = resultByTitle(outcome, 'passes');
+      expect(result.status).toBe('timed-out');
+      expect(result.attempts[0]!.error?.phase).toBe('afterEach');
+      expect(result.attempts[0]!.error?.message).toContain('afterEach hook timed out');
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual(['afterEach:start', 'afterEach:next']);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'times out suite hooks against their budgets and names the scope in run errors',
+    async () => {
+      const file = `import { test } from '@e2edev/e2e';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test.afterAll(() => sleep(5000));
+
+test.describe('slow scope', () => {
+  test.beforeAll(() => sleep(5000));
+  test('unreachable', async () => {});
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/hooktimeouts.e2e.ts': file },
+        { appUrl: app.url, config: { timeout: 1000, cleanupTimeout: 1000 } },
+      );
+      const skipped = resultByTitle(outcome, 'unreachable');
+      expect(skipped.status).toBe('skipped');
+      expect(skipped.skip?.cause).toBe('hook-failed');
+      expect(outcome.report.run.errors.map((error) => [error.phase, error.scopeId, error.code])).toEqual([
+        ['beforeAll', 'slow scope', 'HOOK_FAILED'],
+        ['afterAll', 'file', 'HOOK_FAILED'],
+      ]);
+      assertValidReport(outcome.report);
+      expect(outcome.exitCode).toBe(1);
+      project.cleanup();
     },
     120_000,
   );

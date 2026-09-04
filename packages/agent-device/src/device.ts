@@ -86,53 +86,52 @@ export interface Device {
 
 /** Builds the device fixture for one attempt. */
 export function createDeviceFixture(surface: AgentDeviceSurface, context: BackendFixtureContext): Device {
-  const signal = context.signal;
   return {
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {
       await surface.command(
         'device.setNetwork',
         (client) => client.settings.update({ setting: 'wifi', state: state === 'offline' ? 'off' : 'on' }),
-        signal,
+        context.signal,
       );
     },
     async setAirplaneMode(enabled) {
       await surface.command(
         'device.setAirplaneMode',
         (client) => client.settings.update({ setting: 'airplane', state: enabled ? 'on' : 'off' }),
-        signal,
+        context.signal,
       );
     },
     async setPermission(permission, state) {
       await surface.command(
         'device.setPermission',
         (client) => client.settings.update({ setting: 'permission', permission, state }),
-        signal,
+        context.signal,
       );
     },
     async setLocation({ latitude, longitude }) {
       await surface.command(
         'device.setLocation',
         (client) => client.settings.update({ setting: 'location', state: 'set', latitude, longitude }),
-        signal,
+        context.signal,
       );
     },
     async clearLocation() {
       await surface.command(
         'device.clearLocation',
         (client) => client.settings.update({ setting: 'location', state: 'off' }),
-        signal,
+        context.signal,
       );
     },
     async setAppearance(mode) {
       await surface.command(
         'device.setAppearance',
         (client) => client.settings.update({ setting: 'appearance', state: mode }),
-        signal,
+        context.signal,
       );
     },
     async setOrientation(orientation) {
-      await surface.command('device.setOrientation', (client) => client.command.orientation({ orientation }), signal);
+      await surface.command('device.setOrientation', (client) => client.command.orientation({ orientation }), context.signal);
     },
     async setBiometrics(sensor, result) {
       await surface.command(
@@ -141,27 +140,27 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Backen
           sensor === 'fingerprint'
             ? client.settings.update({ setting: 'fingerprint', state: result })
             : client.settings.update({ setting: sensor, state: result }),
-        signal,
+        context.signal,
       );
     },
     async enrollBiometrics(sensor, enrolled) {
       await surface.command(
         'device.enrollBiometrics',
         (client) => client.settings.update({ setting: sensor, state: enrolled ? 'enroll' : 'unenroll' }),
-        signal,
+        context.signal,
       );
     },
     async installApp(appPath, options) {
-      return surface.installApp(appPath, options ?? {}, signal);
+      return surface.installApp(appPath, options ?? {}, context.signal);
     },
     async openApp(app, options) {
-      await surface.openApp(app, options?.relaunch === true, signal);
+      await surface.openApp(app, options?.relaunch === true, context.signal);
     },
     async closeApp() {
-      await surface.command('device.closeApp', (client) => client.apps.close({}), signal);
+      await surface.command('device.closeApp', (client) => client.apps.close({}), context.signal);
     },
     async foregroundApp() {
-      const state = await surface.command('device.foregroundApp', (client) => client.command.appState({}), signal);
+      const state = await surface.command('device.foregroundApp', (client) => client.command.appState({}), context.signal);
       if ('package' in state) return { name: state.package, bundleId: state.package };
       return {
         name: state.appName,
@@ -169,27 +168,27 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Backen
       };
     },
     async home() {
-      await surface.command('device.home', (client) => client.command.home({}), signal);
+      await surface.command('device.home', (client) => client.command.home({}), context.signal);
     },
     async back() {
-      await surface.command('device.back', (client) => client.command.back({ settle: true }), signal);
+      await surface.command('device.back', (client) => client.command.back({ settle: true }), context.signal);
     },
     async alert(action) {
-      await surface.command('device.alert', (client) => client.command.alert({ action }), signal);
+      await surface.command('device.alert', (client) => client.command.alert({ action }), context.signal);
     },
     async dismissKeyboard() {
-      await surface.command('device.dismissKeyboard', (client) => client.command.keyboard({ action: 'dismiss' }), signal);
+      await surface.command('device.dismissKeyboard', (client) => client.command.keyboard({ action: 'dismiss' }), context.signal);
     },
     async clipboard() {
       const result = await surface.command(
         'device.clipboard',
         (client) => client.command.clipboard({ action: 'read' }),
-        signal,
+        context.signal,
       );
       return result.action === 'read' ? result.text : '';
     },
     async setClipboard(text) {
-      await surface.command('device.setClipboard', (client) => client.command.clipboard({ action: 'write', text }), signal);
+      await surface.command('device.setClipboard', (client) => client.command.clipboard({ action: 'write', text }), context.signal);
     },
   };
 }

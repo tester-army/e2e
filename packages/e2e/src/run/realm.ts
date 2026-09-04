@@ -17,26 +17,59 @@ import {
   groupChain,
   groupTitles,
   type GroupNode,
+  type HookKind,
   type ModuleRegistration,
   type RegisteredHook,
   type RegisteredTest,
+  type SuiteHook,
+  type TestHook,
 } from '../collect/registry.ts';
+import type { TestTargetPair } from '../collect/select.ts';
 import type { Platform, SuiteFixtures } from '../types.ts';
 import type { RunError } from './records.ts';
+
+/**
+ * A suite scope of one realm: a describe group, or `undefined` for the file
+ * scope. Scopes are the registration's own group nodes, so two sibling groups
+ * that happen to share a title stay two scopes with their own hooks.
+ */
+type Scope = GroupNode | undefined;
 
 export interface Realm {
   registration: ModuleRegistration;
   /** Registered tests by title-path key, for per-attempt lookup. */
   testsByKey: ReadonlyMap<string, RegisteredTest>;
-  /** Scope keys whose beforeAll already ran in this realm. */
-  entered: Map<string, { failed: SerializedError | undefined }>;
-  /** Scopes pending afterAll, innermost last. */
-  pendingAfterAll: string[];
+  /**
+   * Scopes whose beforeAll ran in this realm, in entry order (outermost
+   * first), each with the failure that ended its beforeAll if one did. A scope
+   * leaves the map when its afterAll has run.
+   */
+  entered: Map<Scope, { failed: SerializedError | undefined }>;
 }
 
 /** Finds a registered test in a re-imported realm by its exact title path. */
 export function findRegistered(realm: Realm, test: CollectedTest): RegisteredTest | undefined {
   return realm.testsByKey.get(titlePathKey(test.titlePath));
+}
+
+/**
+ * Runs one hook within its budget. A hook that overruns fails with the
+ * runner's timeout error; `onTimeout` lets the caller cancel what it started.
+ */
+export function runHook(
+  kind: HookKind,
+  run: () => void | Promise<void>,
+  timeoutMs: number,
+  onTimeout?: () => void,
+): Promise<void> {
+  return withTimeout(
+    Promise.resolve().then(run),
+    timeoutMs,
+    () => {
+      onTimeout?.();
+      return new TestTimeoutError(`${kind} hook timed out`);
+    },
+  );
 }
 
 export interface RealmManagerOptions {
@@ -77,79 +110,98 @@ export class RealmManager {
   adopt(registration: ModuleRegistration): Realm {
     const testsByKey = new Map<string, RegisteredTest>();
     for (const test of registration.tests) testsByKey.set(titlePathKey(test.titlePath), test);
-    return { registration, testsByKey, entered: new Map(), pendingAfterAll: [] };
+    return { registration, testsByKey, entered: new Map() };
   }
 
-  /** Returns a test's hooks of one kind across its enclosing scope chain. */
-  hooksFor(realm: Realm, test: RegisteredTest, kind: 'beforeEach' | 'afterEach'): RegisteredHook[] {
-    const chainKeys = new Set(scopeChainFor(test).map(scopeKey));
-    return realm.registration.hooks.filter(
-      (hook) => hook.kind === kind && chainKeys.has(scopeKey(hook.group)),
+  /**
+   * A test's hooks of one kind in execution order (spec 11-lifecycle.md).
+   * `beforeEach` runs outer scope to inner, each scope's hooks in declaration
+   * order, wherever in the file a scope's hooks were declared relative to the
+   * test or to nested groups. `afterEach` mirrors it: inner scope to outer,
+   * each scope's hooks in reverse declaration order.
+   */
+  hooksFor(realm: Realm, test: RegisteredTest, kind: TestHook['kind']): TestHook[] {
+    const ordered = scopeChainFor(test).flatMap((scope) =>
+      this.scopeHooks<TestHook>(realm, scope, kind),
     );
+    return kind === 'beforeEach' ? ordered : ordered.toReversed();
   }
 
   /** Enters suite scopes for a test, running pending beforeAll hooks. */
   async enterScopes(realm: Realm, test: RegisteredTest): Promise<SerializedError | undefined> {
     for (const scope of scopeChainFor(test)) {
-      const key = scopeKey(scope);
-      const entered = realm.entered.get(key);
+      const entered = realm.entered.get(scope);
       if (entered !== undefined) {
         if (entered.failed !== undefined) return entered.failed;
         continue;
       }
-      const hooks = realm.registration.hooks.filter(
-        (hook) => hook.kind === 'beforeAll' && scopeKey(hook.group) === key,
-      );
       let failed: SerializedError | undefined;
-      for (const hook of hooks) {
+      for (const hook of this.scopeHooks<SuiteHook>(realm, scope, 'beforeAll')) {
         try {
-          await withTimeout(
-            Promise.resolve(hook.fn(this.suiteFixtures() as never)),
-            this.options.timeout,
-            () => new TestTimeoutError('beforeAll hook timed out'),
-          );
+          await runHook(hook.kind, () => hook.fn(this.suiteFixtures()), this.options.timeout);
         } catch (cause) {
           const error = classifyError(cause);
           failed = serializeError(
             new E2EError('test', 'HOOK_FAILED', `beforeAll failed: ${error.message}`, { cause }),
-            { phase: 'beforeAll', scopeId: key === '' ? (test.titlePath[0] ?? 'file') : key },
+            { phase: 'beforeAll', scopeId: scopeId(scope) },
           );
           this.options.runErrors.push({ error: failed });
           break;
         }
       }
-      realm.entered.set(key, { failed });
-      realm.pendingAfterAll.push(key);
+      realm.entered.set(scope, { failed });
       if (failed !== undefined) return failed;
     }
     return undefined;
   }
 
-  /** Runs pending afterAll hooks, innermost scope first. */
-  async leave(realm: Realm): Promise<void> {
-    for (const key of [...realm.pendingAfterAll].toReversed()) {
-      const hooks = realm.registration.hooks.filter(
-        (hook) => hook.kind === 'afterAll' && scopeKey(hook.group) === key,
-      );
-      for (const hook of [...hooks].toReversed()) {
+  /**
+   * Closes every entered scope that none of `remaining` (the pairs still to
+   * run in this realm) belongs to, innermost first, running its afterAll
+   * hooks in reverse declaration order. A scope's afterAll therefore runs
+   * when its last runnable member leaves it (spec 11-lifecycle.md), not when
+   * the file ends: one describe's teardown never runs after a sibling's tests.
+   */
+  async leaveFinished(realm: Realm, remaining: readonly TestTargetPair[]): Promise<void> {
+    const needed = new Set<Scope>();
+    for (const pair of remaining) {
+      // A pair the realm cannot find never runs here, so it holds nothing open.
+      const registered = findRegistered(realm, pair.test);
+      if (registered !== undefined) for (const scope of scopeChainFor(registered)) needed.add(scope);
+    }
+    for (const scope of [...realm.entered.keys()].toReversed()) {
+      if (needed.has(scope)) continue;
+      realm.entered.delete(scope);
+      for (const hook of this.scopeHooks<SuiteHook>(realm, scope, 'afterAll').toReversed()) {
         try {
-          await withTimeout(
-            Promise.resolve(hook.fn(this.suiteFixtures() as never)),
-            this.options.cleanupTimeout,
-            () => new TestTimeoutError('afterAll hook timed out'),
-          );
+          await runHook(hook.kind, () => hook.fn(this.suiteFixtures()), this.options.cleanupTimeout);
         } catch (cause) {
           const error = classifyError(cause);
           this.options.runErrors.push({
             error: serializeError(
               new E2EError('test', 'HOOK_FAILED', `afterAll failed: ${error.message}`, { cause }),
-              { phase: 'afterAll', scopeId: key },
+              { phase: 'afterAll', scopeId: scopeId(scope) },
             ),
           });
         }
       }
     }
-    realm.pendingAfterAll = [];
+  }
+
+  /** Closes every entered scope: the realm ends here. */
+  async leave(realm: Realm): Promise<void> {
+    await this.leaveFinished(realm, []);
+  }
+
+  /** One scope's hooks of one kind, in declaration order. */
+  private scopeHooks<Hook extends RegisteredHook>(
+    realm: Realm,
+    scope: Scope,
+    kind: Hook['kind'],
+  ): Hook[] {
+    return realm.registration.hooks.filter(
+      (hook): hook is Hook => hook.kind === kind && hook.group === scope,
+    );
   }
 
   private suiteFixtures(): SuiteFixtures {
@@ -157,10 +209,11 @@ export class RealmManager {
   }
 }
 
-function scopeKey(group: GroupNode | undefined): string {
-  return titlePathKey(groupTitles(group));
+/** The scope's report identity: its title path, or `file` for the file scope. */
+function scopeId(scope: Scope): string {
+  return scope === undefined ? 'file' : groupTitles(scope).join(' \u203a ');
 }
 
-function scopeChainFor(test: RegisteredTest): (GroupNode | undefined)[] {
+function scopeChainFor(test: RegisteredTest): Scope[] {
   return [undefined, ...groupChain(test.group)];
 }

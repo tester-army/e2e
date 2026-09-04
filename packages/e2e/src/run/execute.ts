@@ -23,10 +23,11 @@ import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts'
 import type { TestTargetPair } from '../collect/select.ts';
 import type { ArtifactStore } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
+import { AttemptBudget } from './budget.ts';
 import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
 import { createBackendSession } from '../backend/session.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
-import { findRegistered, RealmManager, type Realm } from './realm.ts';
+import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
   ResultRecord,
@@ -38,7 +39,7 @@ import { runSerialUnit, type SerialHost, type SharedSerialSession } from './seri
 import { INTERRUPTED_BEFORE_START, pairResult, unstartedResult } from './units.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
-import type { SetupFn, TestFn } from '../types.ts';
+import type { SetupFn } from '../types.ts';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
@@ -255,7 +256,7 @@ export class TargetExecutor implements SerialHost {
     const ordered = filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
     let realm: Realm | null =
       freshRegistration === undefined ? null : this.realms.adopt(freshRegistration);
-    for (const pair of ordered) {
+    for (const [index, pair] of ordered.entries()) {
       if (this.interruptSignal.aborted) {
         this.emit(unstartedResult(pair, INTERRUPTED_BEFORE_START));
         continue;
@@ -276,6 +277,9 @@ export class TargetExecutor implements SerialHost {
       }
       this.options.events?.onPairStart?.(pair);
       realm = await this.runOrdinaryPair(pair, file, realm);
+      // A scope's afterAll runs as soon as its last test in this realm is
+      // done, so a describe's teardown never lands after a sibling's tests.
+      if (realm !== null) await this.realms.leaveFinished(realm, ordered.slice(index + 1));
     }
     if (realm !== null) await this.realms.leave(realm);
   }
@@ -633,6 +637,7 @@ export class TargetExecutor implements SerialHost {
       openSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);
+      const budget = new AttemptBudget(attemptAbort.signal, testDeadline);
       const saveSession =
         context.kind !== 'setup'
           ? undefined
@@ -653,10 +658,9 @@ export class TargetExecutor implements SerialHost {
         target: this.target,
         session,
         steps,
-        signal: attemptAbort.signal,
+        budget,
         runId: this.options.runId,
         attemptId,
-        testDeadline,
         artifacts: artifacts.sink,
         priorSteps,
         agentContext: pair.options.agentContext,
@@ -666,12 +670,12 @@ export class TargetExecutor implements SerialHost {
       });
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');
-      const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach').toReversed();
+      const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach');
 
       const mainWork = async (): Promise<void> => {
         phase = 'beforeEach';
         for (const hook of beforeEachHooks) {
-          await (hook.fn as TestFn)(fixtures);
+          await hook.fn(fixtures);
         }
         phase = 'body';
         await (registered.fn as SetupFn)(fixtures);
@@ -693,11 +697,14 @@ export class TargetExecutor implements SerialHost {
 
       phase = 'afterEach';
       for (const hook of afterEachHooks) {
+        // Each teardown hook gets its own cleanup budget: a body that timed
+        // out or was cancelled must not leave the hook with dead fixtures, and
+        // a hook that overruns has its own operations cancelled, not the next
+        // hook's. Only a run interrupt still cuts cleanup short.
+        const hookAbort = budget.enter(this.interruptSignal, this.config.cleanupTimeout);
         try {
-          await withTimeout(
-            Promise.resolve((hook.fn as TestFn)(fixtures)),
-            this.config.cleanupTimeout,
-            () => new TestTimeoutError('afterEach hook timed out'),
+          await runHook(hook.kind, () => hook.fn(fixtures), this.config.cleanupTimeout, () =>
+            hookAbort.abort(),
           );
         } catch (cause) {
           if (failure === undefined) {

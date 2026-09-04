@@ -46,14 +46,26 @@ export interface RegisteredTest {
   readonly source: SourceLocation | undefined;
 }
 
-export type HookKind = 'beforeEach' | 'afterEach' | 'beforeAll' | 'afterAll';
-
-export interface RegisteredHook {
-  readonly kind: HookKind;
-  readonly fn: TestHookFn | SuiteHookFn;
+interface HookBase {
   readonly group: GroupNode | undefined;
   readonly declarationIndex: number;
 }
+
+/** A per-test hook: runs with the attempt's fixtures. */
+export interface TestHook extends HookBase {
+  readonly kind: 'beforeEach' | 'afterEach';
+  readonly fn: TestHookFn;
+}
+
+/** A suite hook: runs once per scope instance with suite fixtures only. */
+export interface SuiteHook extends HookBase {
+  readonly kind: 'beforeAll' | 'afterAll';
+  readonly fn: SuiteHookFn;
+}
+
+export type RegisteredHook = TestHook | SuiteHook;
+export type HookKind = RegisteredHook['kind'];
+type HookDeclaration = Pick<TestHook, 'kind' | 'fn'> | Pick<SuiteHook, 'kind' | 'fn'>;
 
 export interface ModuleRegistration {
   readonly tests: readonly RegisteredTest[];
@@ -158,12 +170,13 @@ class Collector {
     }
   }
 
-  registerHook(kind: HookKind, fn: TestHookFn | SuiteHookFn): void {
-    this.assertOpen(`test.${kind}()`);
-    if (typeof fn !== 'function') throw new CollectionError(`${kind} hook must be a function`);
+  registerHook(hook: HookDeclaration): void {
+    this.assertOpen(`test.${hook.kind}()`);
+    if (typeof hook.fn !== 'function') {
+      throw new CollectionError(`${hook.kind} hook must be a function`);
+    }
     this.hooks.push({
-      kind,
-      fn,
+      ...hook,
       group: this.currentGroup,
       declarationIndex: this.declarationCounter,
     });
@@ -337,16 +350,16 @@ export const test: TestAPI = Object.assign(testFunction, {
     requireCollector('test.describe()').registerDescribe(title, options, body);
   },
   beforeEach(fn: TestHookFn): void {
-    requireCollector('test.beforeEach()').registerHook('beforeEach', fn);
+    requireCollector('test.beforeEach()').registerHook({ kind: 'beforeEach', fn });
   },
   afterEach(fn: TestHookFn): void {
-    requireCollector('test.afterEach()').registerHook('afterEach', fn);
+    requireCollector('test.afterEach()').registerHook({ kind: 'afterEach', fn });
   },
   beforeAll(fn: SuiteHookFn): void {
-    requireCollector('test.beforeAll()').registerHook('beforeAll', fn);
+    requireCollector('test.beforeAll()').registerHook({ kind: 'beforeAll', fn });
   },
   afterAll(fn: SuiteHookFn): void {
-    requireCollector('test.afterAll()').registerHook('afterAll', fn);
+    requireCollector('test.afterAll()').registerHook({ kind: 'afterAll', fn });
   },
   // Type-only refinement: contributed fixtures are resolved from the backend
   // at runtime, so the same test object serves every fixture shape.
