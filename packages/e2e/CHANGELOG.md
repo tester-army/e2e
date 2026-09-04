@@ -1,5 +1,85 @@
 # @e2edev/e2e
 
+## 0.3.0
+
+### Minor Changes
+
+- [#117](https://github.com/tester-army/e2e/pull/117) [`44ce280`](https://github.com/tester-army/e2e/commit/44ce280e92772b452b6a958bf1a606b43e7cdba3) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Install builds on the device. The `appPath` backend option installs an iOS
+  `.app` bundle or Android `.apk` once per worker, after boot and before the
+  first attempt; without `app`, the installed bundle id or package becomes the
+  app opened fresh per attempt, so `agentDevice({ platform: 'ios', appPath:
+'./build/MyApp.app' })` is a complete target. The `device` fixture gains
+  `installApp(appPath, { app, reinstall })` for tests that exercise upgrade or
+  fresh-install paths, recorded as a `device.installApp` step.
+
+  `BackendInitInfo` carries `projectRoot`, the directory relative config paths
+  resolve against, so a backend option naming a file resolves the same way in a
+  child-process worker and an in-process run.
+
+- [#113](https://github.com/tester-army/e2e/pull/113) [`6a2918c`](https://github.com/tester-army/e2e/commit/6a2918cf98117d5c06a815422498923ee2c1c043) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Foundation work for executors that diff screens and replay long flows
+  reliably; no behaviour of the built-in agent changes beyond its history hook.
+
+  Chassis (`createToolLoopExecutor`): `prepareMessages(messages, turn)`
+  replaces `compactMessages`. It runs between turns, its result carries forward
+  to later turns, and it may return `{ messages, stop }` to force the
+  conclusion when the executor has evidence the loop guards cannot see.
+  `providerOptions` are passed to every model call. `createAgent` accepts
+  `providerOptions` too. `isDefinedTool`, `toolAppliesTo`, `PreparedTurn` and
+  `PreparedMessages` are exported from `@e2edev/e2e/agent`; `RUNTIME_CODES` from
+  `@e2edev/e2e`. `ExecutorObservation` carries the current `path` when the
+  backend reports one.
+
+  Trace cache: a typed value that appears in neither the step's instruction
+  nor its params was derived at run time and is recorded as a gap, so replay
+  hands the step over before it instead of typing a value the app may not
+  issue again. A trace records how long the recording run took to reach its
+  end state (`endWaitMs`), and replay waits that long (plus a margin, bounded
+  by the step clock) for the end anchors before it self-finalizes. Every
+  targeted action records the key of the row or list item it sat in
+  (`within`), and relocation requires it to hold, so same-named controls in
+  different rows replay without a guess. The replay policy version bumps, so
+  existing caches cold-start.
+
+  Breaking for `createToolLoopExecutor` callers: `compactMessages` is replaced
+  by `prepareMessages`.
+
+- [#115](https://github.com/tester-army/e2e/pull/115) [`b08a668`](https://github.com/tester-army/e2e/commit/b08a668eed39e3d68b5f5d15335eef9895bdb15f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Backends get a `prepare` hook: once per run and target, in the runner process,
+  before any worker starts and outside every launch budget. The Playwright
+  backend installs a missing browser there instead of inside `init`, so a
+  first-run download is no longer charged against `launchTimeout`, no longer runs
+  once per worker, and its progress streams as new `notice` run events. The list
+  reporter prints those above its live status block, where before the block's
+  repaint erased the download output written to a worker's stderr and a first run
+  looked hung on a spinner.
+
+- [#116](https://github.com/tester-army/e2e/pull/116) [`e73e4f2`](https://github.com/tester-army/e2e/commit/e73e4f27ca8a4a863d2d142a2bc05983b2ae2057) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `app.url` and `APP_URL` no longer need a scheme: `tester.army` becomes `https://tester.army` and `localhost:3000` becomes `http://localhost:3000`. The `allowProduction` gate is gone and `app.environment` is no longer required for non-loopback hosts; it defaults to `test` for loopback, `.localhost`, and `.test` hosts and to `production` elsewhere, and stays a label for the report and the cache identity. `allowProduction` is now an unknown app key (`INVALID_CONFIG`), and the report target no longer carries it: readers that require `targets[].allowProduction` must drop that requirement. `e2e init` now scaffolds `app: { url: 'localhost:3000' }`, `agent: createAgent({ system })`, and one playwright web target, and warns when the `ai` peer dependency is not declared.
+
+### Patch Changes
+
+- [#118](https://github.com/tester-army/e2e/pull/118) [`749988f`](https://github.com/tester-army/e2e/commit/749988f923e7905a36c4898e0037b8af06eff23c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Ctrl-C now ends the run and tears the backend down. The first signal interrupts the running test immediately (it no longer waits for the test timeout when the body is not calling the harness), runs its bounded cleanup, disposes every worker's backend, and writes the report. A second signal forces every worker to dispose at once and kills it after the cleanup budget; a third exits on the spot. A worker whose runner disappears disposes its backend and exits instead of running on. The event stream gains `run-interrupted`.
+
+  The signal ladder is the CLI's. `run()` from `@e2edev/e2e/run` no longer installs `SIGINT`/`SIGTERM` handlers and never exits the process; a host passes `interruptSignal` and the new `forceSignal` instead.
+
+- [#119](https://github.com/tester-army/e2e/pull/119) [`00cfc52`](https://github.com/tester-army/e2e/commit/00cfc52bd5a9ab56f7fb2dad357ce325c9ce4817) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Hooks now run in the order the lifecycle spec defines. `beforeEach` runs outer
+  scope to inner and `afterEach` inner to outer regardless of where in the file
+  each scope's hooks were declared; before, a file-level hook declared below a
+  `test.describe` ran after (or, for `afterEach`, before) the group's own hooks.
+  A `describe`'s `afterAll` runs when its last test in the realm finishes rather
+  than when the whole file ends, so one group's teardown no longer lands after a
+  sibling group's tests. Sibling groups that share a title keep separate hooks.
+  A failing `afterAll` discards the realm as the spec requires: later tests start
+  fresh, and a serial group attempt ends with its remaining members skipped.
+
+  Each `afterEach` hook gets its own `cleanupTimeout` budget with working
+  fixtures: after a body timeout, teardown can still drive the app instead of
+  failing with `operation cancelled`; a hook that overruns its budget fails, its
+  fixture operations are cancelled, and the next hook still runs. The agent-device
+  `device` fixture reads that signal per call, so it too keeps working in teardown.
+
+  Suite-hook run errors carry a readable `scopeId` (`file` or the group title
+  path); an `afterAll` failure at file scope no longer writes an empty
+  `scopeId` the report schema rejects.
+
 ## 0.2.0
 
 ### Minor Changes

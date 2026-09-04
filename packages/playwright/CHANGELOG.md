@@ -1,5 +1,28 @@
 # @e2edev/playwright
 
+## 0.3.0
+
+### Minor Changes
+
+- [#115](https://github.com/tester-army/e2e/pull/115) [`b08a668`](https://github.com/tester-army/e2e/commit/b08a668eed39e3d68b5f5d15335eef9895bdb15f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Backends get a `prepare` hook: once per run and target, in the runner process,
+  before any worker starts and outside every launch budget. The Playwright
+  backend installs a missing browser there instead of inside `init`, so a
+  first-run download is no longer charged against `launchTimeout`, no longer runs
+  once per worker, and its progress streams as new `notice` run events. The list
+  reporter prints those above its live status block, where before the block's
+  repaint erased the download output written to a worker's stderr and a first run
+  looked hung on a spinner.
+
+- [#113](https://github.com/tester-army/e2e/pull/113) [`6a2918c`](https://github.com/tester-army/e2e/commit/6a2918cf98117d5c06a815422498923ee2c1c043) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Observation node ids are stable per element: the reader stamps an id on each
+  element the first time it is observed and reads it back afterwards, so an
+  element keeps its id across observations for as long as it lives in the
+  document, and an executor can diff two observations instead of re-reading
+  the screen. Closed `<select>` controls list their options (up to 60) as child
+  nodes. Table rows and cells are observed as `row`, `cell`, and
+  `columnheader` nodes instead of being flattened into their text and buttons,
+  so a control inside a row can be told apart from the same control in the
+  next row.
+
 ## 0.2.0
 
 ### Minor Changes

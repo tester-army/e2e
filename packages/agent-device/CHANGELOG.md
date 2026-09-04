@@ -1,5 +1,43 @@
 # @e2edev/agent-device
 
+## 0.2.0
+
+### Minor Changes
+
+- [#117](https://github.com/tester-army/e2e/pull/117) [`44ce280`](https://github.com/tester-army/e2e/commit/44ce280e92772b452b6a958bf1a606b43e7cdba3) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Install builds on the device. The `appPath` backend option installs an iOS
+  `.app` bundle or Android `.apk` once per worker, after boot and before the
+  first attempt; without `app`, the installed bundle id or package becomes the
+  app opened fresh per attempt, so `agentDevice({ platform: 'ios', appPath:
+'./build/MyApp.app' })` is a complete target. The `device` fixture gains
+  `installApp(appPath, { app, reinstall })` for tests that exercise upgrade or
+  fresh-install paths, recorded as a `device.installApp` step.
+
+  `BackendInitInfo` carries `projectRoot`, the directory relative config paths
+  resolve against, so a backend option naming a file resolves the same way in a
+  child-process worker and an in-process run.
+
+### Patch Changes
+
+- [#119](https://github.com/tester-army/e2e/pull/119) [`00cfc52`](https://github.com/tester-army/e2e/commit/00cfc52bd5a9ab56f7fb2dad357ce325c9ce4817) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Hooks now run in the order the lifecycle spec defines. `beforeEach` runs outer
+  scope to inner and `afterEach` inner to outer regardless of where in the file
+  each scope's hooks were declared; before, a file-level hook declared below a
+  `test.describe` ran after (or, for `afterEach`, before) the group's own hooks.
+  A `describe`'s `afterAll` runs when its last test in the realm finishes rather
+  than when the whole file ends, so one group's teardown no longer lands after a
+  sibling group's tests. Sibling groups that share a title keep separate hooks.
+  A failing `afterAll` discards the realm as the spec requires: later tests start
+  fresh, and a serial group attempt ends with its remaining members skipped.
+
+  Each `afterEach` hook gets its own `cleanupTimeout` budget with working
+  fixtures: after a body timeout, teardown can still drive the app instead of
+  failing with `operation cancelled`; a hook that overruns its budget fails, its
+  fixture operations are cancelled, and the next hook still runs. The agent-device
+  `device` fixture reads that signal per call, so it too keeps working in teardown.
+
+  Suite-hook run errors carry a readable `scopeId` (`file` or the group title
+  path); an `afterAll` failure at file scope no longer writes an empty
+  `scopeId` the report schema rejects.
+
 ## 0.1.0
 
 ### Minor Changes
