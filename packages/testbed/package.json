@@ -21,7 +21,8 @@
     "demo:host": "pnpm run bench:build && node host-demo.mjs",
     "test:reminders": "node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.reminders.config.ts",
     "test:stress": "node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
-    "test:device:cached": "pnpm run test:device && pnpm run test:device && node scripts/assert-cache-replay.mjs"
+    "test:device:cached": "pnpm run test:device && pnpm run test:device && node scripts/assert-cache-replay.mjs",
+    "test:appstore": "rm -rf .e2e/appstore && node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.appstore.config.ts; node scripts/appstore-report.mjs"
   },
   "dependencies": {
     "@e2edev/agent-device": "workspace:*",
