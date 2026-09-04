@@ -45,15 +45,8 @@ export interface AttemptEnvironment {
   readonly budget: AttemptBudget;
   readonly runId: string;
   readonly attemptId: string;
-  /** The attempt as executors see it: test identity, retry index, end signal, scratch memory. */
-  readonly attempt: {
-    readonly testId: string;
-    readonly index: number;
-    /** Aborts when the attempt ends, on any path. */
-    readonly signal: AbortSignal;
-    /** Executor scratch space; serial members share the group's. */
-    readonly memory: Map<string, unknown>;
-  };
+  /** The attempt as executors see it: identity, end-of-attempt signal, scratch memory. */
+  readonly attempt: ExecutorAttempt;
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
@@ -124,14 +117,6 @@ export function createFixtures(
 
   let agent: Agent | undefined;
 
-  const attempt: ExecutorAttempt = {
-    testId: environment.attempt.testId,
-    attemptId: environment.attemptId,
-    index: environment.attempt.index,
-    signal: environment.attempt.signal,
-    memory: environment.attempt.memory,
-  };
-
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
       agent ??= createAgentFixture({
@@ -146,9 +131,8 @@ export function createFixtures(
           platform: environment.target.platform,
           verbs: environment.session.verbs,
         },
-        attempt,
+        attempt: environment.attempt,
         priorSteps: environment.priorSteps,
-
         agentContext: joinAgentContext(
           environment.config.agent.context,
           environment.agentContext,

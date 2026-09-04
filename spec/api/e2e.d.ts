@@ -1144,15 +1144,16 @@ export interface ExecutorNode {
 /** Masked viewport pixels cleared for model input. */
 export interface ExecutorPixels {
   readonly data: Uint8Array;
-  readonly mediaType: string;
+  readonly mediaType: 'image/png';
   readonly width: number;
   readonly height: number;
+  /** Image pixels per CSS pixel; 1 for a CSS-scale capture. */
   readonly scale: number;
   readonly maskedRegionCount: number;
 }
 
-/** Why pixels an executor asked for are not part of an observation. */
-export type ExecutorPixelsWithheld = 'MASKING_UNPROVEN' | 'PIXEL_TAINTED' | 'UNSUPPORTED_CAPABILITY';
+/** Why requested pixels did not become model input; the token the report's `visionDegraded` carries. */
+export type VisionDegradation = 'PIXEL_TAINTED' | 'MASKING_UNPROVEN' | 'UNSUPPORTED_CAPABILITY';
 
 /** Redacted, size-bounded observation an executor may show its model. */
 export interface ExecutorObservation {
@@ -1167,7 +1168,7 @@ export interface ExecutorObservation {
   /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
   readonly pixels?: ExecutorPixels;
   /** Set when requested pixels were withheld. */
-  readonly pixelsWithheld?: ExecutorPixelsWithheld;
+  readonly pixelsWithheld?: VisionDegradation;
 }
 
 /** A node named by its id from the newest observation. */

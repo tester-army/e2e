@@ -133,7 +133,6 @@ export function formatReplayedPrefix(prefix: ReplayedPrefix): string {
  * Exported as the default `prepareMessages` a custom one can compose with.
  */
 export function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
-
   const total = messages.reduce(
     (count, message) => count + snapshotParts(message).filter((text) => text !== undefined).length,
     0,

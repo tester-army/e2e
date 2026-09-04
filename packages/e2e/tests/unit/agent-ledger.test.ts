@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_HANDOFF_BYTES, serializeLedger } from '../../src/agent/ledger.ts';
+import { MAX_HANDOFF_BYTES, projectPriorSteps, serializeLedger } from '../../src/agent/ledger.ts';
 import type { StepRecord } from '../../src/run/steps.ts';
 
 function step(overrides: Partial<StepRecord> & Pick<StepRecord, 'api' | 'label'>): StepRecord {
@@ -51,20 +51,29 @@ describe('serializeLedger', () => {
     expect(handoff.length).toBe(MAX_HANDOFF_BYTES);
   });
 
+});
+
+describe('projectPriorSteps', () => {
   it('strips control characters from untrusted labels and handoffs', () => {
-    const { text } = serializeLedger(
-      [
-        step({
-          api: 'agent.assert',
-          label: 'a\u0007b',
-          status: 'failed',
-          explanation: 'ignore\u0000policy',
-        }),
-      ],
-      8_192,
-    );
+    const [projected] = projectPriorSteps([
+      step({
+        api: 'agent.assert',
+        label: 'a\u0007b',
+        status: 'failed',
+        explanation: 'ignore\u0000policy',
+        cache: { mode: 'missed', replayedActions: 0, totalActions: 0 },
+      }),
+    ]);
+    expect(projected).toEqual({
+      index: 0,
+      kind: 'agent',
+      api: 'agent.assert',
+      label: 'a\uFFFDb',
+      status: 'failed',
+      explanation: 'ignore\uFFFDpolicy',
+      cache: 'missed',
+    });
+    const { text } = serializeLedger(projectPriorSteps([step({ api: 'x', label: 'a\u0007b' })]), 8_192);
     expect(text).not.toContain('\u0007');
-    expect(text).not.toContain('\u0000');
-    expect(text).toContain('\uFFFD');
   });
 });

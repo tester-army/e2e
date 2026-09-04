@@ -1,21 +1,16 @@
 /** Observation capture, redaction, and model serialization (spec 09-drivers.md, 14-security.md). */
 
-import type { Observation, ObservationPixels, SemanticNode } from '../backend/surface.ts';
+import type { Observation, SemanticNode } from '../backend/surface.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
-import type { ExecutorNode } from './executor.ts';
+import type { VisionDegradation } from '../run/steps.ts';
+import type { ExecutorNode, ExecutorPixels } from './executor.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
 
 /** Why pixels the caller asked for are not part of this observation. */
 type PixelsWithheld = 'MASKING_UNPROVEN';
-
-/** Masked pixel evidence cleared for model input. */
-export interface AgentPixels extends ObservationPixels {
-  readonly maskedRegionCount: number;
-  readonly bytes: number;
-}
 
 export interface AgentObservation {
   readonly revision: string;
@@ -30,7 +25,7 @@ export interface AgentObservation {
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
   /** Present only when the backend captured pixels and masking checks out. */
-  readonly pixels?: AgentPixels | undefined;
+  readonly pixels?: ExecutorPixels | undefined;
   /** Set when captured pixels were dropped instead of being sent. */
   readonly pixelsWithheld?: PixelsWithheld | undefined;
 }
@@ -95,7 +90,6 @@ export function prepareObservation(
     tree: observation.tree,
     viewport: observation.viewport,
     truncated,
-
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };
@@ -110,14 +104,31 @@ export function prepareObservation(
  * artifact (14-security.md) — the semantic tree still goes out.
  */
 function clearPixels(observation: Observation): {
-  cleared?: AgentPixels;
+  cleared?: ExecutorPixels;
   withheld?: PixelsWithheld;
 } {
   const pixels = observation.pixels;
   if (pixels === undefined) return {};
   const { secureNodeCount, maskedRegionCount } = observation.redaction;
   if (maskedRegionCount < secureNodeCount) return { withheld: 'MASKING_UNPROVEN' };
-  return { cleared: { ...pixels, maskedRegionCount, bytes: pixels.data.byteLength } };
+  return { cleared: { ...pixels, maskedRegionCount } };
+}
+
+/**
+ * Whether requested pixels become model input, decided once per observation
+ * for every tier that asks: a tainted viewport (a secret filled this attempt)
+ * is denied first, since the secret may be anywhere on screen; then the
+ * capture's own reasons; then the pixels themselves.
+ */
+export function pixelsForModel(
+  observation: AgentObservation,
+  tainted: boolean,
+): { readonly pixels: ExecutorPixels } | { readonly withheld: VisionDegradation } {
+  if (tainted) return { withheld: 'PIXEL_TAINTED' };
+  if (observation.pixels === undefined) {
+    return { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' };
+  }
+  return { pixels: observation.pixels };
 }
 
 /**
@@ -151,7 +162,6 @@ export function projectTree(node: SemanticNode, redact: (text: string) => string
 
 /** Depth beyond this renders flat; deep chrome must not buy tokens with spaces. */
 const MAX_INDENT_DEPTH = 10;
-
 
 /**
  * Renders one node as `#id role "name" text="..." [states]`. Role-less text

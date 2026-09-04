@@ -80,7 +80,6 @@ export function checkLoopGuards(
       period === 1
         ? [thresholds.repeatWarn, thresholds.repeatStop]
         : [thresholds.cycleWarn, thresholds.cycleStop];
-
     if (repeats >= stopAt) {
       return { kind: 'stop', reason: describe(calls, period, repeats) };
     }

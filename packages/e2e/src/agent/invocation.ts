@@ -36,7 +36,7 @@ import {
   retryingObserve,
   type PhaseSpec,
 } from './phases.ts';
-import { serializeLedger, type LedgerContext } from './ledger.ts';
+import { projectPriorSteps, serializeLedger, type LedgerContext } from './ledger.ts';
 import {
   imageTokenUpperBound,
   ModelOutputInvalidError,
@@ -45,7 +45,7 @@ import {
   type ModelImage,
 } from './model/adapter.ts';
 import type { ModelRouter } from './model/router.ts';
-import { prepareObservation, type AgentObservation } from './observation.ts';
+import { pixelsForModel, prepareObservation, type AgentObservation } from './observation.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
 
@@ -68,7 +68,6 @@ export interface AgentContext {
   readonly target: StepExecutorContext['target'];
   /** The attempt's identity, end signal, and executor scratch memory. */
   readonly attempt: ExecutorAttempt;
-
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
   /** Trusted project context: config.agent.context then test/group agentContext. */
@@ -174,7 +173,10 @@ export class Invocation {
     this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = buildSystem(options.task, runtime.agentContext);
     this.systemBytes = tokenUpperBound(this.system);
-    this.ledger = serializeLedger(runtime.priorSteps(), runtime.config.limits.maxLedgerBytes);
+    this.ledger = serializeLedger(
+      projectPriorSteps(runtime.priorSteps()),
+      runtime.config.limits.maxLedgerBytes,
+    );
     agentTrace(
       () =>
         `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
@@ -274,13 +276,13 @@ export class Invocation {
 
   /** Records whether requested pixels actually became model input. */
   private recordPixels(observation: AgentObservation): void {
-    const pixels = observation.pixels;
-    if (pixels === undefined) {
-      this.loseVision(observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY');
+    const outcome = pixelsForModel(observation, this.runtime.taint.value);
+    if ('withheld' in outcome) {
+      this.loseVision(outcome.withheld);
       return;
     }
     this.visionInput = true;
-    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, pixels.bytes);
+    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, outcome.pixels.data.byteLength);
     this.recordPolicy('vision.pixels', 'allowed');
   }
 
@@ -522,8 +524,8 @@ export class Invocation {
 /** Trace fragment describing what pixel evidence an observation carried. */
 function describePixels(observation: AgentObservation): string {
   if (observation.pixels !== undefined) {
-    const { width, height, bytes, maskedRegionCount } = observation.pixels;
-    return `, pixels ${width}x${height} ${bytes}B, ${maskedRegionCount} masked`;
+    const { width, height, data, maskedRegionCount } = observation.pixels;
+    return `, pixels ${width}x${height} ${data.byteLength}B, ${maskedRegionCount} masked`;
   }
   return observation.pixelsWithheld === undefined
     ? ''

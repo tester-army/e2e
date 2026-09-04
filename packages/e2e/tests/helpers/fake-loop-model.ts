@@ -97,7 +97,6 @@ function lastUserText(prompt: readonly RawMessage[]): string {
   return '';
 }
 
-
 function userText(message: RawMessage): string {
   if (typeof message.content === 'string') return message.content;
   return message.content
@@ -105,7 +104,6 @@ function userText(message: RawMessage): string {
     .map((part) => part.text)
     .join('\n');
 }
-
 
 /** Extracts the text value of every tool-result part, oldest first. */
 function collectToolResults(prompt: readonly RawMessage[]): string[] {

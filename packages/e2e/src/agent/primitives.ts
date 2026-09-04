@@ -21,7 +21,7 @@ import { BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './e
 import { readCost } from './model/sdk.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
-export const MODEL_ERROR_CODES = [
+const MODEL_ERROR_CODES = [
   'ACTION_FAILED',
   'AUTOMATION_UNSUPPORTED',
   'ASSERTION_FAILED',
@@ -45,6 +45,18 @@ export const VERDICT_RULES = `Verdict rules:
 - Verify outcomes with your tools before concluding; never guess success.
 - "passed" means the application behaved as the step required. "failed" means it did not. "blocked" means credentials, the environment, or test setup prevented a product verdict — blocked says nothing about the product and requires an errorCode.`;
 
+/**
+ * A plain AI SDK function tool with its input typed from the schema — what
+ * `tool()` from `ai` does, without loading `ai` to do it.
+ */
+function schemaTool<Schema extends z.ZodType>(definition: {
+  readonly description: string;
+  readonly inputSchema: Schema;
+  readonly execute: (input: z.output<Schema>) => Promise<string>;
+}): Tool {
+  return definition;
+}
+
 /** The conclusion tool and the verdict it collected. */
 export interface VerdictTool {
   /** The `complete_step` tool; add it to the toolset under that name. */
@@ -62,7 +74,7 @@ export interface VerdictTool {
  */
 export function createVerdictTool(): VerdictTool {
   let verdict: StepVerdict | undefined;
-  const tool: Tool = {
+  const tool = schemaTool({
     description:
       'Conclude the step with the final verdict. passed = the application behaved as required and you verified it. failed = the application did not behave as required. blocked = credentials, environment, or test setup prevented a product verdict; blocked requires errorCode.',
     inputSchema: z.object({
@@ -74,11 +86,7 @@ export function createVerdictTool(): VerdictTool {
         .describe('What you did and what you saw, in plain language'),
       errorCode: z.enum(MODEL_ERROR_CODES).optional(),
     }),
-    execute: async (input: {
-      status: StepVerdict['status'];
-      summary: string;
-      errorCode?: (typeof MODEL_ERROR_CODES)[number];
-    }): Promise<string> => {
+    execute: async (input) => {
       if (verdict !== undefined) return 'The step already concluded.';
       if (
         input.status === 'blocked' &&
@@ -100,7 +108,7 @@ export function createVerdictTool(): VerdictTool {
       };
       return 'Step concluded.';
     },
-  };
+  });
   return {
     tool,
     verdict: () => verdict,
@@ -140,7 +148,7 @@ export function createGrammarTools(
   const target = z.string().min(1).describe('Node id from the newest observation, e.g. "n42"');
 
   const tools: ToolSet = {
-    observe: {
+    observe: schemaTool({
       description: 'Capture a fresh observation of the current screen without acting.',
       inputSchema: z.object({}),
       execute: () =>
@@ -148,102 +156,101 @@ export function createGrammarTools(
           const observation = await context.observe();
           return `Current screen (revision ${observation.revision}):\n${observation.text}`;
         }),
-    },
+    }),
   };
   if (verbs.has('tap')) {
-    tools['tap'] = {
+    tools['tap'] = schemaTool({
       description: 'Tap or click one node.',
       inputSchema: z.object({ target }),
-      execute: ({ target: id }: { target: string }) =>
+      execute: ({ target: id }) =>
         guard(async () => {
           await context.actions.tap({ id });
           return acted(`Tapped #${id}.`);
         }),
-    };
+    });
   }
   if (verbs.has('type')) {
-    tools['type'] = {
+    tools['type'] = schemaTool({
       description: 'Type a plain-text value into one input node. Replaces the current value.',
       inputSchema: z.object({ target, value: z.string() }),
-      execute: ({ target: id, value }: { target: string; value: string }) =>
+      execute: ({ target: id, value }) =>
         guard(async () => {
           await context.actions.type({ id }, value);
           return acted(`Typed into #${id}.`);
         }),
-    };
+    });
   }
   if (verbs.has('press')) {
-    tools['press'] = {
+    tools['press'] = schemaTool({
       description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
       inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
-      execute: ({ target: id, key }: { target: string; key: string }) =>
+      execute: ({ target: id, key }) =>
         guard(async () => {
           await context.actions.press({ id }, key);
           return acted(`Pressed ${key} on #${id}.`);
         }),
-    };
+    });
   }
   if (verbs.has('select')) {
-    tools['select'] = {
+    tools['select'] = schemaTool({
       description: 'Pick one option from a select-like control by its visible label.',
       inputSchema: z.object({ target, value: z.string().min(1) }),
-      execute: ({ target: id, value }: { target: string; value: string }) =>
+      execute: ({ target: id, value }) =>
         guard(async () => {
           await context.actions.select({ id }, value);
           return acted(`Selected "${value}" in #${id}.`);
         }),
-    };
+    });
   }
   if (verbs.has('scroll')) {
     const direction = z.enum(['up', 'down', 'left', 'right']);
-    type Direction = z.infer<typeof direction>;
     // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
     tools['scroll'] = verbs.has('tap')
-      ? {
+      ? schemaTool({
           description: 'Scroll the viewport, or one scrollable node when target is given.',
           inputSchema: z.object({ direction, target: target.optional() }),
-          execute: ({ direction: way, target: id }: { direction: Direction; target?: string }) =>
+          execute: ({ direction: way, target: id }) =>
             guard(async () => {
               await context.actions.scroll(way, id === undefined ? undefined : { id });
               return acted(`Scrolled ${way}.`);
             }),
-        }
-      : {
+        })
+      : schemaTool({
           description: 'Scroll the viewport.',
           inputSchema: z.object({ direction }),
-          execute: ({ direction: way }: { direction: Direction }) =>
+          execute: ({ direction: way }) =>
             guard(async () => {
               await context.actions.scroll(way);
               return acted(`Scrolled ${way}.`);
             }),
-        };
+        });
   }
   if (verbs.has('navigate')) {
-    tools['navigate'] = {
+    tools['navigate'] = schemaTool({
       description: 'Navigate to a URL or app-relative path within the allowed origins.',
       inputSchema: z.object({ url: z.string().min(1) }),
-      execute: ({ url }: { url: string }) =>
+      execute: ({ url }) =>
         guard(async () => {
           await context.actions.navigate(url);
           return acted(`Navigated to ${url}.`);
         }),
-    };
+    });
   }
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.
   if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
-    tools['type_secret'] = {
+    tools['type_secret'] = schemaTool({
       description:
         'Fill one declared secret credential into a secure input field; the plaintext never passes through you. Available: ' +
         context.step.secrets.map((secret) => `"${secret.name}" (${secret.purpose})`).join(', ') +
         '.',
       inputSchema: z.object({ target, name: z.string().min(1) }),
-      execute: ({ target: id, name }: { target: string; name: string }) =>
+      execute: ({ target: id, name }) =>
         guard(async () => {
           await context.actions.typeSecret({ id }, name);
           return acted(`Filled secret "${name}" into #${id}.`);
         }),
-    };
+    });
   }
   return tools;
 }
@@ -330,7 +337,9 @@ function isStoredConversation(value: unknown): value is StoredConversation {
   return (
     typeof value === 'object' &&
     value !== null &&
-    Array.isArray((value as StoredConversation).messages) &&
-    typeof (value as StoredConversation).lastStepIndex === 'number'
+    'messages' in value &&
+    Array.isArray(value.messages) &&
+    'lastStepIndex' in value &&
+    typeof value.lastStepIndex === 'number'
   );
 }

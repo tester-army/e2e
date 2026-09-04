@@ -171,8 +171,8 @@ class LoopRun {
   private noticedLowClock = false;
   private readonly transcript: string[] = [];
   private readonly maxTurns: number;
-  private readonly windDownMs: number;
-  private readonly windDownTurns: number;
+  /** Resolved wind-down thresholds; undefined when the executor disabled the notices. */
+  private readonly windDown: { readonly turns: number; readonly clockMs: number } | undefined;
   private readonly guardThresholds: LoopGuardThresholds | undefined;
 
   constructor(
@@ -188,14 +188,16 @@ class LoopRun {
       context.budgets.maxModelCalls,
     );
     const windDown = options.windDown;
-    this.windDownMs =
+    this.windDown =
       windDown === false
-        ? 0
-        : Math.min(
-            windDown?.clockMs ?? CLOCK_WIND_DOWN_MS,
-            Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
-          );
-    this.windDownTurns = windDown === false ? -1 : (windDown?.turns ?? WIND_DOWN_TURNS);
+        ? undefined
+        : {
+            turns: windDown?.turns ?? WIND_DOWN_TURNS,
+            clockMs: Math.min(
+              windDown?.clockMs ?? CLOCK_WIND_DOWN_MS,
+              Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
+            ),
+          };
     this.guardThresholds =
       options.loopGuards === false
         ? undefined
@@ -330,7 +332,10 @@ class LoopRun {
     const turnsLeft = this.maxTurns - stepNumber;
     // Never on the very first turn: a deliberately short step timeout still
     // deserves one working turn before the clock takes the verdict.
-    const lowClock = stepNumber > 0 && this.context.budgets.remainingMs() < this.windDownMs;
+    const lowClock =
+      this.windDown !== undefined &&
+      stepNumber > 0 &&
+      this.context.budgets.remainingMs() < this.windDown.clockMs;
     if (lowClock && this.noticedLowClock !== true) {
       this.noticedLowClock = true;
       prepared = appendNotice(
@@ -367,7 +372,8 @@ class LoopRun {
           'blocked (with errorCode) if something outside the application stopped you.',
       );
     }
-    if (turnsLeft === this.windDownTurns && this.guardStop === undefined) {
+    const windDownTurn = this.windDown !== undefined && turnsLeft === this.windDown.turns;
+    if (windDownTurn && this.guardStop === undefined) {
       prepared = appendNotice(
         prepared,
         `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +
@@ -378,7 +384,6 @@ class LoopRun {
     }
 
     const forced = turnsLeft <= FORCED_CONCLUSION_TURNS || this.guardStop !== undefined || lowClock;
-
     return {
       ...(prepared === messages ? {} : { messages: prepared }),
       ...(forced

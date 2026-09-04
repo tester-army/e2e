@@ -17,8 +17,8 @@
  * matter whose brain runs the step.
  */
 
-import type { SemanticNode } from '../backend/surface.ts';
-import type { StepKind } from '../run/steps.ts';
+import type { ObservationPixels, SemanticNode } from '../backend/surface.ts';
+import type { StepCacheInfo, StepKind, StepRecord, VisionDegradation } from '../run/steps.ts';
 import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
@@ -83,7 +83,7 @@ export interface ExecutorPriorStep {
   readonly api: string;
   /** Sanitized step label: the instruction, assertion, or target phrase. */
   readonly label: string;
-  readonly status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
+  readonly status: StepRecord['status'];
   /** The step's handoff: an agent verdict summary or judgment explanation, sanitized. */
   readonly explanation?: string;
   /**
@@ -91,7 +91,7 @@ export interface ExecutorPriorStep {
    * means the cache replayed it without any executor — an executor keeping
    * its own history never saw that step run.
    */
-  readonly cache?: 'self-finalized' | 'agent-concluded' | 'missed';
+  readonly cache?: StepCacheInfo['mode'];
 }
 
 /** What an executor asks `observe()` to include beyond the text serialization. */
@@ -124,18 +124,10 @@ export interface ExecutorNode {
   readonly children?: readonly ExecutorNode[];
 }
 
-/** Masked viewport pixels cleared for model input. */
-export interface ExecutorPixels {
-  readonly data: Uint8Array;
-  readonly mediaType: string;
-  readonly width: number;
-  readonly height: number;
-  readonly scale: number;
+/** Masked viewport pixels cleared for model input: the backend's capture plus its proven mask count. */
+export interface ExecutorPixels extends ObservationPixels {
   readonly maskedRegionCount: number;
 }
-
-/** Why pixels an executor asked for are not part of an observation. */
-export type ExecutorPixelsWithheld = 'MASKING_UNPROVEN' | 'PIXEL_TAINTED' | 'UNSUPPORTED_CAPABILITY';
 
 /** Redacted, size-bounded observation an executor may show its model. */
 export interface ExecutorObservation {
@@ -153,8 +145,8 @@ export interface ExecutorObservation {
   readonly tree?: ExecutorNode;
   /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
   readonly pixels?: ExecutorPixels;
-  /** Set when requested pixels were withheld. */
-  readonly pixelsWithheld?: ExecutorPixelsWithheld;
+  /** Why requested pixels were withheld; the same token the report's `visionDegraded` carries. */
+  readonly pixelsWithheld?: VisionDegradation;
 }
 
 /** A node named by its id from the newest observation, e.g. `{ id: 'n42' }`. */
@@ -350,7 +342,6 @@ export interface StepExecutor {
   readonly cache?: 'inherit' | 'off';
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
-
 
 /**
  * Codes only the runtime may assign. An executor can carry them (they reach

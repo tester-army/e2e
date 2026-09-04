@@ -214,7 +214,6 @@ async function runSerialAttempt(
       artifactSegments,
       priorSteps: [],
       memory: new Map(),
-
     };
   } catch (cause) {
     const error = classifyError(cause);

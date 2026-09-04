@@ -6,7 +6,8 @@
  * credentials, or budget.
  */
 
-import type { AgentObservation, AgentPixels } from './observation.ts';
+import type { ExecutorPixels } from './executor.ts';
+import type { AgentObservation } from './observation.ts';
 
 /** Immutable agent policy version recorded in every model-backed step. */
 export const POLICY_VERSION = 'policy-0.3';
@@ -112,7 +113,7 @@ export function buildPrompt(input: PromptInput): string {
 
 /** Describes the attached screenshot and its relation to the tree evidence. */
 function describePixels(
-  pixels: AgentPixels,
+  pixels: ExecutorPixels,
   soleEvidence: boolean,
   revision: string,
 ): string {

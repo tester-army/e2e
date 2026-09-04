@@ -13,11 +13,11 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BackendError, type OperationContext, type SemanticNode } from '../backend/surface.ts';
-import { ConfigurationError, sanitizeText, TestError, truncateUtf8 } from '../internal/errors.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { StepMetrics, StepModelInfo, StepRecord } from '../run/steps.ts';
+import type { StepMetrics, StepModelInfo } from '../run/steps.ts';
 import type {
   AgentErrorCode,
   AgentOptions,
@@ -42,17 +42,17 @@ import {
   type ExecutorModelCall,
   type ExecutorObservation,
   type ExecutorObserveOptions,
-  type ExecutorPriorStep,
   type ExecutorTarget,
   type StepExecutorContext,
   type StepVerdict,
 } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import { isDerivedValue } from './derived.ts';
-import { serializeLedger } from './ledger.ts';
+import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import {
   observationShape,
+  pixelsForModel,
   prepareObservation,
   projectTree,
   settleObservation,
@@ -224,10 +224,8 @@ class ActDispatch {
   private readonly stepCache: StepTraceSession | undefined;
   /** Timeline index of the step being dispatched. */
   private readonly stepIndex: number;
-  /** Whether the current executor-facing observe asked for pixels; read by the capture. */
-  private pixelsRequested = false;
-  /** Whether the pixel policy decision was already recorded for this step. */
-  private pixelsDecided: 'allowed' | 'denied' | undefined;
+  /** The last pixel decision recorded on this step: `allowed`, or the withheld reason. */
+  private pixelsDecided: string | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -248,18 +246,18 @@ class ActDispatch {
     );
     this.metrics.contextBytes = new TextEncoder().encode(runtime.agentContext ?? '').byteLength;
     this.redact = runtime.redact;
+    // The dispatch always runs inside a recorded step (`dispatchAct` opens
+    // one); the index names the step to the executor and to the trace cache.
+    const stepIndex = runtime.steps.currentStepIndex;
+    if (stepIndex === undefined) throw new Error('agent step dispatched outside a recorded step');
+    this.stepIndex = stepIndex;
     // Only act steps are cacheable: an assert must not change state, so its
     // trace would be empty — nothing to replay, nothing worth a read. An
-    // executor that declared `cache: 'off'` sees every step itself. The
-    // dispatch always runs inside a recorded step; a missing index would mean
-    // that invariant broke, and withholding the whole session is the safe
-    // answer.
+    // executor that declared `cache: 'off'` sees every step itself.
     const cache =
       spec.kind === 'act' && runtime.executor.cache !== 'off' ? runtime.cache : undefined;
-    const stepIndex = runtime.steps.currentStepIndex;
-    this.stepIndex = stepIndex ?? runtime.priorSteps().length;
     this.stepCache =
-      cache === undefined || stepIndex === undefined
+      cache === undefined
         ? undefined
         : new StepTraceSession(this.cacheHost(), {
             cache,
@@ -283,7 +281,7 @@ class ActDispatch {
     // The `model` getter below runs with the context object as `this`.
     // oxlint-disable-next-line typescript/no-this-alias
     const dispatch = this;
-    const priorSteps = this.runtime.priorSteps().map(projectPriorStep);
+    const priorSteps = projectPriorSteps(this.runtime.priorSteps());
     const ledger = serializeLedger(priorSteps, this.runtime.config.limits.maxLedgerBytes);
     this.metrics.ledgerBytes = ledger.bytes;
     const replayedPrefix = this.stepCache?.replayedPrefix;
@@ -751,39 +749,24 @@ class ActDispatch {
 
   /**
    * Pixels for an executor that asked for them, or the reason they are
-   * withheld. A tainted viewport (any secret filled this attempt) is denied
-   * before capture; masking the backend cannot prove is dropped after it. The
-   * decision is recorded as a policy event once per step, as the judgment
-   * tier records its own.
+   * withheld — the same decision the judgment tier makes, recorded as a
+   * policy event whenever it changes within the step.
    */
   private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
-    if (this.runtime.taint.value) {
-      this.recordPixelDecision('denied', 'PIXEL_TAINTED');
-      return { pixelsWithheld: 'PIXEL_TAINTED' };
-    }
-    const pixels = observation.pixels;
-    if (pixels === undefined) {
-      const reason = observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY';
-      this.recordPixelDecision('denied', reason);
-      return { pixelsWithheld: reason };
+    const outcome = pixelsForModel(observation, this.runtime.taint.value);
+    if ('withheld' in outcome) {
+      this.recordPixelDecision('denied', outcome.withheld);
+      return { pixelsWithheld: outcome.withheld };
     }
     this.recordPixelDecision('allowed');
-    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, pixels.bytes);
-    return {
-      pixels: {
-        data: pixels.data,
-        mediaType: pixels.mediaType,
-        width: pixels.width,
-        height: pixels.height,
-        scale: pixels.scale,
-        maskedRegionCount: pixels.maskedRegionCount,
-      },
-    };
+    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, outcome.pixels.data.byteLength);
+    return { pixels: outcome.pixels };
   }
 
   private recordPixelDecision(decision: 'allowed' | 'denied', code?: string): void {
-    if (this.pixelsDecided === decision) return;
-    this.pixelsDecided = decision;
+    const key = code ?? decision;
+    if (this.pixelsDecided === key) return;
+    this.pixelsDecided = key;
     this.recordPolicy('vision.pixels', decision, code);
   }
 
@@ -800,20 +783,20 @@ class ActDispatch {
     this.checkpoint();
     // A tainted viewport never captures pixels: the backend would mask what it
     // knows about, and the secret may be anywhere on screen by now.
-    this.pixelsRequested = pixels && !this.runtime.taint.value;
+    const capturePixels = pixels && !this.runtime.taint.value;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
       () =>
         settle
-          ? settleObservation(() => this.captureObservation(), observationShape, {
+          ? settleObservation(() => this.captureObservation(capturePixels), observationShape, {
               remainingMs: () => this.deadline.remaining(),
               // The step's own hard stop must interrupt a settle sleep too —
               // the attempt signal alone would let settling outlive the step
               // by one poll interval.
               signal: this.stepSignal,
             })
-          : this.captureObservation(),
+          : this.captureObservation(capturePixels),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
     this.latest = observation;
@@ -822,9 +805,9 @@ class ActDispatch {
   }
 
   /** One raw observation capture: retried at the backend, then redacted and bounded. */
-  private async captureObservation(): Promise<AgentObservation> {
+  private async captureObservation(pixels: boolean): Promise<AgentObservation> {
     const raw = await retryingObserve({
-      observe: (operation) => this.session.observe(operation, { pixels: this.pixelsRequested }),
+      observe: (operation) => this.session.observe(operation, { pixels }),
       operation: () => this.operation(),
       guard: (cause) => this.checkpoint(cause),
       signal: this.runtime.engine.signal,
@@ -1010,28 +993,4 @@ class ActDispatch {
       return { name: 'navigate', url };
     });
   }
-}
-
-/** Bytes one prior-step field may occupy: sanitized quoted evidence, never policy. */
-const MAX_PRIOR_STEP_FIELD_BYTES = 8_192;
-
-/**
- * Projects one recorded step onto the executor-facing shape: the fields a
- * brain builds history from, sanitized at the trust boundary where they
- * become model input, and nothing that carries runner internals.
- */
-function projectPriorStep(step: StepRecord): ExecutorPriorStep {
-  return {
-    index: step.index,
-    kind: step.kind,
-    api: step.api,
-    label: boundedText(step.label),
-    status: step.status,
-    ...(step.explanation === undefined ? {} : { explanation: boundedText(step.explanation) }),
-    ...(step.cache === undefined ? {} : { cache: step.cache.mode }),
-  };
-}
-
-function boundedText(text: string): string {
-  return truncateUtf8(sanitizeText(text), MAX_PRIOR_STEP_FIELD_BYTES);
 }

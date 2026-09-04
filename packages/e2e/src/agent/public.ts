@@ -16,7 +16,6 @@ export {
   conversationMemory,
   createGrammarTools,
   createVerdictTool,
-  MODEL_ERROR_CODES,
   trackModelCalls,
   VERDICT_RULES,
   type ConversationMemory,
@@ -33,8 +32,8 @@ export {
   type ToolLoopHelpers,
   type WindDownPolicy,
 } from './tool-loop.ts';
-export { serializeLedger, type LedgerContext, type LedgerStep } from './ledger.ts';
-export { DEFAULT_LOOP_GUARD_THRESHOLDS, type LoopGuardThresholds } from './loop-guards.ts';
+export { serializeLedger, type LedgerContext } from './ledger.ts';
+export type { LoopGuardThresholds } from './loop-guards.ts';
 
 export {
   defineTool,

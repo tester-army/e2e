@@ -28,11 +28,9 @@ export type {
   ExecutorObservation,
   ExecutorObserveOptions,
   ExecutorPixels,
-  ExecutorPixelsWithheld,
   ExecutorPriorStep,
   ExecutorStep,
   ExecutorTarget,
-
   ReplayedPrefix,
   ReplayHandOffReason,
   StepExecutor,
@@ -40,3 +38,4 @@ export type {
   StepVerdict,
   StepVerdictStatus,
 } from './agent/executor.ts';
+export type { VisionDegradation } from './run/steps.ts';
