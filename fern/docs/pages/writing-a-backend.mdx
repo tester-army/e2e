@@ -8,14 +8,17 @@ Everything in `e2e` above the backend is portable. `test`, `expect`, `screen`,
 speak one narrow contract from `@e2edev/e2e/backend`, and a backend is the package that
 maps it onto a real surface.
 
-`@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
+`@e2edev/playwright`, `@e2edev/agent-device`, and `@e2edev/tmux` are three such packages, built
 with the same public `defineBackend` as anything the community writes. A
 backend for a desktop shell, a TV, or a surface nobody has thought of yet
 integrates against the same contract: the runner cannot tell them apart, and
-neither can a test. The agent-device package is the smaller of the two and a
-good model for a device-shaped backend: one client, one id generation per
-observation, a contributed `device` fixture, and a minted `app://` location
-so the trace cache has an anchor.
+neither can a test. The agent-device package is a good model for a
+device-shaped backend: one client, one id generation per observation, a
+contributed `device` fixture, and a minted `app://` location so the trace
+cache has an anchor. The tmux package is the smallest of the three and shows
+how little a surface needs: its observation is the text of a terminal pane,
+its actions are keystrokes, and it still gets `screen`, `expect`, and the
+agent for free.
 
 ## The ownership boundary
 

@@ -15,6 +15,7 @@
     "e2e.public.config.ts",
     "e2e.reminders.config.ts",
     "e2e.selenium.config.ts",
+    "e2e.terminal.config.ts",
     "e2e.tester-army.config.ts",
     "fixtures/**/*.ts",
     "tests-bench/**/*.ts",
@@ -22,6 +23,7 @@
     "tests-public/**/*.ts",
     "tests-reminders/**/*.ts",
     "tests-selenium/**/*.ts",
+    "tests-terminal/**/*.ts",
     "tests-tester-army/**/*.ts",
     "tests/**/*.ts"
   ]

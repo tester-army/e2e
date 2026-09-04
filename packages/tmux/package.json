@@ -1,0 +1,80 @@
+{
+  "name": "@e2edev/tmux",
+  "version": "0.0.0",
+  "description": "tmux terminal backend (CLIs and TUIs) for the e2e agentic end-to-end testing standard",
+  "keywords": [
+    "e2e",
+    "testing",
+    "agentic",
+    "end-to-end",
+    "tmux",
+    "terminal",
+    "tui",
+    "cli",
+    "backend"
+  ],
+  "license": "MIT",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/tmux"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/tmux#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "restricted",
+    "provenance": false,
+    "tag": "beta"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "default": "./dist/tools.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:tmux": "E2E_TMUX_INTEGRATION=1 vitest run tests/integration"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "ai": "^7.0.0",
+    "@e2edev/e2e": ">=0.1.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "ai": "7.0.37",
+    "@e2edev/e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

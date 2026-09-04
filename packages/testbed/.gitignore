@@ -8,6 +8,8 @@
 .e2e/report.json
 .e2e/report.html
 .e2e/ai-trace.json
+# Throwaway OpenCode workspace the terminal suite config creates.
+.e2e/opencode-workspace/
 bench/.next/
 # AI SDK devtools trace database written by testbed telemetry.
 .devtools/

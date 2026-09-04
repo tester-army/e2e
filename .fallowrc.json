@@ -17,7 +17,8 @@
   ],
   "ignoreDependencies": [
     "@e2edev/e2e",
-    "@e2edev/playwright"
+    "@e2edev/playwright",
+    "@e2edev/tmux"
   ],
   "rules": {
     "unused-class-member": "warn",

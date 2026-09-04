@@ -1,0 +1,149 @@
+---
+title: terminal
+subtitle: The terminal fixture and backend options @e2edev/tmux contributes for CLIs and TUIs.
+---
+
+`@e2edev/tmux` is the terminal backend: command-line programs and full-screen
+text UIs (OpenCode, vim, lazygit, your own CLI) running in
+[tmux](https://github.com/tmux/tmux), against the same `@e2edev/e2e/backend`
+contract the browser and mobile backends implement. `agent`, `app`, `screen`,
+and `expect` work as they do everywhere; this page covers what is specific to
+a terminal target. Import `test` from the package to have `terminal` typed;
+declare `requires: ['terminal']` in portable suites.
+
+## Backend
+
+```ts title="e2e.config.ts"
+import { defineConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { tmux } from '@e2edev/tmux';
+import { tmuxTools } from '@e2edev/tmux/tools';
+
+const opencode = tmux({ command: 'opencode', cwd: './fixtures/workspace', ready: 'Ask anything' });
+
+export default defineConfig({
+  targets: [{ name: 'opencode', platform: 'terminal', backend: opencode }],
+  workers: 1,
+  agent: { executor: createAgent({ tools: tmuxTools(opencode) }) },
+});
+```
+
+One backend per program; a config declares as many as it has programs to
+test. `platform` is free text for a terminal target; `'terminal'` is the
+value the tool pack scopes itself to.
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `command` | `string` | required | Shell command started fresh in its own tmux window at the start of every attempt. Runs through tmux's default shell. |
+| `cwd` | `string` | project root | Working directory of the program, resolved against the project root. |
+| `env` | `Record<string, string>` | none | Environment variables added to the program's environment. |
+| `columns` | `number` | `120` | Pane width in cells. |
+| `rows` | `number` | `40` | Pane height in cells. |
+| `ready` | `string \| RegExp` | none | Text a row must show before the attempt starts. Without it the attempt starts once the screen holds still. Bounded by the launch timeout either way. |
+| `session` | `string` | `e2e-<target name>` | tmux session name. |
+| `tmuxPath` | `string` | `tmux` | The tmux binary. |
+
+`prepare` runs `tmux -V` once per run and ends the run with
+`TMUX_UNAVAILABLE` when tmux is missing. `init` starts a private tmux server
+on a per-run socket, never the developer's own, and one session per worker
+with a placeholder window, so the session outlives every attempt's window. It
+sets `remain-on-exit` so a program that exits leaves its final screen
+observable, turns the status bar off, and pins the window size. Each attempt
+opens a new window running `command`, waits for `ready` or a still screen,
+and kills the window when the attempt ends. Run terminal targets with
+`workers: 1` unless each program can run several copies side by side.
+
+`--headed` on macOS opens a Terminal.app window attached to the session so a
+person can watch the run type. Elsewhere, attach by hand while a run is
+live with `tmux -L e2e-<run id> attach-session -t e2e-<target name>`.
+
+### Capabilities
+
+| Contract member | On a terminal |
+| --- | --- |
+| `observe` | The pane text. One `application` root named after the pane title (or the program) and sized to the pane; one `text` node per printed column, a row being split at runs of two or more spaces, the way TUIs draw columns (`/help   Help`, `[ Yes ]   [ No ]`). Each column has a rect in cells (`y` is the row, `x` the column, `width` the printed length); a row with several columns is wrapped in a nameless `row` so they stay associated, and pure decoration (box drawing, block elements, ASCII rulers) is dropped. The column under a visible cursor is a focused `textbox`, the one place keyboard input lands; a blank cursor row is an empty `textbox` at the cursor cell. When the program has exited, the root is `disabled` and a `status` node reports `the program exited with status N`. No pixels. |
+| `perform` | `fill` types the value literally and submits nothing; `press` accepts browser key names (`Enter`, `Escape`, `Tab`, `ArrowDown`, `Backspace`, `Delete`, `PageUp`, `F1`, `Control+C`, `Alt+X`, `Shift+Tab`) and tmux chords (`C-c`, `M-x`, `C-M-Left`); `tap` and `doubleTap` write an SGR mouse click into the pane at the middle of the row when the program has turned mouse reporting on and are `NOT_ACTIONABLE` otherwise, because a program not reading the mouse would see the bytes as typed text; `swipe` on a row sends wheel reports in mouse mode and `PageUp`/`PageDown` keys otherwise; `focus` is a no-op. `clear`, `check`, `uncheck`, `hover`, `longPress`, `selectOption`, `setInputFiles`, `dragTo`, and `scrollIntoView` are `UNSUPPORTED_CAPABILITY`. |
+| `locate` | `getByText`, `getByRole` (`text`, `textbox`, `row`, `application`, `status`, with `name`), `getByLabel`, `filter` (`hasText` on a `row` finds the line a column sits in), `first`/`last`. String queries are exact, as everywhere: `getByText('/help')` names the command column, `getByText(/^Ask anything/)` matches part of one. `getByPlaceholder` and `getByTestId` match nothing; a selector expression is `UNSUPPORTED_CAPABILITY`; a frame is `FRAME_NOT_FOUND`. |
+| `swipe` | Viewport scroll at the pane centre: wheel reports in mouse mode, page keys otherwise; sideways needs mouse mode. |
+| `app` | `restart` replaces the program's window with a fresh one. No `navigate`, `back`, or `clearState`. |
+| `artifacts` | Not declared. A screenshot of a terminal is its text: `terminal.text()` reads it. |
+| `url` | `app://terminal/<program>/<pane title>`, the trace cache's anchor. |
+| `state` | Not declared. `test.setup` and `session:` are unavailable. |
+
+## Trace cache on a terminal
+
+The cache anchors a recorded `agent.act` step on the path the surface reports
+when the step begins and ends. This backend reports
+`app://terminal/<program>/<title>`, with the title read from the pane (the
+program sets it through the terminal title sequence; OpenCode and vim with
+`title` on do). A step recorded on `/opencode/OpenCode` replays only when that
+program shows that title again, and every grammar action inside it (type,
+press, tap) replays through the same `perform` seam. A `send_keys` tool call
+ends a replay, so prefer the `press` verb inside a step and keep chords for
+what the grammar cannot say.
+
+## Terminal
+
+```ts
+export interface Terminal {
+  readonly cwd: string;
+  text(): Promise<string>;
+  scrollback(lines?: number): Promise<string>;
+  type(text: string): Promise<void>;
+  press(key: string): Promise<void>;
+  send(...keys: string[]): Promise<void>;
+  waitForText(pattern: string | RegExp, options?: { timeout?: number }): Promise<string>;
+  waitForExit(options?: { timeout?: number }): Promise<number | undefined>;
+  exited(): Promise<boolean>;
+  resize(columns: number, rows: number): Promise<void>;
+  cursor(): Promise<{ x: number; y: number }>;
+  title(): Promise<string>;
+}
+```
+
+Every async method is a recorded step named `terminal.<method>`, bounded by
+`config.actionTimeout` and the attempt signal, and never involves a model.
+`waitForText` and `waitForExit` default their timeout to the action timeout
+and fail with `OPERATION_TIMEOUT` quoting the screen they last saw. `cwd` is
+a synchronous accessor: the absolute directory the program runs in, so a
+test can check the files a program was asked to write.
+
+```ts
+test('writes the file it was asked for', async ({ agent, terminal }) => {
+  await agent.act('ask OpenCode to create hello.txt containing "hi" and wait until it is done');
+  expect(readFileSync(path.join(terminal.cwd, 'hello.txt'), 'utf8')).toContain('hi');
+});
+
+test('quits on /exit', async ({ terminal }) => {
+  await terminal.type('/exit');
+  await terminal.press('Enter');
+  expect(await terminal.waitForExit()).toBe(0);
+});
+```
+
+`send` takes tmux key names as they are (`send('C-x', 'C-c')`,
+`send('/', 'help', 'Enter')`); `press` translates one browser key name.
+`type` never submits: press `Enter` when the program should act.
+
+## Agent tools
+
+`@e2edev/tmux/tools` exports `tmuxTools(...backends)`, a tool pack for
+`createAgent({ tools })`:
+
+| Tool | Meaning |
+| --- | --- |
+| `send_keys` | A sequence of tmux keys or chords in one move (`["C-c"]`, `["/", "help", "Enter"]`). Mutating, never replayed. |
+| `wait_for_text` | Waits until a row contains a text or matches a regular expression, so the model waits for slow output instead of observing in a loop. |
+| `scrollback` | The newest lines of history, including what scrolled off the screen. |
+
+Pass every terminal backend the config declares: tool names are fixed, so two
+packs cannot be merged, and the pack dispatches each call to the backend
+whose attempt is running. Tools are scoped to the `terminal` platform, so a
+suite that mixes web and terminal targets can hand the pack to one
+`createAgent`.
+
+## Secrets
+
+A terminal has no field the runner can fill and no origin it can check, so
+`type_secret` is denied on a terminal target before any plaintext reaches the
+pane. Give the program its credentials through `env` or its own configuration.

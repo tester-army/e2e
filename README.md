@@ -56,8 +56,12 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 - [`e2e`](./packages/e2e) — the SDK, runner, and CLI.
 - [`@e2edev/playwright`](./packages/playwright) — the browser backend, passed
   to a target as `backend: playwright()`.
+- [`@e2edev/agent-device`](./packages/agent-device) — the mobile backend for
+  iOS simulators and Android emulators, `backend: agentDevice({ platform })`.
+- [`@e2edev/tmux`](./packages/tmux) — the terminal backend for CLIs and TUIs
+  running in tmux, `backend: tmux({ command })`.
 
-Both publish under the `beta` dist-tag while the surface stabilizes, so npm's
+All publish under the `beta` dist-tag while the surface stabilizes, so npm's
 `latest` is never moved.
 
 ## Contributing

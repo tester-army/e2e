@@ -66,6 +66,9 @@ navigation:
           - page: device
             path: docs/pages/reference/device.mdx
             slug: reference/device
+          - page: terminal
+            path: docs/pages/reference/terminal.mdx
+            slug: reference/terminal
           - page: agent
             path: docs/pages/reference/agent.mdx
             slug: reference/agent

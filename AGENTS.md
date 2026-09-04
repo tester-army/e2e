@@ -42,6 +42,13 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   `@e2edev/e2e/backend` only: the semantics the spec makes every backend reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `@e2edev/e2e/internal` subpath.
+- `packages/tmux` — the published `@e2edev/tmux` package: the terminal backend.
+  It runs a CLI or TUI in a private tmux server, observes the pane text as the
+  semantic tree (one `text` row per line, the cursor row as a focused
+  `textbox`), types with `send-keys`, and writes SGR mouse reports for taps.
+  Contributes the `terminal` fixture and `@e2edev/tmux/tools`. Same one-way
+  peer dependency on `@e2edev/e2e` as the other backends; the unit tests script
+  the tmux runner, the integration test needs real tmux (`E2E_TMUX_INTEGRATION=1`).
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the
@@ -109,7 +116,7 @@ pnpm --filter @e2edev/testbed run test:headed
   shares one registry. Stale `dist` means confusing failures — rebuild.
 - Testbed suites beyond the default one never gate a PR: `test:public` and
   `test:selenium` (real websites) run in no workflow, and `test:agent` /
-  `test:dogfood` (real model calls, need `E2E_MODEL_API_KEY`, optional
+  `test:dogfood` / `test:terminal` (real model calls, need `E2E_MODEL_API_KEY`, optional
   `E2E_MODEL=provider/model-id`) run only on the weekly
   `.github/workflows/agent.yml` schedule or by manual dispatch. Both run
   against local deterministic apps, so a failure there is ours.
