@@ -31,10 +31,14 @@ Requires Node.js 20.19 or newer.
 
     ```ts title="e2e.config.ts"
     import { defineConfig } from '@e2edev/e2e';
+    import { createAgent } from '@e2edev/e2e/agent';
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
       app: { url: 'localhost:3000' },
+      agent: createAgent({
+        system: 'You are a thorough QA agent. Verify every outcome on screen.',
+      }),
       targets: [{ name: 'web', platform: 'web', backend: playwright() }],
     });
     ```
@@ -44,20 +48,8 @@ Requires Node.js 20.19 or newer.
     `https://app.example.com`. The runner knows no platform, so every target
     names the backend that drives it.
 
-    Without an `agent` key the runner uses the built-in tool-loop agent. To
-    shape it, construct one and pass it:
-
-    ```ts title="e2e.config.ts"
-    import { createAgent } from '@e2edev/e2e/agent';
-
-    export default defineConfig({
-      // ...
-      agent: createAgent({
-        system: 'You are a thorough QA agent. Verify every outcome on screen.',
-      }),
-    });
-    ```
-
+    The scaffold constructs the built-in tool-loop agent and passes it in;
+    `init` warns when the `ai` peer it runs on is not in your `package.json`.
     `system` shapes how it works. Later you can hand it your own tools, or
     replace it with a custom executor; [Your own agent](/agents) covers both.
 

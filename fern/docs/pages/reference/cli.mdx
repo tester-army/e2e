@@ -20,7 +20,7 @@ path, including cancellation.
 
 | Creates | Content |
 | --- | --- |
-| `e2e.config.ts` | Minimal config: `app.url` set to `localhost:3000` and one web target on the playwright backend. No `agent` key; the built-in agent is used until you pass your own |
+| `e2e.config.ts` | Minimal config: `app.url` set to `localhost:3000`, the built-in agent via `createAgent({ system })`, and one web target on the playwright backend. Warns when the `ai` peer dependency is missing from `package.json` |
 | `tests/example.e2e.ts` | Deterministic app-open smoke test asserting `toHaveURL('/')` |
 | `.gitignore` | Appends `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json` when missing. Re-running `init` on an initialized project adds entries introduced since, touching nothing else |
 

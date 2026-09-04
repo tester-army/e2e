@@ -7,7 +7,8 @@ The v0 binary is `e2e`. CLI behavior is part of `runner-0.1`.
 `e2e init` is non-destructive. It creates only missing files, reports every
 existing conflict, and makes no partial changes after a conflict is found. It:
 
-- creates a minimal `e2e.config.ts` when needed;
+- creates a minimal `e2e.config.ts` when needed, constructing the built-in
+  agent, and warns when the AI SDK peer it runs on is not declared;
 - creates `tests/example.e2e.ts` containing a deterministic app-open smoke
   test, not an app-specific signup assumption;
 - adds `.e2e/artifacts/`, `.e2e/sessions/`, and generated reports to

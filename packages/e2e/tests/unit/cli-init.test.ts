@@ -25,7 +25,8 @@ describe('e2e init', () => {
     const config = readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8');
     expect(config).toContain("defineConfig");
     expect(config).toContain("app: { url: 'localhost:3000' }");
-    expect(config).not.toContain('createAgent');
+    expect(config).toContain("import { createAgent } from '@e2edev/e2e/agent'");
+    expect(config).toContain('agent: createAgent({');
 
     const example = readFileSync(path.join(dir, 'tests', 'example.e2e.ts'), 'utf8');
     expect(example).toContain("import { test } from '@e2edev/playwright'");
@@ -38,6 +39,25 @@ describe('e2e init', () => {
     expect(gitignore).toContain('.e2e/report.json');
     expect(gitignore).toContain('.e2e/ai-trace.json');
     expect(gitignore.endsWith('\n')).toBe(true);
+  });
+
+  it('warns about the ai peer only when the project does not declare it', async () => {
+    await init(dir, { yes: true });
+    const written = () => stdoutSpy.mock.calls.map((call) => String(call[0])).join('');
+    expect(written()).toContain('npm install --save-dev ai');
+
+    stdoutSpy.mockClear();
+    const declared = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-ai-'));
+    try {
+      writeFileSync(
+        path.join(declared, 'package.json'),
+        JSON.stringify({ devDependencies: { ai: '^7.0.0' } }),
+      );
+      await init(declared, { yes: true });
+      expect(written()).not.toContain('npm install --save-dev ai');
+    } finally {
+      rmSync(declared, { recursive: true, force: true });
+    }
   });
 
   it('never overwrites existing files', async () => {
