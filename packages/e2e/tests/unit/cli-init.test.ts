@@ -43,7 +43,7 @@ describe('e2e init', () => {
 
   it('warns about the ai peer only when the project does not declare it', async () => {
     await init(dir, { yes: true });
-    const written = () => stdoutSpy.mock.calls.map((call) => String(call[0])).join('');
+    const written = () => stdoutSpy.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('');
     expect(written()).toContain('npm install --save-dev ai');
 
     stdoutSpy.mockClear();
