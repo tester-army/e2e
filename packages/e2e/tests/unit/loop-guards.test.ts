@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { checkLoopGuards, type GuardToolCall } from '../../src/agent/loop-guards.ts';
+import {
+  checkLoopGuards,
+  DEFAULT_LOOP_GUARD_THRESHOLDS,
+  type GuardToolCall,
+} from '../../src/agent/loop-guards.ts';
 
 const call = (toolName: string, input = '{}'): GuardToolCall => ({ toolName, input });
 
@@ -57,5 +61,15 @@ describe('loop guards', () => {
     const verdict = checkLoopGuards(calls);
     expect(verdict.kind).toBe('warn');
     expect((verdict as { reason: string }).reason).toContain('4 times in a row');
+  });
+});
+
+describe('checkLoopGuards thresholds', () => {
+  it('honors caller thresholds over the defaults', () => {
+    const calls = Array.from({ length: 2 }, () => call('tap', '{"target":"n1"}'));
+
+    expect(checkLoopGuards(calls).kind).toBe('clear');
+    expect(checkLoopGuards(calls, { ...DEFAULT_LOOP_GUARD_THRESHOLDS, repeatWarn: 2 }).kind).toBe('warn');
+    expect(checkLoopGuards(calls, { ...DEFAULT_LOOP_GUARD_THRESHOLDS, repeatWarn: 1, repeatStop: 2 }).kind).toBe('stop');
   });
 });

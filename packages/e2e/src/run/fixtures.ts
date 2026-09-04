@@ -1,7 +1,7 @@
 /** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
 
 import { createAgentFixture } from '../agent/index.ts';
-import type { StepExecutor } from '../agent/executor.ts';
+import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
@@ -45,6 +45,15 @@ export interface AttemptEnvironment {
   readonly budget: AttemptBudget;
   readonly runId: string;
   readonly attemptId: string;
+  /** The attempt as executors see it: test identity, retry index, end signal, scratch memory. */
+  readonly attempt: {
+    readonly testId: string;
+    readonly index: number;
+    /** Aborts when the attempt ends, on any path. */
+    readonly signal: AbortSignal;
+    /** Executor scratch space; serial members share the group's. */
+    readonly memory: Map<string, unknown>;
+  };
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
@@ -115,6 +124,14 @@ export function createFixtures(
 
   let agent: Agent | undefined;
 
+  const attempt: ExecutorAttempt = {
+    testId: environment.attempt.testId,
+    attemptId: environment.attemptId,
+    index: environment.attempt.index,
+    signal: environment.attempt.signal,
+    memory: environment.attempt.memory,
+  };
+
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
       agent ??= createAgentFixture({
@@ -129,7 +146,9 @@ export function createFixtures(
           platform: environment.target.platform,
           verbs: environment.session.verbs,
         },
+        attempt,
         priorSteps: environment.priorSteps,
+
         agentContext: joinAgentContext(
           environment.config.agent.context,
           environment.agentContext,

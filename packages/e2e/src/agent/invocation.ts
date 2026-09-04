@@ -27,7 +27,7 @@ import type {
 } from '../run/steps.ts';
 import type { VisionMode } from '../types.ts';
 import { AgentError } from './error.ts';
-import type { StepExecutor } from './executor.ts';
+import type { ExecutorAttempt, StepExecutor } from './executor.ts';
 import {
   boundedOperation,
   checkStepClock,
@@ -66,6 +66,9 @@ export interface AgentContext {
   readonly config: ResolvedConfig;
   /** The target this attempt runs on. */
   readonly target: StepExecutorContext['target'];
+  /** The attempt's identity, end signal, and executor scratch memory. */
+  readonly attempt: ExecutorAttempt;
+
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
   /** Trusted project context: config.agent.context then test/group agentContext. */

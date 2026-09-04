@@ -1060,6 +1060,8 @@ export function defineConfig(config: E2EConfig): E2EConfig;
  */
 export interface ExecutorStep {
   readonly kind: 'act' | 'assert';
+  /** Zero-based position of this step in the attempt's step timeline. */
+  readonly index: number;
   readonly instruction: string;
   /**
    * JSON-safe call parameters. A `Secret` value is projected to
@@ -1071,6 +1073,87 @@ export interface ExecutorStep {
   readonly secrets: readonly { readonly name: string; readonly purpose: Secret['purpose'] }[];
 }
 
+/**
+ * The attempt a step belongs to: identity and lifecycle. Lets an executor
+ * keep state across the `agent.act()` calls of one test without confusing it
+ * with the next test's or a retry's. Serial-group members share one attempt
+ * scope, as they share the ledger.
+ */
+export interface ExecutorAttempt {
+  readonly testId: string;
+  readonly attemptId: string;
+  /** Zero-based retry index of this attempt. */
+  readonly index: number;
+  /** Aborts when the attempt ends — passed, failed, or cancelled. */
+  readonly signal: AbortSignal;
+  /**
+   * Executor scratch space for the attempt. Held by the harness for the
+   * attempt's lifetime; never persisted, reported, or shown to a model by the
+   * harness. What goes in is the executor's, redaction included.
+   */
+  readonly memory: Map<string, unknown>;
+}
+
+/** One completed prior step as the harness recorded it: raw material for an executor's history. */
+export interface ExecutorPriorStep {
+  readonly index: number;
+  readonly kind: 'agent' | 'locator' | 'assertion' | 'screen' | 'app' | 'session' | 'resource';
+  /** Public API name, e.g. `agent.act`, `screen.click`, `app.open`. */
+  readonly api: string;
+  /** Sanitized step label: the instruction, assertion, or target phrase. */
+  readonly label: string;
+  readonly status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
+  /** The step's handoff — an agent verdict summary or judgment explanation — sanitized. */
+  readonly explanation?: string;
+  /** How the trace cache took part in an `agent.act` step; `self-finalized` ran without any executor. */
+  readonly cache?: 'self-finalized' | 'agent-concluded' | 'missed';
+}
+
+/** What an executor asks `observe()` to include beyond the text serialization. */
+export interface ExecutorObserveOptions {
+  /** Include the redacted node tree as `tree`. */
+  readonly tree?: boolean;
+  /**
+   * Include masked viewport pixels as `pixels`. Granted only when the backend
+   * captures pixels, its masking is proven, and no secret has been filled in
+   * this attempt; otherwise `pixelsWithheld` names the reason.
+   */
+  readonly pixels?: boolean;
+}
+
+/**
+ * One node of the redacted semantic tree. Names, text, values, and attribute
+ * values are secret-redacted; a secure node carries no value at all.
+ */
+export interface ExecutorNode {
+  readonly id: string;
+  readonly role?: string;
+  readonly name?: string;
+  readonly text?: string;
+  readonly value?: string;
+  readonly inputPurpose?: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
+  readonly states?: Readonly<
+    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure', boolean>>
+  >;
+  readonly attributes?: Readonly<Record<string, string>>;
+  readonly rect?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly framePath?: readonly string[];
+  readonly children?: readonly ExecutorNode[];
+}
+
+/** Masked viewport pixels cleared for model input. */
+export interface ExecutorPixels {
+  readonly data: Uint8Array;
+  readonly mediaType: string;
+  readonly width: number;
+  readonly height: number;
+  readonly scale: number;
+  readonly maskedRegionCount: number;
+}
+
+/** Why pixels an executor asked for are not part of an observation. */
+export type ExecutorPixelsWithheld = 'MASKING_UNPROVEN' | 'PIXEL_TAINTED' | 'UNSUPPORTED_CAPABILITY';
+
 /** Redacted, size-bounded observation an executor may show its model. */
 export interface ExecutorObservation {
   readonly revision: string;
@@ -1079,6 +1162,12 @@ export interface ExecutorObservation {
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   /** Current location as path and query, redacted; absent when the backend has none. */
   readonly path?: string;
+  /** The redacted node tree; present when requested with `observe({ tree: true })`. */
+  readonly tree?: ExecutorNode;
+  /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
+  readonly pixels?: ExecutorPixels;
+  /** Set when requested pixels were withheld. */
+  readonly pixelsWithheld?: ExecutorPixelsWithheld;
 }
 
 /** A node named by its id from the newest observation. */
@@ -1182,6 +1271,8 @@ export interface ReplayedPrefix {
 
 export interface StepExecutorContext {
   readonly step: ExecutorStep;
+  /** The attempt this step runs in: identity, end-of-attempt signal, and scratch memory. */
+  readonly attempt: ExecutorAttempt;
   /**
    * Present when a cached replay ran part of this step before handing it
    * over. Absent on a cache miss or when caching is off.
@@ -1196,11 +1287,18 @@ export interface StepExecutorContext {
   readonly signal: AbortSignal;
   /** The config-resolved AI SDK model, when one is configured. */
   readonly model: ModelInstance | undefined;
+  /**
+   * Completed prior steps of this attempt (and, in a serial group, of earlier
+   * members), oldest first. Structured, so the executor decides what history
+   * its model reads; `ledger` is the runner's default serialization of them.
+   */
+  readonly priorSteps: readonly ExecutorPriorStep[];
   /** Completed prior steps serialized for prompt context; `''` when none. */
   readonly ledger: string;
   readonly agentContext: string | undefined;
   readonly budgets: ExecutorBudgets;
-  observe(): Promise<ExecutorObservation>;
+  /** Captures one fresh, redacted observation; the tree and pixels are opt-in. */
+  observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a
@@ -1227,7 +1325,14 @@ export interface StepVerdict {
 export interface StepExecutor {
   readonly name: string;
   readonly version?: string;
+  /**
+   * Trace-cache participation for this executor's steps. `inherit` (default)
+   * follows the configured cache mode; `off` never replays or records a trace
+   * for the executor's steps, so every step reaches `runStep`.
+   */
+  readonly cache?: 'inherit' | 'off';
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
+
 }
 
 /**

@@ -1,17 +1,20 @@
 /**
  * The default step executor (RFC0001, layer 4 golden path): the tool-loop
- * chassis plus the grammar toolset, kept deliberately simple. Every mutating
+ * chassis plus the grammar toolset, kept deliberately small. Every mutating
  * tool returns the updated screen; verdicts, budgets, hard stops, loop
  * guards, wind-down, and the transcript come from the chassis
- * (`tool-loop.ts`) unchanged. A richer brain (screen diffs, batching, its
- * own operating rules) is the same chassis with a different toolset and
- * `prepareMessages`.
+ * (`tool-loop.ts`) unchanged.
+ *
+ * Like the AI SDK's own agent, it is a thin opinion over parts you can also
+ * use directly: `createToolLoopExecutor` is the same loop with your own
+ * prompt and vocabulary, and `primitives.ts` — grammar tools, the verdict
+ * tool, model-call accounting, conversation memory, plus the compaction and
+ * hand-off notice exported here — composes with either, or with a raw
+ * `ToolLoopAgent` / `generateText`, for anything else.
  */
 
 import type { ModelMessage, ToolSet } from 'ai';
-import { z } from 'zod';
 import type { SdkLanguageModel } from '../config/agent.ts';
-import { aiSdk } from './ai-sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -19,6 +22,7 @@ import {
   type StepExecutor,
   type StepExecutorContext,
 } from './executor.ts';
+import { createGrammarTools } from './primitives.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool, toolAppliesTo } from './tool.ts';
@@ -65,7 +69,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     prepareMessages: compactSnapshotHistory,
     tools: (context, helpers) => ({
       ...wrapUserTools(context, helpers, userTools),
-      ...buildGrammarTools(context, helpers),
+      ...createGrammarTools(context, { guard: helpers.guard }),
     }),
     buildPrompt: async (context) => {
       const observation = await context.observe();
@@ -94,7 +98,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
  * token, replacing any ordinary prior-run hint. The agent continues from live
  * state; redoing a replayed action would double-commit a mutation.
  */
-function formatReplayedPrefix(prefix: ReplayedPrefix): string {
+export function formatReplayedPrefix(prefix: ReplayedPrefix): string {
   const lines = prefix.replayedActions.map((summary, index) => `${index + 1}. ${summary}`);
   return [
     'Cached replay already performed these recorded actions for this step:',
@@ -117,139 +121,6 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
 }
 
 /**
- * The default toolset: thin AI SDK tools over the harness action grammar,
- * limited to the verbs the target's backend declared. A verb the surface cannot
- * honor is not offered at all, so the model never learns vocabulary it can only
- * be rejected on.
- */
-function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelpers): ToolSet {
-  const { guard } = helpers;
-  const { verbs } = context.target;
-
-  /** Re-observes after a mutating action so the model always sees the result. */
-  const acted = async (description: string): Promise<string> => {
-    const observation = await context.observe();
-    return `${description}\n\nUpdated screen (revision ${observation.revision}):\n${observation.text}`;
-  };
-
-  const target = z
-    .string()
-    .min(1)
-    .describe('Node id from the newest observation, e.g. "n42"');
-
-  // The chassis loads the AI SDK before building tools, so reading the
-  // cached instance here cannot race the optional-peer loader.
-  const { tool } = aiSdk();
-
-  const tools: ToolSet = {
-    observe: tool({
-      description: 'Capture a fresh observation of the current screen without acting.',
-      inputSchema: z.object({}),
-      execute: () =>
-        guard(async () => {
-          const observation = await context.observe();
-          return `Current screen (revision ${observation.revision}):\n${observation.text}`;
-        }),
-    }),
-  };
-  if (verbs.has('tap')) {
-    tools['tap'] = tool({
-      description: 'Tap or click one node.',
-      inputSchema: z.object({ target }),
-      execute: ({ target: id }) =>
-        guard(async () => {
-          await context.actions.tap({ id });
-          return acted(`Tapped #${id}.`);
-        }),
-    });
-  }
-  if (verbs.has('type')) {
-    tools['type'] = tool({
-      description: 'Type a plain-text value into one input node. Replaces the current value.',
-      inputSchema: z.object({ target, value: z.string() }),
-      execute: ({ target: id, value }) =>
-        guard(async () => {
-          await context.actions.type({ id }, value);
-          return acted(`Typed into #${id}.`);
-        }),
-    });
-  }
-  if (verbs.has('press')) {
-    tools['press'] = tool({
-      description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
-      inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
-      execute: ({ target: id, key }) =>
-        guard(async () => {
-          await context.actions.press({ id }, key);
-          return acted(`Pressed ${key} on #${id}.`);
-        }),
-    });
-  }
-  if (verbs.has('select')) {
-    tools['select'] = tool({
-      description: 'Pick one option from a select-like control by its visible label.',
-      inputSchema: z.object({ target, value: z.string().min(1) }),
-      execute: ({ target: id, value }) =>
-        guard(async () => {
-          await context.actions.select({ id }, value);
-          return acted(`Selected "${value}" in #${id}.`);
-        }),
-    });
-  }
-  if (verbs.has('scroll')) {
-    const direction = z.enum(['up', 'down', 'left', 'right']);
-    // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
-    tools['scroll'] = verbs.has('tap')
-      ? tool({
-          description: 'Scroll the viewport, or one scrollable node when target is given.',
-          inputSchema: z.object({ direction, target: target.optional() }),
-          execute: ({ direction: way, target: id }) =>
-            guard(async () => {
-              await context.actions.scroll(way, id === undefined ? undefined : { id });
-              return acted(`Scrolled ${way}.`);
-            }),
-        })
-      : tool({
-          description: 'Scroll the viewport.',
-          inputSchema: z.object({ direction }),
-          execute: ({ direction: way }) =>
-            guard(async () => {
-              await context.actions.scroll(way);
-              return acted(`Scrolled ${way}.`);
-            }),
-        });
-  }
-  if (verbs.has('navigate')) {
-    tools['navigate'] = tool({
-      description: 'Navigate to a URL or app-relative path within the allowed origins.',
-      inputSchema: z.object({ url: z.string().min(1) }),
-      execute: ({ url }) =>
-        guard(async () => {
-          await context.actions.navigate(url);
-          return acted(`Navigated to ${url}.`);
-        }),
-    });
-  }
-  // Offered only when the step declared secrets and the surface can fill: an
-  // empty vocabulary is better than a tool the model can only be rejected on.
-  if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
-    tools['type_secret'] = tool({
-      description:
-        'Fill one declared secret credential into a secure input field; the plaintext never passes through you. Available: ' +
-        context.step.secrets.map((secret) => `"${secret.name}" (${secret.purpose})`).join(', ') +
-        '.',
-      inputSchema: z.object({ target, name: z.string().min(1) }),
-      execute: ({ target: id, name }) =>
-        guard(async () => {
-          await context.actions.typeSecret({ id }, name);
-          return acted(`Filled secret "${name}" into #${id}.`);
-        }),
-    });
-  }
-  return tools;
-}
-
-/**
  * Compacts stale screen snapshots out of the history: the initial prompt's
  * `Current screen` and every tool result's `Updated screen`.
  *
@@ -259,8 +130,10 @@ function buildGrammarTools(context: StepExecutorContext, helpers: ToolLoopHelper
  * A stale snapshot keeps what preceded the tree (the instruction, or what
  * the action did) and loses the tree. Returns the input array unchanged when
  * there is nothing to compact, so the caller can skip the messages override.
+ * Exported as the default `prepareMessages` a custom one can compose with.
  */
-function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
+export function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
+
   const total = messages.reduce(
     (count, message) => count + snapshotParts(message).filter((text) => text !== undefined).length,
     0,

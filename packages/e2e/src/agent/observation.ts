@@ -3,6 +3,7 @@
 import type { Observation, ObservationPixels, SemanticNode } from '../backend/surface.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
+import type { ExecutorNode } from './executor.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
@@ -24,6 +25,8 @@ export interface AgentObservation {
   readonly nodes: ReadonlyMap<string, SemanticNode>;
   /** Parent id of every non-root node, for the container a target sits in. */
   readonly parents: ReadonlyMap<string, string>;
+  /** The raw tree as the backend reported it; redacted only on the way out. */
+  readonly tree: SemanticNode;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
   /** Present only when the backend captured pixels and masking checks out. */
@@ -89,8 +92,10 @@ export function prepareObservation(
     bytes: textBytes,
     nodes,
     parents,
+    tree: observation.tree,
     viewport: observation.viewport,
     truncated,
+
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };
@@ -115,8 +120,38 @@ function clearPixels(observation: Observation): {
   return { cleared: { ...pixels, maskedRegionCount, bytes: pixels.data.byteLength } };
 }
 
+/**
+ * Projects the raw tree onto the executor-facing node shape: the same
+ * redaction the text serialization applies, field by field, and no value at
+ * all for a secure node. Selectors stay behind — they are relocation
+ * material for the trace cache, not something a brain reasons about.
+ */
+export function projectTree(node: SemanticNode, redact: (text: string) => string): ExecutorNode {
+  const secure = node.states?.secure === true;
+  const attributes =
+    node.attributes === undefined
+      ? undefined
+      : Object.fromEntries(Object.entries(node.attributes).map(([key, value]) => [key, redact(value)]));
+  return {
+    id: node.ref.id,
+    ...(node.role === undefined ? {} : { role: node.role }),
+    ...(node.name === undefined ? {} : { name: redact(node.name) }),
+    ...(node.text === undefined ? {} : { text: redact(node.text) }),
+    ...(node.value === undefined || secure ? {} : { value: redact(node.value) }),
+    ...(node.inputPurpose === undefined ? {} : { inputPurpose: node.inputPurpose }),
+    ...(node.states === undefined ? {} : { states: node.states }),
+    ...(attributes === undefined ? {} : { attributes }),
+    ...(node.rect === undefined ? {} : { rect: node.rect }),
+    ...(node.framePath === undefined ? {} : { framePath: node.framePath }),
+    ...(node.children === undefined
+      ? {}
+      : { children: node.children.map((child) => projectTree(child, redact)) }),
+  };
+}
+
 /** Depth beyond this renders flat; deep chrome must not buy tokens with spaces. */
 const MAX_INDENT_DEPTH = 10;
+
 
 /**
  * Renders one node as `#id role "name" text="..." [states]`. Role-less text

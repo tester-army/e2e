@@ -11,6 +11,9 @@
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { StepRecord } from '../run/steps.ts';
 
+/** The fields one ledger entry is built from; a `StepRecord` or an `ExecutorPriorStep` both qualify. */
+export type LedgerStep = Pick<StepRecord, 'api' | 'label' | 'status' | 'explanation'>;
+
 /** Maximum size of one handoff, before ledger-wide compaction. */
 export const MAX_HANDOFF_BYTES = 700;
 
@@ -27,7 +30,7 @@ export interface LedgerContext {
  * prepended. Labels and handoffs are sanitized and bounded here, at the trust
  * boundary where they become model input.
  */
-export function serializeLedger(steps: readonly StepRecord[], maxBytes: number): LedgerContext {
+export function serializeLedger(steps: readonly LedgerStep[], maxBytes: number): LedgerContext {
   const encoder = new TextEncoder();
   const lines: string[] = [];
   let bytes = 0;
@@ -46,7 +49,8 @@ export function serializeLedger(steps: readonly StepRecord[], maxBytes: number):
   return { text, bytes: encoder.encode(text).byteLength };
 }
 
-function formatEntry(step: StepRecord, position: number): string {
+function formatEntry(step: LedgerStep, position: number): string {
+
   const label = truncateUtf8(sanitizeText(step.label), MAX_LABEL_BYTES);
   const head = `${position}. ${step.api} ${step.status}${label === '' ? '' : ` :: ${label}`}`;
   if (step.explanation === undefined) return head;

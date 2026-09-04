@@ -23,6 +23,16 @@ the thinking — never safety, budgets, recording, or what a report means. A
 test written against `agent.act` survives moving from the built-in agent to a
 hand-rolled one, to a vendor's, and back.
 
+The line between the two is drawn by one test: if two competent executors
+would need to agree on it for a report reader to trust the result, the harness
+owns it; otherwise it is the executor's, and the runner ships its own choice
+as an exported default rather than a rule. Budgets, deadlines, redaction,
+secret handling, revision and staleness, recording, and the verdict grammar
+are invariants. What the model reads — how observations are serialized, how
+much history it sees, whether it remembers earlier steps of the test, when it
+is told to wrap up — is the executor's. The harness is a notary, not an
+author.
+
 ## The socket
 
 ```ts
@@ -40,12 +50,28 @@ maps to `ASSERTION_FAILED`). Deterministic kinds never cross it: screenshots
 and script evaluation are `app.screenshot` and `web.evaluate`, zero-model by
 construction. The context provides:
 
-- `step` — the kind, instruction, JSON-safe params, and declared secrets. A
-  `Secret` param is projected to `{ kind: 'secret', name, purpose }`; the
-  plaintext is only ever reachable through `actions.typeSecret`, which runs
-  the full secret authorization policy of 14-security.md.
-- `observe()` — a fresh, redacted, size-bounded semantic observation, with the
-  current location as `path` when the backend reports one.
+- `step` — the kind, timeline `index`, instruction, JSON-safe params, and
+  declared secrets. A `Secret` param is projected to
+  `{ kind: 'secret', name, purpose }`; the plaintext is only ever reachable
+  through `actions.typeSecret`, which runs the full secret authorization
+  policy of 14-security.md.
+- `attempt` — the attempt the step runs in: `testId`, `attemptId`, retry
+  `index`, a `signal` that aborts when the attempt ends on any path, and a
+  `memory` map the harness holds for the attempt's lifetime. Memory is the
+  executor's scratch space — a running conversation, a plan, notes — keyed
+  so several executors can share it; the harness never persists, reports, or
+  shows it to a model. Serial-group members share one attempt scope, as they
+  share the ledger. An executor that keeps state per attempt keys it by
+  `attemptId` or stores it in `memory`, and releases it on the signal.
+- `observe(options?)` — a fresh, redacted, size-bounded semantic observation
+  as text, with the current location as `path` when the backend reports one.
+  `{ tree: true }` adds the redacted node tree (names, text, values, and
+  attribute values redacted; a secure node carries no value); `{ pixels: true }`
+  adds masked viewport pixels when the backend captures them, masking is
+  proven, and no secret has been filled in the attempt — otherwise
+  `pixelsWithheld` names the reason (`PIXEL_TAINTED`, `MASKING_UNPROVEN`,
+  `UNSUPPORTED_CAPABILITY`) and the decision is recorded as a policy event.
+  Redaction is the harness's; serialization for the model is the executor's.
 - `actions` — the action grammar (`tap`, `type`, `press`, `select`, `scroll`,
   `navigate`), addressed by node ids from the newest observation. Every call
   is checkpointed against the deadline and the action budget, policed, and
@@ -61,7 +87,14 @@ construction. The context provides:
   and model provenance in the report, including `estimatedCostUsd` when the
   provider bills per request.
 - `model` — the config-resolved AI SDK model, which an executor may ignore.
-- `ledger`, `agentContext`, `signal`.
+- `priorSteps` — the completed steps of the attempt (and of earlier serial
+  members), oldest first, as structured sanitized records: index, kind, api,
+  label, status, the handoff `explanation`, and how the trace cache took part.
+  A step the cache replayed without the executor is marked `self-finalized`,
+  so an executor keeping its own history can see what ran without it.
+- `ledger` — the runner's serialization of `priorSteps` (10-determinism.md);
+  a convenience, not the only history an executor may build.
+- `agentContext`, `signal`.
 - `replayedPrefix` — present exactly when a cached replay ran part of this
   step before diverging (10-determinism.md). Prose in, not structs in: the
   executor sees ordered action summaries, the counts, and one closed
@@ -81,6 +114,24 @@ construction. The context provides:
 
 The interface never requires the AI SDK. A `StepExecutor` with no model at
 all is valid; the runner cannot tell the difference and does not care.
+
+A `StepExecutor` may declare `cache: 'off'`. The trace cache then neither
+replays nor records its steps: every `agent.act` reaches `runStep`, for a
+brain whose own memory is the source of truth or one that must see every step
+run. The default, `'inherit'`, follows the configured cache mode.
+
+## Context is the executor's
+
+Two executors on the same socket may manage context in opposite ways and both
+conform. One carries its whole conversation across every `agent.act` of a
+test: it stores the model messages in `attempt.memory` at the end of each
+step, opens the next step with them, and reads `priorSteps` for anything that
+ran without it. Another sends the model nothing but the instruction and the
+newest screen, ignoring `ledger` and `priorSteps` entirely. A third renders
+`observe({ tree: true })` into its own compact notation, or judges from
+`observe({ pixels: true })`. The harness records every step identically for
+all three, and the report cannot tell them apart except by the executor's
+name and version.
 
 ## Verdicts are ternary
 
@@ -146,6 +197,21 @@ Every option is optional: `createAgent()` with no arguments is exactly the
 default the runner constructs when `agent` is an options block (or absent),
 with the model resolved from `agent.model`/`E2E_MODEL`.
 
+The built-in agent is layered the way the AI SDK is: a small opinion on top
+of a loop on top of primitives, each usable without the one above.
+`createAgent` takes only `model`, `system`, `tools`, `maxTurns`, and
+`providerOptions`. Changing what the model reads is one layer down:
+`createToolLoopExecutor` is the same loop with a caller's `buildPrompt` (a
+string or a message history), `tools`, `prepareMessages`, `onConclude`,
+`loopGuards`, and `windDown`. Below that, the primitives —
+`createGrammarTools`, `createVerdictTool`, `trackModelCalls`,
+`conversationMemory`, `serializeLedger`, `compactSnapshotHistory`,
+`formatReplayedPrefix` — compose with the chassis or with a raw AI SDK
+`ToolLoopAgent` or `generateText`, none of them loading the `ai` package
+themselves. A brain that carries its conversation across the steps of a test
+is the chassis, the grammar tools, and `conversationMemory`; one that reads
+nothing but the instruction and the screen is a two-line `buildPrompt`.
+
 The built-in executor is an AI SDK tool loop over the action grammar: mutating tools return the
 updated screen, stale screen snapshots are compacted out of the transcript, a
 wind-down notice fires near the turn budget and near the step clock, and the
@@ -165,7 +231,12 @@ verdict tool, hard stops, loop guards, wind-down, forced conclusion, model
 accounting, and the transcript, with the tool vocabulary and prompt supplied
 by the caller, plus `prepareMessages(messages, turn)` — between-turn history
 preparation that carries forward and may return `{ messages, stop }` to force
-the conclusion — and `providerOptions`. An
+the conclusion — `providerOptions`, `loopGuards` and `windDown` policy, and
+`onConclude(context, { messages, verdict })`, which receives the step's whole
+transcript once the loop ends. `buildPrompt` may return a message history
+instead of a string, so a conversation kept in `attempt.memory` opens the next
+step. An
+
 executor for a different modality (a device toolkit, an API surface) is
 `createToolLoopExecutor({ name, system, tools, buildPrompt })` — `createAgent`
 itself is exactly that plus the web grammar toolset.

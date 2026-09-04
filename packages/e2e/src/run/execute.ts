@@ -598,6 +598,17 @@ export class TargetExecutor implements SerialHost {
     const attemptAbort = new AbortController();
     const onInterrupt = () => attemptAbort.abort();
     this.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
+    // Fires when the attempt ends on any path — the interrupt included — so an
+    // executor holding per-attempt state has one signal to release it on. A
+    // plain controller mirrored from the interrupt, not `AbortSignal.any`: a
+    // composite signal nobody listens to loses its sources after a GC pass on
+    // current Node, and an executor that only polls `aborted` would never see
+    // the end. Serial members share the group's executor memory the way they
+    // share its ledger.
+    const attemptEnd = new AbortController();
+    const endOnInterrupt = () => attemptEnd.abort();
+    attemptAbort.signal.addEventListener('abort', endOnInterrupt, { once: true });
+    const memory = shared?.memory ?? new Map<string, unknown>();
 
     const artifacts = createAttemptArtifacts({
       artifactsRoot: this.artifactsRoot,
@@ -679,6 +690,12 @@ export class TargetExecutor implements SerialHost {
         budget,
         runId: this.options.runId,
         attemptId,
+        attempt: {
+          testId: pair.test.id,
+          index: attemptIndex,
+          signal: attemptEnd.signal,
+          memory,
+        },
         artifacts: artifacts.sink,
         priorSteps,
         agentContext: pair.options.agentContext,
@@ -752,8 +769,12 @@ export class TargetExecutor implements SerialHost {
     } catch (cause) {
       recordFailure(cause, phase);
     } finally {
+      attemptEnd.abort();
+      attemptAbort.signal.removeEventListener('abort', endOnInterrupt);
       this.interruptSignal.removeEventListener('abort', onInterrupt);
+
       if (openSession !== null && shared === undefined) {
+
         await this.closeSession(openSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
     }

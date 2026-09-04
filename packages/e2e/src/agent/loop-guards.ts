@@ -24,13 +24,25 @@ export type LoopGuardVerdict =
 /** Longest cycle period the detector considers. */
 const MAX_CYCLE_PERIOD = 4;
 
-/** Identical-call (period 1) thresholds: warn, then force the conclusion. */
-const REPEAT_WARN = 3;
-const REPEAT_STOP = 5;
+/**
+ * Guard thresholds. Identical-call (period 1) counts are consecutive
+ * repetitions of one call; cycle (period 2..4) counts are whole repetitions
+ * of the sequence. Each warns first, then forces the conclusion.
+ */
+export interface LoopGuardThresholds {
+  readonly repeatWarn: number;
+  readonly repeatStop: number;
+  readonly cycleWarn: number;
+  readonly cycleStop: number;
+}
 
-/** Cycle (period 2..4) thresholds, counted in whole repetitions. */
-const CYCLE_WARN = 2;
-const CYCLE_STOP = 3;
+/** The thresholds the built-in agent ships with. */
+export const DEFAULT_LOOP_GUARD_THRESHOLDS: LoopGuardThresholds = {
+  repeatWarn: 3,
+  repeatStop: 5,
+  cycleWarn: 2,
+  cycleStop: 3,
+};
 
 /**
  * Extracts the tool-call identity sequence from a model transcript,
@@ -57,11 +69,18 @@ export function extractGuardCalls(
  * on different targets never count as a repeat — only literally re-issuing
  * the same work does.
  */
-export function checkLoopGuards(calls: readonly GuardToolCall[]): LoopGuardVerdict {
+export function checkLoopGuards(
+  calls: readonly GuardToolCall[],
+  thresholds: LoopGuardThresholds = DEFAULT_LOOP_GUARD_THRESHOLDS,
+): LoopGuardVerdict {
   let warning: LoopGuardVerdict | undefined;
   for (let period = 1; period <= MAX_CYCLE_PERIOD; period += 1) {
     const repeats = trailingRepeats(calls, period);
-    const [warnAt, stopAt] = period === 1 ? [REPEAT_WARN, REPEAT_STOP] : [CYCLE_WARN, CYCLE_STOP];
+    const [warnAt, stopAt] =
+      period === 1
+        ? [thresholds.repeatWarn, thresholds.repeatStop]
+        : [thresholds.cycleWarn, thresholds.cycleStop];
+
     if (repeats >= stopAt) {
       return { kind: 'stop', reason: describe(calls, period, repeats) };
     }

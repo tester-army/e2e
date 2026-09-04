@@ -171,7 +171,11 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   `MODEL_UNAVAILABLE`. No implicit target either: `targets` is required and
   each names its backend.
 - Secrets must never reach model input, digests, logs, or reports. Model input
-  is the redacted semantic tree plus the bounded ledger only.
+  is the redacted semantic tree (as text or, on request, the redacted node
+  tree), masked pixels only when masking is proven and no secret was filled,
+  and the sanitized prior-step records. What an executor keeps in
+  `attempt.memory` is its own; the harness never reports it.
+
 - CI (`.github/workflows/spec.yml`) runs Node 26 and pins actions by SHA; keep
   new actions SHA-pinned.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in

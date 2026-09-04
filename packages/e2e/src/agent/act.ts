@@ -13,11 +13,11 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BackendError, type OperationContext, type SemanticNode } from '../backend/surface.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { ConfigurationError, sanitizeText, TestError, truncateUtf8 } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { StepMetrics, StepModelInfo } from '../run/steps.ts';
+import type { StepMetrics, StepModelInfo, StepRecord } from '../run/steps.ts';
 import type {
   AgentErrorCode,
   AgentOptions,
@@ -41,6 +41,8 @@ import {
   type ExecutorActions,
   type ExecutorModelCall,
   type ExecutorObservation,
+  type ExecutorObserveOptions,
+  type ExecutorPriorStep,
   type ExecutorTarget,
   type StepExecutorContext,
   type StepVerdict,
@@ -52,6 +54,7 @@ import { instantiateLanguageModel } from './model/sdk.ts';
 import {
   observationShape,
   prepareObservation,
+  projectTree,
   settleObservation,
   type AgentObservation,
 } from './observation.ts';
@@ -219,6 +222,12 @@ class ActDispatch {
   private readonly redact: (text: string) => string;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
   private readonly stepCache: StepTraceSession | undefined;
+  /** Timeline index of the step being dispatched. */
+  private readonly stepIndex: number;
+  /** Whether the current executor-facing observe asked for pixels; read by the capture. */
+  private pixelsRequested = false;
+  /** Whether the pixel policy decision was already recorded for this step. */
+  private pixelsDecided: 'allowed' | 'denied' | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -240,12 +249,15 @@ class ActDispatch {
     this.metrics.contextBytes = new TextEncoder().encode(runtime.agentContext ?? '').byteLength;
     this.redact = runtime.redact;
     // Only act steps are cacheable: an assert must not change state, so its
-    // trace would be empty — nothing to replay, nothing worth a read. The
+    // trace would be empty — nothing to replay, nothing worth a read. An
+    // executor that declared `cache: 'off'` sees every step itself. The
     // dispatch always runs inside a recorded step; a missing index would mean
     // that invariant broke, and withholding the whole session is the safe
     // answer.
-    const cache = spec.kind === 'act' ? runtime.cache : undefined;
+    const cache =
+      spec.kind === 'act' && runtime.executor.cache !== 'off' ? runtime.cache : undefined;
     const stepIndex = runtime.steps.currentStepIndex;
+    this.stepIndex = stepIndex ?? runtime.priorSteps().length;
     this.stepCache =
       cache === undefined || stepIndex === undefined
         ? undefined
@@ -271,15 +283,14 @@ class ActDispatch {
     // The `model` getter below runs with the context object as `this`.
     // oxlint-disable-next-line typescript/no-this-alias
     const dispatch = this;
-    const ledger = serializeLedger(
-      this.runtime.priorSteps(),
-      this.runtime.config.limits.maxLedgerBytes,
-    );
+    const priorSteps = this.runtime.priorSteps().map(projectPriorStep);
+    const ledger = serializeLedger(priorSteps, this.runtime.config.limits.maxLedgerBytes);
     this.metrics.ledgerBytes = ledger.bytes;
     const replayedPrefix = this.stepCache?.replayedPrefix;
     return {
       step: {
         kind: this.spec.kind,
+        index: this.stepIndex,
         instruction: this.spec.instruction,
         params: this.spec.params,
         secrets: [...this.spec.secrets.values()].map((secret) => ({
@@ -288,6 +299,7 @@ class ActDispatch {
         })),
       },
       target: this.runtime.target,
+      attempt: this.runtime.attempt,
       ...(replayedPrefix === undefined ? {} : { replayedPrefix }),
       signal: this.stepSignal,
       // Resolved on first read, so executors that bring their own model (or
@@ -295,6 +307,7 @@ class ActDispatch {
       get model() {
         return dispatch.resolveModel();
       },
+      priorSteps,
       ledger: ledger.text,
       agentContext: this.runtime.agentContext,
       budgets: {
@@ -305,7 +318,7 @@ class ActDispatch {
         recordModelCall: (usage) => this.recordModelCall(usage),
         recordToolCall: (call) => this.recordToolCall(call),
       },
-      observe: () => this.observe(),
+      observe: (options) => this.observe(options),
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
         if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {
@@ -715,8 +728,13 @@ class ActDispatch {
    * the same path (`observeSettled`); only replay's polls between retries
    * read raw (`observeLatest`).
    */
-  private async observe(): Promise<ExecutorObservation> {
-    const observation = await this.observeSettled();
+  private async observe(options: ExecutorObserveOptions = {}): Promise<ExecutorObservation> {
+    if (options === null || typeof options !== 'object') {
+      throw new TestError('INVALID_ARGUMENT', 'observe options must be an object');
+    }
+
+    const wantPixels = options.pixels === true;
+    const observation = await this.observeSettled(wantPixels);
     // The location is read after the settled capture, so it names the document
     // the tree describes; a backend without one simply leaves it out.
     const path = await this.currentPath();
@@ -726,20 +744,63 @@ class ActDispatch {
       truncated: observation.truncated,
       viewport: observation.viewport,
       ...(path === undefined ? {} : { path: this.redact(path) }),
+      ...(options.tree === true ? { tree: projectTree(observation.tree, this.redact) } : {}),
+      ...(wantPixels ? this.pixelsFor(observation) : {}),
     };
   }
 
-  private observeLatest(): Promise<AgentObservation> {
-    return this.serialized(() => this.observeNow(false));
+  /**
+   * Pixels for an executor that asked for them, or the reason they are
+   * withheld. A tainted viewport (any secret filled this attempt) is denied
+   * before capture; masking the backend cannot prove is dropped after it. The
+   * decision is recorded as a policy event once per step, as the judgment
+   * tier records its own.
+   */
+  private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
+    if (this.runtime.taint.value) {
+      this.recordPixelDecision('denied', 'PIXEL_TAINTED');
+      return { pixelsWithheld: 'PIXEL_TAINTED' };
+    }
+    const pixels = observation.pixels;
+    if (pixels === undefined) {
+      const reason = observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY';
+      this.recordPixelDecision('denied', reason);
+      return { pixelsWithheld: reason };
+    }
+    this.recordPixelDecision('allowed');
+    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, pixels.bytes);
+    return {
+      pixels: {
+        data: pixels.data,
+        mediaType: pixels.mediaType,
+        width: pixels.width,
+        height: pixels.height,
+        scale: pixels.scale,
+        maskedRegionCount: pixels.maskedRegionCount,
+      },
+    };
   }
 
-  private observeSettled(): Promise<AgentObservation> {
-    return this.serialized(() => this.observeNow(true));
+  private recordPixelDecision(decision: 'allowed' | 'denied', code?: string): void {
+    if (this.pixelsDecided === decision) return;
+    this.pixelsDecided = decision;
+    this.recordPolicy('vision.pixels', decision, code);
+  }
+
+  private observeLatest(): Promise<AgentObservation> {
+    return this.serialized(() => this.observeNow(false, false));
+  }
+
+  private observeSettled(pixels = false): Promise<AgentObservation> {
+    return this.serialized(() => this.observeNow(true, pixels));
   }
 
   /** One recorded observation; when `settle`, the captures loop inside it. */
-  private async observeNow(settle: boolean): Promise<AgentObservation> {
+  private async observeNow(settle: boolean, pixels: boolean): Promise<AgentObservation> {
     this.checkpoint();
+    // A tainted viewport never captures pixels: the backend would mask what it
+    // knows about, and the secret may be anywhere on screen by now.
+    this.pixelsRequested = pixels && !this.runtime.taint.value;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
@@ -763,7 +824,7 @@ class ActDispatch {
   /** One raw observation capture: retried at the backend, then redacted and bounded. */
   private async captureObservation(): Promise<AgentObservation> {
     const raw = await retryingObserve({
-      observe: (operation) => this.session.observe(operation, { pixels: false }),
+      observe: (operation) => this.session.observe(operation, { pixels: this.pixelsRequested }),
       operation: () => this.operation(),
       guard: (cause) => this.checkpoint(cause),
       signal: this.runtime.engine.signal,
@@ -949,4 +1010,28 @@ class ActDispatch {
       return { name: 'navigate', url };
     });
   }
+}
+
+/** Bytes one prior-step field may occupy: sanitized quoted evidence, never policy. */
+const MAX_PRIOR_STEP_FIELD_BYTES = 8_192;
+
+/**
+ * Projects one recorded step onto the executor-facing shape: the fields a
+ * brain builds history from, sanitized at the trust boundary where they
+ * become model input, and nothing that carries runner internals.
+ */
+function projectPriorStep(step: StepRecord): ExecutorPriorStep {
+  return {
+    index: step.index,
+    kind: step.kind,
+    api: step.api,
+    label: boundedText(step.label),
+    status: step.status,
+    ...(step.explanation === undefined ? {} : { explanation: boundedText(step.explanation) }),
+    ...(step.cache === undefined ? {} : { cache: step.cache.mode }),
+  };
+}
+
+function boundedText(text: string): string {
+  return truncateUtf8(sanitizeText(text), MAX_PRIOR_STEP_FIELD_BYTES);
 }

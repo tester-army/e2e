@@ -49,6 +49,8 @@ export interface SharedSerialSession {
   readonly artifactSegments: readonly string[];
   /** Steps completed by earlier members, so later members see them as prior context. */
   readonly priorSteps: StepRecord[];
+  /** Executor scratch memory shared by every member, as the ledger is. */
+  readonly memory: Map<string, unknown>;
 }
 
 /** Executor capabilities the serial runner borrows. */
@@ -211,6 +213,8 @@ async function runSerialAttempt(
       attemptId,
       artifactSegments,
       priorSteps: [],
+      memory: new Map(),
+
     };
   } catch (cause) {
     const error = classifyError(cause);

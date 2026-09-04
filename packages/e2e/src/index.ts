@@ -21,11 +21,18 @@ export type * from './types.ts';
 export type {
   BlockedCategory,
   ExecutorActions,
+  ExecutorAttempt,
   ExecutorBudgets,
   ExecutorModelCall,
+  ExecutorNode,
   ExecutorObservation,
+  ExecutorObserveOptions,
+  ExecutorPixels,
+  ExecutorPixelsWithheld,
+  ExecutorPriorStep,
   ExecutorStep,
   ExecutorTarget,
+
   ReplayedPrefix,
   ReplayHandOffReason,
   StepExecutor,

@@ -12,57 +12,47 @@
  */
 
 import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
-import { z } from 'zod';
 import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
-import { readCost } from './model/sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
-  BLOCKABLE_CODES,
   RUNTIME_CODES,
   type StepExecutor,
   type StepExecutorContext,
   type StepVerdict,
 } from './executor.ts';
-import { checkLoopGuards, extractGuardCalls } from './loop-guards.ts';
+import { createVerdictTool, trackModelCalls, VERDICT_RULES } from './primitives.ts';
+import {
+  checkLoopGuards,
+  DEFAULT_LOOP_GUARD_THRESHOLDS,
+  extractGuardCalls,
+  type LoopGuardThresholds,
+} from './loop-guards.ts';
 
-/** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
-const MODEL_ERROR_CODES = [
-  'ACTION_FAILED',
-  'AUTOMATION_UNSUPPORTED',
-  'ASSERTION_FAILED',
-  'AUTHENTICATION_FAILED',
-  'AUTH_CREDENTIAL_UNAVAILABLE',
-  'AUTH_CREDENTIAL_INVALID',
-  'ENVIRONMENT_UNAVAILABLE',
-  'SEED_DATA_MISSING',
-  'TEST_SETUP_FAILED',
-  'APP_UNREACHABLE',
-  'APP_NOT_OPEN',
-  'POLICY_DENIED',
-] as const;
-
-/** The model-pickable codes a blocked verdict accepts; derived, never restated. */
-const MODEL_BLOCKABLE_CODES = MODEL_ERROR_CODES.filter((code) => BLOCKABLE_CODES.has(code));
-
-const VERDICT_RULES = `Verdict rules:
-- When the step's goal is achieved, or you are certain it cannot be, call complete_step exactly once.
-- Verify outcomes with your tools before concluding; never guess success.
-- "passed" means the application behaved as the step required. "failed" means it did not. "blocked" means credentials, the environment, or test setup prevented a product verdict — blocked says nothing about the product and requires an errorCode.`;
-
-/** Turns remaining when the loop warns the model to wrap up. */
+/** Turns remaining when the loop warns the model to wrap up, by default. */
 const WIND_DOWN_TURNS = 5;
 
 /**
- * Ceiling on the remaining step time under which the loop takes the verdict it
- * can get. A slow provider turn runs tens of seconds; concluding with the
- * model's own summary beats a verdict-less STEP_TIMEOUT every time. The
- * effective window is a quarter of the step's budget, capped here, so a short
- * step keeps most of its clock for work instead of losing half of it to the
- * wind-down.
+ * Default ceiling on the remaining step time under which the loop takes the
+ * verdict it can get. A slow provider turn runs tens of seconds; concluding
+ * with the model's own summary beats a verdict-less STEP_TIMEOUT every time.
+ * The effective window is a quarter of the step's budget, capped here, so a
+ * short step keeps most of its clock for work instead of losing half of it to
+ * the wind-down.
  */
 const CLOCK_WIND_DOWN_MS = 60_000;
 const CLOCK_WIND_DOWN_FRACTION = 4;
+
+/** Turns from the budget ceiling at which only the conclusion tool is offered. */
+const FORCED_CONCLUSION_TURNS = 2;
+
+/**
+ * Wind-down policy: when the loop tells the model to wrap up. `turns` is the
+ * remaining-turn count that triggers the notice; `clockMs` the remaining step
+ * time under which the loop forces a verdict. `false` disables both notices;
+ * the harness budget and deadline still end the step.
+ */
+export type WindDownPolicy = false | { readonly turns?: number; readonly clockMs?: number };
 
 /** Transcript ceiling per step; enough for every turn without unbounded logs. */
 const MAX_TRANSCRIPT_CHARS = 262_144;
@@ -93,8 +83,28 @@ export interface ToolLoopExecutorOptions {
   readonly system?: string;
   /** Builds the step's tool vocabulary; `complete_step` is added by the chassis. */
   readonly tools: (context: StepExecutorContext, helpers: ToolLoopHelpers) => ToolSet;
-  /** Builds the first user message of the step. */
-  readonly buildPrompt: (context: StepExecutorContext) => string | Promise<string>;
+  /**
+   * Builds the step's opening prompt: one user message, or a whole message
+   * history ending in the step's request — how an executor carries a
+   * conversation across the steps of an attempt (`context.attempt.memory`).
+   */
+  readonly buildPrompt: (context: StepExecutorContext) => string | ModelMessage[] | Promise<string | ModelMessage[]>;
+  /**
+   * Runs once the loop has ended, with the complete message history of the
+   * step (opening prompt plus every generated turn) and the verdict, when the
+   * model reached one. The place to persist history for a later step.
+   */
+  readonly onConclude?: (
+    context: StepExecutorContext,
+    outcome: { readonly messages: ModelMessage[]; readonly verdict: StepVerdict | undefined },
+  ) => void | Promise<void>;
+  /**
+   * Loop-guard thresholds, merged over the defaults; `false` disables the
+   * guards. The harness budgets remain the outer bound either way.
+   */
+  readonly loopGuards?: false | Partial<LoopGuardThresholds>;
+  /** Wind-down notices near the turn budget and the step clock; defaults to both. */
+  readonly windDown?: WindDownPolicy;
   /** Upper bound on model turns; capped at the harness model-call budget. */
   readonly maxTurns?: number;
   /** AI SDK provider options sent with every model call (thinking level, effort). */
@@ -154,7 +164,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
 
 /** One step's loop state and wiring; constructed fresh per runStep. */
 class LoopRun {
-  private verdict: StepVerdict | undefined;
+  private readonly conclusion = createVerdictTool();
   private hardStop: AgentError | undefined;
   private guardStop: string | undefined;
   private noticedGuardReason: string | undefined;
@@ -162,6 +172,8 @@ class LoopRun {
   private readonly transcript: string[] = [];
   private readonly maxTurns: number;
   private readonly windDownMs: number;
+  private readonly windDownTurns: number;
+  private readonly guardThresholds: LoopGuardThresholds | undefined;
 
   constructor(
     private readonly ai: AiSdk,
@@ -175,17 +187,26 @@ class LoopRun {
       options.maxTurns ?? context.budgets.maxModelCalls,
       context.budgets.maxModelCalls,
     );
-    this.windDownMs = Math.min(
-      CLOCK_WIND_DOWN_MS,
-      Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
-    );
+    const windDown = options.windDown;
+    this.windDownMs =
+      windDown === false
+        ? 0
+        : Math.min(
+            windDown?.clockMs ?? CLOCK_WIND_DOWN_MS,
+            Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
+          );
+    this.windDownTurns = windDown === false ? -1 : (windDown?.turns ?? WIND_DOWN_TURNS);
+    this.guardThresholds =
+      options.loopGuards === false
+        ? undefined
+        : { ...DEFAULT_LOOP_GUARD_THRESHOLDS, ...options.loopGuards };
   }
 
   async run(): Promise<StepVerdict> {
     const helpers = this.helpers();
     const tools: ToolSet = {
       ...this.options.tools(this.context, helpers),
-      complete_step: this.concludeTool(),
+      complete_step: this.conclusion.tool,
     };
     const loop = new this.ai.ToolLoopAgent({
       model: this.model,
@@ -196,39 +217,29 @@ class LoopRun {
         ? {}
         : { providerOptions: this.options.providerOptions as never }),
       stopWhen: [
-        () => this.verdict !== undefined || this.hardStop !== undefined,
+        () => this.conclusion.concluded() || this.hardStop !== undefined,
         this.ai.stepCountIs(this.maxTurns),
       ],
       prepareStep: ({ messages, stepNumber, steps }) =>
         this.prepareTurn(messages, stepNumber, steps.at(-1)),
     });
-    const identity = this.model as { provider?: string; modelId?: string };
+    const tracker = trackModelCalls(
+      this.context,
+      this.model as { provider?: string; modelId?: string },
+    );
     const prompt = await this.options.buildPrompt(this.context);
-    let turnStartedMs = Date.now();
+    let generated: ModelMessage[] = [];
     try {
-      await loop.generate({
+      const result = await loop.generate({
         prompt,
         abortSignal: this.context.signal,
-        onStepStart: () => {
-          turnStartedMs = Date.now();
-        },
+        onStepStart: tracker.onStepStart,
         onStepEnd: (step) => {
           this.recordTurn(step);
-          const estimatedCostUsd = readCost(step.providerMetadata);
-          this.context.budgets.recordModelCall({
-            ...(step.usage.inputTokens === undefined
-              ? {}
-              : { inputTokens: step.usage.inputTokens }),
-            ...(step.usage.outputTokens === undefined
-              ? {}
-              : { outputTokens: step.usage.outputTokens }),
-            durationMs: Date.now() - turnStartedMs,
-            ...(typeof identity.provider === 'string' ? { provider: identity.provider } : {}),
-            ...(typeof identity.modelId === 'string' ? { modelId: identity.modelId } : {}),
-            ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
-          });
+          tracker.onStepEnd(step);
         },
       });
+      generated = result.responseMessages;
     } catch (cause) {
       this.attachTranscript();
       if (this.context.signal.aborted) {
@@ -243,7 +254,16 @@ class LoopRun {
       );
     }
     this.attachTranscript();
-    if (this.verdict !== undefined) return this.verdict;
+    if (this.options.onConclude !== undefined) {
+      const opening: ModelMessage[] =
+        typeof prompt === 'string' ? [{ role: 'user', content: prompt }] : prompt;
+      await this.options.onConclude(this.context, {
+        messages: [...opening, ...generated],
+        verdict: this.conclusion.verdict(),
+      });
+    }
+    const verdict = this.conclusion.verdict();
+    if (verdict !== undefined) return verdict;
     if (this.hardStop !== undefined) {
       if (this.hardStop.code === 'CANCELLED') throw this.hardStop;
       return { status: 'blocked', summary: this.hardStop.message, errorCode: this.hardStop.code };
@@ -257,12 +277,12 @@ class LoopRun {
 
   private helpers(): ToolLoopHelpers {
     return {
-      concluding: () => this.verdict !== undefined || this.hardStop !== undefined,
+      concluding: () => this.conclusion.concluded() || this.hardStop !== undefined,
       reportHardStop: (error) => {
         this.hardStop ??= error;
       },
       guard: async (body) => {
-        if (this.verdict !== undefined || this.hardStop !== undefined) {
+        if (this.conclusion.concluded() || this.hardStop !== undefined) {
           return 'The step is already concluding; no further actions run.';
         }
         try {
@@ -322,8 +342,11 @@ class LoopRun {
       );
     }
 
-    if (this.guardStop === undefined) {
-      const guard = checkLoopGuards(extractGuardCalls(prepared, 'complete_step'));
+    if (this.guardStop === undefined && this.guardThresholds !== undefined) {
+      const guard = checkLoopGuards(
+        extractGuardCalls(prepared, 'complete_step'),
+        this.guardThresholds,
+      );
       if (guard.kind === 'stop') {
         this.guardStop = guard.reason;
       } else if (guard.kind === 'warn' && guard.reason !== this.noticedGuardReason) {
@@ -344,7 +367,7 @@ class LoopRun {
           'blocked (with errorCode) if something outside the application stopped you.',
       );
     }
-    if (turnsLeft === WIND_DOWN_TURNS && this.guardStop === undefined) {
+    if (turnsLeft === this.windDownTurns && this.guardStop === undefined) {
       prepared = appendNotice(
         prepared,
         `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +
@@ -354,7 +377,8 @@ class LoopRun {
       );
     }
 
-    const forced = turnsLeft <= 2 || this.guardStop !== undefined || lowClock;
+    const forced = turnsLeft <= FORCED_CONCLUSION_TURNS || this.guardStop !== undefined || lowClock;
+
     return {
       ...(prepared === messages ? {} : { messages: prepared }),
       ...(forced
@@ -364,49 +388,6 @@ class LoopRun {
           }
         : {}),
     };
-  }
-
-  private concludeTool(): ToolSet[string] {
-    const { tool } = this.ai;
-    return tool({
-      description:
-        'Conclude the step with the final verdict. passed = the application behaved as required and you verified it. failed = the application did not behave as required. blocked = credentials, environment, or test setup prevented a product verdict; blocked requires errorCode.',
-      inputSchema: z.object({
-        status: z.enum(['passed', 'failed', 'blocked']),
-        summary: z
-          .string()
-          .min(1)
-          .max(500)
-          .describe('What you did and what you saw, in plain language'),
-        errorCode: z.enum(MODEL_ERROR_CODES).optional(),
-      }),
-      execute: async (input): Promise<string> => {
-        if (this.verdict !== undefined) return 'The step already concluded.';
-        if (
-          input.status === 'blocked' &&
-          (input.errorCode === undefined ||
-            !MODEL_BLOCKABLE_CODES.includes(
-              input.errorCode as (typeof MODEL_BLOCKABLE_CODES)[number],
-            ))
-        ) {
-          return (
-            'Rejected: a blocked verdict requires errorCode naming what blocked you ' +
-            `(one of ${MODEL_BLOCKABLE_CODES.join(', ')}). ` +
-            'If the application itself misbehaved, use status "failed" instead.'
-          );
-        }
-        this.verdict = {
-          status: input.status,
-          summary: input.summary,
-          // A passed verdict never carries a code; a redundant one from the
-          // model is dropped rather than failing the step.
-          ...(input.errorCode === undefined || input.status === 'passed'
-            ? {}
-            : { errorCode: input.errorCode }),
-        };
-        return 'Step concluded.';
-      },
-    });
   }
 
   private instructions(): string {
