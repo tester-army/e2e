@@ -69,9 +69,16 @@ class InProcessRunner implements UnitRunner {
 
   send(message: MainToWorker): void {
     if (this.exited) return;
-    // Interrupts must land even while winding down, so in-flight work aborts;
-    // a forced teardown likewise, so the backend lets go now.
-    if (this.closing && message.type !== 'interrupt' && message.type !== 'terminate') return;
+    // A unit dispatched while a fatal error is closing the worker would run
+    // after its exit; everything else still lands, and shutdown is idempotent.
+    if (this.closing && message.type === 'run-unit') return;
+    // There is no process to take an abandoned unit down with it, so a forced
+    // teardown here is the graceful one: dispose once the unit — whose
+    // harness calls the interrupt already aborted — has wound down.
+    if (message.type === 'terminate') {
+      this.close();
+      return;
+    }
     this.worker.handle(message);
   }
 
@@ -113,6 +120,7 @@ class InProcessRunner implements UnitRunner {
       runId: this.options.runId,
       artifactsRoot: this.options.artifactsRoot,
       headed: this.options.headed,
+      isolated: false,
       debug: this.options.debug,
       resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit),
     };

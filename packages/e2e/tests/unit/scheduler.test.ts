@@ -99,7 +99,7 @@ class FakeFleet {
   readonly spawned: { targetName: string }[] = [];
   readonly unitsByWorker: RunUnitMessage[][] = [];
   /** Control messages every worker received, in order. */
-  readonly control: MainToWorker['type'][] = [];
+  readonly controlMessages: MainToWorker['type'][] = [];
   live = 0;
   peakLive = 0;
 
@@ -148,7 +148,7 @@ class FakeRunner implements UnitRunner {
 
   send(message: MainToWorker): void {
     if (this.exited) return;
-    if (message.type !== 'run-unit') this.fleet.control.push(message.type);
+    if (message.type !== 'run-unit') this.fleet.controlMessages.push(message.type);
     if (message.type === 'shutdown') {
       setTimeout(() => this.end('shut down'), 0);
       return;
@@ -220,8 +220,8 @@ async function run(
     workers: overrides.workers ?? 2,
     interruptGraceMs: overrides.interruptGraceMs ?? 1_000,
     interruptSignal: overrides.interruptSignal ?? new AbortController().signal,
-    ...(overrides.forceSignal === undefined ? {} : { forceSignal: overrides.forceSignal }),
-    ...(overrides.forceGraceMs === undefined ? {} : { forceGraceMs: overrides.forceGraceMs }),
+    forceSignal: overrides.forceSignal ?? new AbortController().signal,
+    forceGraceMs: overrides.forceGraceMs ?? 1_000,
     spawn: fleet.spawn,
     events: {
       onResult: (result) => collected.results.push(result),
@@ -467,8 +467,8 @@ describe('scheduler fault handling', () => {
     for (const timer of timers) clearTimeout(timer);
 
     expect(Date.now() - started).toBeLessThan(5_000);
-    expect(fleet.control).toContain('interrupt');
-    expect(fleet.control).toContain('terminate');
+    expect(fleet.controlMessages).toContain('interrupt');
+    expect(fleet.controlMessages).toContain('terminate');
     // The pairs never reported; a forced exit is the one that was asked for.
     expect(collected.results.map((result) => result.status).toSorted()).toEqual(['skipped', 'skipped']);
     expect(collected.runErrors).toEqual([]);

@@ -43,6 +43,8 @@ export interface TargetWorkerDeps {
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly headed: boolean;
+  /** Whether the worker has a process of its own; see `TargetExecutorOptions.isolated`. */
+  readonly isolated: boolean;
   readonly resolvePairs: ResolveUnitPairs;
   readonly debug?: DebugTrace;
 }
@@ -83,6 +85,7 @@ export class TargetWorker {
         artifactsRoot: deps.artifactsRoot,
         sessionStore: deps.sessionStore,
         headed: deps.headed,
+        isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         events: {
@@ -99,11 +102,6 @@ export class TargetWorker {
       });
       this.host.emit({ type: 'ready' });
     });
-  }
-
-  /** The configured cleanup budget, once the config has loaded. */
-  get cleanupTimeoutMs(): number | undefined {
-    return this.deps?.config.cleanupTimeout;
   }
 
   handle(message: MainToWorker): void {

@@ -68,7 +68,15 @@ export interface RunOptions {
   rawConfig?: E2EConfig | undefined;
   env?: NodeJS.ProcessEnv | undefined;
   quiet?: boolean | undefined;
+  /** Cancellation: the running test ends, its teardown runs, the run finishes as `interrupted`. */
   interruptSignal?: AbortSignal | undefined;
+  /**
+   * Forced cancellation: every worker disposes its backend at once instead
+   * of finishing its test, and is killed after the cleanup budget. Counts as
+   * an interrupt on its own. The runner never handles process signals itself;
+   * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
+   */
+  forceSignal?: AbortSignal | undefined;
   /** Structured, JSON-serializable run events for embedding hosts. */
   onEvent?: RunEventSink | undefined;
 }
@@ -82,6 +90,13 @@ export interface RunOutcome {
   aiTracePath: string | undefined;
   results: readonly ResultRecord[];
 }
+
+/**
+ * Added to the cleanup budget before a force-terminated worker is killed: its
+ * own disposal is bounded by that budget, and the margin lets a worker that
+ * used all of it still report and exit before the kill lands.
+ */
+const FORCE_KILL_MARGIN_MS = 1_000;
 
 /** Executes one complete run and returns the outcome without exiting. */
 export async function run(options: RunOptions = {}): Promise<RunOutcome> {
@@ -384,10 +399,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         interruptGraceMs: config.timeout + config.cleanupTimeout,
         interruptSignal: interrupted,
         forceSignal: forceController.signal,
-        // The worker's own disposal is bounded by the cleanup budget; the
-        // margin lets a worker that used all of it still report and exit
-        // before the kill lands.
-        forceGraceMs: config.cleanupTimeout + 1_000,
+        forceGraceMs: config.cleanupTimeout + FORCE_KILL_MARGIN_MS,
         events: {
           onResult: (result) => {
             results.push(result);
@@ -415,34 +427,27 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // the run owns external resources. Failures anywhere are recorded, never
   // thrown — the outcome must survive its own execution and its own cleanup —
   // and teardown always runs before the terminal `run-finished`, so that
-  // event means the app process and session store are gone.
-  //
-  // Process signals escalate. The first interrupts: the running test ends,
-  // its teardown runs, workers dispose their backends and exit. The second
-  // forces: every worker disposes now and is killed after the cleanup budget.
-  // The third gives up on the run itself — the last resort for a teardown
-  // that is stuck. The handlers stay installed through the report, because
-  // Node's default for an unhandled signal is to exit on the spot, which
-  // would leave workers orphaned mid-test and the report unwritten.
-  const externalSignal = options.interruptSignal;
+  // event means the app process and session store are gone. A forced
+  // interrupt is also an interrupt; that is enforced here, once, so the
+  // scheduler can take it for granted.
   const interrupt = (mode: 'graceful' | 'forced'): void => {
+    if (mode === 'forced') interrupt('graceful');
     const controller = mode === 'graceful' ? interruptController : forceController;
     if (controller.signal.aborted) return;
     controller.abort();
     emit({ type: 'run-interrupted', mode });
   };
-  const onExternalAbort = (): void => interrupt('graceful');
-  let signals = 0;
-  const onSignal = (): void => {
-    signals += 1;
-    if (signals === 1) interrupt('graceful');
-    else if (signals === 2) interrupt('forced');
-    else process.exit(130);
-  };
-  if (externalSignal?.aborted === true) interrupt('graceful');
-  externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
+  const bridges = (
+    [
+      [options.interruptSignal, 'graceful'],
+      [options.forceSignal, 'forced'],
+    ] as const
+  ).map(([signal, mode]) => {
+    const onAbort = (): void => interrupt(mode);
+    if (signal?.aborted === true) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
+    return () => signal?.removeEventListener('abort', onAbort);
+  });
   try {
     try {
       await executeRun();
@@ -458,9 +463,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     return await finish();
   } finally {
-    process.removeListener('SIGINT', onSignal);
-    process.removeListener('SIGTERM', onSignal);
-    externalSignal?.removeEventListener('abort', onExternalAbort);
+    for (const release of bridges) release();
   }
 }
 

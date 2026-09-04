@@ -3,6 +3,7 @@
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import { run } from '../run/runner.ts';
 import { init } from './init.ts';
+import { SignalLadder } from './signals.ts';
 
 /** Shape check only; the config resolver applies each flag's bounds. */
 function parseNonNegativeInt(value: string): number {
@@ -96,24 +97,32 @@ function createProgram(): Command {
           process.exitCode = 2;
           return;
         }
-        const outcome = await run({
-          files,
-          configPath: options.config,
-          targetIds: options.target,
-          tags: options.tag,
-          tagMode,
-          headed: options.headed,
-          retries: options.retries,
-          workers: options.workers,
-          // Validated above; the filter is the type narrowing, not a second check.
-          reporters: reporter?.filter(isReporter),
-          artifactsDir: options.artifacts,
-          noCache: options.cache === false,
-          passWithNoTests: options.passWithNoTests,
-          debug: options.debug,
-          aiTrace: options.aiTrace,
-        });
-        process.exitCode = outcome.exitCode;
+        const signals = new SignalLadder();
+        const release = signals.arm();
+        try {
+          const outcome = await run({
+            files,
+            configPath: options.config,
+            targetIds: options.target,
+            tags: options.tag,
+            tagMode,
+            headed: options.headed,
+            retries: options.retries,
+            workers: options.workers,
+            // Validated above; the filter is the type narrowing, not a second check.
+            reporters: reporter?.filter(isReporter),
+            artifactsDir: options.artifacts,
+            noCache: options.cache === false,
+            passWithNoTests: options.passWithNoTests,
+            debug: options.debug,
+            aiTrace: options.aiTrace,
+            interruptSignal: signals.interruptSignal,
+            forceSignal: signals.forceSignal,
+          });
+          process.exitCode = outcome.exitCode;
+        } finally {
+          release();
+        }
       },
     );
 

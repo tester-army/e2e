@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { createProject, type FixtureProject } from '../helpers/run-project.ts';
+import { createProject } from '../helpers/run-project.ts';
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
@@ -18,11 +18,15 @@ const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 /** Cleanup budget of the fixture config; every teardown here is bounded by it. */
 const CLEANUP_TIMEOUT_MS = 5_000;
 
+/** Fixture-side logger: one `<pid> <event>` line per call into the file the test reads. */
+const LOG_HELPER =
+  "const log = (line) => appendFileSync(process.env.SIGNAL_LOG, process.pid + ' ' + line + '\\n');";
+
 const CONFIG = `import { appendFileSync } from 'node:fs';
 import { defineConfig } from '@e2edev/e2e';
 import { defineBackend } from '@e2edev/e2e/backend';
 
-const log = (line) => appendFileSync(process.env.SIGNAL_LOG, \`\${process.pid} \${line}\\n\`);
+${LOG_HELPER}
 const node = { ref: { id: 'n1', revision: '' }, role: 'button', name: 'Go', states: { hidden: false } };
 
 export default defineConfig({
@@ -50,21 +54,23 @@ export default defineConfig({
 const SLEEPING_TEST = `import { appendFileSync } from 'node:fs';
 import { test } from '@e2edev/e2e';
 
+${LOG_HELPER}
+
 test('sleeps until interrupted', async () => {
-  appendFileSync(process.env.SIGNAL_LOG, \`\${process.pid} test.start\\n\`);
+  log('test.start');
   await new Promise((resolve) => setTimeout(resolve, 600_000));
 });
 `;
 
 /**
- * The same sleeping body behind an `afterEach` that will not end on its own:
- * the graceful path then spends the whole cleanup budget in the hook, so a
- * second signal is guaranteed to land mid-teardown.
+ * The same body behind an `afterEach` that will not end on its own: the
+ * graceful path then spends the whole cleanup budget in the hook, so a second
+ * signal is guaranteed to land mid-teardown.
  */
 const SLOW_TEARDOWN_TEST = `import { appendFileSync } from 'node:fs';
 import { test } from '@e2edev/e2e';
 
-const log = (line) => appendFileSync(process.env.SIGNAL_LOG, \`\${process.pid} \${line}\\n\`);
+${LOG_HELPER}
 
 test.afterEach(async () => {
   log('afterEach.start');
@@ -77,15 +83,25 @@ test('sleeps until interrupted', async () => {
 });
 `;
 
-interface Launched {
+interface RunningCli {
   readonly child: ChildProcess;
-  readonly logPath: string;
+  readonly projectDir: string;
+  /** The pid of the worker that started the test. */
+  readonly workerPid: number;
   readonly exit: Promise<number | null>;
-  readonly output: () => string;
+  /** Backend and fixture events logged so far, pid prefix stripped. */
+  events(): string[];
+  output(): string;
+  signalGroup(signal: NodeJS.Signals): void;
 }
 
-/** Starts the CLI in its own process group, as a terminal's foreground job. */
-function launch(project: FixtureProject): Launched {
+/**
+ * Runs the CLI on a fresh project in its own process group — a terminal's
+ * foreground job — until the test body has started, hands it to the body,
+ * and always kills the group and removes the project afterwards.
+ */
+async function withRunningTest(testSource: string, body: (run: RunningCli) => Promise<void>): Promise<void> {
+  const project = createProject({ 'e2e.config.ts': CONFIG, 'tests/sleep.e2e.ts': testSource });
   const logPath = path.join(project.dir, 'signals.log');
   const chunks: string[] = [];
   const child = spawn(process.execPath, [CLI, 'run'], {
@@ -99,16 +115,35 @@ function launch(project: FixtureProject): Launched {
   const exit = new Promise<number | null>((resolve) => {
     child.once('exit', (code) => resolve(code));
   });
-  return { child, logPath, exit, output: () => chunks.join('') };
-}
-
-function readLog(logPath: string): string[] {
-  return existsSync(logPath) ? readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean) : [];
-}
-
-/** Lines of the log without their pid prefix. */
-function events(logPath: string): string[] {
-  return readLog(logPath).map((line) => line.split(' ').slice(1).join(' '));
+  const lines = (): string[] =>
+    existsSync(logPath) ? readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean) : [];
+  const run: RunningCli = {
+    child,
+    projectDir: project.dir,
+    get workerPid() {
+      const line = lines().find((entry) => entry.endsWith(' test.start'));
+      if (line === undefined) throw new Error('the test never started');
+      return Number.parseInt(line.split(' ')[0]!, 10);
+    },
+    exit,
+    events: () => lines().map((line) => line.split(' ').slice(1).join(' ')),
+    output: () => chunks.join(''),
+    signalGroup: (signal) => {
+      if (child.pid === undefined) throw new Error('child has no pid');
+      process.kill(-child.pid, signal);
+    },
+  };
+  try {
+    await waitFor(() => run.events().includes('test.start'), 25_000, 'the test to start');
+    await body(run);
+  } finally {
+    try {
+      run.signalGroup('SIGKILL');
+    } catch {
+      // already gone
+    }
+    project.cleanup();
+  }
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs: number, what: string): Promise<void> {
@@ -117,11 +152,6 @@ async function waitFor(predicate: () => boolean, timeoutMs: number, what: string
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-}
-
-function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (child.pid === undefined) throw new Error('child has no pid');
-  process.kill(-child.pid, signal);
 }
 
 function alive(pid: number): boolean {
@@ -133,100 +163,62 @@ function alive(pid: number): boolean {
   }
 }
 
-/** The pid of the worker that ran the test, from the log line it wrote. */
-function workerPid(logPath: string): number {
-  const line = readLog(logPath).find((entry) => entry.endsWith(' test.start'));
-  if (line === undefined) throw new Error('the test never started');
-  return Number.parseInt(line.split(' ')[0]!, 10);
-}
-
-async function killGroupIfAlive(child: ChildProcess): Promise<void> {
-  try {
-    signalGroup(child, 'SIGKILL');
-  } catch {
-    // already gone
-  }
-}
-
 describe('interrupt signals against the CLI', () => {
   it(
     'one Ctrl-C ends a sleeping test at once, disposes the backend, and exits 130',
-    async () => {
-      const project = createProject({ 'e2e.config.ts': CONFIG, 'tests/sleep.e2e.ts': SLEEPING_TEST });
-      const run = launch(project);
-      try {
-        await waitFor(() => events(run.logPath).includes('test.start'), 25_000, 'the test to start');
+    () =>
+      withRunningTest(SLEEPING_TEST, async (run) => {
         const interruptedAt = Date.now();
-        signalGroup(run.child, 'SIGINT');
+        run.signalGroup('SIGINT');
         const code = await run.exit;
         const elapsed = Date.now() - interruptedAt;
 
         expect(code).toBe(130);
         // Well inside the 60 s test timeout: the interrupt, not the timeout, ended the body.
         expect(elapsed).toBeLessThan(20_000);
-        expect(events(run.logPath)).toEqual(['init', 'startAttempt', 'test.start', 'endAttempt', 'dispose']);
+        expect(run.events()).toEqual(['init', 'startAttempt', 'test.start', 'endAttempt', 'dispose']);
         expect(run.output()).toContain('interrupted: stopping the running test');
-        expect(run.output()).toContain('interrupted');
-        expect(alive(workerPid(run.logPath))).toBe(false);
-      } finally {
-        await killGroupIfAlive(run.child);
-        project.cleanup();
-      }
-    },
+        expect(alive(run.workerPid)).toBe(false);
+      }),
     60_000,
   );
 
   it(
     'a second Ctrl-C forces the worker to dispose now and still exits 130 with a report',
-    async () => {
-      const project = createProject({ 'e2e.config.ts': CONFIG, 'tests/sleep.e2e.ts': SLOW_TEARDOWN_TEST });
-      const run = launch(project);
-      try {
-        await waitFor(() => events(run.logPath).includes('test.start'), 25_000, 'the test to start');
-        signalGroup(run.child, 'SIGINT');
+    () =>
+      withRunningTest(SLOW_TEARDOWN_TEST, async (run) => {
+        run.signalGroup('SIGINT');
         // The first interrupt ended the body; teardown is now stuck in the hook.
-        await waitFor(() => events(run.logPath).includes('afterEach.start'), 10_000, 'the afterEach hook to start');
+        await waitFor(() => run.events().includes('afterEach.start'), 10_000, 'the afterEach hook to start');
         const forcedAt = Date.now();
-        signalGroup(run.child, 'SIGINT');
+        run.signalGroup('SIGINT');
         const code = await run.exit;
 
         expect(code).toBe(130);
         // The hook alone would have held the run for the whole cleanup budget.
         expect(Date.now() - forcedAt).toBeLessThan(CLEANUP_TIMEOUT_MS - 1_000);
         expect(run.output()).toContain('interrupted again');
-        expect(existsSync(path.join(project.dir, '.e2e', 'report.json'))).toBe(true);
-        // The runner is gone; the worker must not be left behind driving the backend.
-        const pid = workerPid(run.logPath);
+        expect(existsSync(path.join(run.projectDir, '.e2e', 'report.json'))).toBe(true);
+        const pid = run.workerPid;
         await waitFor(() => !alive(pid), CLEANUP_TIMEOUT_MS + 5_000, 'the worker to exit');
-        expect(events(run.logPath)).toContain('dispose');
-      } finally {
-        await killGroupIfAlive(run.child);
-        project.cleanup();
-      }
-    },
+        expect(run.events()).toContain('dispose');
+      }),
     60_000,
   );
 
   it(
     'a worker whose runner is killed disposes its backend and exits on its own',
-    async () => {
-      const project = createProject({ 'e2e.config.ts': CONFIG, 'tests/sleep.e2e.ts': SLEEPING_TEST });
-      const run = launch(project);
-      try {
-        await waitFor(() => events(run.logPath).includes('test.start'), 25_000, 'the test to start');
-        const pid = workerPid(run.logPath);
+    () =>
+      withRunningTest(SLEEPING_TEST, async (run) => {
+        const pid = run.workerPid;
         expect(alive(pid)).toBe(true);
         // Only the runner dies; the worker learns of it through its IPC channel closing.
         run.child.kill('SIGKILL');
         await run.exit;
 
         await waitFor(() => !alive(pid), CLEANUP_TIMEOUT_MS + 5_000, 'the orphaned worker to exit');
-        expect(events(run.logPath)).toContain('dispose');
-      } finally {
-        await killGroupIfAlive(run.child);
-        project.cleanup();
-      }
-    },
+        expect(run.events()).toContain('dispose');
+      }),
     60_000,
   );
 });

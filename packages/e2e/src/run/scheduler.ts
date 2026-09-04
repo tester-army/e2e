@@ -54,13 +54,13 @@ export interface RunUnitsOptions {
   readonly interruptGraceMs: number;
   readonly interruptSignal: AbortSignal;
   /**
-   * A forced interrupt (the second one): every worker is told to tear its
-   * backend down at once instead of finishing its unit, and is killed after
-   * `forceGraceMs`. Implies `interruptSignal`.
+   * A forced interrupt: every busy worker is told to dispose its backend at
+   * once instead of finishing its unit, and is killed after `forceGraceMs`.
+   * The runner aborts it only with or after `interruptSignal`.
    */
-  readonly forceSignal?: AbortSignal;
+  readonly forceSignal: AbortSignal;
   /** Budget for a worker to dispose its backend after a forced interrupt. */
-  readonly forceGraceMs?: number;
+  readonly forceGraceMs: number;
   readonly spawn: SpawnUnitRunner;
   readonly events: SchedulerEvents;
 }
@@ -101,6 +101,8 @@ class SchedulerWorker {
   inFlightTestId: string | undefined;
   sawFailure = false;
   becameReady = false;
+  /** Told to tear down at once by a forced interrupt; its exit is then the one asked for. */
+  terminated = false;
   private killTimer: NodeJS.Timeout | undefined;
 
   constructor(
@@ -147,9 +149,10 @@ class SchedulerWorker {
 
   /**
    * Asks for immediate backend disposal and force-kills once the budget is
-   * spent. Replaces any longer kill timer an earlier interrupt armed.
+   * spent, replacing the interrupt grace a busy worker was given.
    */
   terminate(graceMs: number): void {
+    this.terminated = true;
     this.runner.send({ type: 'terminate' });
     this.clearKillTimer();
     this.killAfter(graceMs);
@@ -193,14 +196,14 @@ class Scheduler {
         initFailures: 0,
         failed: false,
       });
-      if (!this.interrupted) {
+      if (!this.options.interruptSignal.aborted) {
         for (const pair of plan.immediate) this.options.events.onResult(nonRunResult(pair));
       }
     }
 
     const onInterrupt = (): void => this.wakeUp();
     this.options.interruptSignal.addEventListener('abort', onInterrupt, { once: true });
-    this.options.forceSignal?.addEventListener('abort', onInterrupt, { once: true });
+    this.options.forceSignal.addEventListener('abort', onInterrupt, { once: true });
     try {
       for (;;) {
         this.broadcastInterrupt();
@@ -213,14 +216,9 @@ class Scheduler {
       }
     } finally {
       this.options.interruptSignal.removeEventListener('abort', onInterrupt);
-      this.options.forceSignal?.removeEventListener('abort', onInterrupt);
+      this.options.forceSignal.removeEventListener('abort', onInterrupt);
       await this.drain();
     }
-  }
-
-  /** Whether any interrupt has landed; a forced one counts on its own. */
-  private get interrupted(): boolean {
-    return this.options.interruptSignal.aborted || this.options.forceSignal?.aborted === true;
   }
 
   private wakeUp(): void {
@@ -230,7 +228,7 @@ class Scheduler {
   }
 
   private broadcastInterrupt(): void {
-    if (!this.interrupted || this.interruptBroadcast) return;
+    if (!this.options.interruptSignal.aborted || this.interruptBroadcast) return;
     this.interruptBroadcast = true;
     for (const state of this.targets.values()) {
       state.setupQueue.length = 0;
@@ -247,16 +245,17 @@ class Scheduler {
   }
 
   /**
-   * The second interrupt: no worker gets to finish its unit any more. Each
-   * live one disposes its backend now and is killed after the force budget,
-   * however long the unit's own grace still had to run.
+   * The forced interrupt: no worker gets to finish its unit any more. Each
+   * busy one disposes its backend now and is killed after the force budget,
+   * however long the unit's own grace still had to run. Retired workers were
+   * already told to leave, on a shorter clock.
    */
   private broadcastForce(): void {
-    if (this.options.forceSignal?.aborted !== true || this.forceBroadcast) return;
+    if (!this.options.forceSignal.aborted || this.forceBroadcast) return;
     this.forceBroadcast = true;
     // Exits arrive asynchronously, so iterating the live array is safe here.
     for (const worker of this.workers) {
-      if (worker.runner.alive) worker.terminate(this.options.forceGraceMs ?? SHUTDOWN_GRACE_MS);
+      if (worker.state !== 'retired' && worker.runner.alive) worker.terminate(this.options.forceGraceMs);
     }
   }
 
@@ -277,7 +276,7 @@ class Scheduler {
    * nothing to do.
    */
   private dispatch(): void {
-    if (this.interrupted) return;
+    if (this.options.interruptSignal.aborted) return;
     for (;;) {
       const state = this.nextTarget();
       if (state === undefined) return;
@@ -541,8 +540,7 @@ class Scheduler {
     }
 
     if (unit !== undefined) {
-      // After a forced interrupt the exit is the one that was asked for.
-      if (!this.forceBroadcast) {
+      if (!worker.terminated) {
         this.options.events.onRunError({
           error: serializeError(
             new InfrastructureError(
@@ -566,7 +564,7 @@ class Scheduler {
     worker: SchedulerWorker,
     unit: WorkUnit,
   ): void {
-    const interrupted = this.interrupted;
+    const interrupted = this.options.interruptSignal.aborted;
     for (const pair of unit.pairs) {
       if (worker.reported.has(pair.test.id)) continue;
       if (interrupted) {

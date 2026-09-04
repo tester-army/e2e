@@ -56,6 +56,14 @@ export interface TargetExecutorOptions {
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
+  /**
+   * Whether this executor runs in a process of its own that ends with its
+   * work. Only then can an interrupted test body be abandoned mid-flight:
+   * the process takes it down. In the host's own process (a `rawConfig`
+   * run) the body would keep executing after the run resolved, so there the
+   * interrupt waits for it to reach a harness call or its timeout.
+   */
+  readonly isolated: boolean;
   readonly interruptSignal: AbortSignal;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
@@ -680,16 +688,20 @@ export class TargetExecutor implements SerialHost {
       // The interrupt is raced here, not only threaded through the fixtures:
       // a body that is not touching the harness at that moment (a plain
       // sleep, a third-party call) would otherwise hold the attempt until its
-      // own timeout — minutes, on a device target. The body is abandoned with
-      // the worker; the attempt records the interrupt and moves to cleanup.
+      // own timeout — minutes, on a device target. The abandoned body goes
+      // down with the worker process; the attempt records the interrupt and
+      // moves to cleanup.
+      const body = this.options.isolated
+        ? withAbort(
+            mainWork(),
+            this.interruptSignal,
+            () => new E2EError('interrupted', 'INTERRUPTED', `run interrupted in phase ${phase}`),
+          )
+        : mainWork();
       try {
         await this.debug.time('test.body', () =>
           withTimeout(
-            withAbort(
-              mainWork(),
-              this.interruptSignal,
-              () => new E2EError('interrupted', 'INTERRUPTED', `run interrupted in phase ${phase}`),
-            ),
+            body,
             Math.max(1, testDeadline.remaining()),
             () => {
               timedOut = true;

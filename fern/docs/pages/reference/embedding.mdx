@@ -41,7 +41,8 @@ Everything the CLI flags map to (`files`, `tags`, `targetIds`, `headed`,
 | `rawConfig` | Preloaded config object, bypassing file discovery. It may hold live values (a `StepExecutor`, a model instance, a `TraceCacheStore`, an `ArtifactStore`), so it cannot cross a process boundary: the run executes in-process on one worker. A file-backed config keeps full parallelism. |
 | `env` | The environment the run resolves against, instead of `process.env`. This controls CI detection (`CI`), model credentials, and `APP_URL`. |
 | `quiet` | Suppresses the terminal reporter; pair it with `onEvent`. |
-| `interruptSignal` | External cancellation, equivalent to Ctrl-C: the run finishes with status `interrupted` and exit code 130. |
+| `interruptSignal` | Cancellation, what the CLI's first Ctrl-C does: the running test ends at once, its teardown runs, every worker disposes its backend, and the run finishes with status `interrupted` and exit code 130. |
+| `forceSignal` | Forced cancellation, the CLI's second Ctrl-C: every worker disposes its backend right away instead of finishing its test and is killed after the cleanup budget. Counts as an interrupt on its own. |
 | `onEvent` | The structured event stream below. |
 
 ## The event stream
@@ -72,10 +73,13 @@ child events (observations, model calls, backend actions, policy decisions) as
 they happen — the same feed the list reporter renders. `test-finished`
 carries the full result record with the live target flattened to
 `{ name, platform }`, so every payload survives `JSON.stringify`.
-`run-interrupted` is emitted once when `interruptSignal` aborts or the process
-receives its first `SIGINT`/`SIGTERM` (`graceful`), and once more if a second
-signal forces every worker to tear down at once (`forced`); see
-[Signals](/reference/cli#signals).
+`run-interrupted` is emitted once when `interruptSignal` aborts (`graceful`)
+and once more if `forceSignal` aborts (`forced`). The runner installs no
+process signal handlers and never exits the process; Ctrl-C is the CLI's, see
+[Signals](/reference/cli#signals). A host that wants the same ladder wires its
+own signals to these two options. In a `rawConfig` run the test body shares
+the host's process and cannot be abandoned, so an interrupt there ends the
+attempt at the body's next harness call or its timeout, whichever comes first.
 
 The sink must not block and must not throw: a sink that throws is quarantined
 for the rest of the run, and a sink whose returned promise rejects is
