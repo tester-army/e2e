@@ -85,10 +85,11 @@ Options:
   no-op (the keyboard is the one input). `clear`, `check`, `hover`,
   `selectOption`, `setInputFiles`, `dragTo`, and `scrollIntoView` are
   `UNSUPPORTED_CAPABILITY`.
-- **Location**: `getByText`, `getByRole` (`text`, `textbox`, `row`,
-  `application`, `status`), `getByLabel`, filters (`hasText` on a `row` finds
-  the line a column sits in), and `first`/`last`. No selector language and no
-  frames.
+- **Location**: `getByText` and `getByLabel` for any column, `getByRole` for
+  the roles in the typed vocabulary (`textbox` for the cursor column, `status`
+  for the exit line), filters, and `first`/`last`. `text`, `row`, and
+  `application` nodes are reached by text, not by role. No selector language
+  and no frames.
 - **App**: `restart()` replaces the program's window with a fresh one. No
   `navigate`, `back`, or `clearState`; no `state` capability; no `artifacts`
   (a screenshot of a terminal is its text, and `terminal.text()` reads it).

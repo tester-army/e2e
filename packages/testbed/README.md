@@ -25,6 +25,12 @@ tests.
   on both unchanged; `ios` and `android` hold the label-bound deterministic
   checks. Needs a booted simulator, one AVD, and a model credential; steps
   replay from the trace cache on a second run. See "Device suite" below.
+- `e2e.terminal.config.ts` + `tests-terminal/` — opt-in terminal suite on the
+  `@e2edev/tmux` backend: OpenCode's TUI as the app under test, one long
+  session (model picker through the agent, Tab agent switch, a coding task
+  checked on disk, the help dialog, `/exit`). Runs OpenCode in a throwaway
+  workspace under `.e2e/` with its own config. Needs tmux, `opencode` on
+  `PATH` (or `OPENCODE_BIN`) logged in to a provider, and `AI_GATEWAY_API_KEY`.
 - `e2e.reminders.config.ts` + `tests-reminders/` — opt-in iOS stress suite:
   long agentic sessions in the Reminders app (batch entry through the focused
   field, completion, swipe-to-delete, list management, an interruption), each

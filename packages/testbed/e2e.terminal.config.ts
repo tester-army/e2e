@@ -10,9 +10,9 @@
  *
  * Requires tmux and an `opencode` binary on PATH (or `OPENCODE_BIN`), logged
  * in to a provider; `OPENCODE_MODEL` picks the model OpenCode itself uses
- * (default: Claude Haiku 4.5, the cheap one). Not part of CI: every act step
- * spends real model calls, and the agent test asks OpenCode to do real work.
- * Add `--headed` to watch the run type into a Terminal.app window.
+ * (default: Claude Haiku 4.5, the cheap one). Not part of CI: the suite is one
+ * long session whose act steps spend real model calls and ask OpenCode to do
+ * real work. Add `--headed` to watch the run type into a Terminal.app window.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -73,9 +73,11 @@ export default defineConfig({
       'Slash commands (/help, /models, /exit) open a palette as you type; Enter',
       'runs the highlighted one and Escape closes the palette. Tab switches',
       'between the Build and Plan agents. OpenCode answers a message by',
-      'streaming text into the screen; while it works the prompt shows a',
-      'spinner or a working indicator, and it is done when the input row shows',
-      'the placeholder again. Use wait_for_text to wait for output instead of',
+      'streaming text into the screen above the prompt; while it works a',
+      'working or thinking indicator shows, and it is done when the indicator',
+      'is gone and the reply has stopped changing. The "Ask anything"',
+      'placeholder does not come back after a reply, so never wait for it.',
+      'Use wait_for_text for a specific word you expect in the reply instead of',
       'observing in a loop. Do not press Control+C twice: that quits OpenCode.',
     ].join(' '),
   },

@@ -14,8 +14,12 @@ import { BackendError, type BackendHandle } from '@e2edev/e2e/backend';
 import { surfaceOf } from './backend.ts';
 import type { TmuxSurface } from './surface.ts';
 
+/**
+ * One wait is capped well under a step budget: a model waiting for text that
+ * never comes should lose a minute and get its screen back, not the step.
+ */
 const DEFAULT_WAIT_MS = 30_000;
-const MAX_WAIT_MS = 300_000;
+const MAX_WAIT_MS = 60_000;
 
 function requireSurface(backend: BackendHandle): TmuxSurface {
   const surface = surfaceOf(backend);
@@ -72,7 +76,7 @@ export function tmuxTools(...backends: readonly [BackendHandle, ...BackendHandle
     wait_for_text: defineTool(
       tool({
         description:
-          'Wait until some row of the screen contains the given text (or matches the regular expression when regex is true). Use it after asking the program to do something slow, instead of observing repeatedly. Fails when the text does not appear within timeoutMs.',
+          'Wait until some row of the screen contains the given text (or matches the regular expression when regex is true). Use it after asking the program to do something slow, instead of observing repeatedly. Fails with the current screen when the text does not appear within timeoutMs (at most 60000).',
         inputSchema: z.object({
           text: z.string().min(1),
           regex: z.boolean().optional(),
