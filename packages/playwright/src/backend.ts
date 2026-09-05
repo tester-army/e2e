@@ -6,12 +6,35 @@
  * fixture the way a device backend contributes `device`.
  */
 
+import type { BrowserContext, Page } from 'playwright';
 import { ConfigurationError, defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
 
 /** Creates one Playwright backend: one browser per worker, one context per attempt. */
+const surfaces = new WeakMap<BackendHandle, PlaywrightSurface>();
+
+/**
+ * The live browser objects behind a `playwright()` handle, for agent-side code
+ * that replaces the toolset wholesale (spec chapter 16) and drives the page with
+ * its own Playwright tooling. Both accessors read the current attempt: the
+ * context exists from `startAttempt`, the page from the first `app.open()` or
+ * `web.goto()`, and either throws `INVALID_STATE` before that. The harness
+ * remains the notary for what it witnesses; a caller here acts out of band.
+ */
+export interface PlaywrightLiveSurface {
+  readonly page: () => Page;
+  readonly context: () => BrowserContext;
+}
+
+/** The live surface of a handle this module created, or undefined for any other backend. */
+export function surfaceOf(backend: BackendHandle): PlaywrightLiveSurface | undefined {
+  const surface = surfaces.get(backend);
+  if (surface === undefined) return undefined;
+  return { page: () => surface.requirePage(), context: () => surface.requireContext() };
+}
+
 export function playwright(options: PlaywrightOptions = {}): BackendHandle {
   if (options.connect !== undefined && options.browser !== undefined && options.browser !== 'chromium') {
     throw new ConfigurationError(
@@ -20,7 +43,7 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
     );
   }
   const surface = new PlaywrightSurface(options);
-  return defineBackend({
+  const handle = defineBackend({
     name: 'playwright',
     version: ownVersion(),
     spiVersion: 1,
@@ -53,6 +76,8 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
       web: (context) => createWebFixture(surface, context),
     },
   });
+  surfaces.set(handle, surface);
+  return handle;
 }
 
 /** This package's published version, read through require resolution. */

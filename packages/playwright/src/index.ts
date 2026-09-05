@@ -8,7 +8,8 @@
 import { test as base } from '@e2edev/e2e';
 import type { Web } from './web.ts';
 
-export { playwright } from './backend.ts';
+export { playwright, surfaceOf } from './backend.ts';
+export type { PlaywrightLiveSurface } from './backend.ts';
 export type { PlaywrightOptions, PlaywrightConnectOptions } from './surface.ts';
 export type { BrowserName } from './browser-pool.ts';
 export type { Dialog, DialogHandler } from './dialogs.ts';

@@ -259,6 +259,36 @@ Secrets in params arrive as name-only placeholders; `actions.typeSecret(target,
 name)` performs the authorized fill without the plaintext ever passing through
 your code or a model.
 
+### Driving the page yourself
+
+An executor that brings its own browser tooling needs the page e2e opened, not a
+second one. `@e2edev/playwright` exports `surfaceOf(handle)` for that: the live
+`Page` and `BrowserContext` of the current attempt behind the handle you passed
+to the target, the way `@e2edev/agent-device` exposes its device surface. Both
+accessors throw `INVALID_STATE` before an attempt is running or a page is open.
+
+```ts
+import { playwright, surfaceOf } from "@e2edev/playwright";
+
+const backend = playwright();
+const own: StepExecutor = {
+  name: "own-tools",
+  version: "1",
+  cache: "off",
+  async runStep(ctx) {
+    const page = surfaceOf(backend)!.page();   // the page app.open() navigated
+    await page.getByRole("button", { name: "Save" }).click();
+    ctx.budgets.recordToolCall({ name: "click", mutates: true });
+    return { status: "passed", summary: "saved" };
+  },
+};
+```
+
+What you do there is out of band: the harness still bounds the step, records
+the verdict, and keeps the ledger, but it witnesses no actions, records no trace
+for replay, and attaches no artifacts. Report tool calls and model calls through
+`ctx.budgets` so the step keeps its metrics and provenance.
+
 ## The verdict
 
 Whatever the executor, a step ends one of three ways:
