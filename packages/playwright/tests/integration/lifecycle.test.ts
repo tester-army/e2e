@@ -183,6 +183,78 @@ describe('playwright backend lifecycle', () => {
     }
   });
 
+  it('selects positionally among display-value matches and keeps composition honest', async () => {
+    const backend = playwright();
+    const shared: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'displayValue', value: { kind: 'string', value: 'shared', exact: true } },
+    };
+    const names = (nodes: readonly SemanticNode[]) => nodes.map((node) => node.name);
+    try {
+      await boot(backend, app);
+      await backend.startAttempt!({ attemptId: 'dv1', artifactsDir, signal: new AbortController().signal });
+      await backend.app!.navigate!(`${app.url}/values`, operation('dv1'));
+
+      // Positions are relative to the value-filtered matches, not to every
+      // form control on the page: "Other" sits between none of them.
+      expect(names(await backend.locate!(shared, operation('dv1')))).toEqual(['First', 'Second', 'Third']);
+      expect(names(await backend.locate!({ kind: 'index', source: shared, index: 'first' }, operation('dv1')))).toEqual(['First']);
+      expect(names(await backend.locate!({ kind: 'index', source: shared, index: 1 }, operation('dv1')))).toEqual(['Second']);
+      expect(names(await backend.locate!({ kind: 'index', source: shared, index: 'last' }, operation('dv1')))).toEqual(['Third']);
+      expect(await backend.locate!({ kind: 'index', source: shared, index: 3 }, operation('dv1'))).toEqual([]);
+
+      // Positions chain innermost first: first() of last() is still the last match.
+      const firstOfLast = await backend.locate!(
+        { kind: 'index', source: { kind: 'index', source: shared, index: 'last' }, index: 'first' },
+        operation('dv1'),
+      );
+      expect(names(firstOfLast)).toEqual(['Third']);
+
+      // filter({ hasText }) composes as a per-element Playwright filter ahead of
+      // the value predicate. Inputs have no text content; the textarea's is its
+      // initial content, exactly as for any other query.
+      const withText = await backend.locate!(
+        { kind: 'filter', source: shared, hasText: { kind: 'string', value: 'shared', exact: false } },
+        operation('dv1'),
+      );
+      expect(names(withText)).toEqual(['Third']);
+      expect(
+        await backend.locate!(
+          { kind: 'filter', source: shared, hasText: { kind: 'string', value: 'nowhere', exact: false } },
+          operation('dv1'),
+        ),
+      ).toEqual([]);
+
+      // The ref a positional match hands back acts on that element alone.
+      const [last] = await backend.locate!({ kind: 'index', source: shared, index: 'last' }, operation('dv1'));
+      await backend.perform!(last!.ref, { kind: 'fill', value: 'edited', sensitive: false }, operation('dv1'));
+      expect(names(await backend.locate!(shared, operation('dv1')))).toEqual(['First', 'Second']);
+      const edited: LocatorExpression = {
+        kind: 'query',
+        query: { kind: 'displayValue', value: { kind: 'string', value: 'edited', exact: true } },
+      };
+      expect(names(await backend.locate!(edited, operation('dv1')))).toEqual(['Third']);
+
+      // What still needs the value predicate inside Playwright's chain stays
+      // unsupported, and says which compositions those are.
+      const child: LocatorExpression = {
+        kind: 'query',
+        query: { kind: 'role', value: { kind: 'string', value: 'textbox', exact: true } },
+        scope: shared,
+      };
+      await expect(backend.locate!(child, operation('dv1'))).rejects.toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: 'displayValue queries cannot scope child queries or serve as a has-filter in this backend',
+      });
+      await expect(
+        backend.locate!({ kind: 'filter', source: byRole('main'), has: shared }, operation('dv1')),
+      ).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    } finally {
+      await backend.endAttempt!(cleanup());
+      await backend.dispose!(cleanup());
+    }
+  });
+
   it('reports an unopened page as INVALID_STATE, never as a missing node', async () => {
     const backend = playwright();
     try {

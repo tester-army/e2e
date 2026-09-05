@@ -77,6 +77,17 @@ const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
 await row.getByRole('button', { name: 'Void' }).tap();
 ```
 
+<Callout intent="info">
+In the `@e2edev/playwright` backend a `getByDisplayValue` locator supports
+`filter`, `first`, `last`, `nth`, actions, and assertions like any other query.
+Two compositions stay unsupported and fail with `UNSUPPORTED_CAPABILITY`: using
+it as the scope of a child query (`getByDisplayValue(v).getByRole(...)`) and
+passing it as a `has` filter. Playwright has no selector for a control's current
+value, so the backend reads the candidates and filters afterwards; those two
+shapes would need the value check inside Playwright's own locator chain. Apply
+`filter` before `first`, `last`, or `nth` on such a locator.
+</Callout>
+
 ## screen.swipe
 
 ```ts

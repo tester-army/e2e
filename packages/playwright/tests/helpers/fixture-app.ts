@@ -26,6 +26,19 @@ const FORM = `<!doctype html>
 </body>
 </html>`;
 
+/** Three controls share one value; the last shares it as a textarea. */
+const VALUES = `<!doctype html>
+<html>
+<head><title>Fixture Values</title></head>
+<body>
+<h1>Values</h1>
+<label>First <input name="first" value="shared"></label>
+<label>Second <input name="second" value="shared"></label>
+<label>Third <textarea name="third">shared</textarea></label>
+<label>Other <input name="other" value="different"></label>
+</body>
+</html>`;
+
 const LOGIN = `<!doctype html>
 <html>
 <head><title>Fixture Login</title></head>
@@ -53,6 +66,7 @@ const STATE = `<!doctype html>
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/form': FORM,
+  '/values': VALUES,
   '/login': LOGIN,
   '/state': STATE,
 };
