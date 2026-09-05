@@ -55,6 +55,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).not.toContain('playwright');
     expect(read('tests/example.e2e.ts')).toContain("test('app responds'");
     expect(read('.gitignore')).toContain('node_modules/');
+    expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(clack.confirm).not.toHaveBeenCalled();
     expect(clack.select).not.toHaveBeenCalled();
     expect(spawnSync).not.toHaveBeenCalled();
