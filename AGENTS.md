@@ -49,6 +49,11 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
 - `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the
   TesterArmy engine).
 
+## Changesets
+
+Every published-package change adds a changeset with bump `patch`. Pre-1.0
+releases never bump minor or major; `pnpm check:changesets` enforces it.
+
 ## Commands
 
 Build first — nearly everything downstream consumes `dist`.

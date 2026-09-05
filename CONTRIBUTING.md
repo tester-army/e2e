@@ -83,6 +83,14 @@ If your change affects `@e2edev/e2e` or `@e2edev/playwright`, add a changeset:
 pnpm changeset
 ```
 
+Until 1.0, every release is a patch: features and fixes alike declare `patch`,
+so the version moves by 0.0.1 per release rather than a whole 0.x step. The
+packages ship several times a week and a minor bump per feature would run the
+minor number up without meaning anything. `pnpm check:changesets` (part of
+`pnpm check`) fails a pending changeset that declares `minor` or `major` for a
+package below 1.0.0. A breaking change is called out in the changeset text, and
+the maintainers decide when a release becomes 1.0.
+
 Changes limited to the testbed, docs, or CI don't need one. `@e2edev/testbed` is
 private and skipped entirely (`privatePackages: false`), so it never gets a
 version bump, a changelog, or a git tag.
