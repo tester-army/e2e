@@ -339,6 +339,61 @@ describe('resolveConfig', () => {
       ).toThrow(/app\.services\[0\]\.teardown\.executable is required/);
     });
 
+    it('rejects non-positive-integer timeouts on app.command, services, and teardowns', () => {
+      const bad = [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5];
+      for (const value of bad) {
+        expect(() =>
+          resolve({ app: { url: APP_URL, command: { executable: 'x', startupTimeout: value } } }),
+        ).toThrow(/app\.command\.startupTimeout must be a positive safe integer/);
+        expect(() =>
+          resolve({
+            app: { url: APP_URL, services: [{ executable: 'x', waitForExit: true, startupTimeout: value }] },
+          }),
+        ).toThrow(/app\.services\[0\]\.startupTimeout must be a positive safe integer/);
+        expect(() =>
+          resolve({
+            app: { url: APP_URL, services: [{ executable: 'x', waitForExit: true, shutdownTimeout: value }] },
+          }),
+        ).toThrow(/app\.services\[0\]\.shutdownTimeout must be a positive safe integer/);
+        expect(() =>
+          resolve({
+            app: {
+              url: APP_URL,
+              services: [
+                { executable: 'x', waitForExit: true, teardown: { executable: 'y', startupTimeout: value } },
+              ],
+            },
+          }),
+        ).toThrow(/app\.services\[0\]\.teardown\.startupTimeout must be a positive safe integer/);
+        expect(() =>
+          resolve({
+            app: {
+              url: APP_URL,
+              services: [
+                { executable: 'x', waitForExit: true, teardown: { executable: 'y', shutdownTimeout: value } },
+              ],
+            },
+          }),
+        ).toThrow(/app\.services\[0\]\.teardown\.shutdownTimeout must be a positive safe integer/);
+      }
+      const ok = resolve({
+        app: {
+          url: APP_URL,
+          command: { executable: 'x', startupTimeout: 1, shutdownTimeout: 1 },
+          services: [
+            {
+              executable: 'x',
+              waitForExit: true,
+              startupTimeout: 5_000,
+              shutdownTimeout: 500,
+              teardown: { executable: 'y', startupTimeout: 5_000, shutdownTimeout: 500 },
+            },
+          ],
+        },
+      });
+      expect(ok.app.services[0]?.teardown?.startupTimeout).toBe(5_000);
+    });
+
     it('replaces service and teardown env values in the config digest', () => {
       const services = (secret: string) => [
         {

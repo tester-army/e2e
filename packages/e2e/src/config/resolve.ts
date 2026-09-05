@@ -485,11 +485,7 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
   }
 
   const command = raw.app?.command;
-  if (command !== undefined) {
-    if (typeof command.executable !== 'string' || command.executable.length === 0) {
-      throw new ConfigurationError('INVALID_CONFIG', 'app.command.executable is required');
-    }
-  }
+  if (command !== undefined) validateCommand(command, 'app.command');
 
   const identity = raw.app?.identity;
   if (identity !== undefined && (typeof identity !== 'string' || identity.trim() === '')) {
@@ -509,6 +505,22 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
 }
 
 /**
+ * The shape every spawned command shares: a non-empty executable and, when
+ * set, positive integer timeouts. A NaN or infinite budget would otherwise
+ * make the readiness loop spin without a deadline.
+ */
+function validateCommand(command: CommandConfig, label: string): void {
+  if (typeof command !== 'object' || command === null) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
+  }
+  if (typeof command.executable !== 'string' || command.executable.length === 0) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
+  }
+  positiveInt(command.startupTimeout, `${label}.startupTimeout`);
+  positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`);
+}
+
+/**
  * Validates `app.services`: every service is a command with exactly one
  * readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
  * command of its own.
@@ -520,12 +532,7 @@ function resolveServices(raw: AppConfig['services']): readonly ServiceConfig[] {
   }
   return raw.map((service, index) => {
     const label = `app.services[${index}]`;
-    if (typeof service !== 'object' || service === null) {
-      throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
-    }
-    if (typeof service.executable !== 'string' || service.executable.length === 0) {
-      throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
-    }
+    validateCommand(service, label);
     const hasReadyUrl = service.readyUrl !== undefined;
     const waitsForExit = service.waitForExit === true;
     if (hasReadyUrl === waitsForExit) {
@@ -545,12 +552,7 @@ function resolveServices(raw: AppConfig['services']): readonly ServiceConfig[] {
         throw new ConfigurationError('INVALID_CONFIG', `${label}.readyUrl must be an http(s) URL`);
       }
     }
-    if (
-      service.teardown !== undefined &&
-      (typeof service.teardown.executable !== 'string' || service.teardown.executable.length === 0)
-    ) {
-      throw new ConfigurationError('INVALID_CONFIG', `${label}.teardown.executable is required`);
-    }
+    if (service.teardown !== undefined) validateCommand(service.teardown, `${label}.teardown`);
     return service;
   });
 }
