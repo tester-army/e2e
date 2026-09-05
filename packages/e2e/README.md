@@ -24,6 +24,28 @@ export default defineConfig({
 });
 ```
 
+Or let the runner start the app itself:
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  app: {
+    url: 'http://127.0.0.1:3000',
+    command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
+  },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+});
+```
+
+The runner spawns the command as its own process group, waits until `readyUrl`
+(defaults to `app.url`) answers with a 200-499 status, and terminates the group
+on every exit path, including Ctrl-C, so no wrapper script that boots and kills
+the dev server is needed. The child inherits only `PATH`, `HOME`, and the
+temp-directory variables plus `command.env`, so anything else the app needs,
+secrets included, must be passed explicitly through `command.env`. If the app
+never becomes ready the run fails with `APP_UNREACHABLE` and `.e2e/report.json`
+is still written. Every option is listed under
+[app.command](https://e2e.docs.buildwithfern.com/reference/config#appcommand).
+
 ```ts
 import { test } from '@e2edev/playwright';
 import { expect } from '@e2edev/e2e';

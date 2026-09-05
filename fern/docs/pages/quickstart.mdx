@@ -58,7 +58,8 @@ Requires Node.js 20.19 or newer.
     `E2E_MODEL_API_KEY` reaches any provider. To use a provider directly, pass
     an AI SDK model instance: `createAgent({ model: openai('gpt-5.4-mini') })`.
 
-    The runner can also start your dev server: set `app.command`.
+    The runner can also start your dev server for you; see
+    [Let the runner start your app](#let-the-runner-start-your-app) below.
   </Step>
 
   <Step title="Write a test">
@@ -109,6 +110,31 @@ Requires Node.js 20.19 or newer.
     (2) and infrastructure (3); blocked agent steps land in the latter two.
   </Step>
 </Steps>
+
+## Let the runner start your app
+
+Instead of starting a dev server by hand before `e2e run`, give `app.command`
+the process to spawn:
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  app: {
+    url: 'http://127.0.0.1:3000',
+    command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
+  },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+});
+```
+
+The runner spawns the command as its own process group, waits until `readyUrl`
+(by default `app.url`) answers with a 200-499 status, and terminates the group
+on every exit path, including Ctrl-C, so a launcher script that boots and kills
+the server is unnecessary. The child sees only `PATH`, `HOME`, and the
+temp-directory variables plus whatever you put in `command.env`; model
+credentials and CI tokens are never inherited, so anything the app needs must
+be passed explicitly. A server that never becomes ready fails the run with
+`APP_UNREACHABLE` and still leaves a `.e2e/report.json`. Every option is in the
+[config reference](/reference/config#appcommand).
 
 ## Next
 
