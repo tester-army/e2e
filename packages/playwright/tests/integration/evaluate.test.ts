@@ -25,6 +25,8 @@ describe('web.evaluate error boundaries', () => {
     web = createWebFixture(surface, {
       operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate' }),
       expectable: (target: object) => target,
+      // The recorder is the harness's concern; these tests exercise evaluate's error boundaries only.
+      fixture: (_name: string, target: object) => target,
     } as unknown as BackendFixtureContext);
   });
 
