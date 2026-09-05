@@ -229,6 +229,13 @@ describe('resolveConfig', () => {
     expect(() => resolve({ reporters: ['json', 'list'] })).toThrow(/json renderer/);
   });
 
+  it('accepts the junit reporter beside list or json, and rejects unknown ids', () => {
+    expect(resolve({ reporters: ['junit'] }).reporters).toEqual(['junit']);
+    expect(resolve({ reporters: ['list', 'junit'] }).reporters).toEqual(['list', 'junit']);
+    expect(resolve({ reporters: ['json', 'junit'] }).reporters).toEqual(['json', 'junit']);
+    expect(() => resolve({ reporters: ['xunit'] as never })).toThrow(/unknown reporter "xunit"/);
+  });
+
   it('validates numeric bounds', () => {
     expect(() => resolve({ retries: 11 })).toThrow(/retries/);
     expect(() => resolve({ retries: -1 })).toThrow(/retries/);

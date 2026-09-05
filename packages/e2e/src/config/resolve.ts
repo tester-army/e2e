@@ -78,7 +78,7 @@ export interface ResolvedConfig {
   readonly artifactsExplicit: boolean;
   /** Host store every produced artifact is handed to; undefined keeps files local only. */
   readonly artifactStore: ArtifactStore | undefined;
-  readonly reporters: readonly ('list' | 'json')[];
+  readonly reporters: readonly ('list' | 'json' | 'junit')[];
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
   readonly cache: ResolvedCacheConfig;
@@ -108,7 +108,7 @@ export interface ResolvedCacheConfig {
 export interface CliOverrides {
   retries?: number;
   workers?: number;
-  reporters?: readonly ('list' | 'json')[];
+  reporters?: readonly ('list' | 'json' | 'junit')[];
   /** Trace cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
 }
@@ -215,7 +215,7 @@ export function resolveConfig(
     throw new ConfigurationError('INVALID_CONFIG', 'reporters must be an array of reporter ids');
   }
   for (const reporter of reporters) {
-    if (!['list', 'json'].includes(reporter)) {
+    if (!['list', 'json', 'junit'].includes(reporter)) {
       throw new ConfigurationError('INVALID_CONFIG', `unknown reporter "${reporter}"`);
     }
   }

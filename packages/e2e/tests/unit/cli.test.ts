@@ -82,6 +82,22 @@ describe('e2e run argument parsing', () => {
     expect(String(stderrSpy.mock.calls.at(-1)?.[0])).toContain('unknown reporter "teamcity"');
   });
 
+  it('accepts the junit reporter alone and beside list or json', async () => {
+    await invoke('run', '--reporter', 'junit');
+    expect(lastRunOptions().reporters).toEqual(['junit']);
+
+    runMock.mockClear();
+    await invoke('run', '--reporter', 'list,junit');
+    expect(lastRunOptions().reporters).toEqual(['list', 'junit']);
+
+    // Reporter combination rules are config truth (INVALID_CONFIG), not CLI
+    // parsing: the CLI only rejects ids it does not know.
+    runMock.mockClear();
+    await invoke('run', '--reporter', 'junit,json');
+    expect(lastRunOptions().reporters).toEqual(['junit', 'json']);
+    expect(process.exitCode).toBe(0);
+  });
+
   it('exits 2 on an unknown option or command without running, and 0 on --help', async () => {
     await invoke('run', '--nope');
     expect(runMock).not.toHaveBeenCalled();

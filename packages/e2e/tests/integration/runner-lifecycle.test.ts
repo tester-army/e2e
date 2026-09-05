@@ -467,6 +467,50 @@ test.describe('wizard', { serial: true }, () => {
   );
 
   it(
+    'writes junit.xml beside the report from the same document when the junit reporter is selected',
+    async () => {
+      const file = `import { test } from '@e2edev/e2e';
+test('passes', async () => {});
+test('fails', async () => {
+  throw new Error('junit <sees> & "reports" this');
+});
+`;
+      const { outcome, project } = await runProject(
+        { 'tests/junit.e2e.ts': file },
+        { appUrl: app.url, config: { reporters: ['junit'] } },
+      );
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
+      expect(outcome.junitPath).toBe(path.join(project.dir, '.e2e', 'junit.xml'));
+      const xml = readFileSync(outcome.junitPath!, 'utf8');
+      expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<testsuites ')).toBe(true);
+      expect(xml).toContain(
+        '<testsuite name="tests/junit.e2e.ts" tests="2" failures="1" errors="0" skipped="0"',
+      );
+      expect(xml).toContain('<testcase name="passes [web]" classname="tests/junit.e2e.ts"');
+      expect(xml).toContain('<testcase name="fails [web]" classname="tests/junit.e2e.ts"');
+      expect(xml).toContain('<failure message="junit &lt;sees&gt; &amp; &quot;reports&quot; this"');
+      expect(readdirSync(path.join(project.dir, '.e2e')).filter((name) => name.includes('.tmp-'))).toEqual([]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'writes no junit.xml unless the reporter is selected',
+    async () => {
+      const { outcome, project } = await runProject(
+        { 'tests/no-junit.e2e.ts': `import { test } from '@e2edev/e2e';\ntest('x', async () => {});\n` },
+        { appUrl: app.url },
+      );
+      expect(outcome.junitPath).toBeUndefined();
+      expect(existsSync(path.join(project.dir, '.e2e', 'junit.xml'))).toBe(false);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'fails with NO_TESTS unless --pass-with-no-tests',
     async () => {
       const empty = { 'tests/empty.txt': 'not a test' };

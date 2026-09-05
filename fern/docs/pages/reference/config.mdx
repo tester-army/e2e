@@ -51,7 +51,7 @@ the one that drives each target. `npx --no-install e2e init` writes a starter co
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024 |
 | `artifacts` | kinds array or `{ kinds?, store? }` | `['screenshot', 'trace']` | those two kinds; `store` is an [`ArtifactStore`](#artifacts) |
-| `reporters` | `readonly ('list' \| 'json')[]` | `['list']` | those two IDs; `json` cannot be combined with `list` |
+| `reporters` | `readonly ('list' \| 'json' \| 'junit')[]` | `['list']` | those three IDs; `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object | see [agent](#agent) | - |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI) | see [cache](#cache) |
@@ -88,7 +88,8 @@ records as the artifact's `ref` beside the local path. A failed `put` never
 fails the run; the record simply carries no `ref`. Like every live value, a
 store never crosses a process boundary, so it runs in-process
 (`rawConfig`).
-Every run writes `.e2e/report.json` regardless of the selected reporters.
+Every run writes `.e2e/report.json` regardless of the selected reporters; the
+`junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
 
 ## app
 

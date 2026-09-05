@@ -38,6 +38,7 @@ describe('e2e init', () => {
     expect(gitignore).toContain('.e2e/sessions/');
     expect(gitignore).toContain('.e2e/report.json');
     expect(gitignore).toContain('.e2e/ai-trace.json');
+    expect(gitignore).toContain('.e2e/junit.xml');
     expect(gitignore.endsWith('\n')).toBe(true);
   });
 
@@ -77,7 +78,7 @@ describe('e2e init', () => {
     const code = await init(dir, { yes: true });
     expect(code).toBe(0);
     expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toBe('// custom config\n');
-    expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toBe(`${older}.e2e/ai-trace.json\n`);
+    expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n`);
   });
 
   it('is idempotent: a second run changes nothing', async () => {

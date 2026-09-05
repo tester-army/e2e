@@ -958,7 +958,8 @@ export interface E2EConfig {
   workers?: number;
   /** Artifact kinds, or `{ kinds, store }` to also hand every artifact to a host store. */
   artifacts?: readonly ('trace' | 'screenshot')[] | ArtifactsConfig;
-  reporters?: readonly ('list' | 'json')[];
+  /** Output renderers; `junit` writes `.e2e/junit.xml`, `json` prints the report and excludes `list`. */
+  reporters?: readonly ('list' | 'json' | 'junit')[];
   screen?: {
     testIdAttribute?: string;
   };

@@ -35,20 +35,24 @@ jobs:
       - name: Install browsers
         run: npx playwright install chromium --with-deps
 
+      # list keeps the log readable; junit writes .e2e/junit.xml for CI test
+      # summaries (GitHub, Buildkite, GitLab, Jenkins all ingest JUnit XML).
       - name: Run e2e
-        run: npx --no-install e2e run
+        run: npx --no-install e2e run --reporter list,junit
         env:
           APP_URL: http://127.0.0.1:3000
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
           E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
 
-      # The report exists on every outcome, so upload it whenever the job ran.
+      # The reports exist on every outcome, so upload them whenever the job ran.
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report
-          path: .e2e/report.json
+          path: |
+            .e2e/report.json
+            .e2e/junit.xml
           if-no-files-found: warn
 
       # Screenshots and traces are only interesting when something broke.
@@ -70,6 +74,12 @@ with repository secrets is the wrong place to run code that can change under you
 `--no-install` makes `npx` fail rather than silently fetch a mutable version from
 the registry. With `--frozen-lockfile`, the runner, the backend, and the browser
 all come from your lockfile.
+
+`.e2e/junit.xml` is the same run rendered as JUnit XML: point your CI's test
+summary step at it (a JUnit report action on GitHub, `junit_paths` on GitLab,
+the JUnit plugin on Jenkins) and failures show up as test results instead of a
+red step. A startup failure such as `APP_UNREACHABLE` appears there too, as a
+`run` suite, so nobody has to open `report.json` to see why nothing ran.
 
 ## What CI changes automatically
 

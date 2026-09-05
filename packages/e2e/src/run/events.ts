@@ -81,6 +81,8 @@ export type RunEventFact =
       readonly status: 'passed' | 'failed' | 'error' | 'interrupted';
       readonly exitCode: RunExitCode;
       readonly reportPath?: string;
+      /** Where the `junit` reporter wrote its XML, once the file exists. */
+      readonly junitPath?: string;
       /** Where `--ai-trace` wrote the run's model calls, once the file exists. */
       readonly aiTracePath?: string;
     };

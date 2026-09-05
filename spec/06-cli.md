@@ -35,7 +35,7 @@ npx --no-install e2e run tests/signup.e2e.ts --tag smoke
 | `--headed` | request visible UI when the driver supports it |
 | `--retries <n>` | replace resolved retry count |
 | `--workers <n>` | replace worker count |
-| `--reporter <ids>` | comma-separated `list`, `json`; replaces config |
+| `--reporter <ids>` | comma-separated `list`, `json`, `junit`; replaces config |
 | `--artifacts <dir>` | artifact root, default `.e2e/artifacts` |
 | `--no-cache` | run with the trace cache off, overriding `config.cache` (10-determinism.md) |
 | `--pass-with-no-tests` | allow zero runnable ordinary test-target pairs |
@@ -53,8 +53,13 @@ field at 8 KiB before linking to the complete sanitized artifact.
 
 Every run atomically writes `.e2e/report.json` under the artifact parent. The
 `json` renderer additionally emits that document to standard output and cannot
-be combined with `list`. `--artifacts` relocates the complete report/artifact
-tree.
+be combined with `list`. The `junit` renderer additionally writes that document
+as JUnit XML to `.e2e/junit.xml` beside the report, atomically and whenever the
+report itself is written: one `<testsuite>` per test file, one `<testcase>` per
+test-target pair (`<failure>` for a test-category error, `<error>` otherwise,
+`<skipped>` with the reason), and a `run` suite carrying run-level errors. It
+combines with either `list` or `json`. `--artifacts` relocates the complete
+report/artifact tree.
 
 Every reporter consumes the same `report-1` document. A reporter cannot change
 run status. Exact fields are defined in 13-reporting.md.
