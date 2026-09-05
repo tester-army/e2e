@@ -597,7 +597,28 @@ describe('trace cache: modes that never write', () => {
     }
   }, 120_000);
 
-  it('CI forces read-write down to read-only', async () => {
+  it('CI demotes an unset cache mode to read-only', async () => {
+    const project = createProject({ 'tests/act.e2e.ts': SUITE });
+    try {
+      const record: ExecutorRecord = { calls: 0, prefixes: [] };
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agent: twoTapExecutor(record),
+        },
+        runOptions: {
+          env: { ...process.env, APP_URL: app.url, CI: '1' },
+        },
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(existsSync(cacheDir(project))).toBe(false);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('CI honors an explicit read-write as the project stating its trust', async () => {
     const project = createProject({ 'tests/act.e2e.ts': SUITE });
     try {
       const record: ExecutorRecord = { calls: 0, prefixes: [] };
@@ -613,7 +634,7 @@ describe('trace cache: modes that never write', () => {
         },
       });
       expect(outcome.exitCode).toBe(0);
-      expect(existsSync(cacheDir(project))).toBe(false);
+      expect(existsSync(cacheDir(project))).toBe(true);
     } finally {
       project.cleanup();
     }
