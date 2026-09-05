@@ -65,7 +65,7 @@ the module type of `.ts` test files or helpers.
 | `reporters` | `readonly ('list' \| 'json' \| 'junit')[]` | `['list']` | those three IDs; `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object | see [agent](#agent) | - |
-| `cache` | string or object | `'read-write'` (`'read-only'` in CI) | see [cache](#cache) |
+| `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | - |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
 
@@ -385,14 +385,14 @@ actions it performed, and the next run replays them zero-turn — diverging to
 the live agent mid-step whenever the app no longer matches the recording.
 Judgments (`assert`, `waitFor`, `extract`) are never cached.
 
-The cache is **on by default** (`read-write`; CI is forced to `read-only`).
+The cache is **on by default** (`read-write`; an unset mode becomes `read-only` in CI).
 Opt out per project with `cache: 'off'`, or per run with `e2e run --no-cache`
 — the quickest way to check whether a failure is cache-related.
 
 | Key | Type | Default | Description |
 | --- | --- | ---: | --- |
-| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. CI forces `read-write` on the default file store down to `read-only`; `--no-cache` wins over both. |
-| `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Exempt from the CI clamp — it is not a committed file cache, and states its own trust through `writable`. Never crosses a process boundary; workers re-resolve the config module. |
+| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. In CI an unset mode is demoted to `read-only` because a committed cache is untrusted input; set `'read-write'` explicitly when CI restores the cache from its own cache service instead of git. `--no-cache` wins over both. |
+| `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Exempt from the CI demotion — it is not a committed file cache, and states its own trust through `writable`. Never crosses a process boundary; workers re-resolve the config module. |
 | `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root. |
 
 A replay never passes on mechanics alone. Each entry records the state the

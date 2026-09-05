@@ -83,9 +83,13 @@ describe('cache config resolution', () => {
     expect(resolved.dir).toBe(path.join(ROOT, 'shared'));
   });
 
-  it('forces read-write down to read-only in CI', () => {
-    const resolved = resolve({ ...APP, cache: 'read-write' }, { ...BASE_ENV, CI: '1' }).cache;
-    expect(resolved.mode).toBe('read-only');
+  it('demotes only an unset mode in CI; an explicit read-write is honored', () => {
+    const ci = { ...BASE_ENV, CI: '1' };
+    expect(resolve(APP, ci).cache.mode).toBe('read-only');
+    expect(resolve({ ...APP, cache: { dir: 'shared' } }, ci).cache.mode).toBe('read-only');
+    expect(resolve({ ...APP, cache: 'read-write' }, ci).cache.mode).toBe('read-write');
+    expect(resolve({ ...APP, cache: { mode: 'read-write' } }, ci).cache.mode).toBe('read-write');
+    expect(resolve({ ...APP, cache: 'read-only' }, ci).cache.mode).toBe('read-only');
   });
 
   it('exempts a host-supplied store from the CI clamp', () => {

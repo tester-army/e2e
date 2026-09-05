@@ -250,11 +250,12 @@ export function resolveConfig(
  * Resolves the `cache` key. The cache is opt-out: an unset key means
  * `read-write`, so a project earns replay speed without asking for it, and
  * `cache: 'off'` or `--no-cache` (which wins over the config) turns it off.
- * CI forces the default file store from `read-write` down to `read-only`:
- * committed caches are untrusted input, and a CI run never publishes what it
- * learned (spec 10-determinism.md). A host-supplied `cache.store` is exempt —
- * it is not a committed file cache, and the host states its own trust through
- * the store's `writable` flag.
+ * CI demotes the *defaulted* mode from `read-write` to `read-only`: a
+ * committed cache is untrusted input, and a CI run never publishes what it
+ * learned unless the project says so (spec 10-determinism.md). An explicit
+ * `read-write` in the config is that statement of trust and is honored as
+ * written, as is a host-supplied `cache.store`, which states its own trust
+ * through the store's `writable` flag.
  */
 function resolveCacheConfig(
   raw: E2EConfig,
@@ -264,10 +265,13 @@ function resolveCacheConfig(
 ): ResolvedCacheConfig {
   const value = raw.cache;
   let mode: CacheMode = 'read-write';
+  /** Whether the config named a mode; only a defaulted mode is demoted in CI. */
+  let explicit = false;
   let store: TraceCacheStore | undefined;
   let dir: string | undefined;
   if (typeof value === 'string') {
     mode = value;
+    explicit = true;
   } else if (value !== undefined) {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new ConfigurationError(
@@ -281,6 +285,7 @@ function resolveCacheConfig(
       }
     }
     mode = value.mode ?? 'read-write';
+    explicit = value.mode !== undefined;
     store = value.store;
     if (store !== undefined && !isTraceCacheStore(store)) {
       throw new ConfigurationError(
@@ -302,7 +307,7 @@ function resolveCacheConfig(
     );
   }
   if (cliMode !== undefined) mode = cliMode;
-  if (ci && mode === 'read-write' && store === undefined) mode = 'read-only';
+  if (ci && mode === 'read-write' && !explicit && store === undefined) mode = 'read-only';
   return {
     mode,
     store,

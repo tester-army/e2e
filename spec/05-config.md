@@ -121,7 +121,7 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.maxObservationBytes` | 1 MiB | 1 MiB |
 | `agent.vision` | false | false |
 | `agent.visionModel` | `agent.model` | `agent.model` |
-| `cache` | read-write | read-only (read-write on the file store is forced down) |
+| `cache` | read-write | read-only when `mode` is unset; an explicit mode is kept |
 | `cache.dir` | `.e2e/cache` | same |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
@@ -145,10 +145,11 @@ whole step, `actionTimeout` caps each call within it.
 `{ mode }`. The cache is opt-out: an unset key or mode means `read-write`,
 and `--no-cache` (06-cli.md) overrides whatever the config says. `store` is a
 custom `TraceCacheStore` replacing the default file store; like agents and
-model instances, it never crosses a process boundary. In CI, `read-write` on
-the default file store is forced to `read-only`; a custom `store` is exempt,
-because it is not a committed file cache and states its own trust through its
-`writable` flag (10-determinism.md).
+model instances, it never crosses a process boundary. In CI an unset mode on
+the default file store is demoted to `read-only`; an explicit `read-write`
+is honored, and a custom `store` is exempt because it is not a committed
+file cache and states its own trust through its `writable` flag
+(10-determinism.md).
 
 ## Targets and capabilities
 

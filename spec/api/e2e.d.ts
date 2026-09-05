@@ -1007,9 +1007,10 @@ export interface E2EConfig {
   /**
    * The adaptive trace cache (chapter 10). Opt-out: unset means `read-write`,
    * and `'off'` — or the `--no-cache` flag, which wins over the config —
-   * disables it. A string is shorthand for `{ mode }`. In CI, `read-write` is
-   * forced down to `read-only`: committed caches are untrusted input, and a
-   * CI run never publishes what it learned.
+   * disables it. A string is shorthand for `{ mode }`. In CI an unset mode is
+   * demoted to `read-only`: a committed cache is untrusted input. An explicit
+   * `read-write` is honored as the project's own statement of trust in the
+   * cache it restores.
    */
   cache?: CacheMode | CacheConfig;
   /**
