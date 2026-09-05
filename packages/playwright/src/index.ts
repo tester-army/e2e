@@ -10,7 +10,7 @@ import type { Web } from './web.ts';
 
 export { playwright } from './backend.ts';
 export type { PlaywrightOptions, PlaywrightConnectOptions } from './surface.ts';
-export type { BrowserName } from './browser-pool.ts';
+export type { BrowserName } from './browser-connection.ts';
 export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Cookie,

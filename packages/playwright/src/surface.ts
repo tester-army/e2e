@@ -30,7 +30,7 @@ import {
 } from '@e2edev/e2e/backend';
 import { matchesText } from '@e2edev/e2e/backend';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
-import { BrowserPool, connectCdp, type BrowserName } from './browser-pool.ts';
+import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { frameSelectors, projectExpression } from './locators.ts';
@@ -146,7 +146,7 @@ export class PlaywrightSurface {
   readonly dialogs = new DialogRouter(this.latch);
 
   private readonly browserName: BrowserName;
-  private readonly pool = new BrowserPool();
+  private readonly connection = new BrowserConnection();
   private readonly connect: PlaywrightConnectOptions | undefined;
   private readonly viewport: { readonly width: number; readonly height: number };
   private browser: Browser | null = null;
@@ -204,7 +204,7 @@ export class PlaywrightSurface {
   }
 
   /**
-   * Provisions the shared browser through the pool — a launch, or a CDP attach
+   * Provisions the shared browser through the shared connection — a launch, or a CDP attach
    * via the connector — bounded by `signal`. Checked before the endpoint is
    * resolved: a cancelled caller must never provision a remote session it will
    * not use.
@@ -214,7 +214,7 @@ export class PlaywrightSurface {
     if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
     try {
       return await raceAbort(
-        this.pool.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS, this.connector(signal)),
+        this.connection.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS, this.connector(signal)),
         signal,
         `browser ${verb}`,
       );
@@ -228,7 +228,7 @@ export class PlaywrightSurface {
   }
 
   /**
-   * Builds the pool's connector when attaching over CDP; undefined for a local
+   * Builds the connection's connector when attaching over CDP; undefined for a local
    * launch. The connector honours `signal` at every await: the resolver
    * receives it, the endpoint is not used once aborted, and a browser that
    * connects after cancellation is detached at once rather than cached — the
@@ -257,7 +257,7 @@ export class PlaywrightSurface {
   /**
    * The browser an attempt starts on. A booted surface whose browser has since
    * disconnected — a dropped remote session, a crashed process — reacquires
-   * through the pool, which evicts the dead browser and, for a CDP attach,
+   * through the shared connection, which evicts the dead browser and, for a CDP attach,
    * runs the endpoint resolver again for a fresh session. Reconnection is an
    * attempt-start decision only: mid-attempt the browser must stay the one the
    * test began on, so `requireBrowser` stays strict there.
@@ -302,7 +302,7 @@ export class PlaywrightSurface {
     await this.endAttempt(context);
     this.browser = null;
     this.booted = false;
-    await withinCleanupBudget(this.pool.dispose(), context);
+    await withinCleanupBudget(this.connection.dispose(), context);
   }
 
   /** Stops any trace and closes the current context, best-effort, within the budget. */

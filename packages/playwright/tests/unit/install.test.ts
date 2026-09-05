@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ensureBrowsersInstalled } from '../../src/install.ts';
-import type { BrowserName } from '../../src/browser-pool.ts';
+import type { BrowserName } from '../../src/browser-connection.ts';
 
 describe('ensureBrowsersInstalled', () => {
   it('does nothing when every browser is installed', async () => {

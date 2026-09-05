@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { BackendError, InfrastructureError } from '@e2edev/e2e/backend';
-import { browserType, type BrowserName } from './browser-pool.ts';
+import { browserType, type BrowserName } from './browser-connection.ts';
 
 /**
  * Whether the browser's executable exists on disk, or undefined when this
