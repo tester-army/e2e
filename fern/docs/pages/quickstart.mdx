@@ -126,10 +126,13 @@ export default defineConfig({
 });
 ```
 
-The runner spawns the command as its own process group, waits until `readyUrl`
-(by default `app.url`) answers with a 200-499 status, and terminates the group
-on every exit path, including Ctrl-C, so a launcher script that boots and kills
-the server is unnecessary. The child sees only `PATH`, `HOME`, and the
+The runner spawns the command, waits until `readyUrl` (by default `app.url`)
+answers with a 200-499 status, and terminates it when the run finishes, fails,
+or is interrupted with Ctrl-C, so a launcher script that boots and kills the
+server is unnecessary. On macOS and Linux the command runs as its own process
+group and the whole group is signalled; on Windows only the launched process is
+signalled, so point `executable` at the server itself rather than a wrapper. A
+third Ctrl-C exits immediately without teardown. The child sees only `PATH`, `HOME`, and the
 temp-directory variables plus whatever you put in `command.env`; model
 credentials and CI tokens are never inherited, so anything the app needs must
 be passed explicitly. A server that never becomes ready fails the run with

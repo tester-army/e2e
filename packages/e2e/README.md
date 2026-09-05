@@ -36,10 +36,13 @@ export default defineConfig({
 });
 ```
 
-The runner spawns the command as its own process group, waits until `readyUrl`
-(defaults to `app.url`) answers with a 200-499 status, and terminates the group
-on every exit path, including Ctrl-C, so no wrapper script that boots and kills
-the dev server is needed. The child inherits only `PATH`, `HOME`, and the
+The runner spawns the command, waits until `readyUrl` (defaults to `app.url`)
+answers with a 200-499 status, and terminates it when the run finishes, fails,
+or is interrupted with Ctrl-C, so no wrapper script that boots and kills the dev
+server is needed. On macOS and Linux the command runs as its own process group
+and the whole group is signalled; on Windows only the launched process is
+signalled, so point `executable` at the server itself rather than a wrapper. A
+third Ctrl-C exits immediately without teardown. The child inherits only `PATH`, `HOME`, and the
 temp-directory variables plus `command.env`, so anything else the app needs,
 secrets included, must be passed explicitly through `command.env`. If the app
 never becomes ready the run fails with `APP_UNREACHABLE` and `.e2e/report.json`
