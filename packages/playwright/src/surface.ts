@@ -35,7 +35,7 @@ import { classifyActionError, dispatchLocatorAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
-import { frameSelectors, projectExpression, selectPositions } from './locators.ts';
+import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
 import { captureDocument, toSemanticNode } from './observation.ts';
 import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
 import { readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
@@ -515,7 +515,8 @@ export class PlaywrightSurface {
    * Resolves one expression to every node it currently matches, fully read,
    * in one in-page round trip. A `displayValue` query is filtered here by the
    * value each element reported, so no per-node calls are needed; any
-   * `first`/`last`/`nth` on such a query then selects among those matches.
+   * `first`/`last`/`nth` on such a query then selects among those matches, and
+   * a filter placed after a position is checked on the selected element.
    */
   locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
     return this.guard(
@@ -530,14 +531,17 @@ export class PlaywrightSurface {
           secureFieldSelector: SECURE_FIELD_SELECTOR,
           mode: { kind: 'node' as const },
         });
-        const { displayValue, positions } = projected;
+        const { displayValue, steps } = projected;
         const candidates = raws.map((raw, index) => ({ raw, index }));
         const matches =
           displayValue === null
             ? candidates
-            : selectPositions(
+            : await applyPostSteps(
                 candidates.filter(({ raw }) => matchesText(raw.value ?? '', displayValue)),
-                positions,
+                steps,
+                // A filter after a position runs on that one element alone.
+                async ({ index }, options) =>
+                  (await projected.locator.nth(index).filter(options).count()) > 0,
               );
         return matches.map(({ raw, index }) => {
           // A single match keeps the strict locator, so a ref that turns

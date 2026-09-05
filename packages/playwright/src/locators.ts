@@ -52,6 +52,18 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
 /** One positional step applied after display-value filtering. */
 export type PositionalStep = 'first' | 'last' | number;
 
+type PwFilterOptions = NonNullable<Parameters<PwLocator['filter']>[0]>;
+
+/**
+ * One step a display-value projection applies after its candidates are
+ * value-filtered, in expression order: a position among the matches, or a
+ * per-element filter that came after a position and so could not compose onto
+ * the candidate locator.
+ */
+export type PostStep =
+  | { readonly kind: 'index'; readonly index: PositionalStep }
+  | { readonly kind: 'filter'; readonly options: PwFilterOptions };
+
 export interface ProjectedLocator {
   /**
    * The Playwright locator to resolve. For a display-value query this is the
@@ -63,11 +75,11 @@ export interface ProjectedLocator {
   /** Non-null when the terminal query filters by display value. */
   readonly displayValue: TextPattern | null;
   /**
-   * Positional selection (`first`, `last`, `nth`) to apply to the value-filtered
-   * matches, innermost first. Always empty when `displayValue` is null, because
-   * the projection then composes positions natively onto the locator.
+   * Steps to apply to the value-filtered matches, innermost first. Always
+   * empty when `displayValue` is null, because the projection then composes
+   * positions and filters natively onto the locator.
    */
-  readonly positions: readonly PositionalStep[];
+  readonly steps: readonly PostStep[];
 }
 
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
@@ -82,9 +94,11 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * (`filter({ hasText, has })`) commute with that predicate, so they compose
  * onto the candidate locator as for any other query. Positional selection does
  * not commute (positions are relative to the value-filtered matches), so it is
- * recorded in `positions` and applied after filtering. Two compositions need
- * the predicate inside Playwright's own chain and stay unsupported: a
- * display-value query as the scope of a child query, and as a `has` filter.
+ * recorded as a step and applied after filtering; a filter that follows a
+ * position is recorded the same way and checked on the selected element. Two
+ * compositions need the predicate inside Playwright's own chain and stay
+ * unsupported: a display-value query as the scope of a child query, and as a
+ * `has` filter.
  */
 function project(scope: PwScope, expression: LocatorExpression): ProjectedLocator {
   switch (expression.kind) {
@@ -94,32 +108,25 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
       return {
         locator: queryToPw(inner, expression.query),
         displayValue: expression.query.kind === 'displayValue' ? expression.query.value : null,
-        positions: [],
+        steps: [],
       };
     }
     case 'filter': {
       const source = project(scope, expression.source);
-      if (source.positions.length > 0) {
-        // A filter after first()/last()/nth() on value-filtered matches would
-        // need the per-element check to run on the selected match alone, which
-        // the candidate locator cannot express. Ask for the filter first.
-        throw new BackendError(
-          'UNSUPPORTED_CAPABILITY',
-          'displayValue queries must apply filter() before first(), last(), or nth() in this backend',
-          { retryable: false },
-        );
-      }
-      const options: Parameters<PwLocator['filter']>[0] = {};
+      const options: PwFilterOptions = {};
       if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
       if (expression.has !== undefined) {
         options.has = requireComposable(project(scope, expression.has));
       }
-      return { locator: source.locator.filter(options), displayValue: source.displayValue, positions: [] };
+      if (source.steps.length > 0) {
+        return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
+      }
+      return { locator: source.locator.filter(options), displayValue: source.displayValue, steps: [] };
     }
     case 'index': {
       const source = project(scope, expression.source);
       if (source.displayValue !== null) {
-        return { ...source, positions: [...source.positions, expression.index] };
+        return { ...source, steps: [...source.steps, { kind: 'index', index: expression.index }] };
       }
       const locator =
         expression.index === 'first'
@@ -127,10 +134,10 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
           : expression.index === 'last'
             ? source.locator.last()
             : source.locator.nth(expression.index);
-      return { locator, displayValue: null, positions: [] };
+      return { locator, displayValue: null, steps: [] };
     }
     case 'selector':
-      return { locator: scope.locator(expression.selector), displayValue: null, positions: [] };
+      return { locator: scope.locator(expression.selector), displayValue: null, steps: [] };
     case 'frame':
       return project(scope.frameLocator(expression.selector), expression.source);
   }
@@ -157,16 +164,30 @@ function requireComposable(projected: ProjectedLocator): PwLocator {
 }
 
 /**
- * Applies positional steps, innermost first, to an ordered list of matches.
- * `nth` past the end selects nothing, matching Playwright's `nth` on a
- * locator with too few matches.
+ * Applies post steps, innermost first, to an ordered list of matches. `nth`
+ * past the end selects nothing, matching Playwright's `nth` on a locator with
+ * too few matches. A filter step keeps the matches `passesFilter` accepts;
+ * it runs only on the matches that survived the steps before it.
  */
-export function selectPositions<T>(matches: readonly T[], positions: readonly PositionalStep[]): readonly T[] {
+export async function applyPostSteps<T>(
+  matches: readonly T[],
+  steps: readonly PostStep[],
+  passesFilter: (match: T, options: PwFilterOptions) => Promise<boolean>,
+): Promise<readonly T[]> {
   let selected = matches;
-  for (const position of positions) {
-    if (position === 'first') selected = selected.slice(0, 1);
-    else if (position === 'last') selected = selected.slice(-1);
-    else selected = position < selected.length ? [selected[position]!] : [];
+  for (const step of steps) {
+    if (step.kind === 'index') {
+      const { index } = step;
+      if (index === 'first') selected = selected.slice(0, 1);
+      else if (index === 'last') selected = selected.slice(-1);
+      else selected = index < selected.length ? [selected[index]!] : [];
+      continue;
+    }
+    const kept: T[] = [];
+    for (const match of selected) {
+      if (await passesFilter(match, step.options)) kept.push(match);
+    }
+    selected = kept;
   }
   return selected;
 }

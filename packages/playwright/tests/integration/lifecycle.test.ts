@@ -225,6 +225,37 @@ describe('playwright backend lifecycle', () => {
         ),
       ).toEqual([]);
 
+      // A filter after a position is checked on the selected element alone:
+      // the last match is the textarea, whose text content is "shared"; the
+      // first is an input with no text content at all.
+      const lastWithText = await backend.locate!(
+        {
+          kind: 'filter',
+          source: { kind: 'index', source: shared, index: 'last' },
+          hasText: { kind: 'string', value: 'shared', exact: false },
+        },
+        operation('dv1'),
+      );
+      expect(names(lastWithText)).toEqual(['Third']);
+      expect(
+        await backend.locate!(
+          {
+            kind: 'filter',
+            source: { kind: 'index', source: shared, index: 'first' },
+            hasText: { kind: 'string', value: 'shared', exact: false },
+          },
+          operation('dv1'),
+        ),
+      ).toEqual([]);
+      // ... and `has` on a positional match too; a form control has no
+      // descendant nodes, so nothing survives.
+      expect(
+        await backend.locate!(
+          { kind: 'filter', source: { kind: 'index', source: shared, index: 'last' }, has: byRole('textbox') },
+          operation('dv1'),
+        ),
+      ).toEqual([]);
+
       // The ref a positional match hands back acts on that element alone.
       const [last] = await backend.locate!({ kind: 'index', source: shared, index: 'last' }, operation('dv1'));
       await backend.perform!(last!.ref, { kind: 'fill', value: 'edited', sensitive: false }, operation('dv1'));
