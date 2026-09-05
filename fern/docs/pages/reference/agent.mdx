@@ -366,3 +366,8 @@ reports `tokenAccounting: 'provider'` only when every call supplies complete
 provider token counts. Missing, partial, or estimated usage keeps the aggregate
 at `adapter-upper-bound`, even if later calls report complete counts. Available
 token counts, per-call peaks, and valid reported costs still accumulate.
+Malformed counters are excluded from model events as well as step totals.
+Token sums that exceed the safe integer range saturate at
+`Number.MAX_SAFE_INTEGER` and make accounting non-authoritative. An overflowing
+cost total is omitted for the rest of that step. Run summaries also cap token
+sums and omit overflowing cost totals.

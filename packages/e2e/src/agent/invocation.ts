@@ -370,10 +370,9 @@ export class Invocation {
               timeoutMs: Math.max(1, this.deadline.remaining()),
             }),
           (generated) => ({
-            count: generated.usage.inputTokens + generated.usage.outputTokens,
+            count: this.usage.record(generated.usage),
           }),
         );
-        this.usage.record(result.usage);
         return result.value;
       } catch (cause) {
         if (

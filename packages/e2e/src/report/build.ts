@@ -492,7 +492,7 @@ function computeUsage(options: {
     }
     const model = step.model;
     if (model !== undefined) {
-      usage.modelTokens += model.inputTokens + model.outputTokens;
+      usage.modelTokens = Math.min(Number.MAX_SAFE_INTEGER, usage.modelTokens + model.inputTokens + model.outputTokens);
       if (model.estimatedCostUsd !== undefined) {
         cost += model.estimatedCostUsd;
         costSeen = true;
@@ -522,7 +522,7 @@ function computeUsage(options: {
     }
   }
 
-  return costSeen ? { ...usage, estimatedCostUsd: cost } : usage;
+  return costSeen && Number.isFinite(cost) ? { ...usage, estimatedCostUsd: cost } : usage;
 }
 
 /** Builds the complete report-1 document. */

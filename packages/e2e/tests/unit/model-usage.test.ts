@@ -27,4 +27,26 @@ describe('model usage accounting', () => {
     expect(usage.report(provenance, 2)).toMatchObject({ inputTokens: 10, outputTokens: 3 });
     expect(usage.report(provenance, 2).estimatedCostUsd).toBeUndefined();
   });
+
+  it('caps overflowing token sums and preserves non-authoritative accounting', () => {
+    const usage = new ModelUsage();
+    const maximum = Number.MAX_SAFE_INTEGER;
+    expect(usage.record({ inputTokens: maximum, outputTokens: maximum })).toBe(maximum);
+    usage.record({ inputTokens: 2, outputTokens: 2 });
+    usage.record({ inputTokens: 0, outputTokens: 0 });
+    expect(usage.report(provenance, 3)).toMatchObject({
+      tokenAccounting: 'adapter-upper-bound', inputTokens: maximum,
+      outputTokens: maximum, peakTokensPerCall: maximum,
+    });
+  });
+
+  it('omits an overflowing cost total even after later finite costs arrive', () => {
+    const usage = new ModelUsage();
+    usage.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: Number.MAX_VALUE });
+    expect(usage.report(provenance, 1).estimatedCostUsd).toBe(Number.MAX_VALUE);
+    usage.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: Number.MAX_VALUE });
+    usage.record({ inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0.25 });
+    expect(usage.report(provenance, 3)).not.toHaveProperty('estimatedCostUsd');
+    expect(usage.report(provenance, 3)).toMatchObject({ inputTokens: 3, outputTokens: 3 });
+  });
 });

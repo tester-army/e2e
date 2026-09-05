@@ -17,24 +17,35 @@ export class ModelUsage {
   private outputTokens = 0;
   private peakTokensPerCall = 0;
   private accounting: StepModelInfo['tokenAccounting'] = 'provider';
-  private estimatedCostUsd: number | undefined;
+  /** Null means the total overflowed and must remain omitted for this step. */
+  private estimatedCostUsd: number | null | undefined;
 
   /** Accumulates one call, preserving incomplete or estimated provenance across later calls. */
   record(usage: Usage = {}): number {
     this.records += 1;
     const input = tokenCount(usage.inputTokens);
     const output = tokenCount(usage.outputTokens);
-    this.inputTokens += input ?? 0;
-    this.outputTokens += output ?? 0;
-    this.peakTokensPerCall = Math.max(this.peakTokensPerCall, (input ?? 0) + (output ?? 0));
+    this.inputTokens = this.addTokens(this.inputTokens, input ?? 0);
+    this.outputTokens = this.addTokens(this.outputTokens, output ?? 0);
+    const tokens = this.addTokens(input ?? 0, output ?? 0);
+    this.peakTokensPerCall = Math.max(this.peakTokensPerCall, tokens);
     if (input === undefined || output === undefined || usage.accounting === 'adapter-upper-bound') {
       this.accounting = 'adapter-upper-bound';
     }
     const cost = usage.estimatedCostUsd;
-    if (cost !== undefined && Number.isFinite(cost) && cost >= 0) {
-      this.estimatedCostUsd = (this.estimatedCostUsd ?? 0) + cost;
+    if (this.estimatedCostUsd !== null && cost !== undefined && Number.isFinite(cost) && cost >= 0) {
+      const total = (this.estimatedCostUsd ?? 0) + cost;
+      this.estimatedCostUsd = Number.isFinite(total) ? total : null;
     }
-    return (input ?? 0) + (output ?? 0);
+    return tokens;
+  }
+
+  /** Saturates unrepresentable sums and marks the step's token counts non-authoritative. */
+  private addTokens(left: number, right: number): number {
+    const sum = left + right;
+    if (Number.isSafeInteger(sum)) return sum;
+    this.accounting = 'adapter-upper-bound';
+    return Number.MAX_SAFE_INTEGER;
   }
 
   /** Projects the accumulated usage into the report, including calls that returned no usage. */
@@ -46,7 +57,7 @@ export class ModelUsage {
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
       peakTokensPerCall: this.peakTokensPerCall,
-      ...(this.estimatedCostUsd === undefined ? {} : { estimatedCostUsd: this.estimatedCostUsd }),
+      ...(typeof this.estimatedCostUsd === 'number' ? { estimatedCostUsd: this.estimatedCostUsd } : {}),
     };
   }
 }
