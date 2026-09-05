@@ -8,12 +8,13 @@ export default defineConfig({
     url: process.env.APP_URL ?? 'http://localhost:3000',
     services: [
       {
+        name: 'postgres',
         executable: 'docker',
         args: ['compose', 'up', '--wait', 'postgres'],
         waitForExit: true,
         teardown: { executable: 'docker', args: ['compose', 'down'] },
       },
-      { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+      { name: 'migrate', executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
     ],
     command: {
       executable: 'pnpm',

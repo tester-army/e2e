@@ -173,6 +173,7 @@ describe('ServiceStack', () => {
     const stack = new ServiceStack(
       resolveServices([
         {
+          name: 'auth-emulator',
           executable: process.execPath,
           args: ['-e', 'setInterval(() => {}, 1000)'],
           readyUrl: `http://127.0.0.1:${port}/`,
@@ -185,8 +186,9 @@ describe('ServiceStack', () => {
     const failure = await stack.start().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
-    expect((failure as InfrastructureError).message).toContain('app.services[0]');
-    expect((failure as InfrastructureError).message).toContain('was not reachable');
+    expect((failure as InfrastructureError).message).toBe(
+      `service "auth-emulator" was not reachable at http://127.0.0.1:${port}/ within 1500 ms`,
+    );
     expect(await stopAll(stack)).toEqual([]);
   }, 20_000);
 });

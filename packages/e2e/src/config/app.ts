@@ -1,5 +1,6 @@
 /** App, command, and service resolution (spec 05-config.md). */
 
+import path from 'node:path';
 import { ConfigurationError } from '../internal/errors.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
 import type { AppConfig, CommandConfig, E2EConfig, ServiceConfig } from '../types.ts';
@@ -153,26 +154,50 @@ function validateCommand(command: CommandConfig, label: string): void {
   positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`);
 }
 
-/** Services carry no name, so messages name one by its position and command line. */
-function commandLine(command: CommandConfig): string {
-  return [command.executable, ...(command.args ?? [])].join(' ');
+/** The longest `name` a service may carry; a label, not a description. */
+const SERVICE_NAME_MAX_LENGTH = 64;
+
+/**
+ * The name a service goes by in errors, reporter output, and the report: the
+ * explicit `name`, trimmed, or the executable's base name (`docker`, `pnpm`,
+ * and for a shell wrapper just `sh`, which is when an explicit name earns its
+ * keep). Explicit names must be unique so two failures never read alike.
+ */
+function serviceName(service: ServiceConfig, position: string, taken: Set<string>): string {
+  if (service.name === undefined) return path.basename(service.executable);
+  const name = typeof service.name === 'string' ? service.name.trim() : '';
+  if (name.length === 0 || name.length > SERVICE_NAME_MAX_LENGTH) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${position}.name must be a non-empty string of at most ${SERVICE_NAME_MAX_LENGTH} characters`,
+    );
+  }
+  if (taken.has(name)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${position}.name "${name}" is already used by another service; service names must be unique`,
+    );
+  }
+  taken.add(name);
+  return name;
 }
 
 /**
  * Resolves `app.services`: every service is a command with exactly one
  * readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
  * command of its own. The service fields that only steer the runner
- * (`readyUrl`, `waitForExit`, `teardown`) are lifted out of the command.
+ * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the command.
  */
 export function resolveServices(raw: AppConfig['services']): readonly ResolvedService[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
     throw new ConfigurationError('INVALID_CONFIG', 'app.services must be an array');
   }
+  const names = new Set<string>();
   return raw.map((service: ServiceConfig, index): ResolvedService => {
     const position = `app.services[${index}]`;
     validateCommand(service, position);
-    const { readyUrl: rawReadyUrl, waitForExit, teardown, ...command } = service;
+    const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown, ...command } = service;
     const readyUrl = httpUrl(rawReadyUrl, `${position}.readyUrl`);
     if ((readyUrl !== undefined) === (waitForExit === true)) {
       throw new ConfigurationError(
@@ -181,16 +206,13 @@ export function resolveServices(raw: AppConfig['services']): readonly ResolvedSe
       );
     }
     const readiness: Readiness = readyUrl === undefined ? { waitForExit: true } : { readyUrl };
-    const label = `${position} (${commandLine(command)})`;
+    const label = `service "${serviceName(service, position, names)}"`;
     if (teardown !== undefined) validateCommand(teardown, `${position}.teardown`);
     return {
       label,
       command,
       readiness,
-      teardown:
-        teardown === undefined
-          ? undefined
-          : { label: `${label} teardown (${commandLine(teardown)})`, command: teardown },
+      teardown: teardown === undefined ? undefined : { label: `${label} teardown`, command: teardown },
     };
   });
 }

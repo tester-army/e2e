@@ -27,7 +27,7 @@ function describeExit(exit: ExitStatus): string {
 /**
  * One command the runner owns: spawned as a process group, waited on until
  * its readiness contract holds, and terminated signal-then-force. `label`
- * names it in every error (`app.command`, `app.services[0] (docker ...)`).
+ * names it in every error (`app.command`, `service "postgres"`).
  */
 export class ManagedProcess {
   private child: ChildProcess | null = null;

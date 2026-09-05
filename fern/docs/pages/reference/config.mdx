@@ -157,6 +157,7 @@ terminates a process it did not start.
 
 ```ts
 export interface ServiceConfig extends CommandConfig {
+  name?: string;
   readyUrl?: string;
   waitForExit?: boolean;
   teardown?: CommandConfig;
@@ -170,6 +171,7 @@ with the same spawning, `cwd`, and environment rules as `app.command`, plus:
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
+| `name` | `string` | executable base name | Label used in errors, reporter output, and the report (`service "postgres" exited with code 1`). Set it when the executable is a wrapper such as `sh`. Non-empty, at most 64 characters, unique across named services |
 | `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's; a status of 200-499 counts as ready |
 | `waitForExit` | `boolean` | `false` | The process is the step: ready when it exits 0. A non-zero exit is `APP_UNREACHABLE` |
 | `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on until exit within its own `startupTimeout` |
@@ -194,13 +196,15 @@ export default defineConfig({
     url: 'http://localhost:3000',
     services: [
       {
+        name: 'postgres',
         executable: 'docker',
         args: ['compose', 'up', '--wait', 'postgres'],
         waitForExit: true,
         teardown: { executable: 'docker', args: ['compose', 'down'] },
       },
-      { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+      { name: 'migrate', executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
       {
+        name: 'auth-emulator',
         executable: 'pnpm',
         args: ['auth:emulator'],
         readyUrl: 'http://127.0.0.1:7000/health',

@@ -532,6 +532,8 @@ export interface CommandConfig {
  * is rejected as `INVALID_CONFIG`.
  */
 export interface ServiceConfig extends CommandConfig {
+  /** Label used in errors, reporter output, and the report; defaults to the executable name. */
+  name?: string;
   /** Optional HTTP readiness probe; a status of 200 through 499 counts as ready. */
   readyUrl?: string;
   /**

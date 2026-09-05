@@ -305,10 +305,72 @@ describe('resolveConfig', () => {
       });
       expect(config.app.services).toHaveLength(2);
       expect(config.app.services[0]?.readiness).toEqual({ waitForExit: true });
-      expect(config.app.services[0]?.label).toBe('app.services[0] (docker compose up --wait)');
+      // Without a name the label is the executable's base name.
+      expect(config.app.services[0]?.label).toBe('service "docker"');
       expect(config.app.services[1]?.readiness).toEqual({ readyUrl: 'http://127.0.0.1:7000/health' });
       // Runner-only fields are lifted out of the command that gets spawned.
       expect(config.app.services[1]?.command).toEqual({ executable: 'node', args: ['emulator.js'] });
+    });
+
+    it('labels a service by its name and lifts the name out of the command', () => {
+      const config = resolve({
+        app: {
+          url: APP_URL,
+          services: [
+            {
+              name: 'postgres',
+              executable: 'sh',
+              args: ['-c', 'exec docker compose up --wait postgres >> /var/log/postgres.log 2>&1'],
+              waitForExit: true,
+              teardown: { executable: 'sh', args: ['-c', 'docker compose down'] },
+            },
+            { name: '  auth-emulator  ', executable: '/usr/local/bin/emulator', waitForExit: true },
+            { executable: '/usr/local/bin/emulator', waitForExit: true },
+          ],
+        },
+      });
+      expect(config.app.services[0]?.label).toBe('service "postgres"');
+      expect(config.app.services[0]?.teardown?.label).toBe('service "postgres" teardown');
+      expect(config.app.services[0]?.command).not.toHaveProperty('name');
+      expect(config.app.services[1]?.label).toBe('service "auth-emulator"');
+      expect(config.app.services[2]?.label).toBe('service "emulator"');
+    });
+
+    it('rejects empty, oversized, and non-string service names', () => {
+      for (const name of ['', '   ', 'x'.repeat(65), 42 as unknown as string]) {
+        expect(() =>
+          resolve({ app: { url: APP_URL, services: [{ name, executable: 'x', waitForExit: true }] } }),
+        ).toThrow(/app\.services\[0\]\.name must be a non-empty string of at most 64 characters/);
+      }
+      const longest = 'x'.repeat(64);
+      expect(
+        resolve({ app: { url: APP_URL, services: [{ name: longest, executable: 'x', waitForExit: true }] } })
+          .app.services[0]?.label,
+      ).toBe(`service "${longest}"`);
+    });
+
+    it('rejects duplicate service names but lets derived names repeat', () => {
+      expect(() =>
+        resolve({
+          app: {
+            url: APP_URL,
+            services: [
+              { name: 'db', executable: 'x', waitForExit: true },
+              { name: ' db ', executable: 'y', waitForExit: true },
+            ],
+          },
+        }),
+      ).toThrow(/app\.services\[1\]\.name "db" is already used by another service/);
+      const config = resolve({
+        app: {
+          url: APP_URL,
+          services: [
+            { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+            { executable: 'pnpm', args: ['db:seed'], waitForExit: true },
+          ],
+        },
+      });
+      expect(config.app.services.map((service) => service.label)).toEqual(['service "pnpm"', 'service "pnpm"']);
     });
 
     it('allows services without app.url or app.command', () => {
@@ -408,7 +470,7 @@ describe('resolveConfig', () => {
         },
       });
       expect(ok.app.services[0]?.teardown?.command.startupTimeout).toBe(5_000);
-      expect(ok.app.services[0]?.teardown?.label).toBe('app.services[0] (x) teardown (y)');
+      expect(ok.app.services[0]?.teardown?.label).toBe('service "x" teardown');
     });
 
     it('replaces service and teardown env values in the config digest', () => {

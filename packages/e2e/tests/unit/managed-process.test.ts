@@ -97,6 +97,7 @@ describe('ServiceStack', () => {
         teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:db')] },
       },
       {
+        name: 'migrate',
         executable: process.execPath,
         args: ['-e', logStep(log, 'up:migrate', 2)],
         waitForExit: true,
@@ -111,8 +112,10 @@ describe('ServiceStack', () => {
     const failure = await services.start().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
-    expect((failure as InfrastructureError).message).toContain('app.services[1]');
-    expect((failure as InfrastructureError).message).toContain('exited with code 2 instead of 0');
+    // The name replaces the position and the command line, which here would be a page of script.
+    expect((failure as InfrastructureError).message).toBe(
+      'service "migrate" exited with code 2 instead of 0',
+    );
     // The third service never started; the two that did are torn down in reverse.
     expect(await stopAll(services)).toEqual([]);
     expect(readLog(log)).toEqual(['up:db', 'up:migrate', 'down:migrate', 'down:db']);
@@ -128,6 +131,7 @@ describe('ServiceStack', () => {
         teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:a')] },
       },
       {
+        name: 'cache',
         executable: process.execPath,
         args: ['-e', logStep(log, 'up:b')],
         waitForExit: true,
@@ -138,9 +142,9 @@ describe('ServiceStack', () => {
     const failures = await stopAll(services);
     expect(failures).toHaveLength(1);
     expect(failures[0]).toBeInstanceOf(InfrastructureError);
-    expect((failures[0] as InfrastructureError).message).toContain('app.services[1]');
-    expect((failures[0] as InfrastructureError).message).toContain('teardown');
-    expect((failures[0] as InfrastructureError).message).toContain('exited with code 1 instead of 0');
+    expect((failures[0] as InfrastructureError).message).toBe(
+      'service "cache" teardown exited with code 1 instead of 0',
+    );
     expect(readLog(log)).toEqual(['up:a', 'up:b', 'down:b', 'down:a']);
   });
 
@@ -158,7 +162,10 @@ describe('ServiceStack', () => {
     const failure = await services.start().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
-    expect((failure as InfrastructureError).message).toContain('did not exit within 500 ms');
+    // No name configured: the executable's base name stands in.
+    expect((failure as InfrastructureError).message).toBe(
+      `service "${path.basename(process.execPath)}" did not exit within 500 ms`,
+    );
     expect(Date.now() - startedAt).toBeLessThan(10_000);
     expect(await stopAll(services)).toEqual([]);
   }, 20_000);

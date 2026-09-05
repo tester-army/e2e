@@ -213,7 +213,9 @@ neither or both is `INVALID_CONFIG`:
 Readiness is bounded by the service's `startupTimeout`, default 60 seconds. A
 non-zero exit, termination by a signal, a spawn failure, or an expired budget
 fails the run with `APP_UNREACHABLE`, and the message names the service by its
-position and command line.
+`name`, which defaults to the executable's base name; an explicit `name` MUST be
+a non-empty string of at most 64 characters and unique among the explicitly
+named services, otherwise the config is `INVALID_CONFIG`.
 
 Teardown runs on every exit path: success, failure, and interrupt. The runner
 stops `app.command` first, then stops the started services in reverse
