@@ -28,7 +28,8 @@ import {
   type TextPattern,
 } from '@e2edev/e2e/backend';
 import type { DialogHandler } from './dialogs.ts';
-import { message as causeMessage, translateEvaluateError } from './support.ts';
+import { message as causeMessage } from './support.ts';
+import { compileEvaluation } from './evaluation.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
@@ -249,20 +250,15 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
     ): Promise<T> {
       const source = typeof fn === 'string' ? fn : fn.toString();
       validateJsonValue(arg, 'evaluate argument');
-      const result = await surface.guard(
-        context.operation(),
-        'evaluate',
-        async () => {
-          const page = surface.requirePage();
-          if (arg === undefined) return page.evaluate(`(${source})()`);
-          const wrapped = new Function('arg', `return (${source})(arg);`);
-          const evaluate = page.evaluate.bind(page) as (fn: unknown, arg: unknown) => Promise<unknown>;
-          return evaluate(wrapped, arg);
-        },
-        translateEvaluateError,
+      const evaluate = compileEvaluation(source, arg !== undefined);
+      // JSON safety is checked above; Playwright's recursive argument type cannot expand JsonValue.
+      const input: unknown = arg;
+      const result = await surface.guard(context.operation(), 'evaluate', () =>
+        surface.requirePage().evaluate(evaluate, input),
       );
-      validateJsonValue(result, 'evaluate result');
-      return result as T;
+      if (!result.ok) throw new TestError('EVALUATE_FAILED', result.message);
+      validateJsonValue(result.value, 'evaluate result');
+      return result.value as T;
     },
     route(pattern, handler) {
       const wirePattern = toRoutePattern(pattern);

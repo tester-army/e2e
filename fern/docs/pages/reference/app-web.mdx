@@ -148,6 +148,13 @@ over test-scope variables. Pass data through `arg`. Both `arg` and the return
 value must be `JsonValue`; anything else, including a non-finite number, throws
 `INVALID_ARGUMENT`.
 
+Exceptions thrown by the evaluated code, including rejected promises, fail the
+test with `EVALUATE_FAILED` and preserve the exception's message. Invalid source
+syntax is also a test failure. Playwright timeouts remain `OPERATION_TIMEOUT`;
+page or browser closure, crashes, protocol failures, and lost execution contexts
+remain infrastructure failures (`BACKEND_FAILURE`). The classification does not
+depend on the text of a page exception.
+
 ```ts
 const count = await web.evaluate(() => document.querySelectorAll('li').length);
 const flag = await web.evaluate(
