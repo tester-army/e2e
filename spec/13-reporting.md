@@ -66,6 +66,7 @@ counts, avoiding an unbounded report while preserving the typed run error.
 material and model API keys with `{ secretName }`, replacing backend handles with
 their manifests, normalizing paths relative to project root, and omitting
 ambient environment values not represented in config. Every `app.command.env`
+value, every `app.services[].env` value, and every `app.services[].teardown.env`
 value is replaced by `{ envName: key }`; no environment value contributes to
 the digest. Base URLs cannot contain queries, userinfo, or fragments.
 

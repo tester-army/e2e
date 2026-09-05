@@ -6,6 +6,15 @@ export default defineConfig({
   projectId: 'dev.testerarmy.orbit',
   app: {
     url: process.env.APP_URL ?? 'http://localhost:3000',
+    services: [
+      {
+        executable: 'docker',
+        args: ['compose', 'up', '--wait', 'postgres'],
+        waitForExit: true,
+        teardown: { executable: 'docker', args: ['compose', 'down'] },
+      },
+      { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+    ],
     command: {
       executable: 'pnpm',
       args: ['dev'],

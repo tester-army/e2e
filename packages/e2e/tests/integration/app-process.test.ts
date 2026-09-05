@@ -2,7 +2,7 @@ import { createServer } from 'node:net';
 import os from 'node:os';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
-import { AppProcess } from '../../src/run/app-process.ts';
+import { AppProcess, ServiceStack } from '../../src/run/app-process.ts';
 import { InfrastructureError } from '../../src/internal/errors.ts';
 
 const SERVER_SCRIPT = `
@@ -36,7 +36,7 @@ function nodeApp(port: number, options: { extraArg?: string; startupTimeout?: nu
       shutdownTimeout: 2_000,
     },
     os.tmpdir(),
-    `http://127.0.0.1:${port}/`,
+    { readyUrl: `http://127.0.0.1:${port}/` },
   );
 }
 
@@ -85,7 +85,7 @@ describe('AppProcess', () => {
     const app = new AppProcess(
       { executable: process.execPath, args: ['-e', 'process.exit(3)'] },
       os.tmpdir(),
-      `http://127.0.0.1:${port}/`,
+      { readyUrl: `http://127.0.0.1:${port}/` },
     );
     const failure = await app.start().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureError);
@@ -98,7 +98,7 @@ describe('AppProcess', () => {
     const app = new AppProcess(
       { executable: '/definitely/not/a/real/binary' },
       os.tmpdir(),
-      `http://127.0.0.1:${port}/`,
+      { readyUrl: `http://127.0.0.1:${port}/` },
     );
     const failure = await app.start().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureError);
@@ -116,10 +116,65 @@ describe('AppProcess', () => {
         shutdownTimeout: 2_000,
       },
       os.tmpdir(),
-      `http://127.0.0.1:${port}/`,
+      { readyUrl: `http://127.0.0.1:${port}/` },
     );
     const failure = await app.start().catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).message).toContain('was not reachable');
+  }, 20_000);
+});
+
+describe('ServiceStack', () => {
+  it('waits for a readyUrl service, then a waitForExit step, and stops the service process group', async () => {
+    const port = await freePort();
+    const stack = new ServiceStack(
+      [
+        {
+          executable: process.execPath,
+          args: ['-e', SERVER_SCRIPT, String(port)],
+          readyUrl: `http://127.0.0.1:${port}/`,
+          startupTimeout: 15_000,
+          shutdownTimeout: 2_000,
+        },
+        {
+          // The "migration" only succeeds if the service before it is already serving.
+          executable: process.execPath,
+          args: [
+            '-e',
+            `fetch(process.argv[1]).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1));`,
+            `http://127.0.0.1:${port}/`,
+          ],
+          waitForExit: true,
+          startupTimeout: 15_000,
+        },
+      ],
+      os.tmpdir(),
+    );
+    await stack.start();
+    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
+    expect(await stack.stop()).toEqual([]);
+    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
+  });
+
+  it('fails with APP_UNREACHABLE naming the service when its readyUrl never answers', async () => {
+    const port = await freePort();
+    const stack = new ServiceStack(
+      [
+        {
+          executable: process.execPath,
+          args: ['-e', 'setInterval(() => {}, 1000)'],
+          readyUrl: `http://127.0.0.1:${port}/`,
+          startupTimeout: 1_500,
+          shutdownTimeout: 2_000,
+        },
+      ],
+      os.tmpdir(),
+    );
+    const failure = await stack.start().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(InfrastructureError);
+    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+    expect((failure as InfrastructureError).message).toContain('app.services[0]');
+    expect((failure as InfrastructureError).message).toContain('was not reachable');
+    expect(await stack.stop()).toEqual([]);
   }, 20_000);
 });

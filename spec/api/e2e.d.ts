@@ -709,10 +709,42 @@ export interface CommandConfig {
   shutdownTimeout?: number;
 }
 
+/**
+ * One dependency process of the app under test (a database container, a
+ * cache, an auth emulator, a migration step). Services start sequentially in
+ * declaration order before `app.command`, and each must be ready before the
+ * next starts. Exactly one of `readyUrl` or `waitForExit` declares how a
+ * service becomes ready; a service with neither has no readiness contract and
+ * is rejected as `INVALID_CONFIG`.
+ */
+export interface ServiceConfig extends CommandConfig {
+  /** Optional HTTP readiness probe; a status of 200 through 499 counts as ready. */
+  readyUrl?: string;
+  /**
+   * Wait for the process to exit with code 0 instead of probing a URL
+   * (migrations, `docker compose up --wait`). A non-zero exit or the
+   * `startupTimeout` expiring is `APP_UNREACHABLE`.
+   */
+  waitForExit?: boolean;
+  /**
+   * Optional command run during teardown after the service itself has been
+   * stopped (`docker compose down`). Runs on every exit path, is waited on
+   * until exit within its own `startupTimeout`, and a failure is recorded as a
+   * cleanup-phase run error rather than a crash.
+   */
+  teardown?: CommandConfig;
+}
+
 export interface AppConfig {
   url?: string;
   command?: CommandConfig;
   readyUrl?: string;
+  /**
+   * Dependency processes started in order before `app.command` and torn down
+   * in reverse after it. Allowed without `app.command`: the app may already be
+   * running, or be one of the services itself.
+   */
+  services?: readonly ServiceConfig[];
   allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
   /**

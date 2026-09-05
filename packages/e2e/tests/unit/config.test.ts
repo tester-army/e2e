@@ -276,6 +276,89 @@ describe('resolveConfig', () => {
     expect(a.configDigest).toBe(b.configDigest);
   });
 
+  describe('app.services', () => {
+    const APP_URL = 'http://localhost:3000';
+
+    it('accepts services with exactly one readiness contract and defaults to none', () => {
+      expect(resolve({}).app.services).toEqual([]);
+      const config = resolve({
+        app: {
+          url: APP_URL,
+          services: [
+            { executable: 'docker', args: ['compose', 'up', '--wait'], waitForExit: true },
+            { executable: 'node', args: ['emulator.js'], readyUrl: 'http://127.0.0.1:7000/health' },
+          ],
+        },
+      });
+      expect(config.app.services).toHaveLength(2);
+      expect(config.app.services[0]?.waitForExit).toBe(true);
+      expect(config.app.services[1]?.readyUrl).toBe('http://127.0.0.1:7000/health');
+    });
+
+    it('allows services without app.url or app.command', () => {
+      const config = resolveConfig(
+        { targets: TARGETS, app: { services: [{ executable: 'pnpm', args: ['db:migrate'], waitForExit: true }] } },
+        { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
+      );
+      expect(config.app.configured).toBe(false);
+      expect(config.app.command).toBeUndefined();
+      expect(config.app.services).toHaveLength(1);
+    });
+
+    it('rejects a service with neither or both readiness contracts', () => {
+      expect(() => resolve({ app: { url: APP_URL, services: [{ executable: 'x' }] } })).toThrow(
+        /app\.services\[0\] needs exactly one readiness contract/,
+      );
+      expect(() =>
+        resolve({
+          app: {
+            url: APP_URL,
+            services: [{ executable: 'x', readyUrl: 'http://127.0.0.1:1/', waitForExit: true }],
+          },
+        }),
+      ).toThrow(/app\.services\[0\] needs exactly one readiness contract/);
+    });
+
+    it('rejects malformed services', () => {
+      expect(() =>
+        resolve({ app: { url: APP_URL, services: { executable: 'x' } as unknown as [] } }),
+      ).toThrow(/app\.services must be an array/);
+      expect(() =>
+        resolve({ app: { url: APP_URL, services: [{ executable: '', waitForExit: true }] } }),
+      ).toThrow(/app\.services\[0\]\.executable is required/);
+      expect(() =>
+        resolve({ app: { url: APP_URL, services: [{ executable: 'x', readyUrl: 'not a url' }] } }),
+      ).toThrow(/app\.services\[0\]\.readyUrl must be an http\(s\) URL/);
+      expect(() =>
+        resolve({
+          app: {
+            url: APP_URL,
+            services: [{ executable: 'x', waitForExit: true, teardown: { executable: '' } }],
+          },
+        }),
+      ).toThrow(/app\.services\[0\]\.teardown\.executable is required/);
+    });
+
+    it('replaces service and teardown env values in the config digest', () => {
+      const services = (secret: string) => [
+        {
+          executable: 'docker',
+          args: ['compose', 'up', '--wait'],
+          waitForExit: true,
+          env: { POSTGRES_PASSWORD: secret },
+          teardown: { executable: 'docker', args: ['compose', 'down'], env: { POSTGRES_PASSWORD: secret } },
+        },
+      ];
+      const a = resolve({ app: { url: APP_URL, services: services('aaa') } });
+      const b = resolve({ app: { url: APP_URL, services: services('bbb') } });
+      expect(a.configDigest).toBe(b.configDigest);
+      const renamed = resolve({
+        app: { url: APP_URL, services: [{ ...services('aaa')[0]!, env: { PGPASSWORD: 'aaa' } }] },
+      });
+      expect(renamed.configDigest).not.toBe(a.configDigest);
+    });
+  });
+
   describe('artifacts config', () => {
     const APP = { app: { url: 'https://app.test' } };
     it('defaults kinds and leaves the store unset for the array form', () => {

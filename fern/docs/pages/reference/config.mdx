@@ -98,6 +98,7 @@ export interface AppConfig {
   url?: string;
   command?: CommandConfig;
   readyUrl?: string;
+  services?: readonly ServiceConfig[];
   allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
   identity?: string;
@@ -109,6 +110,7 @@ export interface AppConfig {
 | `url` | `string` | `APP_URL` | One of the two is required, else `APP_URL_REQUIRED`. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; HTTP only for loopback. |
 | `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted |
 | `readyUrl` | `string` | the resolved base URL | Readiness probe; a status of 200-499 counts as ready |
+| `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before `command` and torn down in reverse; see [app.services](#appservices) |
 | `allowedOrigins` | `readonly string[]` | the origin of `url` | Each entry must be a serialized origin |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts, otherwise `'production'` | A label for the report and the cache/session identity digest; it never gates a run |
 | `identity` | `string` | derived from the base URL's origin | Stable logical app identity for cache/session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one identity across genuinely different apps. The environment always joins the derived identity. |
@@ -139,6 +141,65 @@ The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`,
 and `COMSPEC` when present, plus `app.command.env`. Model credentials,
 `E2E_USER_*` values, and CI tokens are never inherited. The runner never
 terminates a process it did not start.
+
+### app.services
+
+```ts
+export interface ServiceConfig extends CommandConfig {
+  readyUrl?: string;
+  waitForExit?: boolean;
+  teardown?: CommandConfig;
+}
+```
+
+Real apps need dependencies before they can boot: a database container, a
+cache, an auth emulator, a migration step. `services` declares them as ordered
+processes so no wrapper launcher is needed. Each service is a `CommandConfig`
+with the same spawning, `cwd`, and environment rules as `app.command`, plus:
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's; a status of 200-499 counts as ready |
+| `waitForExit` | `boolean` | `false` | The process is the step: ready when it exits 0. A non-zero exit is `APP_UNREACHABLE` |
+| `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on until exit within its own `startupTimeout` |
+
+Exactly one of `readyUrl` or `waitForExit` is required per service, otherwise
+`INVALID_CONFIG`. Services start sequentially in declaration order before
+`app.command`, each ready before the next starts, and `startupTimeout` bounds
+every readiness wait. `services` works without `app.command` when the app is
+already running or is itself one of the services.
+
+On every exit path (success, failure, interrupt) the runner stops
+`app.command`, then stops the started services in reverse order, then runs
+their `teardown` commands in reverse order. A `waitForExit` service that has
+already exited still gets its teardown. A failing teardown is recorded as a
+`cleanup`-phase run error and never skips the teardowns after it. Service and
+teardown `env` values enter the config digest as names only, like
+`app.command.env`.
+
+```ts title="e2e.config.ts"
+export default defineConfig({
+  app: {
+    url: 'http://localhost:3000',
+    services: [
+      {
+        executable: 'docker',
+        args: ['compose', 'up', '--wait', 'postgres'],
+        waitForExit: true,
+        teardown: { executable: 'docker', args: ['compose', 'down'] },
+      },
+      { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+      {
+        executable: 'pnpm',
+        args: ['auth:emulator'],
+        readyUrl: 'http://127.0.0.1:7000/health',
+      },
+    ],
+    command: { executable: 'pnpm', args: ['dev'] },
+  },
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) }],
+});
+```
 
 ## targets
 

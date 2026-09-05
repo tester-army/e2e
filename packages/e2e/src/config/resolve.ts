@@ -9,6 +9,7 @@ import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '..
 import { isStepExecutor } from '../agent/executor.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import type {
+  AppConfig,
   ArtifactsConfig,
   ArtifactStore,
   AgentConfig,
@@ -18,6 +19,7 @@ import type {
   ModelInstance,
   Platform,
   SecretProvider,
+  ServiceConfig,
   TraceCacheStore,
 } from '../types.ts';
 import { isBackendHandle, type BackendHandle } from '../backend/index.ts';
@@ -61,6 +63,8 @@ export interface ResolvedConfig {
     readonly allowedOrigins: readonly string[];
     readonly environment: 'test' | 'staging' | 'production';
     readonly command: CommandConfig | undefined;
+    /** Dependency processes started in order before `command` and torn down in reverse. */
+    readonly services: readonly ServiceConfig[];
     /** Stable logical app identity; overrides the origin for cache/session keying. */
     readonly identity: string | undefined;
   };
@@ -146,6 +150,7 @@ const APP_KEYS = new Set([
   'url',
   'command',
   'readyUrl',
+  'services',
   'allowedOrigins',
   'environment',
   'identity',
@@ -418,6 +423,7 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
       }
     }
   }
+  const services = resolveServices(raw.app?.services);
   const rawUrl = raw.app?.url ?? env['APP_URL'];
   if (rawUrl === undefined || rawUrl === '') {
     // Not every surface has an app URL to point at (a device, a desktop
@@ -425,7 +431,9 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     // identity digests defined, and `app.open()` fails loud with
     // APP_URL_REQUIRED the moment a test actually needs one. A configured
     // app command without a URL is still a mistake worth failing early on.
-    const orphaned = Object.keys(raw.app ?? {}).filter((key) => key !== 'command' && key !== 'url');
+    const orphaned = Object.keys(raw.app ?? {}).filter(
+      (key) => key !== 'command' && key !== 'url' && key !== 'services',
+    );
     if (orphaned.length > 0) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
@@ -440,6 +448,7 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
         allowedOrigins: [],
         environment: 'test',
         command: undefined,
+        services,
         identity: undefined,
       };
     }
@@ -494,8 +503,56 @@ function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedConfig['app
     allowedOrigins,
     environment,
     command,
+    services,
     identity,
   };
+}
+
+/**
+ * Validates `app.services`: every service is a command with exactly one
+ * readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
+ * command of its own.
+ */
+function resolveServices(raw: AppConfig['services']): readonly ServiceConfig[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'app.services must be an array');
+  }
+  return raw.map((service, index) => {
+    const label = `app.services[${index}]`;
+    if (typeof service !== 'object' || service === null) {
+      throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
+    }
+    if (typeof service.executable !== 'string' || service.executable.length === 0) {
+      throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
+    }
+    const hasReadyUrl = service.readyUrl !== undefined;
+    const waitsForExit = service.waitForExit === true;
+    if (hasReadyUrl === waitsForExit) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${label} needs exactly one readiness contract: set readyUrl or waitForExit: true`,
+      );
+    }
+    if (hasReadyUrl) {
+      let parsed: URL | undefined;
+      try {
+        parsed = typeof service.readyUrl === 'string' ? new URL(service.readyUrl) : undefined;
+      } catch {
+        parsed = undefined;
+      }
+      if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+        throw new ConfigurationError('INVALID_CONFIG', `${label}.readyUrl must be an http(s) URL`);
+      }
+    }
+    if (
+      service.teardown !== undefined &&
+      (typeof service.teardown.executable !== 'string' || service.teardown.executable.length === 0)
+    ) {
+      throw new ConfigurationError('INVALID_CONFIG', `${label}.teardown.executable is required`);
+    }
+    return service;
+  });
 }
 
 function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
@@ -663,11 +720,24 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
       ]),
     );
   }
+  // Every app-side env value is a name in the digest: `app.command.env`, each
+  // service's env, and each service teardown's env.
+  const envNames = (env: Readonly<Record<string, string>>): Record<string, { envName: string }> =>
+    Object.fromEntries(Object.keys(env).map((key) => [key, { envName: key }]));
   if (raw.app?.command?.env !== undefined) {
     const app = sanitized['app'] as { command: { env: unknown } };
-    app.command.env = Object.fromEntries(
-      Object.keys(raw.app.command.env).map((key) => [key, { envName: key }]),
-    );
+    app.command.env = envNames(raw.app.command.env);
+  }
+  if (raw.app?.services !== undefined) {
+    const app = sanitized['app'] as { services: { env?: unknown; teardown?: { env?: unknown } }[] };
+    raw.app.services.forEach((service, index) => {
+      const digested = app.services[index];
+      if (digested === undefined) return;
+      if (service.env !== undefined) digested.env = envNames(service.env);
+      if (service.teardown?.env !== undefined && digested.teardown !== undefined) {
+        digested.teardown.env = envNames(service.teardown.env);
+      }
+    });
   }
   if (raw.targets !== undefined) {
     sanitized['targets'] = raw.targets.map((target) => {
