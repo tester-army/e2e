@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
-import { decodePng, encodePng } from '../../src/png.ts';
+import { decodePng, encodePng } from '../helpers/png.ts';
 import type { BackendFixtureContext, BackendHandle, OperationContext, SemanticNode } from '@e2edev/e2e/backend';
 import { buildBackend } from '../../src/backend.ts';
 import type { Device } from '../../src/device.ts';
@@ -496,7 +496,7 @@ describe('app hooks, swipe, url, artifacts', () => {
     expect(await h.backend.artifacts!.screenshot('first shot', operation())).toBe('screenshots/001-first_shot.png');
     expect(await h.backend.artifacts!.screenshot(undefined, operation())).toBe('screenshots/002-screenshot.png');
     const written = decodePng(new Uint8Array(readFileSync(path.join(artifactsDir, 'screenshots', '002-screenshot.png'))));
-    const at = (x: number, y: number) => [...written.pixels.subarray((y * 390 + x) * 3, (y * 390 + x) * 3 + 3)];
+    const at = (x: number, y: number) => [...written.pixels.subarray((y * written.width + x) * written.channels, (y * written.width + x) * written.channels + 3)];
     expect(at(100, 290)).toEqual([0, 0, 0]);
     expect(at(100, 240)).toEqual([200, 200, 200]);
 

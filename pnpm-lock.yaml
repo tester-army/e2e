@@ -38,6 +38,9 @@ importers:
       agent-device:
         specifier: 0.20.10
         version: 0.20.10(ai@7.0.37(zod@4.4.3))
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -48,6 +51,9 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
       ai:
         specifier: 7.0.37
         version: 7.0.37(zod@4.4.3)
@@ -113,6 +119,12 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -1002,6 +1014,9 @@ packages:
   '@types/node@26.1.1':
     resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
 
+  '@types/pngjs@6.0.5':
+    resolution: {integrity: sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==}
+
   '@types/react-dom@19.2.5':
     resolution: {integrity: sha512-fMPwH9v7r/pp43yUd2/Mbiex5KouJwwR3dzHkhLREUC6764VyDsqxhAxv6OFEYR1RhjOyD1naqba8ECDBe7ZQg==}
     peerDependencies:
@@ -1738,6 +1753,10 @@ packages:
     resolution: {integrity: sha512-DWnY5o3YbLWK4GovuAVwpqL+1VwGNdUGrRr++8j8PtQQzvAVZUIMjKQ90fY689sEJZJBbZVw1rXaOKSTitkzPQ==}
     engines: {node: '>=18'}
     hasBin: true
+
+  pngjs@7.0.0:
+    resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
+    engines: {node: '>=14.19.0'}
 
   postcss@8.5.23:
     resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
@@ -2757,6 +2776,10 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  '@types/pngjs@6.0.5':
+    dependencies:
+      '@types/node': 26.1.1
+
   '@types/react-dom@19.2.5(@types/react@19.2.18)':
     dependencies:
       '@types/react': 19.2.18
@@ -3380,6 +3403,8 @@ snapshots:
       playwright-core: 1.61.1
     optionalDependencies:
       fsevents: 2.3.2
+
+  pngjs@7.0.0: {}
 
   postcss@8.5.23:
     dependencies:

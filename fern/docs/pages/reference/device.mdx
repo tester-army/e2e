@@ -66,6 +66,9 @@ targets with `workers: 1`: workers share one simulator.
 | `url` | `app://device/<bundle id>/<screen title>`, the trace cache's anchor; the cache compares pathnames, so the app identity is in the path. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
+Rectangle masking uses pngjs for image decoding and encoding and paints
+secure regions opaque black.
+
 ## Trace cache on a device
 
 The cache anchors a recorded `agent.act` step on the path the surface reports
