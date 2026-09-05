@@ -14,6 +14,7 @@ import {
   BackendError,
   raceAbort,
   withinCleanupBudget,
+  type BackendAppDeclaration,
   type BackendAppInfo,
   type BackendAttemptContext,
   type BackendCleanupContext,
@@ -125,7 +126,12 @@ export interface PlaywrightConnectOptions {
   readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
 }
 
-export interface PlaywrightOptions {
+/**
+ * Options of the browser backend: the app it drives (`url`, `command`,
+ * `services`, `allowedOrigins`, `environment`, `identity`, `readyUrl` - the
+ * backend contract's app declaration) plus the browser itself.
+ */
+export interface PlaywrightOptions extends BackendAppDeclaration {
   /** Browser engine; defaults to chromium. */
   readonly browser?: BrowserName;
   /** Initial viewport of every attempt's page. */
@@ -442,7 +448,7 @@ export class PlaywrightSurface {
 
   private requireBaseUrl(): string {
     if (this.app.baseUrl === undefined) {
-      throw invalidState('no app URL is configured; set app.url before relaunching the app');
+      throw invalidState('no app URL is configured; pass `url` to playwright() before relaunching the app');
     }
     return this.app.baseUrl;
   }

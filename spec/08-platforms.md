@@ -6,16 +6,17 @@
 
 ## Targets
 
-A target is one named execution environment. Every explicit target has a
-unique required `name`, a platform ID, and a driver. With no target config the
-runner creates `web` using `APP_URL`, Chromium, and the reference Playwright
-driver.
+A target is one named execution environment. Every target has a unique
+required `name`, a platform ID, and the backend that serves it (05-config.md);
+there is no implicit target. The backend declares the app it drives, so two
+browsers on one app each name it:
 
 ```ts
+const app = { url: 'http://localhost:3000' };
 export default defineConfig({
   targets: [
-    { name: 'chromium', platform: 'web', browser: 'chromium' },
-    { name: 'firefox', platform: 'web', browser: 'firefox' },
+    { name: 'chromium', platform: 'web', backend: playwright({ ...app, browser: 'chromium' }) },
+    { name: 'firefox', platform: 'web', backend: playwright({ ...app, browser: 'firefox' }) },
   ],
 });
 ```

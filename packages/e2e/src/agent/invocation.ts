@@ -8,7 +8,7 @@
 import type { StepExecutorContext } from './executor.ts';
 import type { JSONSchema7 } from 'ai';
 import type { AgentCacheContext } from '../cache/context.ts';
-import type { ResolvedConfig } from '../config/resolve.ts';
+import type { ResolvedApp, ResolvedConfig } from '../config/resolve.ts';
 import type { TargetSession, Observation } from '../backend/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -67,6 +67,8 @@ export interface AgentContext {
   readonly config: ResolvedConfig;
   /** The target this attempt runs on. */
   readonly target: StepExecutorContext['target'];
+  /** The app the target drives: base URL and origin policy for navigation and secret fills. */
+  readonly app: ResolvedApp;
   /** The attempt's identity, end signal, and executor scratch memory. */
   readonly attempt: ExecutorAttempt;
   /** Completed steps quoted as prior context; serial members see the whole group. */

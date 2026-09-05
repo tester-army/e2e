@@ -25,8 +25,10 @@ original TypeScript source location for load and execution errors.
 ## Minimal config
 
 `targets` is REQUIRED and there is no implicit target: the runner knows no
-platform, so every target names the backend that serves it. The smallest
-useful config is one web target on the playwright backend from
+platform, so every target names the backend that serves it. The app under
+test is the backend's to declare, never a config key: a browser backend is
+told where the app is served, a device backend which app it pins. The
+smallest useful config is one web target on the playwright backend from
 `@e2edev/playwright`:
 
 ```ts
@@ -34,16 +36,17 @@ import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  app: { url: 'http://localhost:3000' },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
 });
 ```
 
-The effective base URL is `app.url`, then `APP_URL`; it is REQUIRED once a test
-calls `app.open()` and optional otherwise. There is no target-level URL
-override. `readyUrl` defaults to the effective base URL and, when set, MUST be
-an absolute http(s) URL, else `INVALID_CONFIG`. The runner passes the resolved
-app URL, origin policy, and query context to every backend's `init`.
+There is no top-level `app` key and no `APP_URL` fallback in the runner: a
+config that wants an environment override reads it itself
+(`url: process.env.APP_URL ?? 'http://localhost:3000'`, which is what `init`
+scaffolds). A URL is REQUIRED once a test calls `app.open()` or navigates
+relatively and optional otherwise; without one those calls fail with
+`APP_URL_REQUIRED`. The runner passes each target's resolved URL and origin
+policy back to its backend's `init`.
 
 The base URL uses WHATWG URL parsing/serialization and MUST NOT contain
 userinfo, query, or fragment. A base URL without a scheme gets `https://`, or
@@ -52,16 +55,7 @@ both accepted as written. Host uses IDNA ASCII form and default ports are
 removed. Its pathname is normalized for dot segments and retained as the app
 base path.
 
-`app.identity` is an optional stable logical identity for the app under test.
-Cache and session identity derive from the base URL's origin by default, so
-an ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
-explicit identity keys them by what the app *is* instead of where it happens
-to be served this run. The environment always joins the derived identity —
-an identity never bleeds entries across environments. It MUST be a non-empty
-string, and it MUST NOT be shared across genuinely different apps: recorded
-traces would replay across them.
-
-A fuller config:
+A fuller config, with the runner starting the app itself:
 
 ```ts
 import { defineConfig } from '@e2edev/e2e';
@@ -69,15 +63,16 @@ import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
   specVersion: '0.1',
-  app: {
-    url: 'http://localhost:3000',
-    command: {
-      executable: 'pnpm',
-      args: ['dev'],
-    },
-  },
   targets: [
-    { name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) },
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        browser: 'chromium',
+        url: 'http://localhost:3000',
+        command: { executable: 'pnpm', args: ['dev'] },
+      }),
+    },
   ],
 });
 ```
@@ -166,7 +161,7 @@ artifacts, contributed fixtures) grade what the target serves. A test that
 uses a fixture the backend does not support fails loud with
 `UNSUPPORTED_CAPABILITY` — at selection when statically known, at first use
 otherwise. A target with no backend at all serves only the agent fixture, with
-every action opaque to the harness, and `app.url` is optional for it.
+every action opaque to the harness; it has no app URL and needs none.
 
 Before collection, the runner reads each backend's capability set, artifact
 capabilities, and state capability. Configured artifacts unsupported by a
@@ -174,33 +169,58 @@ backend fail before collection. After collection/selection, any selected setup
 or session consumer on a backend without state capability fails before launch.
 Capability names are distinct from platform names.
 
-## App process
+## The app under test
 
-`app.command` is structured and never interpreted by a shell. `executable` is
+A backend's `app` manifest declares the app it drives beside its app hooks
+(`BackendAppDeclaration` in [`api/e2e.d.ts`](./api/e2e.d.ts)): `url`,
+`allowedOrigins`, `environment`, `identity`, `command`, `readyUrl`, and
+`services`, every one optional. The runner resolves the declaration once per target at config
+load and owns what is built on it: navigation and origin policy, cache and
+session identity, the report's target record, and the app process. A target
+without a backend, or whose backend declares nothing, resolves to the empty
+app: no URL, no allowed origins, environment `test`, no identity. Unknown
+declaration keys fail at `defineBackend`; invalid values fail at config load
+naming the target.
+
+`identity` is the stable logical identity cache and session entries key on.
+It defaults to the declared URL's origin and base path, so an ephemeral
+per-deploy origin (a PR preview) cold-starts every entry; an explicit identity
+keys them by what the app *is* instead of where it happens to be served this
+run. A backend without a URL declares its own (a bundle id, a build) or its
+entries key on the target alone. The environment always joins the derived
+identity — an identity never bleeds entries across environments. It MUST be a
+non-empty string, and it MUST NOT be shared across genuinely different apps:
+recorded traces would replay across them.
+
+`command` is structured and never interpreted by a shell. `executable` is
 resolved with the process PATH; arguments are passed verbatim. `cwd` defaults
-to project root. The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`,
+to project root. `readyUrl`, when set, MUST be an absolute http(s) URL, else
+`INVALID_CONFIG`. The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`,
 `TEMP`, `SystemRoot`, and `COMSPEC` when present. `env` explicitly adds or
 replaces app variables. Model credentials, `E2E_USER_*`, CI tokens, and other
 runner secrets are never inherited implicitly.
 
-The runner starts the command as a process group, waits for `readyUrl` or
-`app.url`, and fails with `APP_UNREACHABLE` after `startupTimeout`, default 60
-seconds. A successful HTTP status is 200 through 499. On every exit path the
-runner sends the platform's graceful termination signal to the whole process
-group, waits `shutdownTimeout`, default 10 seconds, then force-terminates it.
-The runner never terminates a process it did not start.
+The runner starts each distinct declared command as a process group before
+the first test (two targets declaring the same command share one process),
+waits for `readyUrl` or `url` (a command with neither is `APP_URL_REQUIRED`
+at config load), and fails with `APP_UNREACHABLE` after `startupTimeout`,
+default 60 seconds. A successful HTTP status is 200 through 499. On every exit
+path the runner sends the platform's graceful termination signal to the whole
+process group, waits `shutdownTimeout`, default 10 seconds, then
+force-terminates it. The runner never terminates a process it did not start.
 
 ### Services
 
-`app.services` declares the dependency processes the app needs before it can
+`services` declares the dependency processes the app needs before it can
 boot: a database container, a cache, an auth emulator, a migration step. Each
 entry is a `CommandConfig` with the same shell-free spawning, the same `cwd`
-default, and the same environment rule as `app.command`: a service child
-inherits only the allowlist above plus its own `env`. `app.services` is valid
-without `app.command`; the app may already be running or be one of the
-services itself.
+default, and the same environment rule as `command`: a service child inherits
+only the allowlist above plus its own `env`. `services` is valid without
+`command`; the app may already be running or be one of the services itself.
+Services declared identically by several targets start once; distinct ones
+are gathered in target order.
 
-Services start sequentially in declaration order, before `app.command` and
+Services start sequentially in declaration order, before any app command and
 before collection. Each service MUST be ready before the next one starts.
 Exactly one readiness contract is required per service, and a service with
 neither or both is `INVALID_CONFIG`:
@@ -218,10 +238,10 @@ a non-empty string of at most 64 characters and unique among the explicitly
 named services, otherwise the config is `INVALID_CONFIG`.
 
 Teardown runs on every exit path: success, failure, and interrupt. The runner
-stops `app.command` first, then stops the started services in reverse
-declaration order with the same signal-then-force sequence, then runs each
-started service's optional `teardown` command in reverse order and waits for it
-to exit, bounded by the teardown's own `startupTimeout`, default 60 seconds. A
+stops every app command first, then stops the started services in reverse
+order with the same signal-then-force sequence, then runs each started
+service's optional `teardown` command in reverse order and waits for it to
+exit, bounded by the teardown's own `startupTimeout`, default 60 seconds. A
 service that already exited under `waitForExit` has nothing to stop but still
 gets its teardown. A teardown command that fails or does not exit in time is
 recorded as a `cleanup`-phase run error; it never aborts the remaining
@@ -230,7 +250,8 @@ earlier one failed get no teardown.
 
 ## Origins and environment
 
-`allowedOrigins` defaults to the exact origin of the effective base URL. Agent navigation,
+`allowedOrigins` defaults to the exact origin of the declared URL, and to no
+origin without one. Agent navigation,
 deep links, frame interaction, and secret fills outside this list are denied.
 `file:`, `data:`, `javascript:`, link-local metadata addresses, and malformed
 URLs are always denied in v0.
@@ -243,8 +264,9 @@ allowed for the app.
 
 `environment` labels the target in the report and joins the cache and session
 identity digest; it never gates a run. When omitted, it defaults to `test` for
-loopback, `.localhost`, and `.test` hosts and to `production` for every other
-host. Security rules apply to every environment alike.
+loopback, `.localhost`, and `.test` hosts and for a surface without a URL, and
+to `production` for every other host. Security rules apply to every
+environment alike.
 
 ## The agent value
 
@@ -345,7 +367,7 @@ limit and observed lower bound.
 
 Credential config contains executable-project secrets and is trusted input.
 Environment resolution takes precedence as described in 04-resources.md.
-`allowedOrigins` narrows a credential relative to the app-level policy and
+`allowedOrigins` narrows a credential relative to the target's app policy and
 cannot broaden it.
 
 A static `password` MUST be a non-empty string; an empty one, including an
@@ -360,9 +382,11 @@ process boundary: workers re-resolve the config module.
 
 ## Environment variables
 
+The runner reads a closed set. `APP_URL` is not in it: the scaffolded config
+reads it itself and hands it to the backend, so a project may name any
+variable, or none.
 | Variable | Meaning |
 |---|---|
-| `APP_URL` | URL for the implicit web target |
 | `E2E_MODEL` | exact `provider/model-id` |
 | `E2E_MODEL_API_KEY` | default model-provider credential |
 | `E2E_USER_<NAME>_USERNAME` | named credential username |

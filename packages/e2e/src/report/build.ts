@@ -8,6 +8,7 @@ import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/r
 import type { AgentErrorCode } from '../types.ts';
 import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
+import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { SkipInfo } from '../collect/select.ts';
 import type {
@@ -183,7 +184,8 @@ export interface ReportTarget {
   id: string;
   index: number;
   platform: string;
-  baseOrigin: string;
+  /** Origin of the backend's declared app URL; absent for a surface without one. */
+  baseOrigin?: string;
   environment: string;
   testIdAttribute: string;
   backend: { name: string; version: string; spiVersion: BackendSpiVersion };
@@ -365,12 +367,14 @@ function serializeTarget(
   // Provenance exists for every selected target; an unselected one is
   // described from its declaration the same way.
   return {
-    id: target.name,
-    index: target.index,
-    platform: target.platform,
-    baseOrigin: config.app.base.origin,
-    environment: config.app.environment,
-    testIdAttribute: config.testIdAttribute,
+    ...obj({
+      id: target.name,
+      index: target.index,
+      platform: target.platform,
+      baseOrigin: target.app.base?.origin,
+      environment: target.app.environment,
+      testIdAttribute: config.testIdAttribute,
+    }),
     ...(provenance ?? describeTarget(target)),
   };
 }

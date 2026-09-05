@@ -12,14 +12,15 @@ import { playwright } from '@e2edev/playwright';
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-public',
-  app: {
-    url: 'https://example.com',
-    allowedOrigins: [
-      'https://example.com',
-      'https://www.iana.org',
-      'https://playwright.dev',
-    ],
-  },
   tests: 'tests-public/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'https://example.com',
+        allowedOrigins: ['https://example.com', 'https://www.iana.org', 'https://playwright.dev'],
+      }),
+    },
+  ],
 })

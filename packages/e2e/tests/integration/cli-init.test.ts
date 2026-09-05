@@ -55,7 +55,7 @@ describe('initializing standalone projects', () => {
       const config = resolveConfig(raw, { projectRoot: dir, env: {} });
       const collection = await collect(config);
 
-      expect(config.app.base.origin).toBe(appUrl ?? 'http://localhost:3000');
+      expect(config.targets[0]!.app.base).toBeUndefined();
       expect(collection.tests.map((test) => ({ title: test.title, file: test.file }))).toEqual([
         { title: 'app responds', file: 'tests/example.e2e.ts' },
       ]);
@@ -78,7 +78,10 @@ describe('initializing standalone projects', () => {
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
     const collection = await collect(config);
 
-    expect(config.app.configured).toBe(false);
+    expect(config.targets[0]!.app).toMatchObject({
+      base: undefined,
+      identity: platform === 'ios' ? 'Settings' : 'com.android.settings',
+    });
     expect(config.workers).toBe(1);
     expect(config.targets).toMatchObject([{ name: platform, platform, backend: { name: 'agent-device' } }]);
     expect(collection.tests.map((test) => test.title)).toEqual(['Settings opens']);

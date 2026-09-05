@@ -551,33 +551,12 @@ export interface ServiceConfig extends CommandConfig {
   teardown?: CommandConfig;
 }
 
-export interface AppConfig {
-  url?: string;
-  command?: CommandConfig;
-  readyUrl?: string;
-  /**
-   * Dependency processes started in order before `app.command` and torn down
-   * in reverse after it. Allowed without `app.command`: the app may already be
-   * running, or be one of the services itself.
-   */
-  services?: readonly ServiceConfig[];
-  allowedOrigins?: readonly string[];
-  environment?: 'test' | 'staging' | 'production';
-  /**
-   * Stable logical identity of the app under test. By default cache and
-   * session identity derive from the base URL's origin, so an ephemeral
-   * per-deploy origin (a PR preview) cold-starts every entry. Setting an
-   * explicit identity keys them by what the app *is* instead of where it
-   * happens to be served this run. Never set one identity across genuinely
-   * different apps or environments — recorded traces would replay across them.
-   */
-  identity?: string;
-}
-
 /**
  * One target: a named surface on one platform, served by a backend (RFC0002).
  * What the target can do is graded from the backend's declared capabilities;
  * with no `backend` the target is agent-tools-only and everything runs opaque.
+ * The app under test is the backend's to declare (its URL, identity, or the
+ * command that starts it); a target carries no app config of its own.
  */
 export interface Target {
   name: string;
@@ -690,7 +669,6 @@ export interface AgentConfig {
 export interface E2EConfig {
   specVersion?: '0.1';
   projectId?: string;
-  app?: AppConfig;
   targets?: readonly Target[];
   tests?: string | readonly string[];
   timeout?: number;

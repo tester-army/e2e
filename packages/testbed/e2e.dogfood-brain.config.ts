@@ -83,9 +83,8 @@ const mathBrain: StepExecutor = {
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-brain',
-  app: { url: 'http://127.0.0.1:4312' },
   tests: 'tests-dogfood-brain/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://127.0.0.1:4312' }) }],
   timeout: 120_000,
   agent: mathBrain,
 });

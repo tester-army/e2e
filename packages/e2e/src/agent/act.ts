@@ -972,8 +972,8 @@ class ActDispatch {
     }
     const resolved = resolveNavigationUrl(
       url,
-      this.runtime.config.app.base,
-      this.runtime.config.app.allowedOrigins,
+      this.runtime.app.base,
+      this.runtime.app.allowedOrigins,
     ).url;
     // The raw argument is recorded, not the resolved URL: replay re-resolves
     // through the same base and origin policy this call just passed.

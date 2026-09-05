@@ -19,14 +19,19 @@ import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  app: { url: 'http://localhost:3000' },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
 });
 ```
 
-Options: `browser` (`chromium`, `firefox`, `webkit`; default `chromium`),
-`viewport` (`{ width, height }`; default 1280x720), and `connect` — attach to a
-remote browser over CDP instead of launching a local one.
+The backend declares the app it drives. App options: `url` (the base URL
+`app.open()` opens; required once a test navigates), `command` (a process the
+runner starts before the run and stops after it, with `readyUrl` to poll,
+default `url`), `allowedOrigins` (default: the URL's origin), `environment`
+(`test`, `staging`, `production`; inferred from the host), and `identity` (a
+stable cache and session key when the origin is ephemeral). Browser options:
+`browser` (`chromium`, `firefox`, `webkit`; default `chromium`), `viewport`
+(`{ width, height }`; default 1280x720), and `connect` — attach to a remote
+browser over CDP instead of launching a local one.
 
 ### Attaching to a remote browser (`connect`)
 

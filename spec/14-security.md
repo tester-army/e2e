@@ -44,7 +44,8 @@ the UI, page source, PR metadata, or handoff have no policy authority.
 ## Origins and navigation
 
 The runner validates initial URL, redirects, popups, frames, deep links, and
-agent-requested navigation against `app.allowedOrigins`. Origin comparison uses
+agent-requested navigation against the target's allowed origins (the
+backend's `allowedOrigins` declaration, 05-config.md). Origin comparison uses
 normalized URL scheme, ASCII host, and effective port. Userinfo and fragments
 do not affect origin.
 

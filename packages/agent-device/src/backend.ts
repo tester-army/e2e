@@ -8,7 +8,7 @@
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
+import { defineBackend, obj, type BackendAppDeclaration, type BackendHandle } from '@e2edev/e2e/backend';
 import { createDeviceFixture } from './device.ts';
 import { AgentDeviceSurface, type AgentDeviceOptions, type ClientFactory } from './surface.ts';
 
@@ -29,6 +29,7 @@ export function buildBackend(surface: AgentDeviceSurface): BackendHandle {
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
     app: {
+      ...declaredApp(surface.options),
       back: (operation) => surface.back(operation),
       ...(surface.managesApp
         ? {
@@ -53,6 +54,17 @@ export function buildBackend(surface: AgentDeviceSurface): BackendHandle {
 export function agentDevice(options: AgentDeviceOptions): BackendHandle {
   const factory: ClientFactory = (session) => createAgentDeviceClient({ session });
   return buildBackend(new AgentDeviceSurface(options, factory));
+}
+
+/**
+ * What the device backend declares about its app: the pinned app (else the
+ * build it installs) is the identity cache and session entries key on.
+ */
+function declaredApp(options: AgentDeviceOptions): Pick<BackendAppDeclaration, 'identity' | 'environment'> {
+  return obj({
+    identity: options.identity ?? options.app ?? options.appPath,
+    environment: options.environment,
+  });
 }
 
 /** The surface behind a handle this package created; undefined for any other backend. */

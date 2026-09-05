@@ -43,19 +43,20 @@ Requires Node.js 20.19 or newer.
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
-      app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
       agent: createAgent({
         system: 'You are a thorough QA agent. Verify every outcome.',
       }),
-      targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+      // The backend declares the app it drives; APP_URL overrides the default at run time.
+      targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
     });
     ```
 
-    Set `APP_URL` when running tests, or edit the default in `app.url`.
-    A scheme is optional: `localhost:3000`
+    Set `APP_URL` when running tests, or edit the default `url` passed to
+    `playwright()`. A scheme is optional: `localhost:3000`
     becomes `http://localhost:3000` and `app.example.com` becomes
     `https://app.example.com`. The runner knows no platform, so every target
-    names the backend that drives it.
+    names the backend that drives it, and the backend declares the app under
+    test: a URL for a browser, a bundle id for a device.
 
     `system` shapes how it works. Later you can hand it your own tools, or
     replace it with a custom executor; [Your own agent](/agents) covers both.
@@ -120,20 +121,25 @@ Requires Node.js 20.19 or newer.
 
 ## Let the runner start your app
 
-Instead of starting a dev server by hand before `e2e run`, give `app.command`
-the process to spawn:
+Instead of starting a dev server by hand before `e2e run`, give the backend's
+`command` option the process to spawn:
 
 ```ts title="e2e.config.ts"
 export default defineConfig({
-  app: {
-    url: 'http://127.0.0.1:3000',
-    command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
-  },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'http://127.0.0.1:3000',
+        command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
+      }),
+    },
+  ],
 });
 ```
 
-The runner spawns the command, waits until `readyUrl` (by default `app.url`)
+The runner spawns the command, waits until `readyUrl` (by default `url`)
 answers with a 200-499 status, and terminates it when the run finishes, fails,
 or is interrupted with Ctrl-C, so a launcher script that boots and kills the
 server is unnecessary. On macOS and Linux the command runs as its own process
@@ -144,7 +150,7 @@ temp-directory variables plus whatever you put in `command.env`; model
 credentials and CI tokens are never inherited, so anything the app needs must
 be passed explicitly. A server that never becomes ready fails the run with
 `APP_UNREACHABLE` and still leaves a `.e2e/report.json`. Every option is in the
-[config reference](/reference/config#appcommand).
+[config reference](/reference/config#command).
 
 ## Next
 

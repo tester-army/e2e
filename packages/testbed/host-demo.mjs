@@ -80,11 +80,11 @@ try {
     quiet: true,
     rawConfig: {
       projectId: 'host-demo',
-      app: { url: 'http://localhost:4273' },
       tests: 'tests/**/*.e2e.ts',
       // The platform is explicit since the backend contract (RFC0002): a host
-      // declares the target and the backend that drives it, same as a config.
-      targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+      // declares the target and the backend that drives it, same as a config;
+      // the backend declares the app it drives.
+      targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:4273' }) }],
       // Same budgets as the bench config: model turns on a busy gateway can
       // run tens of seconds, and a hosted platform sets its own ceilings.
       timeout: 300_000,

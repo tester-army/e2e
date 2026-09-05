@@ -15,16 +15,17 @@ import { playwright } from '@e2edev/playwright';
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'testbed-tester-army',
-  app: {
-    url: 'https://tester.army',
-    allowedOrigins: [
-      'https://tester.army',
-      'https://www.tester.army',
-      'https://auth.tester.army',
-    ],
-  },
   tests: 'tests-tester-army/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'https://tester.army',
+        allowedOrigins: ['https://tester.army', 'https://www.tester.army', 'https://auth.tester.army'],
+      }),
+    },
+  ],
   timeout: 600_000,
   actionTimeout: 90_000,
   agent: {

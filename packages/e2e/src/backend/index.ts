@@ -34,7 +34,16 @@ export type { TextMatch } from '../types.ts';
 export { raceAbort } from './timing.ts';
 export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
 export { urlMatches } from '../internal/urls.ts';
-import type { Expectable, Locator, Momentum, Screen, ScrollDirection } from '../types.ts';
+export { obj, type WithoutUndefined } from '../internal/objects.ts';
+import type {
+  CommandConfig,
+  Expectable,
+  Locator,
+  Momentum,
+  Screen,
+  ScrollDirection,
+  ServiceConfig,
+} from '../types.ts';
 import {
   BACKEND_SPI_VERSION,
   type BackendSpiVersion,
@@ -56,6 +65,8 @@ export {
   RETRYABLE_BACKEND_ERROR_CODES,
 } from './contract.ts';
 export type {
+  CommandConfig,
+  ServiceConfig,
   Expectable,
   JsonValue,
   Locator,
@@ -79,12 +90,69 @@ export type BackendCapability =
   | 'artifacts'
   | (string & {});
 
-/** The app under test as the harness resolved it, shared with every backend. */
+/**
+ * What a backend declares about the app it drives (RFC0002 step 7b). The app
+ * under test is the backend's to describe: a browser backend names a URL, a
+ * device backend a bundle id. The harness resolves the declaration once per
+ * target and owns everything built on it - navigation and origin policy,
+ * cache and session identity, the report's target record, and the app
+ * process it starts before the run.
+ */
+export interface BackendAppDeclaration {
+  /**
+   * Base URL of an addressable app: `app.open()` opens it and relative
+   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
+   * fragment; a missing scheme becomes `https://`, or `http://` for a
+   * loopback host. Plain HTTP is accepted for loopback hosts only.
+   */
+  readonly url?: string;
+  /**
+   * Origins navigation and secret fills admit; each entry a serialized
+   * origin. Defaults to the URL's origin, or to none without a URL.
+   */
+  readonly allowedOrigins?: readonly string[];
+  /**
+   * Labels the target in the report and joins the cache and session identity
+   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
+   * and `.test` hosts and for a surface without a URL, `production` otherwise.
+   */
+  readonly environment?: 'test' | 'staging' | 'production';
+  /**
+   * Stable logical identity of the app under test, keying trace cache and
+   * session entries. Defaults to the URL's origin and base path, so an
+   * ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
+   * explicit identity keys them by what the app *is* instead of where it is
+   * served this run. A surface without a URL has no default: declare one
+   * (a bundle id, say) or entries key on the target alone. Never share one
+   * identity across genuinely different apps: recorded traces would replay
+   * across them.
+   */
+  readonly identity?: string;
+  /**
+   * Process the runner starts before the first test and stops on every exit
+   * path (a dev server). Structured, never shell-interpreted; the child
+   * inherits only `PATH`, `HOME`, the temp-directory variables, and
+   * `command.env`. Two targets declaring the same command share one process.
+   */
+  readonly command?: CommandConfig;
+  /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
+  readonly readyUrl?: string;
+  /**
+   * Dependency processes the app needs before it can boot (a database
+   * container, a migration step), started in declaration order before any
+   * app command and torn down in reverse after it. Valid without `command`:
+   * the app may already be running, or be one of the services itself.
+   * Services declared identically by several targets start once.
+   */
+  readonly services?: readonly ServiceConfig[];
+}
+
+/** The app under test as the harness resolved the backend's declaration, handed back at init. */
 export interface BackendAppInfo {
   /**
    * Normalized base URL; the target of `app.open()` with no path. Absent when
-   * the project configured no app URL: a surface that needs one then fails
-   * the call that needs it, and never navigates to a placeholder.
+   * the backend declared no `url`: a surface that needs one then fails the
+   * call that needs it, and never navigates to a placeholder.
    */
   readonly baseUrl?: string;
   /** Origins navigation and cookie policy admit. */
@@ -116,7 +184,7 @@ export interface BackendFixtureContext {
   readonly app: BackendAppInfo & {
     /**
      * Resolves a navigation target against the base URL and the origin
-     * policy. Throws `APP_URL_REQUIRED` when no app URL is configured and
+     * policy. Throws `APP_URL_REQUIRED` when the backend declared no URL and
      * `POLICY_DENIED` for a disallowed origin or scheme, so a fixture never
      * re-implements the policy the harness owns.
      */
@@ -213,10 +281,12 @@ export interface BackendArtifacts {
 }
 
 /**
- * App-level hooks behind the universal `app` fixture and the agent's
- * `navigate` verb. Node actions never live here; they are `perform`.
+ * The app under test: what the backend declares about it
+ * (`BackendAppDeclaration`) and the app-level hooks behind the universal
+ * `app` fixture and the agent's `navigate` verb. Node actions never live
+ * here; they are `perform`.
  */
-export interface BackendApp {
+export interface BackendApp extends BackendAppDeclaration {
   /**
    * Opens one URL the harness already resolved against the base URL and the
    * origin policy. Absent on a surface without addressable locations.
@@ -387,7 +457,7 @@ export interface Backend {
   readonly state?: BackendStateCapability;
   /** capability: artifacts - screenshots and traces under the attempt directory. */
   readonly artifacts?: BackendArtifacts;
-  /** App-level hooks: navigate, back, restart, clearState. */
+  /** The app under test: its declaration (url, identity, command...) and hooks (navigate, back, restart, clearState). */
   readonly app?: BackendApp;
   /**
    * Current top-level URL of the surface, when the platform has one. Enables
@@ -458,6 +528,20 @@ const NESTED_KEYS = {
   app: ['navigate', 'back', 'restart', 'clearState'],
 } as const;
 
+/**
+ * Declarative members of the `app` manifest: facts about the app under test,
+ * copied through as data. Their values are validated when the config resolves
+ * the target, where an error can name it.
+ */
+const APP_DECLARATION_KEYS = [
+  'url',
+  'allowedOrigins',
+  'environment',
+  'identity',
+  'command',
+  'readyUrl',
+  'services',
+] as const satisfies readonly (keyof BackendAppDeclaration)[];
 const FUNCTION_MEMBERS = [
   'observe',
   'locate',
@@ -482,8 +566,9 @@ function invalid(name: string, detail: string): ConfigurationError {
 
 /**
  * Validates one nested manifest (`state`, `artifacts`, `app`): a plain object
- * whose keys are closed and whose declared members are functions. Returns a
- * copy with every member bound to the manifest, so class-based bodies work.
+ * whose keys are closed and whose declared members are functions, except the
+ * `app` declaration's data members, which are copied through. Returns a copy
+ * with every function bound to the manifest, so class-based bodies work.
  */
 function nestedManifest<K extends keyof typeof NESTED_KEYS>(
   name: string,
@@ -494,15 +579,25 @@ function nestedManifest<K extends keyof typeof NESTED_KEYS>(
   if (typeof value !== 'object' || value === null) {
     throw invalid(name, `${key} must be an object`);
   }
-  const allowed: readonly string[] = NESTED_KEYS[key];
+  const hooks: readonly string[] = NESTED_KEYS[key];
+  const data: readonly string[] = key === 'app' ? APP_DECLARATION_KEYS : [];
   const source = value as Record<string, unknown>;
   for (const member of Object.keys(source)) {
-    if (!allowed.includes(member)) {
-      throw invalid(name, `${key} has unknown key "${member}"; expected one of ${allowed.join(', ')}`);
+    if (!hooks.includes(member) && !data.includes(member)) {
+      throw invalid(
+        name,
+        `${key} has unknown key "${member}"; expected one of ${[...data, ...hooks].join(', ')}`,
+      );
     }
   }
   const bound: Record<string, unknown> = {};
-  for (const member of allowed) {
+  for (const member of data) {
+    const fact = source[member];
+    if (fact === undefined) continue;
+    if (typeof fact === 'function') throw invalid(name, `${key}.${member} is a declaration, not a hook`);
+    bound[member] = fact;
+  }
+  for (const member of hooks) {
     const fn = source[member];
     if (fn === undefined) {
       if (required.includes(member)) throw invalid(name, `${key}.${member} must be a function`);

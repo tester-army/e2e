@@ -315,5 +315,5 @@ signal. Cleanup failure is reported and affects run status according to
 `globalSetup`, `globalTeardown`, `test.each`, conditional skips, custom
 fixtures, sharding, watch mode, and clock control are post-v0. Dependency
 processes that must run before the app boots are declared, not scripted:
-`app.services` (05-config.md) starts them in order and tears them down in
+the backend's `services` declaration (05-config.md) starts them in order and tears them down in
 reverse.

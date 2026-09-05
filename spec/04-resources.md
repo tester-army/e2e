@@ -49,7 +49,8 @@ missing material rejects with `AUTH_CREDENTIAL_UNAVAILABLE` before a model
 request.
 
 Each credential is scoped to `allowedOrigins` from its config entry, or the
-app-level allowed origins when omitted. A secret fill outside that scope is
+target's allowed origins (the backend's `allowedOrigins` declaration,
+05-config.md) when omitted. A secret fill outside that scope is
 `POLICY_DENIED`.
 
 ## Ownership

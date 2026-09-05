@@ -83,8 +83,7 @@ import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  app: { url: 'http://127.0.0.1:3000' },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://127.0.0.1:3000' }) }],
   credentials: {
     admin: {
       username: 'admin@example.test',
@@ -153,8 +152,10 @@ credentials: {
 },
 ```
 
-A per-credential `allowedOrigins` narrows the app policy for that credential and
-can never widen it. Use it when a credential belongs to exactly one of several
+A per-credential `allowedOrigins` narrows the target's app policy (the
+backend's `allowedOrigins` declaration) for that credential and can never
+widen it.
+ Use it when a credential belongs to exactly one of several
 allowed origins, so a page that steers the flow elsewhere cannot collect the
 password when it arrives.
 

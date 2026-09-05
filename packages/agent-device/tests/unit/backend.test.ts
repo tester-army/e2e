@@ -103,12 +103,21 @@ describe('manifest', () => {
     expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'location', 'observation']);
     expect(pinned.name).toBe('agent-device');
     expect(pinned.version).not.toBe('unknown');
-    expect(Object.keys(pinned.app!).toSorted()).toEqual(['back', 'clearState', 'restart']);
+    expect(Object.keys(pinned.app!).toSorted()).toEqual(['back', 'clearState', 'identity', 'restart']);
+    expect(pinned.app!.identity).toBe('Settings');
     expect(pinned.url).toBeDefined();
     expect(pinned.state).toBeUndefined();
 
     const free = harness({}, false).backend;
     expect(Object.keys(free.app!)).toEqual(['back']);
+  });
+
+  it('declares the app identity from the option, the build path, or an explicit identity', () => {
+    expect(harness({ appPath: './build/App.app' }, false).backend.app).toMatchObject({ identity: './build/App.app' });
+    expect(harness({ identity: 'com.example.app', environment: 'staging' }).backend.app).toMatchObject({
+      identity: 'com.example.app',
+      environment: 'staging',
+    });
   });
 });
 
@@ -153,7 +162,7 @@ describe('lifecycle', () => {
       bundleId: 'com.example.app',
       identifiers: {},
     }));
-    expect(Object.keys(h.backend.app!).toSorted()).toEqual(['back', 'clearState', 'restart']);
+    expect(Object.keys(h.backend.app!).toSorted()).toEqual(['back', 'clearState', 'identity', 'restart']);
     await openAttempt(h);
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
     expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: '/project/build/App.app' });

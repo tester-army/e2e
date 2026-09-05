@@ -1,9 +1,14 @@
-/** App, command, and service resolution (spec 05-config.md). */
+/**
+ * Per-target app resolution (spec 05-config.md): what a backend declares
+ * about the app it drives, validated where an error can name the target.
+ */
 
 import path from 'node:path';
+import type { BackendAppDeclaration, BackendHandle } from '../backend/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { obj } from '../internal/objects.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
-import type { AppConfig, CommandConfig, E2EConfig, ServiceConfig } from '../types.ts';
+import type { CommandConfig, ServiceConfig } from '../types.ts';
 import { httpUrl, positiveInt } from './validate.ts';
 
 /**
@@ -18,123 +23,102 @@ export interface ResolvedCommand {
   readonly command: CommandConfig;
 }
 
-/** One `app.services` entry with its readiness contract already decided. */
+/** One declared service with its readiness contract already decided. */
 export interface ResolvedService extends ResolvedCommand {
   readonly readiness: Readiness;
   readonly teardown: ResolvedCommand | undefined;
 }
 
+/**
+ * The app one target drives, as the harness resolved the backend's `app`
+ * declaration. Navigation policy, cache and session identity, the report's
+ * target record, and the app processes all read from here; a target without a
+ * backend, or whose backend declares nothing, gets the empty resolution.
+ */
 export interface ResolvedApp {
-  /** False when no app URL was configured and `base` is a synthetic loopback placeholder. */
-  readonly configured: boolean;
-  readonly base: NormalizedBaseUrl;
-  readonly readyUrl: string;
+  /** Normalized base URL; undefined for a surface without addressable locations. */
+  readonly base: NormalizedBaseUrl | undefined;
   readonly allowedOrigins: readonly string[];
   readonly environment: 'test' | 'staging' | 'production';
-  readonly command: CommandConfig | undefined;
-  /** Dependency processes started in order before `command` and torn down in reverse. */
-  readonly services: readonly ResolvedService[];
-  /** Stable logical app identity; overrides the origin for cache/session keying. */
+  /**
+   * Stable identity keying cache and session entries: the declared identity,
+   * else the base URL's origin and path. Undefined when the backend declares
+   * neither, so entries key on the target and environment alone.
+   */
   readonly identity: string | undefined;
+  readonly command: CommandConfig | undefined;
+  /** Readiness probe for `command`; defined whenever `command` is. */
+  readonly readyUrl: string | undefined;
+  /** Dependency processes started in order before any app command and torn down in reverse. */
+  readonly services: readonly ResolvedService[];
 }
 
-const APP_KEYS = new Set([
-  'url',
-  'command',
-  'readyUrl',
-  'services',
-  'allowedOrigins',
-  'environment',
-  'identity',
-]);
+const ENVIRONMENTS = new Set(['test', 'staging', 'production']);
 
-/** App keys that make sense without an app URL; every other key needs one. */
-const URL_FREE_APP_KEYS = new Set(['url', 'command', 'services']);
+/**
+ * Resolves one target's app from its backend's `app` declaration. Every fact
+ * is optional: a URL normalizes like any base URL, origins must be serialized
+ * origins, a command needs something to poll, services need one readiness
+ * contract each, and the identity defaults to where the app is served when
+ * the backend gives none.
+ */
+export function resolveTargetApp(targetName: string, backend: BackendHandle | undefined): ResolvedApp {
+  const declared: BackendAppDeclaration = backend?.app ?? {};
+  const where = `target "${targetName}" backend ${backend?.name ?? 'none'}`;
+  const base = declared.url === undefined ? undefined : normalizeBaseUrl(declared.url);
 
-export function resolveApp(raw: E2EConfig, env: NodeJS.ProcessEnv): ResolvedApp {
-  if (raw.app !== undefined) {
-    for (const key of Object.keys(raw.app)) {
-      if (!APP_KEYS.has(key)) {
-        throw new ConfigurationError('INVALID_CONFIG', `unknown app config key "${key}"`);
-      }
-    }
-  }
-  const services = resolveServices(raw.app?.services);
-  const rawUrl = raw.app?.url ?? env['APP_URL'];
-  if (rawUrl === undefined || rawUrl === '') {
-    // Not every surface has an app URL to point at (a device, a desktop
-    // shell): a synthetic loopback base keeps navigation resolution and
-    // identity digests defined, and `app.open()` fails loud with
-    // APP_URL_REQUIRED the moment a test actually needs one. A configured
-    // app command without a URL is still a mistake worth failing early on.
-    const orphaned = Object.keys(raw.app ?? {}).filter((key) => !URL_FREE_APP_KEYS.has(key));
-    if (orphaned.length > 0) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `app.${orphaned[0]} requires app.url: set app.url in e2e.config.ts or the APP_URL environment variable`,
-      );
-    }
-    if (raw.app?.command === undefined) {
-      return {
-        configured: false,
-        base: normalizeBaseUrl('http://127.0.0.1:1'),
-        readyUrl: 'http://127.0.0.1:1/',
-        allowedOrigins: [],
-        environment: 'test',
-        command: undefined,
-        services,
-        identity: undefined,
-      };
-    }
+  const environment =
+    declared.environment ??
+    (base !== undefined && !isImplicitTestHost(new URL(base.href).hostname) ? 'production' : 'test');
+  if (!ENVIRONMENTS.has(environment)) {
     throw new ConfigurationError(
-      'APP_URL_REQUIRED',
-      'an app URL is required alongside app.command: set app.url in e2e.config.ts or the APP_URL environment variable',
+      'INVALID_CONFIG',
+      `${where} declares invalid app.environment "${String(environment)}"`,
     );
   }
-  const base = normalizeBaseUrl(rawUrl);
-  const baseHost = new URL(base.href).hostname;
 
-  // The environment is a label for the report and the cache/session identity
-  // digest, not a gate: a loopback, `.localhost`, or `.test` host is `test`,
-  // any other host is `production` unless the config says otherwise.
-  const environment = raw.app?.environment ?? (isImplicitTestHost(baseHost) ? 'test' : 'production');
-  if (!['test', 'staging', 'production'].includes(environment)) {
-    throw new ConfigurationError('INVALID_CONFIG', `invalid app.environment "${environment}"`);
+  const allowedOrigins = declared.allowedOrigins ?? (base === undefined ? [] : [base.origin]);
+  if (!Array.isArray(allowedOrigins)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} app.allowedOrigins must be an array`);
   }
-
-  const allowedOrigins = raw.app?.allowedOrigins ?? [base.origin];
   for (const origin of allowedOrigins) {
     let parsed: URL;
     try {
       parsed = new URL(origin);
     } catch {
-      throw new ConfigurationError('INVALID_CONFIG', `invalid allowed origin: ${origin}`);
+      throw new ConfigurationError('INVALID_CONFIG', `${where} declares an invalid allowed origin: ${origin}`);
     }
     if (parsed.origin !== origin) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `allowed origin must be a serialized origin, got ${origin} (expected ${parsed.origin})`,
+        `${where} allowed origin must be a serialized origin, got ${origin} (expected ${parsed.origin})`,
       );
     }
   }
 
-  const command = raw.app?.command;
-  if (command !== undefined) validateCommand(command, 'app.command');
-
-  const identity = raw.app?.identity;
+  const identity = declared.identity;
   if (identity !== undefined && (typeof identity !== 'string' || identity.trim() === '')) {
-    throw new ConfigurationError('INVALID_CONFIG', 'app.identity must be a non-empty string');
+    throw new ConfigurationError('INVALID_CONFIG', `${where} app.identity must be a non-empty string`);
+  }
+
+  const command = declared.command;
+  if (command !== undefined) validateCommand(command, `${where} app.command`);
+  const readyUrl = httpUrl(declared.readyUrl, `${where} app.readyUrl`) ?? base?.href;
+  if (command !== undefined && readyUrl === undefined) {
+    throw new ConfigurationError(
+      'APP_URL_REQUIRED',
+      `${where} declares app.command without a URL to poll: declare url or readyUrl beside it`,
+    );
   }
 
   return {
-    configured: true,
     base,
-    readyUrl: httpUrl(raw.app?.readyUrl, 'app.readyUrl') ?? base.href,
     allowedOrigins,
     environment,
+    identity: identity ?? (base === undefined ? undefined : `${base.origin}${base.basePath}`),
     command,
-    services,
-    identity,
+    readyUrl: command === undefined ? undefined : readyUrl,
+    services: resolveServices(declared.services, `${where} app.services`),
   };
 }
 
@@ -183,19 +167,24 @@ function serviceName(service: ServiceConfig, position: string, taken: Set<string
 }
 
 /**
- * Resolves `app.services`: every service is a command with exactly one
- * readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
+ * Resolves a declaration's `services`: every service is a command with exactly
+ * one readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
  * command of its own. The service fields that only steer the runner
  * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the command.
+ * `prefix` names the declaring target in errors, so a failing service is
+ * traceable to the backend that declared it.
  */
-export function resolveServices(raw: AppConfig['services']): readonly ResolvedService[] {
+export function resolveServices(
+  raw: BackendAppDeclaration['services'],
+  prefix = 'app.services',
+): readonly ResolvedService[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
-    throw new ConfigurationError('INVALID_CONFIG', 'app.services must be an array');
+    throw new ConfigurationError('INVALID_CONFIG', `${prefix} must be an array`);
   }
   const names = new Set<string>();
   return raw.map((service: ServiceConfig, index): ResolvedService => {
-    const position = `app.services[${index}]`;
+    const position = `${prefix}[${index}]`;
     validateCommand(service, position);
     const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown, ...command } = service;
     const readyUrl = httpUrl(rawReadyUrl, `${position}.readyUrl`);
@@ -229,21 +218,25 @@ function digestCommand<T extends CommandConfig>(command: T): Omit<T, 'env'> & Di
 }
 
 /**
- * The digest view of `app`: `app.command.env`, every service's env, and every
- * service teardown's env become names, so no environment value contributes to
- * the digest. Live values never appear under `app`, so nothing else changes.
+ * The declarative part of a backend's `app` manifest as it enters the config
+ * digest: hooks stripped, and every `command.env`, service env, and service
+ * teardown env value replaced by `{ envName: key }`, so no environment value
+ * contributes to the digest.
  */
-export function digestApp(app: AppConfig): Record<string, unknown> {
-  return {
-    ...app,
-    ...(app.command === undefined ? {} : { command: digestCommand(app.command) }),
-    ...(app.services === undefined
-      ? {}
-      : {
-          services: app.services.map(({ teardown, ...service }) => ({
-            ...digestCommand(service),
-            ...(teardown === undefined ? {} : { teardown: digestCommand(teardown) }),
-          })),
-        }),
-  };
+export function digestAppDeclaration(app: BackendAppDeclaration) {
+  const { url, allowedOrigins, environment, identity, command, readyUrl, services } = app;
+  return obj({
+    url,
+    allowedOrigins,
+    environment,
+    identity,
+    readyUrl,
+    command: command === undefined ? undefined : digestCommand(command),
+    services: services?.map(({ teardown, ...service }) =>
+      obj({
+        ...digestCommand(service),
+        teardown: teardown === undefined ? undefined : digestCommand(teardown),
+      }),
+    ),
+  });
 }

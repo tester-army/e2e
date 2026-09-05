@@ -12,16 +12,17 @@ import { playwright } from '@e2edev/playwright';
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-edge',
-  app: {
-    url: 'http://127.0.0.1:4311',
-    command: {
-      executable: 'node',
-      args: ['dogfood/server.mjs'],
-      env: { PORT: '4311' },
-    },
-  },
   tests: 'tests-dogfood-edge/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'http://127.0.0.1:4311',
+        command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4311' } },
+      }),
+    },
+  ],
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {

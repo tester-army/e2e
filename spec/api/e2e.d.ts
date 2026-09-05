@@ -712,7 +712,7 @@ export interface CommandConfig {
 /**
  * One dependency process of the app under test (a database container, a
  * cache, an auth emulator, a migration step). Services start sequentially in
- * declaration order before `app.command`, and each must be ready before the
+ * declaration order before the app command, and each must be ready before the
  * next starts. Exactly one of `readyUrl` or `waitForExit` declares how a
  * service becomes ready; a service with neither has no readiness contract and
  * is rejected as `INVALID_CONFIG`.
@@ -737,33 +737,64 @@ export interface ServiceConfig extends CommandConfig {
   teardown?: CommandConfig;
 }
 
-export interface AppConfig {
-  url?: string;
-  command?: CommandConfig;
-  readyUrl?: string;
+/**
+ * What a backend declares about the app it drives (RFC0002 step 7b). The
+ * runner resolves it once per target and owns everything built on it:
+ * navigation and origin policy, cache and session identity, the report's
+ * target record, and the app process it starts before the run. A config
+ * carries no app key of its own; the browser backend takes these as options
+ * (`playwright({ url, command })`), a device backend derives them from the
+ * app it pins.
+ */
+export interface BackendAppDeclaration {
   /**
-   * Dependency processes started in order before `app.command` and torn down
-   * in reverse after it. Allowed without `app.command`: the app may already be
-   * running, or be one of the services itself.
+   * Base URL of an addressable app: `app.open()` opens it and relative
+   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
+   * fragment; a missing scheme becomes `https://`, or `http://` for a
+   * loopback host. Plain HTTP is accepted for loopback hosts only.
    */
-  services?: readonly ServiceConfig[];
-  allowedOrigins?: readonly string[];
-  environment?: 'test' | 'staging' | 'production';
+  readonly url?: string;
   /**
-   * Stable logical identity of the app under test. By default cache and
-   * session identity derive from the base URL's origin, so an ephemeral
-   * per-deploy origin (a PR preview) cold-starts every entry. Setting an
-   * explicit identity keys them by what the app *is* instead of where it
-   * happens to be served this run. Never set one identity across genuinely
-   * different apps or environments — recorded traces would replay across them.
+   * Origins navigation and secret fills admit; each entry a serialized
+   * origin. Defaults to the URL's origin, or to none without a URL.
    */
-  identity?: string;
+  readonly allowedOrigins?: readonly string[];
+  /**
+   * Labels the target in the report and joins the cache and session identity
+   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
+   * and `.test` hosts and for a surface without a URL, `production` otherwise.
+   */
+  readonly environment?: 'test' | 'staging' | 'production';
+  /**
+   * Stable logical identity of the app under test, keying trace cache and
+   * session entries. Defaults to the URL's origin and base path, so an
+   * ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
+   * explicit identity keys them by what the app *is* instead of where it is
+   * served this run. Never share one identity across genuinely different
+   * apps: recorded traces would replay across them.
+   */
+  readonly identity?: string;
+  /**
+   * Process the runner starts before the first test and stops on every exit
+   * path. Structured, never shell-interpreted. Targets declaring the same
+   * command share one process.
+   */
+  readonly command?: CommandConfig;
+  /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
+  readonly readyUrl?: string;
+  /**
+   * Dependency processes started in declaration order before any app command
+   * and torn down in reverse after it. Valid without `command`: the app may
+   * already be running, or be one of the services itself. Services declared
+   * identically by several targets start once.
+   */
+  readonly services?: readonly ServiceConfig[];
 }
 
 /**
  * A web target. The browser surface is its `backend` (`playwright()` from
- * `@e2edev/playwright`); browser choice and viewport are options of that
- * backend, never target keys.
+ * `@e2edev/playwright`); the app URL, browser choice, and viewport are
+ * options of that backend, never target keys.
  */
 export interface WebTarget {
   name: string;
@@ -980,7 +1011,7 @@ export interface AgentConfig {
 export interface E2EConfig {
   specVersion?: '0.1';
   projectId?: string;
-  app?: AppConfig;
+  /** Every target names the backend that drives it; the backend declares the app under test. */
   targets?: readonly Target[];
   tests?: string | readonly string[];
   timeout?: number;

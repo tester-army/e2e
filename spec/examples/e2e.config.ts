@@ -4,29 +4,35 @@ import { playwright } from '@e2edev/playwright';
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.testerarmy.orbit',
-  app: {
-    url: process.env.APP_URL ?? 'http://localhost:3000',
-    services: [
-      {
-        name: 'postgres',
-        executable: 'docker',
-        args: ['compose', 'up', '--wait', 'postgres'],
-        waitForExit: true,
-        teardown: { executable: 'docker', args: ['compose', 'down'] },
-      },
-      { name: 'migrate', executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
-    ],
-    command: {
-      executable: 'pnpm',
-      args: ['dev'],
-    },
-    ...(process.env.APP_ENVIRONMENT
-      ? { environment: process.env.APP_ENVIRONMENT as 'test' | 'staging' | 'production' }
-      : {}),
-  },
 
+  // The backend declares the app it drives: where it is served, the services
+  // and command that start it, and the environment label.
   targets: [
-    { name: 'web', platform: 'web', backend: playwright({ browser: 'chromium' }) },
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        browser: 'chromium',
+        url: process.env.APP_URL ?? 'http://localhost:3000',
+        services: [
+          {
+            name: 'postgres',
+            executable: 'docker',
+            args: ['compose', 'up', '--wait', 'postgres'],
+            waitForExit: true,
+            teardown: { executable: 'docker', args: ['compose', 'down'] },
+          },
+          { name: 'migrate', executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+        ],
+        command: {
+          executable: 'pnpm',
+          args: ['dev'],
+        },
+        ...(process.env.APP_ENVIRONMENT
+          ? { environment: process.env.APP_ENVIRONMENT as 'test' | 'staging' | 'production' }
+          : {}),
+      }),
+    },
   ],
 
   timeout: 120_000,

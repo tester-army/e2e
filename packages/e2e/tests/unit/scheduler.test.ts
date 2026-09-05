@@ -29,12 +29,22 @@ const defaultOptions: ResolvedTestOptions = {
   serial: false,
 };
 
+const EMPTY_APP: ResolvedTarget['app'] = {
+  base: undefined,
+  allowedOrigins: [],
+  environment: 'test',
+  identity: undefined,
+  command: undefined,
+  readyUrl: undefined,
+  services: [],
+};
 function makeTarget(name: string, index: number): ResolvedTarget {
   return {
     name,
     index,
     platform: 'web',
     backend: undefined,
+    app: EMPTY_APP,
   };
 }
 

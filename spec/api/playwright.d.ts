@@ -5,9 +5,14 @@
  * part of the SDK contract; only the factory shape a target consumes is.
  */
 
-import type { BackendHandle } from '@e2edev/e2e';
+import type { BackendAppDeclaration, BackendHandle } from '@e2edev/e2e';
 
-export interface PlaywrightOptions {
+/**
+ * The browser backend's options: the app it drives (`url`, `command`,
+ * `readyUrl`, `allowedOrigins`, `environment`, `identity` - the backend
+ * contract's app declaration) plus the browser itself.
+ */
+export interface PlaywrightOptions extends BackendAppDeclaration {
   browser?: 'chromium' | 'firefox' | 'webkit';
   viewport?: { width: number; height: number };
 }

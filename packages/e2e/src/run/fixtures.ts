@@ -11,6 +11,7 @@ import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { SecretLedger } from '../internal/redact.ts';
+import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
 import { recordedSurface, StepAttachments } from './fixture-legacy.ts';
@@ -134,6 +135,7 @@ export function createFixtures(
           platform: environment.target.platform,
           verbs: environment.session.verbs,
         },
+        app: environment.target.app,
         attempt: environment.attempt,
         priorSteps: environment.priorSteps,
         agentContext: joinAgentContext(
@@ -241,15 +243,16 @@ function fixtureContext(
   recorder: FixtureRecorder,
 ): BackendFixtureContext {
   const { config, steps } = environment;
+  const { app } = environment.target;
   return {
     targetName: environment.target.name,
     fixture: (name, surface, operations) => recorder.fixture(name, surface, operations),
     app: {
-      ...(config.app.configured ? { baseUrl: config.app.base.href } : {}),
-      allowedOrigins: config.app.allowedOrigins,
+      ...obj({ baseUrl: app.base?.href }),
+      allowedOrigins: app.allowedOrigins,
       resolveUrl: (url) => {
-        requireAppUrl(config);
-        return resolveNavigationUrl(url, config.app.base, config.app.allowedOrigins).url;
+        requireAppUrl(environment.target);
+        return resolveNavigationUrl(url, app.base, app.allowedOrigins).url;
       },
     },
     timeouts: {
@@ -333,27 +336,28 @@ function initialSecretLedger(environment: AttemptEnvironment): SecretLedger {
   );
 }
 
-/** Navigation needs a real app URL; the placeholder base never leaves the harness. */
-function requireAppUrl(config: ResolvedConfig): void {
-  if (config.app.configured) return;
+/** Navigation needs an app URL, and only the target's backend can declare one. */
+function requireAppUrl(target: ResolvedTarget): asserts target is ResolvedTarget & {
+  app: { base: NonNullable<ResolvedTarget['app']['base']> };
+} {
+  if (target.app.base !== undefined) return;
   throw new ConfigurationError(
     'APP_URL_REQUIRED',
-    'navigation needs an app URL: set app.url in e2e.config.ts or the APP_URL environment variable',
+    `navigation needs an app URL: the backend of target "${target.name}" declares none (${target.backend?.name ?? 'no backend'})`,
   );
 }
 
 function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App {
-  const { config, steps } = environment;
-  const allowed = config.app.allowedOrigins;
+  const { config, steps, target } = environment;
 
   /** One recorded navigation: policy-resolved against the base URL, on the test budget. */
-  const navigate = (api: string, label: string, target: string | undefined): Promise<void> =>
+  const navigate = (api: string, label: string, url: string | undefined): Promise<void> =>
     steps.run('app', api, label, async () => {
-      requireAppUrl(config);
+      requireAppUrl(target);
       const resolved =
-        target === undefined
-          ? config.app.base.href
-          : resolveNavigationUrl(target, config.app.base, allowed).url;
+        url === undefined
+          ? target.app.base.href
+          : resolveNavigationUrl(url, target.app.base, target.app.allowedOrigins).url;
       await engine.session.app.open(resolved, engine.operation(config.timeout));
     });
 

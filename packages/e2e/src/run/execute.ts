@@ -17,6 +17,7 @@ import type { ExecutorAttempt } from '../agent/executor.ts';
 import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
+import { obj } from '../internal/objects.ts';
 import { Deadline, withAbort, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import type { CollectedFile } from '../collect/collect.ts';
@@ -125,21 +126,13 @@ export class TargetExecutor implements SerialHost {
       backendVersion: options.target.backend?.version ?? 'unversioned',
       spiVersion: options.target.backend?.spiVersion ?? BACKEND_SPI_VERSION,
       platform: options.target.platform,
-      // An explicit `app.identity` replaces the origin, so an ephemeral
-      // per-deploy origin (a PR preview) shares cache and session identity
-      // with the app it is a deployment of. The environment always joins the
-      // digest: an identity must never bleed entries across environments.
+      // The backend's declared identity (else the URL it declared) keys cache
+      // and session entries, so an ephemeral per-deploy origin (a PR preview)
+      // can share them with the app it is a deployment of. The environment
+      // always joins the digest: an identity must never bleed entries across
+      // environments.
       appIdentity: canonicalDigest(
-        options.config.app.identity === undefined
-          ? {
-              origin: options.config.app.base.origin,
-              basePath: options.config.app.base.basePath,
-              environment: options.config.app.environment,
-            }
-          : {
-              identity: options.config.app.identity,
-              environment: options.config.app.environment,
-            },
+        obj({ identity: options.target.app.identity, environment: options.target.app.environment }),
       ),
     };
   }
@@ -187,10 +180,10 @@ export class TargetExecutor implements SerialHost {
             runId: this.options.runId,
             targetName: this.target.name,
             projectRoot: this.config.projectRoot,
-            app: {
-              ...(this.config.app.configured ? { baseUrl: this.config.app.base.href } : {}),
-              allowedOrigins: this.config.app.allowedOrigins,
-            },
+            app: obj({
+              baseUrl: this.target.app.base?.href,
+              allowedOrigins: this.target.app.allowedOrigins,
+            }),
             testIdAttribute: this.config.testIdAttribute,
             headed: this.options.headed,
             signal,

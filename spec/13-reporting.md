@@ -65,10 +65,14 @@ counts, avoiding an unbounded report while preserving the typed run error.
 `configDigest` is SHA-256/JCS of resolved config after replacing credential
 material and model API keys with `{ secretName }`, replacing backend handles with
 their manifests, normalizing paths relative to project root, and omitting
-ambient environment values not represented in config. Every `app.command.env`
-value, every `app.services[].env` value, and every `app.services[].teardown.env`
-value is replaced by `{ envName: key }`; no environment value contributes to
-the digest. Base URLs cannot contain queries, userinfo, or fragments.
+ambient environment values not represented in config. A backend manifest
+digests as its name, version, contract version, capability set, and app
+declaration; every `command.env`, `services[].env`, and
+`services[].teardown.env` value in that declaration is replaced by
+`{ envName: key }`, so no environment value contributes to the digest. Base
+URLs cannot contain queries, userinfo, or fragments. A target's `baseOrigin`
+is the origin of its backend's declared URL and is absent for a surface
+without one.
 
 ### Ordering
 

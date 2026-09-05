@@ -68,6 +68,14 @@ export interface AgentDeviceOptions {
    * package becomes the app opened fresh at the start of every attempt.
    */
   readonly appPath?: string;
+  /**
+   * Stable identity keying trace cache and session entries; defaults to `app`,
+   * else `appPath`. Declare one when the pinned app differs per run (a build
+   * path with a version in it) so entries survive the rename.
+   */
+  readonly identity?: string;
+  /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
+  readonly environment?: 'test' | 'staging' | 'production';
   /** Simulator or emulator to use, by name or id; agent-device picks a booted one otherwise. */
   readonly device?: string;
   /**

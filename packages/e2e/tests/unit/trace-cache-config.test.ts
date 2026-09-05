@@ -8,7 +8,7 @@ import { resolveConfig } from '../../src/config/resolve.ts';
 import type { ActionTrace, TraceCacheStore } from '../../src/types.ts';
 
 const ROOT = path.resolve('/tmp/e2e-cache-config-tests');
-const BASE_ENV = { APP_URL: 'http://localhost:4272' } as NodeJS.ProcessEnv;
+const BASE_ENV = {} as NodeJS.ProcessEnv;
 
 function resolve(
   raw: Parameters<typeof resolveConfig>[0],
@@ -18,7 +18,7 @@ function resolve(
   return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: ROOT, env, cli });
 }
 
-const APP = { app: { url: 'http://localhost:4272' } };
+const APP = {};
 
 /**
  * In-memory store standing in for a remote (Redis-shaped) implementation:

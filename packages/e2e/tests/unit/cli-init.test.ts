@@ -87,7 +87,7 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts').includes('@e2edev/playwright')).toBe(backend === 'playwright');
     expect(read('e2e.config.ts').includes('@e2edev/agent-device')).toBe(device);
     expect(read('tests/example.e2e.ts').includes('@e2edev/agent-device')).toBe(device);
-    expect(read('e2e.config.ts').includes('APP_URL')).toBe(!device);
+    expect(read('e2e.config.ts').includes('APP_URL')).toBe(backend === 'playwright');
     expect(output()).toContain(`next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npx --no-install e2e run`);
     expect(spawnSync).not.toHaveBeenCalled();
   });

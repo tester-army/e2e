@@ -44,16 +44,17 @@ const resetExpenses = defineTool(
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood',
-  app: {
-    url: APP_URL,
-    command: {
-      executable: 'node',
-      args: ['dogfood/server.mjs'],
-      env: { PORT: '4310' },
-    },
-  },
   tests: 'tests-dogfood/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: APP_URL,
+        command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4310' } },
+      }),
+    },
+  ],
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: createAgent({

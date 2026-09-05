@@ -27,7 +27,7 @@ the remaining test timeout.
 
 | Method | Timeout | Behavior | Throws |
 | --- | --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or path relative to it. | `APP_URL_REQUIRED` without `app.url`, `POLICY_DENIED` outside `app.allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
+| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or path relative to it. | `APP_URL_REQUIRED` when the target's backend declares no `url`, `POLICY_DENIED` outside its `allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
 | `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. | `ACTION_FAILED`, `BACKEND_FAILURE`, `UNSUPPORTED_CAPABILITY` |
 | `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `BACKEND_FAILURE`, `UNSUPPORTED_CAPABILITY` |
 | `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED` |
@@ -110,7 +110,8 @@ export interface Web {
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
 Every `web` call is a recorded `web.<method>` step. A relative URL or a URL
-match needs `app.url`; without it the call fails with `APP_URL_REQUIRED`.
+match needs the backend's declared `url` (`playwright({ url })`); without it
+the call fails with `APP_URL_REQUIRED`.
 
 ### Navigation
 

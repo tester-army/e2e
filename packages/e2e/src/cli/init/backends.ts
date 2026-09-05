@@ -24,8 +24,7 @@ export function getBackendPresets() {
       hint: 'HTTP tests or your own backend',
       dependencies: {},
       imports: [],
-      config: `  app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-  // Add a backend here when your tests need to drive an app.
+      config: `  // Add a backend here when your tests need to drive an app.
   targets: [{ name: 'default', platform: 'custom' }],`,
       example: `import { test, expect } from '@e2edev/e2e';
 
@@ -42,8 +41,8 @@ test('app responds', async () => {
       hint: 'browser testing',
       dependencies: { '@e2edev/playwright': 'beta' },
       imports: ["import { playwright } from '@e2edev/playwright';"],
-      config: `  app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],`,
+      config: `  // The backend declares the app it drives; APP_URL overrides the default at run time.
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],`,
       example: `import { test } from '@e2edev/playwright';
 import { expect } from '@e2edev/e2e';
 

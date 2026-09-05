@@ -7,6 +7,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
+  BackendAppDeclaration,
   BackendAttemptContext,
   BackendHandle,
   BackendInitInfo,
@@ -71,8 +72,12 @@ export interface FakeBackendBehavior {
   onRestore?(state: BackendState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
   fixtures?: boolean;
+  /** What the backend declares about its app; defaults to the URL its `url()` reports. */
+  app?: BackendAppDeclaration;
 }
 
+/** The app URL the fake serves and declares by default. */
+export const FAKE_APP_URL = 'http://127.0.0.1:4599';
 export interface FakeBackendHandle {
   readonly backend: BackendHandle;
   /** Ordered event names, e.g. 'init', 'startAttempt:0', 'endAttempt:0', 'dispose'. */
@@ -173,6 +178,7 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
         }
       : {}),
     app: {
+      ...(behavior.app ?? { url: FAKE_APP_URL }),
       async navigate(url, operation) {
         record(`app.navigate(${url})`, operation);
         await behavior.onNavigate?.(url, current);
@@ -189,7 +195,7 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
     },
     async url(operation) {
       record('url', operation);
-      return 'http://127.0.0.1:4599/';
+      return `${FAKE_APP_URL}/`;
     },
     ...(behavior.state === true
       ? {

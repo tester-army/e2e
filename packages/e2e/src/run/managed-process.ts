@@ -1,4 +1,4 @@
-/** Spawned-process management for `app.command`, `app.services`, and their teardowns (spec 05-config.md). */
+/** Spawned-process management for the commands and services backends declare, and their teardowns (spec 05-config.md). */
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
@@ -27,7 +27,7 @@ function describeExit(exit: ExitStatus): string {
 /**
  * One command the runner owns: spawned as a process group, waited on until
  * its readiness contract holds, and terminated signal-then-force. `label`
- * names it in every error (`app.command`, `service "postgres"`).
+ * names it in every error (`target "web" command`, `service "postgres"`).
  */
 export class ManagedProcess {
   private child: ChildProcess | null = null;
@@ -159,9 +159,9 @@ export class ManagedProcess {
 }
 
 /**
- * The dependency processes of `app.services`: started sequentially in
- * declaration order, each ready before the next starts, and torn down in
- * reverse.
+ * The dependency processes the backends declared as `services`: started
+ * sequentially in declaration order, each ready before the next starts, and
+ * torn down in reverse.
  */
 export class ServiceStack {
   private readonly started: {

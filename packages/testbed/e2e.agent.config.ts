@@ -29,16 +29,17 @@ if (process.env.E2E_DEVTOOLS !== undefined && process.env.E2E_DEVTOOLS !== '') {
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-agent',
-  app: {
-    url: 'http://127.0.0.1:4272',
-    command: {
-      executable: 'node',
-      args: ['app/server.mjs'],
-      env: { PORT: '4272' },
-    },
-  },
   tests: 'tests-agent/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'http://127.0.0.1:4272',
+        command: { executable: 'node', args: ['app/server.mjs'], env: { PORT: '4272' } },
+      }),
+    },
+  ],
   // Every agent step includes model round trips, so the deterministic
   // 30 s action budget is too tight for a loaded provider. Latency is not a
   // product defect: give it room rather than reading timeouts as failures.

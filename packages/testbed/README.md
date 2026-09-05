@@ -8,7 +8,7 @@ tests.
 
 - `app/server.mjs` — dependency-free playground app (todos, login/session,
   forms, wizard, network, dialogs, iframes, downloads). The runner starts and
-  stops it via `app.command`.
+  stops it via the playwright backend's `command` option.
 - `e2e.config.ts` — local config used by `pnpm test`.
 - `tests/` — the local suite: queries, actions, polling assertions, sessions
   (`test.setup` + `session:`), serial groups, routes, dialogs, frames,

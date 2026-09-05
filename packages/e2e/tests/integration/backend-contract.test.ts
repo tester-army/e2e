@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   backendFailure,
   createFakeBackend,
+  FAKE_APP_URL,
   type FakeBackendHandle,
 } from '../helpers/fake-backend.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
@@ -17,12 +18,12 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
-const APP_URL = 'http://127.0.0.1:4599';
+const APP_URL = FAKE_APP_URL;
 
+/** A config over the fake backend; the app URL is the backend's own declaration. */
 function fakeConfig(fake: FakeBackendHandle, extra: Partial<E2EConfig> = {}): E2EConfig {
   return {
     specVersion: '0.1',
-    app: { url: APP_URL },
     targets: [{ name: 'fake', platform: 'web', backend: fake.backend }],
     artifacts: [],
     ...extra,

@@ -39,7 +39,7 @@ Everything the CLI flags map to (`files`, `tags`, `targetIds`, `headed`,
 | Field | What it does |
 | --- | --- |
 | `rawConfig` | Preloaded config object, bypassing file discovery. It may hold live values (a `StepExecutor`, a model instance, a `TraceCacheStore`, an `ArtifactStore`), so it cannot cross a process boundary: the run executes in-process on one worker. A file-backed config keeps full parallelism. |
-| `env` | The environment the run resolves against, instead of `process.env`. This controls CI detection (`CI`), model credentials, and `APP_URL`. |
+| `env` | The environment the run resolves against, instead of `process.env`. This controls CI detection (`CI`), model credentials, and `E2E_USER_*` overrides. |
 | `quiet` | Suppresses the terminal reporter; pair it with `onEvent`. |
 | `interruptSignal` | Cancellation, what the CLI's first Ctrl-C does: the running test ends at once, its teardown runs, every worker disposes its backend, and the run finishes with status `interrupted` and exit code 130. |
 | `forceSignal` | Forced cancellation, the CLI's second Ctrl-C: every worker disposes its backend right away instead of finishing its test and is killed after the cleanup budget. Counts as an interrupt on its own. |
@@ -102,9 +102,10 @@ Two config seams exist for hosts that own a shared trace cache
 - `cache.store` accepts any `TraceCacheStore` (a Redis adapter, an API). A
   host-supplied store is exempt from the CI read-only clamp: it is not a
   committed file cache, and it states its own trust through `writable`.
-- `app.identity` keys cache and session identity by what the app *is* rather
-  than the origin it happens to be served from, so ephemeral per-deploy
-  origins (PR previews) share their recorded traces.
+- The backend's `identity` declaration (`playwright({ url, identity })`) keys
+  cache and session identity by what the app *is* rather than the origin it
+  happens to be served from, so ephemeral per-deploy origins (PR previews)
+  share their recorded traces.
 - `artifacts.store` accepts any `ArtifactStore`
   ([defineConfig → artifacts](/reference/config#artifacts)): every screenshot
   and trace is handed to it the moment it is complete, with its bytes, digest,

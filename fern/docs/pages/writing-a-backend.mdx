@@ -106,6 +106,7 @@ never silently.
 | `swipe(direction, momentum, context)` | - (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
 | `artifacts.{screenshot,startTrace?,stopTrace?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']` |
+| `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?}` | - | declares the app under test: navigation policy, cache and session identity, the report's target record, and the app process the runner starts ([reference](/reference/config#the-app-under-test)) |
 | `app.{navigate?,back?,restart?,clearState?}` | - | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `url(context)` | - | trace start anchors, the secret-fill origin check |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
@@ -197,7 +198,7 @@ export const test = base.extend<{ device: Device }>();
 ```
 
 The factory's `context` carries what a fixture legitimately needs from the
-harness and nothing else: the app's base URL (absent when none is configured)
+harness and nothing else: the app's base URL (absent when the backend declares none)
 and origin policy (`app.resolveUrl` enforces it), the configured timeouts, `operation()` budgets, `attachArtifact`
 and `attachViewport` for the current step, `locator(expression)` and
 `screen(scope)` to mint core locators from a platform selector or a nested

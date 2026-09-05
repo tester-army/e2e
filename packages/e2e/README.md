@@ -23,24 +23,30 @@ import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
 });
 ```
 
-Or let the runner start the app itself:
+The backend declares the app it drives: the URL is an option of `playwright()`,
+not a config key, and a device backend names a bundle id instead. Or let the
+runner start the app itself:
 
 ```ts title="e2e.config.ts"
 export default defineConfig({
-  app: {
-    url: 'http://127.0.0.1:3000',
-    command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
-  },
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'http://127.0.0.1:3000',
+        command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
+      }),
+    },
+  ],
 });
 ```
 
-The runner spawns the command, waits until `readyUrl` (defaults to `app.url`)
+The runner spawns the command, waits until `readyUrl` (defaults to `url`)
 answers with a 200-499 status, and terminates it when the run finishes, fails,
 or is interrupted with Ctrl-C, so no wrapper script that boots and kills the dev
 server is needed. On macOS and Linux the command runs as its own process group
@@ -51,7 +57,7 @@ temp-directory variables plus `command.env`, so anything else the app needs,
 secrets included, must be passed explicitly through `command.env`. If the app
 never becomes ready the run fails with `APP_UNREACHABLE` and `.e2e/report.json`
 is still written. Every option is listed under
-[app.command](https://e2e.docs.buildwithfern.com/reference/config#appcommand).
+[the app under test](https://e2e.docs.buildwithfern.com/reference/config#the-app-under-test).
 
 ```ts
 import { test } from '@e2edev/playwright';

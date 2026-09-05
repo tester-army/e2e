@@ -248,7 +248,7 @@ describe('backend targets in config', () => {
     const target = config.targets[0];
     expect(target?.backend?.name).toBe('toy');
     expect(target?.platform).toBe('ios');
-    expect(config.app.allowedOrigins).toEqual([]);
+    expect(target?.app).toMatchObject({ base: undefined, allowedOrigins: [], identity: undefined });
   });
 
   it('rejects a non-handle backend value', () => {

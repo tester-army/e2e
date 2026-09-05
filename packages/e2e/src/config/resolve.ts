@@ -25,7 +25,7 @@ import {
   type ResolvedAgentConfig,
   type ResolvedLimits,
 } from './agent.ts';
-import { digestApp, resolveApp, type ResolvedApp } from './app.ts';
+import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
@@ -36,6 +36,8 @@ export interface ResolvedTarget {
   readonly platform: Platform;
   /** Validated backend; undefined for an agent-tools-only target. */
   readonly backend: BackendHandle | undefined;
+  /** The app under test, resolved from the backend's declaration. */
+  readonly app: ResolvedApp;
 }
 
 export interface ResolvedCredential {
@@ -52,7 +54,6 @@ export interface ResolvedConfig {
   readonly projectRoot: string;
   readonly configPath: string | undefined;
   readonly ci: boolean;
-  readonly app: ResolvedApp;
   readonly targets: readonly ResolvedTarget[];
   readonly tests: readonly string[];
   readonly timeout: number;
@@ -109,7 +110,6 @@ const TARGET_KEYS = new Set(['name', 'platform', 'backend']);
 const TOP_LEVEL_KEYS = new Set([
   'specVersion',
   'projectId',
-  'app',
   'targets',
   'tests',
   'timeout',
@@ -169,7 +169,6 @@ export function resolveConfig(
   }
 
   const targets = resolveTargets(raw);
-  const app = resolveApp(raw, env);
   const tests = normalizeTests(raw.tests);
 
   const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
@@ -222,7 +221,6 @@ export function resolveConfig(
     projectRoot: options.projectRoot,
     configPath: options.configPath,
     ci,
-    app,
     targets,
     tests,
     timeout,
@@ -394,6 +392,7 @@ function isTraceCacheStore(value: unknown): value is TraceCacheStore {
   );
 }
 
+
 function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
   if (raw.targets === undefined) {
     throw new ConfigurationError(
@@ -442,6 +441,7 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       index,
       platform: target.platform,
       backend: target.backend,
+      app: resolveTargetApp(target.name, target.backend),
     };
   });
 }
@@ -521,11 +521,9 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // which is exactly what survives the function-stripping JSON clone below.
   // Every model slot is reduced to its identity: a live instance carries
   // provider settings (and possibly credentials) that must never be digested.
-  // `app` is digested with every command env reduced to names.
   const rawAgent = raw.agent;
   const forClone: Record<string, unknown> = {
     ...raw,
-    ...(raw.app === undefined ? {} : { app: digestApp(raw.app) }),
     ...(rawAgent === undefined || isStepExecutor(rawAgent)
       ? {}
       : {
@@ -565,7 +563,8 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   if (raw.targets !== undefined) {
     sanitized['targets'] = raw.targets.map((target) => {
       // A backend handle holds live functions; its digest identity is the
-      // declaration - name, version, contract version, and capability set.
+      // declaration - name, version, contract version, capability set, and
+      // what it declares about the app under test.
       if (isBackendHandle(target.backend)) {
         const { backend, ...rest } = target;
         return {
@@ -575,6 +574,7 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
             ...(backend.version === undefined ? {} : { version: backend.version }),
             spiVersion: backend.spiVersion,
             capabilities: [...backend.capabilities].toSorted(),
+            app: digestAppDeclaration(backend.app ?? {}),
           },
         };
       }

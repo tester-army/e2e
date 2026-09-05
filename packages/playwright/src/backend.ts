@@ -7,7 +7,13 @@
  */
 
 import type { BrowserContext, Page } from 'playwright';
-import { ConfigurationError, defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
+import {
+  ConfigurationError,
+  defineBackend,
+  obj,
+  type BackendAppDeclaration,
+  type BackendHandle,
+} from '@e2edev/e2e/backend';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
@@ -57,6 +63,7 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
     app: {
+      ...declaredApp(options),
       navigate: (url, operation) => surface.navigate(url, operation),
       back: (operation) => surface.back(operation),
       restart: (operation) => surface.restart(operation),
@@ -78,6 +85,12 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
   });
   surfaces.set(handle, surface);
   return handle;
+}
+
+/** The app-declaration half of the options, so browser knobs never reach the manifest. */
+function declaredApp(options: PlaywrightOptions): BackendAppDeclaration {
+  const { url, allowedOrigins, environment, identity, command, readyUrl, services } = options;
+  return obj({ url, allowedOrigins, environment, identity, command, readyUrl, services });
 }
 
 /** This package's published version, read through require resolution. */

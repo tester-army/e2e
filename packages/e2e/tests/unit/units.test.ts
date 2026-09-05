@@ -10,11 +10,21 @@ import { buildWorkPlans, nonRunResult, unstartedResult } from '../../src/run/uni
 import { decodeResult, encodeResult } from '../../src/run/worker/protocol.ts';
 import type { ResultRecord } from '../../src/run/records.ts';
 
+const EMPTY_APP: ResolvedTarget['app'] = {
+  base: undefined,
+  allowedOrigins: [],
+  environment: 'test',
+  identity: undefined,
+  command: undefined,
+  readyUrl: undefined,
+  services: [],
+};
 const target: ResolvedTarget = {
   name: 'web',
   index: 0,
   platform: 'web',
   backend: undefined,
+  app: EMPTY_APP,
 };
 
 function makeTest(

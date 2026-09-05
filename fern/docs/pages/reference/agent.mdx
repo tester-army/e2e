@@ -83,8 +83,9 @@ Values come from your code through `params`, never from the model. A `Secret`
 in `params` is projected before the model sees anything: the model receives the
 secret's name and purpose, and the harness fills the value host-side, subject
 to the same authorization as `locator.fill`: the credential must be
-registered, the current origin must be allowed by both `app.allowedOrigins`
-and the credential's own `allowedOrigins`, the field must be an enabled secure
+registered, the current origin must be allowed by both the target's allowed
+origins (the backend's `allowedOrigins` declaration) and the credential's own
+`allowedOrigins`, the field must be an enabled secure
 input whose purpose equals the secret's purpose.
 
 ```ts

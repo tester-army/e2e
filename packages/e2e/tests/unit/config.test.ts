@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
-import { defineBackend } from '../../src/backend/index.ts';
+import { defineBackend, type BackendAppDeclaration } from '../../src/backend/index.ts';
 
 const ROOT = '/tmp/e2e-config-project';
-const BASE_ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
+const BASE_ENV = {} as NodeJS.ProcessEnv;
 const WEB = { name: 'web', platform: 'web' } as const;
 const TARGETS = [WEB];
 
@@ -11,8 +11,14 @@ function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEn
   return resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env });
 }
 
-function fakeBackend() {
-  return defineBackend({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+/** A minimal observing backend declaring the given app facts, the way playwright() or agentDevice() would. */
+function fakeBackend(app: BackendAppDeclaration = {}) {
+  return defineBackend({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app });
+}
+
+/** Resolves one web target whose backend declares `app`, and returns the resolved app. */
+function resolveApp(app: BackendAppDeclaration = {}) {
+  return resolve({ targets: [{ ...WEB, backend: fakeBackend(app) }] }).targets[0]!.app;
 }
 
 describe('CI mode', () => {
@@ -71,26 +77,39 @@ describe('resolveConfig', () => {
     expect(config.targets[0]).toMatchObject({ name: 'web', platform: 'web', backend: undefined });
   });
 
-  it('tolerates a missing app URL until app.open() needs one', () => {
-    const config = resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv });
-    expect(config.app.configured).toBe(false);
-    expect(() =>
-      resolveConfig(
-        { targets: TARGETS, app: { command: { executable: 'node' } } },
-        { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
-      ),
-    ).toThrow(/app URL is required/);
+  it('resolves the empty app for a target without a backend, or whose backend declares none', () => {
+    expect(resolve({}).targets[0]!.app).toEqual({
+      base: undefined,
+      allowedOrigins: [],
+      environment: 'test',
+      identity: undefined,
+      command: undefined,
+      readyUrl: undefined,
+      services: [],
+    });
+    expect(resolveApp().base).toBeUndefined();
   });
 
-  it('prefers app.url over APP_URL', () => {
-    const config = resolve({ app: { url: 'http://127.0.0.1:4000' } });
-    expect(config.app.base.origin).toBe('http://127.0.0.1:4000');
-  });
-
-  it('rejects unknown top-level and app keys', () => {
+  it('resolves the URL a backend declares and rejects the retired top-level app key', () => {
+    const app = resolveApp({ url: 'http://127.0.0.1:4000' });
+    expect(app.base?.origin).toBe('http://127.0.0.1:4000');
+    expect(app.base?.href).toBe('http://127.0.0.1:4000/');
+    expect(() => resolve({ app: { url: 'http://127.0.0.1:4000' } } as never)).toThrow(/unknown config key "app"/);
     expect(() => resolve({ unknown: true } as never)).toThrow(/unknown config key/);
-    expect(() => resolve({ app: { url: 'http://localhost:3000', nope: 1 } } as never)).toThrow(
-      /unknown app config key/,
+  });
+
+  it('accepts a command only beside a URL to poll, and defaults readyUrl to it', () => {
+    expect(() => fakeBackend({ command: { executable: 'node' } })).not.toThrow();
+    expect(() => resolveApp({ command: { executable: 'node' } })).toThrow(/without a URL to poll/);
+    expect(resolveApp({ url: 'http://localhost:3000', command: { executable: 'node' } })).toMatchObject({
+      command: { executable: 'node' },
+      readyUrl: 'http://localhost:3000/',
+    });
+    expect(resolveApp({ command: { executable: 'node' }, readyUrl: 'http://localhost:9/health' }).readyUrl).toBe(
+      'http://localhost:9/health',
+    );
+    expect(() => resolveApp({ url: 'http://localhost:3000', command: { executable: '' } })).toThrow(
+      /command.executable is required/,
     );
   });
 
@@ -135,38 +154,29 @@ describe('resolveConfig', () => {
   });
 
   it('defaults environment to test for loopback/.localhost/.test hosts and production elsewhere', () => {
-    expect(resolve({ app: { url: 'https://app.test' } }).app.environment).toBe('test');
-    expect(resolve({ app: { url: 'http://localhost:3000' } }).app.environment).toBe('test');
-    expect(resolve({ app: { url: 'https://staging.example.com' } }).app.environment).toBe(
-      'production',
+    expect(resolveApp({ url: 'https://app.test' }).environment).toBe('test');
+    expect(resolveApp({ url: 'http://localhost:3000' }).environment).toBe('test');
+    expect(resolveApp({ url: 'https://staging.example.com' }).environment).toBe('production');
+    expect(resolveApp({ url: 'https://staging.example.com', environment: 'staging' }).environment).toBe('staging');
+    expect(resolveApp({ environment: 'staging' }).environment).toBe('staging');
+    expect(() => resolveApp({ url: 'https://app.test', environment: 'prod' as never })).toThrow(
+      /invalid app.environment/,
     );
-    expect(
-      resolve({ app: { url: 'https://staging.example.com', environment: 'staging' } }).app
-        .environment,
-    ).toBe('staging');
-    expect(() =>
-      resolve({ app: { url: 'https://app.test', environment: 'prod' as never } }),
-    ).toThrow(/invalid app.environment/);
   });
 
-  it('accepts a schemeless app URL from config or APP_URL', () => {
-    expect(resolve({ app: { url: 'tester.army' } }).app.base.origin).toBe('https://tester.army');
-    expect(resolve({ app: { url: 'localhost:3000' } }).app.base.origin).toBe('http://localhost:3000');
-    expect(resolve({}, { ...BASE_ENV, APP_URL: 'tester.army' }).app.base.origin).toBe(
-      'https://tester.army',
-    );
+  it('accepts a schemeless declared URL', () => {
+    expect(resolveApp({ url: 'tester.army' }).base?.origin).toBe('https://tester.army');
+    expect(resolveApp({ url: 'localhost:3000' }).base?.origin).toBe('http://localhost:3000');
   });
 
   it('accepts a provider-backed credential password; env override wins over it', () => {
     const provider = () => 'fresh-totp';
     const withProvider = resolve({
-      app: { url: 'https://app.test' },
       credentials: { admin: { username: 'admin', password: provider } },
     });
     expect(withProvider.credentials.get('admin')?.password).toBe(provider);
     const overridden = resolve(
       {
-        app: { url: 'https://app.test' },
         credentials: { admin: { username: 'admin', password: provider } },
       },
       { E2E_USER_ADMIN_PASSWORD: 'rotated' },
@@ -174,7 +184,6 @@ describe('resolveConfig', () => {
     expect(overridden.credentials.get('admin')?.password).toBe('rotated');
     expect(() =>
       resolve({
-        app: { url: 'https://app.test' },
         credentials: { admin: { username: 'admin', password: 42 as never } },
       }),
     ).toThrow(/password must be a non-empty string or a provider function/);
@@ -183,14 +192,12 @@ describe('resolveConfig', () => {
   it('rejects an empty credential password at config time, including an empty env override', () => {
     expect(() =>
       resolve({
-        app: { url: 'https://app.test' },
         credentials: { admin: { username: 'admin', password: '' } },
       }),
     ).toThrow(/password must be a non-empty string/);
     expect(() =>
       resolve(
         {
-          app: { url: 'https://app.test' },
           credentials: { admin: { username: 'admin', password: 'configured' } },
         },
         { E2E_USER_ADMIN_PASSWORD: '' },
@@ -198,31 +205,30 @@ describe('resolveConfig', () => {
     ).toThrow(/password must be a non-empty string/);
   });
 
-  it('accepts a stable app.identity and rejects an empty one', () => {
-    expect(resolve({ app: { url: 'https://app.test', identity: 'checkout-app' } }).app.identity).toBe(
-      'checkout-app',
-    );
-    expect(resolve({ app: { url: 'https://app.test' } }).app.identity).toBeUndefined();
-    expect(() => resolve({ app: { url: 'https://app.test', identity: '  ' } })).toThrow(
+  it('keys identity on the declared identity, else the URL origin and path, else nothing', () => {
+    expect(resolveApp({ url: 'https://app.test', identity: 'checkout-app' }).identity).toBe('checkout-app');
+    expect(resolveApp({ url: 'https://app.test/shop/' }).identity).toBe('https://app.test/shop/');
+    expect(resolveApp({ identity: 'com.example.app' }).identity).toBe('com.example.app');
+    expect(resolveApp().identity).toBeUndefined();
+    expect(() => resolveApp({ url: 'https://app.test', identity: '  ' })).toThrow(
       /app.identity must be a non-empty string/,
     );
   });
 
-  it('rejects the retired allowProduction key like any unknown app key', () => {
-    expect(() =>
-      resolve({ app: { url: 'https://app.example.com', allowProduction: true } } as never),
-    ).toThrow(/unknown app config key "allowProduction"/);
+  it('rejects unknown app declaration keys at defineBackend', () => {
+    expect(() => fakeBackend({ allowProduction: true } as never)).toThrow(/app has unknown key "allowProduction"/);
   });
 
-  it('defaults allowedOrigins to the exact base origin', () => {
-    const config = resolve({});
-    expect(config.app.allowedOrigins).toEqual(['http://localhost:3000']);
+  it('defaults allowedOrigins to the exact base origin, or to none without a URL', () => {
+    expect(resolveApp({ url: 'http://localhost:3000/app' }).allowedOrigins).toEqual(['http://localhost:3000']);
+    expect(resolveApp().allowedOrigins).toEqual([]);
+    expect(resolveApp({ allowedOrigins: ['https://api.test'] }).allowedOrigins).toEqual(['https://api.test']);
   });
 
   it('rejects non-origin allowedOrigins entries', () => {
-    expect(() =>
-      resolve({ app: { url: 'http://localhost:3000', allowedOrigins: ['http://x.test/path'] } }),
-    ).toThrow(/serialized origin/);
+    expect(() => resolveApp({ url: 'http://localhost:3000', allowedOrigins: ['http://x.test/path'] })).toThrow(
+      /serialized origin/,
+    );
   });
 
   it('rejects json combined with list reporters', () => {
@@ -266,214 +272,190 @@ describe('resolveConfig', () => {
     expect(a.configDigest).not.toBe(c.configDigest);
   });
 
-  it('replaces app command env values in the config digest', () => {
-    const a = resolve({
-      app: { url: 'http://localhost:3000', command: { executable: 'x', env: { TOKEN: 'aaa' } } },
-    });
-    const b = resolve({
-      app: { url: 'http://localhost:3000', command: { executable: 'x', env: { TOKEN: 'bbb' } } },
-    });
+  it('digests the app a backend declares, replacing command env values by name', () => {
+    const declare = (app: BackendAppDeclaration) => resolve({ targets: [{ ...WEB, backend: fakeBackend(app) }] });
+    const a = declare({ url: 'http://localhost:3000', command: { executable: 'x', env: { TOKEN: 'aaa' } } });
+    const b = declare({ url: 'http://localhost:3000', command: { executable: 'x', env: { TOKEN: 'bbb' } } });
     expect(a.configDigest).toBe(b.configDigest);
+    expect(declare({ url: 'http://localhost:3000' }).configDigest).not.toBe(
+      declare({ url: 'http://localhost:4000' }).configDigest,
+    );
   });
 
-  it('rejects an app.readyUrl that is not an http(s) URL', () => {
-    expect(() => resolve({ app: { url: 'http://localhost:3000', readyUrl: 'not a url' } })).toThrow(
+  it('rejects a declared readyUrl that is not an http(s) URL', () => {
+    expect(() => resolveApp({ url: 'http://localhost:3000', readyUrl: 'not a url' })).toThrow(
       /app\.readyUrl must be an http\(s\) URL/,
     );
-    expect(() => resolve({ app: { url: 'http://localhost:3000', readyUrl: 'ftp://x/' } })).toThrow(
+    expect(() => resolveApp({ url: 'http://localhost:3000', readyUrl: 'ftp://x/' })).toThrow(
       /app\.readyUrl must be an http\(s\) URL/,
     );
     expect(
-      resolve({ app: { url: 'http://localhost:3000', readyUrl: 'http://localhost:3000/health' } }).app
-        .readyUrl,
+      resolveApp({
+        url: 'http://localhost:3000',
+        command: { executable: 'x' },
+        readyUrl: 'http://localhost:3000/health',
+      }).readyUrl,
     ).toBe('http://localhost:3000/health');
   });
 
-  describe('app.services', () => {
+  describe('declared services', () => {
     const APP_URL = 'http://localhost:3000';
 
     it('accepts services with exactly one readiness contract and defaults to none', () => {
-      expect(resolve({}).app.services).toEqual([]);
-      const config = resolve({
-        app: {
-          url: APP_URL,
-          services: [
-            { executable: 'docker', args: ['compose', 'up', '--wait'], waitForExit: true },
-            { executable: 'node', args: ['emulator.js'], readyUrl: 'http://127.0.0.1:7000/health' },
-          ],
-        },
+      expect(resolveApp().services).toEqual([]);
+      expect(resolve({}).targets[0]!.app.services).toEqual([]);
+      const app = resolveApp({
+        url: APP_URL,
+        services: [
+          { executable: 'docker', args: ['compose', 'up', '--wait'], waitForExit: true },
+          { executable: 'node', args: ['emulator.js'], readyUrl: 'http://127.0.0.1:7000/health' },
+        ],
       });
-      expect(config.app.services).toHaveLength(2);
-      expect(config.app.services[0]?.readiness).toEqual({ waitForExit: true });
+      expect(app.services).toHaveLength(2);
+      expect(app.services[0]?.readiness).toEqual({ waitForExit: true });
       // Without a name the label is the executable's base name.
-      expect(config.app.services[0]?.label).toBe('service "docker"');
-      expect(config.app.services[1]?.readiness).toEqual({ readyUrl: 'http://127.0.0.1:7000/health' });
+      expect(app.services[0]?.label).toBe('service "docker"');
+      expect(app.services[1]?.readiness).toEqual({ readyUrl: 'http://127.0.0.1:7000/health' });
       // Runner-only fields are lifted out of the command that gets spawned.
-      expect(config.app.services[1]?.command).toEqual({ executable: 'node', args: ['emulator.js'] });
+      expect(app.services[1]?.command).toEqual({ executable: 'node', args: ['emulator.js'] });
     });
 
     it('labels a service by its name and lifts the name out of the command', () => {
-      const config = resolve({
-        app: {
-          url: APP_URL,
-          services: [
-            {
-              name: 'postgres',
-              executable: 'sh',
-              args: ['-c', 'exec docker compose up --wait postgres >> /var/log/postgres.log 2>&1'],
-              waitForExit: true,
-              teardown: { executable: 'sh', args: ['-c', 'docker compose down'] },
-            },
-            { name: '  auth-emulator  ', executable: '/usr/local/bin/emulator', waitForExit: true },
-            { executable: '/usr/local/bin/emulator', waitForExit: true },
-          ],
-        },
+      const app = resolveApp({
+        url: APP_URL,
+        services: [
+          {
+            name: 'postgres',
+            executable: 'sh',
+            args: ['-c', 'exec docker compose up --wait postgres >> /var/log/postgres.log 2>&1'],
+            waitForExit: true,
+            teardown: { executable: 'sh', args: ['-c', 'docker compose down'] },
+          },
+          { name: '  auth-emulator  ', executable: '/usr/local/bin/emulator', waitForExit: true },
+          { executable: '/usr/local/bin/emulator', waitForExit: true },
+        ],
       });
-      expect(config.app.services[0]?.label).toBe('service "postgres"');
-      expect(config.app.services[0]?.teardown?.label).toBe('service "postgres" teardown');
-      expect(config.app.services[0]?.command).not.toHaveProperty('name');
-      expect(config.app.services[1]?.label).toBe('service "auth-emulator"');
-      expect(config.app.services[2]?.label).toBe('service "emulator"');
+      expect(app.services[0]?.label).toBe('service "postgres"');
+      expect(app.services[0]?.teardown?.label).toBe('service "postgres" teardown');
+      expect(app.services[0]?.command).not.toHaveProperty('name');
+      expect(app.services[1]?.label).toBe('service "auth-emulator"');
+      expect(app.services[2]?.label).toBe('service "emulator"');
     });
 
     it('rejects empty, oversized, and non-string service names', () => {
       for (const name of ['', '   ', 'x'.repeat(65), 42 as unknown as string]) {
-        expect(() =>
-          resolve({ app: { url: APP_URL, services: [{ name, executable: 'x', waitForExit: true }] } }),
-        ).toThrow(/app\.services\[0\]\.name must be a non-empty string of at most 64 characters/);
+        expect(() => resolveApp({ url: APP_URL, services: [{ name, executable: 'x', waitForExit: true }] })).toThrow(
+          /app\.services\[0\]\.name must be a non-empty string of at most 64 characters/,
+        );
       }
       const longest = 'x'.repeat(64);
       expect(
-        resolve({ app: { url: APP_URL, services: [{ name: longest, executable: 'x', waitForExit: true }] } })
-          .app.services[0]?.label,
+        resolveApp({ url: APP_URL, services: [{ name: longest, executable: 'x', waitForExit: true }] }).services[0]
+          ?.label,
       ).toBe(`service "${longest}"`);
     });
 
     it('rejects duplicate service names but lets derived names repeat', () => {
       expect(() =>
-        resolve({
-          app: {
-            url: APP_URL,
-            services: [
-              { name: 'db', executable: 'x', waitForExit: true },
-              { name: ' db ', executable: 'y', waitForExit: true },
-            ],
-          },
-        }),
-      ).toThrow(/app\.services\[1\]\.name "db" is already used by another service/);
-      const config = resolve({
-        app: {
+        resolveApp({
           url: APP_URL,
           services: [
-            { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
-            { executable: 'pnpm', args: ['db:seed'], waitForExit: true },
+            { name: 'db', executable: 'x', waitForExit: true },
+            { name: ' db ', executable: 'y', waitForExit: true },
           ],
-        },
+        }),
+      ).toThrow(/app\.services\[1\]\.name "db" is already used by another service/);
+      const app = resolveApp({
+        url: APP_URL,
+        services: [
+          { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+          { executable: 'pnpm', args: ['db:seed'], waitForExit: true },
+        ],
       });
-      expect(config.app.services.map((service) => service.label)).toEqual(['service "pnpm"', 'service "pnpm"']);
+      expect(app.services.map((service) => service.label)).toEqual(['service "pnpm"', 'service "pnpm"']);
     });
 
-    it('allows services without app.url or app.command', () => {
-      const config = resolveConfig(
-        { targets: TARGETS, app: { services: [{ executable: 'pnpm', args: ['db:migrate'], waitForExit: true }] } },
-        { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
-      );
-      expect(config.app.configured).toBe(false);
-      expect(config.app.command).toBeUndefined();
-      expect(config.app.services).toHaveLength(1);
+    it('allows services without a URL or a command', () => {
+      const app = resolveApp({ services: [{ executable: 'pnpm', args: ['db:migrate'], waitForExit: true }] });
+      expect(app.base).toBeUndefined();
+      expect(app.command).toBeUndefined();
+      expect(app.services).toHaveLength(1);
     });
 
     it('rejects a service with neither or both readiness contracts', () => {
-      expect(() => resolve({ app: { url: APP_URL, services: [{ executable: 'x' }] } })).toThrow(
+      expect(() => resolveApp({ url: APP_URL, services: [{ executable: 'x' }] })).toThrow(
         /app\.services\[0\] needs exactly one readiness contract/,
       );
       expect(() =>
-        resolve({
-          app: {
-            url: APP_URL,
-            services: [{ executable: 'x', readyUrl: 'http://127.0.0.1:1/', waitForExit: true }],
-          },
+        resolveApp({
+          url: APP_URL,
+          services: [{ executable: 'x', readyUrl: 'http://127.0.0.1:1/', waitForExit: true }],
         }),
       ).toThrow(/app\.services\[0\] needs exactly one readiness contract/);
     });
 
-    it('rejects malformed services', () => {
+    it('rejects malformed services, naming the target', () => {
+      expect(() => resolveApp({ url: APP_URL, services: { executable: 'x' } as unknown as [] })).toThrow(
+        /target "web" backend fake app\.services must be an array/,
+      );
+      expect(() => resolveApp({ url: APP_URL, services: [{ executable: '', waitForExit: true }] })).toThrow(
+        /app\.services\[0\]\.executable is required/,
+      );
+      expect(() => resolveApp({ url: APP_URL, services: [{ executable: 'x', readyUrl: 'not a url' }] })).toThrow(
+        /app\.services\[0\]\.readyUrl must be an http\(s\) URL/,
+      );
       expect(() =>
-        resolve({ app: { url: APP_URL, services: { executable: 'x' } as unknown as [] } }),
-      ).toThrow(/app\.services must be an array/);
-      expect(() =>
-        resolve({ app: { url: APP_URL, services: [{ executable: '', waitForExit: true }] } }),
-      ).toThrow(/app\.services\[0\]\.executable is required/);
-      expect(() =>
-        resolve({ app: { url: APP_URL, services: [{ executable: 'x', readyUrl: 'not a url' }] } }),
-      ).toThrow(/app\.services\[0\]\.readyUrl must be an http\(s\) URL/);
-      expect(() =>
-        resolve({
-          app: {
-            url: APP_URL,
-            services: [{ executable: 'x', waitForExit: true, teardown: { executable: '' } }],
-          },
+        resolveApp({
+          url: APP_URL,
+          services: [{ executable: 'x', waitForExit: true, teardown: { executable: '' } }],
         }),
       ).toThrow(/app\.services\[0\]\.teardown\.executable is required/);
     });
 
-    it('rejects non-positive-integer timeouts on app.command, services, and teardowns', () => {
+    it('rejects non-positive-integer timeouts on the command, services, and teardowns', () => {
       const bad = [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5];
       for (const value of bad) {
+        expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', startupTimeout: value } })).toThrow(
+          /app\.command\.startupTimeout must be a positive safe integer/,
+        );
         expect(() =>
-          resolve({ app: { url: APP_URL, command: { executable: 'x', startupTimeout: value } } }),
-        ).toThrow(/app\.command\.startupTimeout must be a positive safe integer/);
-        expect(() =>
-          resolve({
-            app: { url: APP_URL, services: [{ executable: 'x', waitForExit: true, startupTimeout: value }] },
-          }),
+          resolveApp({ url: APP_URL, services: [{ executable: 'x', waitForExit: true, startupTimeout: value }] }),
         ).toThrow(/app\.services\[0\]\.startupTimeout must be a positive safe integer/);
         expect(() =>
-          resolve({
-            app: { url: APP_URL, services: [{ executable: 'x', waitForExit: true, shutdownTimeout: value }] },
-          }),
+          resolveApp({ url: APP_URL, services: [{ executable: 'x', waitForExit: true, shutdownTimeout: value }] }),
         ).toThrow(/app\.services\[0\]\.shutdownTimeout must be a positive safe integer/);
         expect(() =>
-          resolve({
-            app: {
-              url: APP_URL,
-              services: [
-                { executable: 'x', waitForExit: true, teardown: { executable: 'y', startupTimeout: value } },
-              ],
-            },
+          resolveApp({
+            url: APP_URL,
+            services: [{ executable: 'x', waitForExit: true, teardown: { executable: 'y', startupTimeout: value } }],
           }),
         ).toThrow(/app\.services\[0\]\.teardown\.startupTimeout must be a positive safe integer/);
         expect(() =>
-          resolve({
-            app: {
-              url: APP_URL,
-              services: [
-                { executable: 'x', waitForExit: true, teardown: { executable: 'y', shutdownTimeout: value } },
-              ],
-            },
+          resolveApp({
+            url: APP_URL,
+            services: [{ executable: 'x', waitForExit: true, teardown: { executable: 'y', shutdownTimeout: value } }],
           }),
         ).toThrow(/app\.services\[0\]\.teardown\.shutdownTimeout must be a positive safe integer/);
       }
-      const ok = resolve({
-        app: {
-          url: APP_URL,
-          command: { executable: 'x', startupTimeout: 1, shutdownTimeout: 1 },
-          services: [
-            {
-              executable: 'x',
-              waitForExit: true,
-              startupTimeout: 5_000,
-              shutdownTimeout: 500,
-              teardown: { executable: 'y', startupTimeout: 5_000, shutdownTimeout: 500 },
-            },
-          ],
-        },
+      const ok = resolveApp({
+        url: APP_URL,
+        command: { executable: 'x', startupTimeout: 1, shutdownTimeout: 1 },
+        services: [
+          {
+            executable: 'x',
+            waitForExit: true,
+            startupTimeout: 5_000,
+            shutdownTimeout: 500,
+            teardown: { executable: 'y', startupTimeout: 5_000, shutdownTimeout: 500 },
+          },
+        ],
       });
-      expect(ok.app.services[0]?.teardown?.command.startupTimeout).toBe(5_000);
-      expect(ok.app.services[0]?.teardown?.label).toBe('service "x" teardown');
+      expect(ok.services[0]?.teardown?.command.startupTimeout).toBe(5_000);
+      expect(ok.services[0]?.teardown?.label).toBe('service "x" teardown');
     });
 
     it('replaces service and teardown env values in the config digest', () => {
+      const declare = (app: BackendAppDeclaration) => resolve({ targets: [{ ...WEB, backend: fakeBackend(app) }] });
       const services = (secret: string) => [
         {
           executable: 'docker',
@@ -483,18 +465,16 @@ describe('resolveConfig', () => {
           teardown: { executable: 'docker', args: ['compose', 'down'], env: { POSTGRES_PASSWORD: secret } },
         },
       ];
-      const a = resolve({ app: { url: APP_URL, services: services('aaa') } });
-      const b = resolve({ app: { url: APP_URL, services: services('bbb') } });
+      const a = declare({ url: APP_URL, services: services('aaa') });
+      const b = declare({ url: APP_URL, services: services('bbb') });
       expect(a.configDigest).toBe(b.configDigest);
-      const renamed = resolve({
-        app: { url: APP_URL, services: [{ ...services('aaa')[0]!, env: { PGPASSWORD: 'aaa' } }] },
-      });
+      const renamed = declare({ url: APP_URL, services: [{ ...services('aaa')[0]!, env: { PGPASSWORD: 'aaa' } }] });
       expect(renamed.configDigest).not.toBe(a.configDigest);
     });
   });
 
   describe('artifacts config', () => {
-    const APP = { app: { url: 'https://app.test' } };
+    const APP = {};
     it('defaults kinds and leaves the store unset for the array form', () => {
       const resolved = resolve({ ...APP });
       expect(resolved.artifacts).toEqual(['screenshot', 'trace']);

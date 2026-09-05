@@ -459,7 +459,7 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "index", "platform", "baseOrigin", "environment", "testIdAttribute", "backend", "capabilities", "artifactCapabilities", "stateCapability"],
+      "required": ["id", "index", "platform", "environment", "testIdAttribute", "backend", "capabilities", "artifactCapabilities", "stateCapability"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },

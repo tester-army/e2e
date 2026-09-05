@@ -60,7 +60,7 @@ const seedCart = defineTool(
 );
 
 export default defineConfig({
-  app: { url: process.env.APP_URL! },
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL! }) }],
   agent: createAgent({ tools: { seedCart } }),
 });
 ```

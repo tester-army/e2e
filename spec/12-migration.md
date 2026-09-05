@@ -50,7 +50,7 @@ objects or semantics implicitly available.
 | `test.step` | derived steps; grouping marker if needed | no direct API |
 | retries/serial/tags | runner options | v0 |
 | sharding | planned runner capability | later |
-| web server | structured `app.command` | v0 |
+| web server | structured `command` on the backend's app declaration | v0 |
 | clock/HAR/visual diff | dedicated future profiles | later |
 | component testing | workflows only | no |
 

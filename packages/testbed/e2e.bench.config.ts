@@ -25,15 +25,17 @@ function cacheMode(): CacheMode {
 export default defineConfig({
   specVersion: '0.1',
   projectId: 'testbed-bench',
-  app: {
-    url: 'http://localhost:4273',
-    command: {
-      executable: 'pnpm',
-      args: ['run', 'bench:serve'],
-    },
-  },
   tests: 'tests-bench/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  targets: [
+    {
+      name: 'web',
+      platform: 'web',
+      backend: playwright({
+        url: 'http://localhost:4273',
+        command: { executable: 'pnpm', args: ['run', 'bench:serve'] },
+      }),
+    },
+  ],
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {

@@ -40,7 +40,7 @@ export async function authorizeSecretFill(
   }
 
   const origin = await currentOrigin(host);
-  const appAllows = runtime.config.app.allowedOrigins.includes(origin);
+  const appAllows = runtime.app.allowedOrigins.includes(origin);
   const credentialAllows =
     credential.allowedOrigins === undefined || credential.allowedOrigins.includes(origin);
   if (!appAllows || !credentialAllows) {
