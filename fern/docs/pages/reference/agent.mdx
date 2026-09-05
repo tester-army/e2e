@@ -360,3 +360,9 @@ code are in [Errors](/reference/errors).
   <Card title="defineConfig" icon="gear" href="/reference/config" />
   <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
 </CardGroup>
+
+Model usage accounting is shared by executor steps and judgment calls. A step
+reports `tokenAccounting: 'provider'` only when every call supplies complete
+provider token counts. Missing, partial, or estimated usage keeps the aggregate
+at `adapter-upper-bound`, even if later calls report complete counts. Available
+token counts, per-call peaks, and valid reported costs still accumulate.

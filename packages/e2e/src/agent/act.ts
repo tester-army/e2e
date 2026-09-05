@@ -61,6 +61,7 @@ import {
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
+import { ModelUsage } from './usage.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 
 /** Everything one dispatched step is, resolved before the step opens. */
@@ -212,11 +213,7 @@ class ActDispatch {
   private transcript: string | undefined;
   /** Set by `finish()`: late executor accounting must not land on the next step. */
   private closed = false;
-  private inputTokens = 0;
-  private outputTokens = 0;
-  private estimatedCostUsd: number | undefined;
-  private peakTokensPerCall = 0;
-  private providerReportedUsage = false;
+  private readonly usage = new ModelUsage();
   private modelProvider: string | undefined;
   private modelId: string | undefined;
   private readonly redact: (text: string) => string;
@@ -550,32 +547,16 @@ class ActDispatch {
     // belonged to is closed, and the recorder's active step is now another.
     if (this.closed) return;
     this.metrics.modelCalls += 1;
-    const inputTokens = usage?.inputTokens ?? 0;
-    const outputTokens = usage?.outputTokens ?? 0;
-    if (usage?.inputTokens !== undefined || usage?.outputTokens !== undefined) {
-      this.providerReportedUsage = true;
-      this.inputTokens += inputTokens;
-      this.outputTokens += outputTokens;
-      this.peakTokensPerCall = Math.max(this.peakTokensPerCall, inputTokens + outputTokens);
-    }
+    const tokens = this.usage.record(usage);
     if (usage?.provider !== undefined) this.modelProvider = usage.provider;
     if (usage?.modelId !== undefined) this.modelId = usage.modelId;
-    // Executors are trusted, but the report schema requires a finite,
-    // non-negative cost; a bogus value must not invalidate the whole report.
-    if (
-      usage?.estimatedCostUsd !== undefined &&
-      Number.isFinite(usage.estimatedCostUsd) &&
-      usage.estimatedCostUsd >= 0
-    ) {
-      this.estimatedCostUsd = (this.estimatedCostUsd ?? 0) + usage.estimatedCostUsd;
-    }
     this.runtime.steps.recordEvent({
       kind: 'model',
       startedAt: timestamp(),
       durationMs: Math.max(0, Math.round(usage?.durationMs ?? 0)),
       status: 'passed',
       name: 'executor',
-      count: inputTokens + outputTokens,
+      count: tokens,
     });
     this.runtime.debug?.record('agent.model', Math.max(0, Math.round(usage?.durationMs ?? 0)));
     if (this.metrics.modelCalls > this.maxModelCalls) {
@@ -655,19 +636,13 @@ class ActDispatch {
   private modelInfo(): StepModelInfo {
     const executor = this.runtime.executor;
     const executorVersion = executor.version ?? '0';
-    return {
+    return this.usage.report({
       provider: this.modelProvider ?? executor.name,
       model: this.modelId ?? executor.name,
       endpoint: 'provider-default',
       adapterVersion: `executor/${executor.name}@${executorVersion}`,
       policyVersion: `${executor.name}/${executorVersion}`,
-      calls: this.metrics.modelCalls,
-      tokenAccounting: this.providerReportedUsage ? 'provider' : 'adapter-upper-bound',
-      peakTokensPerCall: this.peakTokensPerCall,
-      inputTokens: this.inputTokens,
-      outputTokens: this.outputTokens,
-      ...(this.estimatedCostUsd === undefined ? {} : { estimatedCostUsd: this.estimatedCostUsd }),
-    };
+    }, this.metrics.modelCalls);
   }
 
   private get session() {
