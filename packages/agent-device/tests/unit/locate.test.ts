@@ -33,6 +33,14 @@ describe('locator expressions over a device snapshot', () => {
     expect(names(query('role', 'switch', { states: { checked: false } }))).toEqual(['Airplane Mode']);
   });
 
+  it('drops hidden nodes from any query kind when it says visible', () => {
+    expect(names(query('text', 'Hidden'))).toEqual(['Hidden']);
+    expect(names(query('text', 'Hidden', { visible: true }))).toEqual([]);
+    expect(names(query('role', 'button', { states: { hidden: true }, visible: true }))).toEqual(['Back']);
+    expect(names(query('label', 'Search', { visible: true }))).toEqual(['Search']);
+    expect(names({ kind: 'index', source: query('text', 'About', { visible: true }), index: 'last' })).toEqual(['About']);
+  });
+
   it('answers label, text, display value, and test id queries', () => {
     expect(names(query('label', 'Search'))).toEqual(['Search']);
     expect(names(query('text', 'About'))).toEqual(['About', 'About']);

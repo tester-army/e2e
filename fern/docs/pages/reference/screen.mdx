@@ -15,7 +15,7 @@ export interface Screen {
   getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator;
   getByText(text: TextMatch, options?: TextMatchOptions): Locator;
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
-  getByTestId(id: string): Locator;
+  getByTestId(id: string, options?: { visible?: boolean }): Locator;
   swipe(options: SwipeOptions): Promise<void>;
   scrollUntilVisible(
     target: Locator,
@@ -48,7 +48,7 @@ Every query returns a `Locator` synchronously and performs no work.
 | `getByPlaceholder(text, options?)` | Inputs by placeholder |
 | `getByText(text, options?)` | Nodes by visible text |
 | `getByDisplayValue(value, options?)` | Inputs by currently displayed value |
-| `getByTestId(id)` | Nodes carrying `config.screen.testIdAttribute`, default `data-testid` |
+| `getByTestId(id, options?)` | Nodes carrying `config.screen.testIdAttribute`, default `data-testid` |
 
 ```ts
 screen.getByRole('button', { name: 'Save' });
@@ -56,6 +56,31 @@ screen.getByLabel('Email');
 screen.getByText('Welcome back', { exact: false });
 screen.getByTestId('todo-3');
 ```
+
+### Hidden duplicates
+
+Every query accepts `visible: true`, which drops nodes the platform reports as
+hidden before the exactly-one rule runs. Frameworks routinely keep a hidden
+copy of content in the document: a prerendered segment that lingers after
+`web.reload()`, a closed drawer, an inactive tab panel. Without `visible`, both
+copies match and the query fails with `LOCATOR_AMBIGUOUS` even though only one
+is on screen.
+
+```ts
+await web.reload();
+// Two "No memories yet" nodes exist for a moment; one is display:none.
+await expect(screen.getByText('No memories yet', { visible: true })).toBeVisible();
+await screen.getByPlaceholder('Search memory...', { visible: true }).fill('launch');
+await screen.getByTestId('memory-list', { visible: true }).getByRole('listitem').first().tap();
+```
+
+The predicate is the one `toBeVisible()`, `isVisible()`, and `waitFor()` read,
+so a node that resolves with `visible: true` is one they accept. It composes
+with scopes, `filter`, `first`, `last`, and `nth`: `getByText('Save', { visible:
+true }).first()` is the first visible match, not the first match. Omitted or
+`false` keeps every node, so existing `LOCATOR_AMBIGUOUS` failures still fire.
+Prefer it over a platform selector such as `web.locator('p:visible')`, which
+ties the test to CSS and to one backend.
 
 ## Refinement
 
@@ -213,6 +238,7 @@ export type TextMatch = string | RegExp;
 
 export interface TextMatchOptions {
   exact?: boolean;
+  visible?: boolean;
 }
 
 export interface RoleOptions extends TextMatchOptions {
@@ -253,9 +279,14 @@ export type Momentum = 'none' | 'slow' | 'fast';
 | `expanded` | Require the expanded state |
 | `hidden` | Include nodes hidden from the accessibility tree |
 | `exact` | Inherited; applies to `name` |
+| `visible` | Inherited; keep only nodes the platform reports as shown |
 
 String matching is exact by default. `exact: false` is case-insensitive
 substring matching. A `RegExp` ignores `exact`.
+
+`visible` is not the inverse of `hidden`: `hidden` widens a role query to nodes
+outside the accessibility tree, `visible` narrows any query to nodes on screen.
+See [Hidden duplicates](#hidden-duplicates).
 
 `SelectOption`: a bare string is the option label. The object form is mutually
 exclusive, `label` or `index`, never both.

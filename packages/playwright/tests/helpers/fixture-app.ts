@@ -63,12 +63,41 @@ const STATE = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Every node of interest twice: a hidden copy first, then the copy a person
+ * sees, the way a framework keeps a prerendered segment around after a reload.
+ * The last paragraph pair is hidden only by `aria-hidden`, which Playwright's
+ * own visibility filter does not see.
+ */
+const TWINS = `<!doctype html>
+<html>
+<head><title>Fixture Twins</title></head>
+<body>
+<h1>Twins</h1>
+<section id="stale" style="display:none">
+  <p>No memories yet</p>
+  <input aria-label="Memory search" placeholder="Search memory..." value="alpha">
+  <span data-testid="memory-empty">empty</span>
+  <button>Save</button>
+</section>
+<section id="live">
+  <p>No memories yet</p>
+  <input aria-label="Memory search" placeholder="Search memory..." value="alpha">
+  <span data-testid="memory-empty">empty</span>
+  <button>Save</button>
+</section>
+<p aria-hidden="true">Decorative twin</p>
+<p>Decorative twin</p>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/form': FORM,
   '/values': VALUES,
   '/login': LOGIN,
   '/state': STATE,
+  '/twins': TWINS,
 };
 
 /** Delay before `/slow` answers, long enough for a caller to cancel first. */

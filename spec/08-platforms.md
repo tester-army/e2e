@@ -74,6 +74,22 @@ Role states use computed accessibility state, not the mere presence of a DOM
 attribute. Unsupported state on a role does not match. `disabled` includes
 native disabled state and `aria-disabled=true`.
 
+### Visibility
+
+Every query accepts `visible`. When true, matches whose `hidden` state is true
+are dropped from that query's match set before any enclosing scope, filter,
+index, or cardinality rule sees them. The predicate is the one `toBeVisible()`,
+`isVisible()`, and `waitFor()` read, so a node that resolves with
+`visible: true` is one those would accept. For `web-0.1` that is `aria-hidden`,
+`display: none`, `visibility: hidden`, or no layout box. Omitted or false keeps
+every match, so a hidden duplicate still makes an unindexed query
+`LOCATOR_AMBIGUOUS`; `visible` is the explicit way to say "the one a person can
+see" without leaving the query vocabulary for a platform selector.
+
+`visible` is not the inverse of the role option `hidden`. `hidden` widens a
+role query to nodes outside the accessibility tree; `visible` narrows any query
+to nodes the platform reports as shown.
+
 ### Cardinality
 
 An unindexed action or single-node read requires exactly one match. With zero

@@ -29,19 +29,37 @@ describe('locator expressions', () => {
     });
   });
 
+  it('carries visible: true on every query kind and drops the default', () => {
+    expect(roleQuery('button', { visible: true }, undefined)).toMatchObject({ query: { visible: true } });
+    expect(textQuery('text', 'Pro', { visible: true }, undefined)).toMatchObject({ query: { visible: true } });
+    expect(testIdQuery('card', { visible: true }, undefined)).toMatchObject({ query: { visible: true } });
+    expect(roleQuery('button', { visible: false }, undefined)).not.toHaveProperty('query.visible');
+    expect(textQuery('label', 'Email', undefined, undefined)).not.toHaveProperty('query.visible');
+    expect(testIdQuery('card', undefined, undefined)).not.toHaveProperty('query.visible');
+  });
+
+  it('describes a visible query so an ambiguity message shows the predicate', () => {
+    expect(describeExpression(textQuery('text', 'Pro', { visible: true }, undefined))).toBe(
+      'getByText("Pro", visible: true)',
+    );
+    expect(describeExpression(roleQuery('button', { name: 'Save', visible: true }, undefined))).toBe(
+      'getByRole("button", name: "Save", visible: true)',
+    );
+  });
+
   it('scopes queries under a parent expression', () => {
-    const scope = testIdQuery('card', undefined);
+    const scope = testIdQuery('card', undefined, undefined);
     const expression = textQuery('text', 'Pro', undefined, scope);
     expect(expression).toMatchObject({ kind: 'query', scope });
   });
 
   it('rejects empty filters', () => {
-    const source = testIdQuery('card', undefined);
+    const source = testIdQuery('card', undefined, undefined);
     expect(() => filterExpression(source, {})).toThrow(/hasText and\/or has/);
   });
 
   it('rejects negative and fractional nth indices', () => {
-    const source = testIdQuery('card', undefined);
+    const source = testIdQuery('card', undefined, undefined);
     expect(() => indexExpression(source, -1)).toThrow(/nonnegative/);
     expect(() => indexExpression(source, 1.5)).toThrow(/nonnegative/);
     expect(indexExpression(source, 0)).toMatchObject({ kind: 'index', index: 0 });

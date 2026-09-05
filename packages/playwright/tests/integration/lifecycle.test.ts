@@ -286,6 +286,70 @@ describe('playwright backend lifecycle', () => {
     }
   });
 
+  it('excludes hidden twins from a visible query, for every query kind and under an index', async () => {
+    const backend = playwright();
+    const query = (
+      kind: 'text' | 'label' | 'placeholder' | 'displayValue' | 'testId' | 'role',
+      value: string,
+      visible: boolean,
+    ): LocatorExpression => ({
+      kind: 'query',
+      query: { kind, value: { kind: 'string', value, exact: true }, ...(visible ? { visible: true } : {}) },
+    });
+    try {
+      await boot(backend, app);
+      await backend.startAttempt!({ attemptId: 'v1', artifactsDir, signal: new AbortController().signal });
+      await backend.app!.navigate!(`${app.url}/twins`, operation('v1'));
+
+      const twins: Array<[Parameters<typeof query>[0], string]> = [
+        ['text', 'No memories yet'],
+        ['label', 'Memory search'],
+        ['placeholder', 'Search memory...'],
+        ['displayValue', 'alpha'],
+        ['testId', 'memory-empty'],
+      ];
+      for (const [kind, value] of twins) {
+        const all = await backend.locate!(query(kind, value, false), operation('v1'));
+        expect(all.map((node) => node.states?.hidden === true), `${kind} without visible`).toEqual([true, false]);
+        const shown = await backend.locate!(query(kind, value, true), operation('v1'));
+        expect(shown, `${kind} with visible`).toHaveLength(1);
+        expect(shown[0]?.states?.hidden).toBeUndefined();
+        expect(shown[0]?.rect?.width ?? 0).toBeGreaterThan(0);
+      }
+
+      // A role query already skips display:none; visible leaves it alone.
+      expect(await backend.locate!(query('role', 'button', true), operation('v1'))).toHaveLength(1);
+
+      // aria-hidden is invisible to Playwright's own filter; the node's hidden state still excludes it.
+      expect(await backend.locate!(query('text', 'Decorative twin', false), operation('v1'))).toHaveLength(2);
+      const decorative = await backend.locate!(query('text', 'Decorative twin', true), operation('v1'));
+      expect(decorative).toHaveLength(1);
+      expect(decorative[0]?.attributes?.['aria-hidden']).toBeUndefined();
+
+      // Under an index the predicate runs before nth: first() is the first shown node, not the first node.
+      const firstAny = await backend.locate!(
+        { kind: 'index', source: query('text', 'No memories yet', false), index: 'first' },
+        operation('v1'),
+      );
+      expect(firstAny.map((node) => node.states?.hidden)).toEqual([true]);
+      const firstShown = await backend.locate!(
+        { kind: 'index', source: query('text', 'No memories yet', true), index: 'first' },
+        operation('v1'),
+      );
+      expect(firstShown).toHaveLength(1);
+      expect(firstShown[0]?.states?.hidden).toBeUndefined();
+
+      // The surviving ref acts on the shown element.
+      const [search] = await backend.locate!(query('placeholder', 'Search memory...', true), operation('v1'));
+      await backend.perform!(search!.ref, { kind: 'fill', value: 'launch', sensitive: false }, operation('v1'));
+      const filled = await backend.locate!(query('displayValue', 'launch', false), operation('v1'));
+      expect(filled.map((node) => node.states?.hidden)).toEqual([undefined]);
+    } finally {
+      await backend.endAttempt!(cleanup());
+      await backend.dispose!(cleanup());
+    }
+  });
+
   it('reports an unopened page as INVALID_STATE, never as a missing node', async () => {
     const backend = playwright();
     try {

@@ -341,3 +341,10 @@ wait does not stop an underlying command.
 `@e2edev/e2e/backend` and are the platform-neutral words every backend speaks. The
 `selector` expression kind carries a platform-native selector string (CSS or
 XPath on a document platform); `frame` scopes a query into a nested document.
+
+A `SemanticQuery` with `visible: true` must match only nodes whose
+`states.hidden` is false, judged by the same predicate the backend reports on
+`SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()` never
+disagree about a node. The harness drops hidden nodes from a top-level query as
+a backstop; only the backend can apply the predicate under a scope, filter, or
+index, so evaluate it wherever the query sits in the expression.

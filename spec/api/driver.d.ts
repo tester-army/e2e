@@ -43,6 +43,8 @@ export interface SemanticQuery {
       Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'hidden', boolean>
     >
   >;
+  /** When true, matches whose `states.hidden` is true are excluded by the driver. */
+  readonly visible?: boolean;
 }
 
 export type LocatorExpression =

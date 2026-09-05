@@ -16,6 +16,9 @@ import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/l
 import { E2EError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
+import { defineBackend } from '../../src/backend/index.ts';
+import { createBackendSession } from '../../src/backend/session.ts';
+import { roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
 
 const REF: NodeRef = { id: 'node-1', revision: 'rev-1' };
 const NODE: SemanticNode = { ref: REF, role: 'button', name: 'Submit' };
@@ -247,6 +250,94 @@ describe('translateLocatorError mapping table', () => {
     );
     expect(translated.message).toContain('stale');
     expect(translated.message.length).toBeGreaterThan('node became stale'.length);
+  });
+});
+
+describe('LocatorEngine visible queries', () => {
+  /** A visible node and its hidden twin, as a backend that ignores `visible` would report them. */
+  const twins: SemanticNode[] = [
+    { ref: { id: 'shown', revision: '' }, role: 'button', name: 'Save', states: {} },
+    { ref: { id: 'hidden', revision: '' }, role: 'button', name: 'Save', states: { hidden: true } },
+  ];
+
+  /** Engine over the real session adapter and a backend that answers every locate with the twins. */
+  function makeEngineOverBackend(nodes: readonly SemanticNode[] = twins) {
+    const expressions: LocatorExpression[] = [];
+    const session = createBackendSession({
+      backend: defineBackend({
+        name: 'twins',
+        version: '1.0.0',
+        spiVersion: 1,
+        observe: async () => ({ nodes: [] }),
+        locate: async (expression) => {
+          expressions.push(expression);
+          return nodes;
+        },
+      }),
+      targetName: 'twins',
+    });
+    const engine = new LocatorEngine({
+      session,
+      budget: new AttemptBudget(new AbortController().signal, new Deadline(30_000)),
+      runId: 'run-1',
+      attemptId: 'attempt-1',
+      actionTimeout: 1_000,
+      assertionTimeout: 1_000,
+    });
+    return { engine, expressions };
+  }
+
+  const kinds: Array<[string, (visible: boolean | undefined) => LocatorExpression]> = [
+    ['getByRole', (visible) => roleQuery('button', { name: 'Save', ...(visible === undefined ? {} : { visible }) }, undefined)],
+    ['getByText', (visible) => textQuery('text', 'Save', visible === undefined ? undefined : { visible }, undefined)],
+    ['getByLabel', (visible) => textQuery('label', 'Save', visible === undefined ? undefined : { visible }, undefined)],
+    ['getByPlaceholder', (visible) => textQuery('placeholder', 'Save', visible === undefined ? undefined : { visible }, undefined)],
+    ['getByDisplayValue', (visible) => textQuery('displayValue', 'Save', visible === undefined ? undefined : { visible }, undefined)],
+    ['getByTestId', (visible) => testIdQuery('save', visible === undefined ? undefined : { visible }, undefined)],
+  ];
+
+  it.each(kinds)('%s with visible: true resolves the shown twin and ignores the hidden one', async (_kind, build) => {
+    const { engine } = makeEngineOverBackend();
+    const ref = await engine.resolveExactlyOne(build(true), new Deadline(5_000));
+    expect(ref.id).toBe('shown');
+    expect(await engine.resolveAll(build(true))).toHaveLength(1);
+  });
+
+  it.each(kinds)('%s without visible keeps the hidden twin, so the pair is LOCATOR_AMBIGUOUS', async (_kind, build) => {
+    const { engine } = makeEngineOverBackend();
+    await expect(engine.resolveExactlyOne(build(undefined), new Deadline(5_000))).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+    });
+    await expect(engine.resolveExactlyOne(build(false), new Deadline(5_000))).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+    });
+    expect(await engine.resolveAll(build(undefined))).toHaveLength(2);
+  });
+
+  it('names the predicate in the ambiguity message when two visible nodes remain', async () => {
+    const { engine } = makeEngineOverBackend([
+      { ref: { id: 'a', revision: '' }, role: 'button', name: 'Save' },
+      { ref: { id: 'b', revision: '' }, role: 'button', name: 'Save' },
+    ]);
+    await expect(engine.resolveExactlyOne(kinds[1]![1](true), new Deadline(5_000))).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+      message: expect.stringContaining('getByText("Save", visible: true)'),
+    });
+  });
+
+  it('keeps nodes whose backend reports no visibility at all', async () => {
+    const { engine } = makeEngineOverBackend([{ ref: { id: 'unknown', revision: '' }, role: 'button', name: 'Save' }]);
+    const ref = await engine.resolveExactlyOne(kinds[0]![1](true), new Deadline(5_000));
+    expect(ref.id).toBe('unknown');
+  });
+
+  it('hands a visible query under an index to the backend unchanged: only it can filter before nth', async () => {
+    const { engine, expressions } = makeEngineOverBackend();
+    const indexed: LocatorExpression = { kind: 'index', source: kinds[1]![1](true), index: 'first' };
+    // The adapter cannot know which of the backend's answers came first, so it
+    // must not second-guess them; the backend applied `visible` before `first`.
+    expect(await engine.resolveAll(indexed)).toHaveLength(2);
+    expect(expressions[0]).toEqual(indexed);
   });
 });
 

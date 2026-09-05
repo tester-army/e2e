@@ -75,10 +75,12 @@ const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded'] as const;
 /**
  * One node against one semantic query. Role queries skip hidden nodes unless
  * the query asks for them, as a browser's role query does; the other kinds
- * answer with every node and leave visibility to the action or assertion.
+ * answer with every node and leave visibility to the action or assertion,
+ * unless the query says `visible`, which drops hidden nodes for every kind.
  */
 function matchesQuery(entry: ProjectedNode, query: SemanticQuery, options: LocateOptions): boolean {
   const node = entry.node;
+  if (query.visible === true && node.states?.hidden === true) return false;
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {

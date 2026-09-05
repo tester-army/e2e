@@ -131,8 +131,8 @@ class ScreenImpl implements Screen {
     );
   }
 
-  getByTestId(id: string): Locator {
-    return new LocatorImpl(this.context, this.build(testIdQuery(id, this.scope)));
+  getByTestId(id: string, options?: { visible?: boolean }): Locator {
+    return new LocatorImpl(this.context, this.build(testIdQuery(id, options, this.scope)));
   }
 
   async swipe(options: SwipeOptions): Promise<void> {

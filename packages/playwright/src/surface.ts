@@ -516,7 +516,9 @@ export class PlaywrightSurface {
    * in one in-page round trip. A `displayValue` query is filtered here by the
    * value each element reported, so no per-node calls are needed; any
    * `first`/`last`/`nth` on such a query then selects among those matches, and
-   * a filter placed after a position is checked on the selected element.
+   * a filter placed after a position is checked on the selected element. A
+   * `visible` query drops the candidates whose hidden state the same read
+   * reported before either of those, so a position is among shown matches.
    */
   locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
     return this.guard(
@@ -532,7 +534,9 @@ export class PlaywrightSurface {
           mode: { kind: 'node' as const },
         });
         const { displayValue, steps } = projected;
-        const candidates = raws.map((raw, index) => ({ raw, index }));
+        const candidates = raws
+          .map((raw, index) => ({ raw, index }))
+          .filter(({ raw }) => !(projected.visible && raw.states.hidden));
         const matches =
           displayValue === null
             ? candidates

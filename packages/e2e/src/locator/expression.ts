@@ -23,8 +23,14 @@ export function roleQuery(
       ? { name: toTextPattern(options.name, { exact: options.exact ?? true }) }
       : {}),
     ...(Object.keys(states).length > 0 ? { states } : {}),
+    ...visibility(options),
   };
   return scoped({ kind: 'query', query }, scope);
+}
+
+/** The `visible` predicate is only meaningful when set; false is the default and is dropped. */
+function visibility(options: { visible?: boolean } | undefined): { visible: true } | Record<never, never> {
+  return options?.visible === true ? { visible: true } : {};
 }
 
 /** Builds a text-family query expression (label, placeholder, text, displayValue). */
@@ -35,15 +41,33 @@ export function textQuery(
   scope: LocatorExpression | undefined,
 ): LocatorExpression {
   return scoped(
-    { kind: 'query', query: { kind, value: toTextPattern(text, { exact: options?.exact ?? true }) } },
+    {
+      kind: 'query',
+      query: {
+        kind,
+        value: toTextPattern(text, { exact: options?.exact ?? true }),
+        ...visibility(options),
+      },
+    },
     scope,
   );
 }
 
 /** Builds a test-id query expression. */
-export function testIdQuery(id: string, scope: LocatorExpression | undefined): LocatorExpression {
+export function testIdQuery(
+  id: string,
+  options: { visible?: boolean } | undefined,
+  scope: LocatorExpression | undefined,
+): LocatorExpression {
   return scoped(
-    { kind: 'query', query: { kind: 'testId', value: { kind: 'string', value: id, exact: true } } },
+    {
+      kind: 'query',
+      query: {
+        kind: 'testId',
+        value: { kind: 'string', value: id, exact: true },
+        ...visibility(options),
+      },
+    },
     scope,
   );
 }
@@ -94,8 +118,9 @@ export function describeExpression(expression: LocatorExpression): string {
         query.name === undefined
           ? ''
           : `, name: ${query.name.kind === 'string' ? JSON.stringify(query.name.value) : `/${query.name.source}/${query.name.flags}`}`;
+      const visible = query.visible === true ? ', visible: true' : '';
       const scope = expression.scope === undefined ? '' : `${describeExpression(expression.scope)} >> `;
-      return `${scope}getBy${query.kind[0]!.toUpperCase()}${query.kind.slice(1)}(${value}${name})`;
+      return `${scope}getBy${query.kind[0]!.toUpperCase()}${query.kind.slice(1)}(${value}${name}${visible})`;
     }
     case 'filter': {
       const parts: string[] = [];

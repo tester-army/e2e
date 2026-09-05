@@ -146,6 +146,12 @@ filters, and index. `resolve` immediately returns all current matching
 revision-bound node references. The driver does not enforce single-match
 strictness.
 
+A `SemanticQuery` with `visible: true` MUST match only nodes whose
+`states.hidden` is false, judged by the same predicate the driver reports on
+`SemanticNode`, so a visible query and `toBeVisible()` never disagree about one
+node. The runner drops hidden nodes from a top-level query as well, but only the
+driver can apply the predicate to a query under a scope, filter, or index.
+
 `read` accepts only a current reference. `perform` executes exactly one action
 against exactly one reference. A stale reference before dispatch is
 `NODE_STALE` and retryable. If input may have reached the app, the driver MUST

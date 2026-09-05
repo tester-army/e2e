@@ -37,6 +37,14 @@ export interface SemanticQuery {
   readonly states?: Readonly<
     Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'hidden', boolean>>
   >;
+  /**
+   * When true, a backend MUST exclude every match whose `states.hidden` would
+   * be true, using the same predicate its `SemanticNode` reports, so that the
+   * query set the harness counts is the set `toBeVisible()` would accept. The
+   * predicate applies wherever the query sits in an expression: under a
+   * scope, inside a filter, or before an index.
+   */
+  readonly visible?: boolean;
 }
 
 /**

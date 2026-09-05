@@ -206,7 +206,14 @@ export function createBackendSession(options: BackendSessionOptions): TargetSess
       };
     },
     async locate(expression, operation) {
-      const nodes = await locateRaw(expression, operation);
+      // A backend answers `visible` inside scopes, filters, and indices, where
+      // only it can; the harness holds a top-level query to the same predicate
+      // so a direct query never resolves to a node its own state calls hidden.
+      const nodes = (await locateRaw(expression, operation)).filter(
+        (node) =>
+          !(expression.kind === 'query' && expression.query.visible === true) ||
+          node.states?.hidden !== true,
+      );
       locateRevision += 1;
       const locateRev = `${LOCATE_REVISION_PREFIX}${locateRevision}`;
       const refs: NodeRef[] = [];

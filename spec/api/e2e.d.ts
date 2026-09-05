@@ -229,6 +229,13 @@ export type TextMatch = string | RegExp;
 
 export interface TextMatchOptions {
   exact?: boolean;
+  /**
+   * When true, nodes the platform reports as hidden are excluded before the
+   * exactly-one rule is applied, so a visible node with a hidden twin (a
+   * prerendered copy kept after navigation, a closed drawer) still resolves.
+   * Omitted or false keeps every match, hidden ones included.
+   */
+  visible?: boolean;
 }
 
 export interface RoleOptions extends TextMatchOptions {
@@ -266,7 +273,7 @@ export interface Screen {
   /** Creates a lazy displayed-value query. */
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy test-id query. */
-  getByTestId(id: string): Locator;
+  getByTestId(id: string, options?: { visible?: boolean }): Locator;
   /** Performs a viewport-level swipe. */
   swipe(options: SwipeOptions): Promise<void>;
   /** Scrolls until a locator resolves visibly or times out. */
