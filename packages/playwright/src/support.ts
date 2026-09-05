@@ -415,3 +415,22 @@ function wheelDelta(direction: ScrollDirection, distance: number): [number, numb
       return [-distance, 0];
   }
 }
+
+/** Playwright prefixes a page-side exception with the call that raised it. */
+const PAGE_EXCEPTION_PREFIX = /^page\.evaluate(?:Handle)?: (?:Error: )?/;
+
+/**
+ * Like translatePwError for the lost-document and timeout cases, but an
+ * exception the page itself threw is the test's own verdict: the spec says
+ * page exceptions preserve their message, and a script that throws "cart is
+ * empty" has failed the test, not the infrastructure. Reported as a
+ * non-retryable `EVALUATE_FAILED` test error carrying the page's message.
+ */
+export function translateEvaluateError(cause: unknown, operation: string): Error {
+  if (isClassified(cause) || isPwTimeout(cause) || isNavigationRace(cause)) {
+    return translatePwError(cause, operation);
+  }
+  const text = message(cause);
+  if (!PAGE_EXCEPTION_PREFIX.test(text)) return translatePwError(cause, operation);
+  return new TestError('EVALUATE_FAILED', text.replace(PAGE_EXCEPTION_PREFIX, ''), { cause });
+}

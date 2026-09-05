@@ -28,7 +28,7 @@ import {
   type TextPattern,
 } from '@e2edev/e2e/backend';
 import type { DialogHandler } from './dialogs.ts';
-import { message as causeMessage } from './support.ts';
+import { message as causeMessage, translateEvaluateError } from './support.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
@@ -249,13 +249,18 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
     ): Promise<T> {
       const source = typeof fn === 'string' ? fn : fn.toString();
       validateJsonValue(arg, 'evaluate argument');
-      const result = await surface.guard(context.operation(), 'evaluate', async () => {
-        const page = surface.requirePage();
-        if (arg === undefined) return page.evaluate(`(${source})()`);
-        const wrapped = new Function('arg', `return (${source})(arg);`);
-        const evaluate = page.evaluate.bind(page) as (fn: unknown, arg: unknown) => Promise<unknown>;
-        return evaluate(wrapped, arg);
-      });
+      const result = await surface.guard(
+        context.operation(),
+        'evaluate',
+        async () => {
+          const page = surface.requirePage();
+          if (arg === undefined) return page.evaluate(`(${source})()`);
+          const wrapped = new Function('arg', `return (${source})(arg);`);
+          const evaluate = page.evaluate.bind(page) as (fn: unknown, arg: unknown) => Promise<unknown>;
+          return evaluate(wrapped, arg);
+        },
+        translateEvaluateError,
+      );
       validateJsonValue(result, 'evaluate result');
       return result as T;
     },

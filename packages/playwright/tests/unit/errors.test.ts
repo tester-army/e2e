@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { BackendError } from '@e2edev/e2e/backend';
 import { ConfigurationError, TestError } from '@e2edev/e2e/backend';
-import { navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
+import { navigationStaleOr, staleOr, translateEvaluateError, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {
   const error = new Error(text);
@@ -90,5 +90,30 @@ describe('staleOr', () => {
       code: 'OPERATION_TIMEOUT',
       retryable: false,
     });
+  });
+});
+
+describe('translateEvaluateError', () => {
+  it('reports an exception the page threw as a test failure carrying the page message', () => {
+    const error = translateEvaluateError(new Error('page.evaluate: Error: cart is empty'), 'evaluate');
+    expect(error).toBeInstanceOf(TestError);
+    expect((error as TestError).code).toBe('EVALUATE_FAILED');
+    expect(error.message).toBe('cart is empty');
+  });
+
+  it('keeps a timeout and a lost document on the infrastructure side', () => {
+    const timedOut = new Error('page.evaluate: Timeout 30000ms exceeded.');
+    timedOut.name = 'TimeoutError';
+    expect((translateEvaluateError(timedOut, 'evaluate') as BackendError).code).toBe('OPERATION_TIMEOUT');
+    const lost = translateEvaluateError(
+      new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation.'),
+      'evaluate',
+    );
+    expect((lost as BackendError).code).toBe('BACKEND_FAILURE');
+  });
+
+  it('leaves a failure without the page-exception prefix a BACKEND_FAILURE', () => {
+    const error = translateEvaluateError(new Error('Target closed'), 'evaluate');
+    expect((error as BackendError).code).toBe('BACKEND_FAILURE');
   });
 });
