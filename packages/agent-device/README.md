@@ -8,6 +8,11 @@ on a device target unchanged; nothing in `e2e` core knows this package exists.
 
 ## Install
 
+Run `npx @e2edev/e2e@beta init` and choose **agent-device** for a Settings
+example with optional AI testing. Init defaults to iOS on macOS and Android
+elsewhere; change the platform in `e2e.config.ts` when needed.
+Or add the packages to an existing project:
+
 ```bash
 npm install --save-dev @e2edev/e2e @e2edev/agent-device
 ```

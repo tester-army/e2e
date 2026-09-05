@@ -28,8 +28,10 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   `@e2edev/e2e/backend` contract. Core knows the contract and never a backend's
   internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
   `src/` (grep for them; zero hits is the invariant). The one exception is the
-  `e2e init` scaffold template in `src/cli/init.ts`, which writes the user's
-  config and so names `@e2edev/playwright` as text.
+  `e2e init` scaffold presets in `src/cli/init/backends.ts`, which write the
+  user's config and so name backend packages as text. Each preset owns its
+  prompt label, dependencies, config, example, and run command; interactive
+  choices derive from this list. These presets never import backend implementations.
   - `src/run/` runner core (scheduler, units, workers, retries, sessions),
     `src/collect/` registration+selection, `src/locator/` locator AST/engine,
     `src/agent/` the agent (the `act` executor socket plus the judgment

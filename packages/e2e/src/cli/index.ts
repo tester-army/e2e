@@ -2,7 +2,7 @@
 
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import { run } from '../run/runner.ts';
-import { init } from './init.ts';
+import { init, type InitOptions } from './init.ts';
 import { SignalLadder } from './signals.ts';
 
 /** Shape check only; the config resolver applies each flag's bounds. */
@@ -42,9 +42,9 @@ function createProgram(): Command {
 
   program
     .command('init')
-    .description('scaffold e2e.config.ts, an example test, and .gitignore entries')
-    .option('-y, --yes', 'skip confirmation prompts')
-    .action(async (options: { yes?: boolean }) => {
+    .description('scaffold an ESM package, e2e.config.ts, an example test, and .gitignore entries')
+    .option('-y, --yes', 'skip prompts; enable AI without a backend or installation')
+    .action(async (options: InitOptions) => {
       process.exitCode = await init(process.cwd(), options);
     });
 

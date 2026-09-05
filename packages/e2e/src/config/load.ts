@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { register, type NamespacedUnregister } from 'tsx/esm/api';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
+import { esmPackageHint } from './esm.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 
@@ -65,6 +66,8 @@ let imports = 0;
  * the config file as it is now.
  */
 export async function importModule(absolutePath: string, cacheKey = 'module'): Promise<unknown> {
+  const hint = esmPackageHint(absolutePath);
+  if (hint !== undefined) throw new Error(hint);
   imports += 1;
   const url = `${pathToFileURL(absolutePath).href}?e2e=${cacheKey}-${imports}`;
   loader ??= register({ namespace: 'e2e' });

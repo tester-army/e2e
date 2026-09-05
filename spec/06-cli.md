@@ -4,16 +4,33 @@ The v0 binary is `e2e`. CLI behavior is part of `runner-0.1`.
 
 ## `e2e init`
 
-`e2e init` is non-destructive. It creates only missing files, reports every
-existing conflict, and makes no partial changes after a conflict is found. It:
+`e2e init` preserves existing config and test files, reports them, and creates
+missing scaffold files. It adds missing selected dependencies to
+`package.json` without changing existing dependency declarations or unrelated
+fields. A new manifest is private and sets `"type": "module"`; an existing
+manifest's module type is preserved and any required ESM opt-in is explained.
 
-- creates a minimal `e2e.config.ts` when needed, constructing the built-in
-  agent, and warns when the AI SDK peer it runs on is not declared;
-- creates `tests/example.e2e.ts` containing a deterministic app-open smoke
-  test, not an app-specific signup assumption;
-- adds `.e2e/artifacts/`, `.e2e/sessions/`, and generated reports to
-  `.gitignore`;
-- prints the exact next command.
+- The runner is always added. When creating a config, the backend (none,
+  Playwright, or agent-device) and AI support are choices: a backend adds its
+  package; AI adds the AI SDK v7 peer and constructs the built-in agent in the
+  generated config. AI defaults to enabled. Skipped choices leave no imports or
+  dependencies behind.
+- `tests/example.e2e.ts` is deterministic: an HTTP response check without a
+  backend, an app-open test with Playwright, or a Settings check on the default
+  device platform (iOS on macOS, Android elsewhere). HTTP and Playwright setups
+  read `APP_URL`; device setup pins the platform and Settings app in the config,
+  uses one worker, and needs no `APP_URL`.
+- `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, and
+  generated reports are added to `.gitignore` when missing.
+- Every prompt precedes the first write. Cancellation exits 0 without changes.
+- Installation has its own confirmation and uses the project's package manager.
+  Declining still writes the scaffold and dependency declarations. A failed
+  installation keeps the scaffold, prints a retry command, and exits 2. An
+  invalid manifest exits 2 before any write. A successful init ends with one
+  `next:` line: the install command if needed, then the run command.
+
+`--yes` skips prompts: AI enabled, no backend, no installation. Existing configs
+are never rewritten or assigned optional dependencies.
 
 Browser provisioning uses the locked driver/backend version installed with the
 project. The runner MUST NOT execute a mutable package version or download an

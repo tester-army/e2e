@@ -32,8 +32,19 @@ stopping at the repository root. Both names in one directory is
 `CONFIG_AMBIGUOUS`. The selected file's directory is the project root; with no
 config file, the working directory is.
 
-A config file is required: the runner ships no backend, so `targets` must name
-the one that drives each target. `npx --no-install e2e init` writes a starter config.
+A config file is required. Targets that drive an app name a backend;
+HTTP tests and agents using their own tools can use a target without one.
+`npx --no-install e2e init` offers optional backend and AI setup.
+
+Config and test modules run as ESM. For `.ts` files, the nearest `package.json`
+must set `"type": "module"`. In a directory without a package manifest, `init`
+creates one with this setting. Existing module types are preserved, and `init`
+prints the command to opt into ESM when needed. Loading a `.ts` config or
+collecting a `.ts` test outside an ESM package reports this requirement with
+instructions to fix it.
+
+An `.mts` config is always ESM, but renaming the config alone does not change
+the module type of `.ts` test files or helpers.
 
 ## Top level
 

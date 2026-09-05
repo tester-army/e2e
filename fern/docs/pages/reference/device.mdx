@@ -3,6 +3,11 @@ title: device
 subtitle: The device fixture and backend options @e2edev/agent-device contributes for iOS and Android targets.
 ---
 
+Choose **agent-device** in `e2e init` to add this package and generate a
+Settings example. Init defaults to iOS on macOS and Android elsewhere; the
+platform is editable in `e2e.config.ts`. AI testing defaults to enabled and can
+be declined. The generated config uses one worker and requires no `APP_URL`.
+
 `@e2edev/agent-device` is the mobile backend: iOS simulators and Android
 emulators through [agent-device](https://github.com/callstack/agent-device),
 against the same `@e2edev/e2e/backend` contract the browser backend implements. `agent`,

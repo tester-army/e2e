@@ -1,46 +1,20 @@
 /** Non-destructive project scaffolding (spec 06-cli.md). */
 
+import * as clack from '@clack/prompts';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import * as clack from '@clack/prompts';
+import { esmPackageHint } from '../config/esm.ts';
+import { getBackendPresets, DEFAULT_BACKEND_ID, type BackendId } from './init/backends.ts';
+import { addDependencies, detectPackageManager, readPackage, serializePackage } from './init/package.ts';
+import { createScaffold } from './init/scaffold.ts';
 
-const CONFIG_TEMPLATE = `import { defineConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
-import { playwright } from '@e2edev/playwright';
-
-export default defineConfig({
-  // A scheme is optional: localhost gets http://, any other host gets https://.
-  app: { url: 'localhost:3000' },
-  // The built-in agent; its model comes from E2E_MODEL. Shape it with system,
-  // hand it tools, or pass any StepExecutor of your own instead.
-  agent: createAgent({
-    system: 'You are a thorough QA agent. Verify every outcome on screen.',
-  }),
-  // The runner knows no platform: every target names the backend that drives it.
-  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
-});
-`;
-
-/** The AI SDK is an optional peer; the scaffolded agent cannot run without it. */
-const AGENT_PEER = 'ai';
-
-const EXAMPLE_TEMPLATE = `import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
-
-test('app opens', async ({ app, web }) => {
-  await app.open();
-  await expect(web).toHaveURL('/');
-});
-
-// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
-// test('the agent drives a flow', async ({ app, agent }) => {
-//   await app.open();
-//   await agent.act('one goal in plain language');
-//   await agent.assert('one question about the screen');
-// });
-`;
+export interface InitOptions {
+  yes?: boolean;
+}
 
 const GITIGNORE_ENTRIES = [
+  'node_modules/',
   '.e2e/artifacts/',
   '.e2e/cache/',
   '.e2e/sessions/',
@@ -49,97 +23,117 @@ const GITIGNORE_ENTRIES = [
   '.e2e/junit.xml',
 ];
 
-interface PlannedFile {
-  readonly relative: string;
-  readonly content: string;
-}
-
-/** Runs `e2e init`. Creates only missing files and stops before any conflict. */
-export async function init(cwd: string, options: { yes?: boolean } = {}): Promise<number> {
+/**
+ * Runs `e2e init`. Every prompt happens before the first write, existing
+ * config and test files are never touched, and dependencies install only when
+ * the user asks.
+ */
+export async function init(cwd: string, options: InitOptions = {}): Promise<number> {
   clack.intro('e2e init');
 
-  const planned: PlannedFile[] = [
-    { relative: 'e2e.config.ts', content: CONFIG_TEMPLATE },
-    { relative: path.join('tests', 'example.e2e.ts'), content: EXAMPLE_TEMPLATE },
-  ];
-
-  const exists = (file: PlannedFile): boolean => existsSync(path.join(cwd, file.relative));
-  const conflicts = planned.filter(exists);
-  const remaining = planned.filter((file) => !exists(file));
-  for (const conflict of conflicts) {
-    clack.log.warn(`exists, not touching: ${conflict.relative}`);
+  let pkg: ReturnType<typeof readPackage>;
+  try {
+    pkg = readPackage(cwd);
+  } catch {
+    clack.log.error('invalid package.json; fix it before running e2e init');
+    return 2;
   }
 
-  // The ignore list is reconciled on every run, not only the first: a project
-  // initialized before an entry existed (`.e2e/ai-trace.json`, say) picks it
-  // up by re-running init, without touching any scaffold file.
-  const gitignorePath = path.join(cwd, '.gitignore');
-  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
-  // A CRLF .gitignore must not re-append every entry on each init.
-  const lines = existing.split(/\r?\n/);
-  const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.includes(entry));
+  const existingConfig = ['e2e.config.ts', 'e2e.config.mts'].find((file) => existsSync(path.join(cwd, file)));
+  const examplePath = path.join('tests', 'example.e2e.ts');
+  const exampleExists = existsSync(path.join(cwd, examplePath));
+  if (existingConfig !== undefined) clack.log.warn(`exists, not touching: ${existingConfig}`);
+  if (exampleExists) clack.log.warn(`exists, not touching: ${examplePath}`);
+  if (pkg.original !== undefined) {
+    const hint = esmPackageHint(path.join(cwd, existingConfig ?? 'e2e.config.ts'));
+    if (hint !== undefined) clack.log.warn(hint);
+  }
 
-  if (remaining.length === 0 && missing.length === 0) {
+  const gitignorePath = path.join(cwd, '.gitignore');
+  const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const ignoreLines = existingIgnore.split(/\r?\n/);
+  const missingIgnore = GITIGNORE_ENTRIES.filter((entry) => !ignoreLines.includes(entry));
+
+  // Backend and AI are choices for a new config only; an existing config keeps its own dependencies.
+  let backend: BackendId = DEFAULT_BACKEND_ID;
+  let ai = existingConfig === undefined;
+  if (existingConfig === undefined && !options.yes) {
+    const selectedBackend = await clack.select<BackendId>({
+      message: 'Which backend?',
+      initialValue: DEFAULT_BACKEND_ID,
+      options: getBackendPresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
+    });
+    if (clack.isCancel(selectedBackend)) return cancelled();
+    backend = selectedBackend;
+
+    const enableAi = await clack.confirm({ message: 'Enable AI testing? Adds AI SDK v7.', initialValue: true });
+    if (clack.isCancel(enableAi)) return cancelled();
+    ai = enableAi;
+  }
+
+  const scaffold = createScaffold(backend, ai);
+  const { manifest, additions } = addDependencies(pkg.manifest, scaffold.dependencies);
+  if (additions.length > 0) {
+    clack.log.info(`add dev dependencies: ${additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);
+  }
+
+  const files = [
+    ...(pkg.original === undefined || additions.length > 0
+      ? [{ relative: 'package.json', content: serializePackage(manifest, pkg.original), existing: pkg.original !== undefined }]
+      : []),
+    ...(existingConfig === undefined ? [{ relative: 'e2e.config.ts', content: scaffold.config, existing: false }] : []),
+    ...(exampleExists ? [] : [{ relative: examplePath, content: scaffold.example, existing: false }]),
+  ];
+
+  if (files.length === 0 && missingIgnore.length === 0) {
     clack.outro('nothing to create; project already initialized');
     return 0;
   }
 
-  if (options.yes !== true) {
+  if (!options.yes) {
     const actions = [
-      ...(remaining.length === 0
-        ? []
-        : [`create ${remaining.map((file) => file.relative).join(', ')}`]),
-      ...(missing.length === 0 ? [] : ['update .gitignore']),
+      ...files.map((file) => `${file.existing ? 'update' : 'create'} ${file.relative}`),
+      ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
-    const proceed = await clack.confirm({ message: `${actions.join(' and ')}?` });
-    if (clack.isCancel(proceed) || proceed !== true) {
-      clack.cancel('cancelled; no changes were made');
-      return 0;
-    }
+    const proceed = await clack.confirm({ message: `${actions.join(', ')}?` });
+    if (clack.isCancel(proceed) || !proceed) return cancelled();
   }
 
-  for (const file of remaining) {
+  const manager = detectPackageManager(cwd, manifest);
+  let install = false;
+  if (!options.yes) {
+    const selected = await clack.confirm({ message: `Install dependencies with ${manager}?`, initialValue: true });
+    if (clack.isCancel(selected)) return cancelled();
+    install = selected;
+  }
+
+  for (const file of files) {
     const absolute = path.join(cwd, file.relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
     writeFileSync(absolute, file.content, 'utf8');
-    clack.log.success(`created ${file.relative}`);
+    clack.log.success(`${file.existing ? 'updated' : 'created'} ${file.relative}`);
+  }
+  if (missingIgnore.length > 0) {
+    const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
+    writeFileSync(gitignorePath, `${existingIgnore}${prefix}${missingIgnore.join('\n')}\n`, 'utf8');
+    clack.log.success(`updated .gitignore (${missingIgnore.length} entries)`);
   }
 
-  if (remaining.some((file) => file.relative === 'e2e.config.ts') && !declaresDependency(cwd, AGENT_PEER)) {
-    clack.log.warn(
-      `e2e.config.ts constructs the built-in agent, which runs on the AI SDK: npm install --save-dev ${AGENT_PEER}`,
-    );
+  if (install) {
+    const result = spawnSync(manager, ['install'], { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+    if (result.error !== undefined || result.status !== 0) {
+      const reason = result.error?.message ?? `exit ${result.status ?? result.signal}`;
+      clack.log.error(`installation failed (${reason}); retry with ${manager} install`);
+      clack.outro('scaffold saved');
+      return result.signal === 'SIGINT' ? 130 : 2;
+    }
   }
-
-  if (missing.length > 0) {
-    const prefix = existing === '' || existing.endsWith('\n') ? '' : '\n';
-    writeFileSync(gitignorePath, `${existing}${prefix}${missing.join('\n')}\n`, 'utf8');
-    clack.log.success(`updated .gitignore (${missing.length} entries)`);
-  }
-
-  if (remaining.length === 0) {
-    clack.outro('project already initialized; .gitignore brought up to date');
-    return 0;
-  }
-
-  clack.outro('next: point app.url in e2e.config.ts at your app, then npx --no-install e2e run');
+  clack.outro(`next: ${install ? '' : `${manager} install, then `}${scaffold.runCommand}`);
   return 0;
 }
 
-/** True when the project's package.json lists `name` as a dependency of any kind. */
-function declaresDependency(cwd: string, name: string): boolean {
-  const manifestPath = path.join(cwd, 'package.json');
-  if (!existsSync(manifestPath)) return false;
-  let manifest: unknown;
-  try {
-    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  } catch {
-    return false;
-  }
-  if (typeof manifest !== 'object' || manifest === null) return false;
-  const record = manifest as Record<string, unknown>;
-  return ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'].some((field) => {
-    const block = record[field];
-    return typeof block === 'object' && block !== null && name in (block as object);
-  });
+/** Cancellation is only reachable before the first write, so nothing needs undoing. */
+function cancelled(): number {
+  clack.cancel('cancelled; no changes were made');
+  return 0;
 }

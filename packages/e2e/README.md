@@ -4,15 +4,19 @@ The `e2e` SDK, runner, and CLI for agentic end-to-end testing. Full
 documentation: [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
 
 ```bash
-pnpm add -D e2e@beta @e2edev/playwright@beta
+pnpm dlx @e2edev/e2e@beta init
 ```
 
 ## Usage
 
 ```bash
-e2e init
-APP_URL=http://localhost:3000 e2e run
+APP_URL=http://localhost:3000 npx --no-install e2e run
 ```
+
+Init adds the runner to `devDependencies`, offers Playwright or agent-device
+as the backend and AI SDK v7 for the built-in agent, then asks whether to
+install. Choose Playwright for the config and browser test below. `--yes`
+skips the prompts: AI on, no backend, no installation.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from '@e2edev/e2e';

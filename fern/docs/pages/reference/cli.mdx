@@ -10,23 +10,52 @@ npx --no-install e2e run [files...] [options]
 
 ## e2e init
 
-Scaffolds a project. Non-destructive: it creates only missing files and never
-overwrites. Existing files are reported and skipped. `init` exits 0 on every
-path, including cancellation.
+Scaffolds a project and adds `@e2edev/e2e` to `devDependencies` when it is not
+already declared. Existing config and test files are reported and skipped.
+Existing dependency versions and other package fields are preserved.
+
+For a new config, choose **None**, **Playwright**, or **agent-device**.
+Playwright adds `@e2edev/playwright`; agent-device adds `@e2edev/agent-device`.
+AI testing is enabled by default and adds `ai@^7.0.0` and `createAgent` in the
+config; you can decline it in the wizard. After confirming the file
+changes, choose once whether to install the selected dependencies.
+
+Device setup defaults to iOS on macOS and Android elsewhere, using one worker
+and opening Settings. Change the platform in `e2e.config.ts` when needed.
+Replace the backend's `app` value with your app's bundle ID or package name,
+or use `appPath` to install a build. iOS needs Xcode and a simulator; Android
+needs the Android SDK and an emulator. See [Device](/reference/device).
 
 | Flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
-| `-y`, `--yes` | boolean | `false` | Skips the confirmation prompt |
+| `-y`, `--yes` | boolean | `false` | Skips prompts; enables AI for a new config, with no backend or installation |
 
 | Creates | Content |
 | --- | --- |
-| `e2e.config.ts` | Minimal config: `app.url` set to `localhost:3000`, the built-in agent via `createAgent({ system })`, and one web target on the playwright backend. Warns when the `ai` peer dependency is missing from `package.json` |
-| `tests/example.e2e.ts` | Deterministic app-open smoke test asserting `toHaveURL('/')` |
-| `.gitignore` | Appends `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml` when missing. Re-running `init` on an initialized project adds entries introduced since, touching nothing else |
+| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies are added. The runner uses the current CLI's version range, backend packages use `beta`, and AI uses `^7.0.0` |
+| `e2e.config.ts` | Imports and target configuration match the selected backend and AI options. HTTP and Playwright setup read `APP_URL`, defaulting to `http://localhost:3000`; device setup pins an app without a URL |
+| `tests/example.e2e.ts` | An HTTP response check for the minimal setup, an app-open test asserting `toHaveURL('/')` for Playwright, or a deterministic Settings check for the selected device platform |
+| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, and `.e2e/junit.xml` when missing |
 
 ```bash
 npx --no-install e2e init --yes
 ```
+
+An existing `package.json` keeps its module type. When it does not set
+`"type": "module"`, `init` prints `npm pkg set type=module` as an explicit
+opt-in; converting also changes how the package's existing `.js` files run.
+
+The installer uses the project's `packageManager` field or lockfile, then the
+invoking package manager, falling back to npm. Declining installation still
+saves the dependencies to `package.json`, and the closing `next:` line starts
+with the install command. Device setup runs without `APP_URL`.
+
+Backend and AI choices apply only when creating a config. Re-running `init`
+keeps an existing `.ts` or `.mts` config and adds no optional packages for it.
+
+Cancellation leaves files untouched and exits 0. An invalid manifest exits 2
+before any write. A failed installation keeps the scaffold, prints the retry
+command, and exits 2.
 
 ## e2e run
 
@@ -52,7 +81,7 @@ selection, they do not bypass it. A path outside the project root is
 | `--headed` | boolean | `false` | Requests visible UI when the backend supports it |
 | `--retries <n>` | nonnegative integer | resolved config value | Replaces the retry count |
 | `--workers <n>` | nonnegative integer | resolved config value | Replaces the worker count |
-| `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. |
+| `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree |
 | `--no-cache` | boolean | `false` | Runs with the trace cache off, overriding `config.cache` — the quickest way to check whether a failure is cache-related |
 | `--pass-with-no-tests` | boolean | `false` | Allows zero runnable ordinary test-target pairs instead of failing with `NO_TESTS` |
@@ -70,7 +99,6 @@ npx --no-install e2e run
 npx --no-install e2e run tests/signup.e2e.ts --tag smoke
 npx --no-install e2e run --target web,webkit --tag smoke --tag billing --tag-mode all
 npx --no-install e2e run --reporter json --workers 4 --retries 2
-npx --no-install e2e run --reporter list,junit
 ```
 
 ### Output
@@ -79,12 +107,9 @@ npx --no-install e2e run --reporter list,junit
 | --- | --- |
 | `list` | Human-readable progress to the terminal. On a TTY the live status block also shows each running step and its latest model or backend call, and every finished agent step prints one permanent line with its duration and model-call count. Control characters are stripped and each untrusted field is capped at 8 KiB. |
 | `json` | The report document to stdout. Cannot be combined with `list`. |
-| `junit` | The same report as JUnit XML to `.e2e/junit.xml`, beside `report.json`, for CI test summaries. One `<testsuite>` per test file, one `<testcase>` per test-target pair named `title > path [target]`; a test-category error is a `<failure>`, any other category an `<error>`, a skip a `<skipped>` with its reason, and a flaky pass a passed case with a `<system-out>` note. Run-level errors (an unreachable app, say) form a `run` suite of `<error>` cases. Combines with `list` or `json`; alone, the terminal stays silent. |
 
 Every run atomically writes `.e2e/report.json` under the artifact parent
-regardless of the selected reporters; `junit.xml` is written right before it,
-from the same document, so a lost `junit.xml` is recorded in `report.json` like
-any other run error. A reporter can never change run status.
+regardless of the selected reporters. A reporter can never change run status.
 
 With `--ai-trace`, the run also writes `.e2e/ai-trace.json` next to the
 report: one run per agent step, named after the test and the step, with one

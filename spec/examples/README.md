@@ -10,6 +10,11 @@ mobile example that is filtered out of the v0 target matrix.
 
 ## Coverage
 
+To start a new project, run `npx @e2edev/e2e@beta init` and pick Playwright
+for a browser example or agent-device for a mobile one (Settings on iOS when
+run on macOS, Android elsewhere). `--yes` skips the prompts and writes an HTTP
+example with no backend.
+
 | File | Demonstrates |
 |---|---|
 | `e2e.config.ts` | web target, structured app process, credentials, model config |

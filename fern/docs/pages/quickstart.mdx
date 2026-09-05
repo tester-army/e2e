@@ -8,26 +8,34 @@ Requires Node.js 20.19 or newer.
 </Callout>
 
 <Steps>
-  <Step title="Install">
+  <Step title="Initialize">
     <CodeBlocks>
       ```bash title="npm"
-      npm install --save-dev @e2edev/e2e @e2edev/playwright ai
+      npx @e2edev/e2e@beta init
       ```
       ```bash title="pnpm"
-      pnpm add -D @e2edev/e2e @e2edev/playwright ai
+      pnpm dlx @e2edev/e2e@beta init
       ```
     </CodeBlocks>
 
-    `e2e` is the runner and SDK. `@e2edev/playwright` is the browser backend:
-    the runner itself knows no platform, so every target names the backend
-    that drives it. `ai` is the AI SDK the built-in agent runs on; it is an
-    optional peer, so a suite without agents can skip it.
+    Init adds the runner to `devDependencies`. For this guide, select
+    **Playwright**, keep **AI testing** enabled, and confirm installation. This
+    also adds the browser backend and AI SDK v7. You can skip either optional
+    package: without a backend, the example checks an HTTP response; without
+    AI, the generated files make no model calls.
+
+    Config and test files are ES modules. In an empty directory, `init` creates
+    a private `package.json` with `"type": "module"`. An existing `package.json`
+    keeps its module type; `init` prints `npm pkg set type=module` so you can
+    opt in, which also changes how the package's existing `.js` files run.
+
+    For mobile tests, choose **agent-device** instead. Init defaults to iOS on
+    macOS and Android elsewhere, and writes a Settings example; see
+    [Device](/reference/device) for simulator and emulator setup.
   </Step>
 
   <Step title="Define your agent">
-    ```bash
-    npx --no-install e2e init
-    ```
+    With Playwright and AI selected, init writes this config:
 
     ```ts title="e2e.config.ts"
     import { defineConfig } from '@e2edev/e2e';
@@ -35,21 +43,20 @@ Requires Node.js 20.19 or newer.
     import { playwright } from '@e2edev/playwright';
 
     export default defineConfig({
-      app: { url: 'localhost:3000' },
+      app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
       agent: createAgent({
-        system: 'You are a thorough QA agent. Verify every outcome on screen.',
+        system: 'You are a thorough QA agent. Verify every outcome.',
       }),
       targets: [{ name: 'web', platform: 'web', backend: playwright() }],
     });
     ```
 
-    Point `app.url` at your app. A scheme is optional: `localhost:3000`
+    Set `APP_URL` when running tests, or edit the default in `app.url`.
+    A scheme is optional: `localhost:3000`
     becomes `http://localhost:3000` and `app.example.com` becomes
     `https://app.example.com`. The runner knows no platform, so every target
     names the backend that drives it.
 
-    The scaffold constructs the built-in tool-loop agent and passes it in;
-    `init` warns when the `ai` peer it runs on is not in your `package.json`.
     `system` shapes how it works. Later you can hand it your own tools, or
     replace it with a custom executor; [Your own agent](/agents) covers both.
 
