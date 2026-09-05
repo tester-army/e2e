@@ -350,6 +350,56 @@ describe('playwright backend lifecycle', () => {
     }
   });
 
+  it('applies visible before an index, filter, or scope, so an aria-hidden twin is never selected', async () => {
+    const backend = playwright();
+    const text = (value: string, visible: boolean): Extract<LocatorExpression, { kind: 'query' }> => ({
+      kind: 'query',
+      query: { kind: 'text', value: { kind: 'string', value, exact: true }, ...(visible ? { visible: true } : {}) },
+    });
+    const ariaHidden = (nodes: readonly SemanticNode[]) => nodes.map((node) => node.attributes?.['aria-hidden']);
+    try {
+      await boot(backend, app);
+      await backend.startAttempt!({ attemptId: 'v2', artifactsDir, signal: new AbortController().signal });
+      await backend.app!.navigate!(`${app.url}/twins`, operation('v2'));
+      const locate = (expression: LocatorExpression) => backend.locate!(expression, operation('v2'));
+
+      // The aria-hidden paragraph comes first in document order.
+      expect(ariaHidden(await locate({ kind: 'index', source: text('Decorative twin', false), index: 'first' }))).toEqual(['true']);
+      expect(ariaHidden(await locate({ kind: 'index', source: text('Decorative twin', true), index: 'first' }))).toEqual([undefined]);
+      expect(ariaHidden(await locate({ kind: 'index', source: text('Decorative twin', true), index: 0 }))).toEqual([undefined]);
+      expect(await locate({ kind: 'index', source: text('Decorative twin', true), index: 1 })).toEqual([]);
+      expect(ariaHidden(await locate({ kind: 'index', source: text('Decorative twin', true), index: 'last' }))).toEqual([undefined]);
+
+      // A filter over a visible query never retains the hidden twin.
+      const decorative = { kind: 'string', value: 'Decorative', exact: false } as const;
+      expect(await locate({ kind: 'filter', source: text('Decorative twin', false), hasText: decorative })).toHaveLength(2);
+      const filtered = await locate({ kind: 'filter', source: text('Decorative twin', true), hasText: decorative });
+      expect(ariaHidden(filtered)).toEqual([undefined]);
+
+      // As a has-filter, only the shown twin's ancestor qualifies: the body holds both, so it still matches,
+      // while a section that holds neither does not.
+      const body: LocatorExpression = { kind: 'selector', selector: 'body' };
+      expect(await locate({ kind: 'filter', source: body, has: text('Decorative twin', true) })).toHaveLength(1);
+      expect(await locate({ kind: 'filter', source: { kind: 'selector', selector: '#live' }, has: text('Decorative twin', true) })).toEqual([]);
+
+      // As a scope, a visible test-id query drops the aria-hidden panel before the child query runs.
+      const panel = (visible: boolean): LocatorExpression => ({
+        kind: 'query',
+        query: { kind: 'testId', value: { kind: 'string', value: 'memory-panel', exact: true }, ...(visible ? { visible: true } : {}) },
+      });
+      expect(await locate({ ...text('Open', false), scope: panel(false) })).toHaveLength(2);
+      const scoped = await locate({ ...text('Open', false), scope: panel(true) });
+      expect(scoped).toHaveLength(1);
+      // The child itself carries no aria-hidden; its exclusion came from the scope.
+      const panels = await locate(panel(true));
+      expect(ariaHidden(panels)).toEqual([undefined]);
+      await backend.perform!(scoped[0]!.ref, { kind: 'tap' }, operation('v2'));
+    } finally {
+      await backend.endAttempt!(cleanup());
+      await backend.dispose!(cleanup());
+    }
+  });
+
   it('reports an unopened page as INVALID_STATE, never as a missing node', async () => {
     const backend = playwright();
     try {

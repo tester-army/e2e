@@ -66,8 +66,8 @@ const STATE = `<!doctype html>
 /**
  * Every node of interest twice: a hidden copy first, then the copy a person
  * sees, the way a framework keeps a prerendered segment around after a reload.
- * The last paragraph pair is hidden only by `aria-hidden`, which Playwright's
- * own visibility filter does not see.
+ * The paragraph pair and the panel pair are hidden only by `aria-hidden`,
+ * which Playwright's own visibility filter does not see.
  */
 const TWINS = `<!doctype html>
 <html>
@@ -88,6 +88,8 @@ const TWINS = `<!doctype html>
 </section>
 <p aria-hidden="true">Decorative twin</p>
 <p>Decorative twin</p>
+<div data-testid="memory-panel" aria-hidden="true"><span>Open</span></div>
+<div data-testid="memory-panel"><span>Open</span></div>
 </body>
 </html>`;
 

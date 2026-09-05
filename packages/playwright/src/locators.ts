@@ -65,14 +65,26 @@ export type PostStep =
   | { readonly kind: 'filter'; readonly options: PwFilterOptions };
 
 /**
- * A `visible` query narrows its candidates in Playwright's own visibility
- * terms so the predicate composes under scopes, filters, and indices. The
- * surface then holds a terminal query to the node's `hidden` state, which
- * also covers `aria-hidden`, so a direct query agrees with `toBeVisible()`.
+ * Self-selector for the part of the semantic `hidden` state Playwright's own
+ * visibility filter does not read: `aria-hidden` on the element itself.
+ */
+const NOT_ARIA_HIDDEN = ':scope:not([aria-hidden="true"])';
+
+/**
+ * A `visible` query narrows its candidates inside the selector, before any
+ * enclosing scope, filter, or index runs: Playwright's visibility predicate
+ * (layout box, `display`, `visibility`) plus the `aria-hidden` check the
+ * semantic `hidden` state also makes. An indexed, filtered, or scoping visible
+ * query therefore never selects or retains a node that state calls hidden.
+ * The surface additionally holds a terminal query to the batch-read `hidden`
+ * state, so a direct query agrees with `toBeVisible()` even at the margin
+ * where the two predicates differ (a zero-size element with a layout rect is
+ * hidden to Playwright and shown to the semantic read).
  */
 function visibleQueryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
   const located = queryToPw(scope, query);
-  return query.visible === true ? located.filter({ visible: true }) : located;
+  if (query.visible !== true) return located;
+  return located.filter({ visible: true }).locator(NOT_ARIA_HIDDEN);
 }
 
 export interface ProjectedLocator {
