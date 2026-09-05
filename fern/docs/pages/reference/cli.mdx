@@ -82,8 +82,9 @@ npx --no-install e2e run --reporter list,junit
 | `junit` | The same report as JUnit XML to `.e2e/junit.xml`, beside `report.json`, for CI test summaries. One `<testsuite>` per test file, one `<testcase>` per test-target pair named `title > path [target]`; a test-category error is a `<failure>`, any other category an `<error>`, a skip a `<skipped>` with its reason, and a flaky pass a passed case with a `<system-out>` note. Run-level errors (an unreachable app, say) form a `run` suite of `<error>` cases. Combines with `list` or `json`; alone, the terminal stays silent. |
 
 Every run atomically writes `.e2e/report.json` under the artifact parent
-regardless of the selected reporters; `junit.xml` is written right after it,
-from the same document. A reporter can never change run status.
+regardless of the selected reporters; `junit.xml` is written right before it,
+from the same document, so a lost `junit.xml` is recorded in `report.json` like
+any other run error. A reporter can never change run status.
 
 With `--ai-trace`, the run also writes `.e2e/ai-trace.json` next to the
 report: one run per agent step, named after the test and the step, with one

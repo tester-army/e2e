@@ -4,7 +4,7 @@
  * while a throwing sink is quarantined without affecting the run.
  */
 
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
@@ -125,6 +125,55 @@ describe('run events', () => {
 });
 
 describe('run events: run lifecycle hygiene', () => {
+  it('a junit-write failure lands in report.json, the outcome, the exit code, and run-finished alike', async () => {
+    const app = await startFixtureApp();
+    const project = createProject({ 'tests/events.e2e.ts': SUITE });
+    // A directory where junit.xml must be written makes its atomic rename fail
+    // while report.json, written last, still has a clear path.
+    mkdirSync(path.join(project.dir, '.e2e', 'junit.xml'), { recursive: true });
+    const events: RunEvent[] = [];
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          reporters: ['junit'] as const,
+          agent: oneTapExecutor,
+          cache: 'off' as const,
+        },
+        runOptions: { onEvent: (event) => {
+          events.push(event);
+        } },
+      });
+      expect(outcome.exitCode).toBe(3);
+      expect(outcome.status).toBe('error');
+      expect(outcome.junitPath).toBeUndefined();
+      expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
+      const persisted = JSON.parse(readFileSync(outcome.reportPath!, 'utf8')) as typeof outcome.report;
+      const junitErrors = persisted.run.errors.filter(
+        (entry) => entry.code === 'REPORT_WRITE_FAILED' && entry.phase === 'report' && entry.message.includes('JUnit'),
+      );
+      expect(junitErrors).toHaveLength(1);
+      expect(junitErrors[0]?.category).toBe('infrastructure');
+      // The persisted file and the returned document tell the same story.
+      expect(persisted.run.errors).toEqual(outcome.report.run.errors);
+      expect(persisted.run.status).toBe(outcome.report.run.status);
+      expect(persisted.run.exitCode).toBe(outcome.exitCode);
+      const types = events.map((event) => event.type);
+      expect(types.indexOf('run-error')).toBeGreaterThan(-1);
+      expect(types.indexOf('run-error')).toBeLessThan(types.indexOf('run-finished'));
+      const finished = events.at(-1);
+      if (finished?.type !== 'run-finished') throw new Error('missing run-finished');
+      expect(finished.exitCode).toBe(outcome.exitCode);
+      expect(finished.status).toBe('error');
+      expect(finished.reportPath).toBe(outcome.reportPath);
+      expect(finished.junitPath).toBeUndefined();
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+
   it('a report-write failure fails the run, withholds reportPath, and precedes run-finished', async () => {
     const app = await startFixtureApp();
     const project = createProject({ 'tests/events.e2e.ts': SUITE });

@@ -194,14 +194,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    * returned in-memory document becomes the only complete record. The file
    * is not retried — the destination just failed.
    */
-  const writeCanonicalReport = async (
-    config: ResolvedConfig,
-  ): Promise<{ path: string; document: Report1Document } | undefined> => {
+  const writeCanonicalReport = async (config: ResolvedConfig, document: Report1Document): Promise<string | undefined> => {
     const target = path.join(path.dirname(resolveArtifactsRoot(config, options.artifactsDir)), 'report.json');
-    const document = buildRunReport(currentExitCode());
     try {
       await writeJsonReport(target, document);
-      return { path: target, document };
+      return target;
     } catch (cause) {
       recordFailure(
         new E2EError(
@@ -217,10 +214,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
-   * Writes the JUnit rendering next to the canonical report, from the very
-   * document that was just written, so the two can never disagree. Same
-   * terms: the path is returned only once the file exists, and a lost file is
-   * a recorded run error.
+   * Writes the JUnit rendering of one document next to the canonical report.
+   * Same terms: the path is returned only once the file exists, and a lost
+   * file is a recorded run error.
    */
   const writeJunitReport = async (config: ResolvedConfig, document: Report1Document): Promise<string | undefined> => {
     if (!junitReport) return undefined;
@@ -275,12 +271,23 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
   const finish = async (): Promise<RunOutcome> => {
     const aiTracePath = loaded.config === undefined ? undefined : await writeAiTrace(loaded.config);
-    const written = loaded.config === undefined ? undefined : await writeCanonicalReport(loaded.config);
-    const reportPath = written?.path;
-    const junitPath =
-      loaded.config === undefined || written === undefined
-        ? undefined
-        : await writeJunitReport(loaded.config, written.document);
+    let reportPath: string | undefined;
+    let junitPath: string | undefined;
+    if (loaded.config !== undefined) {
+      // The JUnit rendering goes first, from the document as it stands, and
+      // the canonical report is written once, last: a lost junit.xml is then
+      // recorded before report.json exists, so the failure lands in the file,
+      // the exit code, the outcome, and run-finished alike. When the rendering
+      // succeeds nothing was recorded in between, and the canonical report is
+      // that very document.
+      const document = buildRunReport(currentExitCode());
+      const recorded = runErrors.length;
+      junitPath = await writeJunitReport(loaded.config, document);
+      reportPath = await writeCanonicalReport(
+        loaded.config,
+        runErrors.length === recorded ? document : buildRunReport(currentExitCode()),
+      );
+    }
     const exitCode = currentExitCode();
     const status = statusOf(exitCode);
     const report = buildRunReport(exitCode);

@@ -25,9 +25,17 @@ interface RenderedCase {
   durationMs: number;
 }
 
-/** Escapes text content; control characters are stripped like the list reporter does. */
+/**
+ * Code units XML 1.0 forbids beyond the control range `sanitizeText` already
+ * replaces: the two noncharacters U+FFFE and U+FFFF, and a surrogate half
+ * without its partner. One of them makes a parser reject the whole document.
+ */
+const XML_FORBIDDEN = /[\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+/** Escapes text content; every character XML 1.0 forbids becomes U+FFFD. */
 function text(value: string): string {
   return sanitizeText(value)
+    .replace(XML_FORBIDDEN, '\uFFFD')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')

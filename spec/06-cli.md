@@ -54,8 +54,9 @@ field at 8 KiB before linking to the complete sanitized artifact.
 Every run atomically writes `.e2e/report.json` under the artifact parent. The
 `json` renderer additionally emits that document to standard output and cannot
 be combined with `list`. The `junit` renderer additionally writes that document
-as JUnit XML to `.e2e/junit.xml` beside the report, atomically and whenever the
-report itself is written: one `<testsuite>` per test file, one `<testcase>` per
+as JUnit XML to `.e2e/junit.xml` beside the report, atomically, from the same
+document, on every outcome that writes the report: one `<testsuite>` per test
+file, one `<testcase>` per
 test-target pair (`<failure>` for a test-category error, `<error>` otherwise,
 `<skipped>` with the reason), and a `run` suite carrying run-level errors. It
 combines with either `list` or `json`. `--artifacts` relocates the complete
