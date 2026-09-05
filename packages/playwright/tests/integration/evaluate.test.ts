@@ -24,6 +24,7 @@ describe('web.evaluate error boundaries', () => {
     page = await surface.ensurePage();
     web = createWebFixture(surface, {
       operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate' }),
+      fixture: (_name: string, value: object) => value,
       expectable: (target: object) => target,
     } as unknown as BackendFixtureContext);
   });
