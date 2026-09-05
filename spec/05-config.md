@@ -122,6 +122,11 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.visionModel` | `agent.model` | `agent.model` |
 | `cache` | read-write | read-only (read-write on the file store is forced down) |
 | `cache.dir` | `.e2e/cache` | same |
+| `analysis` | off | off |
+| `analysis.model` | `agent.model` | `agent.model` |
+| `analysis.maxFailures` | 10 | 10 |
+| `analysis.vision` | false | false |
+| `analysis.source` | true | true |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
 `0`, or `false`. Numeric config values MUST be safe integers. Workers must be
@@ -269,6 +274,39 @@ The report records provider, model ID, resolved endpoint (`provider-default`
 when a caller-supplied instance owns the transport), and adapter/policy
 versions. It never records provider credentials. Model input disclosure and
 offline behavior are specified in 14-security.md.
+
+## Post-failure analysis
+
+`analysis` enables one bounded model call per failed test-target pair after
+its last attempt, classifying the failure (`app-bug`, `test-bug`,
+`environment`, `flaky`, `unknown`) with a confidence, a summary, the evidence
+each conclusion rests on, and an optional suggested fix. It is off unless the
+key is present or `--analyze` (06-cli.md) is passed. Analysis is read-only and
+post-hoc: it MUST NOT change a status, consume a test's model-call budget,
+delay a retry, or fail the run. An analysis that cannot be produced is
+recorded as unavailable with a closed reason (`no-model`, `limit-reached`,
+`failed`, `timed-out`, `interrupted`), never silently omitted.
+
+Only test-category failures and timeouts of ordinary pairs are analyzed;
+configuration, infrastructure, and internal errors are not the application's
+doing, and interrupted attempts carry no evidence. `maxFailures` (1 through
+100) bounds the model calls per run. `model` accepts the same three forms as
+`agent.model`, is overridden by `E2E_ANALYSIS_MODEL`, and falls back to
+`agent.model`. `analyzer` replaces the built-in analyzer with a host-supplied
+`FailureAnalyzer` that receives the same evidence and brings its own model; a
+custom verdict is held to the same closed grammar. Like every live value, an
+analyzer never crosses a process boundary.
+
+The evidence an analyzer receives is what the runner captured the moment the
+failure landed, with the session still open: the error and step timeline, the
+redacted semantic tree as a `log` artifact, the masked screenshot when
+`screenshot` is among the configured artifact kinds, the redacted location,
+earlier attempts, and — with `source` — the failing test line with its
+neighbors. Every text field is redacted before it leaves the attempt
+(14-security.md); the screenshot becomes model input only with `vision` and
+only when no secret was filled during the attempt. The verdict is redacted
+again on the way out. Model output is untrusted prose: it reaches the report
+and the event stream as data, never as a status or an instruction.
 
 ## Resource limits
 

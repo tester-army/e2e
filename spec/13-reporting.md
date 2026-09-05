@@ -150,6 +150,21 @@ byte size, SHA-256 digest, and path, and — when the run configured an
 be persisted or exposed to a model; their report entry has no path, size, or
 digest to avoid a secret-value oracle.
 
+### Failure analysis
+
+A run configured for post-failure analysis (05-config.md) files each analyzed
+result's record under the result's `extensions` as `e2edev.analysis`. The
+record is either `{ status: "analyzed", analyzer, classification, confidence,
+summary, evidence[], suggestedFix?, artifacts: { screenshot?, observation? },
+model?, durationMs }` or `{ status: "unavailable", analyzer, reason, message,
+durationMs }`. `artifacts` names the artifact IDs the analyzer was given, so a
+reader can open exactly what it saw. `model` carries provider, model ID, and
+token usage for the built-in analyzer; a host analyzer records none. The
+extension is data: readers MUST NOT derive a status from it, and a result
+without it is complete. Failure-time evidence itself is ordinary artifacts on
+the failing attempt: a `screenshot` and a `log` holding the redacted semantic
+tree, both attached to the step that failed.
+
 ### Partial reports
 
 The runner builds reports in memory or an append-safe journal and atomically

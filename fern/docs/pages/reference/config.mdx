@@ -246,6 +246,58 @@ Each worker re-resolves the config module and constructs its own model instance,
 so an instance never crosses a process boundary. A config whose digest differs
 between the runner and a worker fails with `CONFIG_NOT_DETERMINISTIC`.
 
+## analysis
+
+```ts
+analysis?: {
+  model?: string | ModelConfig | ModelInstance;
+  analyzer?: FailureAnalyzer;
+  maxFailures?: number;
+  vision?: boolean;
+  source?: boolean;
+};
+```
+
+Post-failure analysis: one small model call per failed test after its last
+attempt, answering who should look at the failure and why. Off unless the key
+is present or `--analyze` is passed. It never changes a status, never spends a
+test's own model-call budget, and never fails the run: a verdict that cannot
+be produced is recorded as `unavailable` with a reason.
+
+| Key | Type | Default | Valid range | Notes |
+| --- | --- | --- | --- | --- |
+| `model` | `string \| ModelConfig \| ModelInstance` | `agent.model` | - | Model for the built-in analyzer. Same three forms as `agent.model`; `E2E_ANALYSIS_MODEL` overrides. A deterministic suite with no agent model sets this. |
+| `analyzer` | `FailureAnalyzer` | built-in | - | Replaces the built-in analyzer. Receives the same evidence, brings its own model, and its verdict is held to the same closed grammar. Never crosses a process boundary. |
+| `maxFailures` | `number` | `10` | integer 1-100 | Failures analyzed per run; later ones are recorded as `limit-reached` |
+| `vision` | `boolean` | `false` | - | Sends the failure screenshot to the model, unless a secret was filled during the attempt |
+| `source` | `boolean` | `true` | - | Includes the failing test line and four lines of context on each side in the model input |
+
+Only test-category failures and timeouts are analyzed. Each verdict streams as
+an `analysis` [run event](/reference/embedding) and lands in `report.json` as
+the result's `e2edev.analysis` extension:
+
+```json
+{
+  "status": "analyzed",
+  "analyzer": "e2e-failure-analyst",
+  "classification": "test-bug",
+  "confidence": "high",
+  "summary": "The status reads \"Saved!\" while the test expects \"Saved\".",
+  "evidence": ["error: expected \"Saved\" but found \"Saved!\"", "screen: status \"Save result\" reads \"Saved!\""],
+  "suggestedFix": "Expect \"Saved!\" or fix the app's copy.",
+  "artifacts": { "screenshot": "…:artifact:2", "observation": "…:artifact:3" },
+  "model": { "provider": "google", "model": "gemini-3-flash", "inputTokens": 3210, "outputTokens": 96 },
+  "durationMs": 2140
+}
+```
+
+The evidence is what the runner captures the moment a test failure lands,
+with the screen still showing it: a masked `screenshot` artifact (when
+`screenshot` is among the artifact kinds) and a `log` artifact holding the
+redacted accessibility tree, both attached to the step that failed. They are
+captured whether or not analysis is on, so a failing run always leaves the
+final screen behind.
+
 ## credentials
 
 ```ts

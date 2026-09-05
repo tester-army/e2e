@@ -27,7 +27,8 @@ import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
 import { createBackendSession } from '../backend/session.ts';
-import { createFixtures, type ArtifactSink } from './fixtures.ts';
+import { createFixtures, sessionSecrecy, type ArtifactSink } from './fixtures.ts';
+import { captureFailureEvidence } from './failure-evidence.ts';
 import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
@@ -744,6 +745,22 @@ export class TargetExecutor implements SerialHost {
         );
       } catch (cause) {
         recordFailure(cause, phase);
+      }
+      // The screen still shows the failure here, before an afterEach hook can
+      // navigate away or the teardown closes the session: this is the one
+      // moment the evidence exists.
+      if (failure !== undefined && failure.category === 'test' && !this.interruptSignal.aborted) {
+        record.evidence = await this.debug.time('failure.evidence', () =>
+          captureFailureEvidence({
+            session,
+            config: this.config,
+            secrecy: sessionSecrecy(session, this.config),
+            steps,
+            artifacts: artifacts.sink,
+            operation: (signal) => this.op(attemptId, this.config.cleanupTimeout, signal),
+            interruptSignal: this.interruptSignal,
+          }),
+        );
       }
 
       phase = 'afterEach';

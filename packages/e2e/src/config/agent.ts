@@ -244,7 +244,7 @@ export function isModelInstance(value: unknown): value is ModelInstance {
  * author actually wrote. There is no implicit default model; an unconfigured
  * model fails at its first model call, so a custom-executor run needs none.
  */
-function resolveModel(
+export function resolveModel(
   model: string | ModelConfig | ModelInstance | undefined,
   env: NodeJS.ProcessEnv,
   label = 'agent.model',

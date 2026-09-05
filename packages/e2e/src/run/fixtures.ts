@@ -64,6 +64,24 @@ export interface AttemptEnvironment {
 /** Secrets survive every fixture graph that shares the same live isolation. */
 const sessionSecrets = new WeakMap<TargetSession, { ledger: SecretLedger; taint: { value: boolean } }>();
 
+/**
+ * The session's secrecy state — its redactor and whether a secret reached the
+ * screen — created on first use so the attempt executor and the fixture graph
+ * see one ledger whichever touches the session first. Failure evidence is
+ * redacted through the same ledger the agent's observations are.
+ */
+export function sessionSecrecy(
+  session: TargetSession,
+  config: ResolvedConfig,
+): { readonly ledger: SecretLedger; readonly taint: { value: boolean } } {
+  let secrecy = sessionSecrets.get(session);
+  if (secrecy === undefined) {
+    secrecy = { ledger: initialSecretLedger(config), taint: { value: false } };
+    sessionSecrets.set(session, secrecy);
+  }
+  return secrecy;
+}
+
 /** Builds the lazy fixture graph for one attempt. */
 export function createFixtures(
   environment: AttemptEnvironment,
@@ -77,12 +95,7 @@ export function createFixtures(
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  let secrecy = sessionSecrets.get(environment.session);
-  if (secrecy === undefined) {
-    secrecy = { ledger: initialSecretLedger(environment), taint: { value: false } };
-    sessionSecrets.set(environment.session, secrecy);
-  }
-  const { ledger, taint } = secrecy;
+  const { ledger, taint } = sessionSecrecy(environment.session, environment.config);
   const secrets: SecretResolver = {
     async resolve(secret) {
       const credential = environment.config.credentials.get(secret.name);
@@ -325,9 +338,9 @@ function joinAgentContext(
  * The session's secret ledger, seeded with the passwords known up front.
  * Provider-backed values join through the resolver at fill time.
  */
-function initialSecretLedger(environment: AttemptEnvironment): SecretLedger {
+function initialSecretLedger(config: ResolvedConfig): SecretLedger {
   return new SecretLedger(
-    [...environment.config.credentials].flatMap(([name, { password }]) =>
+    [...config.credentials].flatMap(([name, { password }]) =>
       typeof password === 'string' ? [[name, password] as const] : [],
     ),
   );

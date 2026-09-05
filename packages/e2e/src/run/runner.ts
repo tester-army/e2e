@@ -23,6 +23,7 @@ import {
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { FailureAnalysisRunner } from '../analysis/run.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
@@ -59,6 +60,8 @@ export interface RunOptions {
   debug?: boolean | undefined;
   /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
+  /** Enables post-failure analysis with defaults when the config has no `analysis` block (`--analyze`). */
+  analyze?: boolean | undefined;
   /**
    * A config value instead of a discovered file — the embedding-host entry
    * point (see the embedding guide). May hold live values (executors, driver
@@ -116,6 +119,18 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const targetProvenance = new Map<string, TargetProvenance>();
   let appProcess: AppProcess | undefined;
   let sessionStore: SessionStore | undefined;
+  let analysis: FailureAnalysisRunner | undefined;
+
+  /**
+   * The in-process AI trace recorder, registered once. In-process execution
+   * needs it for the tests' own calls; post-failure analysis needs it in the
+   * runner process whichever transport ran the tests.
+   */
+  const ensureAiTraceRecorder = async (): Promise<void> => {
+    if (aiTrace === undefined || aiTraceRecorder !== undefined) return;
+    aiTraceRecorder = new AiTraceRecorder();
+    await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
+  };
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
   // or a flag would apply in the runner and be dropped in every worker.
@@ -124,6 +139,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.workers !== undefined) cli.workers = options.workers;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
+  if (options.analyze === true) cli.analyze = true;
 
   // Config resolves before anything is emitted, and its failure is kept rather
   // than thrown: the reporter set is config truth (CLI overrides merge during
@@ -271,6 +287,16 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const config = loaded.config;
 
   setCredentialRegistry(config.credentials);
+  if (config.analysis !== undefined) {
+    analysis = new FailureAnalysisRunner({
+      config,
+      artifactsRoot: resolveArtifactsRoot(config, options.artifactsDir),
+      interruptSignal: interruptController.signal,
+      emit,
+      debug,
+    });
+    await ensureAiTraceRecorder();
+  }
   emit({
     type: 'run-started',
     runId,
@@ -351,11 +377,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // runs across processes. A programmatic `rawConfig` cannot cross a process
     // boundary (it may hold live backend handles), so it runs in-process
     // against one worker. Either way the scheduler is the only engine.
-    if (aiTrace !== undefined && config.configPath === undefined) {
+    if (config.configPath === undefined) {
       // In-process execution shares this process with the runner, so the
       // recorder lives here and is drained straight into the collector.
-      aiTraceRecorder = new AiTraceRecorder();
-      await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
+      await ensureAiTraceRecorder();
     }
     const transport =
       config.configPath === undefined
@@ -404,6 +429,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           onResult: (result) => {
             results.push(result);
             emit({ type: 'test-finished', result: toEventResult(result) });
+            // Queued, never awaited here: analysis runs beside the remaining tests.
+            analysis?.consider(result);
           },
           onSerialGroup: (group) => {
             serialGroups.push(group);
@@ -454,7 +481,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       recordFailure(cause);
     }
-    for (const teardown of [() => sessionStore?.cleanup(), () => appProcess?.stop()]) {
+    // Analyses settle first: the report must carry every verdict that was
+    // going to land, and an interrupt has already aborted them.
+    for (const teardown of [
+      () => analysis?.settle(),
+      () => sessionStore?.cleanup(),
+      () => appProcess?.stop(),
+    ]) {
       try {
         await teardown();
       } catch (cause) {

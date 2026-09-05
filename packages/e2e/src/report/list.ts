@@ -169,6 +169,9 @@ export class ListReporter {
       case 'test-finished':
         this.testFinished(event.result);
         break;
+      case 'analysis':
+        this.analysis(event);
+        break;
       case 'serial-group':
         this.serialGroup(event.group);
         break;
@@ -385,6 +388,40 @@ export class ListReporter {
       }
     }
     this.status.redraw();
+  }
+
+  /**
+   * A failed pair's analysis, printed as it lands — after that pair's failure
+   * block and possibly after later results, since analysis runs beside the
+   * remaining tests. The header names the test again so the verdict reads on
+   * its own.
+   */
+  private analysis(event: RunEventOf<'analysis'>): void {
+    const { analysis } = event;
+    const head = `${this.pc.dim('\u21b3 analysis')} ${bounded(event.title)} ${this.pc.dim(`[${event.target}]`)}`;
+    if (analysis.status === 'unavailable') {
+      this.writeAboveStatus(
+        `${head} ${this.pc.dim(`unavailable (${analysis.reason}): ${bounded(analysis.message)}`)}`,
+      );
+      return;
+    }
+    const paint =
+      analysis.classification === 'app-bug'
+        ? this.pc.red
+        : analysis.classification === 'unknown'
+          ? this.pc.dim
+          : this.pc.yellow;
+    const model = analysis.model === undefined ? '' : ` \u00b7 ${analysis.model.provider}/${analysis.model.model}`;
+    this.writeAboveStatus(
+      `${head} ${paint(analysis.classification)} ${this.pc.dim(
+        `\u00b7 ${analysis.confidence} confidence${model} \u00b7 ${formatDuration(analysis.durationMs)}`,
+      )}`,
+    );
+    for (const line of bounded(analysis.summary).split('\n')) this.writeAboveStatus(`    ${line}`);
+    for (const item of analysis.evidence) this.writeAboveStatus(`    ${this.pc.dim(`- ${bounded(item)}`)}`);
+    if (analysis.suggestedFix !== undefined) {
+      this.writeAboveStatus(`    ${this.pc.cyan('fix:')} ${bounded(analysis.suggestedFix)}`);
+    }
   }
 
   /** Names the user's failing line and renders a small code frame around it. */

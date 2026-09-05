@@ -39,6 +39,7 @@ npx --no-install e2e run tests/signup.e2e.ts --tag smoke
 | `--artifacts <dir>` | artifact root, default `.e2e/artifacts` |
 | `--no-cache` | run with the trace cache off, overriding `config.cache` (10-determinism.md) |
 | `--pass-with-no-tests` | allow zero runnable ordinary test-target pairs |
+| `--analyze` | enable post-failure analysis with every default when the config has no `analysis` block (05-config.md) |
 
 Positional file arguments resolve from project root and intersect config globs,
 tags, platform filters, and capability filters. A positional path outside the

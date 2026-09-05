@@ -28,8 +28,10 @@ import {
   type ResolvedAgentConfig,
   type ResolvedLimits,
 } from './agent.ts';
+import { resolveAnalysisConfig, type ResolvedAnalysisConfig } from './analysis.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
+export type { ResolvedAnalysisConfig } from './analysis.ts';
 
 export interface ResolvedTarget {
   readonly name: string;
@@ -82,6 +84,8 @@ export interface ResolvedConfig {
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
   readonly cache: ResolvedCacheConfig;
+  /** Post-failure analysis; undefined when neither the config nor `--analyze` asked for it. */
+  readonly analysis: ResolvedAnalysisConfig | undefined;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   readonly configDigest: string;
@@ -111,6 +115,8 @@ export interface CliOverrides {
   reporters?: readonly ('list' | 'json')[];
   /** Trace cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
+  /** `--analyze`: enables post-failure analysis with defaults when the config has no block. */
+  analyze?: boolean;
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -135,6 +141,7 @@ const TOP_LEVEL_KEYS = new Set([
   'screen',
   'agent',
   'cache',
+  'analysis',
   'limits',
   'credentials',
 ]);
@@ -235,6 +242,7 @@ export function resolveConfig(
   const agent = resolveAgentConfig(raw, env, ci, baseLimits);
   const limits: ResolvedLimits = { ...baseLimits, maxObservationBytes: agent.maxObservationBytes };
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache);
+  const analysis = resolveAnalysisConfig(raw, env, agent, cli.analyze);
 
   const resolved: ResolvedConfig = {
     specVersion: '0.1',
@@ -259,6 +267,7 @@ export function resolveConfig(
     testIdAttribute,
     agent,
     cache,
+    analysis,
     limits,
     credentials,
     configDigest: computeConfigDigest(raw, projectId),
@@ -648,6 +657,16 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // enters the digest.
   if (isArtifactsObject(raw.artifacts)) {
     sanitized['artifacts'] = raw.artifacts.kinds ?? [...ARTIFACT_KINDS];
+  }
+  // An analyzer is a live value whose digest identity is its name; a model
+  // instance reduces to its identity exactly like the agent's.
+  if (raw.analysis !== undefined && typeof raw.analysis === 'object') {
+    const { analyzer, model, ...rest } = raw.analysis;
+    sanitized['analysis'] = {
+      ...rest,
+      ...(model === undefined ? {} : { model: isModelInstance(model) ? modelIdentity(model) : model }),
+      ...(analyzer === undefined ? {} : { analyzer: { name: analyzer.name } }),
+    };
   }
   if (raw.credentials !== undefined) {
     sanitized['credentials'] = Object.fromEntries(

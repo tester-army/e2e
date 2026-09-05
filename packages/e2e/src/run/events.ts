@@ -19,7 +19,7 @@
 
 import type { SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import type { ResultRecord, SerialGroupRecord } from './records.ts';
+import type { FailureAnalysisRecord, ResultRecord, SerialGroupRecord } from './records.ts';
 import type { StepProgress } from './steps.ts';
 import { encodeResult, type WireResultRecord } from './worker/protocol.ts';
 
@@ -65,6 +65,19 @@ export type RunEventFact =
       readonly progress: StepProgress;
     }
   | { readonly type: 'test-finished'; readonly result: RunEventResult }
+  | {
+      /**
+       * A failed pair's post-failure analysis landed. Always after that pair's
+       * `test-finished`, and possibly after other pairs' results: analysis
+       * runs beside the remaining tests. The same record reaches the report
+       * as the result's `e2edev.analysis` extension.
+       */
+      readonly type: 'analysis';
+      readonly testId: string;
+      readonly title: string;
+      readonly target: string;
+      readonly analysis: FailureAnalysisRecord;
+    }
   | { readonly type: 'serial-group'; readonly group: SerialGroupRecord }
   | { readonly type: 'run-error'; readonly error: SerializedError }
   | {

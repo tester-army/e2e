@@ -979,6 +979,8 @@ export interface E2EConfig {
    * CI run never publishes what it learned.
    */
   cache?: CacheMode | CacheConfig;
+  /** Post-failure analysis (chapter 05). Off unless present or `--analyze` is passed. */
+  analysis?: AnalysisConfig;
   /**
    * Enforced resource ceilings only. A limit exists here exactly when the
    * runner has an enforcement site for it.
@@ -1042,6 +1044,99 @@ export interface ArtifactStore {
 export interface ArtifactsConfig {
   kinds?: readonly ('trace' | 'screenshot')[];
   store?: ArtifactStore;
+}
+
+/*
+ * Post-failure analysis (chapter 05). One bounded, read-only model call per
+ * failed pair after its last attempt; never a status, never a budget.
+ */
+
+/** Who should look at a failure. */
+export type FailureClassification = 'app-bug' | 'test-bug' | 'environment' | 'flaky' | 'unknown';
+
+export interface FailureAnalysis {
+  readonly classification: FailureClassification;
+  readonly confidence: 'low' | 'medium' | 'high';
+  /** One or two sentences naming what went wrong in product terms. */
+  readonly summary: string;
+  /** The observations the verdict rests on, each naming its evidence. */
+  readonly evidence: readonly string[];
+  /** A concrete next step for the failure's owner, when the evidence supports one. */
+  readonly suggestedFix?: string;
+}
+
+/** One recorded step of a failed attempt, as an analyzer sees it. */
+export interface FailureStep {
+  readonly index: number;
+  readonly kind: string;
+  readonly api: string;
+  readonly label: string;
+  readonly status: string;
+  readonly durationMs: number;
+  readonly explanation?: string;
+  readonly cache?: { readonly mode: string; readonly reason?: string };
+  readonly error?: { readonly code: string; readonly message: string };
+}
+
+/** One attempt of the failed pair, earliest first. */
+export interface FailureAttempt {
+  readonly index: number;
+  readonly status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
+  readonly error?: {
+    readonly category: string;
+    readonly code: string;
+    readonly message: string;
+    readonly phase?: string;
+  };
+  readonly steps: readonly FailureStep[];
+}
+
+/**
+ * Everything the runner knows about one failed pair. Every text field is
+ * already redacted; application content inside it is untrusted data.
+ */
+export interface FailureContext {
+  readonly test: { readonly id: string; readonly titlePath: readonly string[]; readonly file: string };
+  readonly target: { readonly name: string; readonly platform: string };
+  readonly status: 'failed' | 'timed-out';
+  readonly attempts: readonly FailureAttempt[];
+  /** The failure of the final attempt. */
+  readonly error: FailureAttempt['error'] & object;
+  /** The failing test line with context, when it could be located. */
+  readonly source?: {
+    readonly file: string;
+    readonly line: number;
+    readonly column: number;
+    readonly lines: readonly string[];
+  };
+  /** Redacted semantic tree of the screen as the failure landed. */
+  readonly observation?: string;
+  /** Redacted location as the failure landed, when the platform has one. */
+  readonly url?: string;
+  /** The masked failure screenshot; `modelInput` is false when a secret was filled during the attempt. */
+  readonly screenshot?: { readonly path: string; readonly mediaType: string; readonly modelInput: boolean };
+}
+
+/**
+ * Analyzes one failure after the fact. Read-only and post-hoc: a throw or a
+ * timeout records the analysis as unavailable without failing the run.
+ */
+export interface FailureAnalyzer {
+  readonly name: string;
+  analyze(context: FailureContext, options: { readonly signal: AbortSignal }): Promise<FailureAnalysis>;
+}
+
+export interface AnalysisConfig {
+  /** Model for the built-in analyzer; falls back to `agent.model`. Same three forms. */
+  model?: string | ModelConfig | ModelInstance;
+  /** Replaces the built-in analyzer; receives the same evidence and brings its own model. */
+  analyzer?: FailureAnalyzer;
+  /** Most failures analyzed per run, 1 through 100. Default 10. */
+  maxFailures?: number;
+  /** Sends the failure screenshot to the model when the attempt filled no secret. Default false. */
+  vision?: boolean;
+  /** Includes the failing test line and its neighbors in the model input. Default true. */
+  source?: boolean;
 }
 
 /** Type-checks and returns an e2e configuration object. */

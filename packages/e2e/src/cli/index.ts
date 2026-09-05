@@ -65,6 +65,7 @@ function createProgram(): Command {
     .option('--pass-with-no-tests', 'allow zero runnable ordinary test-target pairs')
     .option('--debug', 'print aggregated phase timings to stderr after the run')
     .option('--ai-trace', 'record every model call to .e2e/ai-trace.json for trace viewers')
+    .option('--analyze', 'analyze each failure with a small model call after its last attempt')
     .action(
       async (
         files: string[],
@@ -83,6 +84,7 @@ function createProgram(): Command {
           passWithNoTests?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
+          analyze?: boolean;
         },
       ) => {
         const { tagMode, reporter } = options;
@@ -116,6 +118,7 @@ function createProgram(): Command {
             passWithNoTests: options.passWithNoTests,
             debug: options.debug,
             aiTrace: options.aiTrace,
+            analyze: options.analyze,
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
           });

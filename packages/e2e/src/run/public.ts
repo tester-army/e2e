@@ -23,6 +23,8 @@ export type {
   ArtifactProducer,
   ArtifactRecord,
   AttemptRecord,
+  FailureAnalysisRecord,
+  FailureEvidence,
   ResultRecord,
   ResultStatus,
   RunError,
