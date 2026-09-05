@@ -24,6 +24,8 @@ import {
   urlMatches,
   validateJsonValue,
   type BackendFixtureContext,
+  type FixtureOperation,
+  type FixtureOperations,
   type OperationContext,
   type TextPattern,
 } from '@e2edev/e2e/backend';
@@ -446,7 +448,33 @@ export function createWebFixture(surface: PlaywrightSurface, context: BackendFix
     },
   };
 
-  return context.expectable(web, () => expectation);
+  const action: FixtureOperation = { kind: 'resource' };
+  const navigationCall = { kind: 'resource', timeout: false } as const;
+  const matchers: FixtureOperations<WebExpectation> = {
+    toHaveURL: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
+    toHaveTitle: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
+    get not() { return matchers; },
+  };
+  return context.fixture('web', context.expectable(web, () => context.fixture('expect', expectation, matchers)), {
+    goto: { ...navigationCall, label: (url) => url },
+    reload: navigationCall,
+    back: navigationCall,
+    forward: navigationCall,
+    url: action,
+    title: action,
+    waitForURL: { ...navigationCall, verifies: true, label: (url) => String(url) },
+    evaluate: action,
+    route: { ...action, label: (pattern) => String(pattern) },
+    unroute: { ...action, label: (pattern) => String(pattern) },
+    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: (pattern) => String(pattern) },
+    cookies: action,
+    setCookies: action,
+    setViewport: action,
+    onDialog: action,
+    waitForDownload: { ...action, timeout: (_trigger, options) => options?.timeout },
+    keyboard: { press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
+    mouse: { move: action, wheel: action, down: action, up: action },
+  });
 }
 
 interface ExpectationDeps {

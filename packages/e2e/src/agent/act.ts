@@ -315,6 +315,7 @@ class ActDispatch {
         remainingMs: () => this.deadline.remaining(),
         recordModelCall: (usage) => this.recordModelCall(usage),
         recordToolCall: (call) => this.recordToolCall(call),
+        runTool: (call, body) => this.runTool(call, body),
       },
       observe: (options) => this.observe(options),
       attachTranscript: (text) => {
@@ -425,16 +426,16 @@ class ActDispatch {
       remainingMs: () => this.deadline.remaining(),
       redact: this.redact,
       testIdAttribute: this.runtime.config.testIdAttribute,
-      currentPath: () => this.currentPath(),
+      currentPath: (nodes) => this.currentPath(nodes !== undefined && nodes === this.latest?.nodes ? this.latest : undefined),
     };
   }
 
   /** Best-effort current location path + query, for trace preconditions. */
-  private async currentPath(): Promise<string | undefined> {
+  private async currentPath(observation?: AgentObservation): Promise<string | undefined> {
     const currentUrl = this.session.url;
-    if (currentUrl === undefined) return undefined;
+    if (observation?.url === undefined && currentUrl === undefined) return undefined;
     try {
-      const url = new URL(await currentUrl(this.operation()));
+      const url = new URL(observation?.url ?? await currentUrl!(this.operation()));
       return `${url.pathname}${url.search}`;
     } catch {
       return undefined;
@@ -604,11 +605,15 @@ class ActDispatch {
       name: `tool:${call.name}`,
     });
     if (!call.mutates) return;
-    this.metrics.actionSteps += 1;
-    // A project-tool mutation is a gap: the grammar cannot reproduce it, so a
-    // replay of this step's trace ends here rather than skipping the change.
+    this.reserveAction();
     this.stepCache?.recordGap(call.name);
-    if (this.metrics.actionSteps > this.maxActions) {
+  }
+
+  /** Claims a mutation slot before any side effect, for both grammar and project tools. */
+  private reserveAction(): void {
+    this.checkpoint();
+    if (this.closed) throw new AgentError('CANCELLED', 'the step has ended');
+    if (this.metrics.actionSteps >= this.maxActions) {
       throw this.fatalize(
         new AgentError(
           'STEP_BUDGET_EXHAUSTED',
@@ -616,6 +621,26 @@ class ActDispatch {
         ),
       );
     }
+    // The budget slot is consumed either way: a failed dispatch was an attempt.
+    this.metrics.actionSteps += 1;
+  }
+
+  /** Records project tools through the same budget and operation queue as grammar actions. */
+  private runTool<T>(call: { name: string; mutates: boolean }, body: () => Promise<T>): Promise<T> {
+    const run = async (): Promise<T> => {
+      this.checkpoint();
+      if (this.closed) throw new AgentError('CANCELLED', 'the step has ended');
+      if (call.mutates) {
+        this.reserveAction();
+        this.stepCache?.recordGap(call.name);
+      }
+      return instrumentPhase(
+        this.runtime,
+        { api: this.spec.api, kind: 'backend', phase: 'agent.action', name: `tool:${call.name}` },
+        body,
+      );
+    };
+    return call.mutates ? this.serialized(run) : run();
   }
 
   /** Attaches metrics, model provenance, and the verdict explanation to the step. */
@@ -733,9 +758,8 @@ class ActDispatch {
 
     const wantPixels = options.pixels === true;
     const observation = await this.observeSettled(wantPixels);
-    // The location is read after the settled capture, so it names the document
-    // the tree describes; a backend without one simply leaves it out.
-    const path = await this.currentPath();
+    // Prefer location from this capture; only backends without it need a separate probe.
+    const path = await this.currentPath(observation);
     return {
       revision: observation.revision,
       text: observation.text,
@@ -855,17 +879,7 @@ class ActDispatch {
   }
 
   private async runActionNow(name: string, body: () => Promise<RecordableAction>): Promise<void> {
-    this.checkpoint();
-    if (this.metrics.actionSteps >= this.maxActions) {
-      throw this.fatalize(
-        new AgentError(
-          'STEP_BUDGET_EXHAUSTED',
-          `${this.spec.api} exhausted its action budget of ${this.maxActions}`,
-        ),
-      );
-    }
-    // The budget slot is consumed either way: a failed dispatch was an attempt.
-    this.metrics.actionSteps += 1;
+    this.reserveAction();
     let action: RecordableAction;
     try {
       action = await instrumentPhase(

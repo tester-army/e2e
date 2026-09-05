@@ -13,7 +13,7 @@
  * `ToolLoopAgent` / `generateText`, for anything else.
  */
 
-import type { ModelMessage, ToolSet } from 'ai';
+import type { ModelMessage, ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
@@ -25,7 +25,7 @@ import {
 import { createGrammarTools } from './primitives.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
-import { isDefinedTool, toolAppliesTo } from './tool.ts';
+import { isDefinedTool, toolAppliesTo, withToolContext } from './tool.ts';
 
 const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
 
@@ -238,37 +238,25 @@ function wrapUserTools(
     const mutates = defined.annotations.mutates;
     wrapped[name] = {
       ...defined.tool,
-      execute: async (input: never, executionOptions: never) => {
-        if (helpers.concluding()) {
-          return 'The step is already concluding; no further actions run.';
-        }
-        if (mutates && context.budgets.actionsUsed() >= context.budgets.maxActions) {
-          const stop = new AgentError(
-            'STEP_BUDGET_EXHAUSTED',
-            `the step exhausted its action budget of ${context.budgets.maxActions}`,
-          );
-          helpers.reportHardStop(stop);
-          return `HARD STOP (${stop.code}): ${stop.message}`;
-        }
-        const startedMs = Date.now();
-        let attempted = false;
+      execute: async (input: never, executionOptions: ToolExecutionOptions<unknown>) => {
+        if (helpers.concluding()) return 'The step is already concluding; no further actions run.';
         try {
-          attempted = true;
-          return await execute(input, executionOptions);
+          return await context.budgets.runTool({ name, mutates }, async () =>
+            execute(input, withToolContext(executionOptions, {
+              observe: (options) => {
+                if (mutates) {
+                  throw new AgentError('POLICY_DENIED', 'only read-only tools may request observations; observe in a separate tool call');
+                }
+                return context.observe(options);
+              },
+            })),
+          );
         } catch (cause) {
           if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
             helpers.reportHardStop(cause);
             return `HARD STOP (${cause.code}): ${cause.message}`;
           }
           return `Tool "${name}" failed: ${cause instanceof Error ? cause.message : String(cause)}`;
-        } finally {
-          if (attempted) {
-            try {
-              context.budgets.recordToolCall({ name, mutates, durationMs: Date.now() - startedMs });
-            } catch (cause) {
-              if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) helpers.reportHardStop(cause);
-            }
-          }
         }
       },
     } as ToolSet[string];

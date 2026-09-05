@@ -51,7 +51,7 @@
     "playwright": "1.61.1"
   },
   "peerDependencies": {
-    "@e2edev/e2e": ">=0.1.0 <1"
+    "@e2edev/e2e": ">=0.4.0 <1"
   },
   "devDependencies": {
     "@types/node": "26.1.1",

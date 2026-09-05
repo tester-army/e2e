@@ -195,6 +195,7 @@ export function createBackendSession(options: BackendSessionOptions): TargetSess
       return {
         revision: minted,
         capturedAt: new Date().toISOString(),
+        ...(snapshot.url === undefined ? {} : { url: snapshot.url }),
         ...(snapshot.pixels === undefined ? {} : { pixels: snapshot.pixels }),
         tree: toTree(snapshot.nodes, minted),
         viewport,

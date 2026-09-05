@@ -9,13 +9,14 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { defineTool, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
+import { defineTool, getToolContext, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
 import { BackendError, type BackendHandle } from '@e2edev/e2e/backend';
 import { surfaceOf } from './backend.ts';
 import type { AgentDeviceSurface } from './surface.ts';
 
 interface Screenshot {
-  readonly png: string;
+  readonly png?: string;
+  readonly withheld?: string;
 }
 
 function requireSurface(backend: BackendHandle): AgentDeviceSurface {
@@ -59,10 +60,8 @@ export function agentDeviceTools(
     }
     return surface;
   };
-  const annotate = (replay: 'deterministic' | 'none', mutates: boolean): ToolAnnotations => ({
-    replay,
+  const annotate = (mutates: boolean): ToolAnnotations => ({
     mutates,
-    secrets: false,
     platforms,
   });
   const abort = (options: { abortSignal?: AbortSignal }): AbortSignal | undefined => options.abortSignal;
@@ -78,7 +77,7 @@ export function agentDeviceTools(
           return `Opened ${app}.`;
         },
       }),
-      annotate('deterministic', true),
+      annotate(true),
     ),
     swipe: defineTool(
       tool({
@@ -93,7 +92,7 @@ export function agentDeviceTools(
           return `Swiped from (${from.x}, ${from.y}) to (${to.x}, ${to.y}).`;
         },
       }),
-      annotate('none', true),
+      annotate(true),
     ),
     type_text: defineTool(
       tool({
@@ -109,7 +108,7 @@ export function agentDeviceTools(
           return submit === true ? `Typed ${JSON.stringify(text)} and pressed Return.` : `Typed ${JSON.stringify(text)}.`;
         },
       }),
-      annotate('none', true),
+      annotate(true),
     ),
     alert: defineTool(
       tool({
@@ -120,7 +119,7 @@ export function agentDeviceTools(
           return `Alert ${action}ed.`;
         },
       }),
-      annotate('deterministic', true),
+      annotate(true),
     ),
     screenshot: defineTool(
       tool<Record<string, never>, Screenshot, Record<string, unknown>>({
@@ -128,16 +127,17 @@ export function agentDeviceTools(
           'Look at the actual screen pixels. Use when the observation tree is sparse or contradicts what you expect.',
         inputSchema: z.object({}),
         execute: async (_input, options) => {
-          const bytes = await active().screenshotBytes(abort(options));
-          return { png: Buffer.from(bytes).toString('base64') };
+          const observation = await getToolContext(options).observe({ pixels: true });
+          return observation.pixels === undefined
+            ? { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' }
+            : { png: Buffer.from(observation.pixels.data).toString('base64') };
         },
         // The model gets the image itself, not a file path it cannot open.
-        toModelOutput: ({ output }) => ({
-          type: 'content',
-          value: [{ type: 'file', data: { type: 'data', data: output.png }, mediaType: 'image/png' }],
-        }),
+        toModelOutput: ({ output }) => output.png === undefined
+          ? { type: 'text', value: `Screenshot withheld: ${output.withheld}` }
+          : { type: 'content', value: [{ type: 'file', data: { type: 'data', data: output.png }, mediaType: 'image/png' }] },
       }),
-      annotate('none', false),
+      annotate(false),
     ),
   };
 }

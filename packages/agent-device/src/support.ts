@@ -30,50 +30,6 @@ export function unsupported(text: string): BackendError {
   return new BackendError('UNSUPPORTED_CAPABILITY', text, { retryable: false });
 }
 
-/**
- * Awaits `promise` unless `signal` aborts first, in which case the wait ends
- * with `CANCELLED`. agent-device commands take no signal, so the in-flight
- * call is not stopped; its eventual settlement is absorbed instead of
- * surfacing as an unhandled rejection.
- */
-export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal, label: string): Promise<T> {
-  if (signal.aborted) {
-    promise.catch(() => undefined);
-    return Promise.reject(cancelled(`${label} cancelled`));
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      promise.catch(() => undefined);
-      reject(cancelled(`${label} cancelled`));
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-    promise.then(resolve, reject).finally(() => {
-      signal.removeEventListener('abort', onAbort);
-    });
-  });
-}
-
-/**
- * Best-effort cleanup wait: resolves when `promise` settles, when `signal`
- * aborts, or when `timeoutMs` elapses, whichever comes first. Cleanup never
- * throws through here; a close that outlives its budget is abandoned.
- */
-export function withinCleanupBudget(
-  promise: Promise<unknown>,
-  budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const settle = (): void => {
-      clearTimeout(timer);
-      budget.signal.removeEventListener('abort', settle);
-      resolve();
-    };
-    const timer = setTimeout(settle, Math.max(0, budget.timeoutMs));
-    budget.signal.addEventListener('abort', settle, { once: true });
-    promise.then(settle, settle);
-  });
-}
-
 /** Constrains a caller-supplied artifact label to a safe filename. */
 export function sanitizeFilename(name: string): string {
   return name.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 64) || 'artifact';

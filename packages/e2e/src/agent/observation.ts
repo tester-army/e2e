@@ -13,6 +13,8 @@ const TRUNCATION_MARKER = '[observation truncated at the resolved observation by
 type PixelsWithheld = 'MASKING_UNPROVEN';
 
 export interface AgentObservation {
+  /** Location captured with this tree, when the backend can provide it. */
+  readonly url?: string;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -83,6 +85,7 @@ export function prepareObservation(
   const pixels = clearPixels(observation);
   return {
     revision: observation.revision,
+    ...(observation.url === undefined ? {} : { url: options.redact(observation.url) }),
     text,
     bytes: textBytes,
     nodes,

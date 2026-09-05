@@ -1,0 +1,59 @@
+/** Explicit fixture operations: open the step before running any backend code. */
+import type { FixtureOperation, FixtureOperations } from '../backend/index.ts';
+import { TestError } from '../internal/errors.ts';
+import { withAbort, withTimeout } from '../internal/time.ts';
+import type { AttemptEnvironment } from './fixtures.ts';
+
+export class FixtureRecorder {
+  private readonly declared = new WeakSet<object>();
+
+  constructor(private readonly environment: AttemptEnvironment) {}
+
+  /** Uses the legacy adapter only for factories without an explicit recording declaration. */
+  adapt<T extends object>(surface: T, legacy: (surface: T) => T): T {
+    return this.declared.has(surface) ? surface : legacy(surface);
+  }
+
+  /** Wraps declared methods and namespaces without invoking them or guessing their return types. */
+  fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T {
+    const result = Object.create(Object.getPrototypeOf(surface), Object.getOwnPropertyDescriptors(surface)) as T;
+    this.declared.add(result);
+    for (const [key, definition] of Object.entries(operations)) {
+      if (definition === undefined) continue;
+      const api = `${name}.${key}`;
+      const operation = definition as FixtureOperation;
+      if (operation.kind === 'resource' || operation.kind === 'assertion') {
+        const method = Reflect.get(surface, key) as (...args: unknown[]) => Promise<unknown>;
+        if (typeof method !== 'function') throw new TestError('INVALID_ARGUMENT', `${api} must be a method`);
+        Object.defineProperty(result, key, {
+          configurable: true,
+          enumerable: true,
+          value: (...args: unknown[]) => this.run(api, operation, args, () => method.apply(surface, args)),
+        });
+      } else {
+        Object.defineProperty(result, key, {
+          configurable: true,
+          enumerable: true,
+          get: () => this.fixture(api, Reflect.get(surface, key) as object, definition as FixtureOperations<object>),
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Executes one declared operation inside its step and cancellation boundary. */
+  private run(api: string, operation: FixtureOperation, args: unknown[], body: () => Promise<unknown>): Promise<unknown> {
+    const { environment } = this;
+    const label = operation.label?.(...args) ?? '';
+    return environment.steps.run(operation.kind, api, label, () => {
+      const timeout = typeof operation.timeout === 'function' ? operation.timeout(...args) : operation.timeout;
+      if (timeout !== false && timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
+        throw new TestError('INVALID_ARGUMENT', `${api} timeout must be positive and finite`);
+      }
+      const pending = withAbort(body, environment.budget.signal, () => new TestError('CANCELLED', `${api} cancelled`));
+      if (timeout === false) return pending;
+      const timeoutMs = timeout ?? environment.config.actionTimeout;
+      return withTimeout(pending, timeoutMs, () => new TestError('ACTION_FAILED', `${api} exceeded its timeout of ${timeoutMs}ms`));
+    }, { verifies: operation.verifies ?? operation.kind === 'assertion' });
+  }
+}

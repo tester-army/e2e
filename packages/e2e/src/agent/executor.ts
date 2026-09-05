@@ -210,6 +210,7 @@ export interface ExecutorBudgets {
    */
   recordModelCall(usage?: ExecutorModelCall): void;
   /**
+   * @deprecated Use runTool to reserve the budget before dispatch.
    * Records one executor tool call that did not go through `actions` — a
    * project tool from `defineTool`. A mutating tool consumes an action-budget
    * slot and may throw `STEP_BUDGET_EXHAUSTED`; every call is recorded as a
@@ -217,6 +218,8 @@ export interface ExecutorBudgets {
    * grammar.
    */
   recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void;
+  /** Reserves a project tool's budget before execution and serializes mutations with grammar actions. */
+  runTool<T>(call: { name: string; mutates: boolean }, body: () => Promise<T>): Promise<T>;
 }
 
 /**

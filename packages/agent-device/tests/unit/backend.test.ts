@@ -386,12 +386,12 @@ describe('perform', () => {
     ]);
   });
 
-  it('presses the innermost control of a row-spanning switch, and the node itself when it has none', async () => {
+  it.each(['e2', ''])('presses the innermost control even when the row ref is %j', async (rowRef) => {
     const h = harness();
     h.fake.respond('capture.snapshot', () => ({
       nodes: [
         { ref: 'e1', index: 0, depth: 0, type: 'Application' },
-        { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'Switch', label: 'Haptic Feedback', value: '1' },
+        { ref: rowRef, index: 1, parentIndex: 0, depth: 1, type: 'Switch', label: 'Haptic Feedback', value: '1' },
         { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'Button', label: 'Haptic Feedback' },
         { ref: 'e4', index: 3, parentIndex: 1, depth: 2, type: 'Switch', value: '1' },
         { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'Switch', label: 'Sound', value: '0' },
@@ -565,6 +565,7 @@ describe('device fixture', () => {
   function fixture(h: Harness): Device {
     const context = {
       targetName: 'ios-simulator',
+      fixture: (_name: string, value: object) => value,
       signal: new AbortController().signal,
       locator: (expression: unknown) => {
         minted.push(expression);
@@ -582,6 +583,7 @@ describe('device fixture', () => {
     let current = timedOut.signal;
     const context = {
       targetName: 'ios-simulator',
+      fixture: (_name: string, value: object) => value,
       get signal() {
         return current;
       },
@@ -593,7 +595,7 @@ describe('device fixture', () => {
     // ...and the same fixture instance follows the harness into the afterEach budget.
     current = new AbortController().signal;
     await expect(device.home()).resolves.toBeUndefined();
-    expect(h.fake.methods().filter((method) => method === 'command.home')).toHaveLength(2);
+    expect(h.fake.methods().filter((method) => method === 'command.home')).toHaveLength(1);
   });
 
   it('mints a core locator from an agent-device selector without a device round trip', async () => {
@@ -683,5 +685,44 @@ describe('device fixture', () => {
     await openAttempt(h);
     h.fake.respond('command.appState', () => ({ platform: 'android', package: 'com.android.settings', activity: '.Main' }));
     expect(await fixture(h).foregroundApp()).toEqual({ name: 'com.android.settings', bundleId: 'com.android.settings' });
+  });
+});
+
+describe('reference lifetime and cancellation', () => {
+  it('bounds located bindings while preserving current observation ids', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const observation = await observed(h, 'About');
+    const expression = { kind: 'selector', selector: 'id=ABOUT' } as const;
+    const [oldest] = await h.backend.locate!(expression, operation());
+    let newest = oldest!;
+    for (let i = 0; i < 2050; i += 1) {
+      [newest] = (await h.backend.locate!(expression, operation())) as [SemanticNode];
+    }
+    await expect(h.backend.perform!(oldest!.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    await expect(h.backend.perform!(newest.ref, { kind: 'tap' }, operation())).resolves.toBeUndefined();
+    await expect(h.backend.perform!(observation.ref, { kind: 'tap' }, operation())).resolves.toBeUndefined();
+  });
+
+  it('captures an observation location in the same snapshot while explicit URL probes stay fresh', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const before = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    const snapshot = await h.backend.observe!(operation());
+    expect(snapshot.url).toBe('app://device/com.apple.preferences/General');
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(before + 1);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, appBundleId: 'other.app' }));
+    expect(await h.backend.url!(operation())).toBe('app://device/other.app/General');
+  });
+
+  it('never dispatches a command or action when its signal is already aborted', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const node = await observed(h, 'About');
+    const before = h.fake.calls.length;
+    const signal = AbortSignal.abort();
+    await expect(h.surface.command('home', (client) => client.command.home({}), signal)).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect(h.backend.perform!(node.ref, { kind: 'tap' }, operation(signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.calls).toHaveLength(before);
   });
 });

@@ -172,15 +172,19 @@ configuration error; anything else is infrastructure.
 
 A platform-shaped surface - `web` for a browser, `device` for a simulator - is
 a fixture the backend contributes, not something core declares. The harness
-records every async method call as a step named `<fixture>.<method>`, bounded
-by the action timeout (or the call's own `timeout` option) and the attempt
-signal; synchronous members are accessors and pass through.
+records the methods declared through `context.fixture` as steps named
+`<fixture>.<method>`. Declare labels and timeouts explicitly; synchronous
+accessors pass through. The step opens before the method runs, so artifacts
+and failures are attributed to the call that produced them.
 
 ```ts
 fixtures: {
-  device: (context) => ({
+  device: (context) => context.fixture('device', {
     async setNetwork(state: 'online' | 'offline') { await client.network(state); },
     async home() { await client.home(); },
+  }, {
+    setNetwork: { kind: 'resource', label: (state) => state },
+    home: { kind: 'resource' },
   }),
 },
 ```
@@ -211,9 +215,7 @@ tool never reaches a device.
 
 ```ts
 const swipe = defineTool(swipeTool(client), {
-  replay: 'deterministic',
   mutates: true,
-  secrets: false,
   platforms: ['ios', 'android'],
 });
 ```

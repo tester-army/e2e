@@ -86,7 +86,7 @@ export interface Device {
 
 /** Builds the device fixture for one attempt. */
 export function createDeviceFixture(surface: AgentDeviceSurface, context: BackendFixtureContext): Device {
-  return {
+  const device: Device = {
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {
       await surface.command(
@@ -191,4 +191,26 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Backen
       await surface.command('device.setClipboard', (client) => client.command.clipboard({ action: 'write', text }), context.signal);
     },
   };
+  const action = { kind: 'resource' } as const;
+  return context.fixture('device', device, {
+    setNetwork: { ...action, label: (state) => state },
+    setAirplaneMode: action,
+    setPermission: { ...action, label: (permission) => permission },
+    setLocation: action,
+    clearLocation: action,
+    setAppearance: { ...action, label: (mode) => mode },
+    setOrientation: { ...action, label: (orientation) => orientation },
+    setBiometrics: action,
+    enrollBiometrics: action,
+    installApp: { ...action, label: (appPath) => appPath },
+    openApp: { ...action, label: (app) => app },
+    closeApp: action,
+    foregroundApp: action,
+    home: action,
+    back: action,
+    alert: { ...action, label: (value) => value },
+    dismissKeyboard: action,
+    clipboard: action,
+    setClipboard: { ...action, label: (text) => `${text.length} chars` },
+  });
 }

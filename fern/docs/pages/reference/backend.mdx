@@ -124,6 +124,7 @@ needs one fails the call that needs it; it never navigates to a placeholder.
 
 ```ts
 export interface BackendSnapshot {
+  readonly url?: string;
   readonly nodes: readonly SemanticNode[];
   readonly viewport?: { width: number; height: number; scale: number };
   readonly pixels?: ObservationPixels;
@@ -136,6 +137,11 @@ onto every ref, redacts registered secret values, bounds the byte size, and
 checks that `maskedRegionCount` covers every `secure` node when `pixels` are
 present. A pixels-only snapshot (`nodes: []`) is valid: that is how a
 screenshot-and-coordinates surface is observable.
+
+When location requires a snapshot, return `url` from that same capture. The
+harness reuses it for the executor's path and trace-cache anchors. `url()`
+remains a fresh probe for replay polling after mutations; backends without
+snapshot location metadata still use that hook.
 
 ## Actions
 
@@ -277,6 +283,7 @@ export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
 
 export interface BackendFixtureContext {
   readonly targetName: string;
+  fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
   readonly app: { baseUrl?: string; allowedOrigins: readonly string[]; resolveUrl(url: string): string };
   readonly timeouts: { test: number; action: number; assertion: number };
   readonly signal: AbortSignal;
@@ -289,16 +296,36 @@ export interface BackendFixtureContext {
 }
 ```
 
-The harness records every async method call on a contributed fixture as a
-`<fixture>.<method>` step, labelled with the first string argument, bounded by
-`actionTimeout` or the call's own `{ timeout }` option, and aborted with the
-attempt. Synchronous members are accessors and pass through; nested plain
-objects are namespaces (`web.keyboard.press`). `app.resolveUrl` throws
-`APP_URL_REQUIRED` when no app URL is configured and `POLICY_DENIED` for a
-disallowed origin or scheme, so a fixture never re-implements the policy the
-harness owns. `expectable` attaches an expectation surface so `expect(fixture)`
-returns it, with every matcher recorded as an `expect.<matcher>` assertion
-step. Type the fixture in tests with `test.extend<{ name: Type }>()`.
+Use `context.fixture(name, surface, operations)` to declare which methods are
+recorded. Each operation specifies `kind: 'resource' | 'assertion'`, an
+optional safe `label(...args)`, an optional `timeout` (milliseconds, a function
+of the arguments, or `false` when the method owns its deadline), and optional
+`verifies`. The default timeout is `actionTimeout`; assertions verify by
+default. Passing verification steps confirm earlier staged action traces.
+Nested operation maps describe namespaces. Undeclared synchronous accessors
+retain their identity.
+
+The harness opens the step before calling a declared method, so synchronous
+attachments, failures, and asynchronous work have the same owner. Events and
+artifacts remain attached to that operation across nested and overlapping
+calls. Work arriving after its step has closed cannot attach to a later step.
+
+For compatibility, factories that return a plain surface still use the legacy
+adapter: it detects promises, derives labels from arguments, and reads
+`{ timeout }` options. New backends should use explicit declarations.
+`expectable` attaches an expectation surface so `expect(fixture)` returns it;
+use `context.fixture('expect', matchers, operations)` in its factory to declare
+matcher recording. Type the fixture with `test.extend<{ name: Type }>()`.
+
+`app.resolveUrl` throws `APP_URL_REQUIRED` when no app URL is configured and
+`POLICY_DENIED` for a disallowed origin or scheme.
+
+The backend entrypoint also exports `raceAbort(work, signal, label)`,
+`withTimeout(promise, timeoutMs, onTimeout)`, and
+`withinCleanupBudget(promise, { signal, timeoutMs })`. Pass a thunk to
+`raceAbort` to check cancellation before dispatch. Cleanup waiting absorbs
+failures and releases its listeners at cancellation or timeout; abandoning a
+wait does not stop an underlying command.
 
 ## Vocabulary
 

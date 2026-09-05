@@ -115,11 +115,19 @@ export async function withTimeout<T>(
  * the error. The promise is left running: the caller is abandoning it.
  */
 export async function withAbort<T>(
-  promise: Promise<T>,
+  work: Promise<T> | (() => Promise<T>),
   signal: AbortSignal,
   onAbort: () => Error,
 ): Promise<T> {
-  if (signal.aborted) throw onAbort();
+  if (signal.aborted) {
+    if (typeof work !== 'function') void work.catch(() => undefined);
+    throw onAbort();
+  }
+  const promise = typeof work === 'function' ? work() : work;
+  if (signal.aborted) {
+    void promise.catch(() => undefined);
+    throw onAbort();
+  }
   let listener: (() => void) | undefined;
   try {
     return await Promise.race([
@@ -132,4 +140,22 @@ export async function withAbort<T>(
   } finally {
     if (listener !== undefined) signal.removeEventListener('abort', listener);
   }
+}
+
+/** Best-effort cleanup: abandon the wait at cancellation or timeout, absorbing late failures. */
+export function withinCleanupBudget(
+  promise: Promise<unknown>,
+  budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const settle = (): void => {
+      clearTimeout(timer);
+      budget.signal.removeEventListener('abort', settle);
+      resolve();
+    };
+    const timer = setTimeout(settle, Math.max(0, budget.timeoutMs));
+    budget.signal.addEventListener('abort', settle, { once: true });
+    promise.then(settle, settle);
+    if (budget.signal.aborted) settle();
+  });
 }

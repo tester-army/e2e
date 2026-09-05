@@ -47,3 +47,54 @@ describe('StepRecorder.lastVerifiedStepIndex', () => {
     expect(steps.lastVerifiedStepIndex).toBe(0);
   });
 });
+
+describe('async step ownership', () => {
+  it('attributes overlapping siblings and nested work to their own scopes', async () => {
+    const steps = new StepRecorder('attempt');
+    const firstGate = deferred();
+    const secondGate = deferred();
+    const first = steps.run('resource', 'first', '', async () => {
+      await firstGate.promise;
+      steps.attachArtifact('first');
+    });
+    const second = steps.run('resource', 'second', '', async () => {
+      await secondGate.promise;
+      expect(steps.currentStepId).toBe('attempt:1');
+      await steps.run('resource', 'nested', '', async () => { steps.attachArtifact('nested'); });
+      steps.attachArtifact('second');
+    });
+    firstGate.resolve();
+    await first;
+    expect(steps.currentStepId).toBeUndefined();
+    secondGate.resolve();
+    await second;
+    expect(steps.currentStepId).toBeUndefined();
+    expect(steps.all().map((step) => step.artifacts)).toEqual([['first'], ['second'], ['nested']]);
+  });
+
+  it('ignores late work inherited from a completed step instead of attaching it to a newer step', async () => {
+    const steps = new StepRecorder('attempt');
+    const lateGate = deferred();
+    let late: Promise<void> | undefined;
+    await steps.run('resource', 'finished', '', async () => {
+      late = lateGate.promise.then(() => {
+        steps.attachArtifact('late');
+        steps.attachViewport({ width: 1, height: 1, scale: 1 });
+        steps.recordEvent({ kind: 'backend', startedAt: '', durationMs: 0, status: 'passed' });
+      });
+    });
+    await steps.run('resource', 'newer', '', async () => { lateGate.resolve(); await late; });
+    for (const step of steps.all()) {
+      expect(step.artifacts).toEqual([]);
+      expect(step.events).toEqual([]);
+      expect(step.viewport).toBeUndefined();
+    }
+  });
+});
+
+/** A gate for controlling completion order without relying on timers. */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}

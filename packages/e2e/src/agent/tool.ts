@@ -1,13 +1,7 @@
-/**
- * `defineTool` (RFC0001, layer 2): an AI SDK tool plus the required semantic
- * annotation. The annotation is what lets the harness treat a project tool as
- * a first-class capability — replay eligibility, mutation tracking, and secret
- * gating are declared, never inferred. A tool without declared semantics is
- * excluded from caching and untrusted by default, which in v0 (no cache)
- * reduces to: the annotation is required and recorded.
- */
+/** Project tools declare mutation and platform scope; the harness owns dispatch and accounting. */
 
-import type { Tool } from 'ai';
+import type { Tool, ToolExecutionOptions } from 'ai';
+import type { StepExecutorContext } from './executor.ts';
 import { TestError } from '../internal/errors.ts';
 import type { Platform } from '../types.ts';
 
@@ -15,15 +9,12 @@ import type { Platform } from '../types.ts';
 const DEFINED_TOOL_MARKER = Symbol.for('e2e.defined-tool.v1');
 
 export interface ToolAnnotations {
-  /**
-   * `'deterministic'` — same input, same effect; a future cache may replay it.
-   * `'none'` — never replayed; always re-executed by a live executor.
-   */
-  readonly replay: 'deterministic' | 'none';
+  /** @deprecated Reserved metadata; project-tool mutations always end trace replay. */
+  readonly replay?: 'deterministic' | 'none';
   /** Whether executing the tool can change application state. */
   readonly mutates: boolean;
-  /** Whether the tool handles secret material. */
-  readonly secrets: boolean;
+  /** @deprecated Metadata only; never grants access to plaintext secrets or pixels. */
+  readonly secrets?: boolean;
   /**
    * Platforms this tool is offered on; absent means every platform. A suite
    * that mixes targets of different platforms keeps a gesture tool off the
@@ -44,12 +35,12 @@ export function defineTool(tool: Tool, annotations: ToolAnnotations): DefinedToo
     throw new TestError('INVALID_ARGUMENT', 'defineTool requires an AI SDK tool with an execute function');
   }
   if (annotations === undefined || typeof annotations !== 'object') {
-    throw new TestError('INVALID_ARGUMENT', 'defineTool requires annotations: { replay, mutates, secrets }');
+    throw new TestError('INVALID_ARGUMENT', 'defineTool requires annotations: { mutates }');
   }
-  if (annotations.replay !== 'deterministic' && annotations.replay !== 'none') {
+  if (annotations.replay !== undefined && annotations.replay !== 'deterministic' && annotations.replay !== 'none') {
     throw new TestError('INVALID_ARGUMENT', "annotations.replay must be 'deterministic' or 'none'");
   }
-  if (typeof annotations.mutates !== 'boolean' || typeof annotations.secrets !== 'boolean') {
+  if (typeof annotations.mutates !== 'boolean' || (annotations.secrets !== undefined && typeof annotations.secrets !== 'boolean')) {
     throw new TestError('INVALID_ARGUMENT', 'annotations.mutates and annotations.secrets must be booleans');
   }
   if (
@@ -66,9 +57,9 @@ export function defineTool(tool: Tool, annotations: ToolAnnotations): DefinedToo
   const defined: DefinedTool = {
     tool,
     annotations: {
-      replay: annotations.replay,
+      ...(annotations.replay === undefined ? {} : { replay: annotations.replay }),
       mutates: annotations.mutates,
-      secrets: annotations.secrets,
+      ...(annotations.secrets === undefined ? {} : { secrets: annotations.secrets }),
       ...(annotations.platforms === undefined ? {} : { platforms: [...annotations.platforms] }),
     },
   };
@@ -84,4 +75,23 @@ export function toolAppliesTo(defined: DefinedTool, platform: Platform): boolean
 /** True when a value came through `defineTool`, from this or another realm. */
 export function isDefinedTool(value: unknown): value is DefinedTool {
   return typeof value === 'object' && value !== null && DEFINED_TOOL_MARKER in value;
+}
+
+/** Guarded observation capability supplied to read-only tools by createAgent. */
+export function getToolContext(options: object): Pick<StepExecutorContext, 'observe'> {
+  const context = (options as { [TOOL_CONTEXT]?: Pick<StepExecutorContext, 'observe'> })[TOOL_CONTEXT];
+  if (context === undefined || typeof context.observe !== 'function') {
+    throw new TestError('INVALID_ARGUMENT', 'this tool needs the observation context supplied by createAgent');
+  }
+  return { observe: context.observe };
+}
+
+const TOOL_CONTEXT = Symbol.for('e2e.tool-context.v1');
+
+/** Carries harness capabilities alongside SDK options without replacing the project's SDK context. */
+export function withToolContext(
+  options: ToolExecutionOptions<unknown>,
+  context: Pick<StepExecutorContext, 'observe'>,
+): ToolExecutionOptions<unknown> {
+  return Object.assign({}, options, { [TOOL_CONTEXT]: context });
 }

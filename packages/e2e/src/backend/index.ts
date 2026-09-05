@@ -31,7 +31,8 @@ export { ConfigurationError, InfrastructureError, TestError } from '../internal/
 export { validateJsonValue, type JsonValueRules } from '../internal/json-value.ts';
 export { describePattern, matchesText, toTextPattern } from '../internal/text.ts';
 export type { TextMatch } from '../types.ts';
-export { Deadline, pollCondition, type PollConditionOptions } from '../internal/time.ts';
+export { raceAbort } from './timing.ts';
+export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
 export { urlMatches } from '../internal/urls.ts';
 import type { Expectable, Locator, Momentum, Screen, ScrollDirection } from '../types.ts';
 import {
@@ -90,9 +91,28 @@ export interface BackendAppInfo {
   readonly allowedOrigins: readonly string[];
 }
 
+/** Explicit recording policy for one async fixture method. Arguments enter reports only through label. */
+export interface FixtureOperation<Args extends unknown[] = unknown[]> {
+  readonly kind: 'resource' | 'assertion';
+  readonly label?: (...args: Args) => string;
+  /** Action timeout by default; false when the method owns its assertion/navigation deadline. */
+  readonly timeout?: number | false | ((...args: Args) => number | undefined);
+  /** Assertions verify by default; waits may opt in as well. */
+  readonly verifies?: boolean;
+}
+
+/** Only declared async methods are recorded. Sync accessors pass through unchanged. */
+export type FixtureOperations<T extends object> = {
+  readonly [Key in keyof T]?: T[Key] extends (...args: infer Args) => Promise<unknown>
+    ? FixtureOperation<Args>
+    : T[Key] extends object ? FixtureOperations<T[Key]> : never;
+};
+
 /** Context handed to a contributed fixture factory, once per attempt. */
 export interface BackendFixtureContext {
   readonly targetName: string;
+  /** Records the declared operations before invoking them; undeclared accessors retain their identity. */
+  fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
   readonly app: BackendAppInfo & {
     /**
      * Resolves a navigation target against the base URL and the origin
@@ -138,10 +158,9 @@ export interface BackendFixtureContext {
 
 /**
  * A contributed fixture: any record of async methods, sync accessors, and
- * nested namespaces. The harness owns how every async method call runs - a
- * recorded, timeout-bounded step named `<fixture>.<method>` - and never
- * learns what the methods mean. A synchronous member is an accessor and is
- * returned as is.
+ * nested namespaces. Declare recorded methods with context.fixture; their
+ * metadata controls labels, deadlines and verification. Plain surfaces remain
+ * supported through the legacy adapter for existing backend factories.
  */
 export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
 
@@ -299,6 +318,8 @@ export interface BackendObserveOptions {
  * observation byte budget apply to every backend equally.
  */
 export interface BackendSnapshot {
+  /** Location captured with this tree, when the backend can provide it. */
+  readonly url?: string;
   readonly nodes: readonly SemanticNode[];
   readonly viewport?: { readonly width: number; readonly height: number; readonly scale: number };
   /** Masked pixels, when requested and producible; omitted otherwise. */

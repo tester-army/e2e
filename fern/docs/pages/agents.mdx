@@ -56,7 +56,7 @@ const seedCart = defineTool(
     execute: async ({ sku }) =>
       fetch(`${process.env.APP_URL}/api/test/cart?sku=${sku}`).then((r) => r.text()),
   }),
-  { replay: 'none', mutates: true, secrets: false },
+  { mutates: true },
 );
 
 export default defineConfig({
@@ -70,6 +70,22 @@ mid-flow. A tool that only makes sense on some targets declares them:
 `{ ..., platforms: ['ios', 'android'] }` keeps a swipe tool off a web target,
 and the model never sees a verb the surface cannot honor. `createAgent()` with no arguments is exactly what runs by default;
 `system` appends guidance, `model` overrides the config-resolved one.
+
+The harness reserves a mutating tool's action slot before executing it and
+queues it with grammar actions. Failed calls still consume their reserved
+slot and are recorded as failures. Parallel tool calls cannot exceed the
+budget by checking it at the same time. Project-tool mutations always mark
+trace replay gaps.
+
+`replay` and `secrets` annotations are deprecated, optional metadata. They do
+not enable deterministic tool replay or grant access to secrets. Declare
+`mutates` and, when needed, `platforms`.
+
+Read-only tools can call `getToolContext(executionOptions).observe({ pixels:
+true })`, importing `getToolContext` from `@e2edev/e2e/agent`. This is the same
+redacted observation and pixel-withholding policy the executor uses. Mutating
+tools must request observations in a separate read-only call; their bodies
+already occupy the action queue.
 
 ## Three layers, like the AI SDK
 
@@ -192,19 +208,16 @@ export default defineConfig({
         description: 'Look at the device screen',
         inputSchema: z.object({}),
         execute: () =>
-          guard(async () => {
-            ctx.budgets.recordToolCall({ name: 'screenshot', mutates: false });
-            return device.describeScreen();
-          }),
+          guard(() => ctx.budgets.runTool({ name: 'screenshot', mutates: false }, async () => {
+            const observation = await ctx.observe();
+            return observation.text;
+          })),
       }),
       tap: tool({
         description: 'Tap an element by label',
         inputSchema: z.object({ label: z.string() }),
         execute: ({ label }) =>
-          guard(async () => {
-            ctx.budgets.recordToolCall({ name: 'tap', mutates: true });
-            return device.tap(label);
-          }),
+          guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, () => device.tap(label))),
       }),
     }),
   }),
@@ -212,9 +225,12 @@ export default defineConfig({
 ```
 
 `guard()` stops a tool from running once the step is concluding and turns
-budget and timeout stops into a clean end of the loop; `recordToolCall` is
-what counts your tool against the step's action budget; the chassis cannot
-see inside a foreign tool, so an unrecorded call is an unbudgeted one. The
+budget and timeout stops into a clean end of the loop. `runTool` reserves the
+action budget, serializes mutations, and records their outcomes. The older
+`recordToolCall` accounting hook is deprecated because reporting a mutation
+after it ran cannot prevent it from exceeding a budget. A mutating `runTool`
+body must call its backend directly; queuing another grammar operation from
+inside that body would wait on itself. The
 step deadline still settles the verdict either way, but a device operation
 that ignores cancellation finishes on its own time, so keep tool bodies
 short and interruptible.

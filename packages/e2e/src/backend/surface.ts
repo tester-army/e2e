@@ -30,6 +30,8 @@ export type { BackendObserveOptions, BackendState } from './index.ts';
 export type GrammarVerb = 'tap' | 'type' | 'typeSecret' | 'press' | 'select' | 'scroll' | 'navigate';
 
 export interface Observation {
+  /** Location captured with this tree, when the backend can provide it. */
+  readonly url?: string;
   readonly revision: string;
   readonly capturedAt: string;
   readonly pixels?: ObservationPixels;

@@ -218,50 +218,6 @@ export class ErrorLatch {
 }
 
 /**
- * Awaits `promise` unless `signal` aborts first, in which case the wait ends
- * with `CANCELLED`. The underlying work is not stopped - Playwright offers no
- * handle to cancel an in-flight call - so its eventual rejection is absorbed
- * rather than surfacing as an unhandled rejection.
- */
-export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal, label: string): Promise<T> {
-  if (signal.aborted) {
-    promise.catch(() => undefined);
-    return Promise.reject(cancelled(`${label} cancelled`));
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      promise.catch(() => undefined);
-      reject(cancelled(`${label} cancelled`));
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-    promise.then(resolve, reject).finally(() => {
-      signal.removeEventListener('abort', onAbort);
-    });
-  });
-}
-
-/**
- * Best-effort cleanup wait: resolves when `promise` settles, when `signal`
- * aborts, or when `timeoutMs` elapses, whichever comes first. Cleanup never
- * throws through here; a close that outlives its budget is simply abandoned.
- */
-export function withinCleanupBudget(
-  promise: Promise<unknown>,
-  budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const settle = (): void => {
-      clearTimeout(timer);
-      budget.signal.removeEventListener('abort', settle);
-      resolve();
-    };
-    const timer = setTimeout(settle, Math.max(0, budget.timeoutMs));
-    budget.signal.addEventListener('abort', settle, { once: true });
-    promise.then(settle, settle);
-  });
-}
-
-/**
  * True for an error that already carries its classification: a `BackendError`
  * from any module copy, or a runner error (policy, validation, timeout). Those
  * must cross the boundary untouched; re-wrapping one would turn a

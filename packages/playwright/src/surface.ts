@@ -12,6 +12,8 @@ import path from 'node:path';
 import type { Browser, BrowserContext, ElementHandle, Page, Route } from 'playwright';
 import {
   BackendError,
+  raceAbort,
+  withinCleanupBudget,
   type BackendAppInfo,
   type BackendAttemptContext,
   type BackendCleanupContext,
@@ -46,11 +48,9 @@ import {
   message,
   navigationStaleOr,
   performViewportSwipe,
-  raceAbort,
   sanitizeFilename,
   staleOr,
   translatePwError,
-  withinCleanupBudget,
   type ActionTarget,
 } from './support.ts';
 
@@ -464,7 +464,7 @@ export class PlaywrightSurface {
     this.latch.throwPending();
     if (operation.signal.aborted) throw cancelled(`${label} cancelled`);
     try {
-      return await raceAbort(fn(), operation.signal, label);
+      return await raceAbort(fn, operation.signal, label);
     } catch (cause) {
       throw translate(cause, label);
     }

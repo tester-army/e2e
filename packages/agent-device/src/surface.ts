@@ -13,6 +13,8 @@ import path from 'node:path';
 import type { createAgentDeviceClient } from 'agent-device';
 import {
   BackendError,
+  raceAbort,
+  withinCleanupBudget,
   type BackendAttemptContext,
   type BackendCleanupContext,
   type BackendInitInfo,
@@ -34,13 +36,11 @@ import { maskPng } from './png.ts';
 import {
   invalidState,
   notActionable,
-  raceAbort,
   readPngSize,
   sanitizeFilename,
   screenUrl,
   swipeWithin,
   unsupported,
-  withinCleanupBudget,
   type Rect,
 } from './support.ts';
 
@@ -117,6 +117,16 @@ interface RawSnapshot {
   readonly snapshotQuality?: { readonly state?: string };
 }
 
+/** Action data only: located references never retain a projected snapshot through parent links. */
+interface NodeBinding {
+  readonly id: string;
+  readonly ref: string;
+  readonly node: SemanticNode;
+  readonly controlRef: string;
+}
+
+const MAX_LOCATED_REFS = 2048;
+
 interface Attempt {
   readonly artifactsDir: string;
   screenshots: number;
@@ -155,7 +165,8 @@ export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private testIdAttribute = 'data-testid';
   private attempt: Attempt | undefined;
-  private generation = new Map<string, ProjectedNode>();
+  private generation = new Map<string, NodeBinding>();
+  private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
   private appIdentity: string | undefined;
   /** The app `appPath` installed at init, when no `app` option names one. */
@@ -204,8 +215,7 @@ export class AgentDeviceSurface {
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
     try {
-      const pending = this.track(run(client));
-      return await (signal === undefined ? pending : raceAbort(pending, signal, label));
+      return await raceAbort(() => this.track(run(client)), signal ?? new AbortController().signal, label);
     } catch (cause) {
       throw translateError(cause, label);
     }
@@ -261,6 +271,7 @@ export class AgentDeviceSurface {
     await this.settleInflight(context.signal);
     this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0 };
     this.generation = new Map();
+    this.located.clear();
     const app = this.pinnedApp;
     if (app === undefined) return;
     await this.openApp(app, true, context.signal);
@@ -269,6 +280,7 @@ export class AgentDeviceSurface {
   async endAttempt(_context: BackendCleanupContext): Promise<void> {
     this.attempt = undefined;
     this.generation = new Map();
+    this.located.clear();
   }
 
   async dispose(context: BackendCleanupContext): Promise<void> {
@@ -276,6 +288,7 @@ export class AgentDeviceSurface {
     this.client = undefined;
     this.attempt = undefined;
     this.generation = new Map();
+    this.located.clear();
     this.appIdentity = undefined;
     this.installedApp = undefined;
     if (client === undefined) return;
@@ -297,6 +310,7 @@ export class AgentDeviceSurface {
     );
     this.appIdentity = result.appBundleId ?? result.appName ?? app;
     this.generation = new Map();
+    this.located.clear();
   }
 
   /**
@@ -371,40 +385,42 @@ export class AgentDeviceSurface {
   async observe(operation: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot> {
     const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive');
     const projected = this.project(raw);
-    this.generation = new Map(projected.index.map((entry) => [entry.id, entry]));
+    this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected.index)]));
+    const identity = raw.appBundleId ?? raw.appName ?? this.appIdentity;
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected) : undefined;
     return {
       nodes: projected.roots,
+      ...(identity === undefined ? {} : { url: screenUrl(identity, screenTitle(projected)) }),
       ...(projected.viewport === undefined ? {} : { viewport: projected.viewport }),
       ...(capture === undefined ? {} : { pixels: capture.pixels, maskedRegionCount: capture.masked }),
     };
   }
 
-  /**
-   * The located snapshot joins the current generation instead of replacing
-   * it, so an observation's ids stay valid across a `screen` query in the
-   * same step. The whole snapshot joins, not only the matches: a later action
-   * on a match may need its descendants (`controlOf`).
-   */
+  /** Retains only action bindings for matches, independently of the observation generation. */
   async locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
     const raw = await this.snapshotOrEmpty(operation, false);
     const projected = this.project(raw);
     const matches = resolveExpression(expression, projected.index, { testIdAttribute: this.testIdAttribute });
-    for (const entry of projected.index) this.generation.set(entry.id, entry);
+    for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected.index));
+    for (const oldest of this.located.keys()) {
+      if (this.located.size <= MAX_LOCATED_REFS) break;
+      this.located.delete(oldest);
+    }
     return matches.map((entry) => entry.node);
   }
 
-  private resolveRef(ref: NodeRef): ProjectedNode {
-    const entry = this.generation.get(ref.id);
+  private resolveRef(ref: NodeRef): NodeBinding {
+    const entry = this.located.get(ref.id) ?? this.generation.get(ref.id);
     if (entry === undefined) {
       throw new BackendError('NODE_STALE', `node ${ref.id} is not part of the newest observation`, { retryable: true });
     }
     return entry;
   }
 
-  private actionTarget(entry: ProjectedNode): { ref: string } {
-    if (entry.ref === '') throw notActionable(`node ${entry.id} has no agent-device ref to act on`);
-    return { ref: `@${entry.ref}` };
+  private actionTarget(entry: NodeBinding, control = false): { ref: string } {
+    const ref = control ? entry.controlRef : entry.ref;
+    if (ref === '') throw notActionable(`node ${entry.id} has no agent-device ref to act on`);
+    return { ref: `@${ref}` };
   }
 
   /**
@@ -414,12 +430,12 @@ export class AgentDeviceSurface {
    * centre hits the label and changes nothing. The innermost same-role
    * descendant with a ref is the control; a node without one is its own.
    */
-  private controlOf(entry: ProjectedNode): ProjectedNode {
+  private controlOf(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): ProjectedNode {
     const role = entry.node.role;
     if (role !== 'switch' && role !== 'checkbox') return entry;
     let control = entry;
     let depth = 0;
-    for (const candidate of this.generation.values()) {
+    for (const candidate of snapshot) {
       if (candidate.ref === '' || candidate.node.role !== role || !isWithin(candidate, entry)) continue;
       const candidateDepth = depthBelow(candidate, entry);
       if (candidateDepth > depth) {
@@ -428,6 +444,12 @@ export class AgentDeviceSurface {
       }
     }
     return control;
+  }
+
+  /** Copies the fields actions use and pre-resolves a toggle's inner control. */
+  private bind(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): NodeBinding {
+    const { children: _children, ...node } = entry.node;
+    return { id: entry.id, ref: entry.ref, node, controlRef: this.controlOf(entry, snapshot).ref };
   }
 
   async perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
@@ -440,7 +462,7 @@ export class AgentDeviceSurface {
         // observation that follows describes the screen the action produced,
         // not a frame of its transition. Best-effort on agent-device's side.
         case 'tap':
-          return client.interactions.press({ ...this.actionTarget(this.controlOf(entry)), settle: true });
+          return client.interactions.press({ ...this.actionTarget(entry, true), settle: true });
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
@@ -474,7 +496,7 @@ export class AgentDeviceSurface {
             throw unsupported(`agent-device cannot read whether node ${entry.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return client.interactions.press({ ...this.actionTarget(this.controlOf(entry)), settle: true });
+          return client.interactions.press({ ...this.actionTarget(entry, true), settle: true });
         }
         case 'press':
           return this.pressKey(client, entry, action.key);
@@ -497,7 +519,7 @@ export class AgentDeviceSurface {
       }
     };
     try {
-      await raceAbort(this.track(run()), operation.signal, label);
+      await raceAbort(() => this.track(run()), operation.signal, label);
     } catch (cause) {
       throw staleOr(cause, label);
     }
@@ -508,7 +530,7 @@ export class AgentDeviceSurface {
    * single character is typed into the focused field; there is no key event
    * bus to send `Escape` or `Tab` to.
    */
-  private async pressKey(client: AgentDeviceClient, entry: ProjectedNode, key: string): Promise<unknown> {
+  private async pressKey(client: AgentDeviceClient, entry: NodeBinding, key: string): Promise<unknown> {
     if (key === 'Enter' || key === 'Return') {
       return client.command.keyboard({ action: 'enter' });
     }
@@ -570,11 +592,6 @@ export class AgentDeviceSurface {
     mkdirSync(path.join(attempt.artifactsDir, 'screenshots'), { recursive: true });
     writeFileSync(path.join(attempt.artifactsDir, relative), masked.data);
     return relative;
-  }
-
-  /** Redacted screen pixels as a PNG, for the agent's screenshot tool. */
-  async screenshotBytes(signal?: AbortSignal): Promise<Uint8Array> {
-    return (await this.maskedScreenshot(signal)).data;
   }
 
   /** Raw device pixels; the caller owns redaction. */

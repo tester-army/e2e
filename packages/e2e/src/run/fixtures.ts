@@ -9,10 +9,11 @@ import type { BackendFixtureContext } from '../backend/index.ts';
 import type { TargetSession } from '../backend/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { ConfigurationError } from '../internal/errors.ts';
 import { SecretLedger } from '../internal/redact.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import { withTimeout } from '../internal/time.ts';
+import { FixtureRecorder } from './fixture-recording.ts';
+import { recordedSurface, StepAttachments } from './fixture-legacy.ts';
 import type { AttemptBudget } from './budget.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import {
@@ -24,7 +25,7 @@ import {
 } from '../locator/screen.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
-import type { StepKind, StepRecord, StepRecorder } from './steps.ts';
+import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
   /** Absolute attempt artifact directory, for runner-written artifacts. */
@@ -60,6 +61,9 @@ export interface AttemptEnvironment {
   readonly debug?: DebugTrace;
 }
 
+/** Secrets survive every fixture graph that shares the same live isolation. */
+const sessionSecrets = new WeakMap<TargetSession, { ledger: SecretLedger; taint: { value: boolean } }>();
+
 /** Builds the lazy fixture graph for one attempt. */
 export function createFixtures(
   environment: AttemptEnvironment,
@@ -73,13 +77,12 @@ export function createFixtures(
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  /**
-   * Any resolved secret leaves the viewport pixel-tainted for the rest of the
-   * attempt: an untrusted app may mirror the value anywhere on screen.
-   */
-  const taint = { value: false };
-
-  const ledger = attemptSecretLedger(environment);
+  let secrecy = sessionSecrets.get(environment.session);
+  if (secrecy === undefined) {
+    secrecy = { ledger: initialSecretLedger(environment), taint: { value: false } };
+    sessionSecrets.set(environment.session, secrecy);
+  }
+  const { ledger, taint } = secrecy;
   const secrets: SecretResolver = {
     async resolve(secret) {
       const credential = environment.config.credentials.get(secret.name);
@@ -197,12 +200,10 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
 }
 
 /**
- * Backend-contributed fixtures (RFC0002): the backend declares what calls
- * exist, the harness owns how every call runs. Each async method becomes a
- * recorded step named `<fixture>.<method>`, bounded by the action timeout (or
- * the call's own `timeout` option) and the attempt signal; a synchronous
- * member is an accessor and passes through. Core validates shape, never
- * meaning.
+ * Backend-contributed fixtures (RFC0002): factories declare operation metadata
+ * through context.fixture. The legacy adapter preserves older factories that
+ * return a plain surface. Factories stay lazy and each instance belongs to
+ * one test's fixture graph; the session's secrecy state outlives that graph.
  */
 function contributedFixtures(
   environment: AttemptEnvironment,
@@ -212,18 +213,19 @@ function contributedFixtures(
   const declared = environment.target.backend?.fixtures;
   if (declared === undefined) return {};
   const contributed: Record<string, unknown> = {};
-  const attachments = new StepAttachments();
-  const context = fixtureContext(environment, engine, screenContext, attachments);
+  const attachments = new StepAttachments(environment.steps);
+  const recorder = new FixtureRecorder(environment);
+  const context = fixtureContext(environment, engine, screenContext, attachments, recorder);
   for (const [name, factory] of Object.entries(declared)) {
     let instance: object | undefined;
     Object.defineProperty(contributed, name, {
       enumerable: true,
       get() {
-        instance ??= recordedSurface(factory(context), environment, attachments, {
+        instance ??= recorder.adapt(factory(context), (surface) => recordedSurface(surface, environment, attachments, {
           path: [name],
           kind: 'resource',
           bounded: true,
-        });
+        }));
         return instance;
       },
     });
@@ -231,50 +233,17 @@ function contributedFixtures(
   return contributed;
 }
 
-/**
- * Attributes what a fixture method records to the step that wraps the call.
- * The method runs before its step opens (that is what lets a synchronous
- * accessor stay an accessor), so anything it attaches synchronously is held
- * here and released into the step once the step exists, or into the current
- * step when the call turns out to be synchronous.
- */
-class StepAttachments {
-  private deferred: (() => void)[] | null = null;
-
-  /** Runs `attach` now, or holds it while a fixture call is being invoked. */
-  record(attach: () => void): void {
-    if (this.deferred === null) attach();
-    else this.deferred.push(attach);
-  }
-
-  /** Invokes `call` with attachments held, returning them for release. */
-  collect<T>(call: () => T): { result: T; release: () => void } {
-    const outer = this.deferred;
-    const held: (() => void)[] = [];
-    this.deferred = held;
-    try {
-      const result = call();
-      return {
-        result,
-        release: () => {
-          for (const attach of held) attach();
-        },
-      };
-    } finally {
-      this.deferred = outer;
-    }
-  }
-}
-
 function fixtureContext(
   environment: AttemptEnvironment,
   engine: LocatorEngine,
   screenContext: ScreenContext,
   attachments: StepAttachments,
+  recorder: FixtureRecorder,
 ): BackendFixtureContext {
   const { config, steps } = environment;
   return {
     targetName: environment.target.name,
+    fixture: (name, surface, operations) => recorder.fixture(name, surface, operations),
     app: {
       ...(config.app.configured ? { baseUrl: config.app.base.href } : {}),
       allowedOrigins: config.app.allowedOrigins,
@@ -306,141 +275,17 @@ function fixtureContext(
         enumerable: false,
         configurable: true,
         get: () => {
-          surface ??= recordedSurface(factory(), environment, attachments, {
+          surface ??= recorder.adapt(factory(), (value) => recordedSurface(value, environment, attachments, {
             path: ['expect'],
             kind: 'assertion',
             bounded: false,
-          });
+          }));
           return surface;
         },
       });
       return target as T & Expectable<E>;
     },
   };
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { then?: unknown }).then === 'function'
-  );
-}
-
-/** Longest label a fixture argument may contribute to the report. */
-const LABEL_LIMIT = 80;
-
-/** Method names whose string argument is typed input, labelled by length only. */
-const INPUT_METHODS = new Set(['type', 'fill', 'insertText']);
-
-/**
- * Step label heuristic: the first string or pattern argument, if any. Fixture
- * arguments are report-visible by this rule; secret material travels as
- * `Secret` handles, never as strings, so it cannot land here. Typed input is
- * the exception: it is user data, so only its length is recorded.
- */
-function labelFor(api: string, args: readonly unknown[]): string {
-  const method = api.slice(api.lastIndexOf('.') + 1);
-  if (INPUT_METHODS.has(method) && typeof args[0] === 'string') return `${args[0].length} chars`;
-  for (const arg of args) {
-    if (typeof arg === 'string') return arg.length > LABEL_LIMIT ? `${arg.slice(0, LABEL_LIMIT)}...` : arg;
-    if (arg instanceof RegExp) return String(arg);
-  }
-  return '';
-}
-
-/** A call's own `timeout` option wins over the action timeout, as on Locator. */
-function timeoutFor(args: readonly unknown[], fallback: number): number {
-  for (const arg of args) {
-    if (typeof arg !== 'object' || arg === null || Array.isArray(arg)) continue;
-    const timeout = (arg as { timeout?: unknown }).timeout;
-    if (typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0) return timeout;
-  }
-  return fallback;
-}
-
-interface RecordingOptions {
-  /** Dotted step-name prefix, e.g. `['gadget', 'knobs']`. */
-  readonly path: readonly string[];
-  readonly kind: StepKind;
-  /** Whether calls are bounded by the action timeout (or their own `timeout` option). */
-  readonly bounded: boolean;
-}
-
-/**
- * Wraps a contributed surface so every async method call is one recorded
- * step. Nested plain objects (namespaces such as `keyboard`) are wrapped
- * recursively with a dotted path; symbol-keyed members and synchronous
- * results pass through untouched.
- *
- * The member is invoked first and the step opens around the promise it
- * returns, which is what lets a synchronous accessor stay an accessor. A
- * synchronous throw is recorded as the failed step it would have been, and
- * anything the call attached through the context is released into that step,
- * however early in the call it happened.
- */
-function recordedSurface<T extends object>(
-  surface: T,
-  environment: AttemptEnvironment,
-  attachments: StepAttachments,
-  options: RecordingOptions,
-): T {
-  return new Proxy(surface, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver) as unknown;
-      if (typeof property !== 'string') return value;
-      if (typeof value === 'function') {
-        return (...args: unknown[]) => {
-          const api = [...options.path, property].join('.');
-          let collected: { result: unknown; release: () => void };
-          try {
-            collected = attachments.collect(() =>
-              (value as (...inner: unknown[]) => unknown).apply(target, args),
-            );
-          } catch (cause) {
-            // Recorded as the failed step it was, then rethrown as it was thrown:
-            // a synchronous caller must not receive a promise in place of a throw.
-            environment.steps
-              .run(options.kind, api, labelFor(api, args), () => Promise.reject(cause))
-              .catch(() => undefined);
-            throw cause;
-          }
-          const { result, release } = collected;
-          if (!isThenable(result)) {
-            release();
-            return result;
-          }
-          return environment.steps.run(options.kind, api, labelFor(api, args), () => {
-            release();
-            const pending = Promise.resolve(result);
-            if (!options.bounded) return pending;
-            const timeout = timeoutFor(args, environment.config.actionTimeout);
-            // A call that outlives its budget is a failed action, like a
-            // locator action that never became actionable; the test clock is
-            // a separate matter.
-            return withTimeout(
-              pending,
-              timeout,
-              () => new TestError('ACTION_FAILED', `${api} exceeded its timeout of ${timeout}ms`),
-            );
-          });
-        };
-      }
-      if (
-        typeof value === 'object' &&
-        value !== null &&
-        !Array.isArray(value) &&
-        !isThenable(value) &&
-        Object.getPrototypeOf(value) === Object.prototype
-      ) {
-        return recordedSurface(value, environment, attachments, {
-          ...options,
-          path: [...options.path, property],
-        });
-      }
-      return value;
-    },
-  });
 }
 
 /**
@@ -477,10 +322,10 @@ function joinAgentContext(
 }
 
 /**
- * The attempt's secret ledger, seeded with the passwords known up front.
+ * The session's secret ledger, seeded with the passwords known up front.
  * Provider-backed values join through the resolver at fill time.
  */
-function attemptSecretLedger(environment: AttemptEnvironment): SecretLedger {
+function initialSecretLedger(environment: AttemptEnvironment): SecretLedger {
   return new SecretLedger(
     [...environment.config.credentials].flatMap(([name, { password }]) =>
       typeof password === 'string' ? [[name, password] as const] : [],

@@ -1,5 +1,6 @@
 /** Attempt-scoped step timeline (spec 10-determinism.md, 13-reporting.md). */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
@@ -168,7 +169,7 @@ export interface StepRecorderOptions {
 
 export class StepRecorder {
   private readonly steps: StepRecord[] = [];
-  private activeStep: StepRecord | undefined;
+  private readonly scope = new AsyncLocalStorage<StepRecord>();
   /** IDs of steps whose bodies are still executing. */
   private readonly running = new Set<string>();
   /** Highest timeline index among passed verification steps, or -1 when none has. */
@@ -186,12 +187,12 @@ export class StepRecorder {
 
   /** The step currently executing, when inside StepRecorder.run. */
   get currentStepId(): string | undefined {
-    return this.activeStep?.id;
+    return this.current()?.id;
   }
 
   /** Timeline index of the currently executing step. */
   get currentStepIndex(): number | undefined {
-    return this.activeStep?.index;
+    return this.current()?.index;
   }
 
   /** Highest timeline index among passed verification steps, or -1 when none has. */
@@ -224,12 +225,10 @@ export class StepRecorder {
     };
     this.steps.push(record);
     this.running.add(record.id);
-    const previousActive = this.activeStep;
-    this.activeStep = record;
     this.onProgress?.({ phase: 'start', kind, api, label });
     try {
       // Model calls made inside the body are attributed to this step.
-      const result = await withAiTraceStep(api, label, body);
+      const result = await this.scope.run(record, () => withAiTraceStep(api, label, body));
       record.durationMs = Date.now() - startedMs;
       if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, index);
       return result;
@@ -247,7 +246,6 @@ export class StepRecorder {
       record.error = serializeError(error);
       throw cause;
     } finally {
-      this.activeStep = previousActive;
       this.running.delete(record.id);
       this.onProgress?.({
         phase: 'end',
@@ -267,7 +265,11 @@ export class StepRecorder {
    * step (a fixture call that clicked a link, say) still owns what it produced.
    */
   attachArtifact(artifactId: string): void {
-    const target = this.activeStep ?? this.steps[this.steps.length - 1];
+    // Cleanup outside a scope may attach to the last step. Work inherited
+    // from a closed scope must never attach to a newer step.
+    const target = this.scope.getStore() === undefined
+      ? this.steps[this.steps.length - 1]
+      : this.current();
     if (target !== undefined) target.artifacts.push(artifactId);
   }
 
@@ -312,6 +314,7 @@ export class StepRecorder {
   }
 
   private current(): StepRecord | undefined {
-    return this.activeStep;
+    const record = this.scope.getStore();
+    return record !== undefined && this.running.has(record.id) ? record : undefined;
   }
 }

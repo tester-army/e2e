@@ -37,6 +37,7 @@ export type { LoopGuardThresholds } from './loop-guards.ts';
 
 export {
   defineTool,
+  getToolContext,
   isDefinedTool,
   toolAppliesTo,
   type DefinedTool,

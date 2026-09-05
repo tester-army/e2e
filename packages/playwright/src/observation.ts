@@ -6,6 +6,7 @@
 import type { ElementHandle, Frame, JSHandle } from 'playwright';
 import {
   BackendError,
+  withTimeout,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
   type NodeRef,
@@ -284,19 +285,4 @@ export function toSemanticNode(
     ...(framePath.length > 0 ? { framePath } : {}),
     ...(children.length > 0 ? { children } : {}),
   };
-}
-
-/** Races a promise against a timeout; on timeout invokes onTimeout to build the error. */
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Error): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(onTimeout()), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
 }

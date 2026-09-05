@@ -41,7 +41,7 @@ import {
  * start-path precondition and end-path postcondition.
  */
 export interface StepCacheHost extends ReplayHost {
-  currentPath(): Promise<string | undefined>;
+  currentPath(observation?: ObservedNodes): Promise<string | undefined>;
 }
 
 /** What the session needs from the dispatch beyond the host itself. */
@@ -159,8 +159,8 @@ export class StepTraceSession {
     this.startedMs = Date.now();
     // Captured before any action for the write's start-path precondition, and
     // doubling as the replay decision's current path.
-    this.startPath = await this.host.currentPath();
     if (this.recorder !== undefined) this.startNodes = await probeScreen(this.host);
+    this.startPath = await this.host.currentPath(this.startNodes);
     if (!this.cache.replayEligible) return undefined;
 
     const read = await this.readEntry();
@@ -328,7 +328,7 @@ export class StepTraceSession {
     if (this.startNodes === undefined) return;
     const endNodes = await probeScreen(this.host);
     if (endNodes === undefined) return;
-    const endPath = await this.host.currentPath();
+    const endPath = await this.host.currentPath(endNodes);
     const moved =
       this.startPath !== undefined && endPath !== undefined && !samePathname(this.startPath, endPath);
     const endAnchors = moved ? undefined : describeAnchors(this.startNodes, endNodes, this.options);

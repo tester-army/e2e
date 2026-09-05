@@ -157,6 +157,10 @@ export interface SetupOptions
 Resolution order: test, nearest group, outer groups, config, built-in default.
 
 `serial: true` makes the group one ordered retry unit with shared app state.
+Secret redaction and pixel taint share that lifetime: provider-resolved values
+stay redacted in later members, and a secret fill withholds model pixels for
+the rest of the group's attempt. A retry starts fresh isolation and fresh
+secret state.
 Inside it, `retries`, `session`, `platforms`, `requires`, `skip`, `only`, and a
 nested `serial` on a member are collection errors. Set them on the group.
 
