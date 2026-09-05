@@ -16,8 +16,8 @@ export class FixtureRecorder {
 
   /** Wraps declared methods and namespaces without invoking them or guessing their return types. */
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T {
-    const result = Object.create(Object.getPrototypeOf(surface), Object.getOwnPropertyDescriptors(surface)) as T;
-    this.declared.add(result);
+    if (this.declared.has(surface)) return surface;
+    this.declared.add(surface);
     for (const [key, definition] of Object.entries(operations)) {
       if (definition === undefined) continue;
       const api = `${name}.${key}`;
@@ -25,20 +25,26 @@ export class FixtureRecorder {
       if (operation.kind === 'resource' || operation.kind === 'assertion') {
         const method = Reflect.get(surface, key) as (...args: unknown[]) => Promise<unknown>;
         if (typeof method !== 'function') throw new TestError('INVALID_ARGUMENT', `${api} must be a method`);
-        Object.defineProperty(result, key, {
+        Object.defineProperty(surface, key, {
           configurable: true,
           enumerable: true,
           value: (...args: unknown[]) => this.run(api, operation, args, () => method.apply(surface, args)),
         });
       } else {
-        Object.defineProperty(result, key, {
+        const descriptor = propertyDescriptor(surface, key);
+        let value = descriptor?.value;
+        const read = descriptor?.get?.bind(surface) ?? (() => value);
+        const write = descriptor?.set?.bind(surface)
+          ?? (descriptor?.writable === true ? (next: unknown) => { value = next; } : undefined);
+        Object.defineProperty(surface, key, {
           configurable: true,
-          enumerable: true,
-          get: () => this.fixture(api, Reflect.get(surface, key) as object, definition as FixtureOperations<object>),
+          enumerable: descriptor?.enumerable ?? true,
+          get: () => this.fixture(api, read() as object, definition as FixtureOperations<object>),
+          ...(write === undefined ? {} : { set: write }),
         });
       }
     }
-    return result;
+    return surface;
   }
 
   /** Executes one declared operation inside its step and cancellation boundary. */
@@ -56,4 +62,13 @@ export class FixtureRecorder {
       return withTimeout(pending, timeoutMs, () => new TestError('ACTION_FAILED', `${api} exceeded its timeout of ${timeoutMs}ms`));
     }, { verifies: operation.verifies ?? operation.kind === 'assertion' });
   }
+}
+
+/** Finds namespace accessors without invoking them, including those defined on a class prototype. */
+function propertyDescriptor(surface: object, key: string): PropertyDescriptor | undefined {
+  for (let target: object | null = surface; target !== null; target = Object.getPrototypeOf(target) as object | null) {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    if (descriptor !== undefined) return descriptor;
+  }
+  return undefined;
 }

@@ -33,6 +33,72 @@ function runtime(backend: BackendHandle, overrides: E2EConfig = {}) {
 const empty = () => defineBackend({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
 
 describe('explicit fixture operations', () => {
+  it('preserves mutable state, identity, and private-field receivers', async () => {
+    class Counter {
+      count = 0;
+      #value = 0;
+      /** Mutates both public and private fixture state. */
+      async increment(): Promise<void> { this.count += 1; this.#value += 1; }
+      /** Reads state synchronously using the original receiver. */
+      read(): number { return this.#value; }
+      /** Exposes private state through an accessor. */
+      get value(): number { return this.#value; }
+    }
+    const counter = new Counter();
+    const backend = defineBackend({ name: 'fake', version: '1', spiVersion: 1, fixtures: {
+      counter: (context) => context.fixture('counter', counter, { increment: { kind: 'resource' } }),
+    } });
+    const { fixtures, steps } = runtime(backend);
+    const fixture = (fixtures as unknown as { counter: Counter }).counter;
+    await fixture.increment();
+    expect(fixture.count).toBe(1);
+    expect(fixture.read()).toBe(1);
+    expect(fixture.value).toBe(1);
+    fixture.count = 10;
+    await fixture.increment();
+    expect(counter.count).toBe(11);
+    expect(fixture).toBe(counter);
+    expect(steps.all().map((step) => step.api)).toEqual(['counter.increment', 'counter.increment']);
+  });
+
+  it('wraps live namespaces once while preserving their getters and setters', async () => {
+    class Counter {
+      constructor(public count: number) {}
+      /** Updates the namespace receiver. */
+      async increment(): Promise<void> { this.count += 1; }
+    }
+    const first = new Counter(0);
+    const second = new Counter(10);
+    let reads = 0;
+    class Gadget {
+      #counter = first;
+      plain = first;
+      /** Reads a namespace through a private-field accessor on the prototype. */
+      get counter(): Counter { reads += 1; return this.#counter; }
+      /** Replaces the live namespace. */
+      set counter(value: Counter) { this.#counter = value; }
+    }
+    const original = new Gadget();
+    const backend = defineBackend({ name: 'fake', version: '1', spiVersion: 1, fixtures: {
+      gadget: (context) => context.fixture('gadget', original, {
+        counter: { increment: { kind: 'resource' } },
+        plain: {},
+      }),
+    } });
+    const { fixtures, steps } = runtime(backend);
+    const gadget = (fixtures as unknown as { gadget: typeof original }).gadget;
+    expect(reads).toBe(0);
+    await gadget.counter.increment();
+    await gadget.counter.increment();
+    gadget.counter = second;
+    await gadget.counter.increment();
+    gadget.plain = second;
+    expect(gadget.plain).toBe(second);
+    expect(first.count).toBe(2);
+    expect(second.count).toBe(11);
+    expect(steps.all()).toHaveLength(3);
+  });
+
   it('opens the step before invoking a method, preserves sync accessors, and verifies contributed assertions', async () => {
     const accessor = () => ({ direct: true });
     const backend = defineBackend({
@@ -72,6 +138,28 @@ describe('explicit fixture operations', () => {
     const { fixtures, steps } = runtime(backend);
     await (fixtures as unknown as { gadget: { capture(): Promise<void> } }).gadget.capture();
     expect(steps.all()[0]?.artifacts).toEqual(['artifact']);
+  });
+
+  it('keeps evidence on a legacy synchronous failure and rethrows the original error', async () => {
+    const failure = new Error('capture failed');
+    const backend = defineBackend({ name: 'legacy', version: '1', spiVersion: 1, fixtures: {
+      gadget: (context) => ({ capture() {
+        context.attachViewport({ width: 10, height: 20, scale: 1 });
+        context.attachArtifact('log', 'failure.txt');
+        throw failure;
+      } }),
+    } });
+    const { fixtures, steps } = runtime(backend);
+    let thrown: unknown;
+    try {
+      (fixtures as unknown as { gadget: { capture(): void } }).gadget.capture();
+    } catch (cause) {
+      thrown = cause;
+    }
+    expect(thrown).toBe(failure);
+    await Promise.resolve();
+    expect(steps.all()[0]).toMatchObject({ api: 'gadget.capture', status: 'failed',
+      viewport: { width: 10, height: 20 }, artifacts: ['artifact'], error: { message: 'capture failed' } });
   });
 
   it('also marks legacy contributed assertions as verification steps', async () => {

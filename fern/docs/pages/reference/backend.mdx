@@ -303,7 +303,10 @@ of the arguments, or `false` when the method owns its deadline), and optional
 `verifies`. The default timeout is `actionTimeout`; assertions verify by
 default. Passing verification steps confirm earlier staged action traces.
 Nested operation maps describe namespaces. Undeclared synchronous accessors
-retain their identity.
+retain their identity. Recording decorates the supplied fixture object in place,
+preserving mutable fields, private-field receivers, and namespace accessors.
+Create a fresh fixture surface in each factory invocation; declared methods and
+namespace properties must allow replacement.
 
 The harness opens the step before calling a declared method, so synchronous
 attachments, failures, and asynchronous work have the same owner. Events and
@@ -312,7 +315,9 @@ calls. Work arriving after its step has closed cannot attach to a later step.
 
 For compatibility, factories that return a plain surface still use the legacy
 adapter: it detects promises, derives labels from arguments, and reads
-`{ timeout }` options. New backends should use explicit declarations.
+`{ timeout }` options. Evidence attached before a synchronous throw belongs to
+the failed step, and the original error is still thrown synchronously. New
+backends should use explicit declarations.
 `expectable` attaches an expectation surface so `expect(fixture)` returns it;
 use `context.fixture('expect', matchers, operations)` in its factory to declare
 matcher recording. Type the fixture with `test.extend<{ name: Type }>()`.

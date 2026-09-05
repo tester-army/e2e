@@ -33,11 +33,10 @@ export class StepAttachments {
   }
 
   /** Holds early attachments, then binds later continuations to the scope that releases them. */
-  collect<T>(call: () => T): { result: T; release: () => void } {
+  collect(): { run: <T>(call: () => T) => T; release: () => void } {
     const pending: PendingAttachments = { parentId: this.steps.currentStepId, held: [], run: undefined };
-    const result = this.scope.run(pending, call);
     return {
-      result,
+      run: (call) => this.scope.run(pending, call),
       release: () => {
         pending.run = AsyncLocalStorage.snapshot();
         for (const attach of pending.held) pending.run(attach);
@@ -120,20 +119,24 @@ export function recordedSurface<T extends object>(
       if (typeof value === 'function') {
         return (...args: unknown[]) => {
           const api = [...options.path, property].join('.');
-          let collected: { result: unknown; release: () => void };
+          const collected = attachments.collect();
+          let result: unknown;
           try {
-            collected = attachments.collect(() =>
+            result = collected.run(() =>
               (value as (...inner: unknown[]) => unknown).apply(target, args),
             );
           } catch (cause) {
             // Recorded as the failed step it was, then rethrown as it was thrown:
             // a synchronous caller must not receive a promise in place of a throw.
             environment.steps
-              .run(options.kind, api, labelFor(api, args), () => Promise.reject(cause))
+              .run(options.kind, api, labelFor(api, args), () => {
+                collected.release();
+                return Promise.reject(cause);
+              })
               .catch(() => undefined);
             throw cause;
           }
-          const { result, release } = collected;
+          const { release } = collected;
           if (!isThenable(result)) {
             release();
             return result;
