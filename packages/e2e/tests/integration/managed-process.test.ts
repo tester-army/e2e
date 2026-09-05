@@ -2,8 +2,9 @@ import { createServer } from 'node:net';
 import os from 'node:os';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
-import { AppProcess, ServiceStack } from '../../src/run/app-process.ts';
+import { resolveServices } from '../../src/config/app.ts';
 import { InfrastructureError } from '../../src/internal/errors.ts';
+import { ManagedProcess, ServiceStack } from '../../src/run/managed-process.ts';
 
 const SERVER_SCRIPT = `
   const http = require('node:http');
@@ -28,7 +29,8 @@ async function freePort(): Promise<number> {
 }
 
 function nodeApp(port: number, options: { extraArg?: string; startupTimeout?: number } = {}) {
-  return new AppProcess(
+  return new ManagedProcess(
+    'app.command',
     {
       executable: process.execPath,
       args: ['-e', SERVER_SCRIPT, String(port), ...(options.extraArg ? [options.extraArg] : [])],
@@ -49,7 +51,7 @@ async function isReachable(url: string): Promise<boolean> {
   }
 }
 
-describe('AppProcess', () => {
+describe('ManagedProcess', () => {
   it('starts the app, waits for readiness, and stops the process group', async () => {
     const port = await freePort();
     const app = nodeApp(port);
@@ -82,7 +84,8 @@ describe('AppProcess', () => {
 
   it('fails with APP_UNREACHABLE when the command exits before becoming ready', async () => {
     const port = await freePort();
-    const app = new AppProcess(
+    const app = new ManagedProcess(
+      'app.command',
       { executable: process.execPath, args: ['-e', 'process.exit(3)'] },
       os.tmpdir(),
       { readyUrl: `http://127.0.0.1:${port}/` },
@@ -95,7 +98,8 @@ describe('AppProcess', () => {
 
   it('fails with APP_UNREACHABLE when the executable cannot spawn', async () => {
     const port = await freePort();
-    const app = new AppProcess(
+    const app = new ManagedProcess(
+      'app.command',
       { executable: '/definitely/not/a/real/binary' },
       os.tmpdir(),
       { readyUrl: `http://127.0.0.1:${port}/` },
@@ -108,7 +112,8 @@ describe('AppProcess', () => {
 
   it('times out and cleans up when the app never becomes ready', async () => {
     const port = await freePort();
-    const app = new AppProcess(
+    const app = new ManagedProcess(
+      'app.command',
       {
         executable: process.execPath,
         args: ['-e', 'setInterval(() => {}, 1000)'],
@@ -124,11 +129,18 @@ describe('AppProcess', () => {
   }, 20_000);
 });
 
+/** Stops the stack and collects what its teardowns reported. */
+async function stopAll(stack: ServiceStack): Promise<unknown[]> {
+  const failures: unknown[] = [];
+  await stack.stop((cause) => failures.push(cause));
+  return failures;
+}
+
 describe('ServiceStack', () => {
   it('waits for a readyUrl service, then a waitForExit step, and stops the service process group', async () => {
     const port = await freePort();
     const stack = new ServiceStack(
-      [
+      resolveServices([
         {
           executable: process.execPath,
           args: ['-e', SERVER_SCRIPT, String(port)],
@@ -147,19 +159,19 @@ describe('ServiceStack', () => {
           waitForExit: true,
           startupTimeout: 15_000,
         },
-      ],
+      ]),
       os.tmpdir(),
     );
     await stack.start();
     expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
-    expect(await stack.stop()).toEqual([]);
+    expect(await stopAll(stack)).toEqual([]);
     expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
   });
 
   it('fails with APP_UNREACHABLE naming the service when its readyUrl never answers', async () => {
     const port = await freePort();
     const stack = new ServiceStack(
-      [
+      resolveServices([
         {
           executable: process.execPath,
           args: ['-e', 'setInterval(() => {}, 1000)'],
@@ -167,7 +179,7 @@ describe('ServiceStack', () => {
           startupTimeout: 1_500,
           shutdownTimeout: 2_000,
         },
-      ],
+      ]),
       os.tmpdir(),
     );
     const failure = await stack.start().catch((error: unknown) => error);
@@ -175,6 +187,6 @@ describe('ServiceStack', () => {
     expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
     expect((failure as InfrastructureError).message).toContain('app.services[0]');
     expect((failure as InfrastructureError).message).toContain('was not reachable');
-    expect(await stack.stop()).toEqual([]);
+    expect(await stopAll(stack)).toEqual([]);
   }, 20_000);
 });

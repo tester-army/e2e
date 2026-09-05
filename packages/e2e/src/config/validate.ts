@@ -1,4 +1,4 @@
-/** Integer validators shared by the config resolvers; one message per rule. */
+/** Scalar validators shared by the config resolvers; one message per rule. */
 
 import { ConfigurationError } from '../internal/errors.ts';
 
@@ -24,6 +24,21 @@ export function boundedInt(
       'INVALID_CONFIG',
       `${label} must be an integer from ${min} through ${max}`,
     );
+  }
+  return value;
+}
+
+/** An absolute http(s) URL, or undefined when the value is absent. */
+export function httpUrl(value: string | undefined, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  let parsed: URL | undefined;
+  try {
+    parsed = typeof value === 'string' ? new URL(value) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label} must be an http(s) URL`);
   }
   return value;
 }

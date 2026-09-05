@@ -276,6 +276,19 @@ describe('resolveConfig', () => {
     expect(a.configDigest).toBe(b.configDigest);
   });
 
+  it('rejects an app.readyUrl that is not an http(s) URL', () => {
+    expect(() => resolve({ app: { url: 'http://localhost:3000', readyUrl: 'not a url' } })).toThrow(
+      /app\.readyUrl must be an http\(s\) URL/,
+    );
+    expect(() => resolve({ app: { url: 'http://localhost:3000', readyUrl: 'ftp://x/' } })).toThrow(
+      /app\.readyUrl must be an http\(s\) URL/,
+    );
+    expect(
+      resolve({ app: { url: 'http://localhost:3000', readyUrl: 'http://localhost:3000/health' } }).app
+        .readyUrl,
+    ).toBe('http://localhost:3000/health');
+  });
+
   describe('app.services', () => {
     const APP_URL = 'http://localhost:3000';
 
@@ -291,8 +304,11 @@ describe('resolveConfig', () => {
         },
       });
       expect(config.app.services).toHaveLength(2);
-      expect(config.app.services[0]?.waitForExit).toBe(true);
-      expect(config.app.services[1]?.readyUrl).toBe('http://127.0.0.1:7000/health');
+      expect(config.app.services[0]?.readiness).toEqual({ waitForExit: true });
+      expect(config.app.services[0]?.label).toBe('app.services[0] (docker compose up --wait)');
+      expect(config.app.services[1]?.readiness).toEqual({ readyUrl: 'http://127.0.0.1:7000/health' });
+      // Runner-only fields are lifted out of the command that gets spawned.
+      expect(config.app.services[1]?.command).toEqual({ executable: 'node', args: ['emulator.js'] });
     });
 
     it('allows services without app.url or app.command', () => {
@@ -391,7 +407,8 @@ describe('resolveConfig', () => {
           ],
         },
       });
-      expect(ok.app.services[0]?.teardown?.startupTimeout).toBe(5_000);
+      expect(ok.app.services[0]?.teardown?.command.startupTimeout).toBe(5_000);
+      expect(ok.app.services[0]?.teardown?.label).toBe('app.services[0] (x) teardown (y)');
     });
 
     it('replaces service and teardown env values in the config digest', () => {

@@ -31,7 +31,7 @@ import { agentStepTable } from '../report/debug-steps.ts';
 import { renderJunitReport } from '../report/junit.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport, writeTextReport } from '../report/write.ts';
-import { AppProcess, ServiceStack } from './app-process.ts';
+import { ManagedProcess, ServiceStack } from './managed-process.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode } from './events.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
@@ -117,7 +117,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const results: ResultRecord[] = [];
   const serialGroups: SerialGroupRecord[] = [];
   const targetProvenance = new Map<string, TargetProvenance>();
-  let appProcess: AppProcess | undefined;
+  let appProcess: ManagedProcess | undefined;
   let services: ServiceStack | undefined;
   let sessionStore: SessionStore | undefined;
 
@@ -330,15 +330,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const executeRun = async (): Promise<void> => {
     const interrupted = interruptController.signal;
     // Dependencies first, in order; the app command only starts once every
-    // service is ready, and not at all once the run was interrupted.
+    // service is ready. Neither spawns anything once the run was interrupted.
     if (config.app.services.length > 0) {
       const stack = new ServiceStack(config.app.services, config.projectRoot);
       services = stack;
       await debug.time('app.services.start', () => stack.start(interrupted));
     }
-    if (interrupted.aborted) return;
     if (config.app.command !== undefined) {
-      const app = new AppProcess(config.app.command, config.projectRoot, {
+      const app = new ManagedProcess('app.command', config.app.command, config.projectRoot, {
         readyUrl: config.app.readyUrl,
       });
       appProcess = app;
@@ -511,16 +510,19 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       recordFailure(cause);
     }
-    for (const teardown of [() => sessionStore?.cleanup(), () => appProcess?.stop()]) {
+    // Services go down after the app that depended on them; a failing service
+    // teardown command is a cleanup error of the run, not a crash.
+    for (const teardown of [
+      () => sessionStore?.cleanup(),
+      () => appProcess?.stop(),
+      () => services?.stop((cause) => recordFailure(cause, 'cleanup')),
+    ]) {
       try {
         await teardown();
       } catch (cause) {
         recordFailure(cause);
       }
     }
-    // Services go down after the app that depended on them; a failing
-    // teardown command is a cleanup error of the run, not a crash.
-    for (const cause of (await services?.stop()) ?? []) recordFailure(cause, 'cleanup');
     return await finish();
   } finally {
     for (const release of bridges) release();

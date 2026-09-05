@@ -41,8 +41,9 @@ export default defineConfig({
 
 The effective base URL is `app.url`, then `APP_URL`; it is REQUIRED once a test
 calls `app.open()` and optional otherwise. There is no target-level URL
-override. `readyUrl` defaults to the effective base URL. The runner passes the
-resolved app URL, origin policy, and query context to every backend's `init`.
+override. `readyUrl` defaults to the effective base URL and, when set, MUST be
+an absolute http(s) URL, else `INVALID_CONFIG`. The runner passes the resolved
+app URL, origin policy, and query context to every backend's `init`.
 
 The base URL uses WHATWG URL parsing/serialization and MUST NOT contain
 userinfo, query, or fragment. A base URL without a scheme gets `https://`, or

@@ -1,10 +1,11 @@
-/** Structured app process management (spec 05-config.md). */
+/** Spawned-process management for `app.command`, `app.services`, and their teardowns (spec 05-config.md). */
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import type { Readiness, ResolvedService } from '../config/app.ts';
 import { InfrastructureError } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
-import type { CommandConfig, ServiceConfig } from '../types.ts';
+import type { CommandConfig } from '../types.ts';
 
 const INHERITED_ENV = ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'COMSPEC'] as const;
 
@@ -13,12 +14,6 @@ const READY_POLL_MIN_MS = 25;
 const READY_POLL_MAX_MS = 250;
 /** One readiness probe never outlives this, so a half-open server cannot stall the deadline check. */
 const READY_PROBE_TIMEOUT_MS = 2_000;
-
-/**
- * How a process counts as ready: a URL that answers, or the process itself
- * exiting with code 0 (a migration, `docker compose up --wait`).
- */
-type Readiness = { readonly readyUrl: string } | { readonly waitForExit: true };
 
 interface ExitStatus {
   readonly code: number | null;
@@ -29,22 +24,31 @@ function describeExit(exit: ExitStatus): string {
   return exit.code === null ? `was terminated by ${exit.signal}` : `exited with code ${exit.code}`;
 }
 
-export class AppProcess {
+/**
+ * One command the runner owns: spawned as a process group, waited on until
+ * its readiness contract holds, and terminated signal-then-force. `label`
+ * names it in every error (`app.command`, `app.services[0] (docker ...)`).
+ */
+export class ManagedProcess {
   private child: ChildProcess | null = null;
 
   constructor(
+    private readonly label: string,
     private readonly command: CommandConfig,
     private readonly projectRoot: string,
     private readonly readiness: Readiness,
-    private readonly label = 'app command',
   ) {}
 
   /**
-   * Spawns the process group and waits for readiness. An aborted `signal`
-   * ends the wait early and takes the process down with it; the caller reads
-   * the signal to learn the run was interrupted.
+   * Spawns the process group and waits for readiness. An already aborted
+   * `signal` spawns nothing; one that aborts during the wait ends it early and
+   * takes the process down with it. The caller reads the signal to learn the
+   * run was interrupted.
    */
   async start(signal?: AbortSignal): Promise<void> {
+    // A function, not a narrowed local: the signal flips while the loop awaits.
+    const aborted = (): boolean => signal?.aborted === true;
+    if (aborted()) return;
     const env: Record<string, string> = {};
     for (const key of INHERITED_ENV) {
       const value = process.env[key];
@@ -71,12 +75,13 @@ export class AppProcess {
       });
     });
 
-    const waitForExit = 'waitForExit' in this.readiness;
+    // Without a URL to probe, the process exiting 0 is the readiness event.
+    const readyUrl = 'readyUrl' in this.readiness ? this.readiness.readyUrl : undefined;
     const startupTimeout = this.command.startupTimeout ?? 60_000;
     const deadline = Date.now() + startupTimeout;
     let pollMs = READY_POLL_MIN_MS;
     for (;;) {
-      if (signal?.aborted === true) {
+      if (aborted()) {
         await this.stop();
         return;
       }
@@ -88,10 +93,10 @@ export class AppProcess {
         );
       }
       if (exit !== undefined) {
-        if (waitForExit && exit.code === 0) return;
+        if (readyUrl === undefined && exit.code === 0) return;
         throw new InfrastructureError(
           'APP_UNREACHABLE',
-          `${this.label} ${describeExit(exit)} ${waitForExit ? 'instead of 0' : 'before becoming ready'}`,
+          `${this.label} ${describeExit(exit)} ${readyUrl === undefined ? 'instead of 0' : 'before becoming ready'}`,
         );
       }
       const remaining = deadline - Date.now();
@@ -99,14 +104,14 @@ export class AppProcess {
         await this.stop();
         throw new InfrastructureError(
           'APP_UNREACHABLE',
-          'readyUrl' in this.readiness
-            ? `${this.label} was not reachable at ${this.readiness.readyUrl} within ${startupTimeout} ms`
-            : `${this.label} did not exit within ${startupTimeout} ms`,
+          readyUrl === undefined
+            ? `${this.label} did not exit within ${startupTimeout} ms`
+            : `${this.label} was not reachable at ${readyUrl} within ${startupTimeout} ms`,
         );
       }
-      if ('readyUrl' in this.readiness) {
+      if (readyUrl !== undefined) {
         try {
-          const response = await fetch(this.readiness.readyUrl, {
+          const response = await fetch(readyUrl, {
             redirect: 'manual',
             signal: AbortSignal.timeout(Math.min(READY_PROBE_TIMEOUT_MS, remaining)),
           });
@@ -153,29 +158,19 @@ export class AppProcess {
   }
 }
 
-function commandLine(command: CommandConfig): string {
-  return [command.executable, ...(command.args ?? [])].join(' ');
-}
-
-/** Names a service in error messages by its position and command line, since services carry no name. */
-function serviceLabel(index: number, service: ServiceConfig): string {
-  return `app.services[${index}] (${commandLine(service)})`;
-}
-
 /**
- * The dependency processes of `app.services` (spec 05-config.md): started
- * sequentially in declaration order, each ready before the next starts, and
- * torn down in reverse.
+ * The dependency processes of `app.services`: started sequentially in
+ * declaration order, each ready before the next starts, and torn down in
+ * reverse.
  */
 export class ServiceStack {
   private readonly started: {
-    readonly process: AppProcess;
-    readonly service: ServiceConfig;
-    readonly label: string;
+    readonly service: ManagedProcess;
+    readonly teardown: ManagedProcess | undefined;
   }[] = [];
 
   constructor(
-    private readonly services: readonly ServiceConfig[],
+    private readonly services: readonly ResolvedService[],
     private readonly projectRoot: string,
   ) {}
 
@@ -184,37 +179,38 @@ export class ServiceStack {
    * services already started still get their teardown from `stop`.
    */
   async start(signal?: AbortSignal): Promise<void> {
-    for (const [index, service] of this.services.entries()) {
+    for (const { label, command, readiness, teardown } of this.services) {
       if (signal?.aborted === true) return;
-      const readiness: Readiness =
-        service.waitForExit === true ? { waitForExit: true } : { readyUrl: service.readyUrl ?? '' };
-      const label = serviceLabel(index, service);
-      const process = new AppProcess(service, this.projectRoot, readiness, label);
-      this.started.push({ process, service, label });
-      await process.start(signal);
+      const service = new ManagedProcess(label, command, this.projectRoot, readiness);
+      this.started.push({
+        service,
+        teardown:
+          teardown === undefined
+            ? undefined
+            : new ManagedProcess(teardown.label, teardown.command, this.projectRoot, {
+                waitForExit: true,
+              }),
+      });
+      await service.start(signal);
     }
   }
 
   /**
    * Stops the started services in reverse order, then runs each of their
-   * `teardown` commands in reverse order and waits for it to exit. Teardown
-   * failures are returned, never thrown, so one failing `docker compose down`
-   * cannot skip the rest.
+   * teardown commands in reverse order and waits for it to exit. A failing
+   * teardown is reported through `onFailure` and never skips the rest, so one
+   * failing `docker compose down` cannot leave the others running.
    */
-  async stop(): Promise<readonly unknown[]> {
+  async stop(onFailure: (cause: unknown) => void): Promise<void> {
     const started = this.started.splice(0).toReversed();
-    for (const { process } of started) await process.stop();
-    const failures: unknown[] = [];
-    for (const { service, label } of started) {
-      const teardown = service.teardown;
+    for (const { service } of started) await service.stop();
+    for (const { teardown } of started) {
       if (teardown === undefined) continue;
-      const teardownLabel = `${label} teardown (${commandLine(teardown)})`;
       try {
-        await new AppProcess(teardown, this.projectRoot, { waitForExit: true }, teardownLabel).start();
+        await teardown.start();
       } catch (cause) {
-        failures.push(cause);
+        onFailure(cause);
       }
     }
-    return failures;
   }
 }

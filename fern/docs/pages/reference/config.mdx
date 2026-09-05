@@ -109,7 +109,7 @@ export interface AppConfig {
 | --- | --- | --- | --- |
 | `url` | `string` | `APP_URL` | One of the two is required, else `APP_URL_REQUIRED`. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; HTTP only for loopback. |
 | `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted |
-| `readyUrl` | `string` | the resolved base URL | Readiness probe; a status of 200-499 counts as ready |
+| `readyUrl` | `string` | the resolved base URL | Absolute http(s) readiness probe; a status of 200-499 counts as ready |
 | `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before `command` and torn down in reverse; see [app.services](#appservices) |
 | `allowedOrigins` | `readonly string[]` | the origin of `url` | Each entry must be a serialized origin |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts, otherwise `'production'` | A label for the report and the cache/session identity digest; it never gates a run |
