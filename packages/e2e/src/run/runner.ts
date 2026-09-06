@@ -25,7 +25,7 @@ import {
 import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
-import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
+import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { buildReport, describeTarget, type Report1Document, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { renderJunitReport } from '../report/junit.ts';
@@ -39,9 +39,8 @@ import { runUnits } from './scheduler.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
-import type { CommandConfig, E2EConfig } from '../types.ts';
-import type { ResolvedService } from '../config/app.ts';
-import { obj } from '../internal/objects.ts';
+import type { E2EConfig } from '../types.ts';
+import { declaredProcesses } from './declared-processes.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -608,44 +607,6 @@ function validateBackend(target: ResolvedTarget, config: ResolvedConfig): Target
     }
   }
   return provenance;
-}
-
-/**
- * The processes the run owns, gathered from every target's backend
- * declaration and deduplicated: two targets declaring the same service or the
- * same command (two browsers on one dev server) share one process. Services
- * keep target order; a shared process carries the first declaring target's
- * label.
- */
-function declaredProcesses(targets: readonly ResolvedTarget[]): {
-  readonly services: readonly ResolvedService[];
-  readonly commands: readonly { label: string; command: CommandConfig; readyUrl: string }[];
-} {
-  const seen = new Set<string>();
-  const services: ResolvedService[] = [];
-  const commands: { label: string; command: CommandConfig; readyUrl: string }[] = [];
-  for (const target of targets) {
-    for (const service of target.app.services) {
-      const key = canonicalDigest(
-        obj({
-          kind: 'service',
-          command: service.command,
-          readiness: service.readiness,
-          teardown: service.teardown?.command,
-        }),
-      );
-      if (seen.has(key)) continue;
-      seen.add(key);
-      services.push(service);
-    }
-    const { command, readyUrl } = target.app;
-    if (command === undefined || readyUrl === undefined) continue;
-    const key = canonicalDigest({ kind: 'command', command, readyUrl });
-    if (seen.has(key)) continue;
-    seen.add(key);
-    commands.push({ label: `target "${target.name}" command`, command, readyUrl });
-  }
-  return { services, commands };
 }
 
 function resultExitCodes(results: readonly ResultRecord[]): number[] {

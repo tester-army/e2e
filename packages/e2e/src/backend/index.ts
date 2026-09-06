@@ -132,7 +132,8 @@ export interface BackendAppDeclaration {
    * Process the runner starts before the first test and stops on every exit
    * path (a dev server). Structured, never shell-interpreted; the child
    * inherits only `PATH`, `HOME`, the temp-directory variables, and
-   * `command.env`. Two targets declaring the same command share one process.
+   * `command.env`. Targets declaring the same command share one process,
+   * probed at the first declaring target's `readyUrl`.
    */
   readonly command?: CommandConfig;
   /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
@@ -142,7 +143,9 @@ export interface BackendAppDeclaration {
    * container, a migration step), started in declaration order before any
    * app command and torn down in reverse after it. Valid without `command`:
    * the app may already be running, or be one of the services itself.
-   * Services declared identically by several targets start once.
+   * Services declared identically by several targets start once; shared
+   * services must be declared in one order, and an explicit `name` must mean
+   * one process across the run.
    */
   readonly services?: readonly ServiceConfig[];
 }
@@ -576,7 +579,7 @@ function nestedManifest<K extends keyof typeof NESTED_KEYS>(
   value: unknown,
   required: readonly string[] = [],
 ): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw invalid(name, `${key} must be an object`);
   }
   const hooks: readonly string[] = NESTED_KEYS[key];

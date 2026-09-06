@@ -777,7 +777,8 @@ export interface BackendAppDeclaration {
   /**
    * Process the runner starts before the first test and stops on every exit
    * path. Structured, never shell-interpreted. Targets declaring the same
-   * command share one process.
+   * command share one process, probed at the first declaring target's
+   * `readyUrl`.
    */
   readonly command?: CommandConfig;
   /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
@@ -786,7 +787,9 @@ export interface BackendAppDeclaration {
    * Dependency processes started in declaration order before any app command
    * and torn down in reverse after it. Valid without `command`: the app may
    * already be running, or be one of the services itself. Services declared
-   * identically by several targets start once.
+   * identically by several targets start once; shared services must be
+   * declared in one order, and an explicit `name` must mean one process
+   * across the run.
    */
   readonly services?: readonly ServiceConfig[];
 }

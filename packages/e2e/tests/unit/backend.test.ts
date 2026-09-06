@@ -63,6 +63,11 @@ describe('defineBackend', () => {
     expect(() =>
       defineBackend(observingBackend({ state: { capture: async () => ({}) } as never })),
     ).toThrow(/state.restore must be a function/);
+    // An array has no unknown keys, so it must be refused by shape, not by key.
+    expect(() => defineBackend(observingBackend({ app: [] as never }))).toThrow(/app must be an object/);
+    expect(() => defineBackend(observingBackend({ app: { url: async () => 'x' } as never }))).toThrow(
+      /app.url is a declaration, not a hook/,
+    );
   });
 
   it('requires a version: provenance and the trace cache key depend on it', () => {

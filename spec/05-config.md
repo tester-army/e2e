@@ -201,7 +201,8 @@ replaces app variables. Model credentials, `E2E_USER_*`, CI tokens, and other
 runner secrets are never inherited implicitly.
 
 The runner starts each distinct declared command as a process group before
-the first test (two targets declaring the same command share one process),
+the first test (targets declaring the same command share one process, probed
+at the first declaring target's `readyUrl`),
 waits for `readyUrl` or `url` (a command with neither is `APP_URL_REQUIRED`
 at config load), and fails with `APP_UNREACHABLE` after `startupTimeout`,
 default 60 seconds. A successful HTTP status is 200 through 499. On every exit
@@ -218,7 +219,10 @@ default, and the same environment rule as `command`: a service child inherits
 only the allowlist above plus its own `env`. `services` is valid without
 `command`; the app may already be running or be one of the services itself.
 Services declared identically by several targets start once; distinct ones
-are gathered in target order.
+are gathered in target order. Two targets that declare shared services in
+opposite orders are `INVALID_CONFIG`, as are two different services under one
+explicit `name`: an ordering the runner cannot honor, or a label that names
+two processes, is refused before anything spawns.
 
 Services start sequentially in declaration order, before any app command and
 before collection. Each service MUST be ready before the next one starts.
@@ -235,7 +239,7 @@ non-zero exit, termination by a signal, a spawn failure, or an expired budget
 fails the run with `APP_UNREACHABLE`, and the message names the service by its
 `name`, which defaults to the executable's base name; an explicit `name` MUST be
 a non-empty string of at most 64 characters and unique among the explicitly
-named services, otherwise the config is `INVALID_CONFIG`.
+named services of a declaration, otherwise the config is `INVALID_CONFIG`.
 
 Teardown runs on every exit path: success, failure, and interrupt. The runner
 stops every app command first, then stops the started services in reverse

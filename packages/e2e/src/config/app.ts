@@ -25,6 +25,8 @@ export interface ResolvedCommand {
 
 /** One declared service with its readiness contract already decided. */
 export interface ResolvedService extends ResolvedCommand {
+  /** The explicit `name`, trimmed; undefined when the label fell back to the executable. */
+  readonly name: string | undefined;
   readonly readiness: Readiness;
   readonly teardown: ResolvedCommand | undefined;
 }
@@ -195,10 +197,12 @@ export function resolveServices(
       );
     }
     const readiness: Readiness = readyUrl === undefined ? { waitForExit: true } : { readyUrl };
-    const label = `service "${serviceName(service, position, names)}"`;
+    const name = serviceName(service, position, names);
+    const label = `service "${name}"`;
     if (teardown !== undefined) validateCommand(teardown, `${position}.teardown`);
     return {
       label,
+      name: service.name === undefined ? undefined : name,
       command,
       readiness,
       teardown: teardown === undefined ? undefined : { label: `${label} teardown`, command: teardown },

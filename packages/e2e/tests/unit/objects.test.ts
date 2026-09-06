@@ -18,4 +18,9 @@ describe('obj', () => {
     expect(result).toEqual({ always: 1 });
     expect('maybe' in result).toBe(false);
   });
+
+  it('refuses arrays at the type level: the copy is a plain object, never an array', () => {
+    // @ts-expect-error an array-typed result would promise methods the copy does not have
+    expect(obj([1, undefined])).toEqual({ 0: 1 });
+  });
 });

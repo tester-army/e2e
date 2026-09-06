@@ -132,7 +132,7 @@ export interface BackendAppDeclaration {
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `url` | `string` | unset | Required once a test calls `app.open()` or navigates relatively, else `APP_URL_REQUIRED` at that call. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; HTTP only for loopback. |
-| `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted. Targets declaring the same command share one process. |
+| `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted. Targets declaring the same command share one process, probed at the first declaring target's `readyUrl`. |
 | `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. A `command` with neither is `APP_URL_REQUIRED` at config load. |
 | `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before any app command and torn down in reverse; see [services](#services) |
 | `allowedOrigins` | `readonly string[]` | the origin of `url`, else none | Each entry must be a serialized origin |
@@ -214,7 +214,9 @@ Exactly one of `readyUrl` or `waitForExit` is required per service, otherwise
 app command, each ready before the next starts, and `startupTimeout` bounds
 every readiness wait. `services` works without `command` when the app is
 already running or is itself one of the services. Services declared
-identically by several targets start once.
+identically by several targets start once; two targets that order shared
+services differently, or put one explicit `name` on two different services,
+are `INVALID_CONFIG`.
 
 On every exit path (success, failure, interrupt) the runner stops every app
 command, then stops the started services in reverse order, then runs their
