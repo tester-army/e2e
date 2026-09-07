@@ -90,7 +90,7 @@ export async function loadConfigModule(configPath: string): Promise<E2EConfig> {
   if (typeof defaultExport !== 'object' || defaultExport === null) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `config ${configPath} must default-export the object returned by defineConfig()`,
+      `config ${configPath} must default-export a config object`,
     );
   }
   return defaultExport as E2EConfig;

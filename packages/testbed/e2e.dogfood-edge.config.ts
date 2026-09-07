@@ -6,10 +6,10 @@
  *   AI_GATEWAY_API_KEY=... node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.dogfood-edge.config.ts
  */
 
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-edge',
   tests: 'tests-dogfood-edge/**/*.e2e.ts',
@@ -28,4 +28,4 @@ export default defineConfig({
   agent: {
     model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
   },
-});
+} satisfies E2EConfig;

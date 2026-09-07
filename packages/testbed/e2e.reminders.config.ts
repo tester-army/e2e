@@ -11,7 +11,7 @@
  * dozens of model calls and minutes of simulator time.
  */
 
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
@@ -19,7 +19,7 @@ import { createGateway } from 'ai';
 
 const device = agentDevice({ platform: 'ios', app: 'Reminders', session: 'e2e-testbed-reminders' });
 
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-reminders',
   tests: 'tests-reminders/**/*.e2e.ts',
@@ -42,4 +42,4 @@ export default defineConfig({
       'never a reason to conclude blocked.',
     ].join(' '),
   },
-});
+} satisfies E2EConfig;

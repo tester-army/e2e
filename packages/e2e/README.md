@@ -19,12 +19,12 @@ install. Choose Playwright for the config and browser test below. `--yes`
 skips the prompts: AI on, no engine, no installation.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
-});
+} satisfies E2EConfig;
 ```
 
 The engine declares the app it drives: the URL is an option of `playwright()`,
@@ -33,7 +33,7 @@ runner start the whole stack itself: the dependencies as `services`, then the
 app as `command`:
 
 ```ts title="e2e.config.ts"
-export default defineConfig({
+export default {
   targets: [
     {
       name: 'web',
@@ -53,7 +53,7 @@ export default defineConfig({
       }),
     },
   ],
-});
+} satisfies E2EConfig;
 ```
 
 Services start one at a time in declaration order, each ready before the next
@@ -104,9 +104,9 @@ Deterministic tests need no model. Agent steps — `agent.act`, `assert`,
 `waitFor`, and `extract` — require one:
 
 ```ts
-export default defineConfig({
+export default {
   agent: { model: 'anthropic/claude-sonnet-4.5' },
-});
+} satisfies E2EConfig;
 ```
 
 ```bash
@@ -120,9 +120,9 @@ directly, pass any AI SDK model instance instead:
 ```ts
 import { openai } from '@ai-sdk/openai';
 
-export default defineConfig({
+export default {
   agent: { model: openai('gpt-5.4-mini') },
-});
+} satisfies E2EConfig;
 ```
 
 Screenshots, raw HTML, cookies, headers, and registered secret values are never

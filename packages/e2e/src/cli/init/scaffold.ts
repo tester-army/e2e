@@ -11,7 +11,7 @@ const AGENT_CONFIG = `  // The model comes from E2E_MODEL; authenticate with E2E
 export function createScaffold(engineId: EngineId, ai: boolean) {
   const engine = getEnginePreset(engineId);
   const imports = [
-    "import { defineConfig } from '@e2edev/e2e';",
+    "import type { E2EConfig } from '@e2edev/e2e';",
     ...(ai ? [AGENT_IMPORT] : []),
     ...engine.imports,
   ];
@@ -28,9 +28,9 @@ export function createScaffold(engineId: EngineId, ai: boolean) {
     },
     config: `${imports.join('\n')}
 
-export default defineConfig({
+export default {
 ${configFields.join('\n')}
-});
+} satisfies E2EConfig;
 `,
     example: engine.example + (ai ? engine.aiExample ?? '' : ''),
     runCommand: engine.runCommand,

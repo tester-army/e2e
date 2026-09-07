@@ -15,12 +15,12 @@ npm install --save-dev @e2edev/e2e @e2edev/playwright
 ```
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
-});
+} satisfies E2EConfig;
 ```
 
 The engine declares the app it drives. App options: `url` (the base URL

@@ -1,21 +1,18 @@
 ---
-title: defineConfig
+title: E2EConfig
 subtitle: Every configuration key, its default, its valid range, and the environment variables.
 ---
 
-`defineConfig` is an identity function for type checking and editor completion.
-Every rule below is enforced when the runner resolves the config, not when
-`defineConfig` is called.
-
-```ts
-export function defineConfig(config: E2EConfig): E2EConfig;
-```
+`E2EConfig` is the type of the object `e2e.config.ts` default-exports. Write the
+object literal and end it with `satisfies E2EConfig`: the editor completes every
+key, unknown keys are flagged, and the export keeps its literal type. Every rule
+below is enforced when the runner resolves the config, not by the type.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   targets: [
     {
       name: 'web',
@@ -23,7 +20,7 @@ export default defineConfig({
       engine: playwright({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
     },
   ],
-});
+} satisfies E2EConfig;
 ```
 
 Unknown keys are rejected with `INVALID_CONFIG` at every level: top level,
@@ -145,7 +142,7 @@ declaration keys fail at `defineEngine`; invalid values fail at config load
 naming the target.
 
 ```ts title="e2e.config.ts"
-export default defineConfig({
+export default {
   targets: [
     {
       name: 'web',
@@ -156,7 +153,7 @@ export default defineConfig({
       }),
     },
   ],
-});
+} satisfies E2EConfig;
 ```
 
 ### command
@@ -258,7 +255,7 @@ teardown `env` values enter the config digest as names only, like
 `command.env`.
 
 ```ts title="e2e.config.ts"
-export default defineConfig({
+export default {
   targets: [
     {
       name: 'web',
@@ -292,7 +289,7 @@ export default defineConfig({
       }),
     },
   ],
-});
+} satisfies E2EConfig;
 ```
 
 ## targets
@@ -450,7 +447,7 @@ An unconfigured name, or a call outside an active runner, throws
 `AUTH_CREDENTIAL_UNAVAILABLE` with exit code 2.
 
 ```ts title="e2e.config.ts"
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
   credentials: {
     member: { username: 'member@example.test', password: 'local-dev-only' },
@@ -460,7 +457,7 @@ export default defineConfig({
       allowedOrigins: ['http://localhost:3000'],
     },
   },
-});
+} satisfies E2EConfig;
 ```
 
 ## cache

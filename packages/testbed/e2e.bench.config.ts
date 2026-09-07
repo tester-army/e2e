@@ -1,4 +1,4 @@
-import { defineConfig, type CacheMode } from '@e2edev/e2e';
+import type { CacheMode, E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 const CACHE_MODES = ['off', 'read-only', 'read-write'] as const;
@@ -22,7 +22,7 @@ function cacheMode(): CacheMode {
  * Like the other agentic suites this never gates a PR: every step spends
  * real model calls. `E2E_MODEL` overrides the pinned model.
  */
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'testbed-bench',
   tests: 'tests-bench/**/*.e2e.ts',
@@ -52,4 +52,4 @@ export default defineConfig({
       password: () => Promise.resolve('bench-password-1'),
     },
   },
-});
+} satisfies E2EConfig;

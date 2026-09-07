@@ -1,4 +1,4 @@
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 /**
@@ -9,7 +9,7 @@ import { playwright } from '@e2edev/playwright';
  * Not part of CI: public sites change and rate-limit, and the point of this
  * config is dogfooding the multi-origin policy against live hosts.
  */
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-public',
   tests: 'tests-public/**/*.e2e.ts',
@@ -23,4 +23,4 @@ export default defineConfig({
       }),
     },
   ],
-})
+} satisfies E2EConfig;

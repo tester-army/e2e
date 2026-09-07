@@ -7,7 +7,7 @@
  *   AI_GATEWAY_API_KEY=... node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.dogfood-brain.config.ts
  */
 
-import { defineConfig, type StepExecutor, type StepVerdict } from '@e2edev/e2e';
+import type { E2EConfig, StepExecutor, StepVerdict } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 import { createGateway, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
@@ -75,11 +75,11 @@ const mathBrain: StepExecutor = {
   },
 };
 
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-brain',
   tests: 'tests-dogfood-brain/**/*.e2e.ts',
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://127.0.0.1:4312' }) }],
   timeout: 120_000,
   agent: mathBrain,
-});
+} satisfies E2EConfig;

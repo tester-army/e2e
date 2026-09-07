@@ -15,7 +15,7 @@
  * device run at a time: concurrent runs would share the pinned sessions.
  */
 
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
@@ -28,7 +28,7 @@ const android = agentDevice({
   session: 'e2e-testbed-device-android',
 });
 
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-device',
   tests: 'tests-device/**/*.e2e.ts',
@@ -57,4 +57,4 @@ export default defineConfig({
       'button in the top bar to return.',
     ].join(' '),
   },
-});
+} satisfies E2EConfig;

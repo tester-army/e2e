@@ -5,15 +5,15 @@
  */
 
 import { z } from 'zod';
-import { defineConfig, test, type Agent, type TraceCacheStore } from '../../src/index.ts';
+import { test, type Agent, type E2EConfig, type TraceCacheStore } from '../../src/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
 
-defineConfig({ cache: 'read-write' });
-defineConfig({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } });
+({ cache: 'read-write' }) satisfies E2EConfig;
+({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
-defineConfig({ cache: 'sometimes' });
+({ cache: 'sometimes' }) satisfies E2EConfig;
 
 const schemaOptions = {
   schema: z.object({ total: z.number() }),

@@ -1,4 +1,4 @@
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 /**
@@ -26,7 +26,7 @@ if (process.env.E2E_DEVTOOLS !== undefined && process.env.E2E_DEVTOOLS !== '') {
  * `E2E_MODEL` overrides the pinned model so one suite dogfoods several
  * providers.
  */
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-agent',
   tests: 'tests-agent/**/*.e2e.ts',
@@ -64,4 +64,4 @@ export default defineConfig({
       password: 'admin-pass',
     },
   },
-});
+} satisfies E2EConfig;

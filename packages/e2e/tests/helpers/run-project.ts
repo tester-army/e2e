@@ -90,13 +90,13 @@ export async function runExisting(
 
 /** Default file-backed config used by worker-path integration tests. */
 export function workerConfigSource(workers: number, extra = ''): string {
-  return `import { defineConfig } from '@e2edev/e2e';
+  return `import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: ${workers},${extra}
-});
+} satisfies E2EConfig;
 `;
 }
 

@@ -5,7 +5,7 @@
  *   AI_GATEWAY_API_KEY=... node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts
  */
 
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 import { createAgent, defineTool } from '@e2edev/e2e/agent';
 import { gateway, tool } from 'ai';
@@ -41,7 +41,7 @@ const resetExpenses = defineTool(
   { mutates: true },
 );
 
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood',
   tests: 'tests-dogfood/**/*.e2e.ts',
@@ -64,4 +64,4 @@ export default defineConfig({
       'The app under test is a small expense-claims tool. Saves are asynchronous: ' +
       'after submitting, a "Saving…" indicator shows until the save lands.',
   }),
-});
+} satisfies E2EConfig;

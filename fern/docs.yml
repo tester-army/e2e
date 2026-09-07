@@ -69,7 +69,7 @@ navigation:
           - page: agent
             path: docs/pages/reference/agent.mdx
             slug: reference/agent
-          - page: defineConfig
+          - page: E2EConfig
             path: docs/pages/reference/config.mdx
             slug: reference/config
           - page: CLI

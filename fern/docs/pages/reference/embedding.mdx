@@ -105,7 +105,7 @@ stream.
 ## Hosted caching
 
 Two config seams exist for hosts that own a shared trace cache
-([defineConfig → cache](/reference/config#cache)):
+([Config → cache](/reference/config#cache)):
 
 - `cache.store` accepts any `TraceCacheStore` (a Redis adapter, an API). A
   host-supplied store is exempt from the CI read-only clamp: it is not a
@@ -115,7 +115,7 @@ Two config seams exist for hosts that own a shared trace cache
   happens to be served from, so ephemeral per-deploy origins (PR previews)
   share their recorded traces.
 - `artifacts.store` accepts any `ArtifactStore`
-  ([defineConfig → artifacts](/reference/config#artifacts)): every screenshot
+  ([Config → artifacts](/reference/config#artifacts)): every screenshot
   and trace is handed to it the moment it is complete, with its bytes, digest,
   and report identity, and its returned reference lands on the artifact record
   as `ref`. A host uploads evidence as the run produces it instead of reading

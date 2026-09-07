@@ -38,17 +38,17 @@ Requires Node.js 20.19 or newer.
     With Playwright and AI selected, init writes this config:
 
     ```ts title="e2e.config.ts"
-    import { defineConfig } from '@e2edev/e2e';
+    import type { E2EConfig } from '@e2edev/e2e';
     import { createAgent } from '@e2edev/e2e/agent';
     import { playwright } from '@e2edev/playwright';
 
-    export default defineConfig({
+    export default {
       agent: createAgent({
         system: 'You are a thorough QA agent. Verify every outcome.',
       }),
       // The engine declares the app it drives; APP_URL overrides the default at run time.
       targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
-    });
+    } satisfies E2EConfig;
     ```
 
     Set `APP_URL` when running tests, or edit the default `url` passed to
@@ -126,7 +126,7 @@ the engine the whole stack: the dependencies as `services`, then the app as
 `command`:
 
 ```ts title="e2e.config.ts"
-export default defineConfig({
+export default {
   targets: [
     {
       name: 'web',
@@ -146,7 +146,7 @@ export default defineConfig({
       }),
     },
   ],
-});
+} satisfies E2EConfig;
 ```
 
 Services start one at a time in declaration order, each ready before the next

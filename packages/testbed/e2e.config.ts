@@ -1,7 +1,7 @@
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed',
   targets: [
@@ -20,4 +20,4 @@ export default defineConfig({
       password: 'admin-pass',
     },
   },
-});
+} satisfies E2EConfig;

@@ -18,7 +18,7 @@ typed; declare `requires: ['device']` in portable suites.
 ## Engine
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
@@ -26,14 +26,14 @@ import { agentDeviceTools } from '@e2edev/agent-device/tools';
 const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
 const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
-export default defineConfig({
+export default {
   targets: [
     { name: 'iphone', platform: 'ios', engine: iphone },
     { name: 'pixel', platform: 'android', engine: pixel },
   ],
   workers: 1,
   agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
-});
+} satisfies E2EConfig;
 ```
 
 One engine per device; a config declares as many as it has devices. A test

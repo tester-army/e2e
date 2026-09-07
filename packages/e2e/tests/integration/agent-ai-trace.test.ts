@@ -157,15 +157,15 @@ describe('--ai-trace on child-process workers', () => {
     // A worker re-loads the config module itself, so the scripted model is
     // built inside the config file from the shared helper.
     const helper = fileURLToPath(new URL('../helpers/fake-loop-model.ts', import.meta.url));
-    const configSource = `import { defineConfig } from '@e2edev/e2e';
+    const configSource = `import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 import { installFakeLoopModel } from ${JSON.stringify(helper)};
 
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: 2,
   agent: { model: installFakeLoopModel(${RESPONDER_SOURCE}) },
-});
+} satisfies E2EConfig;
 `;
     const result = await runProjectWithConfigFile(
       { 'tests/one.e2e.ts': SUITE, 'tests/two.e2e.ts': SUITE.replace('increments', 'increments again') },

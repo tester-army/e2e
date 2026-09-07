@@ -79,10 +79,10 @@ Never hardcode a password in a test. Declare it in config and source the value
 from the environment.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
   credentials: {
     admin: {
@@ -90,7 +90,7 @@ export default defineConfig({
       password: process.env.ADMIN_PASSWORD ?? '',
     },
   },
-});
+} satisfies E2EConfig;
 ```
 
 Config is trusted project code, so reading `process.env` there is expected. You
@@ -180,7 +180,7 @@ and consume the session elsewhere to keep full evidence in the tests that matter
   <Card title="app and web reference" icon="globe" href="/reference/app-web">
     Cookies, routes, dialogs, frames, and downloads.
   </Card>
-  <Card title="defineConfig reference" icon="sliders" href="/reference/config">
+  <Card title="Config reference" icon="sliders" href="/reference/config">
     The `credentials` block and every other key.
   </Card>
 </CardGroup>

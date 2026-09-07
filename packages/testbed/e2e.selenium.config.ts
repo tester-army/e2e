@@ -1,4 +1,4 @@
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 /**
@@ -13,7 +13,7 @@ import { playwright } from '@e2edev/playwright';
  * Not part of CI: the site is third-party and can change or rate-limit. The
  * point is to measure the SDK against surfaces the playground cannot fake.
  */
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-selenium',
   tests: 'tests-selenium/**/*.e2e.ts',
@@ -35,4 +35,4 @@ export default defineConfig({
       password: 'secret_pass',
     },
   },
-});
+} satisfies E2EConfig;

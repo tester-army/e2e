@@ -23,13 +23,13 @@ const LOG_HELPER =
   "const log = (line) => appendFileSync(process.env.SIGNAL_LOG, process.pid + ' ' + line + '\\n');";
 
 const CONFIG = `import { appendFileSync } from 'node:fs';
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { defineEngine } from '@e2edev/e2e/engine';
 
 ${LOG_HELPER}
 const node = { ref: { id: 'n1', revision: '' }, role: 'button', name: 'Go', states: { hidden: false } };
 
-export default defineConfig({
+export default {
   tests: 'tests/**/*.e2e.ts',
   targets: [{ name: 'fake', platform: 'ios', engine: defineEngine({
     name: 'signal-fake',
@@ -47,7 +47,7 @@ export default defineConfig({
   cleanupTimeout: ${CLEANUP_TIMEOUT_MS},
   workers: 1,
   cache: 'off',
-});
+} satisfies E2EConfig;
 `;
 
 /** A body that never calls the harness: only the interrupt race can end it. */

@@ -22,7 +22,7 @@ with an emulator. Run `npx agent-device doctor` once before handing the target
 to the runner.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
@@ -30,14 +30,14 @@ import { agentDeviceTools } from '@e2edev/agent-device/tools';
 const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
 const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
-export default defineConfig({
+export default {
   targets: [
     { name: 'iphone', platform: 'ios', engine: iphone },
     { name: 'pixel', platform: 'android', engine: pixel },
   ],
   workers: 1,
   agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
-});
+} satisfies E2EConfig;
 ```
 
 A test written against `agent`, `app`, `screen`, and `device` runs on both

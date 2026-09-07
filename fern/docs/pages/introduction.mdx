@@ -8,16 +8,16 @@ them. e2e ships no intelligence of its own: the runner owns safety, budgets,
 secrets, and the report. The thinking is yours to control.
 
 ```ts title="e2e.config.ts"
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
 
-export default defineConfig({
+export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
   agent: createAgent({
     system: 'You are a thorough QA agent. Verify every outcome on screen.',
   }),
-});
+} satisfies E2EConfig;
 ```
 
 ```ts title="tests/checkout.e2e.ts"

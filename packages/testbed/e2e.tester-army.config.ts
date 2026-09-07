@@ -1,4 +1,4 @@
-import { defineConfig } from '@e2edev/e2e';
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 /**
@@ -12,7 +12,7 @@ import { playwright } from '@e2edev/playwright';
  * so the second run replays the whole tour zero-turn; append `--no-cache` to
  * the CLI to force a fully live run.
  */
-export default defineConfig({
+export default {
   specVersion: '0.1',
   projectId: 'testbed-tester-army',
   tests: 'tests-tester-army/**/*.e2e.ts',
@@ -39,4 +39,4 @@ export default defineConfig({
       'Navigate with the header menus and in-page links only.',
     ].join('\n'),
   },
-});
+} satisfies E2EConfig;
