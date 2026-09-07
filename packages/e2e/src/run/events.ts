@@ -45,7 +45,21 @@ export type RunEventFact =
       readonly ci: boolean;
       readonly targets: readonly string[];
     }
-  | { readonly type: 'plan'; readonly total: number }
+  | {
+      /**
+       * What the run will execute. `total` counts every test-target pair,
+       * including unselected ones; `files` breaks the reportable pairs (run
+       * or explicitly skipped) down per test file and target, so a reporter
+       * can tell when a file's results are complete without a side lookup.
+       */
+      readonly type: 'plan';
+      readonly total: number;
+      readonly files: readonly {
+        readonly file: string;
+        readonly target: string;
+        readonly tests: number;
+      }[];
+    }
   | {
       /**
        * One line of run-level progress outside any test: engine provisioning,
@@ -60,6 +74,8 @@ export type RunEventFact =
       readonly type: 'test-started';
       readonly testId: string;
       readonly title: string;
+      /** Project-root-relative test file, so reporters can group by file. */
+      readonly file: string;
       readonly target: string;
     }
   | {

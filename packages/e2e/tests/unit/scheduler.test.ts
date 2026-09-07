@@ -182,7 +182,12 @@ class FakeRunner implements UnitRunner {
     const crash = this.behaviour.crashOn?.includes(message.unitId) === true;
     for (const pair of message.pairs) {
       if (crash) {
-        this.events.onMessage({ type: 'pair-start', testId: pair.test.id, title: pair.test.id });
+        this.events.onMessage({
+          type: 'pair-start',
+          testId: pair.test.id,
+          title: pair.test.id,
+          file: pair.test.file,
+        });
         this.end('crashed');
         return;
       }

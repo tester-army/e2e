@@ -102,6 +102,8 @@ export interface PairStartMessage {
   readonly testId: string;
   /** Joined title path, so reporters need no side lookup by test ID. */
   readonly title: string;
+  /** Project-root-relative test file. */
+  readonly file: string;
 }
 
 /** Live step progress of the running attempt; plain data, fire-and-forget. */

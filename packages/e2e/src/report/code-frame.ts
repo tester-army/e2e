@@ -1,16 +1,23 @@
 /**
  * Failure-location presentation: finds the user's failing line in a stack and
- * renders a small annotated code frame around it. Generic over reporters; the
- * list reporter is simply its first consumer.
+ * renders a small annotated code frame around it, in vitest's frame style.
+ * Generic over reporters; the list reporter is simply its first consumer.
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pc from 'picocolors';
+import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 
+/** A picocolors instance; the reporter decides whether it emits color. */
+export type Colors = ReturnType<typeof picocolors.createColors>;
+
 const MAX_FIELD_BYTES = 8192;
+/** Lines of context on each side of the failing line. */
+const FRAME_RANGE = 2;
+/** A source line longer than this is minified output; the frame would be noise. */
+const MAX_FRAME_LINE_CHARS = 200;
 
 export interface StackFrame {
   readonly file: string;
@@ -49,29 +56,32 @@ export function userFrame(
   return undefined;
 }
 
-/** Renders the failing line with one line of context and a column caret. */
-export function codeFrame(frame: StackFrame): string[] {
+/**
+ * Renders the failing line with two lines of context on each side and a
+ * column caret, gutter-numbered like vitest (`  28| code`).
+ */
+export function codeFrame(frame: StackFrame, pc: Colors = picocolors): string[] {
   let source: string;
   try {
     source = readFileSync(frame.file, 'utf8');
   } catch {
     return [];
   }
-  const lines = source.split('\n');
+  const lines = source.split(/\r?\n/);
   const index = frame.line - 1;
   if (index < 0 || index >= lines.length) return [];
-  const start = Math.max(0, index - 1);
-  const end = Math.min(lines.length - 1, index + 1);
-  const width = String(end + 1).length;
+  const start = Math.max(0, index - FRAME_RANGE);
+  const end = Math.min(lines.length - 1, index + FRAME_RANGE);
+  const maxChars = Math.max(20, (process.stdout.columns || 80) - 10);
+  const gutter = (no: number | '' = ''): string => pc.gray(`${String(no).padStart(3)}|`);
   const rows: string[] = [];
   for (let i = start; i <= end; i += 1) {
-    const text = truncateUtf8(sanitizeText(lines[i] ?? ''), MAX_FIELD_BYTES);
-    const number = String(i + 1).padStart(width);
+    const raw = truncateUtf8(sanitizeText(lines[i] ?? ''), MAX_FIELD_BYTES).replaceAll('\t', ' ');
+    if (raw.length > MAX_FRAME_LINE_CHARS) return [];
+    const text = raw.length > maxChars ? `${raw.slice(0, maxChars - 1)}…` : raw.trimEnd();
+    rows.push(`${gutter(i + 1)}${text === '' ? '' : ` ${text}`}`);
     if (i === index) {
-      rows.push(`${pc.red('>')} ${number} | ${text}`);
-      rows.push(`  ${' '.repeat(width)} | ${' '.repeat(Math.max(0, frame.column - 1))}${pc.red('^')}`);
-    } else {
-      rows.push(pc.dim(`  ${number} | ${text}`));
+      rows.push(`${gutter()}${' '.repeat(Math.max(1, frame.column))}${pc.red('^')}`);
     }
   }
   return rows;

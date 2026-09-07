@@ -382,7 +382,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     const { collection, selection } = planned;
 
-    emit({ type: 'plan', total: selection.pairs.length });
+    emit({ type: 'plan', total: selection.pairs.length, files: plannedFiles(selection) });
 
     const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
     const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
@@ -478,8 +478,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             emit({ type: 'serial-group', group });
           },
           onRunError: recordRunError,
-          onTestStart: (testId, title, targetName) =>
-            emit({ type: 'test-started', testId, title, target: targetName }),
+          onTestStart: (testId, title, file, targetName) =>
+            emit({ type: 'test-started', testId, title, file, target: targetName }),
           onProgress: (testId, targetName, progress) =>
             emit({ type: 'step', testId, target: targetName, progress }),
           onDebug: (snapshot) => debug.merge(snapshot),
@@ -589,6 +589,27 @@ async function loadRunConfig(
     env,
     cli,
   });
+}
+
+/**
+ * The plan's per-file breakdown: reportable pairs (run or explicitly skipped)
+ * counted per test file and target, in selection order. Unselected pairs are
+ * left out: the list reporter never shows them, so counting them would keep
+ * a file's block waiting for results that never print.
+ */
+function plannedFiles(selection: Selection): { file: string; target: string; tests: number }[] {
+  const files = new Map<string, { file: string; target: string; tests: number }>();
+  for (const pair of selection.pairs) {
+    if (pair.disposition === 'filtered') continue;
+    const key = `${pair.target.name}\u0000${pair.test.file}`;
+    const entry = files.get(key);
+    if (entry === undefined) {
+      files.set(key, { file: pair.test.file, target: pair.target.name, tests: 1 });
+    } else {
+      entry.tests += 1;
+    }
+  }
+  return [...files.values()];
 }
 
 function statusOf(exitCode: RunExitCode): RunOutcome['status'] {

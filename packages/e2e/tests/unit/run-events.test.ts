@@ -5,8 +5,8 @@ import { createRunEventEmitter, toEventResult, type RunEvent } from '../../src/r
 import type { ResultRecord } from '../../src/run/records.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
 
-function fact(total: number): { type: 'plan'; total: number } {
-  return { type: 'plan', total };
+function fact(total: number): { type: 'plan'; total: number; files: [] } {
+  return { type: 'plan', total, files: [] };
 }
 
 describe('createRunEventEmitter', () => {
