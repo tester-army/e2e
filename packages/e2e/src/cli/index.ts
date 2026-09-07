@@ -51,7 +51,7 @@ function createProgram(): Command {
   program
     .command('run')
     .description('run e2e tests')
-    .argument('[files...]', 'test files relative to the project root')
+    .argument('[files...]', 'test files, directories, or globs relative to the project root')
     .option('--config <path>', 'explicit config path')
     .option('--target <ids>', 'comma-separated target IDs', parseList)
     .option('--tag <tag>', 'repeatable tag filter', (value: string, previous: string[] = []) => [...previous, value])

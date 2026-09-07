@@ -65,10 +65,24 @@ command, and exits 2.
 e2e run [files...]
 ```
 
-Test files relative to the project root. Positional paths intersect with the
-config globs and with tag, platform, and capability filters: they narrow the
-selection, they do not bypass it. A path outside the project root is
-`COLLECTION_ERROR`.
+Test files, directories, or globs relative to the project root:
+
+- a file path (`tests/signup.e2e.ts`) selects that file;
+- a directory (`tests/agent`, `.`) selects every test file the config globs
+  discover beneath it;
+- a glob (`'tests/**/*.smoke.e2e.ts'`, quoted so the shell leaves it to the
+  runner) uses the same grammar as the config `tests` globs: `*`, `?`, and a
+  complete `**` segment. A malformed glob is `INVALID_GLOB`.
+
+Positional paths intersect with the config globs and with tag, platform, and
+capability filters: they narrow the selection, they do not bypass it, so a file
+the config globs do not match is never selected. An existing file or directory
+follows the filesystem's case rules (so `tests/Agent` finds `tests/agent` on
+Windows and macOS but not on Linux), while globs are case-sensitive everywhere.
+A path outside the project root, including one on another drive, is
+`COLLECTION_ERROR`. When nothing is left to run, the `NO_TESTS` message names
+each positional that matched no file, so a typo such as `tests/agnet` is visible
+instead of failing silently.
 
 ### Flags
 
@@ -97,6 +111,8 @@ the value comes from the config file.
 ```bash
 npx --no-install e2e run
 npx --no-install e2e run tests/signup.e2e.ts --tag smoke
+npx --no-install e2e run tests/agent
+npx --no-install e2e run 'tests/**/*.smoke.e2e.ts'
 npx --no-install e2e run --target web,webkit --tag smoke --tag billing --tag-mode all
 npx --no-install e2e run --reporter json --workers 4 --retries 2
 npx --no-install e2e run --reporter list,junit

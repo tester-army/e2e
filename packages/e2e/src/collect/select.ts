@@ -173,9 +173,14 @@ export function select(
     (pair) => pair.disposition === 'run' && pair.test.kind === 'test',
   );
   if (runnableOrdinary.length === 0 && flags.passWithNoTests !== true) {
+    // A positional that selected nothing is the usual cause, so name each one:
+    // the user learns which path was wrong instead of guessing.
+    const unmatched = collection.unmatchedPositionals;
+    const detail =
+      unmatched.length === 0 ? '' : ` (no test file matched: ${unmatched.join(', ')})`;
     throw new ConfigurationError(
       'NO_TESTS',
-      'zero runnable ordinary test-target pairs; pass --pass-with-no-tests to allow this',
+      `zero runnable ordinary test-target pairs${detail}; pass --pass-with-no-tests to allow this`,
     );
   }
 

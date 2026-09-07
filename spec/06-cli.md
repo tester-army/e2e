@@ -41,6 +41,7 @@ unverified browser binary.
 ```bash
 npx --no-install e2e run
 npx --no-install e2e run tests/signup.e2e.ts --tag smoke
+npx --no-install e2e run tests/agent 'tests/**/*.smoke.e2e.ts'
 ```
 
 | Flag | Behavior |
@@ -57,10 +58,18 @@ npx --no-install e2e run tests/signup.e2e.ts --tag smoke
 | `--no-cache` | run with the trace cache off, overriding `config.cache` (10-determinism.md) |
 | `--pass-with-no-tests` | allow zero runnable ordinary test-target pairs |
 
-Positional file arguments resolve from project root and intersect config globs,
-tags, platform filters, and capability filters. A positional path outside the
-project root is an error. Selection and setup dependency rules are in
-11-lifecycle.md.
+Positional arguments resolve from the project root. Each one is a test file
+path, matched exactly; an existing directory, selecting every file the config
+globs discover beneath it; or a glob (any `*` or `?`) in the 05-config.md
+grammar, matched against the discovered files. Positionals intersect the config
+globs, tags, platform filters, and capability filters: they narrow the selection
+and never add a file the config globs do not match. An existing file or
+directory positional follows the filesystem's own case rules; a glob is
+case-sensitive on every OS, as in 05-config.md. A positional path outside the
+project root, including one on another drive or share, is an error; a
+malformed positional glob is `INVALID_GLOB`.
+When the selection is empty, the `NO_TESTS` message names each positional that
+selected no file. Selection and setup dependency rules are in 11-lifecycle.md.
 
 ## Output
 

@@ -8,10 +8,14 @@ import { defineBackend } from '../../src/backend/index.ts';
 const noop = async () => {};
 const ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
 
-async function collection(body: () => void, file = 'tests/a.e2e.ts'): Promise<Collection> {
+async function collection(
+  body: () => void,
+  file = 'tests/a.e2e.ts',
+  unmatchedPositionals: readonly string[] = [],
+): Promise<Collection> {
   const registration = await collectModule(async () => body());
   const collected = collectFromRegistration('/root', `/root/${file}`, registration);
-  return { files: [collected], tests: collected.tests };
+  return { files: [collected], tests: collected.tests, unmatchedPositionals };
 }
 
 function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.ProcessEnv = ENV) {
@@ -187,6 +191,14 @@ describe('select', () => {
       test.skip('skipped', noop);
     });
     expect(() => select(col, config())).toThrow(/zero runnable/);
+    expect(() => select(col, config(), {}, { passWithNoTests: true })).not.toThrow();
+  });
+
+  it('names the positionals that matched no file in the NO_TESTS message', async () => {
+    const col = await collection(() => {}, 'tests/a.e2e.ts', ['tests/agnet', 'tests/*.spec.ts']);
+    expect(() => select(col, config())).toThrow(
+      'zero runnable ordinary test-target pairs (no test file matched: tests/agnet, tests/*.spec.ts); pass --pass-with-no-tests to allow this',
+    );
     expect(() => select(col, config(), {}, { passWithNoTests: true })).not.toThrow();
   });
 

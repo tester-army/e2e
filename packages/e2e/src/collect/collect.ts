@@ -1,7 +1,8 @@
 /** Collection realm: imports test modules and derives stable identities. */
 
+import { realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { discoverFiles } from '../internal/globs.ts';
+import { compileGlob, discoverFiles, matchesGlob } from '../internal/globs.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { setupTestId, testId } from '../internal/ids.ts';
 import { importModule } from '../config/load.ts';
@@ -64,6 +65,12 @@ export interface CollectedFile {
 export interface Collection {
   readonly files: readonly CollectedFile[];
   readonly tests: readonly CollectedTest[];
+  /**
+   * Positional arguments, as written, that selected no discovered file. They
+   * are not an error on their own: a positional narrows the selection, and
+   * the `NO_TESTS` message names them when nothing is left to run.
+   */
+  readonly unmatchedPositionals: readonly string[];
 }
 
 /** Derives the serial unit source ID per 11-lifecycle.md. */
@@ -92,14 +99,105 @@ function toCollectedTests(file: string, registration: ModuleRegistration): Colle
   });
 }
 
-/** Normalizes an absolute or relative file path to the project-root-relative wire form. */
-function normalizeRelativePath(projectRoot: string, filePath: string): string {
-  const relative = path.isAbsolute(filePath) ? path.relative(projectRoot, filePath) : filePath;
-  const normalized = relative.split(path.sep).join('/');
-  if (normalized.startsWith('..')) {
+/**
+ * Normalizes an absolute or relative path to the project-root-relative wire
+ * form: `/` separators, no `./` prefix or trailing `/`. The project root
+ * itself normalizes to `.`. `platformPath` is the host's `path` module; tests
+ * pass `path.win32` to exercise drive and UNC semantics on any host.
+ */
+export function relativeToRoot(
+  projectRoot: string,
+  filePath: string,
+  platformPath: typeof path = path,
+): string {
+  const relative = platformPath.isAbsolute(filePath)
+    ? platformPath.relative(projectRoot, filePath)
+    : filePath;
+  // On Windows `path.relative` returns the target unchanged when it sits on
+  // another drive or UNC share; a result that is still absolute is outside.
+  if (platformPath.isAbsolute(relative)) {
     throw new CollectionError(`test file is outside the project root: ${filePath}`);
   }
-  return normalized;
+  const normalized = path.posix.normalize(relative.split(platformPath.sep).join('/'));
+  if (normalized === '..' || normalized.startsWith('../')) {
+    throw new CollectionError(`test file is outside the project root: ${filePath}`);
+  }
+  return normalized.length > 1 && normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+}
+
+/**
+ * The root-relative path of an existing entry as the filesystem spells it.
+ * Discovery reports directory-listing casing, so on a case-insensitive
+ * filesystem (Windows, default macOS) a positional typed in another case
+ * must be compared in on-disk casing or it silently matches nothing.
+ * Returns undefined when the real path leaves the root (a symlink out of the
+ * project), which discovery does not follow either.
+ */
+function onDiskRelativePath(projectRoot: string, absolutePath: string): string | undefined {
+  try {
+    const real = realpathSync.native(absolutePath);
+    const realRoot = realpathSync.native(projectRoot);
+    return relativeToRoot(realRoot, real);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Discovered files narrowed by positional arguments, plus the positionals that selected none. */
+export interface PositionalSelection {
+  readonly files: readonly string[];
+  readonly unmatched: readonly string[];
+}
+
+const GLOB_CHARACTERS = /[*?]/;
+
+/**
+ * Narrows the files the config globs discovered by positional arguments. Each
+ * positional resolves from the project root and is one of: a glob (any `*` or
+ * `?`) in the 05-config.md grammar matched against the discovered files, an
+ * existing directory selecting every discovered file beneath it, or a file
+ * path matched exactly. Positionals only narrow: a file the config globs did
+ * not discover is never selected. Discovery order is preserved.
+ */
+export function selectPositionals(
+  projectRoot: string,
+  discovered: readonly string[],
+  positionals: readonly string[],
+): PositionalSelection {
+  if (positionals.length === 0) return { files: discovered, unmatched: [] };
+  const selected = new Set<string>();
+  const unmatched: string[] = [];
+  for (const positional of positionals) {
+    const matches = positionalMatcher(projectRoot, positional);
+    let matchedAny = false;
+    for (const file of discovered) {
+      if (!matches(file)) continue;
+      selected.add(file);
+      matchedAny = true;
+    }
+    if (!matchedAny) unmatched.push(positional);
+  }
+  return { files: discovered.filter((file) => selected.has(file)), unmatched };
+}
+
+function positionalMatcher(projectRoot: string, positional: string): (file: string) => boolean {
+  const normalized = relativeToRoot(projectRoot, positional);
+  if (GLOB_CHARACTERS.test(normalized)) {
+    // Globs keep the 05-config.md grammar: case-sensitive on every OS.
+    const glob = compileGlob(normalized);
+    return (file) => matchesGlob(glob, file);
+  }
+  if (normalized === '.') return () => true;
+  const absolutePath = path.resolve(projectRoot, normalized);
+  const stats = statSync(absolutePath, { throwIfNoEntry: false });
+  if (stats === undefined) return (file) => file === normalized;
+  // An existing file or directory follows the filesystem's own case rules.
+  const onDisk = onDiskRelativePath(projectRoot, absolutePath) ?? normalized;
+  if (stats.isDirectory()) {
+    const prefix = `${onDisk}/`;
+    return (file) => file.startsWith(prefix);
+  }
+  return (file) => file === onDisk;
 }
 
 /** Builds one CollectedFile from an already-produced registration. */
@@ -108,7 +206,7 @@ export function collectFromRegistration(
   filePath: string,
   registration: ModuleRegistration,
 ): CollectedFile {
-  const file = normalizeRelativePath(projectRoot, filePath);
+  const file = relativeToRoot(projectRoot, filePath);
   return {
     file,
     absolutePath: path.resolve(projectRoot, file),
@@ -118,18 +216,16 @@ export function collectFromRegistration(
 }
 
 /**
- * Runs collection: resolves globs, sorts matched files by code point, and
- * imports each module once in the collection realm.
+ * Runs collection: resolves globs, sorts matched files by code point, narrows
+ * them by any positional arguments, and imports each module once in the
+ * collection realm.
  */
 export async function collect(
   config: ResolvedConfig,
-  fileFilter?: readonly string[],
+  positionals: readonly string[] = [],
 ): Promise<Collection> {
-  let matched = discoverFiles(config.projectRoot, config.tests);
-  if (fileFilter !== undefined && fileFilter.length > 0) {
-    const normalizedFilters = new Set(fileFilter.map((file) => normalizeRelativePath(config.projectRoot, file)));
-    matched = matched.filter((file) => normalizedFilters.has(file));
-  }
+  const discovered = discoverFiles(config.projectRoot, config.tests);
+  const { files: matched, unmatched } = selectPositionals(config.projectRoot, discovered, positionals);
   const files: CollectedFile[] = [];
   for (const file of matched) {
     const absolutePath = path.join(config.projectRoot, file);
@@ -145,5 +241,5 @@ export async function collect(
     }
     files.push(collectFromRegistration(config.projectRoot, absolutePath, registration));
   }
-  return { files, tests: files.flatMap((file) => file.tests) };
+  return { files, tests: files.flatMap((file) => file.tests), unmatchedPositionals: unmatched };
 }

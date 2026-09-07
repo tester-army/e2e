@@ -106,6 +106,7 @@ describe('buildWorkPlans', () => {
         makeFile('tests/b.e2e.ts', [b1, skipped]),
       ],
       tests: [a1, a2, setup, b1, skipped],
+      unmatchedPositionals: [],
     };
 
     const plans = buildWorkPlans(selection, collection, '/project');
@@ -129,6 +130,7 @@ describe('buildWorkPlans', () => {
     const collection: Collection = {
       files: [makeFile('tests/a.e2e.ts', [only])],
       tests: [only],
+      unmatchedPositionals: [],
     };
     const plans = buildWorkPlans(selection, collection, '/project');
     expect(plans[0]!.fileUnits).toHaveLength(0);

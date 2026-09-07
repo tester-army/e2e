@@ -29,7 +29,8 @@ export default defineConfig({
 
 The backend declares the app it drives: the URL is an option of `playwright()`,
 not a config key, and a device backend names a bundle id instead. Or let the
-runner start the app itself:
+runner start the whole stack itself: the dependencies as `services`, then the
+app as `command`:
 
 ```ts title="e2e.config.ts"
 export default defineConfig({
@@ -39,12 +40,30 @@ export default defineConfig({
       platform: 'web',
       backend: playwright({
         url: 'http://127.0.0.1:3000',
+        services: [
+          {
+            executable: 'docker',
+            args: ['compose', 'up', '--wait', 'postgres'],
+            waitForExit: true,
+            teardown: { executable: 'docker', args: ['compose', 'down'] },
+          },
+          { executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+        ],
         command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
       }),
     },
   ],
 });
 ```
+
+Services start one at a time in declaration order, each ready before the next
+starts (a `waitForExit` service is ready when it exits 0, otherwise its
+`readyUrl` must answer), and `command` only starts once the last service is
+ready. On every exit path the runner stops the app, then stops the services in
+reverse order, then runs their `teardown` commands in reverse order, so
+`docker compose down` runs after the migration step and the app are gone.
+Every service option is listed under
+[services](https://e2e.docs.buildwithfern.com/reference/config#services).
 
 The runner spawns the command, waits until `readyUrl` (defaults to `url`)
 answers with a 200-499 status, and terminates it when the run finishes, fails,

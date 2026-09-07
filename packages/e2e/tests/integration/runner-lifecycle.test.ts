@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { resultByTitle, runProject } from '../helpers/run-project.ts';
+import { resultByTitle, runProject, type RunOutcome } from '../helpers/run-project.ts';
 
 describe('runner lifecycle', () => {
   let app: FixtureApp;
@@ -524,6 +524,47 @@ test('fails', async () => {
       });
       expect(second.outcome.exitCode).toBe(0);
       second.project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'selects positional directories and globs, and names the ones that matched nothing',
+    async () => {
+      const file = (title: string) => `import { test } from '@e2edev/e2e';\ntest('${title}', async () => {});\n`;
+      const files = {
+        'tests/top.e2e.ts': file('top'),
+        'tests/agent/one.e2e.ts': file('agent one'),
+        'tests/agent/nested/two.e2e.ts': file('agent two'),
+        'tests/other/three.e2e.ts': file('other three'),
+      };
+      const titles = (outcome: RunOutcome) => outcome.results.map((result) => result.test.title).toSorted();
+
+      const directory = await runProject(files, { appUrl: app.url, runOptions: { files: ['tests/agent'] } });
+      expect(directory.outcome.exitCode).toBe(0);
+      expect(titles(directory.outcome)).toEqual(['agent one', 'agent two']);
+      directory.project.cleanup();
+
+      const glob = await runProject(files, {
+        appUrl: app.url,
+        runOptions: { files: ['tests/*/*.e2e.ts', 'tests/top.e2e.ts'] },
+      });
+      expect(glob.outcome.exitCode).toBe(0);
+      expect(titles(glob.outcome)).toEqual(['agent one', 'other three', 'top']);
+      glob.project.cleanup();
+
+      const missing = await runProject(files, {
+        appUrl: app.url,
+        runOptions: { files: ['tests/agnet', 'tests/*.spec.ts'] },
+      });
+      expect(missing.outcome.exitCode).toBe(2);
+      expect(missing.outcome.report.run.errors.map((error) => [error.code, error.message])).toEqual([
+        [
+          'NO_TESTS',
+          'zero runnable ordinary test-target pairs (no test file matched: tests/agnet, tests/*.spec.ts); pass --pass-with-no-tests to allow this',
+        ],
+      ]);
+      missing.project.cleanup();
     },
     120_000,
   );
