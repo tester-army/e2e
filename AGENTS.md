@@ -182,6 +182,11 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   new actions SHA-pinned.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
+- PR titles and bodies follow the `writing-pr` skill
+  (`.claude/skills/writing-pr/SKILL.md`). `unslop`
+  (`.claude/skills/unslop/SKILL.md`, from `okwasniewski/dotfiles`) applies to
+  any prose an agent writes here; other agents install it with
+  `npx skills add okwasniewski/dotfiles --skill unslop`.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
   entry. Peer ranges point one way only (engine -> `@e2edev/e2e`, widened to `>=x <1`);
   making them mutual or narrow forces changesets to bump both packages to a

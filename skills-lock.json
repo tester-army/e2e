@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/unbox-ai/SKILL.md",
       "computedHash": "79fd1e2cb7323ddc01dd58e964fec42709166ad8455185f0669d62f865f7cfdc"
+    },
+    "unslop": {
+      "source": "okwasniewski/dotfiles",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/unslop/SKILL.md",
+      "computedHash": "3dfc2afeda677e12c6065497a40df7d895859de1c7d1cffb899b1559d129fe4f"
     }
   }
 }
