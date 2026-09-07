@@ -168,7 +168,7 @@ export function resolveConfig(
     );
   }
 
-  const targets = resolveTargets(raw);
+  const targets = resolveTargets(raw, options.projectRoot);
   const tests = normalizeTests(raw.tests);
 
   const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
@@ -393,7 +393,7 @@ function isTraceCacheStore(value: unknown): value is TraceCacheStore {
 }
 
 
-function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
+function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedTarget[] {
   if (raw.targets === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -441,7 +441,7 @@ function resolveTargets(raw: E2EConfig): readonly ResolvedTarget[] {
       index,
       platform: target.platform,
       backend: target.backend,
-      app: resolveTargetApp(target.name, target.backend),
+      app: resolveTargetApp(target.name, target.backend, projectRoot),
     };
   });
 }

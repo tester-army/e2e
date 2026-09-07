@@ -1,6 +1,7 @@
 /** Spawned-process management for the commands and services backends declare, and their teardowns (spec 05-config.md). */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import type { Readiness, ResolvedService } from '../config/app.ts';
 import { InfrastructureError } from '../internal/errors.ts';
@@ -56,12 +57,21 @@ export class ManagedProcess {
     }
     Object.assign(env, this.command.env ?? {});
 
-    const child = spawn(this.command.executable, [...(this.command.args ?? [])], {
-      cwd: path.resolve(this.projectRoot, this.command.cwd ?? '.'),
-      env,
-      detached: process.platform !== 'win32',
-      stdio: 'ignore',
-    });
+    const logFd = this.openLog();
+    let child: ChildProcess;
+    try {
+      child = spawn(this.command.executable, [...(this.command.args ?? [])], {
+        cwd: path.resolve(this.projectRoot, this.command.cwd ?? '.'),
+        env,
+        detached: process.platform !== 'win32',
+        stdio: logFd === undefined ? 'ignore' : ['ignore', logFd, logFd],
+      });
+    } finally {
+      // The child holds its own copy of the descriptor once spawn returns
+      // (a spawn failure surfaces as the 'error' event, not here), so the
+      // parent's copy would only be a leak for the life of the run.
+      if (logFd !== undefined) fs.closeSync(logFd);
+    }
     this.child = child;
     let spawnError: Error | undefined;
     child.on('error', (error) => {
@@ -126,6 +136,27 @@ export class ManagedProcess {
         exited,
       ]);
       pollMs = Math.min(pollMs * 2, READY_POLL_MAX_MS);
+    }
+  }
+
+  /**
+   * Opens `command.log` for appending, creating its directory, and returns
+   * the descriptor the child writes stdout and stderr to. No `log` means the
+   * output is discarded as before. The same file across services and runs
+   * accumulates, which is what a developer reading a failed boot wants.
+   */
+  private openLog(): number | undefined {
+    if (this.command.log === undefined) return undefined;
+    const logPath = path.resolve(this.projectRoot, this.command.log);
+    try {
+      fs.mkdirSync(path.dirname(logPath), { recursive: true });
+      return fs.openSync(logPath, 'a');
+    } catch (cause) {
+      throw new InfrastructureError(
+        'APP_UNREACHABLE',
+        `${this.label} could not open its log file ${logPath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      );
     }
   }
 

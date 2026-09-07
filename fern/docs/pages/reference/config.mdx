@@ -169,6 +169,7 @@ export interface CommandConfig {
   env?: Readonly<Record<string, string>>;
   startupTimeout?: number;
   shutdownTimeout?: number;
+  log?: string;
 }
 ```
 
@@ -180,6 +181,17 @@ export interface CommandConfig {
 | `env` | `Record<string, string>` | `{}` | Adds to the inherited set |
 | `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE` |
 | `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
+| `log` | `string` | unset (output discarded) | File that receives the process's stdout and stderr, appended; resolved from the project root and must stay inside it. Missing directories are created |
+
+Without `log` the runner discards everything the process prints, so a dev
+server that crashes on boot or a migration that fails leaves no trace beyond
+`APP_UNREACHABLE`. Point `log` at a file such as `.e2e/logs/app.log` to keep
+the output; it appends, so one file can collect several commands and several
+runs. Every `ServiceConfig` and every service `teardown` is a `CommandConfig`
+and accepts `log` too. The file is the raw, unredacted output of the process:
+whatever the app prints, including secrets from its own `env`, ends up there,
+so keep it in an ignored directory. `e2e init` adds `.e2e/logs/` to
+`.gitignore` for this purpose.
 
 The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`,
 and `COMSPEC` when present, plus `command.env`. Model credentials,
@@ -200,7 +212,8 @@ export interface ServiceConfig extends CommandConfig {
 Real apps need dependencies before they can boot: a database container, a
 cache, an auth emulator, a migration step. `services` declares them as ordered
 processes so no wrapper launcher is needed. Each service is a `CommandConfig`
-with the same spawning, `cwd`, and environment rules as `command`, plus:
+with the same spawning, `cwd`, `log`, and environment rules as `command`,
+plus:
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
@@ -242,15 +255,22 @@ export default defineConfig({
             waitForExit: true,
             teardown: { executable: 'docker', args: ['compose', 'down'] },
           },
-          { name: 'migrate', executable: 'pnpm', args: ['db:migrate'], waitForExit: true },
+          {
+            name: 'migrate',
+            executable: 'pnpm',
+            args: ['db:migrate'],
+            waitForExit: true,
+            log: '.e2e/logs/services.log',
+          },
           {
             name: 'auth-emulator',
             executable: 'pnpm',
             args: ['auth:emulator'],
             readyUrl: 'http://127.0.0.1:7000/health',
+            log: '.e2e/logs/services.log',
           },
         ],
-        command: { executable: 'pnpm', args: ['dev'] },
+        command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
       }),
     },
   ],

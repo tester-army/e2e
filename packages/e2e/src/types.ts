@@ -528,6 +528,8 @@ export interface CommandConfig {
   env?: Readonly<Record<string, string>>;
   startupTimeout?: number;
   shutdownTimeout?: number;
+  /** File that receives the process's stdout and stderr, appended, resolved from the project root. Omitted discards output. */
+  log?: string;
 }
 
 /**

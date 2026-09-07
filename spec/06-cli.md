@@ -20,8 +20,8 @@ manifest's module type is preserved and any required ESM opt-in is explained.
   device platform (iOS on macOS, Android elsewhere). HTTP and Playwright setups
   read `APP_URL`; device setup pins the platform and Settings app in the config,
   uses one worker, and needs no `APP_URL`.
-- `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, and
-  generated reports are added to `.gitignore` when missing.
+- `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`,
+  `.e2e/logs/`, and generated reports are added to `.gitignore` when missing.
 - Every prompt precedes the first write. Cancellation exits 0 without changes.
 - Installation has its own confirmation and uses the project's package manager.
   Declining still writes the scaffold and dependency declarations. A failed

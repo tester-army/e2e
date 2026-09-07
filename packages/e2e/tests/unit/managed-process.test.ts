@@ -31,6 +31,68 @@ describe('ManagedProcess', () => {
   }, 20_000);
 });
 
+/** Prints one line to stdout and one to stderr, then exits with `exitCode`. */
+function chatter(exitCode = 0): string {
+  return `console.log('to stdout'); console.error('to stderr'); process.exit(${exitCode});`;
+}
+
+describe('ManagedProcess log', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-process-log-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const step = (log: string) =>
+    new ManagedProcess(
+      'app.command',
+      { executable: process.execPath, args: ['-e', chatter()], log },
+      dir,
+      { waitForExit: true },
+    );
+
+  it('captures stdout and stderr into the log file, resolved from the project root', async () => {
+    await step('out/app.log').start();
+    const content = fs.readFileSync(path.join(dir, 'out', 'app.log'), 'utf8');
+    expect(content).toContain('to stdout\n');
+    expect(content).toContain('to stderr\n');
+  });
+
+  it('appends across runs instead of truncating', async () => {
+    await step('app.log').start();
+    await step('app.log').start();
+    const lines = fs.readFileSync(path.join(dir, 'app.log'), 'utf8').trim().split('\n');
+    expect(lines.filter((line) => line === 'to stdout')).toHaveLength(2);
+    expect(lines.filter((line) => line === 'to stderr')).toHaveLength(2);
+  });
+
+  it('creates missing parent directories', async () => {
+    await step(path.join('.e2e', 'logs', 'nested', 'app.log')).start();
+    expect(fs.existsSync(path.join(dir, '.e2e', 'logs', 'nested', 'app.log'))).toBe(true);
+  });
+
+  it('fails with APP_UNREACHABLE when the log path cannot be opened', async () => {
+    fs.mkdirSync(path.join(dir, 'app.log'));
+    const failure = await step('app.log')
+      .start()
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(InfrastructureError);
+    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+    expect((failure as InfrastructureError).message).toContain('could not open its log file');
+  });
+
+  it('discards output when log is unset', async () => {
+    await new ManagedProcess(
+      'app.command',
+      { executable: process.execPath, args: ['-e', chatter()] },
+      dir,
+      { waitForExit: true },
+    ).start();
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+});
+
 /** A service that appends its tag to a shared log and exits 0; the log is the order of events. */
 function logStep(log: string, tag: string, exitCode = 0): string {
   return `require('node:fs').appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(tag)} + '\\n'); process.exit(${exitCode});`;
@@ -49,7 +111,8 @@ async function stopAll(stack: ServiceStack): Promise<unknown[]> {
 
 describe('ServiceStack', () => {
   let dir: string;
-  const stack = (services: readonly ServiceConfig[]) => new ServiceStack(resolveServices(services), dir);
+  const stack = (services: readonly ServiceConfig[]) =>
+    new ServiceStack(resolveServices(services, dir), dir);
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-services-'));
   });
@@ -85,6 +148,33 @@ describe('ServiceStack', () => {
     // A second stop has nothing left to do.
     expect(await stopAll(services)).toEqual([]);
     expect(readLog(log)).toHaveLength(5);
+  });
+
+  it('writes service and teardown output to their log files, sharing one file when told to', async () => {
+    const services = stack([
+      {
+        executable: process.execPath,
+        args: ['-e', chatter()],
+        waitForExit: true,
+        log: 'services.log',
+        teardown: { executable: process.execPath, args: ['-e', chatter()], log: 'services.log' },
+      },
+      {
+        executable: process.execPath,
+        args: ['-e', chatter(3)],
+        waitForExit: true,
+        log: path.join('.e2e', 'migrate.log'),
+      },
+    ]);
+    const failure = await services.start().catch((error: unknown) => error);
+    expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+    expect(await stopAll(services)).toEqual([]);
+    const shared = fs.readFileSync(path.join(dir, 'services.log'), 'utf8');
+    expect(shared.match(/to stdout/g)).toHaveLength(2);
+    expect(shared.match(/to stderr/g)).toHaveLength(2);
+    const migrate = fs.readFileSync(path.join(dir, '.e2e', 'migrate.log'), 'utf8');
+    expect(migrate).toContain('to stdout');
+    expect(migrate).toContain('to stderr');
   });
 
   it('fails with APP_UNREACHABLE naming the service when a waitForExit service exits non-zero, and still tears down', async () => {

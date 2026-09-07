@@ -149,7 +149,9 @@ third Ctrl-C exits immediately without teardown. The child sees only `PATH`, `HO
 temp-directory variables plus whatever you put in `command.env`; model
 credentials and CI tokens are never inherited, so anything the app needs must
 be passed explicitly. A server that never becomes ready fails the run with
-`APP_UNREACHABLE` and still leaves a `.e2e/report.json`. Every option is in the
+`APP_UNREACHABLE` and still leaves a `.e2e/report.json`; set
+`command.log: '.e2e/logs/app.log'` to keep what the server printed, since
+output is otherwise discarded. Every option is in the
 [config reference](/reference/config#command).
 
 ## Next

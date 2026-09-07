@@ -3,6 +3,7 @@
  * about the app it drives, validated where an error can name the target.
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 import type { BackendAppDeclaration, BackendHandle } from '../backend/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
@@ -62,9 +63,13 @@ const ENVIRONMENTS = new Set(['test', 'staging', 'production']);
  * is optional: a URL normalizes like any base URL, origins must be serialized
  * origins, a command needs something to poll, services need one readiness
  * contract each, and the identity defaults to where the app is served when
- * the backend gives none.
+ * the backend gives none. `projectRoot` anchors every command's `log` path.
  */
-export function resolveTargetApp(targetName: string, backend: BackendHandle | undefined): ResolvedApp {
+export function resolveTargetApp(
+  targetName: string,
+  backend: BackendHandle | undefined,
+  projectRoot: string,
+): ResolvedApp {
   const declared: BackendAppDeclaration = backend?.app ?? {};
   const where = `target "${targetName}" backend ${backend?.name ?? 'none'}`;
   const base = declared.url === undefined ? undefined : normalizeBaseUrl(declared.url);
@@ -104,7 +109,7 @@ export function resolveTargetApp(targetName: string, backend: BackendHandle | un
   }
 
   const command = declared.command;
-  if (command !== undefined) validateCommand(command, `${where} app.command`);
+  if (command !== undefined) validateCommand(command, `${where} app.command`, projectRoot);
   const readyUrl = httpUrl(declared.readyUrl, `${where} app.readyUrl`) ?? base?.href;
   if (command !== undefined && readyUrl === undefined) {
     throw new ConfigurationError(
@@ -120,16 +125,17 @@ export function resolveTargetApp(targetName: string, backend: BackendHandle | un
     identity: identity ?? (base === undefined ? undefined : `${base.origin}${base.basePath}`),
     command,
     readyUrl: command === undefined ? undefined : readyUrl,
-    services: resolveServices(declared.services, `${where} app.services`),
+    services: resolveServices(declared.services, projectRoot, `${where} app.services`),
   };
 }
 
 /**
- * The shape every spawned command shares: a non-empty executable and, when
- * set, positive integer timeouts. A NaN or infinite budget would otherwise
- * make the readiness loop spin without a deadline.
+ * The shape every spawned command shares: a non-empty executable, when set
+ * positive integer timeouts, and when set a `log` path inside the project
+ * root. A NaN or infinite budget would otherwise make the readiness loop spin
+ * without a deadline; a log outside the root would let config write anywhere.
  */
-function validateCommand(command: CommandConfig, label: string): void {
+function validateCommand(command: CommandConfig, label: string, projectRoot: string): void {
   if (typeof command !== 'object' || command === null) {
     throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
   }
@@ -138,6 +144,54 @@ function validateCommand(command: CommandConfig, label: string): void {
   }
   positiveInt(command.startupTimeout, `${label}.startupTimeout`);
   positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`);
+  if (command.log !== undefined) {
+    if (typeof command.log !== 'string' || command.log.trim() === '') {
+      throw new ConfigurationError('INVALID_CONFIG', `${label}.log must be a non-empty path`);
+    }
+    if (!insideProjectRoot(projectRoot, path.resolve(projectRoot, command.log))) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${label}.log must be a file inside the project root, got ${JSON.stringify(command.log)}`,
+      );
+    }
+  }
+}
+
+/**
+ * `target` with the symlinks of its deepest existing ancestor resolved and the
+ * missing tail appended as written. A log file usually does not exist yet,
+ * but the directory a symlink points at does, so this is what the runner
+ * would actually open.
+ */
+function realpathOfExisting(target: string): string {
+  const tail: string[] = [];
+  let current = target;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(current), ...tail);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return target;
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Whether `target` is a path strictly below the project root once both are
+ * resolved through the filesystem: an in-project symlink pointing outside is
+ * rejected, a symlinked project root still counts as the root, and a name
+ * that merely starts with `..` (`..logs/out.log`) is an ordinary entry.
+ */
+function insideProjectRoot(projectRoot: string, target: string): boolean {
+  const relative = path.relative(realpathOfExisting(projectRoot), realpathOfExisting(target));
+  return (
+    relative !== '' &&
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }
 
 /** The longest `name` a service may carry; a label, not a description. */
@@ -173,11 +227,12 @@ function serviceName(service: ServiceConfig, position: string, taken: Set<string
  * one readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
  * command of its own. The service fields that only steer the runner
  * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the command.
- * `prefix` names the declaring target in errors, so a failing service is
- * traceable to the backend that declared it.
+ * `projectRoot` anchors each `log` path; `prefix` names the declaring target
+ * in errors, so a failing service is traceable to the backend that declared it.
  */
 export function resolveServices(
   raw: BackendAppDeclaration['services'],
+  projectRoot: string,
   prefix = 'app.services',
 ): readonly ResolvedService[] {
   if (raw === undefined) return [];
@@ -187,7 +242,7 @@ export function resolveServices(
   const names = new Set<string>();
   return raw.map((service: ServiceConfig, index): ResolvedService => {
     const position = `${prefix}[${index}]`;
-    validateCommand(service, position);
+    validateCommand(service, position, projectRoot);
     const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown, ...command } = service;
     const readyUrl = httpUrl(rawReadyUrl, `${position}.readyUrl`);
     if ((readyUrl !== undefined) === (waitForExit === true)) {
@@ -199,7 +254,7 @@ export function resolveServices(
     const readiness: Readiness = readyUrl === undefined ? { waitForExit: true } : { readyUrl };
     const name = serviceName(service, position, names);
     const label = `service "${name}"`;
-    if (teardown !== undefined) validateCommand(teardown, `${position}.teardown`);
+    if (teardown !== undefined) validateCommand(teardown, `${position}.teardown`, projectRoot);
     return {
       label,
       name: service.name === undefined ? undefined : name,

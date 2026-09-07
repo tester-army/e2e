@@ -159,7 +159,7 @@ describe('ServiceStack', () => {
           waitForExit: true,
           startupTimeout: 15_000,
         },
-      ]),
+      ], os.tmpdir()),
       os.tmpdir(),
     );
     await stack.start();
@@ -180,7 +180,7 @@ describe('ServiceStack', () => {
           startupTimeout: 1_500,
           shutdownTimeout: 2_000,
         },
-      ]),
+      ], os.tmpdir()),
       os.tmpdir(),
     );
     const failure = await stack.start().catch((error: unknown) => error);

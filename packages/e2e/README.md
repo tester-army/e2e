@@ -56,7 +56,8 @@ third Ctrl-C exits immediately without teardown. The child inherits only `PATH`,
 temp-directory variables plus `command.env`, so anything else the app needs,
 secrets included, must be passed explicitly through `command.env`. If the app
 never becomes ready the run fails with `APP_UNREACHABLE` and `.e2e/report.json`
-is still written. Every option is listed under
+is still written; set `command.log: '.e2e/logs/app.log'` to keep what the
+server printed, since its output is otherwise discarded. Every option is listed under
 [the app under test](https://e2e.docs.buildwithfern.com/reference/config#the-app-under-test).
 
 ```ts

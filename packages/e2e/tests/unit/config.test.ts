@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
 import { defineBackend, type BackendAppDeclaration } from '../../src/backend/index.ts';
@@ -280,6 +283,104 @@ describe('resolveConfig', () => {
     expect(declare({ url: 'http://localhost:3000' }).configDigest).not.toBe(
       declare({ url: 'http://localhost:4000' }).configDigest,
     );
+  });
+
+  describe('command.log', () => {
+    const APP_URL = 'http://localhost:3000';
+
+    it('accepts a relative or absolute path inside the project root on commands, services, and teardowns', () => {
+      const app = resolveApp({
+        url: APP_URL,
+        command: { executable: 'x', log: '.e2e/app.log' },
+        services: [
+          {
+            executable: 'y',
+            waitForExit: true,
+            log: `${ROOT}/.e2e/services.log`,
+            teardown: { executable: 'z', log: 'teardown.log' },
+          },
+        ],
+      });
+      expect(app.command?.log).toBe('.e2e/app.log');
+      expect(app.services[0]?.command.log).toBe(`${ROOT}/.e2e/services.log`);
+      expect(app.services[0]?.teardown?.command.log).toBe('teardown.log');
+    });
+
+    it('rejects an empty log path, naming the target', () => {
+      expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', log: '' } })).toThrow(
+        /target "web" backend fake app\.command\.log must be a non-empty path/,
+      );
+      expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', log: '  ' } })).toThrow(
+        /app\.command\.log must be a non-empty path/,
+      );
+      expect(() =>
+        resolveApp({ url: APP_URL, command: { executable: 'x', log: 7 as unknown as string } }),
+      ).toThrow(/app\.command\.log must be a non-empty path/);
+    });
+
+    it('rejects a log path that leaves the project root or names the root itself', () => {
+      expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', log: '../app.log' } })).toThrow(
+        /app\.command\.log must be a file inside the project root/,
+      );
+      expect(() =>
+        resolveApp({ url: APP_URL, command: { executable: 'x', log: '/tmp/elsewhere.log' } }),
+      ).toThrow(/app\.command\.log must be a file inside the project root/);
+      expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', log: '.' } })).toThrow(
+        /app\.command\.log must be a file inside the project root/,
+      );
+      expect(() =>
+        resolveApp({
+          url: APP_URL,
+          services: [{ executable: 'x', waitForExit: true, teardown: { executable: 'y', log: '../t.log' } }],
+        }),
+      ).toThrow(/app\.services\[0\]\.teardown\.log must be a file inside the project root/);
+    });
+
+    it('accepts an entry whose name merely starts with two dots', () => {
+      expect(resolveApp({ url: APP_URL, command: { executable: 'x', log: '..logs/out.log' } }).command?.log).toBe(
+        '..logs/out.log',
+      );
+      expect(resolveApp({ url: APP_URL, command: { executable: 'x', log: '..name' } }).command?.log).toBe('..name');
+    });
+
+    it('checks containment through symlinks and accepts a symlinked project root', () => {
+      const base = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-log-root-'));
+      const resolveIn = (projectRoot: string, log: string) =>
+        resolveConfig(
+          { targets: [{ ...WEB, backend: fakeBackend({ url: APP_URL, command: { executable: 'x', log } }) }] },
+          { projectRoot, env: BASE_ENV },
+        ).targets[0]!.app;
+      try {
+        const root = path.join(base, 'project');
+        const outside = path.join(base, 'outside');
+        fs.mkdirSync(root);
+        fs.mkdirSync(outside);
+        fs.symlinkSync(outside, path.join(root, 'escape'));
+        expect(() => resolveIn(root, 'escape/app.log')).toThrow(
+          /app\.command\.log must be a file inside the project root/,
+        );
+        expect(() => resolveIn(root, 'escape/not/yet/created/app.log')).toThrow(
+          /app\.command\.log must be a file inside the project root/,
+        );
+        expect(resolveIn(root, '.e2e/logs/app.log').command?.log).toBe('.e2e/logs/app.log');
+        const alias = path.join(base, 'alias');
+        fs.symlinkSync(root, alias);
+        expect(resolveIn(alias, '.e2e/logs/app.log').command?.log).toBe('.e2e/logs/app.log');
+        expect(resolveIn(alias, path.join(alias, 'app.log')).command?.log).toBe(path.join(alias, 'app.log'));
+        expect(() => resolveIn(alias, 'escape/app.log')).toThrow(
+          /app\.command\.log must be a file inside the project root/,
+        );
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    it('enters the config digest like cwd does', () => {
+      const declare = (log: string) =>
+        resolve({ targets: [{ ...WEB, backend: fakeBackend({ url: APP_URL, command: { executable: 'x', log } }) }] });
+      expect(declare('a.log').configDigest).not.toBe(declare('b.log').configDigest);
+      expect(declare('a.log').configDigest).toBe(declare('a.log').configDigest);
+    });
   });
 
   it('rejects a declared readyUrl that is not an http(s) URL', () => {

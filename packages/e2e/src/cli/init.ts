@@ -21,6 +21,7 @@ const GITIGNORE_ENTRIES = [
   '.e2e/report.json',
   '.e2e/ai-trace.json',
   '.e2e/junit.xml',
+  '.e2e/logs/',
 ];
 
 /**

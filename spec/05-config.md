@@ -200,6 +200,16 @@ to project root. `readyUrl`, when set, MUST be an absolute http(s) URL, else
 replaces app variables. Model credentials, `E2E_USER_*`, CI tokens, and other
 runner secrets are never inherited implicitly.
 
+The child's stdout and stderr are discarded unless `log` names a file: the
+runner then opens that path in append mode, resolved from the project root and
+required to stay inside it (any other value is `INVALID_CONFIG`), creates the
+missing parent directories, and hands the same descriptor to the child for both
+streams. Appending keeps earlier runs and lets several commands share one file.
+A log that cannot be opened fails the run with `APP_UNREACHABLE`. The file is
+the process's raw output and is never redacted, so anything the app prints,
+including secrets from its own `env`, persists there; it belongs in an ignored
+directory such as `.e2e/logs/`, which `e2e init` adds to `.gitignore`.
+
 The runner starts each distinct declared command as a process group before
 the first test (targets declaring the same command share one process, probed
 at the first declaring target's `readyUrl`),
@@ -215,9 +225,11 @@ force-terminates it. The runner never terminates a process it did not start.
 `services` declares the dependency processes the app needs before it can
 boot: a database container, a cache, an auth emulator, a migration step. Each
 entry is a `CommandConfig` with the same shell-free spawning, the same `cwd`
-default, and the same environment rule as `command`: a service child inherits
-only the allowlist above plus its own `env`. `services` is valid without
-`command`; the app may already be running or be one of the services itself.
+default, the same `log` capture, and the same environment rule as `command`:
+a service child inherits only the allowlist above plus its own `env`. A
+service's `teardown` is a `CommandConfig` too and takes its own `log`.
+`services` is valid without `command`; the app may already be running or be
+one of the services itself.
 Services declared identically by several targets start once; distinct ones
 are gathered in target order. Two targets that declare shared services in
 opposite orders are `INVALID_CONFIG`, as are two different services under one
