@@ -55,8 +55,12 @@ const F_TREE_END = '└──';
 /** Indentation under a badge line, matching vitest's banner padding. */
 const BADGE_PADDING = '      ';
 
-/** Badge backgrounds, assigned to targets in declaration order. */
-const BADGE_COLORS = ['bgYellow', 'bgCyan', 'bgGreen', 'bgMagenta'] as const;
+/**
+ * Badge backgrounds, assigned to targets in declaration order. Bright variants
+ * because GitHub Actions renders plain yellow as dark brown, which swallows the
+ * black label.
+ */
+const BADGE_COLORS = ['bgYellowBright', 'bgCyanBright', 'bgGreenBright', 'bgMagentaBright'] as const;
 
 /**
  * Rows the live window spends outside the running tests and the summary: its

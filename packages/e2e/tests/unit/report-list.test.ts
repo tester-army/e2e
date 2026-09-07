@@ -367,9 +367,9 @@ describe('ListReporter', () => {
       expect(blocks).toHaveLength(2);
       expect(blocks[0]).toContain(' firefox ');
       expect(blocks[1]).toContain(' chromium ');
-      // First target yellow, second cyan: vitest's badge palette in declaration order.
-      expect(blocks[1]).toContain('\u001b[43m');
-      expect(blocks[0]).toContain('\u001b[46m');
+      // First target bright yellow, second bright cyan, in declaration order.
+      expect(blocks[1]).toContain('\u001b[103m');
+      expect(blocks[0]).toContain('\u001b[106m');
     });
     it('omits the duration of a file whose tests never ran', () => {
       const { lines, output } = capture();
