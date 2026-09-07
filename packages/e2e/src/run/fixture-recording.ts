@@ -5,20 +5,29 @@ import { withAbort, withTimeout } from '../internal/time.ts';
 import type { AttemptEnvironment } from './fixtures.ts';
 
 export class FixtureRecorder {
-  private readonly declared = new WeakSet<object>();
+  /** Every declared surface, keyed to the fixture (or namespace) name it was declared under. */
+  private readonly declared = new WeakMap<object, string>();
 
   constructor(private readonly environment: AttemptEnvironment) {}
 
   /**
-   * The surface a factory returned, which must be one it declared through
-   * `fixture`: an undeclared surface would run backend code outside any step,
-   * so it is a backend authoring error, not a silently unrecorded fixture.
+   * The surface a factory returned, which must be the one it declared through
+   * `fixture` under its own name: an undeclared surface would run backend code
+   * outside any step, and another fixture's surface would record its steps
+   * under that fixture's name. Both are backend authoring errors.
    */
   require<T extends object>(name: string, surface: T): T {
-    if (!this.declared.has(surface)) {
+    const declaredAs = this.declared.get(surface);
+    if (declaredAs === undefined) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
         `fixture "${name}" must be declared through context.fixture(...) so its operations are recorded`,
+      );
+    }
+    if (declaredAs !== name) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `fixture "${name}" returned the surface declared as "${declaredAs}"; each fixture must return its own declared surface`,
       );
     }
     return surface;
@@ -27,7 +36,7 @@ export class FixtureRecorder {
   /** Wraps declared methods and namespaces without invoking them or guessing their return types. */
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T {
     if (this.declared.has(surface)) return surface;
-    this.declared.add(surface);
+    this.declared.set(surface, name);
     for (const [key, definition] of Object.entries(operations)) {
       if (definition === undefined) continue;
       const api = `${name}.${key}`;

@@ -137,6 +137,23 @@ describe('explicit fixture operations', () => {
       expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('fixture "gadget"') }),
     );
   });
+
+  it('rejects a factory that returns a surface another fixture declared', () => {
+    let shared: object | undefined;
+    const backend = defineBackend({ name: 'aliased', version: '1', spiVersion: 1, fixtures: {
+      gadget: (context) => {
+        shared = context.fixture('gadget', { async capture() {} }, { capture: { kind: 'resource' } });
+        return shared;
+      },
+      widget: (context) => shared ?? context.fixture('gadget', { async capture() {} }, { capture: { kind: 'resource' } }),
+    } });
+    const { fixtures } = runtime(backend);
+    const surfaces = fixtures as unknown as { gadget: object; widget: object };
+    expect(surfaces.gadget).toBe(shared);
+    expect(() => surfaces.widget).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('declared as "gadget"') }),
+    );
+  });
 });
 
 describe('project tool dispatch', () => {
