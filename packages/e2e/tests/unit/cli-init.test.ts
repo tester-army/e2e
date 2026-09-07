@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.stubEnv('npm_config_user_agent', 'npm/11.0.0');
   vi.mocked(clack.select).mockReset().mockResolvedValue('none');
   vi.mocked(clack.confirm).mockReset().mockResolvedValue(false);
+  vi.mocked(clack.multiselect).mockReset().mockResolvedValue(['.agents/skills', '.claude/skills']);
   vi.mocked(clack.isCancel).mockImplementation((value) => typeof value === 'symbol');
   vi.mocked(spawnSync).mockReset().mockReturnValue(spawnResult(0));
 });
@@ -56,8 +57,11 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts')).toContain("test('app responds'");
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
+    expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+    expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(clack.confirm).not.toHaveBeenCalled();
     expect(clack.select).not.toHaveBeenCalled();
+    expect(clack.multiselect).not.toHaveBeenCalled();
     expect(spawnSync).not.toHaveBeenCalled();
     expect(output()).toContain('next: npm install, then APP_URL=http://localhost:3000 npx --no-install e2e run');
   });
@@ -140,9 +144,10 @@ describe('e2e init', () => {
     expect(output()).toContain('next: npm install, then APP_URL=');
   });
 
-  it.each(['engine', 'ai', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
+  it.each(['engine', 'ai', 'skill', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
     const cancel = Symbol('cancel');
     vi.mocked(clack.select).mockResolvedValueOnce(stage === 'engine' ? cancel : 'playwright');
+    vi.mocked(clack.multiselect).mockResolvedValueOnce(stage === 'skill' ? cancel : ['.agents/skills']);
     vi.mocked(clack.confirm)
       .mockResolvedValueOnce(stage === 'ai' ? cancel : true)
       .mockResolvedValueOnce(stage !== 'files')
@@ -232,14 +237,52 @@ describe('e2e init', () => {
     expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/logs/\n`);
   });
 
+  it('installs the skill where selected, then refreshes only those copies', async () => {
+    vi.mocked(clack.multiselect).mockResolvedValueOnce(['.claude/skills']);
+    vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect(await init(dir)).toBe(0);
+    expect(clack.multiselect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      options: [expect.objectContaining({ value: '.agents/skills' }), expect.objectContaining({ value: '.claude/skills' })],
+      initialValues: ['.agents/skills', '.claude/skills'],
+      required: false,
+    }));
+    expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('create .claude/skills/e2e/') }));
+    expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
+    expect(output()).toContain('created .claude/skills/e2e/');
+    const reference = path.join(dir, '.claude/skills/e2e/references/setup.md');
+    const shipped = read('.claude/skills/e2e/references/setup.md');
+
+    writeFileSync(reference, 'stale\n');
+    stdoutSpy.mockClear();
+    expect(await init(dir, { yes: true })).toBe(0);
+    expect(read('.claude/skills/e2e/references/setup.md')).toBe(shipped);
+    expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
+    expect(clack.multiselect).toHaveBeenCalledTimes(1);
+    expect(output()).toContain('updated .claude/skills/e2e/');
+  });
+
+  it('offers the skill to an initialized project and points at e2e guide when declined', async () => {
+    writeFileSync(path.join(dir, 'e2e.config.ts'), '// custom config\n');
+    vi.mocked(clack.multiselect).mockResolvedValueOnce([]);
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect(await init(dir)).toBe(0);
+    expect(clack.select).not.toHaveBeenCalled();
+    expect(clack.multiselect).toHaveBeenCalledTimes(1);
+    expect(existsSync(path.join(dir, '.agents'))).toBe(false);
+    expect(existsSync(path.join(dir, '.claude'))).toBe(false);
+    expect(output()).toContain('npx --no-install e2e guide');
+  });
+
   it('is idempotent', async () => {
     vi.mocked(clack.select).mockResolvedValueOnce('playwright');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
-    const files = ['package.json', 'e2e.config.ts', 'tests/example.e2e.ts', '.gitignore'];
+    const files = ['package.json', 'e2e.config.ts', 'tests/example.e2e.ts', '.gitignore', '.agents/skills/e2e/SKILL.md'];
     const before = files.map(read);
+    stdoutSpy.mockClear();
     await init(dir, { yes: true });
     expect(files.map(read)).toEqual(before);
+    expect(output()).toContain('nothing to create; project already initialized');
     expect(spawnSync).not.toHaveBeenCalled();
   });
 

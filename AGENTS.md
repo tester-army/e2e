@@ -19,7 +19,8 @@ There is no separate spec. The code is the contract, pinned in three places:
 - Security invariants are the list under Gotchas below, enforced by tests in
   `tests/integration/agent-policy.test.ts` and the secret-ledger unit tests.
 - Behavior changes update the matching `fern/docs/pages/*.mdx` page in the same
-  change, including "not implemented yet" callouts.
+  change, including "not implemented yet" callouts, and `skills/e2e/` when the
+  changed surface is described there.
 
 There are no RFCs or design documents in the repo. The why lives in PR
 descriptions and commit bodies; `git log` and `gh pr view` are the archive.
@@ -49,6 +50,13 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `fern/` (docs site).
+- `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
+  `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
+  root because `npx skills add tester-army/e2e` only looks in well-known
+  directories. The `@e2edev/e2e` build copies it to `packages/e2e/skills/`
+  (gitignored) so the published package ships it; `src/cli/skill.ts` reads
+  that copy first and the repo source as the fallback, and `e2e init` writes
+  it into a project's `.agents/skills/` and `.claude/skills/`.
 
 ## Commands
 

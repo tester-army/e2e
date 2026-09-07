@@ -277,3 +277,43 @@ describe('e2e --version and --help', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 });
+
+describe('e2e guide', () => {
+  it('prints the overview without frontmatter, exits 0, and never runs', async () => {
+    await invoke('guide');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+    expect(written(stdoutSpy).startsWith('# e2e')).toBe(true);
+    expect(written(stdoutSpy)).toContain('npx --no-install e2e guide <topic>');
+  });
+
+  it('prints one topic', async () => {
+    await invoke('guide', 'writing-tests');
+    expect(process.exitCode).toBe(0);
+    expect(written(stdoutSpy).startsWith('# Writing tests')).toBe(true);
+  });
+
+  it('rejects an unknown topic with exit code 2 and the topic list', async () => {
+    await invoke('guide', 'nope');
+    expect(process.exitCode).toBe(2);
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, debugging, running, setup, writing-tests\n');
+  });
+
+  it('is listed in the help with an example, and its own help names the topics', async () => {
+    await invoke('--help');
+    expect(written(stdoutSpy)).toMatch(/^ {2}guide \[topic\] {2,}print the e2e skill for coding agents$/mu);
+    expect(written(stdoutSpy)).toContain('  $ e2e guide\n');
+
+    process.exitCode = undefined;
+    stdoutSpy.mockClear();
+    await invoke('guide', '--help');
+    const help = written(stdoutSpy);
+    expect(help).toContain('Usage: e2e guide [options] [topic]');
+    expect(help).toMatch(/one of agent, debugging, running, setup,\s+writing-tests/u);
+    expect(help).toContain('  $ e2e guide writing-tests\n');
+    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#e2e-guide\n');
+    expect(process.exitCode).toBe(0);
+    expect(runMock).not.toHaveBeenCalled();
+  });
+});

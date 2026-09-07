@@ -51,10 +51,11 @@
     "e2e": "./dist/cli/bin.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
+    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

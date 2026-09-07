@@ -12,3 +12,5 @@ dist/
 .e2e/report.html
 .e2e/ai-trace.json
 packages/e2e/tests/tmp-projects/
+# The e2e package ships the repository skill (skills/e2e); the build copies it here.
+packages/e2e/skills/

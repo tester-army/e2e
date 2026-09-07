@@ -4,8 +4,10 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { run } from '../run/runner.ts';
+import { guide } from './guide.ts';
 import { init, type InitOptions } from './init.ts';
 import { SignalLadder } from './signals.ts';
+import { skillTopics } from './skill.ts';
 
 const DOCS_URL = 'https://e2e.docs.buildwithfern.com';
 
@@ -107,6 +109,7 @@ function createProgram(): Command {
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
           'e2e run --tag smoke --reporter list,junit',
+          'e2e guide',
         ]),
         '',
         `Run ${pc.cyan('e2e <command> --help')} for the flags of one command.`,
@@ -119,14 +122,26 @@ function createProgram(): Command {
 
   program
     .command('init')
-    .summary('scaffold an ESM package, e2e.config.ts, an example test, and .gitignore entries')
+    .summary('scaffold an ESM package, e2e.config.ts, an example test, .gitignore entries, and the agent skill')
     .description(
-      'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, tests/example.e2e.ts, and .gitignore entries. Prompts for the engine and for AI support, then offers to install the dependencies.',
+      'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, tests/example.e2e.ts, .gitignore entries, and the e2e skill for coding agents. Prompts for the engine, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills.',
     )
     .option('-y, --yes', 'skip the prompts: AI on, no engine, no installation')
     .addHelpText('after', ['', examples(['e2e init', 'e2e init --yes']), '', docsLine('/reference/cli')].join('\n'))
     .action(async (options: InitOptions) => {
       process.exitCode = await init(process.cwd(), options);
+    });
+
+  program
+    .command('guide')
+    .summary('print the e2e skill for coding agents')
+    .description(
+      'Print the skill that init installs: how to set up e2e, write tests, use agent steps, run the CLI, and read a failing run. Without a topic, prints the overview and the topic list.',
+    )
+    .argument('[topic]', `one of ${skillTopics().join(', ')}`)
+    .addHelpText('after', ['', examples(['e2e guide', 'e2e guide writing-tests']), '', docsLine('/reference/cli#e2e-guide')].join('\n'))
+    .action((topic: string | undefined) => {
+      process.exitCode = guide(topic);
     });
 
   program

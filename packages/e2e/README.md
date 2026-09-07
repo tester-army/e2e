@@ -146,6 +146,20 @@ agent step, in the AI SDK devtools database shape. Open it with
 [unbox-ai](https://github.com/tester-army/unbox-ai):
 `npx unbox-ai .e2e/ai-trace.json`.
 
+## Coding agents
+
+`e2e init` installs a skill, `SKILL.md` plus one file per topic, into
+`.agents/skills/e2e/` (read by Codex, Cursor, Copilot, Gemini CLI, OpenCode,
+Zed, and most other agents) and `.claude/skills/e2e/` (Claude Code), so an
+agent working in the project knows how to configure e2e, write tests, and
+read a failing run. `npx skills add tester-army/e2e` installs the same skill
+from the repository. An agent without it can print the text:
+
+```bash
+npx --no-install e2e guide                # the overview and the topic list
+npx --no-install e2e guide writing-tests  # one topic
+```
+
 ## Current limitations
 
 - `agent.act` structured output (`options.schema`) and vision evidence

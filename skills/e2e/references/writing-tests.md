@@ -1,0 +1,289 @@
+# Writing tests
+
+## A complete file
+
+```ts
+// tests/todos.e2e.ts
+import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test.describe('todos', { tags: ['todos'] }, () => {
+  test.beforeEach(async ({ app }) => {
+    await app.open('/todos');
+  });
+
+  test('adds and completes a todo', async ({ screen, web }) => {
+    await screen.getByLabel('New todo').fill('Write the release notes');
+    await screen.getByRole('button', { name: 'Add' }).tap();
+
+    await expect(screen.getByRole('listitem')).toHaveCount(1);
+    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('1 remaining');
+
+    await screen.getByRole('checkbox', { name: 'Write the release notes' }).check();
+    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('0 remaining');
+    await expect(web).toHaveURL('/todos');
+  });
+
+  test('ignores an empty submission', async ({ screen }) => {
+    await screen.getByRole('button', { name: 'Add' }).tap();
+    await expect(screen.getByRole('listitem')).toHaveCount(0);
+  });
+});
+```
+
+Files match the config `tests` glob, default `tests/**/*.e2e.ts`. Every test
+starts from clean state: a fresh browser context and no page open, so a test
+calls `app.open()` first (here in `beforeEach`).
+
+## Registration
+
+`test` is the only registration surface; everything registers while the file
+is imported, so a `describe` body is synchronous (an `async` body is a
+`COLLECTION_ERROR`).
+
+```ts
+test('title', async ({ app, screen }) => {});
+test('title', { tags: ['smoke'], retries: 2, timeout: 60_000 }, async ({ app }) => {});
+test.describe('group', { tags: ['billing'] }, () => { /* tests and hooks */ });
+test.describe('checkout flow', { serial: true }, () => { /* ordered, shared app state */ });
+test.beforeEach(async ({ app }) => {});     // per attempt, with test fixtures
+test.afterEach(async ({ screen }) => {});   // runs after failures too, with its own cleanup budget
+test.beforeAll(async ({ platform }) => {}); // per suite realm, no app fixtures
+test.afterAll(async () => {});
+test.skip('later', async () => {});
+test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
+test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) => {}); // see Sign-in sessions
+```
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `timeout` | `config.timeout`, 120 s | Covers `beforeEach` and the body. |
+| `retries` | `config.retries` | 0 to 10. On a serial group, the group's value applies. |
+| `tags` | `[]` | Union across layers. Select with `--tag smoke`; `--tag-mode all` requires every tag. |
+| `skip` | unset | `true` or a reason string. |
+| `platforms` | unset | Run only on targets with these platforms, e.g. `['ios']`. |
+| `requires` | `[]` | Capabilities the engine must contribute, e.g. `['web']`. Otherwise the test is skipped at selection instead of failing with `UNSUPPORTED_CAPABILITY`. |
+| `session` | unset | Restore state saved by a setup test. |
+| `agentContext` | unset | Extra context for `agent.*` calls in this test or group. |
+| `serial` | `false` | Groups only. Members share one app state, run in order on one worker, and retry as a whole. Inside, per-member `retries`, `session`, `platforms`, `requires`, and `skip` are errors. |
+
+Hook order follows nesting, not position: outer `beforeEach` first, inner
+`afterEach` first. `beforeAll` runs again for every retry and every serial
+group, because each is a fresh module realm.
+
+## Fixtures
+
+Fixtures are lazy; destructure them in the callback.
+
+| Fixture | Type | Available |
+| --- | --- | --- |
+| `app` | `App` | Always. |
+| `screen` | `Screen` | Always. |
+| `agent` | `Agent` | Needs a configured model, else `MODEL_UNAVAILABLE`. See the `agent` topic. |
+| `platform` | `'web' \| 'ios' \| 'android' \| string` | Always; also in `beforeAll` and `afterAll`. |
+| `web` | `Web` | Browser targets. Import `test` from `@e2edev/playwright`. |
+| `device` | `Device` | Device targets. Import `test` from `@e2edev/agent-device`. |
+| `session` | `SetupSession` | Only in `test.setup`. |
+
+### app
+
+| Method | Does |
+| --- | --- |
+| `open(path?)` | Opens the engine's `url`, a path relative to it, or an absolute URL inside `allowedOrigins`. |
+| `back()` | One history step back. |
+| `restart()` | Recreates the context and keeps persisted state, including a restored session. |
+| `clearState()` | Clears cookies and storage, then relaunches. Not inside a serial group. |
+| `deepLink(url)` | Opens an allowed deep or universal link. |
+| `screenshot(label?)` | Saves a redacted screenshot as an artifact and returns its path. |
+
+## Locators
+
+`screen.getBy*` builds a lazy query; nothing resolves until an action, read,
+or assertion runs. Every query also exists on a locator, scoped to its
+subtree.
+
+| Query | Matches |
+| --- | --- |
+| `getByRole(role, { name?, exact?, checked?, disabled?, selected?, expanded?, hidden?, visible? })` | Semantic role, optionally by accessible name and state. First choice. |
+| `getByLabel(text, { exact?, visible? })` | Form controls by label. |
+| `getByPlaceholder(text)` | Inputs by placeholder. |
+| `getByText(text, { exact?, visible? })` | Visible text. |
+| `getByDisplayValue(value)` | Inputs by current value. |
+| `getByTestId(id, { visible? })` | `data-testid` (or `screen.testIdAttribute`). Last resort. |
+
+Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
+`option`, `checkbox`, `radio`, `switch`, `slider`, `image`, `heading`, `tab`,
+`menuitem`, `list`, `listitem`, `table`, `row`, `cell`, `columnheader`,
+`status`, `alert`, `dialog`, `alertdialog`, `main`, `navigation`, `banner`,
+`contentinfo`, `complementary`, `region`. The union is closed; anything else
+is a type error.
+
+Text matching is exact by default after whitespace normalization.
+`exact: false` is a case-insensitive substring match; a `RegExp` matches as
+written.
+
+Rules:
+
+- An action, read, or assertion needs exactly one match. Two matches fail
+  immediately with `LOCATOR_AMBIGUOUS`; zero matches poll until the timeout,
+  then `LOCATOR_NOT_FOUND`. `toHaveCount` and `toBeHidden` are the
+  exceptions.
+- Narrow with `filter({ hasText })`, `filter({ has: locator })`, `first()`,
+  `last()`, `nth(i)`, or by scoping under another locator.
+- `visible: true` drops nodes the page hides (a closed drawer, a prerendered
+  duplicate) before the exactly-one rule. Reach for it when a query is
+  ambiguous even though one element is on screen.
+
+```ts
+const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
+await row.getByRole('button', { name: 'Void' }).tap();
+await screen.getByText('Save', { visible: true }).first().tap();
+await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
+```
+
+### Actions
+
+Each action resolves one node, waits for it to be actionable within
+`config.actionTimeout` (30 s, or `{ timeout }`), and performs one operation.
+
+`tap()` (alias `click()`), `doubleTap()`, `longPress({ durationMs? })`,
+`fill(value | Secret)`, `clear()`, `press(key)`, `check()`, `uncheck()`,
+`selectOption(label | { label } | { index })`, `focus()`, `hover()`,
+`setInputFiles(paths)` (relative to the project root), `dragTo(locator)`,
+`scrollIntoView()`, `swipe({ direction, momentum? })`.
+
+### Reads
+
+Reads resolve once and do not retry: `textContent()`, `inputValue()`,
+`getAttribute(name)`, `isVisible()`, `isEnabled()`, `isChecked()`,
+`boundingBox()`, `count()`. `waitFor({ state?: 'visible' | 'hidden', timeout? })`
+waits for a state. When a value has to settle, use `expect` instead of a
+read. Reading a password field's value is `POLICY_DENIED`.
+
+## expect
+
+`expect(locator)` polls for up to `config.assertionTimeout` (5 s) or
+`{ timeout }`; `.not` inverts. `expect(web)` gives the browser matchers.
+`expect(value)` is synchronous.
+
+```ts
+await expect(screen.getByRole('status')).toHaveText('Saved');
+await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
+await expect(screen.getByTestId('todo')).toHaveCount(3);
+await expect(web).toHaveURL('/dashboard');   // relative to the base URL, or a RegExp
+await expect(web).toHaveTitle(/Dashboard/);
+expect(await screen.getByTestId('total').textContent()).toContain('$');
+```
+
+| Locator matchers | Web matchers | Value matchers |
+| --- | --- | --- |
+| `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeLessThan` |
+
+`toHaveText` compares the whole normalized text; `toContainText` a
+substring or a RegExp. A failed matcher is `ASSERTION_FAILED`, exit code 1.
+
+## Sign-in sessions
+
+Sign in once in a setup test, save the state under a name, and let other
+tests declare it. Selecting a dependent test alone still runs its setup.
+
+```ts
+// tests/auth.setup.e2e.ts
+import { test } from '@e2edev/playwright';
+import { expect, credentials } from '@e2edev/e2e';
+
+test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
+  const admin = credentials.user('admin');
+  await app.open('/login');
+  await screen.getByLabel('Email').fill(admin.username);
+  await screen.getByLabel('Password').fill(admin.password);
+  await screen.getByRole('button', { name: 'Sign in' }).tap();
+  await expect(web).toHaveURL('/dashboard'); // prove the sign-in worked before saving
+  await session.save('admin');
+});
+```
+
+```ts
+// tests/dashboard.e2e.ts
+import { test, expect } from '@e2edev/e2e';
+
+test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen }) => {
+  await app.open('/dashboard');
+  await expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+});
+```
+
+- Setup tests are top-level (not inside `describe`); exactly one setup saves
+  a given name; the body saves every declared name once (`SESSION_CONTRACT`
+  otherwise).
+- A session holds cookies, local storage, and IndexedDB, for one run only.
+  The files are encrypted and deleted at cleanup. Server state is not part of
+  it.
+- Credentials live in the config; values come from the environment:
+
+```ts
+credentials: {
+  admin: { username: 'admin@example.test', password: process.env.ADMIN_PASSWORD ?? '' },
+},
+```
+
+`E2E_USER_ADMIN_USERNAME` and `E2E_USER_ADMIN_PASSWORD` override either
+field per run. `credentials.user('admin').password` is a `Secret` with no
+plaintext accessor; only `fill()` and `agent.act` params accept it. Once a
+secret is filled, screenshots stop being attached for the rest of that
+attempt, so sign in inside a setup test and keep the evidence in the tests
+that matter.
+
+## The web fixture (browser only)
+
+Import `test` from `@e2edev/playwright`. Prefer `app` and `screen`; use
+`web` for what only a browser has. Portable suites declare
+`requires: ['web']` so device targets skip the test instead of failing.
+
+| Method | Does |
+| --- | --- |
+| `goto(url, { waitUntil? })`, `reload()`, `back()`, `forward()` | Navigation. `goto` accepts a path relative to the base URL. |
+| `url()`, `title()`, `waitForURL(url \| RegExp)` | Reads and a URL wait. |
+| `locator(css)` | Raw CSS or XPath. Not portable; a last resort. |
+| `frameLocator(css)` | A `Screen` scoped to one iframe: `web.frameLocator('#payment').getByLabel('Card number')`. |
+| `evaluate(fn, arg?)` | Runs serialized code in the page. JSON in and out only, no closures. |
+| `route(pattern, handler)`, `unroute(pattern)` | Intercept requests: `route.fulfill({ json })`, `route.continue()`, `route.abort()`. |
+| `waitForResponse(pattern)` | Resolves with `{ status, headers, json(), text() }`. |
+| `cookies()`, `setCookies([...])` | Cookies within `allowedOrigins`. |
+| `setViewport({ width, height })` | Resize. |
+| `onDialog('accept' \| 'dismiss' \| handler)` | Returns an unsubscribe function. Register it before the tap that opens the dialog. |
+| `waitForDownload(() => trigger)` | Returns `{ path, suggestedFilename }`. |
+| `keyboard.press(key)`, `keyboard.type(text)`, `mouse.*` | Unfocused input. Prefer `locator.press` and `locator.fill`. |
+
+```ts
+await web.route('**/api/quote', (route) => route.fulfill({ json: { cents: 4200 } }));
+const response = await web.waitForResponse('**/api/orders');
+expect(response.status).toBe(201);
+```
+
+## Patterns that keep suites honest
+
+- Find selectors in the source, not by guessing: read the component or
+  template for labels, roles, and text. Add an `aria-label` or a heading
+  where the app has no accessible name, rather than falling back to CSS.
+- Create the data a test needs under a name unique to the run
+  (`Invoice ${Date.now()}`) and clean up in `afterEach`. Replays and retries
+  then never trip over leftovers.
+- One flow across several tests: `test.describe('...', { serial: true })`.
+  Otherwise tests are independent and may run on different workers.
+- Tag by area and by cost (`smoke`, `billing`, `agent`) and run subsets with
+  `--tag`.
+- Mix agent steps in where the path varies and pin the outcome with
+  `expect`; see the `agent` topic.
+
+## Mistakes to avoid
+
+- Sleeps or manual polling loops. Use a matcher with a longer `timeout`.
+- `web.locator('.btn-primary')` when `getByRole('button', { name })` exists.
+- `expect(await locator.textContent()).toBe(...)` for a value that is still
+  changing; use `toHaveText`.
+- Hardcoded passwords or tokens.
+- Sharing state between tests without `serial`.
+- `test.only` left in a file: CI fails with `ONLY_IN_CI`.
+- Asserting an exact sentence a model produced; assert the fact with
+  `toContain`.
