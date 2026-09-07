@@ -203,3 +203,46 @@ describe('observationShape', () => {
     );
   });
 });
+
+describe('projectTree', () => {
+  it('redacts names, text, values, and attributes, and drops secure values and selectors', async () => {
+    const { projectTree } = await import('../../src/agent/observation.ts');
+    const redact = (text: string): string => text.replaceAll('hunter2', '<password>');
+    const tree = node('root', {
+      role: 'document',
+      children: [
+        node('n1', {
+          role: 'textbox',
+          name: 'Password',
+          value: 'hunter2',
+          states: { secure: true, focused: true },
+          selector: 'input[name=password]',
+        }),
+        node('n2', {
+          role: 'link',
+          name: 'hunter2 profile',
+          text: 'see hunter2',
+          attributes: { href: '/u/hunter2' },
+          rect: { x: 1, y: 2, width: 3, height: 4 },
+        }),
+      ],
+    });
+    const projected = projectTree(tree, redact);
+    expect(projected).toEqual({
+      id: 'root',
+      role: 'document',
+      children: [
+        { id: 'n1', role: 'textbox', name: 'Password', states: { secure: true, focused: true } },
+        {
+          id: 'n2',
+          role: 'link',
+          name: '<password> profile',
+          text: 'see <password>',
+          attributes: { href: '/u/<password>' },
+          rect: { x: 1, y: 2, width: 3, height: 4 },
+        },
+      ],
+    });
+    expect(JSON.stringify(projected)).not.toContain('selector');
+  });
+});

@@ -23,6 +23,7 @@ export type {
   ExecutorAttempt,
   ExecutorBudgets,
   ExecutorModelCall,
+  ExecutorNode,
   ExecutorObservation,
   ExecutorObserveOptions,
   ExecutorPixels,

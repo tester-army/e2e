@@ -8,6 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
+import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
@@ -110,7 +111,7 @@ describe('the executor context: attempt and memory', () => {
   });
 });
 
-describe('observe() with pixels', () => {
+describe('observe() with the tree and pixels', () => {
   let app: FixtureApp;
   let outcome: RunOutcome;
   let project: FixtureProject;
@@ -119,7 +120,7 @@ describe('observe() with pixels', () => {
   const looking: StepExecutor = {
     name: 'looker',
     async runStep(context: StepExecutorContext) {
-      seen = await context.observe({ pixels: true });
+      seen = await context.observe({ tree: true, pixels: true });
       return { status: 'passed', summary: 'looked' };
     },
   };
@@ -139,8 +140,22 @@ describe('observe() with pixels', () => {
     await app?.close();
   });
 
-  it('returns masked pixels when the backend can prove masking', () => {
+  it('returns the redacted tree beside the text, with the same node ids', () => {
     expect(outcome.exitCode).toBe(0);
+    expect(seen?.tree).toBeDefined();
+    const ids = new Set<string>();
+    const walk = (node: NonNullable<typeof seen>['tree']): void => {
+      if (node === undefined) return;
+      ids.add(node.id);
+      for (const child of node.children ?? []) walk(child);
+    };
+    walk(seen!.tree);
+    const incrementId = nodeIdFor(seen!.text, /button "Increment"/);
+    expect(ids.has(incrementId)).toBe(true);
+    expect(JSON.stringify(seen!.tree)).not.toContain('selector');
+  });
+
+  it('returns masked pixels when the backend can prove masking', () => {
     expect(seen?.pixelsWithheld).toBeUndefined();
     expect(seen?.pixels).toBeDefined();
     expect(seen!.pixels!.width).toBeGreaterThan(0);

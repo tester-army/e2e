@@ -54,6 +54,7 @@ import {
   observationShape,
   pixelsForModel,
   prepareObservation,
+  projectTree,
   settleObservation,
   type AgentObservation,
 } from './observation.ts';
@@ -720,6 +721,7 @@ class ActDispatch {
       truncated: observation.truncated,
       viewport: observation.viewport,
       ...(path === undefined ? {} : { path: this.redact(path) }),
+      ...(options.tree === true ? { tree: projectTree(observation.tree, this.redact) } : {}),
       ...(wantPixels ? this.pixelsFor(observation) : {}),
     };
   }

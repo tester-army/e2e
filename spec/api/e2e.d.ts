@@ -1132,12 +1132,34 @@ export interface ExecutorAttempt {
 
 /** What an executor asks `observe()` to include beyond the text serialization. */
 export interface ExecutorObserveOptions {
+  /** Include the redacted node tree as `tree`. */
+  readonly tree?: boolean;
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the backend
    * captures pixels, its masking is proven, and no secret has been filled in
    * this attempt; otherwise `pixelsWithheld` names the reason.
    */
   readonly pixels?: boolean;
+}
+
+/**
+ * One node of the redacted semantic tree. Names, text, values, and attribute
+ * values are secret-redacted; a secure node carries no value at all.
+ */
+export interface ExecutorNode {
+  readonly id: string;
+  readonly role?: string;
+  readonly name?: string;
+  readonly text?: string;
+  readonly value?: string;
+  readonly inputPurpose?: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
+  readonly states?: Readonly<
+    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure', boolean>>
+  >;
+  readonly attributes?: Readonly<Record<string, string>>;
+  readonly rect?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly framePath?: readonly string[];
+  readonly children?: readonly ExecutorNode[];
 }
 
 /** Masked viewport pixels cleared for model input. */
@@ -1162,6 +1184,8 @@ export interface ExecutorObservation {
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   /** Current location as path and query, redacted; absent when the backend has none. */
   readonly path?: string;
+  /** The redacted node tree; present when requested with `observe({ tree: true })`. */
+  readonly tree?: ExecutorNode;
   /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
   readonly pixels?: ExecutorPixels;
   /** Set when requested pixels were withheld. */
@@ -1294,7 +1318,7 @@ export interface StepExecutorContext {
   readonly ledger: string;
   readonly agentContext: string | undefined;
   readonly budgets: ExecutorBudgets;
-  /** Captures one fresh, redacted observation; masked pixels are opt-in. */
+  /** Captures one fresh, redacted observation; the tree and pixels are opt-in. */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
   /**

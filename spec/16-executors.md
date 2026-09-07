@@ -65,7 +65,9 @@ construction. The context provides:
   `attemptId` or stores it in `memory`, and releases it on the signal.
 - `observe(options?)` — a fresh, redacted, size-bounded semantic observation
   as text, with the current location as `path` when the backend reports one.
-  `{ pixels: true }` adds masked viewport pixels when the backend captures them, masking is
+  `{ tree: true }` adds the redacted node tree (names, text, values, and
+  attribute values redacted; a secure node carries no value); `{ pixels: true }`
+  adds masked viewport pixels when the backend captures them, masking is
   proven, and no secret has been filled in the attempt — otherwise
   `pixelsWithheld` names the reason (`PIXEL_TAINTED`, `MASKING_UNPROVEN`,
   `UNSUPPORTED_CAPABILITY`) and the decision is recorded as a policy event.
@@ -123,7 +125,8 @@ conform. One carries its whole conversation across every `agent.act` of a
 test: it stores the model messages in `attempt.memory` at the end of each
 step and opens the next step with them. Another sends the model nothing but
 the instruction and the newest screen, ignoring `ledger` entirely. A third
-judges from `observe({ pixels: true })`. The harness records every step
+renders `observe({ tree: true })` into its own compact notation, or judges
+from `observe({ pixels: true })`. The harness records every step
 identically for all three, and the report cannot tell them apart except by
 the executor's name and version.
 

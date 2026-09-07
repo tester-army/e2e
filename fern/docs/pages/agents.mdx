@@ -100,7 +100,8 @@ decision. The agent surface has two layers:
 A hand-rolled executor gets the raw material on its context: `ctx.ledger`
 (the runner's serialization of every completed step), `ctx.attempt.memory` (a
 per-attempt map the harness holds and never reports), and
-`ctx.observe({ pixels: true })` for masked pixels beside the text.
+`ctx.observe({ tree: true, pixels: true })` for the redacted node tree and
+masked pixels instead of, or beside, the text.
 
 ## Keep the loop, change the vocabulary
 
