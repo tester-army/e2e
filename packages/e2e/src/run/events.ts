@@ -76,6 +76,12 @@ export type RunEventFact =
       readonly title: string;
       /** Project-root-relative test file, so reporters can group by file. */
       readonly file: string;
+      /**
+       * The test's serial group, when it belongs to one. Members are announced
+       * one at a time as they begin; the previous member is done executing by
+       * then, though every member's result arrives once the group completes.
+       */
+      readonly serialId: string | undefined;
       readonly target: string;
     }
   | {
@@ -85,7 +91,15 @@ export type RunEventFact =
       readonly progress: StepProgress;
     }
   | { readonly type: 'test-finished'; readonly result: RunEventResult }
-  | { readonly type: 'serial-group'; readonly group: SerialGroupRecord }
+  | {
+      /**
+       * A finished serial group, emitted before its members' `test-finished`
+       * results. Member results carry `serialGroupId` and no attempts of their
+       * own: their steps, durations, and errors live in the group record.
+       */
+      readonly type: 'serial-group';
+      readonly group: SerialGroupRecord;
+    }
   | { readonly type: 'run-error'; readonly error: SerializedError }
   | {
       /**

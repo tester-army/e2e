@@ -14,4 +14,7 @@ its latest model or engine calls, and the running counters. Colors follow
 picocolors' detection, so CI logs are colored too.
 
 For hosts on the event stream, `plan` now carries `files` (reportable pairs
-per test file and target) and `test-started` carries the test's `file`.
+per test file and target) and `test-started` carries the test's `file` and
+`serialId`. A serial group announces every member as it begins, not just the
+first, and `serial-group` is emitted before its members' `test-finished`
+results, so each member's duration, usage, and error can be attributed.

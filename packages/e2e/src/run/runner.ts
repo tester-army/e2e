@@ -478,8 +478,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             emit({ type: 'serial-group', group });
           },
           onRunError: recordRunError,
-          onTestStart: (testId, title, file, targetName) =>
-            emit({ type: 'test-started', testId, title, file, target: targetName }),
+          onTestStart: (start, targetName) =>
+            emit({ type: 'test-started', ...start, target: targetName }),
           onProgress: (testId, targetName, progress) =>
             emit({ type: 'step', testId, target: targetName, progress }),
           onDebug: (snapshot) => debug.merge(snapshot),

@@ -7,7 +7,6 @@
 import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import type { RunEventResult } from '../run/events.ts';
 import type { ResultStatus } from '../run/records.ts';
 import type { StepRecord } from '../run/steps.ts';
 
@@ -147,7 +146,7 @@ export function addUsage(into: AiUsage, usage: AiUsage): void {
 }
 
 /** Accumulates the model usage of one step list into a running total. */
-export function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
+function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
   for (const step of steps) {
     if (step.model === undefined) continue;
     usage.calls += step.model.calls;
@@ -158,14 +157,10 @@ export function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): voi
   }
 }
 
-/**
- * Sums model usage across every step of every attempt of one result. Serial
- * members carry no attempts of their own; their usage arrives once per group
- * through the `serial-group` event.
- */
-export function resultUsage(result: RunEventResult): AiUsage {
+/** The model usage of several step lists summed. */
+export function stepsUsage(stepLists: readonly (readonly StepRecord[])[]): AiUsage {
   const usage = emptyUsage();
-  for (const attempt of result.attempts) addStepsUsage(usage, attempt.steps);
+  for (const steps of stepLists) addStepsUsage(usage, steps);
   return usage;
 }
 

@@ -187,6 +187,7 @@ class FakeRunner implements UnitRunner {
           testId: pair.test.id,
           title: pair.test.id,
           file: pair.test.file,
+          serialId: pair.test.serialId,
         });
         this.end('crashed');
         return;

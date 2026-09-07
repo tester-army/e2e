@@ -28,14 +28,19 @@ import {
   unstartedResult,
   type WorkUnit,
 } from './units.ts';
-import { decodeResult, type WirePair, type WorkerToMain } from './worker/protocol.ts';
+import {
+  type PairStart,
+  type WirePair,
+  type WorkerToMain,
+  decodeResult,
+} from './worker/protocol.ts';
 
 export interface SchedulerEvents {
   onResult(result: ResultRecord): void;
   onSerialGroup(group: SerialGroupRecord): void;
   onRunError(error: RunError): void;
   /** A worker began executing one test-target pair. */
-  onTestStart?(testId: string, title: string, file: string, targetName: string): void;
+  onTestStart?(start: PairStart, targetName: string): void;
   /** Live step progress of one running attempt. */
   onProgress?(testId: string, targetName: string, progress: StepProgress): void;
   /** Phase timings a child-process worker drained after one unit. */
@@ -457,12 +462,8 @@ class Scheduler {
       }
       case 'pair-start': {
         worker.inFlightTestId = message.testId;
-        this.options.events.onTestStart?.(
-          message.testId,
-          message.title,
-          message.file,
-          worker.targetName,
-        );
+        const { type: _type, ...start } = message;
+        this.options.events.onTestStart?.(start, worker.targetName);
         break;
       }
       case 'progress': {

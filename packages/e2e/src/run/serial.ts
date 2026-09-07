@@ -83,6 +83,14 @@ export interface SerialHost {
     context: AttemptContext,
   ): Promise<AttemptRecord>;
   emit(result: ResultRecord): void;
+  /** Announces one member about to execute; the previous member is done by then. */
+  pairStarted(pair: TestTargetPair): void;
+  /**
+   * Announces the finished group before its members' results go out. Member
+   * results carry no attempts of their own, so a consumer reads each member's
+   * steps, duration, and error from the group it has already seen.
+   */
+  emitSerialGroup(group: SerialGroupRecord): void;
 }
 
 /** Runs one serial unit to completion and emits every member result. */
@@ -130,6 +138,7 @@ export async function runSerialUnit(
     group.status = finalStatus;
   }
 
+  host.emitSerialGroup(group);
   for (const member of members) {
     const memberRecord = memberFinalStatus.get(member.test.id);
     let status: ResultStatus;
@@ -274,6 +283,7 @@ async function runSerialAttempt(
       memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
       continue;
     }
+    host.pairStarted(member);
     const memberAttempt = await host.runAttempt(member, registered, realm, attemptIndex, {
       kind: 'serial',
       shared,

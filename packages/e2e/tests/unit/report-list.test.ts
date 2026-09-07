@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
 import type { RunEventFact, RunEventResult } from '../../src/run/events.ts';
-import type { ResultStatus, AttemptRecord } from '../../src/run/records.ts';
+import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\u001b\[[0-9;?]*[a-zA-Z]/g;
@@ -43,6 +43,8 @@ function result(overrides: {
   selected?: boolean;
   attempts?: AttemptRecord[];
   skipReason?: string;
+  /** Marks a serial member: the group id its details live under. */
+  serialGroupId?: string;
 }): RunEventResult {
   return {
     test: {
@@ -58,8 +60,56 @@ function result(overrides: {
       overrides.skipReason === undefined
         ? undefined
         : { reason: overrides.skipReason },
-    attempts: overrides.attempts ?? [attempt()],
+    attempts: overrides.serialGroupId === undefined ? (overrides.attempts ?? [attempt()]) : [],
+    ...(overrides.serialGroupId === undefined ? {} : { serialGroupId: overrides.serialGroupId }),
   } as unknown as RunEventResult;
+}
+
+function serialMember(testId: string, overrides: Partial<SerialMemberRecord> = {}): SerialMemberRecord {
+  return {
+    id: `member-${testId}`,
+    index: 0,
+    testId,
+    status: 'passed',
+    startedAt: new Date(0).toISOString(),
+    durationMs: 100,
+    steps: [],
+    secondaryErrors: [],
+    ...overrides,
+  };
+}
+
+/** A finished serial group with one attempt per entry of `attempts`. */
+function serialGroup(
+  id: string,
+  attempts: { members: SerialMemberRecord[]; error?: SerialMemberRecord['error'] }[],
+  overrides: Partial<SerialGroupRecord> = {},
+): RunEventFact {
+  const group: SerialGroupRecord = {
+    id,
+    serialId: 'wizard',
+    declarationIndex: 0,
+    file: 'tests/case.e2e.ts',
+    titlePath: ['wizard'],
+    targetId: 'chromium',
+    platform: 'web',
+    memberTestIds: [...new Set(attempts.flatMap((entry) => entry.members.map((member) => member.testId)))],
+    status: 'passed',
+    attempts: attempts.map((entry, index) => ({
+      id: `group-attempt-${index}`,
+      index,
+      status: entry.error === undefined ? 'passed' : 'failed',
+      startedAt: new Date(0).toISOString(),
+      durationMs: entry.members.reduce((total, member) => total + member.durationMs, 0),
+      members: entry.members,
+      artifacts: [],
+      ...(entry.error === undefined ? {} : { error: entry.error }),
+      secondaryErrors: [],
+      cleanup: 'complete',
+    })),
+    ...overrides,
+  };
+  return { type: 'serial-group', group };
 }
 
 function runStarted(overrides: { ci?: boolean; targets?: string[]; projectRoot?: string } = {}): RunEventFact {
@@ -109,8 +159,14 @@ function runFinished(
   };
 }
 
-function testStarted(testId: string, title: string, target: string, file = 'tests/case.e2e.ts'): RunEventFact {
-  return { type: 'test-started', testId, title, file, target };
+function testStarted(
+  testId: string,
+  title: string,
+  target: string,
+  file = 'tests/case.e2e.ts',
+  serialId?: string,
+): RunEventFact {
+  return { type: 'test-started', testId, title, file, serialId, target };
 }
 
 function failedAttempt(message: string, stack?: string): AttemptRecord {
@@ -558,6 +614,79 @@ describe('ListReporter', () => {
       const { lines, output } = capture();
       plainReporter(output).handle(runFinished({ reportPath: 'r.json' }));
       expect(lines.join('\n')).toContain('no tests executed');
+    });
+  });
+
+  describe('serial groups', () => {
+    const memberError = {
+      category: 'test' as const,
+      code: 'ASSERTION_FAILED',
+      message: 'plan step failed',
+      retryable: false,
+    };
+
+    it('reads each member\u2019s duration, usage, and error from the group, which arrives first', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+      const step = { model: { calls: 1, inputTokens: 600, outputTokens: 400 } } as never;
+      reporter.handle(serialGroup('g1', [
+        { members: [serialMember('m1', { durationMs: 300, steps: [step] }), serialMember('m2', { status: 'failed', durationMs: 200, error: memberError })], error: memberError },
+        { members: [serialMember('m1', { durationMs: 100 }), serialMember('m2', { status: 'failed', durationMs: 50, error: memberError })], error: memberError },
+      ], { status: 'failed' }));
+      expect(lines).toEqual([]);
+      reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })));
+      expect(lines).toEqual([]);
+      reporter.handle(finished(result({ status: 'failed', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })));
+      expect(lines).toEqual([
+        ' ❯ |chromium| tests/case.e2e.ts (2 tests | 1 failed) 650ms ai 1.0k tokens',
+        '   ✓ wizard > step 1 400ms ai 1.0k tokens',
+        '   × wizard > step 2 250ms',
+        '     → plan step failed',
+      ]);
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+      expect(lines).toContain('ASSERTION_FAILED: plan step failed');
+      // Usage is counted once, through the member lines, not again from the group.
+      expect(lines.find((line) => line.trimStart().startsWith('AI'))).toContain('ai 1.0k tokens · 1 model calls');
+    });
+
+    it('falls back to the attempt error for a member the group never reached', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      const launchError = { ...memberError, category: 'infrastructure' as const, code: 'LAUNCH_FAILED', message: 'no browser' };
+      reporter.handle(serialGroup('g2', [{ members: [serialMember('m1', { status: 'skipped', durationMs: 0 })], error: launchError }], { status: 'failed' }));
+      reporter.handle(finished(result({ status: 'failed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g2' })));
+      expect(lines).toContain('     → no browser');
+    });
+
+    it('tolerates a group that arrives after its members, printing what it has', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'late' })));
+      reporter.handle(serialGroup('late', [{ members: [serialMember('m1')] }]));
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines[0]).toBe(' ✓ |chromium| tests/case.e2e.ts (1 test)');
+      expect(lines.join('\n')).toContain('Tests  1 passed (1)');
+    });
+
+    it('shows one serial member at a time in the live window and follows each member\u2019s steps', () => {
+      const chunks: string[] = [];
+      const output = { write: (line: string) => chunks.push(`${line}\n`), raw: (text: string) => chunks.push(text) };
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+      reporter.handle(testStarted('m1', 'step 1', 'chromium', 'tests/case.e2e.ts', 'wizard'));
+      reporter.handle({ type: 'step', testId: 'm1', target: 'chromium', progress: { phase: 'start', kind: 'locator', api: 'app.open', label: '/wizard' } });
+      expect(chunks.at(-1)).toContain('step 1');
+      reporter.handle(testStarted('m2', 'step 2', 'chromium', 'tests/case.e2e.ts', 'wizard'));
+      reporter.handle({ type: 'step', testId: 'm2', target: 'chromium', progress: { phase: 'start', kind: 'locator', api: 'locator.fill', label: 'Plan' } });
+      const window = chunks.at(-1)!;
+      expect(window).toContain('step 2');
+      expect(window).toContain('locator.fill "Plan"');
+      expect(window).not.toContain('step 1');
+      expect(window).not.toContain('app.open');
     });
   });
 

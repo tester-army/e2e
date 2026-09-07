@@ -97,13 +97,24 @@ export interface ReadyMessage {
   readonly type: 'ready';
 }
 
-export interface PairStartMessage {
-  readonly type: 'pair-start';
+/** One pair about to execute, as reporters see it. */
+export interface PairStart {
   readonly testId: string;
   /** Joined title path, so reporters need no side lookup by test ID. */
   readonly title: string;
   /** Project-root-relative test file. */
   readonly file: string;
+  /**
+   * The pair's serial group, when it belongs to one. A serial unit announces
+   * its members one at a time and the previous member has finished executing
+   * when the next starts, though every member's result arrives together once
+   * the group completes.
+   */
+  readonly serialId: string | undefined;
+}
+
+export interface PairStartMessage extends PairStart {
+  readonly type: 'pair-start';
 }
 
 /** Live step progress of the running attempt; plain data, fire-and-forget. */

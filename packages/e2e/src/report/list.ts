@@ -11,11 +11,10 @@ import { sanitizeText, truncateUtf8, type SerializedError } from '../internal/er
 import { packageVersion } from '../internal/package-version.ts';
 import { collapseText } from '../internal/text.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../run/events.ts';
-import type { ResultStatus, SerialGroupRecord } from '../run/records.ts';
+import type { AttemptRecord, ResultStatus, SerialGroupRecord } from '../run/records.ts';
 import type { StepEvent } from '../run/steps.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
-  addStepsUsage,
   addUsage,
   aiSegment,
   bounded,
@@ -27,10 +26,10 @@ import {
   formatTime,
   formatTokens,
   padTitle,
-  resultUsage,
   rule,
   stateString,
   statusBucket,
+  stepsUsage,
   sumUsage,
   tally,
   terminalColumns,
@@ -113,9 +112,49 @@ function pairKey(testId: string, target: string): string {
   return `${testId}@${target}`;
 }
 
+/** What a test line and a failure entry need from a result's execution. */
+interface ResultDetails {
+  readonly durationMs: number;
+  readonly usage: AiUsage;
+  readonly error: SerializedError | undefined;
+}
+
+/** Details of an ordinary result: summed over its attempts, the error from the last. */
+function attemptDetails(attempts: readonly AttemptRecord[]): ResultDetails {
+  return {
+    durationMs: attempts.reduce((total, attempt) => total + attempt.durationMs, 0),
+    usage: stepsUsage(attempts.map((attempt) => attempt.steps)),
+    error: attempts[attempts.length - 1]?.error,
+  };
+}
+
+/**
+ * Details of one serial member, read from its group: member results carry no
+ * attempts of their own. Duration and usage sum over every group attempt the
+ * member ran in. The error is the member's own from the last attempt; a member
+ * that attempt never ran (skipped, or absent after a launch failure) inherits
+ * the attempt's error, since that is what stopped it.
+ */
+function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDetails {
+  const runs = group.attempts.map((attempt) => ({
+    attempt,
+    member: attempt.members.find((member) => member.testId === testId),
+  }));
+  const last = runs[runs.length - 1];
+  const own = last?.member;
+  const neverRan = own === undefined || own.status === 'skipped';
+  return {
+    durationMs: runs.reduce((total, run) => total + (run.member?.durationMs ?? 0), 0),
+    usage: stepsUsage(runs.map((run) => run.member?.steps ?? [])),
+    error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
+  };
+}
+
 /** A pair that is executing right now, shown in the live window. */
 interface RunningTest {
   readonly group: FileGroup;
+  /** The pair's serial group, when it belongs to one. */
+  readonly serialId: string | undefined;
   readonly title: string;
   readonly startedMs: number;
   /** Current step, `api "label"`, while one is executing. */
@@ -136,8 +175,6 @@ interface TestLine {
   readonly usage: AiUsage;
   readonly firstErrorLine: string | undefined;
   readonly skipReason: string | undefined;
-  /** The pair streamed its steps permanently, so its file lists every test. */
-  readonly streamed: boolean;
 }
 
 /**
@@ -151,6 +188,8 @@ interface FileGroup {
   /** Reportable pairs the plan announced; undefined until the plan arrives. */
   planned: number | undefined;
   readonly lines: TestLine[];
+  /** A pair of this file streamed its steps permanently, so list every test. */
+  streamed: boolean;
   printed: boolean;
 }
 
@@ -186,6 +225,12 @@ export class ListReporter {
   /** Pairs executing right now, keyed by `pairKey`, in start order. */
   private readonly running = new Map<string, RunningTest>();
   private readonly failures: Failure[] = [];
+  /**
+   * Serial groups whose members' results are still to come, by group id. The
+   * runner emits a group before its member results, and a member's details
+   * live only in the group.
+   */
+  private readonly pendingSerial = new Map<string, { group: SerialGroupRecord; remaining: number }>();
   /** Run-level errors, printed once at the end; the stream carries them as they happen. */
   private readonly errors: SerializedError[] = [];
   /** Run-wide model usage, summed from every reported result and serial group. */
@@ -267,7 +312,7 @@ export class ListReporter {
     const key = `${target}\u0000${file}`;
     let group = this.groups.get(key);
     if (group === undefined) {
-      group = { file, target, planned: undefined, lines: [], printed: false };
+      group = { file, target, planned: undefined, lines: [], streamed: false, printed: false };
       this.groups.set(key, group);
     }
     return group;
@@ -308,10 +353,22 @@ export class ListReporter {
     );
   }
 
-  /** A worker began one test-target pair: show it in the live window. */
+  /**
+   * A worker began one test-target pair: show it in the live window. A serial
+   * member replaces the previous member of its group, which has finished
+   * executing even though its result only arrives with the whole group.
+   */
   private testStarted(event: RunEventOf<'test-started'>): void {
+    if (event.serialId !== undefined) {
+      for (const [key, test] of this.running) {
+        if (test.serialId === event.serialId && test.group.target === event.target) {
+          this.running.delete(key);
+        }
+      }
+    }
     this.running.set(pairKey(event.testId, event.target), {
       group: this.group(event.file, event.target),
+      serialId: event.serialId,
       title: bounded(event.title),
       startedMs: Date.now(),
       step: undefined,
@@ -343,6 +400,7 @@ export class ListReporter {
         if (progress.kind === 'agent' && this.running.size === 1 && !running.streaming) {
           running.streaming = true;
           const { group } = running;
+          group.streamed = true;
           this.print(
             ` ${pc.yellow(F_POINTER)} ${this.badge(group.target)} ${pc.dim(bounded(group.file))}${this.separator}${running.title}`,
           );
@@ -380,38 +438,42 @@ export class ListReporter {
     }
   }
 
-  /**
-   * Adds one serial group's model usage to the run totals. Member result
-   * records intentionally carry no attempts, so the group record is the one
-   * place their steps exist; summing here counts each member exactly once.
-   */
+  /** Holds a serial group until each of its members' results has read its details. */
   private serialGroup(group: SerialGroupRecord): void {
-    for (const attempt of group.attempts) {
-      for (const member of attempt.members) addStepsUsage(this.runUsage, member.steps);
-    }
+    this.pendingSerial.set(group.id, { group, remaining: group.memberTestIds.length });
+  }
+
+  /**
+   * The details behind one result. A serial member's come from its group; a
+   * group that never arrived (a stream out of contract) leaves them empty
+   * rather than failing the run.
+   */
+  private detailsOf(result: RunEventResult): ResultDetails {
+    if (result.serialGroupId === undefined) return attemptDetails(result.attempts);
+    const pending = this.pendingSerial.get(result.serialGroupId);
+    if (pending === undefined) return attemptDetails([]);
+    pending.remaining -= 1;
+    if (pending.remaining <= 0) this.pendingSerial.delete(result.serialGroupId);
+    return serialMemberDetails(pending.group, result.test.id);
   }
 
   private testFinished(result: RunEventResult): void {
     // Unselected pairs are report-only: they never print and the plan never
     // counted them.
     if (!result.selected) return;
-    const key = pairKey(result.test.id, result.target.name);
-    const streamed = this.running.get(key)?.streaming ?? false;
-    this.running.delete(key);
+    this.running.delete(pairKey(result.test.id, result.target.name));
     const group = this.group(result.test.file, result.target.name);
-    const usage = resultUsage(result);
+    const { durationMs, usage, error } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
     const title = bounded(result.test.titlePath.join(' > '));
-    const error = result.attempts[result.attempts.length - 1]?.error;
     group.lines.push({
       title,
       declarationIndex: result.test.declarationIndex,
       status: result.status,
-      durationMs: result.attempts.reduce((total, attempt) => total + attempt.durationMs, 0),
+      durationMs,
       usage,
       firstErrorLine: error === undefined ? undefined : bounded(error.message).split('\n')[0],
       skipReason: result.skip === undefined ? undefined : bounded(result.skip.reason),
-      streamed,
     });
     if (statusBucket(result.status) === 'failed') {
       this.failures.push({ group, title, status: result.status, error });
@@ -476,7 +538,7 @@ export class ListReporter {
     const verbose =
       counts.failed > 0 ||
       counts.flaky > 0 ||
-      group.lines.some((line) => line.streamed) ||
+      group.streamed ||
       this.groups.size === 1;
     if (!verbose) return;
     const ordered = group.lines.toSorted((a, b) => a.declarationIndex - b.declarationIndex);

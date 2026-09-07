@@ -46,7 +46,7 @@ import type { SetupFn } from '../types.ts';
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
   onSerialGroup?(group: SerialGroupRecord): void;
-  /** Fires before a runnable pair (or serial unit via its first member) starts. */
+  /** Fires before a runnable pair starts; a serial unit announces each member as it begins. */
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
   onProgress?(testId: string, progress: StepProgress): void;
@@ -144,6 +144,16 @@ export class TargetExecutor implements SerialHost {
   /** Emits one final result record (SerialHost). Records are not retained. */
   emit(result: ResultRecord): void {
     this.options.events?.onResult?.(result);
+  }
+
+  /** Announces one pair about to execute (SerialHost). */
+  pairStarted(pair: TestTargetPair): void {
+    this.options.events?.onPairStart?.(pair);
+  }
+
+  /** Emits one finished serial group, ahead of its members' results (SerialHost). */
+  emitSerialGroup(group: SerialGroupRecord): void {
+    this.options.events?.onSerialGroup?.(group);
   }
 
   /** Builds one engine operation context. */
@@ -267,17 +277,15 @@ export class TargetExecutor implements SerialHost {
         if (!executedSerialUnits.has(pair.test.serialId)) {
           executedSerialUnits.add(pair.test.serialId);
           const members = ordered.filter((member) => member.test.serialId === pair.test.serialId);
-          this.options.events?.onPairStart?.(pair);
           // A serial group owns its realm; whatever realm ordinary tests were
           // sharing ends here, afterAll included.
           if (realm !== null) await this.realms.leave(realm);
           realm = null;
-          const group = await runSerialUnit(this, members, file.absolutePath);
-          this.options.events?.onSerialGroup?.(group);
+          await runSerialUnit(this, members, file.absolutePath);
         }
         continue;
       }
-      this.options.events?.onPairStart?.(pair);
+      this.pairStarted(pair);
       realm = await this.runOrdinaryPair(pair, file, realm);
       // A scope's afterAll runs as soon as its last test in this realm is
       // done, so a describe's teardown never lands after a sibling's tests.
@@ -366,7 +374,7 @@ export class TargetExecutor implements SerialHost {
 
   /** Runs one setup pair to completion, persisting staged sessions on success. */
   async runSetupUnit(pair: TestTargetPair, freshRegistration?: ModuleRegistration): Promise<void> {
-    this.options.events?.onPairStart?.(pair);
+    this.pairStarted(pair);
     const absolutePath = path.resolve(this.config.projectRoot, pair.test.file);
     const attempts: AttemptRecord[] = [];
     let hookFailure: SerializedError | undefined;

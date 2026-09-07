@@ -57,7 +57,7 @@ type RunEventFact =
   | { type: 'run-started'; runId; projectId; projectRoot; ci; targets }
   | { type: 'plan'; total; files: { file; target; tests }[] }
   | { type: 'notice'; target; message }
-  | { type: 'test-started'; testId; title; file; target }
+  | { type: 'test-started'; testId; title; file; serialId; target }
   | { type: 'step'; testId; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
   | { type: 'serial-group'; group: SerialGroupRecord }
@@ -75,7 +75,12 @@ engine's `prepare` hook narrating a first-run browser download, for example.
 child events (observations, model calls, engine actions, policy decisions) as
 they happen — the same feed the list reporter renders. `test-finished`
 carries the full result record with the live target flattened to
-`{ name, platform }`, so every payload survives `JSON.stringify`.
+`{ name, platform }`, so every payload survives `JSON.stringify`. A serial
+group announces each member with its own `test-started` (carrying the group's
+`serialId`) as it begins, then emits `serial-group` once the group completes,
+followed by every member's `test-finished`. Member results carry
+`serialGroupId` and no attempts of their own: their steps, durations, and
+errors live in the group record a consumer has already received.
 `run-interrupted` is emitted once when `interruptSignal` aborts (`graceful`)
 and once more if `forceSignal` aborts (`forced`). The runner installs no
 process signal handlers and never exits the process; Ctrl-C is the CLI's, see

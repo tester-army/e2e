@@ -97,6 +97,7 @@ export class TargetWorker {
               testId: pair.test.id,
               title: pair.test.titlePath.join(' > '),
               file: pair.test.file,
+              serialId: pair.test.serialId,
             }),
           onProgress: (testId, progress) => this.host.emit({ type: 'progress', testId, progress }),
         },
