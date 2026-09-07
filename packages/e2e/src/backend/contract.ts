@@ -129,6 +129,15 @@ export interface SemanticNode {
 }
 
 /**
+ * Viewport point in CSS pixels, origin at the top-left of the viewport.
+ * Reserved for coordinate-addressed actions; no runner surface consumes it yet.
+ */
+export interface ViewportPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
  * Masked viewport pixels captured for one observation revision.
  *
  * `width` and `height` MUST be the true dimensions of `data`, because they are

@@ -17,7 +17,7 @@
  * matter whose brain runs the step.
  */
 
-import type { ObservationPixels } from '../backend/surface.ts';
+import type { ObservationPixels, SemanticNode } from '../backend/surface.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
@@ -70,12 +70,32 @@ export interface ExecutorAttempt {
 
 /** What an executor asks `observe()` to include beyond the text serialization. */
 export interface ExecutorObserveOptions {
+  /** Include the redacted node tree as `tree`. */
+  readonly tree?: boolean;
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the backend
    * captures pixels, its masking is proven, and no secret has been filled in
    * this attempt; otherwise `pixelsWithheld` names the reason.
    */
   readonly pixels?: boolean;
+}
+
+/**
+ * One node of the redacted semantic tree. Names, text, values, and attribute
+ * values are secret-redacted; a secure node carries no value at all.
+ */
+export interface ExecutorNode {
+  readonly id: string;
+  readonly role?: string;
+  readonly name?: string;
+  readonly text?: string;
+  readonly value?: string;
+  readonly inputPurpose?: SemanticNode['inputPurpose'];
+  readonly states?: SemanticNode['states'];
+  readonly attributes?: Readonly<Record<string, string>>;
+  readonly rect?: SemanticNode['rect'];
+  readonly framePath?: readonly string[];
+  readonly children?: readonly ExecutorNode[];
 }
 
 /** Masked viewport pixels cleared for model input: the backend's capture plus its proven mask count. */
@@ -95,6 +115,8 @@ export interface ExecutorObservation {
    * reports one. Absent on backends without a location (a device screen).
    */
   readonly path?: string;
+  /** The redacted node tree; present when requested with `observe({ tree: true })`. */
+  readonly tree?: ExecutorNode;
   /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
   readonly pixels?: ExecutorPixels;
   /** Why requested pixels were withheld; the same token the report's `visionDegraded` carries. */
@@ -250,7 +272,8 @@ export interface StepExecutorContext {
   readonly budgets: ExecutorBudgets;
   /**
    * Captures one fresh, redacted observation. The text serialization is always
-   * present; masked pixels are opt-in.
+   * present; the tree and pixels are opt-in, so an executor that renders its
+   * own view of the screen asks for exactly the material it uses.
    */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
