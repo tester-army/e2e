@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunOptions } from '../../src/run/runner.ts';
 
@@ -9,6 +11,10 @@ vi.mock('../../src/run/runner.ts', () => ({
 
 const { main } = await import('../../src/cli/index.ts');
 
+const { version: packageVersion } = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 function lastRunOptions(): RunOptions {
   expect(runMock).toHaveBeenCalledTimes(1);
   return runMock.mock.calls[0]?.[0] as RunOptions;
@@ -19,16 +25,24 @@ async function invoke(...args: string[]): Promise<void> {
 }
 
 let stderrSpy: ReturnType<typeof vi.spyOn>;
+let stdoutSpy: ReturnType<typeof vi.spyOn>;
+
+/** Everything written to a stream so far, with any color stripped. */
+function written(spy: ReturnType<typeof vi.spyOn>): string {
+  return stripVTControlCharacters(spy.mock.calls.map((call: readonly unknown[]) => String(call[0])).join(''));
+}
 
 beforeEach(() => {
   runMock.mockReset();
   runMock.mockResolvedValue({ exitCode: 0 });
   process.exitCode = undefined;
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 });
 
 afterEach(() => {
   stderrSpy.mockRestore();
+  stdoutSpy.mockRestore();
   process.exitCode = undefined;
 });
 
@@ -67,7 +81,9 @@ describe('e2e run argument parsing', () => {
     await invoke('run', '--tag-mode', 'sometimes');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(String(stderrSpy.mock.calls[0]?.[0])).toContain('invalid --tag-mode');
+    expect(written(stderrSpy)).toBe(
+      "error: option '--tag-mode <mode>' argument 'sometimes' is invalid. Allowed choices are any, all.\n(add --help for usage)\n",
+    );
   });
 
   it('parses reporters and rejects unknown reporters with exit code 2', async () => {
@@ -76,10 +92,12 @@ describe('e2e run argument parsing', () => {
 
     runMock.mockClear();
     process.exitCode = undefined;
-    await invoke('run', '--reporter', 'teamcity');
+    await invoke('run', '--reporter', 'list,teamcity');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-    expect(String(stderrSpy.mock.calls.at(-1)?.[0])).toContain('unknown reporter "teamcity"');
+    expect(written(stderrSpy)).toBe(
+      "error: option '--reporter <ids>' argument 'list,teamcity' is invalid. unknown reporter \"teamcity\"; expected list, json, junit\n(add --help for usage)\n",
+    );
   });
 
   it('accepts the junit reporter alone and beside list or json', async () => {
@@ -98,21 +116,18 @@ describe('e2e run argument parsing', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('exits 2 on an unknown option or command without running, and 0 on --help', async () => {
+  it('exits 2 on an unknown option or command without running, pointing at --help', async () => {
     await invoke('run', '--nope');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toBe("error: unknown option '--nope'\n(add --help for usage)\n");
 
     process.exitCode = undefined;
+    stderrSpy.mockClear();
     await invoke('frobnicate');
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
-
-    process.exitCode = undefined;
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await invoke('--help');
-    stdoutSpy.mockRestore();
-    expect(process.exitCode).toBe(0);
+    expect(written(stderrSpy)).toBe("error: unknown command 'frobnicate'\n(add --help for usage)\n");
   });
 
   it('parses numeric --retries and --workers', async () => {
@@ -162,5 +177,103 @@ describe('e2e run argument parsing', () => {
   it('maps unexpected parse failures to exit code 2', async () => {
     await invoke('definitely-not-a-command');
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('e2e --version and --help', () => {
+  it('prints the package version alone and exits 0', async () => {
+    for (const flag of ['--version', '-v']) {
+      process.exitCode = undefined;
+      stdoutSpy.mockClear();
+      await invoke(flag);
+      expect(written(stdoutSpy)).toBe(`${packageVersion}\n`);
+      expect(process.exitCode).toBe(0);
+    }
+    expect(runMock).not.toHaveBeenCalled();
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it('opens the help with the version, lists both commands with examples, and exits 0', async () => {
+    await invoke('--help');
+    const help = written(stdoutSpy);
+    expect(help.startsWith(`e2e v${packageVersion} · local-first agentic end-to-end testing\n`)).toBe(true);
+    expect(help).toContain('Usage: e2e <command> [options]');
+    expect(help).toMatch(/^ {2}init \[options\] {2,}scaffold/mu);
+    expect(help).toMatch(/^ {2}run \[options\] \[files\.\.\.\] {2,}run the tests$/mu);
+    expect(help).toMatch(/^ {2}help \[command\] {2,}show help for a command$/mu);
+    expect(help).toMatch(/^ {2}-v, --version {2,}print the version$/mu);
+    expect(help).toMatch(/^ {2}-h, --help {2,}show help$/mu);
+    expect(help).toContain('Examples:\n  $ e2e init\n  $ e2e run\n');
+    expect(help).toContain('Run e2e <command> --help for the flags of one command.');
+    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com\n');
+    expect(process.exitCode).toBe(0);
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('groups the run flags, then lists examples and the exit codes', async () => {
+    await invoke('run', '--help');
+    const help = written(stdoutSpy);
+    expect(help).toContain('Usage: e2e run [options] [files...]');
+    // Every flag the action reads is documented, under its group, in this order.
+    const headings = [...help.matchAll(/^(\S[^\n]*):$/gmu)].map((match) => match[1]);
+    expect(headings).toEqual(['Arguments', 'Selection', 'Execution', 'Output', 'Options', 'Examples', 'Exit codes']);
+    const flags = [...help.matchAll(/^ {2}(-{1,2}[a-z-]+)/gmu)].map((match) => match[1]);
+    expect(flags).toEqual([
+      '--config',
+      '--target',
+      '--tag',
+      '--tag-mode',
+      '--pass-with-no-tests',
+      '--headed',
+      '--workers',
+      '--retries',
+      '--no-cache',
+      '--reporter',
+      '--artifacts',
+      '--debug',
+      '--ai-trace',
+      '-h',
+    ]);
+    // Commander wraps at the help width, so the choices may span two lines.
+    expect(help).toMatch(/\(choices: "any", "all",\s+default: "any"\)/u);
+    expect(help).toContain("  $ e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke\n");
+    expect(help).toMatch(/^Exit codes:\n {2}0 {4}every selected test passed/mu);
+    expect(help).toMatch(/^ {2}130 {2}interrupted/mu);
+    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#exit-codes\n');
+    expect(process.exitCode).toBe(0);
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('answers -h and help <command> with the same text as --help', async () => {
+    await invoke('run', '--help');
+    const expected = written(stdoutSpy);
+    for (const args of [['run', '-h'], ['help', 'run']]) {
+      process.exitCode = undefined;
+      stdoutSpy.mockClear();
+      await invoke(...args);
+      expect(written(stdoutSpy)).toBe(expected);
+      expect(process.exitCode).toBe(0);
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('describes init and its one flag', async () => {
+    await invoke('init', '--help');
+    const help = written(stdoutSpy);
+    expect(help).toContain('Usage: e2e init [options]');
+    expect(help).toContain('without touching existing files');
+    expect(help).toMatch(/^ {2}-y, --yes {2,}skip the prompts: AI on, no engine, no installation$/mu);
+    expect(help).toContain('  $ e2e init --yes\n');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('prints the help on stderr and exits 2 when no command is given', async () => {
+    await invoke();
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    const help = written(stderrSpy);
+    expect(help).toContain('Usage: e2e <command> [options]');
+    expect(help).toContain('Examples:');
+    expect(process.exitCode).toBe(2);
+    expect(runMock).not.toHaveBeenCalled();
   });
 });
