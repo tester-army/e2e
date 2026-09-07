@@ -7,13 +7,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import picocolors from 'picocolors';
-import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
+import { bounded, terminalColumns, type Colors } from './format.ts';
 
-/** A picocolors instance; the reporter decides whether it emits color. */
-export type Colors = ReturnType<typeof picocolors.createColors>;
-
-const MAX_FIELD_BYTES = 8192;
 /** Lines of context on each side of the failing line. */
 const FRAME_RANGE = 2;
 /** A source line longer than this is minified output; the frame would be noise. */
@@ -60,7 +55,7 @@ export function userFrame(
  * Renders the failing line with two lines of context on each side and a
  * column caret, gutter-numbered like vitest (`  28| code`).
  */
-export function codeFrame(frame: StackFrame, pc: Colors = picocolors): string[] {
+export function codeFrame(frame: StackFrame, pc: Colors): string[] {
   let source: string;
   try {
     source = readFileSync(frame.file, 'utf8');
@@ -72,11 +67,11 @@ export function codeFrame(frame: StackFrame, pc: Colors = picocolors): string[] 
   if (index < 0 || index >= lines.length) return [];
   const start = Math.max(0, index - FRAME_RANGE);
   const end = Math.min(lines.length - 1, index + FRAME_RANGE);
-  const maxChars = Math.max(20, (process.stdout.columns || 80) - 10);
+  const maxChars = Math.max(20, terminalColumns() - 10);
   const gutter = (no: number | '' = ''): string => pc.gray(`${String(no).padStart(3)}|`);
   const rows: string[] = [];
   for (let i = start; i <= end; i += 1) {
-    const raw = truncateUtf8(sanitizeText(lines[i] ?? ''), MAX_FIELD_BYTES).replaceAll('\t', ' ');
+    const raw = bounded(lines[i] ?? '').replaceAll('\t', ' ');
     if (raw.length > MAX_FRAME_LINE_CHARS) return [];
     const text = raw.length > maxChars ? `${raw.slice(0, maxChars - 1)}…` : raw.trimEnd();
     rows.push(`${gutter(i + 1)}${text === '' ? '' : ` ${text}`}`);

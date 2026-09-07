@@ -6,18 +6,40 @@
  */
 
 import path from 'node:path';
-import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8, type SerializedError } from '../internal/errors.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import { collapseText } from '../internal/text.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../run/events.ts';
 import type { ResultStatus, SerialGroupRecord } from '../run/records.ts';
-import type { StepEvent, StepRecord } from '../run/steps.ts';
-import { codeFrame, userFrame, type Colors } from './code-frame.ts';
+import type { StepEvent } from '../run/steps.ts';
+import { codeFrame, userFrame } from './code-frame.ts';
+import {
+  addStepsUsage,
+  addUsage,
+  aiSegment,
+  bounded,
+  ellipsize,
+  emptyCounters,
+  emptyUsage,
+  fileOutcome,
+  formatClock,
+  formatTime,
+  formatTokens,
+  padTitle,
+  resultUsage,
+  rule,
+  stateString,
+  statusBucket,
+  sumUsage,
+  tally,
+  terminalColumns,
+  terminalRows,
+  type AiUsage,
+  type Colors,
+  type Counters,
+} from './format.ts';
 import { LiveWindow } from './live-window.ts';
-
-const MAX_FIELD_BYTES = 8192;
 
 /** Step labels stay one glanceable line; the report holds the full text. */
 const MAX_STEP_LABEL_BYTES = 72;
@@ -28,12 +50,24 @@ const F_CROSS = '×';
 const F_DOWN = '↓';
 const F_RIGHT = '→';
 const F_DOWN_RIGHT = '↳';
-const F_LONG_DASH = '⎯';
 const F_TREE_MIDDLE = '├──';
 const F_TREE_END = '└──';
 
 /** Indentation under a badge line, matching vitest's banner padding. */
 const BADGE_PADDING = '      ';
+
+/** Badge backgrounds, assigned to targets in declaration order. */
+const BADGE_COLORS = ['bgYellow', 'bgCyan', 'bgGreen', 'bgMagenta'] as const;
+
+/**
+ * Rows the live window spends outside the running tests and the summary: its
+ * blank lines, the `… more running` marker, and a margin above the prompt.
+ */
+const WINDOW_CHROME_ROWS = 6;
+/** Rows one running test takes before its calls: the test line and its current step. */
+const WINDOW_ROWS_PER_TEST = 2;
+/** Indentation of the `→ first error line` under a failed test in a file block. */
+const ERROR_GLANCE_INDENT = 7;
 
 export interface ListReporterOutput {
   write(line: string): void;
@@ -48,138 +82,11 @@ export interface ListReporterOptions {
   colors?: boolean;
 }
 
-function bounded(text: string): string {
-  return truncateUtf8(sanitizeText(text), MAX_FIELD_BYTES);
-}
-
 /** One-line, quoted step label bounded for the live view. */
 function stepLabel(label: string): string {
   const flat = collapseText(label);
   const shown = truncateUtf8(flat, MAX_STEP_LABEL_BYTES);
   return `"${shown}${shown === flat ? '' : '…'}"`;
-}
-
-/** vitest's duration format: whole milliseconds under a second, two decimals above. */
-function formatTime(ms: number): string {
-  return ms > 1_000 ? `${(ms / 1_000).toFixed(2)}s` : `${Math.round(ms)}ms`;
-}
-
-/** Wall-clock `HH:MM:SS` for the summary's `Start at` row. */
-function formatClock(date: Date): string {
-  return date.toTimeString().split(' ')[0] ?? '';
-}
-
-/** Compact token count: plain under a thousand, `12.4k`, then `4.2M`. */
-function formatTokens(count: number): string {
-  if (count < 1_000) return `${count}`;
-  if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}k`;
-  return `${(count / 1_000_000).toFixed(1)}M`;
-}
-
-/** USD with enough precision for sub-cent model calls. */
-function formatCost(costUsd: number): string {
-  return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`;
-}
-
-function terminalColumns(): number {
-  return process.stdout.columns || 80;
-}
-
-/** One padded summary title, right-aligned like vitest's `Test Files` column. */
-function padTitle(pc: Colors, title: string): string {
-  return pc.dim(`${title.padStart(11)}  `);
-}
-
-/**
- * A full-width rule with optional centered (or right-anchored) text. `right`
- * fixes the dash count after the text, as vitest does for `[1/3]` markers.
- */
-function divider(text: string, color: (text: string) => string, right?: number): string {
-  const columns = terminalColumns();
-  const width = stripVTControlCharacters(text).length;
-  let left: number;
-  let after: number;
-  if (right === undefined) {
-    left = Math.max(0, Math.floor((columns - width) / 2));
-    after = Math.max(0, columns - width - left);
-  } else {
-    after = right;
-    left = Math.max(0, columns - width - right);
-  }
-  return `${color(F_LONG_DASH.repeat(left))}${text}${color(F_LONG_DASH.repeat(after))}`;
-}
-
-function errorBanner(pc: Colors, message: string): string {
-  return divider(pc.bold(pc.bgRed(` ${message} `)), pc.red);
-}
-
-interface Counters {
-  passed: number;
-  failed: number;
-  flaky: number;
-  skipped: number;
-  total: number;
-}
-
-function emptyCounters(): Counters {
-  return { passed: 0, failed: 0, flaky: 0, skipped: 0, total: 0 };
-}
-
-/** `2 failed | 10 passed | 1 flaky (13)` in vitest's colors and order. */
-function stateString(pc: Colors, counters: Counters): string {
-  const parts = [
-    counters.failed > 0 ? pc.bold(pc.red(`${counters.failed} failed`)) : undefined,
-    pc.bold(pc.green(`${counters.passed} passed`)),
-    counters.flaky > 0 ? pc.yellow(`${counters.flaky} flaky`) : undefined,
-    counters.skipped > 0 ? pc.gray(`${counters.skipped} skipped`) : undefined,
-  ].filter((part) => part !== undefined);
-  return `${parts.join(pc.dim(' | '))}${pc.gray(` (${counters.total})`)}`;
-}
-
-interface AiUsage {
-  calls: number;
-  tokens: number;
-  costUsd: number | undefined;
-}
-
-function emptyUsage(): AiUsage {
-  return { calls: 0, tokens: 0, costUsd: undefined };
-}
-
-/** Accumulates the model usage of one step list into a running total. */
-function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
-  for (const step of steps) {
-    if (step.model === undefined) continue;
-    usage.calls += step.model.calls;
-    usage.tokens += step.model.inputTokens + step.model.outputTokens;
-    if (step.model.estimatedCostUsd !== undefined) {
-      usage.costUsd = (usage.costUsd ?? 0) + step.model.estimatedCostUsd;
-    }
-  }
-}
-
-function addUsage(into: AiUsage, usage: AiUsage): void {
-  into.calls += usage.calls;
-  into.tokens += usage.tokens;
-  if (usage.costUsd !== undefined) into.costUsd = (into.costUsd ?? 0) + usage.costUsd;
-}
-
-/**
- * Sums model usage across every step of every attempt of one result. Serial
- * members carry no attempts of their own; their usage arrives once per group
- * through the `serial-group` event.
- */
-function resultUsage(result: RunEventResult): AiUsage {
-  const usage = emptyUsage();
-  for (const attempt of result.attempts) addStepsUsage(usage, attempt.steps);
-  return usage;
-}
-
-/** One dim `ai …` segment, or undefined when no model was used. */
-function aiSegment(usage: AiUsage): string | undefined {
-  if (usage.calls === 0) return undefined;
-  const cost = usage.costUsd === undefined ? '' : ` · ${formatCost(usage.costUsd)}`;
-  return `ai ${formatTokens(usage.tokens)} tokens${cost}`;
 }
 
 /**
@@ -201,8 +108,14 @@ function eventTail(event: StepEvent): string | undefined {
   return undefined;
 }
 
+/** The identity of one test-target pair across `test-started`, `step`, and `test-finished`. */
+function pairKey(testId: string, target: string): string {
+  return `${testId}@${target}`;
+}
+
 /** A pair that is executing right now, shown in the live window. */
 interface RunningTest {
+  readonly group: FileGroup;
   readonly title: string;
   readonly startedMs: number;
   /** Current step, `api "label"`, while one is executing. */
@@ -220,14 +133,17 @@ interface TestLine {
   readonly declarationIndex: number;
   readonly status: ResultStatus;
   readonly durationMs: number;
-  readonly ai: string | undefined;
+  readonly usage: AiUsage;
   readonly firstErrorLine: string | undefined;
   readonly skipReason: string | undefined;
+  /** The pair streamed its steps permanently, so its file lists every test. */
+  readonly streamed: boolean;
 }
 
 /**
  * Every pair of one test file on one target: vitest's "test module". Its
  * block prints once all planned results are in, so files never interleave.
+ * Counts, durations, and usage derive from `lines`, so there is one source.
  */
 interface FileGroup {
   readonly file: string;
@@ -235,26 +151,21 @@ interface FileGroup {
   /** Reportable pairs the plan announced; undefined until the plan arrives. */
   planned: number | undefined;
   readonly lines: TestLine[];
-  readonly running: Map<string, RunningTest>;
-  /** A pair of this file streamed its steps permanently, so list every test. */
-  streamed: boolean;
   printed: boolean;
-  durationMs: number;
-  readonly usage: AiUsage;
 }
 
+/** One failed pair, held for the `Failed Tests` section. */
 interface Failure {
   readonly group: FileGroup;
-  readonly result: RunEventResult;
+  readonly title: string;
+  readonly status: ResultStatus;
+  readonly error: SerializedError | undefined;
 }
 
 const DEFAULT_OUTPUT: ListReporterOutput = {
   write: (line) => process.stdout.write(`${line}\n`),
   raw: (text) => process.stdout.write(text),
 };
-
-/** Badge backgrounds, assigned to targets in declaration order. */
-const BADGE_COLORS = ['bgYellow', 'bgCyan', 'bgGreen', 'bgMagenta'] as const;
 
 /**
  * Renders the run's event stream as the CLI's human-readable output. The
@@ -264,15 +175,16 @@ const BADGE_COLORS = ['bgYellow', 'bgCyan', 'bgGreen', 'bgMagenta'] as const;
 export class ListReporter {
   private readonly pc: Colors;
   private readonly window: LiveWindow;
+  private readonly separator: string;
   private projectRoot: string | undefined;
   /** Selected targets in declaration order; decides each badge's color. */
   private targets: readonly string[] = [];
-  private readonly startedMs = Date.now();
-  private startClock = formatClock(new Date());
-  /** File groups keyed `${target}\0${file}`, in first-seen order. */
+  /** When the run began: the summary's `Start at` and the origin of `Duration`. */
+  private startedAt = new Date();
+  /** File groups keyed `${target}\u0000${file}`, in first-seen order. */
   private readonly groups = new Map<string, FileGroup>();
-  private readonly files = emptyCounters();
-  private readonly tests = emptyCounters();
+  /** Pairs executing right now, keyed by `pairKey`, in start order. */
+  private readonly running = new Map<string, RunningTest>();
   private readonly failures: Failure[] = [];
   /** Run-level errors, printed once at the end; the stream carries them as they happen. */
   private readonly errors: SerializedError[] = [];
@@ -285,6 +197,7 @@ export class ListReporter {
   ) {
     const live = (options.live ?? process.stdout.isTTY === true) && output.raw !== undefined;
     this.pc = picocolors.createColors(options.colors ?? (live || picocolors.isColorSupported));
+    this.separator = this.pc.dim(' > ');
     this.window = new LiveWindow(live ? output.raw?.bind(output) : undefined, () => this.renderWindow());
   }
 
@@ -338,39 +251,23 @@ export class ListReporter {
   private badge(target: string): string {
     const name = bounded(target);
     if (!this.pc.isColorSupported) return `|${name}|`;
-    const index = this.targets.indexOf(target);
-    const hash = [...target].reduce((sum, char, i) => sum + char.charCodeAt(0) + i, 0);
-    const color = BADGE_COLORS[(index === -1 ? hash : index) % BADGE_COLORS.length]!;
+    const index = Math.max(0, this.targets.indexOf(target));
+    const color = BADGE_COLORS[index % BADGE_COLORS.length]!;
     return this.pc.black(this.pc[color](` ${name} `));
   }
 
   /** A path relative to the project root when inside it, else as given. */
   private displayPath(target: string): string {
-    if (this.projectRoot !== undefined && target.startsWith(`${this.projectRoot}${path.sep}`)) {
-      return path.relative(this.projectRoot, target);
-    }
-    return target;
-  }
-
-  private separator(): string {
-    return this.pc.dim(' > ');
+    const inside =
+      this.projectRoot !== undefined && target.startsWith(`${this.projectRoot}${path.sep}`);
+    return bounded(inside ? path.relative(this.projectRoot!, target) : target);
   }
 
   private group(file: string, target: string): FileGroup {
-    const key = `${target} ${file}`;
+    const key = `${target}\u0000${file}`;
     let group = this.groups.get(key);
     if (group === undefined) {
-      group = {
-        file,
-        target,
-        planned: undefined,
-        lines: [],
-        running: new Map(),
-        streamed: false,
-        printed: false,
-        durationMs: 0,
-        usage: emptyUsage(),
-      };
+      group = { file, target, planned: undefined, lines: [], printed: false };
       this.groups.set(key, group);
     }
     return group;
@@ -380,7 +277,7 @@ export class ListReporter {
     const { pc } = this;
     this.projectRoot = event.projectRoot;
     this.targets = event.targets;
-    this.startClock = formatClock(new Date());
+    this.startedAt = new Date();
     const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
     this.output.write('');
     this.output.write(
@@ -395,11 +292,8 @@ export class ListReporter {
 
   private plan(event: RunEventOf<'plan'>): void {
     for (const planned of event.files) {
-      const group = this.group(planned.file, planned.target);
-      group.planned = planned.tests;
-      this.tests.total += planned.tests;
+      this.group(planned.file, planned.target).planned = planned.tests;
     }
-    this.files.total = event.files.length;
     this.window.redraw();
   }
 
@@ -416,8 +310,8 @@ export class ListReporter {
 
   /** A worker began one test-target pair: show it in the live window. */
   private testStarted(event: RunEventOf<'test-started'>): void {
-    const group = this.group(event.file, event.target);
-    group.running.set(event.testId, {
+    this.running.set(pairKey(event.testId, event.target), {
+      group: this.group(event.file, event.target),
       title: bounded(event.title),
       startedMs: Date.now(),
       step: undefined,
@@ -425,12 +319,6 @@ export class ListReporter {
       streaming: false,
     });
     this.window.redraw();
-  }
-
-  private runningCount(): number {
-    let count = 0;
-    for (const group of this.groups.values()) count += group.running.size;
-    return count;
   }
 
   /**
@@ -445,19 +333,18 @@ export class ListReporter {
    */
   private step(event: RunEventOf<'step'>): void {
     const { pc } = this;
-    const group = this.groups.get(`${event.target} ${this.fileOf(event.testId, event.target)}`);
-    const running = group?.running.get(event.testId);
-    if (group === undefined || running === undefined) return;
+    const running = this.running.get(pairKey(event.testId, event.target));
+    if (running === undefined) return;
     const { progress } = event;
     switch (progress.phase) {
       case 'start': {
         running.step = `${progress.api} ${stepLabel(progress.label)}`;
         running.events = [];
-        if (progress.kind === 'agent' && this.runningCount() === 1 && !running.streaming) {
+        if (progress.kind === 'agent' && this.running.size === 1 && !running.streaming) {
           running.streaming = true;
-          group.streamed = true;
+          const { group } = running;
           this.print(
-            ` ${pc.yellow(F_POINTER)} ${this.badge(group.target)} ${pc.dim(bounded(group.file))}${this.separator()}${running.title}`,
+            ` ${pc.yellow(F_POINTER)} ${this.badge(group.target)} ${pc.dim(bounded(group.file))}${this.separator}${running.title}`,
           );
         }
         this.window.redraw();
@@ -483,7 +370,7 @@ export class ListReporter {
             ? ` · ${progress.modelCalls} model call${progress.modelCalls === 1 ? '' : 's'}`
             : '';
         const outcome = progress.status === 'passed' ? '' : ` ${progress.status}`;
-        const context = running.streaming ? '' : `${pc.dim(running.title)}${this.separator()}`;
+        const context = running.streaming ? '' : `${pc.dim(running.title)}${this.separator}`;
         this.print(
           `   ${glyph} ${context}${pc.dim(progress.api)} ${stepLabel(progress.label)} ` +
             pc.dim(`${formatTime(progress.durationMs)}${calls}${outcome}`),
@@ -491,14 +378,6 @@ export class ListReporter {
         break;
       }
     }
-  }
-
-  /** The file of a running pair; step events carry the test id and target only. */
-  private fileOf(testId: string, target: string): string | undefined {
-    for (const group of this.groups.values()) {
-      if (group.target === target && group.running.has(testId)) return group.file;
-    }
-    return undefined;
   }
 
   /**
@@ -516,40 +395,47 @@ export class ListReporter {
     // Unselected pairs are report-only: they never print and the plan never
     // counted them.
     if (!result.selected) return;
+    const key = pairKey(result.test.id, result.target.name);
+    const streamed = this.running.get(key)?.streaming ?? false;
+    this.running.delete(key);
     const group = this.group(result.test.file, result.target.name);
-    group.running.delete(result.test.id);
     const usage = resultUsage(result);
     addUsage(this.runUsage, usage);
-    addUsage(group.usage, usage);
-    const durationMs = result.attempts.reduce((total, attempt) => total + attempt.durationMs, 0);
-    group.durationMs += durationMs;
+    const title = bounded(result.test.titlePath.join(' > '));
     const error = result.attempts[result.attempts.length - 1]?.error;
     group.lines.push({
-      title: bounded(result.test.titlePath.join(' > ')),
-      declarationIndex: result.test.declarationIndex ?? 0,
+      title,
+      declarationIndex: result.test.declarationIndex,
       status: result.status,
-      durationMs,
-      ai: aiSegment(usage),
+      durationMs: result.attempts.reduce((total, attempt) => total + attempt.durationMs, 0),
+      usage,
       firstErrorLine: error === undefined ? undefined : bounded(error.message).split('\n')[0],
       skipReason: result.skip === undefined ? undefined : bounded(result.skip.reason),
+      streamed,
     });
-    switch (result.status) {
-      case 'passed':
-        this.tests.passed += 1;
-        break;
-      case 'flaky':
-        this.tests.flaky += 1;
-        break;
-      case 'skipped':
-        this.tests.skipped += 1;
-        break;
-      default:
-        this.tests.failed += 1;
-        this.failures.push({ group, result });
+    if (statusBucket(result.status) === 'failed') {
+      this.failures.push({ group, title, status: result.status, error });
     }
-    if (group.planned === undefined) this.tests.total += 1;
     if (group.planned !== undefined && group.lines.length >= group.planned) this.printGroup(group);
     this.window.redraw();
+  }
+
+  /** Counters over every reported result; the total is the plan's once it has arrived. */
+  private testCounters(): Counters {
+    const counters = tally([...this.groups.values()].flatMap((group) => group.lines));
+    counters.total = 0;
+    for (const group of this.groups.values()) counters.total += group.planned ?? group.lines.length;
+    return counters;
+  }
+
+  /** Counters over test files; a file lands in an outcome once its block has printed. */
+  private fileCounters(): Counters {
+    const counters = emptyCounters();
+    for (const group of this.groups.values()) {
+      counters.total += 1;
+      if (group.printed) counters[fileOutcome(tally(group.lines))] += 1;
+    }
+    return counters;
   }
 
   /**
@@ -561,27 +447,14 @@ export class ListReporter {
     if (group.printed) return;
     group.printed = true;
     const { pc } = this;
-    const counts = emptyCounters();
-    for (const line of group.lines) {
-      counts.total += 1;
-      if (line.status === 'passed') counts.passed += 1;
-      else if (line.status === 'flaky') counts.flaky += 1;
-      else if (line.status === 'skipped') counts.skipped += 1;
-      else counts.failed += 1;
-    }
-    if (group.planned === undefined) this.files.total += 1;
-    const allSkipped = counts.skipped === counts.total && counts.total > 0;
-    let symbol: string;
-    if (counts.failed > 0) {
-      this.files.failed += 1;
-      symbol = pc.red(F_POINTER);
-    } else if (allSkipped) {
-      this.files.skipped += 1;
-      symbol = pc.dim(pc.gray(F_DOWN));
-    } else {
-      this.files.passed += 1;
-      symbol = pc.green(F_CHECK);
-    }
+    const counts = tally(group.lines);
+    const outcome = fileOutcome(counts);
+    const symbol =
+      outcome === 'failed'
+        ? pc.red(F_POINTER)
+        : outcome === 'skipped'
+          ? pc.dim(pc.gray(F_DOWN))
+          : pc.green(F_CHECK);
     const state = [
       pc.dim(`${counts.total} test${counts.total === 1 ? '' : 's'}`),
       counts.failed > 0 ? pc.red(`${counts.failed} failed`) : undefined,
@@ -590,16 +463,21 @@ export class ListReporter {
     ]
       .filter((part) => part !== undefined)
       .join(pc.dim(' | '));
-    const ai = aiSegment(group.usage);
+    const durationMs = group.lines.reduce((total, line) => total + line.durationMs, 0);
+    const ai = aiSegment(sumUsage(group.lines));
     const parts = [
       ` ${symbol} ${this.badge(group.target)} ${bounded(group.file)}`,
       `${pc.dim('(')}${state}${pc.dim(')')}`,
-      pc.dim(formatTime(group.durationMs)),
     ];
+    // A file whose tests all skipped never ran; `0ms` would only invite a question.
+    if (durationMs > 0) parts.push(pc.dim(formatTime(durationMs)));
     if (ai !== undefined) parts.push(pc.dim(ai));
     this.print(parts.join(' '));
     const verbose =
-      counts.failed > 0 || counts.flaky > 0 || group.streamed || this.groups.size === 1;
+      counts.failed > 0 ||
+      counts.flaky > 0 ||
+      group.lines.some((line) => line.streamed) ||
+      this.groups.size === 1;
     if (!verbose) return;
     const ordered = group.lines.toSorted((a, b) => a.declarationIndex - b.declarationIndex);
     for (const line of ordered) {
@@ -611,7 +489,8 @@ export class ListReporter {
   private testLine(line: TestLine): string[] {
     const { pc } = this;
     const duration = pc.dim(formatTime(line.durationMs));
-    const ai = line.ai === undefined ? '' : ` ${pc.dim(line.ai)}`;
+    const segment = aiSegment(line.usage);
+    const ai = segment === undefined ? '' : ` ${pc.dim(segment)}`;
     switch (line.status) {
       case 'passed':
         return [`   ${pc.green(F_CHECK)} ${line.title} ${duration}${ai}`];
@@ -629,52 +508,96 @@ export class ListReporter {
         const status = line.status === 'failed' ? '' : pc.red(` (${line.status})`);
         const rows = [`   ${pc.red(`${F_CROSS} ${line.title}`)}${status} ${duration}${ai}`];
         if (line.firstErrorLine !== undefined) {
-          rows.push(`     ${pc.red(`${F_RIGHT} ${line.firstErrorLine}`)}`);
+          // A glance line; the `Failed Tests` section carries the whole message.
+          const glance = ellipsize(line.firstErrorLine, terminalColumns() - ERROR_GLANCE_INDENT);
+          rows.push(`     ${pc.red(`${F_RIGHT} ${glance}`)}`);
         }
         return rows;
       }
     }
   }
 
-  /** The live window: running files and tests, then the counters. */
+  /**
+   * vitest's padded summary, shared by the live window and the final report:
+   * files, tests, model usage, run errors, start time, and elapsed time.
+   */
+  private summaryRows(): string[] {
+    const { pc } = this;
+    const files = this.fileCounters();
+    const tests = this.testCounters();
+    const rows = [
+      padTitle(pc, 'Test Files') + (files.total === 0 ? pc.dim('no test files') : stateString(pc, files)),
+      padTitle(pc, 'Tests') + (tests.total === 0 ? pc.dim('no tests executed') : stateString(pc, tests)),
+    ];
+    const ai = aiSegment(this.runUsage);
+    if (ai !== undefined) rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls`);
+    if (this.errors.length > 0) {
+      const count = this.errors.length;
+      rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));
+    }
+    rows.push(padTitle(pc, 'Start at') + formatClock(this.startedAt));
+    rows.push(padTitle(pc, 'Duration') + formatTime(Date.now() - this.startedAt.getTime()));
+    return rows;
+  }
+
+  /**
+   * The live window: running files and tests, then the summary. The block
+   * must fit the screen, because repainting more rows than the terminal has
+   * breaks the cursor-up erase: rows left after the summary go to the running
+   * tests, each test's calls share what remains once every test has its own
+   * line, and tests that still do not fit fold into one `more running` marker.
+   */
   private renderWindow(): string[] {
     const { pc } = this;
     const now = Date.now();
+    const active = new Map<FileGroup, RunningTest[]>();
+    for (const test of this.running.values()) {
+      const tests = active.get(test.group);
+      if (tests === undefined) active.set(test.group, [test]);
+      else tests.push(test);
+    }
+    const summary = this.summaryRows();
+    let budget = terminalRows() - summary.length - WINDOW_CHROME_ROWS;
+    const spare = budget - active.size - this.running.size * WINDOW_ROWS_PER_TEST;
+    const maxEvents = Math.max(0, Math.floor(spare / Math.max(1, this.running.size)));
     const lines = [''];
-    const active = [...this.groups.values()].filter((group) => group.running.size > 0);
-    const runningTotal = active.reduce((sum, group) => sum + group.running.size, 0);
-    // The block must fit the screen: repainting more rows than the terminal
-    // has breaks the cursor-up erase, so each test gets a share of the rows
-    // left after the fixed lines and the oldest calls fold into a counter.
-    const spare = (process.stdout.rows ?? 40) - 12 - active.length - runningTotal * 2;
-    const maxEvents = Math.max(1, Math.floor(spare / Math.max(1, runningTotal)));
-    for (const group of active) {
+    let hidden = 0;
+    for (const [group, tests] of active) {
+      if (budget < 2) {
+        hidden += tests.length;
+        continue;
+      }
       const progress = pc.dim(` ${group.lines.length}/${group.planned ?? '?'}`);
       lines.push(
         `${pc.bold(pc.yellow(` ${F_POINTER} `))}${this.badge(group.target)} ${bounded(group.file)}${progress}`,
       );
-      const running = [...group.running.values()];
-      running.forEach((test, index) => {
-        const glyph = index === running.length - 1 ? F_TREE_END : F_TREE_MIDDLE;
+      budget -= 1;
+      tests.forEach((test, index) => {
+        if (budget < 1) {
+          hidden += 1;
+          return;
+        }
+        const glyph = index === tests.length - 1 ? F_TREE_END : F_TREE_MIDDLE;
         const elapsed = pc.bold(pc.yellow(formatTime(Math.max(0, now - test.startedMs))));
         lines.push(`${pc.bold(pc.yellow(`   ${glyph} `))}${test.title} ${elapsed}`);
+        budget -= 1;
         if (test.step === undefined) return;
-        lines.push(`       ${pc.dim(`${F_DOWN_RIGHT} ${test.step}`)}`);
+        const detail = [`       ${pc.dim(`${F_DOWN_RIGHT} ${test.step}`)}`];
         const overflow = test.events.length - maxEvents;
         if (overflow > 0) {
-          lines.push(`         ${pc.dim(`… ${overflow} earlier call${overflow === 1 ? '' : 's'}`)}`);
+          detail.push(`         ${pc.dim(`… ${overflow} earlier call${overflow === 1 ? '' : 's'}`)}`);
         }
         for (const tail of overflow > 0 ? test.events.slice(overflow) : test.events) {
-          lines.push(`         ${pc.dim(tail)}`);
+          detail.push(`         ${pc.dim(tail)}`);
         }
+        const shown = detail.slice(0, budget);
+        lines.push(...shown);
+        budget -= shown.length;
       });
     }
-    if (active.length > 0) lines.push('');
-    lines.push(padTitle(pc, 'Test Files') + stateString(pc, this.files));
-    lines.push(padTitle(pc, 'Tests') + stateString(pc, this.tests));
-    lines.push(padTitle(pc, 'Start at') + this.startClock);
-    lines.push(padTitle(pc, 'Duration') + formatTime(now - this.startedMs));
-    lines.push('');
+    if (hidden > 0) lines.push(pc.dim(`   … ${hidden} more running`));
+    if (active.size > 0) lines.push('');
+    lines.push(...summary, '');
     return lines;
   }
 
@@ -683,26 +606,34 @@ export class ListReporter {
     const { pc } = this;
     if (this.failures.length === 0) return;
     this.print('');
-    this.print(errorBanner(pc, `Failed Tests ${this.failures.length}`));
+    this.print(this.errorBanner(`Failed Tests ${this.failures.length}`));
     this.print('');
-    this.failures.forEach(({ group, result }, index) => {
-      const title = bounded(result.test.titlePath.join(' > '));
+    this.failures.forEach(({ group, title, status, error }, index) => {
       this.print(
-        `${pc.bold(pc.bgRed(' FAIL '))} ${this.badge(group.target)} ${bounded(group.file)}${this.separator()}${title}`,
+        `${pc.bold(pc.bgRed(' FAIL '))} ${this.badge(group.target)} ${bounded(group.file)}${this.separator}${title}`,
       );
-      const error = result.attempts[result.attempts.length - 1]?.error;
       if (error === undefined) {
-        this.print(pc.red(`${pc.bold(result.status)}: no error was recorded`));
+        this.print(pc.red(`${pc.bold(status)}: no error was recorded`));
       } else {
         const [first = '', ...rest] = bounded(error.message).split('\n');
-        this.print(pc.red(`${pc.bold(error.code)}: ${first}`));
+        this.print(pc.red(`${pc.bold(bounded(error.code))}: ${first}`));
         for (const line of rest) this.print(pc.red(line));
         this.printFailureLocation(error.stack);
       }
+      const marker = `[${index + 1}/${this.failures.length}]`;
+      const { before, after } = rule(marker, 'right');
       this.print('');
-      this.print(pc.red(pc.dim(divider(`[${index + 1}/${this.failures.length}]`, (t) => t, 1))));
+      this.print(pc.red(pc.dim(`${before}${marker}${after}`)));
       this.print('');
     });
+  }
+
+  /** A full-width red rule with a centered `FAIL`-style label. */
+  private errorBanner(message: string): string {
+    const { pc } = this;
+    const label = pc.bold(pc.bgRed(` ${message} `));
+    const { before, after } = rule(label, 'center');
+    return `${pc.red(before)}${label}${pc.red(after)}`;
   }
 
   /** Names the user's failing line and renders a code frame around it. */
@@ -725,12 +656,12 @@ export class ListReporter {
     const { pc } = this;
     if (this.errors.length === 0) return;
     this.print('');
-    this.print(errorBanner(pc, `Run Errors ${this.errors.length}`));
+    this.print(this.errorBanner(`Run Errors ${this.errors.length}`));
     this.print('');
     for (const error of this.errors) {
-      const phase = error.phase === undefined ? '' : pc.dim(` (${error.phase})`);
+      const phase = error.phase === undefined ? '' : pc.dim(` (${bounded(error.phase)})`);
       this.print(
-        `${pc.bold(pc.bgRed(' ERROR '))} ${error.category} error ${pc.dim(error.code)}${phase}`,
+        `${pc.bold(pc.bgRed(' ERROR '))} ${bounded(error.category)} error ${pc.dim(bounded(error.code))}${phase}`,
       );
       for (const line of bounded(error.message).split('\n')) this.print(pc.red(line));
       this.print('');
@@ -747,40 +678,19 @@ export class ListReporter {
     }
     this.printFailures();
     this.printErrors();
-    const ai = aiSegment(this.runUsage);
-    this.output.write('');
-    this.output.write(
-      padTitle(pc, 'Test Files') +
-        (this.files.total === 0 ? pc.dim('no test files') : stateString(pc, this.files)),
-    );
-    this.output.write(
-      padTitle(pc, 'Tests') +
-        (this.tests.total === 0 ? pc.dim('no tests executed') : stateString(pc, this.tests)),
-    );
-    if (ai !== undefined) {
-      this.output.write(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls`);
-    }
-    if (this.errors.length > 0) {
-      const count = this.errors.length;
-      this.output.write(
-        padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)),
-      );
-    }
-    this.output.write(padTitle(pc, 'Start at') + this.startClock);
-    this.output.write(padTitle(pc, 'Duration') + formatTime(Date.now() - this.startedMs));
-    this.output.write(
+    this.print('');
+    for (const row of this.summaryRows()) this.print(row);
+    this.print(
       padTitle(pc, 'Report') +
         (event.reportPath === undefined ? pc.dim('(not written)') : this.displayPath(event.reportPath)),
     );
     if (event.junitPath !== undefined) {
-      this.output.write(padTitle(pc, 'JUnit') + this.displayPath(event.junitPath));
+      this.print(padTitle(pc, 'JUnit') + this.displayPath(event.junitPath));
     }
     if (event.aiTracePath !== undefined) {
       const shown = this.displayPath(event.aiTracePath);
-      this.output.write(
-        padTitle(pc, 'AI trace') + `${shown} ${pc.dim(`(open with: npx unbox-ai ${shown})`)}`,
-      );
+      this.print(padTitle(pc, 'AI trace') + `${shown} ${pc.dim(`(open with: npx unbox-ai ${shown})`)}`);
     }
-    this.output.write('');
+    this.print('');
   }
 }

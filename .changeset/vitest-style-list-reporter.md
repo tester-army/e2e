@@ -10,7 +10,7 @@ flaky pass, streamed its steps, or is the run's only file. Failures move to a
 a vitest-style code frame, followed by a padded summary (`Test Files`,
 `Tests`, `AI`, `Start at`, `Duration`, `Report`). On a TTY a live window
 shows the running files and tests with elapsed times, the current step and
-its latest model or backend calls, and the running counters. Colors follow
+its latest model or engine calls, and the running counters. Colors follow
 picocolors' detection, so CI logs are colored too.
 
 For hosts on the event stream, `plan` now carries `files` (reportable pairs

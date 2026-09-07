@@ -5,6 +5,8 @@
  * control channel it is a no-op, so callers never branch.
  */
 
+import { terminalColumns, terminalRows } from './format.ts';
+
 const ESC = '\u001b';
 const REPAINT_INTERVAL_MS = 200;
 /** Synchronized-output markers: terminals that support them repaint atomically. */
@@ -70,9 +72,12 @@ export class LiveWindow {
   /** Repaints the block below the log; every line is clamped so the row count stays exact. */
   redraw(): void {
     if (this.raw === undefined || !this.active) return;
-    // A pty without a size reports 0 columns; treat it as unknown like undefined.
-    const columns = process.stdout.columns || 100;
-    const lines = this.getWindow();
+    const columns = terminalColumns();
+    const all = this.getWindow();
+    // Safety net under the reporter's own budget: a block taller than the
+    // screen breaks the cursor-up erase, so the top of it is dropped.
+    const maxRows = terminalRows() - 1;
+    const lines = all.length > maxRows ? all.slice(all.length - maxRows) : all;
     let payload = SYNC_START;
     if (this.rows > 0) payload += `${ESC}[${this.rows}A${ESC}[0J`;
     for (const line of lines) payload += `${clampToWidth(line, columns)}\n`;

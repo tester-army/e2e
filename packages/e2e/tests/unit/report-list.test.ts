@@ -38,6 +38,7 @@ function result(overrides: {
   title?: string[];
   id?: string;
   file?: string;
+  declarationIndex?: number;
   target?: string;
   selected?: boolean;
   attempts?: AttemptRecord[];
@@ -48,6 +49,7 @@ function result(overrides: {
       titlePath: overrides.title ?? ['suite', 'case'],
       id: overrides.id ?? 'test-1',
       file: overrides.file ?? 'tests/case.e2e.ts',
+      declarationIndex: overrides.declarationIndex ?? 0,
     },
     target: { name: overrides.target ?? 'chromium', platform: 'web' },
     status: overrides.status,
@@ -127,6 +129,19 @@ function failedAttempt(message: string, stack?: string): AttemptRecord {
 /** Reporter with colors off, so assertions read the plain text. */
 function plainReporter(output: { write(line: string): void; raw?(text: string): void }, live = false) {
   return new ListReporter(output, { live, colors: false });
+}
+
+/** Overrides the reported terminal size for one test; returns the restore function. */
+function withTerminalSize(size: { rows?: number; columns?: number }): () => void {
+  const saved = { rows: process.stdout.rows, columns: process.stdout.columns };
+  const set = (key: 'rows' | 'columns', value: number | undefined) =>
+    Object.defineProperty(process.stdout, key, { value, configurable: true, writable: true });
+  set('rows', size.rows);
+  set('columns', size.columns);
+  return () => {
+    set('rows', saved.rows);
+    set('columns', saved.columns);
+  };
 }
 
 describe('ListReporter', () => {
@@ -299,6 +314,35 @@ describe('ListReporter', () => {
       // First target yellow, second cyan: vitest's badge palette in declaration order.
       expect(blocks[1]).toContain('\u001b[43m');
       expect(blocks[0]).toContain('\u001b[46m');
+    });
+    it('omits the duration of a file whose tests never ran', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }, { file: 'tests/b.e2e.ts', tests: 1 }]));
+      reporter.handle(finished(result({ status: 'skipped', file: 'tests/a.e2e.ts', skipReason: 'wip', attempts: [] })));
+      expect(lines[0]).toBe(' ↓ |chromium| tests/a.e2e.ts (1 test | 1 skipped)');
+    });
+
+    it('clips the first error line to the terminal width; the failure section keeps it whole', () => {
+      const restore = withTerminalSize({ columns: 40 });
+      try {
+        const { lines, output } = capture();
+        const reporter = plainReporter(output);
+        reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+        reporter.handle(finished(result({
+          status: 'failed',
+          file: 'tests/a.e2e.ts',
+          title: ['long'],
+          attempts: [failedAttempt('e'.repeat(200))],
+        })));
+        const glance = lines.find((line) => line.includes('→'))!;
+        expect(glance.length).toBeLessThanOrEqual(40);
+        expect(glance.endsWith('…')).toBe(true);
+        reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+        expect(lines).toContain(`ASSERTION_FAILED: ${'e'.repeat(200)}`);
+      } finally {
+        restore();
+      }
     });
   });
 
@@ -703,6 +747,40 @@ describe('ListReporter', () => {
       reporter.handle(testStarted('t1', 'signs in', 'chromium'));
       expect(lines).toEqual([]);
     });
+    it('keeps the window within the terminal height and folds the tests that do not fit', () => {
+      const restore = withTerminalSize({ rows: 8, columns: 60 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 4 }]));
+        for (const id of ['a', 'b', 'c', 'd']) {
+          reporter.handle(testStarted(id, `test ${id}`, 'chromium', 'tests/a.e2e.ts'));
+          reporter.handle({
+            type: 'step',
+            testId: id,
+            target: 'chromium',
+            progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: `step ${id}` },
+          });
+          for (let i = 0; i < 5; i += 1) {
+            reporter.handle({
+              type: 'step',
+              testId: id,
+              target: 'chromium',
+              progress: { phase: 'event', api: 'agent.act', event: { kind: 'model', durationMs: 10, count: 100 } as never },
+            });
+          }
+        }
+        const rowsPainted = chunks.map((chunk) => chunk.split('\n').length - 1);
+        expect(Math.max(...rowsPainted)).toBeLessThanOrEqual(7);
+        // eslint-disable-next-line no-control-regex
+        const rowsErased = chunks.map((chunk) => Number(/\u001b\[(\d+)A/.exec(chunk)?.[1] ?? 0));
+        expect(Math.max(...rowsErased)).toBeLessThanOrEqual(7);
+        expect(chunks.at(-1)).toContain('more running');
+      } finally {
+        restore();
+      }
+    });
   });
 
   it('renders a full lifecycle from events alone', () => {
@@ -719,6 +797,30 @@ describe('ListReporter', () => {
     expect(text).toContain('   ✓ a test 120ms');
     expect(text).toContain('Tests  1 passed (1)');
     expect(text).toContain('Report  /x/.e2e/report.json');
+  });
+
+  it('never lets control characters through error codes, phases, categories, or paths', () => {
+    const raw: string[] = [];
+    const reporter = new ListReporter({ write: (line) => raw.push(line) }, { live: false, colors: false });
+    const esc = '\u001b[2J';
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: `tests/${esc}a.e2e.ts`, tests: 1 }]));
+    reporter.handle(finished(result({
+      status: 'failed',
+      file: `tests/${esc}a.e2e.ts`,
+      attempts: [attempt({
+        status: 'failed',
+        error: { category: 'test', code: `CODE${esc}`, message: `msg${esc}`, retryable: false },
+      })],
+    })));
+    reporter.handle({
+      type: 'run-error',
+      error: { category: `infra${esc}` as never, code: `X${esc}`, message: 'm', retryable: false, phase: `prepare${esc}` as never },
+    });
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: `/project/${esc}/report.json`, junitPath: `${esc}j.xml`, aiTracePath: `${esc}t.json` }));
+    expect(raw.length).toBeGreaterThan(10);
+    // eslint-disable-next-line no-control-regex
+    expect(raw.some((line) => /[\u0000-\u001f\u007f]/.test(line))).toBe(false);
   });
 
   it('sanitizes control characters in titles and bounds long fields', () => {
