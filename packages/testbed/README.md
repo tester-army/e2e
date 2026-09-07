@@ -158,5 +158,5 @@ the call site.
 - Agentic assertions must be answerable from one observation. "the canvas asks
   whether you are hungry *again*" is correctly refused: a screenshot cannot show
   recurrence. Assert state, not history.
-- String text matching is **exact by default** (`spec/03-assertions.md:36`),
-  inverting the Playwright and Testing-Library default.
+- String text matching is **exact by default**, inverting the Playwright and
+  Testing-Library default.

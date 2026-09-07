@@ -6,10 +6,10 @@ Contributions are always welcome, no matter how large or small.
 
 This project is a pnpm monorepo containing:
 
-- `packages/e2e` — the published `@e2edev/e2e` package (SDK, runner, CLI, driver SPI)
-- `packages/playwright` — the published `@e2edev/playwright` reference web driver
+- `packages/e2e` — the published `@e2edev/e2e` package (SDK, runner, CLI, engine contract)
+- `packages/playwright` — the published `@e2edev/playwright` browser engine
 - `packages/testbed` — private dogfood suite that consumes the built packages
-- `spec/` — the normative contract, `fern/` — the docs site
+- `fern/` — the docs site, `docs/rfcs/` — dated decision records
 
 Install dependencies from the root:
 
@@ -26,7 +26,7 @@ pnpm build
 Before sending a pull request, make sure the full gate passes:
 
 ```sh
-pnpm check   # lint -> check:spec -> typecheck -> docs:check
+pnpm check   # lint -> check:dead-code -> typecheck -> docs:check
 pnpm test    # unit + integration
 ```
 
@@ -36,21 +36,11 @@ Integration tests need Chromium:
 pnpm --filter @e2edev/playwright exec playwright install chromium
 ```
 
-`spec/` is a frozen normative contract and stays internal: it defines profiles
-(`spec/00-conformance.md`), canonical declarations (`spec/api/`), wire schemas
-(`spec/schema/`), and mandatory safety behavior (`spec/14-security.md`). A spec
-change touches declarations, schemas, prose, examples, and tests in one review —
-implementation shortcuts never amend the spec. READMEs and the docs site describe
-user-facing behavior only; profile IDs, schema versions, and conformance status
-belong in `spec/`.
-
-Editing `spec/conformance/v0-requirements.json` or any `spec/schema/*` file also
-requires bumping `suiteVersion` in the manifest, because implementations key
-their conformance reports to it. CI enforces the coupling; check it locally with:
-
-```sh
-pnpm check:manifest   # compares the working tree against origin/main
-```
+The public API is the emitted `.d.ts` of `@e2edev/e2e`; compile-time assertions
+on it live in `packages/e2e/tests/types/sdk-types.ts` and run under `typecheck`.
+Wire formats (report, session, agent protocol) are the JSON Schemas in
+`packages/e2e/schema/`, each with a valid and an invalid fixture. A change to
+either edits the producer, the schema, and the fixtures in one review.
 
 Docs are part of the change, not a follow-up: a behavior change updates its guide
 page under `fern/` in the same review.

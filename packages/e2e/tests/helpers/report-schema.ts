@@ -1,4 +1,4 @@
-/** Validates generated reports against the canonical spec report-1 schema. */
+/** Validates generated reports against the report-1 wire schema in `schema/`. */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -8,8 +8,8 @@ import addFormats from 'ajv-formats';
 
 const SCHEMA_PATH = path.resolve(
   fileURLToPath(import.meta.url),
-  '..', '..', '..', '..', '..',
-  'spec', 'schema', 'report-v1.schema.json',
+  '..', '..', '..',
+  'schema', 'report-v1.schema.json',
 );
 
 let validator: ValidateFunction | undefined;

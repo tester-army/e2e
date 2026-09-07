@@ -99,7 +99,7 @@ export const DEFAULT_OBSERVATION_BYTES = 1_048_576;
 
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** Hard ceilings mirroring spec/schema/report-v1.schema.json `limits`. */
+/** Hard ceilings mirroring `schema/report-v1.schema.json` `limits`. */
 const LIMIT_BOUNDS = {
   maxAgentContextBytes: [1_024, 65_536, 16_384],
   maxLedgerBytes: [1_024, 65_536, 8_192],

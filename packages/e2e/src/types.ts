@@ -1,6 +1,6 @@
 /**
- * Public sdk-0.1 types. These mirror the canonical declarations in
- * spec/api/e2e.d.ts; the spec file wins on any divergence.
+ * Public SDK types. The emitted `dist/index.d.ts` is the contract;
+ * `tests/types/sdk-types.ts` pins the parts that are easy to loosen by accident.
  */
 
 import type {

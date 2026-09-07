@@ -10,10 +10,8 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @e2edev/e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build",
-    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run check:spec && pnpm run typecheck && pnpm run docs:check",
+    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
-    "check:manifest": "node scripts/check-manifest-coupling.mjs",
-    "check:spec": "tsc --project tsconfig.spec.json",
     "docs:check": "fern check",
     "docs:dev": "fern docs dev",
     "docs:publish": "fern generate --docs",
@@ -30,7 +28,7 @@
     "test:device": "pnpm run build && pnpm --filter @e2edev/testbed test:device"
   },
   "contributors": [
-    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Oskar Kwa\u015bniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "devDependencies": {

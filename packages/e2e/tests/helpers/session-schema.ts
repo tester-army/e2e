@@ -1,4 +1,4 @@
-/** Validates session envelopes against the canonical spec session-1 schema. */
+/** Validates session envelopes against the session-1 wire schema in `schema/`. */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 
-const SPEC_ROOT = path.resolve(
+const SCHEMA_ROOT = path.resolve(
   fileURLToPath(import.meta.url),
-  '..', '..', '..', '..', '..',
-  'spec', 'schema',
+  '..', '..', '..',
+  'schema',
 );
 
 let validator: ValidateFunction | undefined;
@@ -19,7 +19,7 @@ function compiled(): ValidateFunction {
     const ajv = new Ajv2020({ allErrors: true, strict: false });
     addFormats.default(ajv);
     const schema = JSON.parse(
-      readFileSync(path.join(SPEC_ROOT, 'session-v1.schema.json'), 'utf8'),
+      readFileSync(path.join(SCHEMA_ROOT, 'session-v1.schema.json'), 'utf8'),
     ) as Record<string, unknown>;
     validator = ajv.compile(schema);
   }
@@ -38,7 +38,7 @@ export function assertValidSessionEnvelope(document: unknown): void {
   }
 }
 
-/** Loads one canonical spec fixture by name, e.g. `session-v1.valid.json`. */
+/** Loads one schema fixture by name, e.g. `session-v1.valid.json`. */
 export function specFixture(name: string): unknown {
-  return JSON.parse(readFileSync(path.join(SPEC_ROOT, 'fixtures', name), 'utf8'));
+  return JSON.parse(readFileSync(path.join(SCHEMA_ROOT, 'fixtures', name), 'utf8'));
 }

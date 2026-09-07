@@ -26,7 +26,7 @@
   },
   "overrides": [
     {
-      "files": ["spec/**/*.ts"],
+      "files": ["packages/e2e/tests/types/*.ts"],
       "rules": {
         "eslint/no-unused-expressions": "off"
       }

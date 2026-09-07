@@ -78,7 +78,7 @@ export interface BuildReportOptions {
   targetProvenance: ReadonlyMap<string, TargetProvenance>;
 }
 
-// --- report-1 wire shapes (spec/schema/report-v1.schema.json) ---
+// --- report-1 wire shapes (schema/report-v1.schema.json) ---
 // Explicit `| undefined` marks fields JSON serialization drops when absent;
 // Ajv treats undefined-valued keys as missing.
 

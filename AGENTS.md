@@ -1,26 +1,29 @@
 # AGENTS.md
 
-`e2e` — an open standard for agentic end-to-end testing plus its reference
-implementation. pnpm monorepo, ESM only, TypeScript 7.
+`e2e` — an agentic end-to-end testing framework. pnpm monorepo, ESM only,
+TypeScript 7.
 
-## The spec wins
+## Contracts
 
-`spec/` is a frozen normative contract, not documentation.
+There is no separate spec. The code is the contract, pinned in three places:
 
-- `spec/api/e2e.d.ts` (`sdk-0.1`) is canonical for the test API. `spec/api/
-  driver.d.ts` (`driver-1`) describes the retired driver SPI: the runner now
-  speaks the engine contract (`@e2edev/e2e/engine`, RFC0002), and spec chapter 09 is
-  scheduled to retire into an engines chapter (RFC0002 migration step 5). Until
-  then the spec and `src/engine/` intentionally diverge on that surface.
-- Wire output must validate against `spec/schema/*.schema.json`; integration
-  tests validate every generated report against `report-v1.schema.json`.
-- A spec change touches declarations, schemas, prose, examples, and tests in
-  one review. Implementation shortcuts never amend the spec.
-- `pnpm check:manifest` (`scripts/check-manifest-coupling.mjs`, run as its own
-  PR job) fails any diff that edits `spec/conformance/v0-requirements.json` or
-  `spec/schema/*` without bumping `suiteVersion`.
+- The emitted `packages/e2e/dist/index.d.ts` (and `dist/engine/index.d.ts`)
+  is the public API. `packages/e2e/tests/types/sdk-types.ts` holds compile-time
+  assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
+  by accident; it runs under the package `typecheck`, never under vitest.
+- Wire formats live in `packages/e2e/schema/*.schema.json` (report-1,
+  session-1, agent-judgment-1, agent-tool-1) with a valid and an invalid fixture
+  each. Integration tests validate every generated report and session envelope
+  against them; `tests/unit/schema-fixtures.test.ts` checks the fixtures. A
+  wire change edits the schema, both fixtures, and the producer in one review.
+- Security invariants are the list under Gotchas below, enforced by tests in
+  `tests/integration/agent-policy.test.ts` and the secret-ledger unit tests.
 - Behavior changes update the matching `fern/docs/pages/*.mdx` page in the same
   change, including "not implemented yet" callouts.
+
+`docs/rfcs/` holds RFC0001 (e2e v2 on the TesterArmy engine) and RFC0002 (the
+engine contract) as dated decision records. Read them for the why; do not
+update them, and do not trust them over `src/`.
 
 ## Layout
 
@@ -41,20 +44,19 @@ implementation. pnpm monorepo, ESM only, TypeScript 7.
   `web` fixture and `expect(web)`. It depends on `@e2edev/e2e` (peer), never the
   reverse; a target names it explicitly as `engine: playwright()`. There is
   no default engine and no well-known id registry in core. It imports from
-  `@e2edev/e2e/engine` only: the semantics the spec makes every engine reproduce
+  `@e2edev/e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `@e2edev/e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
-- `spec/`, `fern/` (docs site), `RFC0001.md` (direction: e2e v2 on the
-  TesterArmy engine).
+- `fern/` (docs site), `docs/rfcs/` (decision records).
 
 ## Commands
 
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:spec -> typecheck -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 ```
@@ -75,10 +77,9 @@ pnpm --filter @e2edev/testbed run test:headed
   devDepends on the playwright engine for its browser-backed integration tests
   while the engine peer-depends on `e2e` — pnpm reports that cycle on every
   install.
-- `pnpm typecheck` runs `build` first, then per-package `typecheck`.
-- `pnpm check:spec` typechecks `spec/api` + `spec/examples` under a separate,
-  stricter config (`skipLibCheck: false`, DOM lib) — it can fail while package
-  typecheck passes.
+- `pnpm typecheck` runs `build` first, then per-package `typecheck`. The
+  package `typecheck` covers `tests/**`, which is what makes
+  `tests/types/sdk-types.ts` a test.
 - Integration tests need Chromium: `pnpm --filter @e2edev/playwright exec
   playwright install chromium`. The engine's `init` hook also installs
   missing browsers once per worker, before any attempt starts.
@@ -164,7 +165,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 
 ## Gotchas
 
-- Status prose drifts. `packages/e2e/README.md` and `spec/README.md` can claim
+- Status prose drifts. `packages/e2e/README.md` and the fern pages can claim
   things that have since landed or been removed (the located verbs and the
   locate cache are both gone, for example). Verify against `src/` before
   repeating or relying on any "not implemented yet" list — and fix the prose
@@ -172,11 +173,33 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 - No implicit default model. Agent fixtures without model config fail with
   `MODEL_UNAVAILABLE`. No implicit target either: `targets` is required and
   each names its engine.
-- Secrets must never reach model input, digests, logs, or reports. Model input
-  is the redacted semantic tree (as text or, on request, the redacted node
-  tree), masked pixels only when masking is proven and no secret was filled,
-  and the sanitized prior-step records. What an executor keeps in
-  `attempt.memory` is its own; the harness never reports it.
+- Security invariants (fail closed when one cannot be enforced):
+  - Secrets never reach model input, digests, logs, reports, or artifacts.
+    Model input is the redacted semantic tree (as text or, on request, the
+    redacted node tree), masked pixels only when masking is proven and no
+    secret was filled, and the sanitized prior-step records. Once a secret is
+    filled the viewport stays pixel-tainted for the rest of the attempt. What
+    an executor keeps in `attempt.memory` is its own; the harness never
+    reports it.
+  - A secret fill is authorized by the runner, not the model: authentic
+    unresolved handle, a secure sink, allowed top-level and frame origin, an
+    editable node with a compatible purpose, a current observation, and no
+    control transfer since. The model never sees or picks the value.
+  - Every model tool call is parsed into a closed schema and authorized
+    immediately before dispatch; unknown tools or fields, stale observation
+    refs, and denied destinations are `POLICY_DENIED`. Model text is never
+    evaluated as code, selectors, shell, or config. App content, ledger text,
+    and pixels are quoted as untrusted evidence with no policy authority.
+  - Navigation is checked against the target's allowed origins on every hop
+    (initial URL, redirects, popups, frames, agent requests). `file:`, `data:`,
+    `javascript:`, link-local, and cloud-metadata destinations are denied.
+  - Sessions are per-run, target-bound, AES-256-GCM encrypted with a
+    memory-only key, and deleted at cleanup; payloads never enter diagnostics.
+  - Reports escape contextually, strip terminal controls, generate artifact
+    names, and never let a label become a path component.
+  - Test, config, and engine code run with the runner's full OS authority;
+    nothing here sandboxes them. Untrusted PR code belongs in an external
+    sandbox with no secrets or write tokens.
 
 - CI (`.github/workflows/spec.yml`) runs Node 26 and pins actions by SHA; keep
   new actions SHA-pinned.

@@ -1,5 +1,11 @@
+/**
+ * Compile-time assertions on the public SDK surface. Never executed: `tsc`
+ * (the package `typecheck` script) is the test, and every `@ts-expect-error`
+ * below must stay necessary.
+ */
+
 import { z } from 'zod';
-import { defineConfig, test, type Agent, type TraceCacheStore } from '@e2edev/e2e';
+import { defineConfig, test, type Agent, type TraceCacheStore } from '../../src/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;

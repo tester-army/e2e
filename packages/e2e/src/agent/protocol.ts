@@ -1,10 +1,9 @@
 /**
  * Closed `agent-protocol-1` response grammars. Mirrors
- * spec/schema/agent-judgment-v1.schema.json; the spec file wins on any
- * divergence.
+ * `schema/agent-judgment-v1.schema.json`; the schema wins on any divergence.
  *
  * Validation is runner-owned: a response that does not match exactly is a
- * policy error before any engine dispatch (14-security.md).
+ * policy error before any engine dispatch.
  */
 
 import type { JSONSchema7 } from 'ai';
