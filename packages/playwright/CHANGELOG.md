@@ -1,5 +1,45 @@
 # @e2edev/playwright
 
+## 0.5.0
+
+### Minor Changes
+
+- [#142](https://github.com/tester-army/e2e/pull/142) [`02a73cd`](https://github.com/tester-army/e2e/commit/02a73cd3a53ebaecacca2424f3cb05a7e92097e9) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - The app under test is declared by the backend that drives it, not by the
+  config. The top-level `app` key (`url`, `command`, `readyUrl`, `services`,
+  `allowedOrigins`, `environment`, `identity`) is gone, and so is the runner's
+  `APP_URL` fallback: the browser backend takes the same fields as options,
+  `playwright({ url, command, services, ... })`, and the device backend derives
+  the identity from the app it pins (`agentDevice({ platform, app })`, or an
+  explicit `identity`). Two web targets on one app each name it; services and
+  commands declared identically by several targets start once.
+
+  For backend authors, the `app` manifest of `defineBackend` carries the
+  declaration (`BackendAppDeclaration`) beside its hooks, and the runner
+  resolves it per target: navigation policy, cache and session identity, the
+  report's target record (`baseOrigin` is now absent for a surface without a
+  URL), and the app process all read from there. A device target can finally
+  declare a stable identity without inventing a URL. `@e2edev/e2e/backend` also
+  exports `obj`, the one-call replacement for the conditional-spread
+  idiom when a declaration is built from optional inputs.
+
+  Migrate by moving the `app` block into the backend factory:
+
+  ```ts
+  // before
+  app: { url: 'http://localhost:3000' },
+  targets: [{ name: 'web', platform: 'web', backend: playwright() }],
+  // after
+  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
+  ```
+
+### Patch Changes
+
+- [#145](https://github.com/tester-army/e2e/pull/145) [`24a5763`](https://github.com/tester-army/e2e/commit/24a5763e8bf234d481778d19f420f83335cc6e48) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `getByDisplayValue(...)` now supports `first()`, `last()`, `nth()`, and `filter({ hasText, has })` in the playwright backend, so a display-value locator can be narrowed, acted on, and asserted like every other query. Positions apply to the value-filtered matches, not to every form control on the page. Previously any refinement failed with `UNSUPPORTED_CAPABILITY: displayValue queries cannot be used as scopes or filters in this backend`. The two compositions Playwright's locator chain cannot express remain unsupported and now say so precisely: a display-value query as the scope of a child query, and as a `has` filter.
+
+- [#149](https://github.com/tester-army/e2e/pull/149) [`f810e23`](https://github.com/tester-army/e2e/commit/f810e2324b02b189cbbb6242a55da5d587285932) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Every `screen` query accepts `visible: true`, which drops nodes the platform reports as hidden before the exactly-one rule runs: `getByText('No memories yet', { visible: true })` resolves the copy a person sees even while a framework keeps a `display:none` twin in the document after a reload. Omitted or `false` keeps every match, so existing `LOCATOR_AMBIGUOUS` failures still fire. The predicate is the node's own `hidden` state, the one `toBeVisible()` reads, and it composes with scopes, `filter`, `first`, `last`, and `nth`. `getByTestId` gains the same optional `{ visible }` argument.
+
+  The backend contract's `SemanticQuery` carries the flag as `visible`; the Playwright and agent-device backends evaluate it from the hidden state they already report, and the harness holds a top-level query to the same predicate as a backstop.
+
 ## 0.4.0
 
 ### Minor Changes

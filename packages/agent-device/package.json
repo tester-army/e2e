@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/agent-device",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "agent-device mobile backend (iOS and Android) for the e2e agentic end-to-end testing standard",
   "keywords": [
     "e2e",
