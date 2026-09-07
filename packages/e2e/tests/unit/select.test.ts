@@ -15,7 +15,14 @@ async function collection(
 ): Promise<Collection> {
   const registration = await collectModule(async () => body());
   const collected = collectFromRegistration('/root', `/root/${file}`, registration);
-  return { files: [collected], tests: collected.tests, unmatchedPositionals };
+  // Positionals that matched nothing leave the discovered file unselected.
+  const files = unmatchedPositionals.length === 0 ? [collected] : [];
+  return { files, tests: files.flatMap((entry) => entry.tests), discovered: [file], nearMisses: [], unmatchedPositionals };
+}
+
+/** A collection whose globs matched nothing, with optional look-alike files. */
+function emptyCollection(nearMisses: readonly string[] = []): Collection {
+  return { files: [], tests: [], discovered: [], nearMisses, unmatchedPositionals: [] };
 }
 
 function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.ProcessEnv = ENV) {
@@ -190,16 +197,56 @@ describe('select', () => {
     const col = await collection(() => {
       test.skip('skipped', noop);
     });
-    expect(() => select(col, config())).toThrow(/zero runnable/);
+    expect(() => select(col, config())).toThrow(
+      '1 tests were collected but none is runnable: 1 skipped with test.skip; pass --pass-with-no-tests to allow this',
+    );
     expect(() => select(col, config(), {}, { passWithNoTests: true })).not.toThrow();
   });
 
-  it('names the positionals that matched no file in the NO_TESTS message', async () => {
-    const col = await collection(() => {}, 'tests/a.e2e.ts', ['tests/agnet', 'tests/*.spec.ts']);
+  it('names the positionals that matched no file in the NO_TESTS message, with the nearest discovered file', async () => {
+    const col = await collection(() => {}, 'tests/agent.e2e.ts', ['tests/agnet.e2e.ts', 'tests/*.spec.ts']);
     expect(() => select(col, config())).toThrow(
-      'zero runnable ordinary test-target pairs (no test file matched: tests/agnet, tests/*.spec.ts); pass --pass-with-no-tests to allow this',
+      'no test file matched tests/agnet.e2e.ts (did you mean tests/agent.e2e.ts?), tests/*.spec.ts; the config globs discovered tests/agent.e2e.ts; pass --pass-with-no-tests to allow this',
     );
     expect(() => select(col, config(), {}, { passWithNoTests: true })).not.toThrow();
+  });
+
+  it('explains empty discovery with the globs, the root, and any look-alike files', () => {
+    expect(() => select(emptyCollection(), config())).toThrow(
+      'no test file matched "tests/**/*.e2e.ts" under /root; create tests/example.e2e.ts (e2e init writes one), or set tests in the config; pass --pass-with-no-tests to allow this',
+    );
+    expect(() =>
+      select(emptyCollection(['tests/login.test.ts', 'tests/a.spec.ts', 'tests/b.spec.ts', 'tests/c.spec.ts']), config()),
+    ).toThrow(
+      'found tests/login.test.ts, tests/a.spec.ts, tests/b.spec.ts and 1 more, which the pattern does not match: rename to *.e2e.ts, or set tests in the config to a glob that matches',
+    );
+    expect(() => select(emptyCollection(), config(), {}, { passWithNoTests: true })).not.toThrow();
+  });
+
+  it('points at the import when a matched file registered no tests', async () => {
+    const col = await collection(() => {});
+    expect(() => select(col, config())).toThrow(
+      "tests/a.e2e.ts registered no tests; import { test } from '@e2edev/e2e' (or from the engine package) and call test() at the top level of the module",
+    );
+  });
+
+  it('counts why collected tests are not runnable', async () => {
+    const col = await collection(() => {
+      test('mobile only', { platforms: ['ios'] }, noop);
+      test.skip('later', noop);
+      test.setup('login', { sessions: ['user'] }, noop);
+    });
+    expect(() => select(col, config())).toThrow(
+      '3 tests were collected but none is runnable: 1 declare platforms other than web, 1 skipped with test.skip, 1 setup tests, which run only for the sessions selected tests need; pass --pass-with-no-tests to allow this',
+    );
+    // The tag filter is applied first, so under --tag it is the one reason.
+    const tagged = await collection(() => {
+      test('smoke', { tags: ['smoke'] }, noop);
+      test('mobile only', { platforms: ['ios'] }, noop);
+    });
+    expect(() => select(tagged, config(), { tags: ['billing'] })).toThrow(
+      '2 tests were collected but none is runnable: 2 carry none of the tags billing; pass --pass-with-no-tests to allow this',
+    );
   });
 
   it('rejects unknown target IDs', async () => {
@@ -207,5 +254,8 @@ describe('select', () => {
       test('x', noop);
     });
     expect(() => select(col, config(), { targetIds: ['nope'] })).toThrow(/unknown target/i);
+    expect(() => select(col, config(), { targetIds: ['wbe'] })).toThrow(
+      'unknown target ID "wbe"; the config declares "web"; did you mean "web"?',
+    );
   });
 });

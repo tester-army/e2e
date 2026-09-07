@@ -137,6 +137,7 @@ describe('model resolution', () => {
       id: 'claude-sonnet-4.5',
       endpoint: undefined,
       apiKeyEnv: 'E2E_MODEL_API_KEY',
+      apiKeySource: undefined,
       apiKey: undefined,
     });
   });
@@ -192,7 +193,12 @@ describe('model resolution', () => {
     const config = resolve({
       agent: { model: { provider: 'openai', id: 'gpt-5.4-mini', apiKeyEnv: 'MY_KEY' } },
     });
-    expect(config.agent.model).toMatchObject({ apiKeyEnv: 'MY_KEY' });
+    expect(config.agent.model).toMatchObject({ apiKeyEnv: 'MY_KEY', apiKeySource: undefined });
+    const withKey = resolve(
+      { agent: { model: { provider: 'openai', id: 'gpt-5.4-mini', apiKeyEnv: 'MY_KEY' } } },
+      { ...BASE_ENV, MY_KEY: 'custom', AI_GATEWAY_API_KEY: 'gateway-key' },
+    );
+    expect(withKey.agent.model).toMatchObject({ apiKeySource: 'MY_KEY', apiKey: 'custom' });
   });
 
   it('resolves the credential for the adapter without leaking it into the digest', () => {
@@ -200,9 +206,9 @@ describe('model resolution', () => {
       ...BASE_ENV,
       E2E_MODEL_API_KEY: 'secret-value',
     });
-    expect(config.agent.model).toMatchObject({ apiKey: 'secret-value' });
+    expect(config.agent.model).toMatchObject({ apiKey: 'secret-value', apiKeySource: 'E2E_MODEL_API_KEY' });
     const withoutKey = resolve({ agent: { model: 'openai/gpt-5.4-mini' } });
-    expect(withoutKey.agent.model).toMatchObject({ apiKey: undefined });
+    expect(withoutKey.agent.model).toMatchObject({ apiKey: undefined, apiKeySource: undefined });
     // Environment values never affect the digest.
     expect(withoutKey.configDigest).toBe(config.configDigest);
   });
@@ -212,7 +218,14 @@ describe('model resolution', () => {
       ...BASE_ENV,
       AI_GATEWAY_API_KEY: 'gateway-key',
     });
-    expect(config.agent.model).toMatchObject({ apiKey: 'gateway-key' });
+    expect(config.agent.model).toMatchObject({ apiKey: 'gateway-key', apiKeySource: 'AI_GATEWAY_API_KEY' });
+    // An empty primary variable is absent, not a credential.
+    const blank = resolve({ agent: { model: 'openai/gpt-5.4-mini' } }, {
+      ...BASE_ENV,
+      E2E_MODEL_API_KEY: '  ',
+      AI_GATEWAY_API_KEY: 'gateway-key',
+    });
+    expect(blank.agent.model).toMatchObject({ apiKey: 'gateway-key', apiKeySource: 'AI_GATEWAY_API_KEY' });
   });
 
   it('requires HTTPS for nonlocal model endpoints', () => {
@@ -285,6 +298,7 @@ describe('model error classification', () => {
       id: 'unreachable',
       endpoint: 'https://127.0.0.1:1/v1',
       apiKeyEnv: 'FAKE_KEY',
+      apiKeySource: 'FAKE_KEY',
       apiKey: 'x',
     });
 

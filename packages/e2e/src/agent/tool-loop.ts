@@ -14,6 +14,8 @@
 import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
+import { withHint } from '../internal/errors.ts';
+import { credentialHint } from './model/sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -207,7 +209,10 @@ class LoopRun {
       if (isAgentError(cause)) throw cause;
       throw new AgentError(
         'MODEL_PROVIDER_FAILED',
-        `the model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+        withHint(
+          `the model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          credentialHint(cause, this.model),
+        ),
         { cause },
       );
     }

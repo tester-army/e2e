@@ -101,6 +101,33 @@ describe('resolveConfig', () => {
     expect(() => resolve({ unknown: true } as never)).toThrow(/unknown config key/);
   });
 
+  it('suggests the nearest key and points foreign keys at where the fact lives', () => {
+    expect(() => resolve({ target: [] } as never)).toThrow('unknown config key "target"; did you mean "targets"?');
+    expect(() => resolve({ reporter: ['list'] } as never)).toThrow('did you mean "reporters"?');
+    expect(() => resolve({ testDir: 'tests' } as never)).toThrow(
+      'unknown config key "testDir"; test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
+    );
+    expect(() => resolve({ app: {} } as never)).toThrow('the app under test is declared by the engine: engine: playwright({ url })');
+    expect(() => resolve({ webServer: {} } as never)).toThrow('playwright({ url, command: { executable, args } })');
+    expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
+      'target "web" has unknown key "url"; a target is { name, platform, engine? }; the app under test is declared by the engine',
+    );
+    expect(() => resolve({ targets: [{ ...WEB, platfrom: 'web' }] } as never)).toThrow('did you mean "platform"?');
+    expect(() => resolve({ reporters: ['lst'] } as never)).toThrow(
+      'unknown reporter "lst"; reporters are list, json, and junit; did you mean "list"?',
+    );
+    expect(() => resolve({ targets: [{ ...WEB, engine: 'playwright' }] } as never)).toThrow(
+      'target "web" engine must be an engine handle, got the string "playwright"; call the engine\'s factory',
+    );
+  });
+
+  it('names the unit and the offending value for durations', () => {
+    expect(() => resolve({ timeout: '30s' } as never)).toThrow(
+      'timeout must be a positive safe integer of milliseconds, got "30s"',
+    );
+    expect(() => resolve({ launchTimeout: 0 })).toThrow('launchTimeout must be a positive safe integer of milliseconds, got 0');
+  });
+
   it('accepts a command only beside a URL to poll, and defaults readyUrl to it', () => {
     expect(() => fakeEngine({ command: { executable: 'node' } })).not.toThrow();
     expect(() => resolveApp({ command: { executable: 'node' } })).toThrow(/without a URL to poll/);

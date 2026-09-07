@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
+import { didYouMean } from '../internal/suggest.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import type {
@@ -131,6 +132,41 @@ const TOP_LEVEL_KEYS = new Set([
 const CACHE_KEYS = new Set(['mode', 'store', 'dir']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
+const APP_BELONGS_TO_ENGINE =
+  'the app under test is declared by the engine: engine: playwright({ url }) for a browser, agentDevice({ platform, app }) for a device';
+
+/** Keys from other runners' configs, each mapped to where that fact lives here. */
+const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
+  testDir: 'test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
+  testMatch: 'test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
+  app: APP_BELONGS_TO_ENGINE,
+  url: APP_BELONGS_TO_ENGINE,
+  baseURL: APP_BELONGS_TO_ENGINE,
+  baseUrl: APP_BELONGS_TO_ENGINE,
+  webServer: 'the runner starts the app from the engine options: playwright({ url, command: { executable, args } })',
+  use: 'browser and app options are engine options: engine: playwright({ ... })',
+  projects: 'one target per browser or device: targets: [{ name, platform, engine }]',
+};
+
+/** Keys authors put on a target that belong to its engine. */
+const FOREIGN_TARGET_KEYS: ReadonlySet<string> = new Set([
+  'app',
+  'url',
+  'baseURL',
+  'baseUrl',
+  'command',
+  'appPath',
+  'bundleId',
+  'browser',
+  'device',
+]);
+
+/** `; did you mean "targets"?` or a pointer to where a foreign key's fact lives. */
+function unknownTopLevelKeyHint(key: string): string {
+  const foreign = FOREIGN_TOP_LEVEL_KEYS[key];
+  return foreign === undefined ? didYouMean(key, [...TOP_LEVEL_KEYS]) : `; ${foreign}`;
+}
+
 /** True when CI mode is active. */
 export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env['CI'];
@@ -158,7 +194,10 @@ export function resolveConfig(
   }
   for (const key of Object.keys(raw)) {
     if (!TOP_LEVEL_KEYS.has(key)) {
-      throw new ConfigurationError('INVALID_CONFIG', `unknown config key "${key}"`);
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown config key "${key}"${unknownTopLevelKeyHint(key)}`,
+      );
     }
   }
   if (raw.specVersion !== undefined && raw.specVersion !== '0.1') {
@@ -171,11 +210,11 @@ export function resolveConfig(
   const targets = resolveTargets(raw, options.projectRoot);
   const tests = normalizeTests(raw.tests);
 
-  const timeout = positiveInt(raw.timeout, 'timeout') ?? 120_000;
-  const launchTimeout = positiveInt(raw.launchTimeout, 'launchTimeout') ?? 60_000;
-  const actionTimeout = positiveInt(raw.actionTimeout, 'actionTimeout') ?? 30_000;
-  const assertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout') ?? 5_000;
-  const cleanupTimeout = positiveInt(raw.cleanupTimeout, 'cleanupTimeout') ?? 30_000;
+  const timeout = positiveInt(raw.timeout, 'timeout', 'milliseconds') ?? 120_000;
+  const launchTimeout = positiveInt(raw.launchTimeout, 'launchTimeout', 'milliseconds') ?? 60_000;
+  const actionTimeout = positiveInt(raw.actionTimeout, 'actionTimeout', 'milliseconds') ?? 30_000;
+  const assertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout', 'milliseconds') ?? 5_000;
+  const cleanupTimeout = positiveInt(raw.cleanupTimeout, 'cleanupTimeout', 'milliseconds') ?? 30_000;
 
   // CLI overrides obey the same bounds as the config keys they replace: a
   // `--workers 0` would otherwise plan work no worker can ever take.
@@ -195,7 +234,10 @@ export function resolveConfig(
   }
   for (const reporter of reporters) {
     if (!['list', 'json', 'junit'].includes(reporter)) {
-      throw new ConfigurationError('INVALID_CONFIG', `unknown reporter "${reporter}"`);
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown reporter "${reporter}"; reporters are list, json, and junit${didYouMean(reporter, ['list', 'json', 'junit'])}`,
+      );
     }
   }
   if (reporters.includes('json') && reporters.includes('list')) {
@@ -279,7 +321,10 @@ function resolveCacheConfig(
     }
     for (const key of Object.keys(value)) {
       if (!CACHE_KEYS.has(key)) {
-        throw new ConfigurationError('INVALID_CONFIG', `unknown cache config key "${key}"`);
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `unknown cache config key "${key}"${didYouMean(key, [...CACHE_KEYS])}`,
+        );
       }
     }
     mode = value.mode ?? 'read-write';
@@ -339,7 +384,10 @@ function resolveArtifactsConfig(raw: E2EConfig): {
     }
     for (const key of Object.keys(value)) {
       if (!ARTIFACTS_KEYS.has(key)) {
-        throw new ConfigurationError('INVALID_CONFIG', `unknown artifacts config key "${key}"`);
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `unknown artifacts config key "${key}"${didYouMean(key, [...ARTIFACTS_KEYS])}`,
+        );
       }
     }
     kinds = value.kinds;
@@ -418,9 +466,12 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     seen.add(target.name);
     for (const key of Object.keys(target)) {
       if (!TARGET_KEYS.has(key)) {
+        const hint = FOREIGN_TARGET_KEYS.has(key)
+          ? `; ${APP_BELONGS_TO_ENGINE}`
+          : didYouMean(key, [...TARGET_KEYS]);
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `target "${target.name}" has unknown key "${key}"; a target is { name, platform, engine? }`,
+          `target "${target.name}" has unknown key "${key}"; a target is { name, platform, engine? }${hint}`,
         );
       }
     }
@@ -431,9 +482,10 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
       );
     }
     if (target.engine !== undefined && !isEngineHandle(target.engine)) {
+      const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" engine must be a defineEngine(...) handle`,
+        `target "${target.name}" engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
       );
     }
     return {

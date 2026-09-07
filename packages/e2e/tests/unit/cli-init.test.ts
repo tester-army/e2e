@@ -192,12 +192,65 @@ describe('e2e init', () => {
     expect(read('package.json')).toContain('\r\n    "name"');
   });
 
-  it.each(['{broken', 'null', '{"devDependencies":false}'])('rejects invalid package.json before writing (%s)', async (manifest) => {
+  it.each([
+    ['{broken', /package\.json could not be read: .*JSON/],
+    ['null', /package\.json could not be read: .*/],
+    ['{"devDependencies":false}', /package\.json could not be read: devDependencies: /],
+  ])('rejects invalid package.json before writing and says what is wrong (%s)', async (manifest, reason) => {
     writeFileSync(path.join(dir, 'package.json'), manifest);
     expect(await init(dir, { yes: true })).toBe(2);
     expect(read('package.json')).toBe(manifest);
     expect(readdirSync(dir)).toEqual(['package.json']);
     expect(spawnSync).not.toHaveBeenCalled();
+    expect(output()).toMatch(reason);
+    expect(output()).toContain('fix it before running e2e init');
+  });
+
+  it('refuses to prompt without a terminal and names --yes', async () => {
+    expect(await init(dir, { interactive: false })).toBe(2);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(clack.select).not.toHaveBeenCalled();
+    expect(clack.confirm).not.toHaveBeenCalled();
+    expect(output()).toContain('needs an interactive terminal');
+    expect(output()).toContain('pass --yes');
+  });
+
+  it('scaffolds with --yes without a terminal', async () => {
+    expect(await init(dir, { yes: true, interactive: false })).toBe(0);
+    expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(true);
+  });
+
+  it('creates a named directory and starts the next steps with cd into it', async () => {
+    const target = path.join(dir, 'apps', 'web');
+    expect(await init(target, { yes: true, directory: 'apps/web' })).toBe(0);
+    expect(existsSync(path.join(target, 'e2e.config.ts'))).toBe(true);
+    expect(existsSync(path.join(target, 'tests', 'example.e2e.ts'))).toBe(true);
+    expect(output()).toContain('e2e init apps/web');
+    expect(output()).toContain('next: cd apps/web, then npm install, then APP_URL=http://localhost:3000 npx --no-install e2e run');
+  });
+
+  it('quotes a directory the shell would otherwise split, for the platform it runs on', async () => {
+    expect(await init(path.join(dir, 'apps', 'my web'), { yes: true, directory: 'apps/my web' })).toBe(0);
+    expect(output()).toContain("next: cd 'apps/my web', then npm install, then");
+    expect(existsSync(path.join(dir, 'apps', 'my web', 'e2e.config.ts'))).toBe(true);
+
+    stdoutSpy.mockClear();
+    vi.spyOn(os, 'platform').mockReturnValue('win32');
+    expect(await init(path.join(dir, 'my app'), { yes: true, directory: 'my app' })).toBe(0);
+    expect(output()).toContain('next: cd "my app", then npm install, then');
+  });
+
+  it('does not create the directory when cancelling', async () => {
+    const target = path.join(dir, 'later');
+    vi.mocked(clack.select).mockResolvedValueOnce(Symbol('cancel'));
+    expect(await init(target, { directory: 'later' })).toBe(0);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it('rejects a directory argument that names a file', async () => {
+    writeFileSync(path.join(dir, 'notes.txt'), '');
+    expect(await init(path.join(dir, 'notes.txt'), { yes: true, directory: 'notes.txt' })).toBe(2);
+    expect(output()).toContain('notes.txt is a file, not a directory');
   });
 
   it.each(['packageManager', 'lockfile'])('uses pnpm when selected by the %s', async (source) => {

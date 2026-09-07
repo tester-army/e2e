@@ -4,12 +4,15 @@ subtitle: e2e init, e2e guide, and e2e run, flag by flag.
 ---
 
 ```bash
-npx --no-install e2e init
+npx --no-install e2e init [directory]
 npx --no-install e2e guide [topic]
 npx --no-install e2e run [files...] [options]
 npx --no-install e2e --help
 npx --no-install e2e --version
 ```
+
+The CLI needs Node.js 20.19 or newer and says so, naming both versions, before
+it loads anything else on an older runtime.
 
 ## Help and version
 
@@ -20,13 +23,16 @@ npx --no-install e2e --version
 
 Titles and flags are colored on a terminal and plain when the output is piped
 or `NO_COLOR` is set; `FORCE_COLOR` keeps them. `e2e` without a command prints
-the help on stderr and exits 2.
+the help on stderr and exits 2. A misspelled command exits 2 with a suggestion
+(`e2e rnu` answers `Did you mean run?`).
 
 ## e2e init
 
 Scaffolds a project and adds `@e2edev/e2e` to `devDependencies` when it is not
 already declared. Existing config and test files are reported and skipped.
-Existing dependency versions and other package fields are preserved.
+Existing dependency versions and other package fields are preserved. With a
+`directory` argument the project is scaffolded there, the directory is created
+when missing, and the closing `next:` line starts with `cd` into it.
 
 For a new config, choose **None**, **Playwright**, or **agent-device**.
 Playwright adds `@e2edev/playwright`; agent-device adds `@e2edev/agent-device`.
@@ -44,8 +50,9 @@ Replace the engine's `app` value with your app's bundle ID or package name,
 or use `appPath` to install a build. iOS needs Xcode and a simulator; Android
 needs the Android SDK and an emulator. See [Device](/reference/device).
 
-| Flag | Type | Default | Behavior |
+| Argument or flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
+| `[directory]` | path | the working directory | Where to scaffold; created when missing |
 | `-y`, `--yes` | boolean | `false` | Skips prompts; enables AI for a new config, with no engine or installation, and writes the skill to both agent directories |
 
 | Creates | Content |
@@ -79,8 +86,11 @@ never adds a directory the project did not choose. Files the skill does not
 ship are left alone.
 
 Cancellation leaves files untouched and exits 0. An invalid manifest exits 2
-before any write. A failed installation keeps the scaffold, prints the retry
-command, and exits 2.
+before any write, quoting the parser's position or the field with the wrong
+shape. A failed installation keeps the scaffold, prints the retry command, and
+exits 2. Without a terminal on both stdin and stdout (a CI step, a pipe) the
+prompts cannot be answered, so `init` without `--yes` exits 2 at once and
+names the flag instead of waiting for input that never comes.
 
 ## e2e guide
 
@@ -123,15 +133,22 @@ the config globs do not match is never selected. An existing file or directory
 follows the filesystem's case rules (so `tests/Agent` finds `tests/agent` on
 Windows and macOS but not on Linux), while globs are case-sensitive everywhere.
 A path outside the project root, including one on another drive, is
-`COLLECTION_ERROR`. When nothing is left to run, the `NO_TESTS` message names
-each positional that matched no file, so a typo such as `tests/agnet` is visible
-instead of failing silently.
+`COLLECTION_ERROR`.
+
+When nothing is left to run, the `NO_TESTS` message says why, from the most
+upstream cause: the globs matched no file (naming look-alike files such as
+`tests/login.test.ts` beneath the globbed directories, which is usually the
+file meant), a positional matched no file (with the nearest discovered file
+when there is one, so `tests/agnet.e2e.ts` gets `did you mean
+tests/agent.e2e.ts?`), a matched file registered no tests (its `test` import
+is from somewhere else), or every collected test was filtered by tag or
+platform, skipped, or is a setup test.
 
 ### Flags
 
 | Flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
-| `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`. |
+| `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`, as is a run that discovers no `e2e.config.ts` or `e2e.config.mts` at all; the message names the directory searched, points at `e2e init`, and calls out a look-alike such as `e2e.config.js` when one is present. |
 | `--target <ids>` | comma-separated list | every configured target | Selects targets by name. An unknown ID is `UNKNOWN_TARGET`. Empty entries are dropped. |
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
@@ -217,6 +234,29 @@ individual result; precedence affects only the process exit code.
 Argument parsing failures - an unknown flag, a non-integer `--retries`, an
 invalid `--tag-mode`, an unknown `--reporter` - exit 2 with a one-line error on
 stderr followed by `(add --help for usage)`.
+
+## Diagnostics
+
+Every message that rejects a name offers the nearest valid one when a typo is
+plausible: an unknown config, target, agent, cache, limits, or artifacts key,
+an unknown `--target` ID, an unknown reporter, an unmatched positional, and a
+fixture the target does not have. Keys from other runners' configs (`testDir`,
+`baseURL`, `webServer`, `use`, `projects`, or a `url` on a target) say where
+that fact lives here instead. A `page`, `browser`, `context`, `request`, or
+`driver` fixture is explained in terms of `app`, `screen`, and `web`.
+
+A failing `import` in the config or a test file is explained past the loader's
+message: a package that `package.json` declares but `node_modules` lacks ends
+with the install command for the project's package manager, an undeclared one
+with the add command, a wrong subpath with the subpaths the package exports,
+and a removed export such as `defineConfig` with its replacement. A test
+failure carries its `cause` chain (`fetch failed: connect ECONNREFUSED
+127.0.0.1:3000`), and navigation to an address where nothing listens is
+`APP_UNREACHABLE` with the URL and the three ways to fix it, not an opaque
+engine failure. A model credential the gateway rejects is reported with the
+variable the runner read it from (`E2E_MODEL_API_KEY`, `AI_GATEWAY_API_KEY`,
+or the one `agent.model.apiKeyEnv` names), and color codes in provider
+messages are stripped before they reach the terminal or the report.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="play" href="/quickstart" />

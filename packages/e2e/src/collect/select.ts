@@ -1,6 +1,7 @@
 /** Option resolution and test-target selection. */
 
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
+import { didYouMean, suggest } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Capability, Platform } from '../types.ts';
 import type { Collection, CollectedTest } from './collect.ts';
@@ -136,9 +137,13 @@ export function select(
       ? config.targets
       : config.targets.filter((target) => filters.targetIds!.includes(target.name));
   if (filters.targetIds !== undefined) {
+    const names = config.targets.map((target) => target.name);
     for (const id of filters.targetIds) {
-      if (!config.targets.some((target) => target.name === id)) {
-        throw new ConfigurationError('UNKNOWN_TARGET', `unknown target ID "${id}"`);
+      if (!names.includes(id)) {
+        throw new ConfigurationError(
+          'UNKNOWN_TARGET',
+          `unknown target ID "${id}"; the config declares ${names.map((name) => `"${name}"`).join(', ')}${didYouMean(id, names)}`,
+        );
       }
     }
   }
@@ -173,14 +178,9 @@ export function select(
     (pair) => pair.disposition === 'run' && pair.test.kind === 'test',
   );
   if (runnableOrdinary.length === 0 && flags.passWithNoTests !== true) {
-    // A positional that selected nothing is the usual cause, so name each one:
-    // the user learns which path was wrong instead of guessing.
-    const unmatched = collection.unmatchedPositionals;
-    const detail =
-      unmatched.length === 0 ? '' : ` (no test file matched: ${unmatched.join(', ')})`;
     throw new ConfigurationError(
       'NO_TESTS',
-      `zero runnable ordinary test-target pairs${detail}; pass --pass-with-no-tests to allow this`,
+      `${describeNoTests(collection, config, filters, withSessions)}; pass --pass-with-no-tests to allow this`,
     );
   }
 
@@ -191,6 +191,87 @@ export function select(
       pairs: withSessions.filter((pair) => pair.target.name === target.name),
     })),
   };
+}
+
+/** At most this many file names are spelled out in a `NO_TESTS` message. */
+const MAX_NAMED_FILES = 3;
+
+function nameFiles(files: readonly string[]): string {
+  const shown = files.slice(0, MAX_NAMED_FILES).join(', ');
+  const rest = files.length - MAX_NAMED_FILES;
+  return rest > 0 ? `${shown} and ${rest} more` : shown;
+}
+
+/**
+ * Why nothing is runnable, told from the most upstream cause: the globs
+ * matched no file (naming look-alike files when there are any), a positional
+ * selected none, the files registered no tests, or every collected test was
+ * filtered or skipped. Each ends where the author's next edit goes.
+ */
+function describeNoTests(
+  collection: Collection,
+  config: ResolvedConfig,
+  filters: SelectionFilters,
+  pairs: readonly TestTargetPair[],
+): string {
+  const { discovered, nearMisses, unmatchedPositionals, files, tests } = collection;
+  if (discovered.length === 0) {
+    const globs = config.tests.map((glob) => `"${glob}"`).join(', ');
+    const where = `no test file matched ${globs} under ${config.projectRoot}`;
+    if (nearMisses.length > 0) {
+      return `${where}; found ${nameFiles(nearMisses)}, which the pattern does not match: rename to *.e2e.ts, or set tests in the config to a glob that matches`;
+    }
+    return `${where}; create tests/example.e2e.ts (e2e init writes one), or set tests in the config`;
+  }
+  if (files.length === 0 && unmatchedPositionals.length > 0) {
+    const named = unmatchedPositionals
+      .map((positional) => {
+        const match = suggest(positional, discovered);
+        return match === undefined ? positional : `${positional} (did you mean ${match}?)`;
+      })
+      .join(', ');
+    return `no test file matched ${named}; the config globs discovered ${nameFiles(discovered)}`;
+  }
+  if (tests.length === 0) {
+    const named = nameFiles(files.map((file) => file.file));
+    return `${named} registered no tests; import { test } from '@e2edev/e2e' (or from the engine package) and call test() at the top level of the module`;
+  }
+  const reasons = new Map<string, Set<string>>();
+  const count = (reason: string, test: CollectedTest): void => {
+    const ids = reasons.get(reason) ?? new Set<string>();
+    ids.add(test.id);
+    reasons.set(reason, ids);
+  };
+  for (const pair of pairs) {
+    if (pair.disposition === 'run' && pair.test.kind === 'test') continue;
+    if (pair.test.kind === 'setup') {
+      count('setup tests, which run only for the sessions selected tests need', pair.test);
+      continue;
+    }
+    switch (pair.skip?.cause) {
+      case 'explicit':
+        count('skipped with test.skip', pair.test);
+        break;
+      case 'platform-unavailable':
+        count(`declare platforms other than ${pair.target.platform}`, pair.test);
+        break;
+      case 'capability-unavailable':
+        count('require capabilities the engine lacks', pair.test);
+        break;
+      case 'filtered':
+        count(
+          filters.tags !== undefined && filters.tags.length > 0
+            ? `carry none of the tags ${filters.tags.join(', ')}`
+            : pair.skip.reason,
+          pair.test,
+        );
+        break;
+      default:
+        count('unselected', pair.test);
+    }
+  }
+  const summary = [...reasons].map(([reason, ids]) => `${ids.size} ${reason}`).join(', ');
+  return `${tests.length} tests were collected but none is runnable: ${summary}`;
 }
 
 /** Maps each session name to its unique producer setup test. */

@@ -140,6 +140,65 @@ describe('initializing standalone projects', () => {
     });
   });
 
+  it('tells a project that skipped npm install to run it, naming its package manager', async () => {
+    await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
+    writeFileSync(path.join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
+    await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
+      code: 2,
+      stdout: expect.stringMatching(
+        /Cannot find package '@e2edev\/e2e' imported from [\s\S]*?@e2edev\/e2e is declared in \S+package\.json but is not installed: run pnpm install/,
+      ),
+    });
+  });
+
+  it('names the missing config, the init command, and any look-alike file', async () => {
+    await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
+      code: 2,
+      stdout: expect.stringMatching(
+        /CONFIG_NOT_FOUND[\s\S]*no e2e\.config\.ts or e2e\.config\.mts found in .* or its parent directories; run e2e init to create one, or pass --config <path>/,
+      ),
+    });
+    writeFileSync(path.join(dir, 'e2e.config.js'), CONFIG);
+    await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
+      code: 2,
+      stdout: expect.stringContaining(
+        'found e2e.config.js, but only e2e.config.ts and e2e.config.mts are loaded: rename it and keep it an ES module',
+      ),
+    });
+  });
+
+  it('explains a removed export and a wrong subpath in the config', async () => {
+    await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
+    linkPackages('e2e');
+    writeFileSync(
+      path.join(dir, 'e2e.config.ts'),
+      "import { defineConfig } from '@e2edev/e2e';\nexport default defineConfig({ targets: [{ name: 'local', platform: 'test' }] });\n",
+    );
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
+      code: 'CONFIG_LOAD_FAILED',
+      message: expect.stringContaining('defineConfig was removed in @e2edev/e2e 0.5'),
+    });
+    // The import must be used, or the TypeScript transform elides it.
+    writeFileSync(path.join(dir, 'e2e.config.ts'), "import { test } from '@e2edev/e2e/test';\nexport default { marker: test };\n");
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
+      code: 'CONFIG_LOAD_FAILED',
+      message: expect.stringContaining('@e2edev/e2e exports @e2edev/e2e, @e2edev/e2e/agent, @e2edev/e2e/engine, @e2edev/e2e/run'),
+    });
+  });
+
+  it('names look-alike test files when the globs match nothing', async () => {
+    await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
+    linkPackages('e2e');
+    writeFileSync(path.join(dir, 'tests', 'login.test.ts'), 'export {};\n');
+    rmSync(path.join(dir, 'tests', 'example.e2e.ts'));
+    await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
+      code: 2,
+      stdout: expect.stringMatching(
+        /no test file matched "tests\/\*\*\/\*\.e2e\.ts" under \S+; found tests\/login\.test\.ts, which the pattern does not match: rename to \*\.e2e\.ts/,
+      ),
+    });
+  });
+
   it('preserves the original load error for ESM projects', async () => {
     writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
     writeFileSync(path.join(dir, 'e2e.config.ts'), "throw new Error('config setup failed');\n");

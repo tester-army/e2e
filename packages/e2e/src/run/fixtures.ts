@@ -9,7 +9,8 @@ import type { EngineFixtureContext } from '../engine/index.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { ConfigurationError } from '../internal/errors.ts';
+import { ConfigurationError, errorMessage, InfrastructureError } from '../internal/errors.ts';
+import { didYouMean } from '../internal/suggest.ts';
 import { SecretLedger } from '../internal/redact.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
@@ -179,6 +180,15 @@ export function createFixtures(
 /** Keys a test body may probe without meaning a fixture. */
 const PROBED_KEYS = new Set(['then', 'constructor', 'toJSON', 'toString', 'valueOf', 'inspect']);
 
+/** Fixtures other runners hand out, each pointed at the e2e way of doing the same thing. */
+const FOREIGN_FIXTURE_HINTS: Readonly<Record<string, string>> = {
+  page: 'there is no Playwright page: open the app with app.open() and find elements through screen; browser-only APIs are on the web fixture of a Playwright target',
+  browser: 'the browser is owned by the engine: drive it through app, screen, and (on a Playwright target) web',
+  context: 'the browser context is owned by the engine: cookies, routes, and storage are on the web fixture of a Playwright target',
+  request: 'there is no request fixture: call fetch() directly, or reach the browser through the web fixture of a Playwright target',
+  driver: 'there is no WebDriver session: drive the device through app, screen, and (on an agent-device target) device',
+};
+
 /**
  * Reaching for a fixture the target's engine does not contribute fails at
  * the first touch with the earliest honest error: the engine's name and what
@@ -192,9 +202,13 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
       }
       const engine = environment.target.engine;
       const declared = Object.keys(engine?.fixtures ?? {});
+      const available = Object.keys(target).toSorted();
+      const contributed = `engine ${engine?.name ?? 'none'} contributes ${declared.length === 0 ? 'no fixtures' : declared.join(', ')}`;
+      const foreign = FOREIGN_FIXTURE_HINTS[property];
+      const hint = foreign === undefined ? didYouMean(property, available) : `; ${foreign}`;
       throw new ConfigurationError(
         'UNSUPPORTED_CAPABILITY',
-        `target "${environment.target.name}" has no "${property}" fixture: engine ${engine?.name ?? 'none'} contributes ${declared.length === 0 ? 'no fixtures' : declared.join(', ')}`,
+        `target "${environment.target.name}" has no "${property}" fixture; available: ${available.join(', ')} (${contributed})${hint}`,
       );
     },
   });
@@ -334,6 +348,30 @@ function requireAppUrl(target: ResolvedTarget): asserts target is ResolvedTarget
   );
 }
 
+/**
+ * Network-level failures a browser or device reports when nothing is
+ * listening where the app should be. Anything else that fails a navigation
+ * (a certificate, a 500, a crash mid-load) stays an engine failure.
+ */
+const NOTHING_LISTENING =
+  /ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ERR_ADDRESS_UNREACHABLE|EHOSTUNREACH|ERR_CONNECTION_TIMED_OUT|ETIMEDOUT/;
+
+/**
+ * A navigation the network refused means the app is down, which is the
+ * first thing a new project runs into and the last thing an engine failure
+ * message suggests. Named by its own code, with the URL and the three ways
+ * to fix it.
+ */
+function unreachableApp(cause: unknown, url: string): InfrastructureError | undefined {
+  const match = NOTHING_LISTENING.exec(errorMessage(cause));
+  if (match === null) return undefined;
+  return new InfrastructureError(
+    'APP_UNREACHABLE',
+    `nothing answered at ${url} (${match[0]}); start the app there, point the engine's url at where it runs, or give the engine a command so the runner starts it`,
+    { cause },
+  );
+}
+
 function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App {
   const { config, steps, target } = environment;
 
@@ -345,7 +383,11 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
         url === undefined
           ? target.app.base.href
           : resolveNavigationUrl(url, target.app.base, target.app.allowedOrigins).url;
-      await engine.session.app.open(resolved, engine.operation(config.timeout));
+      try {
+        await engine.session.app.open(resolved, engine.operation(config.timeout));
+      } catch (cause) {
+        throw unreachableApp(cause, resolved) ?? cause;
+      }
     });
 
   return {

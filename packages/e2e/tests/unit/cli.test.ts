@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunOptions } from '../../src/run/runner.ts';
 
 const runMock = vi.hoisted(() => vi.fn());
+const initMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/run/runner.ts', () => ({
   run: runMock,
+}));
+vi.mock('../../src/cli/init.ts', () => ({
+  init: initMock,
 }));
 
 const { main } = await import('../../src/cli/index.ts');
@@ -35,6 +40,8 @@ function written(spy: ReturnType<typeof vi.spyOn>): string {
 beforeEach(() => {
   runMock.mockReset();
   runMock.mockResolvedValue({ exitCode: 0 });
+  initMock.mockReset();
+  initMock.mockResolvedValue(0);
   process.exitCode = undefined;
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -178,6 +185,34 @@ describe('e2e run argument parsing', () => {
     await invoke('definitely-not-a-command');
     expect(process.exitCode).toBe(2);
   });
+
+});
+
+describe('e2e init argument parsing', () => {
+  it('scaffolds the working directory by default and reports the terminal state', async () => {
+    await invoke('init', '--yes');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
+      yes: true,
+      interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
+    });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('resolves a directory argument against the working directory and passes it along as typed', async () => {
+    initMock.mockResolvedValue(2);
+    await invoke('init', 'apps/web');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(
+      path.resolve(process.cwd(), 'apps/web'),
+      expect.objectContaining({ directory: 'apps/web' }),
+    );
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('rejects a second positional', async () => {
+    await invoke('init', 'one', 'two');
+    expect(initMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
 });
 
 describe('e2e --version and --help', () => {
@@ -198,7 +233,7 @@ describe('e2e --version and --help', () => {
     const help = written(stdoutSpy);
     expect(help.startsWith(`e2e v${packageVersion} · local-first agentic end-to-end testing\n`)).toBe(true);
     expect(help).toContain('Usage: e2e <command> [options]');
-    expect(help).toMatch(/^ {2}init \[options\] {2,}scaffold/mu);
+    expect(help).toMatch(/^ {2}init \[options\] \[directory\] {2,}scaffold/mu);
     expect(help).toMatch(/^ {2}run \[options\] \[files\.\.\.\] {2,}run the tests$/mu);
     expect(help).toMatch(/^ {2}help \[command\] {2,}show help for a command$/mu);
     expect(help).toMatch(/^ {2}-v, --version {2,}print the version$/mu);
@@ -257,13 +292,14 @@ describe('e2e --version and --help', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
-  it('describes init and its one flag', async () => {
+  it('describes init, its directory argument, and its one flag', async () => {
     await invoke('init', '--help');
     const help = written(stdoutSpy);
-    expect(help).toContain('Usage: e2e init [options]');
+    expect(help).toContain('Usage: e2e init [options] [directory]');
     expect(help).toContain('without touching existing files');
+    expect(help).toMatch(/^ {2}directory {2,}project directory, created when missing/mu);
     expect(help).toMatch(/^ {2}-y, --yes {2,}skip the prompts: AI on, no engine, no installation$/mu);
-    expect(help).toContain('  $ e2e init --yes\n');
+    expect(help).toContain('  $ e2e init my-app\n  $ e2e init --yes\n');
     expect(process.exitCode).toBe(0);
   });
 
