@@ -1,7 +1,7 @@
 {
   "name": "@e2edev/e2e",
   "version": "0.5.0",
-  "description": "Reference runner for the e2e agentic end-to-end testing standard",
+  "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "keywords": [
     "e2e",
     "testing",

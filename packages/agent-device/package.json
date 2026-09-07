@@ -1,7 +1,7 @@
 {
   "name": "@e2edev/agent-device",
   "version": "0.3.0",
-  "description": "agent-device mobile engine (iOS and Android) for the e2e agentic end-to-end testing standard",
+  "description": "agent-device mobile engine (iOS and Android) for e2e agentic end-to-end testing",
   "keywords": [
     "e2e",
     "testing",

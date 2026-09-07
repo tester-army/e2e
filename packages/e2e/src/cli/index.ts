@@ -35,7 +35,7 @@ function isTagMode(value: string): value is 'any' | 'all' {
 /** Builds the commander program. */
 function createProgram(): Command {
   const program = new Command('e2e');
-  program.description('open, local-first standard for agentic end-to-end testing');
+  program.description('local-first agentic end-to-end testing');
   // Commander would exit(1) on a usage error itself; the exit-code table reserves 1
   // for product failures and 2 for CLI errors, so exits are decided in main.
   program.exitOverride();
