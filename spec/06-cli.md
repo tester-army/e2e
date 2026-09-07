@@ -102,7 +102,7 @@ Representative mappings:
 |---|---|
 | `AUTH_CREDENTIAL_UNAVAILABLE`, `MODEL_UNAVAILABLE`, `POLICY_DENIED` | configuration, 2 |
 | duplicate test/session, invalid config, zero tests, `.only` in CI | configuration, 2 |
-| driver launch, `APP_UNREACHABLE`, `MODEL_PROVIDER_FAILED` | infrastructure, 3 |
+| driver launch, `APP_UNREACHABLE`, `APP_ALREADY_RUNNING`, `MODEL_PROVIDER_FAILED` | infrastructure, 3 |
 | `APP_NOT_OPEN`, `AUTHENTICATION_FAILED`, locator/action failures | test failure, 1 |
 | `ASSERTION_FAILED`, `STEP_NO_CONCLUSION`, test `STEP_TIMEOUT` | test failure, 1 |
 | malformed provider output after repair | test failure, 1 |

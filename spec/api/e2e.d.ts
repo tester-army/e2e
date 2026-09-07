@@ -157,6 +157,7 @@ export type AgentErrorCode =
   | 'MODEL_PROVIDER_FAILED'
   | 'MODEL_OUTPUT_INVALID'
   | 'APP_UNREACHABLE'
+  | 'APP_ALREADY_RUNNING'
   | 'APP_NOT_OPEN'
   | 'LOCATOR_NOT_FOUND'
   | 'LOCATOR_AMBIGUOUS'
@@ -716,6 +717,12 @@ export interface CommandConfig {
   shutdownTimeout?: number;
   /** File that receives the process's stdout and stderr, appended, resolved from the project root. Omitted discards output. */
   log?: string;
+  /**
+   * When the readiness URL already answers before the command starts, use that
+   * process instead of spawning: nothing is started and nothing is stopped.
+   * Off by default; CI ignores it and always starts the command.
+   */
+  reuseExisting?: boolean;
 }
 
 /**

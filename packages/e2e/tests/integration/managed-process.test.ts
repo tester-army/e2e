@@ -28,7 +28,10 @@ async function freePort(): Promise<number> {
   });
 }
 
-function nodeApp(port: number, options: { extraArg?: string; startupTimeout?: number } = {}) {
+function nodeApp(
+  port: number,
+  options: { extraArg?: string; startupTimeout?: number; reuseExisting?: boolean } = {},
+) {
   return new ManagedProcess(
     'app.command',
     {
@@ -36,6 +39,7 @@ function nodeApp(port: number, options: { extraArg?: string; startupTimeout?: nu
       args: ['-e', SERVER_SCRIPT, String(port), ...(options.extraArg ? [options.extraArg] : [])],
       startupTimeout: options.startupTimeout ?? 15_000,
       shutdownTimeout: 2_000,
+      ...(options.reuseExisting === undefined ? {} : { reuseExisting: options.reuseExisting }),
     },
     os.tmpdir(),
     { readyUrl: `http://127.0.0.1:${port}/` },
@@ -127,6 +131,50 @@ describe('ManagedProcess', () => {
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).message).toContain('was not reachable');
   }, 20_000);
+
+  it('with reuseExisting, starts and owns the app when nothing answers at readyUrl yet', async () => {
+    const port = await freePort();
+    const app = nodeApp(port, { reuseExisting: true });
+    await app.start();
+    expect(app.reused).toBe(false);
+    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
+    await app.stop();
+    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
+  });
+
+  it('without reuseExisting, a server another process already runs fails the launch before spawning', async () => {
+    const port = await freePort();
+    const devServer = nodeApp(port);
+    await devServer.start();
+    try {
+      const failure = await nodeApp(port)
+        .start()
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(InfrastructureError);
+      expect((failure as InfrastructureError).code).toBe('APP_ALREADY_RUNNING');
+      expect((failure as InfrastructureError).message).toContain(`http://127.0.0.1:${port}/ already answered before app.command started`);
+      expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
+    } finally {
+      await devServer.stop();
+    }
+  });
+
+  it('with reuseExisting, attaches to a server another process already runs and never stops it', async () => {
+    const port = await freePort();
+    const devServer = nodeApp(port);
+    await devServer.start();
+    try {
+      // Without reuse this spawn would lose the port; with it, the command is never started.
+      const app = nodeApp(port, { reuseExisting: true });
+      await app.start();
+      expect(app.reused).toBe(true);
+      await app.stop();
+      expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(true);
+    } finally {
+      await devServer.stop();
+    }
+    expect(await isReachable(`http://127.0.0.1:${port}/`)).toBe(false);
+  });
 });
 
 /** Stops the stack and collects what its teardowns reported. */

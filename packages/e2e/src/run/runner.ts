@@ -336,16 +336,21 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // needs and the command that starts it. Declarations are deduplicated
     // across targets (two browsers on one dev server share one process), and
     // every service is ready before the first app command starts. Nothing
-    // spawns once the run was interrupted.
+    // spawns once the run was interrupted. A reused process or an ignored
+    // `reuseExisting` narrates as a run notice.
+    const processHooks = {
+      ci: isCiMode(env),
+      notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
+    };
     const declared = declaredProcesses(config.targets);
     if (declared.services.length > 0) {
-      const stack = new ServiceStack(declared.services, config.projectRoot);
+      const stack = new ServiceStack(declared.services, config.projectRoot, processHooks);
       services = stack;
       await debug.time('app.services.start', () => stack.start(interrupted));
       if (interrupted.aborted) return;
     }
     for (const { label, command, readyUrl } of declared.commands) {
-      const app = new ManagedProcess(label, command, config.projectRoot, { readyUrl });
+      const app = new ManagedProcess(label, command, config.projectRoot, { readyUrl }, processHooks);
       appProcesses.push(app);
       await debug.time(`app.start(${label})`, () => app.start(interrupted));
       if (interrupted.aborted) return;

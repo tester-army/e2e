@@ -1,6 +1,7 @@
-/** ManagedProcess: the readiness wait honours the run's interrupt. ServiceStack: order and teardown. */
+/** ManagedProcess: the readiness wait honours the run's interrupt, `reuseExisting` attaches. ServiceStack: order and teardown. */
 
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -101,6 +102,199 @@ function logStep(log: string, tag: string, exitCode = 0): string {
 function readLog(log: string): string[] {
   return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
 }
+
+/** An in-process server standing in for the dev server the user already has running. */
+async function alreadyRunning(): Promise<{ url: string; close: () => Promise<void> }> {
+  const server = http.createServer((_request, response) => {
+    response.statusCode = 200;
+    response.end('ok');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('no port');
+  return {
+    url: `http://127.0.0.1:${address.port}/`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+async function isReachable(url: string): Promise<boolean> {
+  try {
+    await fetch(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe('ManagedProcess reuseExisting', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-reuse-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A command that proves it ran by writing a marker, then stays up like a server would. */
+  const markerApp = (marker: string, reuseExisting: boolean) => ({
+    executable: process.execPath,
+    args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started'); setInterval(() => {}, 1000);`],
+    startupTimeout: 10_000,
+    shutdownTimeout: 2_000,
+    reuseExisting,
+  });
+
+  it('attaches to an app already answering at readyUrl: nothing spawns and stop leaves it running', async () => {
+    const running = await alreadyRunning();
+    const marker = path.join(dir, 'started');
+    const notices: string[] = [];
+    try {
+      const app = new ManagedProcess(
+        'app.command',
+        markerApp(marker, true),
+        dir,
+        { readyUrl: running.url },
+        { ci: false, notice: (message) => notices.push(message) },
+      );
+      await app.start();
+      expect(app.reused).toBe(true);
+      expect(notices).toEqual([`app.command: reusing the process already serving ${running.url}`]);
+      await app.stop();
+      expect(await isReachable(running.url)).toBe(true);
+      // Had the command spawned, its marker would appear within a moment; give it that moment.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('ignores reuseExisting in CI: an already-answering URL is APP_ALREADY_RUNNING, nothing spawns', async () => {
+    const running = await alreadyRunning();
+    const marker = path.join(dir, 'started');
+    const notices: string[] = [];
+    try {
+      const app = new ManagedProcess(
+        'app.command',
+        markerApp(marker, true),
+        dir,
+        { readyUrl: running.url },
+        { ci: true, notice: (message) => notices.push(message) },
+      );
+      const failure = await app.start().catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(InfrastructureError);
+      expect((failure as InfrastructureError).code).toBe('APP_ALREADY_RUNNING');
+      expect((failure as InfrastructureError).message).toBe(
+        `${running.url} already answered before app.command started; stop that process (reuseExisting is ignored in CI)`,
+      );
+      expect(app.reused).toBe(false);
+      expect(notices).toEqual(['app.command: reuseExisting is ignored in CI, starting the command']);
+      await app.stop();
+      expect(await isReachable(running.url)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('without reuseExisting, an already-answering URL is APP_ALREADY_RUNNING instead of passing as the new command', async () => {
+    const running = await alreadyRunning();
+    const marker = path.join(dir, 'started');
+    const notices: string[] = [];
+    try {
+      const app = new ManagedProcess(
+        'app.command',
+        markerApp(marker, false),
+        dir,
+        { readyUrl: running.url },
+        { ci: false, notice: (message) => notices.push(message) },
+      );
+      const failure = await app.start().catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(InfrastructureError);
+      expect((failure as InfrastructureError).code).toBe('APP_ALREADY_RUNNING');
+      expect((failure as InfrastructureError).message).toBe(
+        `${running.url} already answered before app.command started; stop that process or set reuseExisting: true`,
+      );
+      expect(notices).toEqual([]);
+      await app.stop();
+      expect(await isReachable(running.url)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it('spends the preflight probe from startupTimeout: a slow answer past the budget is APP_UNREACHABLE on time', async () => {
+    // A server that takes longer than the whole budget to answer: the probe must give up within it.
+    const server = http.createServer((_request, response) => {
+      setTimeout(() => {
+        response.statusCode = 200;
+        response.end('late');
+      }, 5_000);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('no port');
+    const marker = path.join(dir, 'started');
+    try {
+      const app = new ManagedProcess(
+        'app.command',
+        { ...markerApp(marker, true), startupTimeout: 300 },
+        dir,
+        { readyUrl: `http://127.0.0.1:${address.port}/` },
+        { ci: false },
+      );
+      const startedAt = Date.now();
+      const failure = await app.start().catch((error: unknown) => error);
+      const elapsed = Date.now() - startedAt;
+      expect(failure).toBeInstanceOf(InfrastructureError);
+      expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
+      expect((failure as InfrastructureError).message).toContain('within 300 ms');
+      expect(app.reused).toBe(false);
+      // Well under the 2 s probe cap plus the 300 ms budget the old code would have spent back to back.
+      expect(elapsed).toBeLessThan(1_500);
+      await app.stop();
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
+
+  it('reuses a readyUrl service the same way and skips its teardown', async () => {
+    const running = await alreadyRunning();
+    const log = path.join(dir, 'log');
+    const notices: string[] = [];
+    try {
+      const stack = new ServiceStack(
+        resolveServices([
+          {
+            name: 'emulator',
+            executable: process.execPath,
+            args: ['-e', logStep(log, 'up:emulator')],
+            readyUrl: running.url,
+            reuseExisting: true,
+            teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:emulator')] },
+          },
+          { executable: process.execPath, args: ['-e', logStep(log, 'up:migrate')], waitForExit: true },
+        ], dir),
+        dir,
+        { ci: false, notice: (message) => notices.push(message) },
+      );
+      await stack.start();
+      expect(notices).toEqual([`service "emulator": reusing the process already serving ${running.url}`]);
+      const failures: unknown[] = [];
+      await stack.stop((cause) => failures.push(cause));
+      expect(failures).toEqual([]);
+      expect(readLog(log)).toEqual(['up:migrate']);
+      expect(await isReachable(running.url)).toBe(true);
+    } finally {
+      await running.close();
+    }
+  });
+});
 
 /** Stops the stack and collects what its teardowns reported. */
 async function stopAll(stack: ServiceStack): Promise<unknown[]> {

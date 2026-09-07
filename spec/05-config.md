@@ -118,6 +118,7 @@ the pattern. Matched regular files are sorted as specified in 11-lifecycle.md.
 | `agent.visionModel` | `agent.model` | `agent.model` |
 | `cache` | read-write | read-only when `mode` is unset; an explicit mode is kept |
 | `cache.dir` | `.e2e/cache` | same |
+| `command.reuseExisting` | false | ignored: an already-running app is `APP_ALREADY_RUNNING` |
 
 `CI` mode is active when `CI` exists and, case-insensitively, is not empty,
 `0`, or `false`. Numeric config values MUST be safe integers. Workers must be
@@ -219,6 +220,23 @@ default 60 seconds. A successful HTTP status is 200 through 499. On every exit
 path the runner sends the platform's graceful termination signal to the whole
 process group, waits `shutdownTimeout`, default 10 seconds, then
 force-terminates it. The runner never terminates a process it did not start.
+
+Before spawning a command with a `readyUrl`, the runner probes that URL once
+with the same 200 through 499 rule, spending from the same `startupTimeout`
+budget. An answer means a process this run did not start is already serving
+the URL, and HTTP readiness could never tell it apart from the new command, so
+the probe decides up front. With `reuseExisting: true` the command is not
+started, the run proceeds against the process that answered, and teardown
+leaves it running. Without the flag the launch fails with
+`APP_ALREADY_RUNNING` before anything is spawned; the old server is never
+accepted as the new command's readiness. When nothing answers, the command
+starts and is owned exactly as before. The flag is off by default. In `CI`
+mode it is ignored: the runner emits a notice, and an already-running app is
+`APP_ALREADY_RUNNING` there too, so a stray server on a shared runner is never
+silently tested. The flag applies to `command` and to a service with
+`readyUrl`; a `waitForExit` service and a `teardown` command have nothing to
+reuse, and setting it on either is `INVALID_CONFIG`. A reused service's
+`teardown` does not run.
 
 ### Services
 

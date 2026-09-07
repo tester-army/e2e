@@ -170,6 +170,7 @@ export interface CommandConfig {
   startupTimeout?: number;
   shutdownTimeout?: number;
   log?: string;
+  reuseExisting?: boolean;
 }
 ```
 
@@ -182,6 +183,7 @@ export interface CommandConfig {
 | `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE` |
 | `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
 | `log` | `string` | unset (output discarded) | File that receives the process's stdout and stderr, appended; resolved from the project root and must stay inside it. Missing directories are created |
+| `reuseExisting` | `boolean` | `false` | If `readyUrl` already answers before the spawn, attach to that process: nothing is started or stopped. Without it, an already-answering URL is `APP_ALREADY_RUNNING`. Ignored in CI |
 
 Without `log` the runner discards everything the process prints, so a dev
 server that crashes on boot or a migration that fails leaves no trace beyond
@@ -197,6 +199,19 @@ The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`,
 and `COMSPEC` when present, plus `command.env`. Model credentials,
 `E2E_USER_*` values, and CI tokens are never inherited. The runner never
 terminates a process it did not start.
+
+The runner probes `readyUrl` once before spawning, within the `startupTimeout`
+budget. If something already answers, a process this run did not start is
+serving the URL, and HTTP readiness could never tell it apart from the new
+command later, so the runner decides up front. Without `reuseExisting` the
+launch fails with `APP_ALREADY_RUNNING` before anything is spawned, so tests
+never run against stale code by accident. `reuseExisting: true` is for local
+development, where the dev server is usually already up on that port: the
+runner reports `<label>: reusing the process already serving <url>` and leaves
+the process alone on teardown. When nothing answers, the command starts and is
+owned as usual either way. CI ignores the flag with a notice, so a leftover
+server on a shared runner is `APP_ALREADY_RUNNING` there and never silently
+tested.
 
 ### services
 
@@ -223,6 +238,9 @@ plus:
 | `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on until exit within its own `startupTimeout` |
 
 Exactly one of `readyUrl` or `waitForExit` is required per service, otherwise
+`INVALID_CONFIG`. `reuseExisting` works on a `readyUrl` service like on
+`command` (a reused service also skips its `teardown`); on a `waitForExit`
+service or a `teardown` command there is nothing to reuse and it is
 `INVALID_CONFIG`. Services start sequentially in declaration order before any
 app command, each ready before the next starts, and `startupTimeout` bounds
 every readiness wait. `services` works without `command` when the app is

@@ -495,6 +495,30 @@ describe('resolveConfig', () => {
       ).toThrow(/app\.services\[0\] needs exactly one readiness contract/);
     });
 
+    it('accepts reuseExisting on a readyUrl service and rejects it where nothing can be reused', () => {
+      const app = resolveApp({
+        url: APP_URL,
+        command: { executable: 'pnpm', args: ['dev'], reuseExisting: true },
+        services: [{ executable: 'node', args: ['emulator.js'], readyUrl: 'http://127.0.0.1:7000/', reuseExisting: true }],
+      });
+      expect(app.command?.reuseExisting).toBe(true);
+      expect(app.services[0]?.command.reuseExisting).toBe(true);
+      expect(() =>
+        resolveApp({ url: APP_URL, services: [{ executable: 'x', waitForExit: true, reuseExisting: true }] }),
+      ).toThrow(/app\.services\[0\]\.reuseExisting needs readyUrl: a waitForExit service has nothing to reuse/);
+      expect(() =>
+        resolveApp({
+          url: APP_URL,
+          services: [
+            { executable: 'x', readyUrl: 'http://127.0.0.1:1/', teardown: { executable: 'y', reuseExisting: true } },
+          ],
+        }),
+      ).toThrow(/app\.services\[0\]\.teardown\.reuseExisting needs readyUrl/);
+      expect(() =>
+        resolveApp({ url: APP_URL, command: { executable: 'x', reuseExisting: 'yes' as unknown as boolean } }),
+      ).toThrow(/target "web" backend fake app\.command\.reuseExisting must be a boolean/);
+    });
+
     it('rejects malformed services, naming the target', () => {
       expect(() => resolveApp({ url: APP_URL, services: { executable: 'x' } as unknown as [] })).toThrow(
         /target "web" backend fake app\.services must be an array/,

@@ -155,6 +155,16 @@ function validateCommand(command: CommandConfig, label: string, projectRoot: str
       );
     }
   }
+  if (command.reuseExisting !== undefined && typeof command.reuseExisting !== 'boolean') {
+    throw new ConfigurationError('INVALID_CONFIG', `${label}.reuseExisting must be a boolean`);
+  }
+}
+
+/** Only a command with a URL to probe can find something already answering there. */
+function rejectReuse(command: CommandConfig, label: string, reason: string): void {
+  if (command.reuseExisting !== undefined) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label}.reuseExisting needs readyUrl: ${reason}`);
+  }
 }
 
 /**
@@ -226,7 +236,8 @@ function serviceName(service: ServiceConfig, position: string, taken: Set<string
  * Resolves a declaration's `services`: every service is a command with exactly
  * one readiness contract (`readyUrl` or `waitForExit`), and a `teardown` is a
  * command of its own. The service fields that only steer the runner
- * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the command.
+ * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the
+ * command; `reuseExisting` stays on it, and only a `readyUrl` service may set it.
  * `projectRoot` anchors each `log` path; `prefix` names the declaring target
  * in errors, so a failing service is traceable to the backend that declared it.
  */
@@ -252,9 +263,13 @@ export function resolveServices(
       );
     }
     const readiness: Readiness = readyUrl === undefined ? { waitForExit: true } : { readyUrl };
+    if (readyUrl === undefined) rejectReuse(command, position, 'a waitForExit service has nothing to reuse');
     const name = serviceName(service, position, names);
     const label = `service "${name}"`;
-    if (teardown !== undefined) validateCommand(teardown, `${position}.teardown`, projectRoot);
+    if (teardown !== undefined) {
+      validateCommand(teardown, `${position}.teardown`, projectRoot);
+      rejectReuse(teardown, `${position}.teardown`, 'a teardown command has nothing to reuse');
+    }
     return {
       label,
       name: service.name === undefined ? undefined : name,

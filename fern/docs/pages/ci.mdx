@@ -92,6 +92,7 @@ behavior locally.
 | `retries` | `0` | `1` | Locally a retry hides the bug you were about to inspect |
 | `workers` | half your cores | `1` | A shared runner is the noisiest place to add timing variance |
 | `.only` | allowed | rejected with `ONLY_IN_CI` | A focused test that reaches CI silently disables the rest of the suite |
+| `command.reuseExisting` | honored | ignored, with a notice | A server already listening on a runner is a leftover, not your dev server; it fails the launch with `APP_ALREADY_RUNNING` |
 
 Override any of them when you mean it:
 

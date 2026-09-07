@@ -142,7 +142,10 @@ export default defineConfig({
 The runner spawns the command, waits until `readyUrl` (by default `url`)
 answers with a 200-499 status, and terminates it when the run finishes, fails,
 or is interrupted with Ctrl-C, so a launcher script that boots and kills the
-server is unnecessary. On macOS and Linux the command runs as its own process
+server is unnecessary. Set `reuseExisting: true` locally to attach to the dev
+server you already have running instead of starting a second one; without it an
+already-answering `url` fails the run with `APP_ALREADY_RUNNING`, and CI
+always does. On macOS and Linux the command runs as its own process
 group and the whole group is signalled; on Windows only the launched process is
 signalled, so point `executable` at the server itself rather than a wrapper. A
 third Ctrl-C exits immediately without teardown. The child sees only `PATH`, `HOME`, and the

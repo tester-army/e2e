@@ -25,6 +25,26 @@ function describeExit(exit: ExitStatus): string {
   return exit.code === null ? `was terminated by ${exit.signal}` : `exited with code ${exit.code}`;
 }
 
+/** One readiness probe: true when `url` answers 200 through 499 within `timeoutMs`. */
+async function answers(url: string, timeoutMs: number): Promise<boolean> {
+  try {
+    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    return response.status >= 200 && response.status <= 499;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What the runner tells a managed process about the run: whether CI mode is
+ * active (where `reuseExisting` is ignored) and where to narrate run-level
+ * progress such as a reused app.
+ */
+export interface ManagedProcessHooks {
+  readonly ci?: boolean;
+  readonly notice?: (message: string) => void;
+}
+
 /**
  * One command the runner owns: spawned as a process group, waited on until
  * its readiness contract holds, and terminated signal-then-force. `label`
@@ -32,24 +52,65 @@ function describeExit(exit: ExitStatus): string {
  */
 export class ManagedProcess {
   private child: ChildProcess | null = null;
+  private reusedExisting = false;
 
   constructor(
     private readonly label: string,
     private readonly command: CommandConfig,
     private readonly projectRoot: string,
     private readonly readiness: Readiness,
+    private readonly hooks: ManagedProcessHooks = {},
   ) {}
+
+  /** True once `start` found the readiness URL already answering and attached to it instead of spawning. */
+  get reused(): boolean {
+    return this.reusedExisting;
+  }
 
   /**
    * Spawns the process group and waits for readiness. An already aborted
    * `signal` spawns nothing; one that aborts during the wait ends it early and
    * takes the process down with it. The caller reads the signal to learn the
    * run was interrupted.
+   *
+   * A readiness URL that already answers before the spawn belongs to a
+   * process this run did not start, and HTTP readiness cannot tell which
+   * process answered later. So the preflight probe decides up front: with
+   * `reuseExisting` (outside CI) nothing is spawned and `stop` leaves the
+   * process alone; otherwise the launch fails with `APP_ALREADY_RUNNING`
+   * rather than letting the old server pass as the new command's readiness.
+   * The probe spends from the same `startupTimeout` budget as the wait.
    */
   async start(signal?: AbortSignal): Promise<void> {
     // A function, not a narrowed local: the signal flips while the loop awaits.
     const aborted = (): boolean => signal?.aborted === true;
     if (aborted()) return;
+    // Without a URL to probe, the process exiting 0 is the readiness event.
+    const readyUrl = 'readyUrl' in this.readiness ? this.readiness.readyUrl : undefined;
+    const startupTimeout = this.command.startupTimeout ?? 60_000;
+    const deadline = Date.now() + startupTimeout;
+    if (readyUrl !== undefined) {
+      const reuse = this.command.reuseExisting === true && this.hooks.ci !== true;
+      if (this.command.reuseExisting === true && !reuse) {
+        this.hooks.notice?.(`${this.label}: reuseExisting is ignored in CI, starting the command`);
+      }
+      if (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, startupTimeout))) {
+        if (reuse) {
+          this.reusedExisting = true;
+          this.hooks.notice?.(`${this.label}: reusing the process already serving ${readyUrl}`);
+          return;
+        }
+        throw new InfrastructureError(
+          'APP_ALREADY_RUNNING',
+          `${readyUrl} already answered before ${this.label} started; ${
+            this.hooks.ci === true
+              ? 'stop that process (reuseExisting is ignored in CI)'
+              : 'stop that process or set reuseExisting: true'
+          }`,
+        );
+      }
+      if (aborted()) return;
+    }
     const env: Record<string, string> = {};
     for (const key of INHERITED_ENV) {
       const value = process.env[key];
@@ -85,10 +146,6 @@ export class ManagedProcess {
       });
     });
 
-    // Without a URL to probe, the process exiting 0 is the readiness event.
-    const readyUrl = 'readyUrl' in this.readiness ? this.readiness.readyUrl : undefined;
-    const startupTimeout = this.command.startupTimeout ?? 60_000;
-    const deadline = Date.now() + startupTimeout;
     let pollMs = READY_POLL_MIN_MS;
     for (;;) {
       if (aborted()) {
@@ -119,16 +176,8 @@ export class ManagedProcess {
             : `${this.label} was not reachable at ${readyUrl} within ${startupTimeout} ms`,
         );
       }
-      if (readyUrl !== undefined) {
-        try {
-          const response = await fetch(readyUrl, {
-            redirect: 'manual',
-            signal: AbortSignal.timeout(Math.min(READY_PROBE_TIMEOUT_MS, remaining)),
-          });
-          if (response.status >= 200 && response.status <= 499) return;
-        } catch {
-          // not ready yet
-        }
+      if (readyUrl !== undefined && (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining)))) {
+        return;
       }
       // The exit event wakes the wait early so an exit is seen at once, not on the next poll.
       await Promise.race([
@@ -160,8 +209,9 @@ export class ManagedProcess {
     }
   }
 
-  /** Gracefully terminates the whole process group, then force-kills. */
+  /** Gracefully terminates the whole process group, then force-kills. A reused process was never ours to stop. */
   async stop(): Promise<void> {
+    if (this.reusedExisting) return;
     const child = this.child;
     this.child = null;
     if (child === null || child.exitCode !== null || child.signalCode !== null) return;
@@ -203,6 +253,7 @@ export class ServiceStack {
   constructor(
     private readonly services: readonly ResolvedService[],
     private readonly projectRoot: string,
+    private readonly hooks: ManagedProcessHooks = {},
   ) {}
 
   /**
@@ -212,7 +263,7 @@ export class ServiceStack {
   async start(signal?: AbortSignal): Promise<void> {
     for (const { label, command, readiness, teardown } of this.services) {
       if (signal?.aborted === true) return;
-      const service = new ManagedProcess(label, command, this.projectRoot, readiness);
+      const service = new ManagedProcess(label, command, this.projectRoot, readiness, this.hooks);
       this.started.push({
         service,
         teardown:
@@ -230,13 +281,14 @@ export class ServiceStack {
    * Stops the started services in reverse order, then runs each of their
    * teardown commands in reverse order and waits for it to exit. A failing
    * teardown is reported through `onFailure` and never skips the rest, so one
-   * failing `docker compose down` cannot leave the others running.
+   * failing `docker compose down` cannot leave the others running. A reused
+   * service was not started by this run, so its teardown does not run either.
    */
   async stop(onFailure: (cause: unknown) => void): Promise<void> {
     const started = this.started.splice(0).toReversed();
     for (const { service } of started) await service.stop();
-    for (const { teardown } of started) {
-      if (teardown === undefined) continue;
+    for (const { service, teardown } of started) {
+      if (teardown === undefined || service.reused) continue;
       try {
         await teardown.start();
       } catch (cause) {
