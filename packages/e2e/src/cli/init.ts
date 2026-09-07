@@ -9,6 +9,7 @@ import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './ini
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { addDependencies, detectPackageManager, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold } from './init/scaffold.ts';
+import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 
 export interface InitOptions {
   yes?: boolean;
@@ -39,6 +40,11 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     pkg = readPackage(cwd);
   } catch {
     clack.log.error('invalid package.json; fix it before running e2e init');
+    return 2;
+  }
+  const bundledSkill = readSkillFiles();
+  if (bundledSkill.length === 0) {
+    clack.log.error(MISSING_SKILL_MESSAGE);
     return 2;
   }
 
@@ -90,7 +96,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       skillDirs = selected;
     }
   }
-  const skillInstalls = planSkillInstall(cwd, skillDirs);
+  const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
 
   const scaffold = createScaffold(engine, ai);
   const { manifest, additions } = addDependencies(pkg.manifest, scaffold.dependencies);

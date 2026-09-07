@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { readSkillFiles, SKILL_NAME } from '../skill.ts';
+import { MISSING_SKILL_MESSAGE, SKILL_NAME, type SkillFile } from '../skill.ts';
 
 interface SkillLocation {
   /** Project-relative skills directory with `/` separators. */
@@ -25,21 +25,23 @@ export interface SkillInstall {
   readonly files: readonly { readonly absolute: string; readonly content: string }[];
 }
 
-/** Known locations that already hold a copy of the skill. */
+/**
+ * Known locations that hold a copy of the skill. The directory is the marker,
+ * not `SKILL.md`, so a copy that lost files is repaired rather than ignored.
+ */
 export function findInstalledSkillDirs(cwd: string): string[] {
-  return SKILL_LOCATIONS.map((location) => location.dir).filter((dir) =>
-    existsSync(path.join(cwd, dir, SKILL_NAME, 'SKILL.md')),
-  );
+  return SKILL_LOCATIONS.map((location) => location.dir).filter((dir) => existsSync(path.join(cwd, dir, SKILL_NAME)));
 }
 
 /**
- * Plans the writes for the given directories. A directory without the skill
- * is created and one whose copy differs from the bundled files is rewritten;
- * an up-to-date copy needs nothing and is left out. Files the bundle does not
- * ship are never removed.
+ * Plans the writes for the given directories from the bundled files. A
+ * directory without the skill is created and one whose copy differs from the
+ * bundle is rewritten; an up-to-date copy needs nothing and is left out. Files
+ * the bundle does not ship are never removed. An empty bundle with somewhere
+ * to write is a broken installation, never a set of current copies.
  */
-export function planSkillInstall(cwd: string, dirs: readonly string[]): SkillInstall[] {
-  const bundled = readSkillFiles();
+export function planSkillInstall(cwd: string, dirs: readonly string[], bundled: readonly SkillFile[]): SkillInstall[] {
+  if (dirs.length > 0 && bundled.length === 0) throw new Error(MISSING_SKILL_MESSAGE);
   const installs: SkillInstall[] = [];
   for (const dir of dirs) {
     const root = path.join(cwd, dir, SKILL_NAME);
@@ -50,7 +52,7 @@ export function planSkillInstall(cwd: string, dirs: readonly string[]): SkillIns
     if (current) continue;
     installs.push({
       relative: `${dir}/${SKILL_NAME}`,
-      existing: existsSync(path.join(root, 'SKILL.md')),
+      existing: existsSync(root),
       files: bundled.map((file) => ({ absolute: path.join(root, file.relative), content: file.content })),
     });
   }

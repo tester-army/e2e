@@ -1,6 +1,6 @@
 /** `e2e guide`: prints the bundled agent skill for agents and people who do not have it installed. */
 
-import { readGuide, skillTopics } from './skill.ts';
+import { MISSING_SKILL_MESSAGE, readGuide, skillTopics } from './skill.ts';
 
 /** Prints the overview or one topic to stdout; an unknown topic exits 2. */
 export function guide(topic: string | undefined): number {
@@ -9,7 +9,7 @@ export function guide(topic: string | undefined): number {
     const topics = skillTopics();
     process.stderr.write(
       topics.length === 0
-        ? 'this installation ships no skill files; reinstall @e2edev/e2e\n'
+        ? `${MISSING_SKILL_MESSAGE}\n`
         : `unknown topic "${topic}"; topics: ${topics.join(', ')}\n`,
     );
     return 2;

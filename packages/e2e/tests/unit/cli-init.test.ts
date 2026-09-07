@@ -5,8 +5,10 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { init } from '../../src/cli/init.ts';
+import { readSkillFiles } from '../../src/cli/skill.ts';
 
 vi.mock('@clack/prompts', { spy: true });
+vi.mock('../../src/cli/skill.ts', { spy: true });
 vi.mock('node:child_process', () => ({ spawnSync: vi.fn() }));
 
 let dir: string;
@@ -259,6 +261,26 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
     expect(clack.multiselect).toHaveBeenCalledTimes(1);
     expect(output()).toContain('updated .claude/skills/e2e/');
+  });
+
+  it('repairs a damaged copy without asking and leaves other locations alone', async () => {
+    mkdirSync(path.join(dir, '.agents/skills/e2e/references'), { recursive: true });
+    writeFileSync(path.join(dir, '.agents/skills/e2e/references/setup.md'), 'stale\n');
+    expect(await init(dir, { yes: true })).toBe(0);
+    expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+    expect(read('.agents/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
+    expect(existsSync(path.join(dir, '.claude'))).toBe(false);
+    expect(clack.multiselect).not.toHaveBeenCalled();
+    expect(output()).toContain('updated .agents/skills/e2e/');
+  });
+
+  it('fails before any prompt or write when the package lacks its skill files', async () => {
+    vi.mocked(readSkillFiles).mockReturnValueOnce([]);
+    expect(await init(dir)).toBe(2);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(clack.select).not.toHaveBeenCalled();
+    expect(clack.multiselect).not.toHaveBeenCalled();
+    expect(output()).toContain('reinstall @e2edev/e2e');
   });
 
   it('offers the skill to an initialized project and points at e2e guide when declined', async () => {
