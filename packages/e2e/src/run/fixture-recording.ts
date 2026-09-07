@@ -1,6 +1,6 @@
 /** Explicit fixture operations: open the step before running any backend code. */
 import type { FixtureOperation, FixtureOperations } from '../backend/index.ts';
-import { TestError } from '../internal/errors.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { AttemptEnvironment } from './fixtures.ts';
 
@@ -9,9 +9,19 @@ export class FixtureRecorder {
 
   constructor(private readonly environment: AttemptEnvironment) {}
 
-  /** Uses the legacy adapter only for factories without an explicit recording declaration. */
-  adapt<T extends object>(surface: T, legacy: (surface: T) => T): T {
-    return this.declared.has(surface) ? surface : legacy(surface);
+  /**
+   * The surface a factory returned, which must be one it declared through
+   * `fixture`: an undeclared surface would run backend code outside any step,
+   * so it is a backend authoring error, not a silently unrecorded fixture.
+   */
+  require<T extends object>(name: string, surface: T): T {
+    if (!this.declared.has(surface)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `fixture "${name}" must be declared through context.fixture(...) so its operations are recorded`,
+      );
+    }
+    return surface;
   }
 
   /** Wraps declared methods and namespaces without invoking them or guessing their return types. */

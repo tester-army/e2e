@@ -20,7 +20,8 @@ const mathBrain: StepExecutor = {
       process.env.E2E_MODEL ?? 'google/gemini-3-flash',
     );
     let verdict: StepVerdict | undefined;
-    const record = (name: string) => context.budgets.recordToolCall({ name, mutates: false });
+    const compute = (name: string, body: () => number) =>
+      context.budgets.runTool({ name, mutates: false }, async () => String(body()));
     const loop = new ToolLoopAgent({
       model,
       instructions:
@@ -31,18 +32,12 @@ const mathBrain: StepExecutor = {
         add: tool({
           description: 'Add two numbers.',
           inputSchema: z.object({ a: z.number(), b: z.number() }),
-          execute: async ({ a, b }) => {
-            record('add');
-            return String(a + b);
-          },
+          execute: ({ a, b }) => compute('add', () => a + b),
         }),
         multiply: tool({
           description: 'Multiply two numbers.',
           inputSchema: z.object({ a: z.number(), b: z.number() }),
-          execute: async ({ a, b }) => {
-            record('multiply');
-            return String(a * b);
-          },
+          execute: ({ a, b }) => compute('multiply', () => a * b),
         }),
         conclude: tool({
           description: 'Conclude the step with the final verdict.',

@@ -1,20 +1,15 @@
 /**
- * The primitives under the built-in agent (RFC0001, layer 4). Each is one
- * piece of the discipline the chassis and `createAgent` are assembled from,
- * usable on its own with a raw AI SDK `ToolLoopAgent` or `generateText` —
- * the way the AI SDK itself is a small opinionated agent over primitives you
- * can also call directly:
+ * The pieces the tool-loop chassis and `createAgent` are assembled from:
  *
  * - `createGrammarTools` — AI SDK tools over the harness action grammar;
  * - `createVerdictTool` — the `complete_step` tool and the closed blocked-code policy;
- * - `trackModelCalls` — step handlers that report usage to the harness budgets;
- * - `conversationMemory` — a message history kept across the steps of an attempt.
+ * - `trackModelCalls` — step handlers that report usage to the harness budgets.
  *
  * Nothing here loads the `ai` package: an AI SDK tool is a plain object, so
  * the module is safe to import from a config that never calls a model.
  */
 
-import type { ModelMessage, StepResult, Tool, ToolSet } from 'ai';
+import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { AgentErrorCode } from '../types.ts';
 import { BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
@@ -292,54 +287,4 @@ export function trackModelCalls(
       });
     },
   };
-}
-
-/** A conversation kept in the attempt memory across the steps of one test. */
-export interface ConversationMemory {
-  /** Messages remembered by earlier steps of this attempt; empty on the first. */
-  readonly messages: readonly ModelMessage[];
-  /** Index of the last step that remembered, or -1. */
-  readonly lastStepIndex: number;
-  /** Stores the history for the next step of the attempt. */
-  remember(messages: readonly ModelMessage[]): void;
-}
-
-interface StoredConversation {
-  readonly messages: readonly ModelMessage[];
-  readonly lastStepIndex: number;
-}
-
-/**
- * The executor's own conversation across an attempt, kept in
- * `context.attempt.memory` under `key`. Open a step with
- * `[...memory.messages, { role: 'user', content }]` and `remember` the full
- * transcript when it ends; the harness drops it with the attempt.
- */
-export function conversationMemory(
-  context: StepExecutorContext,
-  key = 'e2e/conversation',
-): ConversationMemory {
-  const stored = context.attempt.memory.get(key);
-  const current: StoredConversation = isStoredConversation(stored)
-    ? stored
-    : { messages: [], lastStepIndex: -1 };
-  return {
-    messages: current.messages,
-    lastStepIndex: current.lastStepIndex,
-    remember: (messages) => {
-      const kept: StoredConversation = { messages: [...messages], lastStepIndex: context.step.index };
-      context.attempt.memory.set(key, kept);
-    },
-  };
-}
-
-function isStoredConversation(value: unknown): value is StoredConversation {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'messages' in value &&
-    Array.isArray(value.messages) &&
-    'lastStepIndex' in value &&
-    typeof value.lastStepIndex === 'number'
-  );
 }

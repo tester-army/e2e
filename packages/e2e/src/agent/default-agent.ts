@@ -3,14 +3,8 @@
  * chassis plus the grammar toolset, kept deliberately small. Every mutating
  * tool returns the updated screen; verdicts, budgets, hard stops, loop
  * guards, wind-down, and the transcript come from the chassis
- * (`tool-loop.ts`) unchanged.
- *
- * Like the AI SDK's own agent, it is a thin opinion over parts you can also
- * use directly: `createToolLoopExecutor` is the same loop with your own
- * prompt and vocabulary, and `primitives.ts` — grammar tools, the verdict
- * tool, model-call accounting, conversation memory, plus the compaction and
- * hand-off notice exported here — composes with either, or with a raw
- * `ToolLoopAgent` / `generateText`, for anything else.
+ * (`tool-loop.ts`) unchanged. `createToolLoopExecutor` is the same loop with
+ * a caller's own prompt and vocabulary.
  */
 
 import type { ModelMessage, ToolExecutionOptions, ToolSet } from 'ai';
@@ -98,7 +92,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
  * token, replacing any ordinary prior-run hint. The agent continues from live
  * state; redoing a replayed action would double-commit a mutation.
  */
-export function formatReplayedPrefix(prefix: ReplayedPrefix): string {
+function formatReplayedPrefix(prefix: ReplayedPrefix): string {
   const lines = prefix.replayedActions.map((summary, index) => `${index + 1}. ${summary}`);
   return [
     'Cached replay already performed these recorded actions for this step:',
@@ -130,9 +124,8 @@ export function formatReplayedPrefix(prefix: ReplayedPrefix): string {
  * A stale snapshot keeps what preceded the tree (the instruction, or what
  * the action did) and loses the tree. Returns the input array unchanged when
  * there is nothing to compact, so the caller can skip the messages override.
- * Exported as the default `prepareMessages` a custom one can compose with.
  */
-export function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
+function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
   const total = messages.reduce(
     (count, message) => count + snapshotParts(message).filter((text) => text !== undefined).length,
     0,

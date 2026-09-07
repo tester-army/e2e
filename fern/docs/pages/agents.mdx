@@ -77,112 +77,30 @@ slot and are recorded as failures. Parallel tool calls cannot exceed the
 budget by checking it at the same time. Project-tool mutations always mark
 trace replay gaps.
 
-`replay` and `secrets` annotations are deprecated, optional metadata. They do
-not enable deterministic tool replay or grant access to secrets. Declare
-`mutates` and, when needed, `platforms`.
-
 Read-only tools can call `getToolContext(executionOptions).observe({ pixels:
 true })`, importing `getToolContext` from `@e2edev/e2e/agent`. This is the same
 redacted observation and pixel-withholding policy the executor uses. Mutating
 tools must request observations in a separate read-only call; their bodies
 already occupy the action queue.
 
-## Three layers, like the AI SDK
+## Two layers
 
 The harness redacts and records; what the model reads is the agent's
-decision. The agent surface is layered the way the AI SDK is: a small
-opinionated agent on top, the loop under it, and primitives you can call from
-your own `ToolLoopAgent` or `generateText` for anything else.
+decision. The agent surface has two layers:
 
 1. **`createAgent`** — the golden path: `model`, `system`, `tools`,
    `maxTurns`, `providerOptions`. Nothing else; when you want to change what
    the model reads, step down one layer.
 2. **`createToolLoopExecutor`** — the same loop with your prompt and your
    vocabulary: `buildPrompt` (a string, or a message history to carry a
-   conversation across steps), `tools`, `prepareMessages` for between-turn
-   compaction, `onConclude` with the step's full transcript, and `loopGuards`
-   / `windDown` to tune or disable the loop's own notices.
-3. **Primitives** — `createGrammarTools(ctx)`, `createVerdictTool()`,
-   `trackModelCalls(ctx, model)`, `conversationMemory(ctx)`,
-   `serializeLedger(steps, maxBytes)`, `compactSnapshotHistory(messages)`,
-   `formatReplayedPrefix(prefix)`. None loads the `ai` package; each is one
-   piece of the discipline above, usable alone.
+   conversation across steps), `tools`, and `prepareMessages` for
+   between-turn compaction, which may also return `{ messages, stop }` when
+   your own history shows the step is not progressing.
 
-A model that remembers everything it did in a test is the default loop and
-grammar with a prompt that carries the conversation:
-
-```ts title="e2e.config.ts"
-import {
-  compactSnapshotHistory,
-  conversationMemory,
-  createGrammarTools,
-  createToolLoopExecutor,
-} from '@e2edev/e2e/agent';
-
-export default defineConfig({
-  agent: createToolLoopExecutor({
-    name: 'remembering-agent',
-    system: 'Act on node ids from the newest screen; conclude with complete_step.',
-    tools: (ctx, { guard }) => createGrammarTools(ctx, { guard }),
-    prepareMessages: compactSnapshotHistory,
-    buildPrompt: async (ctx) => {
-      const memory = conversationMemory(ctx);          // lives in ctx.attempt.memory
-      const screen = await ctx.observe();
-      const content = `${ctx.step.instruction}\n\nCurrent screen (revision ${screen.revision}):\n${screen.text}`;
-      return [...memory.messages, { role: 'user', content }];
-    },
-    onConclude: (ctx, { messages }) => conversationMemory(ctx).remember(messages),
-  }),
-});
-```
-
-A model that sees nothing but the instruction and the screen is the same
-with a `buildPrompt` that returns that string. Steps the model did not run —
-a `screen` click, a step the trace cache replayed — are in `ctx.priorSteps`;
-filter by `index` past `memory.lastStepIndex` and `serializeLedger` the rest
-into a note if you want the model to know.
-
-The third layer with no chassis at all is ordinary AI SDK code:
-
-```ts
-import { ToolLoopAgent, stepCountIs } from 'ai';
-import { createGrammarTools, createVerdictTool, trackModelCalls, VERDICT_RULES } from '@e2edev/e2e/agent';
-import type { StepExecutor } from '@e2edev/e2e';
-
-const raw: StepExecutor = {
-  name: 'raw-loop',
-  async runStep(ctx) {
-    const verdict = createVerdictTool();
-    const usage = trackModelCalls(ctx, myModel);
-    const agent = new ToolLoopAgent({
-      model: myModel,
-      instructions: `Drive the step with the tools. ${VERDICT_RULES}`,
-      tools: { ...createGrammarTools(ctx), complete_step: verdict.tool },
-      stopWhen: [() => verdict.concluded(), stepCountIs(ctx.budgets.maxModelCalls)],
-    });
-    const screen = await ctx.observe();
-    await agent.generate({
-      prompt: `${ctx.step.instruction}\n\n${screen.text}`,
-      abortSignal: ctx.signal,
-      onStepStart: usage.onStepStart,
-      onStepEnd: usage.onStepEnd,
-    });
-    return verdict.verdict() ?? { status: 'failed', summary: 'no verdict' };
-  },
-};
-```
-
-The grammar tools still bottom out in `ctx.actions`, so every action is
-policed, budgeted, and recorded; `trackModelCalls` reports each turn to the
-step budget; the verdict tool enforces the blocked-code policy. What the
-loop reads, remembers, or forgets is yours.
-
-A hand-rolled executor gets the same raw material on its context:
-`ctx.priorSteps` (structured, sanitized records of every completed step),
-`ctx.ledger` (the runner's serialization of them), `ctx.attempt.memory` (a
+A hand-rolled executor gets the raw material on its context: `ctx.ledger`
+(the runner's serialization of every completed step), `ctx.attempt.memory` (a
 per-attempt map the harness holds and never reports), and
-`ctx.observe({ tree: true, pixels: true })` for the redacted node tree and
-masked pixels instead of, or beside, the text.
+`ctx.observe({ pixels: true })` for masked pixels beside the text.
 
 ## Keep the loop, change the vocabulary
 
@@ -226,10 +144,8 @@ export default defineConfig({
 
 `guard()` stops a tool from running once the step is concluding and turns
 budget and timeout stops into a clean end of the loop. `runTool` reserves the
-action budget, serializes mutations, and records their outcomes. The older
-`recordToolCall` accounting hook is deprecated because reporting a mutation
-after it ran cannot prevent it from exceeding a budget. A mutating `runTool`
-body must call its backend directly; queuing another grammar operation from
+action budget before the body runs, serializes mutations, and records their
+outcomes. A mutating `runTool` body must call its backend directly; queuing another grammar operation from
 inside that body would wait on itself. The
 step deadline still settles the verdict either way, but a device operation
 that ignores cancellation finishes on its own time, so keep tool bodies
@@ -293,8 +209,9 @@ const own: StepExecutor = {
   cache: "off",
   async runStep(ctx) {
     const page = surfaceOf(backend)!.page();   // the page app.open() navigated
-    await page.getByRole("button", { name: "Save" }).click();
-    ctx.budgets.recordToolCall({ name: "click", mutates: true });
+    await ctx.budgets.runTool({ name: "click", mutates: true }, () =>
+      page.getByRole("button", { name: "Save" }).click(),
+    );
     return { status: "passed", summary: "saved" };
   },
 };

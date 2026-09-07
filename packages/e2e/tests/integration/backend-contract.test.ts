@@ -710,8 +710,9 @@ test('bounds a hanging fixture call', async (fixtures) => {
       expect(apis).toEqual(
         expect.arrayContaining(['gadget.poke', 'gadget.knobs.turn', 'gadget.slow', 'gadget.dropFile', 'expect.toBePoked']),
       );
+      // Undeclared synchronous accessors keep their identity and are never steps.
       expect(apis).not.toContain('gadget.describe');
-      expect(steps.find((step) => step.api === 'gadget.broken')?.status).toBe('failed');
+      expect(apis).not.toContain('gadget.broken');
       expect(steps.find((step) => step.api === 'gadget.poke')?.label).toBe('once');
       expect(steps.find((step) => step.api === 'gadget.poke')?.kind).toBe('resource');
       expect(steps.find((step) => step.api === 'expect.toBePoked')?.kind).toBe('assertion');

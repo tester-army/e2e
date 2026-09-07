@@ -65,9 +65,7 @@ construction. The context provides:
   `attemptId` or stores it in `memory`, and releases it on the signal.
 - `observe(options?)` — a fresh, redacted, size-bounded semantic observation
   as text, with the current location as `path` when the backend reports one.
-  `{ tree: true }` adds the redacted node tree (names, text, values, and
-  attribute values redacted; a secure node carries no value); `{ pixels: true }`
-  adds masked viewport pixels when the backend captures them, masking is
+  `{ pixels: true }` adds masked viewport pixels when the backend captures them, masking is
   proven, and no secret has been filled in the attempt — otherwise
   `pixelsWithheld` names the reason (`PIXEL_TAINTED`, `MASKING_UNPROVEN`,
   `UNSUPPORTED_CAPABILITY`) and the decision is recorded as a policy event.
@@ -85,15 +83,13 @@ construction. The context provides:
   fails loud.
 - `budgets` — limits plus `recordModelCall(usage?)`, which feeds step metrics
   and model provenance in the report, including `estimatedCostUsd` when the
-  provider bills per request.
+  provider bills per request, and `runTool(call, body)`, which runs a project
+  tool under the same action budget, serialization, and recording as the
+  grammar.
 - `model` — the config-resolved AI SDK model, which an executor may ignore.
-- `priorSteps` — the completed steps of the attempt (and of earlier serial
-  members), oldest first, as structured sanitized records: index, kind, api,
-  label, status, the handoff `explanation`, and how the trace cache took part.
-  A step the cache replayed without the executor is marked `self-finalized`,
-  so an executor keeping its own history can see what ran without it.
-- `ledger` — the runner's serialization of `priorSteps` (10-determinism.md);
-  a convenience, not the only history an executor may build.
+- `ledger` — the completed steps of the attempt (and of earlier serial
+  members), oldest first, serialized and sanitized (10-determinism.md); a
+  convenience, not the only history an executor may build.
 - `agentContext`, `signal`.
 - `replayedPrefix` — present exactly when a cached replay ran part of this
   step before diverging (10-determinism.md). Prose in, not structs in: the
@@ -125,13 +121,11 @@ run. The default, `'inherit'`, follows the configured cache mode.
 Two executors on the same socket may manage context in opposite ways and both
 conform. One carries its whole conversation across every `agent.act` of a
 test: it stores the model messages in `attempt.memory` at the end of each
-step, opens the next step with them, and reads `priorSteps` for anything that
-ran without it. Another sends the model nothing but the instruction and the
-newest screen, ignoring `ledger` and `priorSteps` entirely. A third renders
-`observe({ tree: true })` into its own compact notation, or judges from
-`observe({ pixels: true })`. The harness records every step identically for
-all three, and the report cannot tell them apart except by the executor's
-name and version.
+step and opens the next step with them. Another sends the model nothing but
+the instruction and the newest screen, ignoring `ledger` entirely. A third
+judges from `observe({ pixels: true })`. The harness records every step
+identically for all three, and the report cannot tell them apart except by
+the executor's name and version.
 
 ## Verdicts are ternary
 
@@ -141,8 +135,7 @@ name and version.
 - `failed` — the application did not behave as the step required.
 - `blocked` — something outside the product prevented a verdict. Blocked
   requires a blockable error code, and every blockable code names one closed
-  category (`blockedCategoryOf(code)`), so a blocked step always has an
-  owner:
+  category, so a blocked step always has an owner:
 
   | Category | Owner | Codes |
   |---|---|---|
@@ -197,20 +190,12 @@ Every option is optional: `createAgent()` with no arguments is exactly the
 default the runner constructs when `agent` is an options block (or absent),
 with the model resolved from `agent.model`/`E2E_MODEL`.
 
-The built-in agent is layered the way the AI SDK is: a small opinion on top
-of a loop on top of primitives, each usable without the one above.
-`createAgent` takes only `model`, `system`, `tools`, `maxTurns`, and
-`providerOptions`. Changing what the model reads is one layer down:
-`createToolLoopExecutor` is the same loop with a caller's `buildPrompt` (a
-string or a message history), `tools`, `prepareMessages`, `onConclude`,
-`loopGuards`, and `windDown`. Below that, the primitives —
-`createGrammarTools`, `createVerdictTool`, `trackModelCalls`,
-`conversationMemory`, `serializeLedger`, `compactSnapshotHistory`,
-`formatReplayedPrefix` — compose with the chassis or with a raw AI SDK
-`ToolLoopAgent` or `generateText`, none of them loading the `ai` package
-themselves. A brain that carries its conversation across the steps of a test
-is the chassis, the grammar tools, and `conversationMemory`; one that reads
-nothing but the instruction and the screen is a two-line `buildPrompt`.
+The built-in agent is a small opinion on top of a loop. `createAgent` takes
+only `model`, `system`, `tools`, `maxTurns`, and `providerOptions`. Changing
+what the model reads is one layer down: `createToolLoopExecutor` is the same
+loop with a caller's `buildPrompt` (a string or a message history), `tools`,
+and `prepareMessages`. A brain that reads nothing but the instruction and the
+screen is a two-line `buildPrompt`.
 
 The built-in executor is an AI SDK tool loop over the action grammar: mutating tools return the
 updated screen, stale screen snapshots are compacted out of the transcript, a
@@ -231,19 +216,15 @@ verdict tool, hard stops, loop guards, wind-down, forced conclusion, model
 accounting, and the transcript, with the tool vocabulary and prompt supplied
 by the caller, plus `prepareMessages(messages, turn)` — between-turn history
 preparation that carries forward and may return `{ messages, stop }` to force
-the conclusion — `providerOptions`, `loopGuards` and `windDown` policy, and
-`onConclude(context, { messages, verdict })`, which receives the step's whole
-transcript once the loop ends. `buildPrompt` may return a message history
-instead of a string, so a conversation kept in `attempt.memory` opens the next
-step. An
-
-executor for a different modality (a device toolkit, an API surface) is
+the conclusion — and `providerOptions`. `buildPrompt` may return a message
+history instead of a string, so a conversation kept in `attempt.memory` opens
+the next step. An executor for a different modality (a device toolkit, an API surface) is
 `createToolLoopExecutor({ name, system, tools, buildPrompt })` — `createAgent`
 itself is exactly that plus the web grammar toolset.
 
-`defineTool(tool, { replay, mutates, secrets })` attaches required semantics
-to an AI SDK tool. Undeclared semantics are not trusted: plain tools are
-rejected, and the annotations are what the policy layer keys on as it grows.
+`defineTool(tool, { mutates, platforms? })` attaches required semantics to an
+AI SDK tool. Undeclared semantics are not trusted: plain tools are rejected,
+and the annotations are what the policy layer keys on.
 `isDefinedTool` and `toolAppliesTo` are exported for executors that merge
 project tools into their own vocabulary.
 

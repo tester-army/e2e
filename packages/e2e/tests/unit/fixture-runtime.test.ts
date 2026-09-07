@@ -128,48 +128,14 @@ describe('explicit fixture operations', () => {
     expect(steps.all().map((step) => step.status)).toEqual(['passed', 'failed', 'passed']);
   });
 
-  it('preserves the step scope of legacy fixture attachments after await', async () => {
-    const backend = defineBackend({ name: 'legacy', version: '1', spiVersion: 1, fixtures: {
-      gadget: (context) => ({ async capture() {
-        await new Promise((resolve) => setTimeout(resolve, 1));
-        context.attachArtifact('log', 'later.txt');
-      } }),
+  it('rejects a factory that returns a surface it did not declare through context.fixture', () => {
+    const backend = defineBackend({ name: 'undeclared', version: '1', spiVersion: 1, fixtures: {
+      gadget: () => ({ async capture() {} }),
     } });
-    const { fixtures, steps } = runtime(backend);
-    await (fixtures as unknown as { gadget: { capture(): Promise<void> } }).gadget.capture();
-    expect(steps.all()[0]?.artifacts).toEqual(['artifact']);
-  });
-
-  it('keeps evidence on a legacy synchronous failure and rethrows the original error', async () => {
-    const failure = new Error('capture failed');
-    const backend = defineBackend({ name: 'legacy', version: '1', spiVersion: 1, fixtures: {
-      gadget: (context) => ({ capture() {
-        context.attachViewport({ width: 10, height: 20, scale: 1 });
-        context.attachArtifact('log', 'failure.txt');
-        throw failure;
-      } }),
-    } });
-    const { fixtures, steps } = runtime(backend);
-    let thrown: unknown;
-    try {
-      (fixtures as unknown as { gadget: { capture(): void } }).gadget.capture();
-    } catch (cause) {
-      thrown = cause;
-    }
-    expect(thrown).toBe(failure);
-    await Promise.resolve();
-    expect(steps.all()[0]).toMatchObject({ api: 'gadget.capture', status: 'failed',
-      viewport: { width: 10, height: 20 }, artifacts: ['artifact'], error: { message: 'capture failed' } });
-  });
-
-  it('also marks legacy contributed assertions as verification steps', async () => {
-    const backend = defineBackend({ name: 'legacy', version: '1', spiVersion: 1, fixtures: {
-      gadget: (context) => context.expectable({}, () => ({ toBeReady: async () => undefined })),
-    } });
-    const { fixtures, steps } = runtime(backend);
-    const gadget = (fixtures as unknown as { gadget: object }).gadget;
-    await (expectFixture(gadget) as unknown as { toBeReady(): Promise<void> }).toBeReady();
-    expect(steps.lastVerifiedStepIndex).toBe(0);
+    const { fixtures } = runtime(backend);
+    expect(() => (fixtures as unknown as { gadget: object }).gadget).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('fixture "gadget"') }),
+    );
   });
 });
 

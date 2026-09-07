@@ -17,13 +17,10 @@
  * matter whose brain runs the step.
  */
 
-import type { ObservationPixels, SemanticNode } from '../backend/surface.ts';
-import type { StepCacheInfo, StepKind, StepRecord, VisionDegradation } from '../run/steps.ts';
+import type { ObservationPixels } from '../backend/surface.ts';
+import type { VisionDegradation } from '../run/steps.ts';
 import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
-
-export type { BlockedCategory } from './error.ts';
-export { blockedCategoryOf } from './error.ts';
 
 /**
  * One step handed to an executor. `act` plans and executes a flow; `assert`
@@ -71,57 +68,14 @@ export interface ExecutorAttempt {
   readonly memory: Map<string, unknown>;
 }
 
-/**
- * One completed prior step, as the harness recorded it. Structured raw
- * material for whatever history an executor wants to build; `ledger` is the
- * harness's own serialization of the same records.
- */
-export interface ExecutorPriorStep {
-  readonly index: number;
-  readonly kind: StepKind;
-  /** Public API name, e.g. `agent.act`, `screen.click`, `app.open`. */
-  readonly api: string;
-  /** Sanitized step label: the instruction, assertion, or target phrase. */
-  readonly label: string;
-  readonly status: StepRecord['status'];
-  /** The step's handoff: an agent verdict summary or judgment explanation, sanitized. */
-  readonly explanation?: string;
-  /**
-   * How the trace cache took part in an `agent.act` step. `self-finalized`
-   * means the cache replayed it without any executor — an executor keeping
-   * its own history never saw that step run.
-   */
-  readonly cache?: StepCacheInfo['mode'];
-}
-
 /** What an executor asks `observe()` to include beyond the text serialization. */
 export interface ExecutorObserveOptions {
-  /** Include the redacted node tree as `tree`. */
-  readonly tree?: boolean;
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the backend
    * captures pixels, its masking is proven, and no secret has been filled in
    * this attempt; otherwise `pixelsWithheld` names the reason.
    */
   readonly pixels?: boolean;
-}
-
-/**
- * One node of the redacted semantic tree. Names, text, values, and attribute
- * values are secret-redacted; a secure node carries no value at all.
- */
-export interface ExecutorNode {
-  readonly id: string;
-  readonly role?: string;
-  readonly name?: string;
-  readonly text?: string;
-  readonly value?: string;
-  readonly inputPurpose?: SemanticNode['inputPurpose'];
-  readonly states?: SemanticNode['states'];
-  readonly attributes?: Readonly<Record<string, string>>;
-  readonly rect?: SemanticNode['rect'];
-  readonly framePath?: readonly string[];
-  readonly children?: readonly ExecutorNode[];
 }
 
 /** Masked viewport pixels cleared for model input: the backend's capture plus its proven mask count. */
@@ -141,8 +95,6 @@ export interface ExecutorObservation {
    * reports one. Absent on backends without a location (a device screen).
    */
   readonly path?: string;
-  /** The redacted node tree; present when requested with `observe({ tree: true })`. */
-  readonly tree?: ExecutorNode;
   /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
   readonly pixels?: ExecutorPixels;
   /** Why requested pixels were withheld; the same token the report's `visionDegraded` carries. */
@@ -210,15 +162,11 @@ export interface ExecutorBudgets {
    */
   recordModelCall(usage?: ExecutorModelCall): void;
   /**
-   * @deprecated Use runTool to reserve the budget before dispatch.
-   * Records one executor tool call that did not go through `actions` — a
-   * project tool from `defineTool`. A mutating tool consumes an action-budget
-   * slot and may throw `STEP_BUDGET_EXHAUSTED`; every call is recorded as a
-   * step event, so extensions run the same accounting pipeline as the
-   * grammar.
+   * Runs one project tool (a `defineTool` value) under the step's accounting:
+   * a mutating tool reserves an action-budget slot before its body runs and
+   * may throw `STEP_BUDGET_EXHAUSTED`; mutations are serialized with grammar
+   * actions; every call is recorded as a step event.
    */
-  recordToolCall(call: { name: string; mutates: boolean; durationMs?: number }): void;
-  /** Reserves a project tool's budget before execution and serializes mutations with grammar actions. */
   runTool<T>(call: { name: string; mutates: boolean }, body: () => Promise<T>): Promise<T>;
 }
 
@@ -293,19 +241,16 @@ export interface StepExecutorContext {
   readonly model: ModelInstance | undefined;
   /**
    * Completed prior steps of this attempt (and, in a serial group, of earlier
-   * members), oldest first. Structured, so an executor decides what history
-   * its model reads; `ledger` is the harness's default serialization of them.
+   * members) serialized for prompt context, oldest first, bounded by
+   * `limits.maxLedgerBytes`; `''` when none.
    */
-  readonly priorSteps: readonly ExecutorPriorStep[];
-  /** Completed prior steps serialized for prompt context; `''` when none. */
   readonly ledger: string;
   /** Trusted project/test agent context (config `agent.context` + test). */
   readonly agentContext: string | undefined;
   readonly budgets: ExecutorBudgets;
   /**
    * Captures one fresh, redacted observation. The text serialization is always
-   * present; the tree and pixels are opt-in, so an executor that renders its
-   * own view of the screen asks for exactly the material it uses.
+   * present; masked pixels are opt-in.
    */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;

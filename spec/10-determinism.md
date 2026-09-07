@@ -54,23 +54,20 @@ append structured entries containing method, sanitized label, status, and an
 optional handoff.
 
 The ledger binds outcomes, not mechanism. Before an agent invocation the runner
-hands the executor the completed entries in two forms: structured
-(`priorSteps`, every field sanitized) and serialized (`ledger`, a string). The
-serialized form MUST be deterministic for the same entries, MUST fit resolved
-`maxLedgerBytes` (default 8 KiB), and MUST NOT be produced by a model: cost is
-bounded and compaction is reproducible. The reference runner's serialization
-keeps the newest entries until the budget is reached, drops the oldest,
-prepends their count, and presents the rest chronologically with each handoff
-cut at 700 UTF-8 bytes; that algorithm is one conforming serialization, not the
-only one, and it is exported (`serializeLedger`) for executors that want it.
+hands the executor the completed entries serialized as one string (`ledger`),
+every field sanitized. The serialization MUST be deterministic for the same
+entries, MUST fit resolved `maxLedgerBytes` (default 8 KiB), and MUST NOT be
+produced by a model: cost is bounded and compaction is reproducible. The
+reference runner keeps the newest entries until the budget is reached, drops
+the oldest, prepends their count, and presents the rest chronologically with
+each handoff cut at 700 UTF-8 bytes; that algorithm is one conforming
+serialization, not the only one.
 
 What the executor's model reads about prior steps is the executor's decision.
-It MAY use the runner's ledger, MAY build its own history from the structured
-entries, MAY carry its own conversation across the steps of an attempt in the
-attempt memory the runner holds for it, and MAY read nothing. The runner records
-every step regardless: a step the trace cache replayed without the executor is
-still a prior step, marked as such, so an executor keeping its own history can
-see what happened without it.
+It MAY use the runner's ledger, MAY carry its own conversation across the steps
+of an attempt in the attempt memory the runner holds for it, and MAY read
+nothing. The runner records every step regardless: a step the trace cache
+replayed without the executor is still a prior step in the ledger.
 
 Handoffs are untrusted quoted observations, never system instructions. The
 agent prompt separates them structurally from policy and tools. Secrets and

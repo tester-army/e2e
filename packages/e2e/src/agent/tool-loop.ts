@@ -22,12 +22,7 @@ import {
   type StepVerdict,
 } from './executor.ts';
 import { createVerdictTool, trackModelCalls, VERDICT_RULES } from './primitives.ts';
-import {
-  checkLoopGuards,
-  DEFAULT_LOOP_GUARD_THRESHOLDS,
-  extractGuardCalls,
-  type LoopGuardThresholds,
-} from './loop-guards.ts';
+import { checkLoopGuards, DEFAULT_LOOP_GUARD_THRESHOLDS, extractGuardCalls } from './loop-guards.ts';
 
 /** Turns remaining when the loop warns the model to wrap up, by default. */
 const WIND_DOWN_TURNS = 5;
@@ -45,14 +40,6 @@ const CLOCK_WIND_DOWN_FRACTION = 4;
 
 /** Turns from the budget ceiling at which only the conclusion tool is offered. */
 const FORCED_CONCLUSION_TURNS = 2;
-
-/**
- * Wind-down policy: when the loop tells the model to wrap up. `turns` is the
- * remaining-turn count that triggers the notice; `clockMs` the remaining step
- * time under which the loop forces a verdict. `false` disables both notices;
- * the harness budget and deadline still end the step.
- */
-export type WindDownPolicy = false | { readonly turns?: number; readonly clockMs?: number };
 
 /** Transcript ceiling per step; enough for every turn without unbounded logs. */
 const MAX_TRANSCRIPT_CHARS = 262_144;
@@ -85,26 +72,9 @@ export interface ToolLoopExecutorOptions {
   readonly tools: (context: StepExecutorContext, helpers: ToolLoopHelpers) => ToolSet;
   /**
    * Builds the step's opening prompt: one user message, or a whole message
-   * history ending in the step's request — how an executor carries a
-   * conversation across the steps of an attempt (`context.attempt.memory`).
+   * history ending in the step's request.
    */
   readonly buildPrompt: (context: StepExecutorContext) => string | ModelMessage[] | Promise<string | ModelMessage[]>;
-  /**
-   * Runs once the loop has ended, with the complete message history of the
-   * step (opening prompt plus every generated turn) and the verdict, when the
-   * model reached one. The place to persist history for a later step.
-   */
-  readonly onConclude?: (
-    context: StepExecutorContext,
-    outcome: { readonly messages: ModelMessage[]; readonly verdict: StepVerdict | undefined },
-  ) => void | Promise<void>;
-  /**
-   * Loop-guard thresholds, merged over the defaults; `false` disables the
-   * guards. The harness budgets remain the outer bound either way.
-   */
-  readonly loopGuards?: false | Partial<LoopGuardThresholds>;
-  /** Wind-down notices near the turn budget and the step clock; defaults to both. */
-  readonly windDown?: WindDownPolicy;
   /** Upper bound on model turns; capped at the harness model-call budget. */
   readonly maxTurns?: number;
   /** AI SDK provider options sent with every model call (thinking level, effort). */
@@ -171,9 +141,8 @@ class LoopRun {
   private noticedLowClock = false;
   private readonly transcript: string[] = [];
   private readonly maxTurns: number;
-  /** Resolved wind-down thresholds; undefined when the executor disabled the notices. */
-  private readonly windDown: { readonly turns: number; readonly clockMs: number } | undefined;
-  private readonly guardThresholds: LoopGuardThresholds | undefined;
+  /** Remaining step time under which the loop forces a verdict. */
+  private readonly clockWindDownMs: number;
 
   constructor(
     private readonly ai: AiSdk,
@@ -187,21 +156,10 @@ class LoopRun {
       options.maxTurns ?? context.budgets.maxModelCalls,
       context.budgets.maxModelCalls,
     );
-    const windDown = options.windDown;
-    this.windDown =
-      windDown === false
-        ? undefined
-        : {
-            turns: windDown?.turns ?? WIND_DOWN_TURNS,
-            clockMs: Math.min(
-              windDown?.clockMs ?? CLOCK_WIND_DOWN_MS,
-              Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
-            ),
-          };
-    this.guardThresholds =
-      options.loopGuards === false
-        ? undefined
-        : { ...DEFAULT_LOOP_GUARD_THRESHOLDS, ...options.loopGuards };
+    this.clockWindDownMs = Math.min(
+      CLOCK_WIND_DOWN_MS,
+      Math.floor(context.budgets.remainingMs() / CLOCK_WIND_DOWN_FRACTION),
+    );
   }
 
   async run(): Promise<StepVerdict> {
@@ -230,9 +188,8 @@ class LoopRun {
       this.model as { provider?: string; modelId?: string },
     );
     const prompt = await this.options.buildPrompt(this.context);
-    let generated: ModelMessage[] = [];
     try {
-      const result = await loop.generate({
+      await loop.generate({
         prompt,
         abortSignal: this.context.signal,
         onStepStart: tracker.onStepStart,
@@ -241,7 +198,6 @@ class LoopRun {
           tracker.onStepEnd(step);
         },
       });
-      generated = result.responseMessages;
     } catch (cause) {
       this.attachTranscript();
       if (this.context.signal.aborted) {
@@ -256,14 +212,6 @@ class LoopRun {
       );
     }
     this.attachTranscript();
-    if (this.options.onConclude !== undefined) {
-      const opening: ModelMessage[] =
-        typeof prompt === 'string' ? [{ role: 'user', content: prompt }] : prompt;
-      await this.options.onConclude(this.context, {
-        messages: [...opening, ...generated],
-        verdict: this.conclusion.verdict(),
-      });
-    }
     const verdict = this.conclusion.verdict();
     if (verdict !== undefined) return verdict;
     if (this.hardStop !== undefined) {
@@ -332,10 +280,7 @@ class LoopRun {
     const turnsLeft = this.maxTurns - stepNumber;
     // Never on the very first turn: a deliberately short step timeout still
     // deserves one working turn before the clock takes the verdict.
-    const lowClock =
-      this.windDown !== undefined &&
-      stepNumber > 0 &&
-      this.context.budgets.remainingMs() < this.windDown.clockMs;
+    const lowClock = stepNumber > 0 && this.context.budgets.remainingMs() < this.clockWindDownMs;
     if (lowClock && this.noticedLowClock !== true) {
       this.noticedLowClock = true;
       prepared = appendNotice(
@@ -347,10 +292,10 @@ class LoopRun {
       );
     }
 
-    if (this.guardStop === undefined && this.guardThresholds !== undefined) {
+    if (this.guardStop === undefined) {
       const guard = checkLoopGuards(
         extractGuardCalls(prepared, 'complete_step'),
-        this.guardThresholds,
+        DEFAULT_LOOP_GUARD_THRESHOLDS,
       );
       if (guard.kind === 'stop') {
         this.guardStop = guard.reason;
@@ -372,8 +317,7 @@ class LoopRun {
           'blocked (with errorCode) if something outside the application stopped you.',
       );
     }
-    const windDownTurn = this.windDown !== undefined && turnsLeft === this.windDown.turns;
-    if (windDownTurn && this.guardStop === undefined) {
+    if (turnsLeft === WIND_DOWN_TURNS && this.guardStop === undefined) {
       prepared = appendNotice(
         prepared,
         `[SYSTEM NOTICE] Only ${turnsLeft} turns remain for this step. ` +

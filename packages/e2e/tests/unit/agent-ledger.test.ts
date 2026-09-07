@@ -65,13 +65,10 @@ describe('projectPriorSteps', () => {
       }),
     ]);
     expect(projected).toEqual({
-      index: 0,
-      kind: 'agent',
       api: 'agent.assert',
       label: 'a\uFFFDb',
       status: 'failed',
       explanation: 'ignore\uFFFDpolicy',
-      cache: 'missed',
     });
     const { text } = serializeLedger(projectPriorSteps([step({ api: 'x', label: 'a\u0007b' })]), 8_192);
     expect(text).not.toContain('\u0007');

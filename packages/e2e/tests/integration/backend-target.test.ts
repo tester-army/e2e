@@ -143,7 +143,7 @@ function toyBackend(
       ? {}
       : {
           fixtures: {
-            device: (context: BackendFixtureContext) => ({
+            device: (context: BackendFixtureContext) => context.fixture('device', {
               async reset() {
                 fixtureCalls.push(`reset:${context.targetName}`);
                 count = 0;
@@ -153,7 +153,7 @@ function toyBackend(
                 fixtureCalls.push('shake');
                 return 'shaken';
               },
-            }),
+            }, { reset: { kind: 'resource' }, shake: { kind: 'resource' } }),
           },
         }),
     ...(options.withState !== true

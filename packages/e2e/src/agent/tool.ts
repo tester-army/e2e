@@ -9,12 +9,11 @@ import type { Platform } from '../types.ts';
 const DEFINED_TOOL_MARKER = Symbol.for('e2e.defined-tool.v1');
 
 export interface ToolAnnotations {
-  /** @deprecated Reserved metadata; project-tool mutations always end trace replay. */
-  readonly replay?: 'deterministic' | 'none';
-  /** Whether executing the tool can change application state. */
+  /**
+   * Whether executing the tool can change application state. A mutating tool
+   * consumes an action-budget slot and ends trace replay for the step.
+   */
   readonly mutates: boolean;
-  /** @deprecated Metadata only; never grants access to plaintext secrets or pixels. */
-  readonly secrets?: boolean;
   /**
    * Platforms this tool is offered on; absent means every platform. A suite
    * that mixes targets of different platforms keeps a gesture tool off the
@@ -37,11 +36,8 @@ export function defineTool(tool: Tool, annotations: ToolAnnotations): DefinedToo
   if (annotations === undefined || typeof annotations !== 'object') {
     throw new TestError('INVALID_ARGUMENT', 'defineTool requires annotations: { mutates }');
   }
-  if (annotations.replay !== undefined && annotations.replay !== 'deterministic' && annotations.replay !== 'none') {
-    throw new TestError('INVALID_ARGUMENT', "annotations.replay must be 'deterministic' or 'none'");
-  }
-  if (typeof annotations.mutates !== 'boolean' || (annotations.secrets !== undefined && typeof annotations.secrets !== 'boolean')) {
-    throw new TestError('INVALID_ARGUMENT', 'annotations.mutates and annotations.secrets must be booleans');
+  if (typeof annotations.mutates !== 'boolean') {
+    throw new TestError('INVALID_ARGUMENT', 'annotations.mutates must be a boolean');
   }
   if (
     annotations.platforms !== undefined &&
@@ -57,9 +53,7 @@ export function defineTool(tool: Tool, annotations: ToolAnnotations): DefinedToo
   const defined: DefinedTool = {
     tool,
     annotations: {
-      ...(annotations.replay === undefined ? {} : { replay: annotations.replay }),
       mutates: annotations.mutates,
-      ...(annotations.secrets === undefined ? {} : { secrets: annotations.secrets }),
       ...(annotations.platforms === undefined ? {} : { platforms: [...annotations.platforms] }),
     },
   };

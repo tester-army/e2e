@@ -313,11 +313,10 @@ attachments, failures, and asynchronous work have the same owner. Events and
 artifacts remain attached to that operation across nested and overlapping
 calls. Work arriving after its step has closed cannot attach to a later step.
 
-For compatibility, factories that return a plain surface still use the legacy
-adapter: it detects promises, derives labels from arguments, and reads
-`{ timeout }` options. Evidence attached before a synchronous throw belongs to
-the failed step, and the original error is still thrown synchronously. New
-backends should use explicit declarations.
+A factory must return the surface it declared through `context.fixture`; a
+plain, undeclared surface is rejected with `INVALID_CONFIG` the first time a
+test reaches for the fixture, because its methods would run backend code
+outside any recorded step.
 `expectable` attaches an expectation surface so `expect(fixture)` returns it;
 use `context.fixture('expect', matchers, operations)` in its factory to declare
 matcher recording. Type the fixture with `test.extend<{ name: Type }>()`.

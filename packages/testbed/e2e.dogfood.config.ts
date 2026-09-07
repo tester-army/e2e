@@ -26,7 +26,7 @@ const seedExpenses = defineTool(
       return `Seeded: ${await response.text()}`;
     },
   }),
-  { replay: 'none', mutates: true, secrets: false },
+  { mutates: true },
 );
 
 const resetExpenses = defineTool(
@@ -38,7 +38,7 @@ const resetExpenses = defineTool(
       return 'All expenses deleted.';
     },
   }),
-  { replay: 'none', mutates: true, secrets: false },
+  { mutates: true },
 );
 
 export default defineConfig({

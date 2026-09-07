@@ -55,9 +55,6 @@ export const CATEGORY_BY_CODE: Readonly<Record<AgentErrorCode, ErrorCategory>> =
   ) as Record<AgentErrorCode, ErrorCategory>;
 
 /** The blocked category a code names, or undefined when it is not blockable. */
-export function blockedCategoryOf(code: AgentErrorCode): BlockedCategory | undefined {
-  return AGENT_CODE_TABLE[code]?.blockedCategory;
-}
 
 /** Cross-realm identity marker, mirroring `internal/errors.ts`. */
 const AGENT_ERROR_MARKER = Symbol.for('e2e.agent-error.v1');

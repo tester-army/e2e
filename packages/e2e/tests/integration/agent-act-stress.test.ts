@@ -11,7 +11,8 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { resultByTitle, runProject, runProjectWithConfigFile } from '../helpers/run-project.ts';
 import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
-import { BLOCKABLE_CODES, blockedCategoryOf } from '../../src/agent/executor.ts';
+import { BLOCKABLE_CODES } from '../../src/agent/executor.ts';
+import { AGENT_CODE_TABLE } from '../../src/agent/error.ts';
 
 const CREDS = { admin: { username: 'admin', password: 'admin-pass' } };
 
@@ -271,12 +272,12 @@ describe('taxonomy and run derivation under mixed outcomes', () => {
 
   it('every blockable code names a category; others name none', () => {
     for (const code of BLOCKABLE_CODES) {
-      expect(blockedCategoryOf(code)).toBeDefined();
+      expect(AGENT_CODE_TABLE[code].blockedCategory).toBeDefined();
     }
-    expect(blockedCategoryOf('CANCELLED')).toBeUndefined();
-    expect(blockedCategoryOf('ACTION_FAILED')).toBeUndefined();
-    expect(blockedCategoryOf('SEED_DATA_MISSING')).toBe('seed_data');
-    expect(blockedCategoryOf('AUTH_CREDENTIAL_INVALID')).toBe('credentials');
+    expect(AGENT_CODE_TABLE.CANCELLED.blockedCategory).toBeUndefined();
+    expect(AGENT_CODE_TABLE.ACTION_FAILED.blockedCategory).toBeUndefined();
+    expect(AGENT_CODE_TABLE.SEED_DATA_MISSING.blockedCategory).toBe('seed_data');
+    expect(AGENT_CODE_TABLE.AUTH_CREDENTIAL_INVALID.blockedCategory).toBe('credentials');
   });
 
   it('blocks the run on a new code, but one real failure keeps it failed', async () => {

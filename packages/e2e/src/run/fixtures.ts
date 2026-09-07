@@ -13,7 +13,6 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { SecretLedger } from '../internal/redact.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
-import { recordedSurface, StepAttachments } from './fixture-legacy.ts';
 import type { AttemptBudget } from './budget.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import {
@@ -201,9 +200,9 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
 
 /**
  * Backend-contributed fixtures (RFC0002): factories declare operation metadata
- * through context.fixture. The legacy adapter preserves older factories that
- * return a plain surface. Factories stay lazy and each instance belongs to
- * one test's fixture graph; the session's secrecy state outlives that graph.
+ * through context.fixture and must return the surface they declared. Factories
+ * stay lazy and each instance belongs to one test's fixture graph; the
+ * session's secrecy state outlives that graph.
  */
 function contributedFixtures(
   environment: AttemptEnvironment,
@@ -213,19 +212,14 @@ function contributedFixtures(
   const declared = environment.target.backend?.fixtures;
   if (declared === undefined) return {};
   const contributed: Record<string, unknown> = {};
-  const attachments = new StepAttachments(environment.steps);
   const recorder = new FixtureRecorder(environment);
-  const context = fixtureContext(environment, engine, screenContext, attachments, recorder);
+  const context = fixtureContext(environment, engine, screenContext, recorder);
   for (const [name, factory] of Object.entries(declared)) {
     let instance: object | undefined;
     Object.defineProperty(contributed, name, {
       enumerable: true,
       get() {
-        instance ??= recorder.adapt(factory(context), (surface) => recordedSurface(surface, environment, attachments, {
-          path: [name],
-          kind: 'resource',
-          bounded: true,
-        }));
+        instance ??= recorder.require(name, factory(context));
         return instance;
       },
     });
@@ -237,7 +231,6 @@ function fixtureContext(
   environment: AttemptEnvironment,
   engine: LocatorEngine,
   screenContext: ScreenContext,
-  attachments: StepAttachments,
   recorder: FixtureRecorder,
 ): BackendFixtureContext {
   const { config, steps } = environment;
@@ -263,10 +256,8 @@ function fixtureContext(
     },
     operation: (timeoutMs) => engine.operation(timeoutMs),
     attachArtifact: (kind, relativePath) =>
-      attachments.record(() =>
-        steps.attachArtifact(environment.artifacts.register(kind, relativePath)),
-      ),
-    attachViewport: (viewport) => attachments.record(() => steps.attachViewport(viewport)),
+      steps.attachArtifact(environment.artifacts.register(kind, relativePath)),
+    attachViewport: (viewport) => steps.attachViewport(viewport),
     locator: (expression) => createLocator(screenContext, expression),
     screen: (wrap) => createScopedScreen(screenContext, wrap),
     expectable<T extends object, E extends object>(target: T, factory: () => E): T & Expectable<E> {
@@ -275,11 +266,7 @@ function fixtureContext(
         enumerable: false,
         configurable: true,
         get: () => {
-          surface ??= recorder.adapt(factory(), (value) => recordedSurface(value, environment, attachments, {
-            path: ['expect'],
-            kind: 'assertion',
-            bounded: false,
-          }));
+          surface ??= recorder.require('expect', factory());
           return surface;
         },
       });

@@ -158,9 +158,9 @@ export interface BackendFixtureContext {
 
 /**
  * A contributed fixture: any record of async methods, sync accessors, and
- * nested namespaces. Declare recorded methods with context.fixture; their
- * metadata controls labels, deadlines and verification. Plain surfaces remain
- * supported through the legacy adapter for existing backend factories.
+ * nested namespaces, declared through context.fixture so its metadata controls
+ * labels, deadlines and verification. The factory must return the declared
+ * surface; a plain one is rejected with INVALID_CONFIG.
  */
 export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
 

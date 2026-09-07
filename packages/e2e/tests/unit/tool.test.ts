@@ -9,29 +9,20 @@ const tool = {
 
 describe('defineTool platforms', () => {
   it('offers an unscoped tool on every platform', () => {
-    const defined = defineTool(tool, { replay: 'none', mutates: false, secrets: false });
+    const defined = defineTool(tool, { mutates: false });
     expect(toolAppliesTo(defined, 'web')).toBe(true);
     expect(toolAppliesTo(defined, 'ios')).toBe(true);
   });
 
   it('offers a scoped tool only on its declared platforms', () => {
-    const defined = defineTool(tool, {
-      replay: 'deterministic',
-      mutates: true,
-      secrets: false,
-      platforms: ['ios', 'android'],
-    });
+    const defined = defineTool(tool, { mutates: true, platforms: ['ios', 'android'] });
     expect(toolAppliesTo(defined, 'ios')).toBe(true);
     expect(toolAppliesTo(defined, 'web')).toBe(false);
     expect(defined.annotations.platforms).toEqual(['ios', 'android']);
   });
 
   it('rejects an empty or malformed platforms list', () => {
-    expect(() =>
-      defineTool(tool, { replay: 'none', mutates: false, secrets: false, platforms: [] }),
-    ).toThrow(/platforms/);
-    expect(() =>
-      defineTool(tool, { replay: 'none', mutates: false, secrets: false, platforms: [''] }),
-    ).toThrow(/platforms/);
+    expect(() => defineTool(tool, { mutates: false, platforms: [] })).toThrow(/platforms/);
+    expect(() => defineTool(tool, { mutates: false, platforms: [''] })).toThrow(/platforms/);
   });
 });
