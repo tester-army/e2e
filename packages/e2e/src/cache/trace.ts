@@ -1,5 +1,5 @@
 /**
- * `trace-1` entry format (RFC0001 layer 3, cache-in decision).
+ * `trace-1` entry format.
  *
  * A trace is the ordered list of grammar actions one passing `agent.act()`
  * step performed, each with a durable target descriptor and secret-free,

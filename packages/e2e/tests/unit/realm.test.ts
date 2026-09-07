@@ -5,7 +5,7 @@ import { RealmManager, findRegistered, type Realm } from '../../src/run/realm.ts
 import type { RunError } from '../../src/run/records.ts';
 
 /**
- * The hook lifecycle contract (spec 11-lifecycle.md), checked on the realm
+ * The hook lifecycle contract, checked on the realm
  * manager alone: no browser, no runner. The integration suite in
  * runner-lifecycle.test.ts proves the executor drives these in the right
  * places; this file pins the ordering rules themselves.

@@ -1,5 +1,5 @@
 /**
- * The engine-to-session adapter (RFC0002). One adapter per attempt satisfies
+ * The engine-to-session adapter. One adapter per attempt satisfies
  * the internal `TargetSession` surface over the engine contract, so the agent
  * tier, the judgment tier, the trace cache, and the fixture graph program
  * against one shape. It is the single seam every engine call crosses, which

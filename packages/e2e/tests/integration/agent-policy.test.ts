@@ -1,7 +1,7 @@
 /**
  * Agent policy, credential, and error-classification coverage on the judgment
- * tier (spec 02-test-api.md, 14-security.md). Secret-fill authorization for
- * planned flows is covered by agent-act-stress.test.ts.
+ * tier. Secret-fill authorization for planned flows is covered by
+ * agent-act-stress.test.ts.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

@@ -1,4 +1,4 @@
-/** Test-target execution engine (spec 11-lifecycle.md). */
+/** Test-target execution engine. */
 
 import path from 'node:path';
 import type { TargetSession, OperationContext } from '../engine/surface.ts';
@@ -254,8 +254,7 @@ export class TargetExecutor implements SerialHost {
 
   /**
    * Runs one file-target unit: runnable pairs of a single file, in declaration
-   * order, sharing a realm between passing non-serial tests (spec
-   * 11-lifecycle.md). Dispatch-time gating (selection dispositions and
+   * order, sharing a realm between passing non-serial tests. Dispatch-time gating (selection dispositions and
    * setup-failure dependencies) belongs to the scheduler, so every pair
    * reaching here is runnable.
    */
@@ -292,7 +291,7 @@ export class TargetExecutor implements SerialHost {
       if (realm !== null) {
         const teardownFailure = await this.realms.leaveFinished(realm, ordered.slice(index + 1));
         if (teardownFailure !== undefined) {
-          // Spec 11-lifecycle.md: an afterAll failure discards the suite
+          // An afterAll failure discards the suite
           // instance. Later tests start in a fresh realm rather than on
           // module state a failed teardown left behind; every scope whose
           // beforeAll started still tears down first.
@@ -343,7 +342,7 @@ export class TargetExecutor implements SerialHost {
         });
         attempts.push(attempt);
         if (attempt.status !== 'passed') {
-          // Spec 11-lifecycle.md: a failed realm is never reused, but afterAll
+          // A failed realm is never reused, but afterAll
           // still runs for every scope whose beforeAll started in it.
           await this.realms.leave(realm);
           realm = null;

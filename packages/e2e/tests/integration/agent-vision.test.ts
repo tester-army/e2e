@@ -1,6 +1,5 @@
 /**
- * Vision tier for judgments: masked pixels as model input (spec
- * 02-test-api.md, 13-reporting.md, 14-security.md). The scripted model cannot
+ * Vision tier for judgments: masked pixels as model input. The scripted model cannot
  * see; what is under test is the runner half — pixels attached, bounded,
  * masked, degraded under taint, and routed to the pinned vision model.
  */

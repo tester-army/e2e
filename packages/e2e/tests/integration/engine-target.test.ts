@@ -1,5 +1,5 @@
 /**
- * Engine targets (RFC0002): a target whose surface is a
+ * Engine targets: a target whose surface is a
  * defineEngine body. Covers the full pipeline — config, worker, adapter,
  * executor socket, lifecycle, capability gating, and the report — with a toy
  * in-memory engine and a hand-rolled executor, no model and no browser.

@@ -1,4 +1,4 @@
-/** Runner-owned polling locator assertions (spec 03-assertions.md). */
+/** Runner-owned polling locator assertions. */
 
 import type { SemanticNode } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';

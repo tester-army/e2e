@@ -1,5 +1,5 @@
 /**
- * Per-target app resolution (spec 05-config.md): what an engine declares
+ * Per-target app resolution: what an engine declares
  * about the app it drives, validated where an error can name the target.
  */
 
@@ -280,7 +280,7 @@ export function resolveServices(
   });
 }
 
-/** A command's env as it enters the config digest: values reduced to their names (13-reporting.md). */
+/** A command's env as it enters the config digest: values reduced to their names. */
 interface DigestedEnv {
   readonly env?: Readonly<Record<string, { envName: string }>>;
 }

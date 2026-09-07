@@ -1,4 +1,4 @@
-/** Synchronous registration during module evaluation (spec 11-lifecycle.md). */
+/** Synchronous registration during module evaluation. */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

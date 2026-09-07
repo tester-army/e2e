@@ -1,4 +1,4 @@
-/** End anchors: the step's delta as relocatable descriptors (RFC0001 cache-in). */
+/** End anchors: the step's delta as relocatable descriptors. */
 
 import { describe, expect, it } from 'vitest';
 import { anchorsPresent, describeAnchors } from '../../src/cache/anchors.ts';

@@ -1,4 +1,4 @@
-/** trace-1 key identity (RFC0001 cache-in). */
+/** trace-1 key identity. */
 
 import { describe, expect, it } from 'vitest';
 import {

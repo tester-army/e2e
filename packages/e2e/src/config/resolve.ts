@@ -1,4 +1,4 @@
-/** Config validation, defaults, and resolution (spec 05-config.md). */
+/** Config validation, defaults, and resolution. */
 
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
@@ -131,7 +131,7 @@ const TOP_LEVEL_KEYS = new Set([
 const CACHE_KEYS = new Set(['mode', 'store', 'dir']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
-/** True when CI mode is active per 05-config.md. */
+/** True when CI mode is active. */
 export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env['CI'];
   if (raw === undefined) return false;
@@ -250,7 +250,7 @@ export function resolveConfig(
  * `cache: 'off'` or `--no-cache` (which wins over the config) turns it off.
  * CI demotes the *defaulted* mode from `read-write` to `read-only`: a
  * committed cache is untrusted input, and a CI run never publishes what it
- * learned unless the project says so (spec 10-determinism.md). An explicit
+ * learned unless the project says so. An explicit
  * `read-write` in the config is that statement of trust and is honored as
  * written, as is a host-supplied `cache.store`, which states its own trust
  * through the store's `writable` flag.
@@ -319,7 +319,7 @@ const ARTIFACTS_KEYS = new Set(['kinds', 'store']);
 /**
  * Resolves the `artifacts` key: a bare array of kinds, or `{ kinds, store }`
  * where `store` is the host seam every produced artifact is handed to
- * (spec 13-reporting.md). Kinds default to screenshot and trace; a store is a
+ *. Kinds default to screenshot and trace; a store is a
  * live value validated structurally, like `cache.store`.
  */
 function resolveArtifactsConfig(raw: E2EConfig): {
@@ -502,7 +502,7 @@ function resolveCredentials(
 
 /**
  * SHA-256/JCS digest of resolved config after replacing credential material
- * with `{ secretName }` and env values with `{ envName }` (13-reporting.md).
+ * with `{ secretName }` and env values with `{ envName }`.
  * Live objects (engine handles, model instances) are replaced by their stable
  * identity before the JSON clone, so they never enter the digest and cannot
  * make it nondeterministic across processes.

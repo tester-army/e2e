@@ -169,7 +169,7 @@ export class PlaywrightSurface {
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
   private traceSegments = 0;
   /**
-   * Attempt-scoped network routes (spec 08-platforms.md). Registered on the
+   * Attempt-scoped network routes. Registered on the
    * context, not a page, so they cover every page the attempt opens - the
    * first navigation included - and re-applied to each context the attempt
    * replaces on `clearState` or session restore.

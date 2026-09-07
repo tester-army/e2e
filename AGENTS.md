@@ -21,9 +21,8 @@ There is no separate spec. The code is the contract, pinned in three places:
 - Behavior changes update the matching `fern/docs/pages/*.mdx` page in the same
   change, including "not implemented yet" callouts.
 
-`docs/rfcs/` holds RFC0001 (e2e v2 on the TesterArmy engine) and RFC0002 (the
-engine contract) as dated decision records. Read them for the why; do not
-update them, and do not trust them over `src/`.
+There are no RFCs or design documents in the repo. The why lives in PR
+descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 
 ## Layout
 
@@ -49,7 +48,7 @@ update them, and do not trust them over `src/`.
   are exported there, and there is no `@e2edev/e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
-- `fern/` (docs site), `docs/rfcs/` (decision records).
+- `fern/` (docs site).
 
 ## Commands
 

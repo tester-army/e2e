@@ -1,5 +1,5 @@
 /**
- * The per-step replay decision (RFC0001 layer 3, cache-in decision).
+ * The per-step replay decision.
  *
  * Pure and fail-to-miss: every reason a validated entry cannot replay is a
  * miss that dispatches the live executor, never an error and never a step

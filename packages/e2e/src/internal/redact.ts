@@ -1,4 +1,4 @@
-/** Runner-side secret redaction (spec 14-security.md). */
+/** Runner-side secret redaction. */
 
 /**
  * Builds a redactor replacing every exact registered secret value with its

@@ -1,4 +1,4 @@
-/** Spawned-process management for the commands and services engines declare, and their teardowns (spec 05-config.md). */
+/** Spawned-process management for the commands and services engines declare, and their teardowns. */
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';

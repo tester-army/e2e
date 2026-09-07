@@ -114,7 +114,7 @@ export class RealmManager {
   }
 
   /**
-   * A test's hooks of one kind in execution order (spec 11-lifecycle.md).
+   * A test's hooks of one kind in execution order.
    * `beforeEach` runs outer scope to inner, each scope's hooks in declaration
    * order, wherever in the file a scope's hooks were declared relative to the
    * test or to nested groups. `afterEach` mirrors it: inner scope to outer,
@@ -159,7 +159,7 @@ export class RealmManager {
    * Closes every entered scope that none of `remaining` (the pairs still to
    * run in this realm) belongs to, innermost first, running its afterAll
    * hooks in reverse declaration order. A scope's afterAll therefore runs
-   * when its last runnable member leaves it (spec 11-lifecycle.md), not when
+   * when its last runnable member leaves it, not when
    * the file ends: one describe's teardown never runs after a sibling's tests.
    *
    * Returns the first afterAll failure. Every failure is a run error, and the

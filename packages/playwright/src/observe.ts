@@ -1,4 +1,4 @@
-/** Masked pixel capture for an observation (spec 14-security.md). */
+/** Masked pixel capture for an observation. */
 
 import type { Locator, Page } from 'playwright';
 import type { ObservationPixels, OperationContext } from '@e2edev/e2e/engine';

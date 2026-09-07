@@ -1,4 +1,4 @@
-/** Model adapter contract (spec 05-config.md, 10-determinism.md, 14-security.md). */
+/** Model adapter contract. */
 
 import type { JSONSchema7 } from 'ai';
 import { AgentError } from '../error.ts';
@@ -12,7 +12,7 @@ export interface ModelUsage {
   readonly estimatedCostUsd: number | undefined;
 }
 
-/** Provenance recorded for every model-backed step (13-reporting.md). */
+/** Provenance recorded for every model-backed step. */
 export interface ModelProvenance {
   readonly provider: string;
   readonly model: string;
@@ -24,7 +24,7 @@ export interface ModelProvenance {
   readonly adapterVersion: string;
 }
 
-/** Untrusted pixel evidence sent alongside the prompt (spec 14-security.md). */
+/** Untrusted pixel evidence sent alongside the prompt. */
 export interface ModelImage {
   readonly data: Uint8Array;
   readonly mediaType: string;
@@ -86,7 +86,7 @@ export class ModelOutputInvalidError extends AgentError {
 /**
  * Conservative token upper bound. UTF-8 byte length bounds every byte-level
  * tokenizer from above, so it is used when a provider reports no usage and for
- * the pre-flight ceiling required by 14-security.md.
+ * the pre-flight ceiling: unavailable accounting fails before the request.
  *
  * Every budget that mixes with this one — reserves, ledger size, observation
  * size — is therefore in the same byte-scaled units, not in real tokens.

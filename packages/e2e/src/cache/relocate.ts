@@ -1,5 +1,5 @@
 /**
- * Deterministic target relocation (RFC0001 layer 3, cache-in decision).
+ * Deterministic target relocation.
  *
  * Re-finds a recorded target descriptor in a fresh observation: exactly one
  * node must match, or replay diverges. This is the conservative public

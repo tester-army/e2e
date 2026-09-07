@@ -1,4 +1,4 @@
-/** Option resolution and test-target selection (spec 11-lifecycle.md). */
+/** Option resolution and test-target selection. */
 
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';

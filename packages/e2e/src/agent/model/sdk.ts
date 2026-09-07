@@ -1,5 +1,5 @@
 /**
- * AI SDK adapter (spec 05-config.md). One implementation serves every
+ * AI SDK adapter. One implementation serves every
  * provider: a `provider/model-id` reference resolves through the AI Gateway,
  * and a caller-supplied AI SDK model instance (`openai('gpt-4o')`, a local
  * provider, a scripted test model) is used directly. Everything after model
@@ -267,7 +267,7 @@ function translateModelError(rawCause: unknown, issue: string | undefined, signa
   const cause = unwrapRetry(rawCause);
   if (cause instanceof AgentError) return cause;
   // Only an aborted attempt is a cancellation. A request that exceeded the
-  // remaining step budget is a timeout, which is a test failure (06-cli.md).
+  // remaining step budget is a timeout, which is a test failure.
   if (signal.aborted) {
     return new AgentError('CANCELLED', 'model call cancelled', { cause });
   }

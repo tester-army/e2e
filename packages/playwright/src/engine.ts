@@ -1,5 +1,5 @@
 /**
- * The Playwright engine for e2e (RFC0002): a browser body built with the
+ * The Playwright engine for e2e: a browser body built with the
  * public `defineEngine`, validated by the same rules and graded by the same
  * capabilities as any other engine. Core imports nothing from here; this
  * package imports the contract from `@e2edev/e2e/engine` and contributes the `web`

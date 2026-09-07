@@ -568,7 +568,7 @@ export interface ServiceConfig extends CommandConfig {
 }
 
 /**
- * One target: a named surface on one platform, served by an engine (RFC0002).
+ * One target: a named surface on one platform, served by an engine.
  * What the target can do is graded from the engine's declared capabilities;
  * with no `engine` the target is agent-tools-only and everything runs opaque.
  * The app under test is the engine's to declare (its URL, identity, or the
@@ -668,7 +668,7 @@ export interface AgentConfig {
   /**
    * The step executor `agent.act()` dispatches to, alongside the options —
    * a custom brain no longer forfeits `model`, budgets, or `context`
-   * (RFC0002). Omitted selects the built-in agent.
+   *. Omitted selects the built-in agent.
    */
   executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
@@ -703,7 +703,7 @@ export interface E2EConfig {
   };
   /**
    * Either the agent options block, or the agent itself: `createAgent(...)`
-   * from `@e2edev/e2e/agent`, or any hand-rolled `StepExecutor` (RFC0001 layer 4).
+   * from `@e2edev/e2e/agent`, or any hand-rolled `StepExecutor`.
    * With an agent value, the model falls back to `E2E_MODEL` and every other
    * option keeps its default. Agents never cross a process boundary: workers
    * re-resolve the config module and construct their own, exactly like model
@@ -711,7 +711,7 @@ export interface E2EConfig {
    */
   agent?: AgentConfig | StepExecutor;
   /**
-   * The adaptive trace cache (spec 10-determinism.md). Opt-out: unset means
+   * The adaptive trace cache. Opt-out: unset means
    * `read-write`, and `'off'` — or the `--no-cache` flag, which wins over the
    * config — disables it. A string is shorthand for `{ mode }`. In CI an
    * unset mode is demoted to `read-only`: a committed cache is untrusted

@@ -1,5 +1,5 @@
 /**
- * Prior-step context for agent prompts (spec 10-determinism.md).
+ * Prior-step context for agent prompts.
  *
  * The ledger is not stored anywhere: it is derived on demand from the step
  * timeline the run layer already records, so there is exactly one account of

@@ -1,4 +1,4 @@
-/** Step trace recording: durable descriptors, redaction, verbatim inputs (RFC0001 cache-in). */
+/** Step trace recording: durable descriptors, redaction, verbatim inputs. */
 
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';

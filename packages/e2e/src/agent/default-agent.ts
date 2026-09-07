@@ -1,5 +1,5 @@
 /**
- * The default step executor (RFC0001, layer 4 golden path): the tool-loop
+ * The default step executor: the tool-loop
  * chassis plus the grammar toolset, kept deliberately small. Every mutating
  * tool returns the updated screen; verdicts, budgets, hard stops, loop
  * guards, wind-down, and the transcript come from the chassis
@@ -88,7 +88,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
 }
 
 /**
- * The mid-step hand-off notice (RFC0001 layer 4): prose summaries and a reason
+ * The mid-step hand-off notice: prose summaries and a reason
  * token, replacing any ordinary prior-run hint. The agent continues from live
  * state; redoing a replayed action would double-commit a mutation.
  */

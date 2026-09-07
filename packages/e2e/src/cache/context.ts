@@ -1,5 +1,5 @@
 /**
- * Per-attempt cache context (RFC0001 layer 3, cache-in decision).
+ * Per-attempt cache context.
  *
  * Built by the runner once per attempt and handed to the agent tier: the
  * resolved store, key derivation over the attempt's fixed identity, and the

@@ -45,7 +45,7 @@ describe('translateProvisioningError', () => {
 });
 
 describe('exit code mapping', () => {
-  it('maps categories per 06-cli.md', () => {
+  it('maps categories', () => {
     expect(exitCodeForCategory('test')).toBe(1);
     expect(exitCodeForCategory('configuration')).toBe(2);
     expect(exitCodeForCategory('infrastructure')).toBe(3);

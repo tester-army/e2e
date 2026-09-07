@@ -1,5 +1,5 @@
 /**
- * Harness-owned dispatch of one `agent.act()` step (RFC0001, layer 3).
+ * Harness-owned dispatch of one `agent.act()` step.
  *
  * The harness opens the step, owns the deadline, the action budget, origin
  * policy, observation redaction, and recording — then hands the step to the

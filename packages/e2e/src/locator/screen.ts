@@ -436,7 +436,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 }
 
-/** Validates the shared long-press duration bound (spec 02-test-api.md). */
+/** Validates the shared long-press duration bound. */
 function validateLongPress(durationMs: number | undefined): number {
   const value = durationMs ?? 500;
   if (!Number.isInteger(value) || value < 100 || value > 10_000) {

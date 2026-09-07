@@ -1,4 +1,4 @@
-/** Which model an invocation talks to (spec 05-config.md). */
+/** Which model an invocation talks to. */
 
 import type { ResolvedAgentConfig } from '../../config/agent.ts';
 import type { ModelAdapter } from './adapter.ts';

@@ -1,5 +1,5 @@
 /**
- * The engine contract (RFC0002): the typed, model-free body of one target.
+ * The engine contract: the typed, model-free body of one target.
  *
  * An engine never talks to a model. It declares capabilities - observation,
  * actions, location, state, artifacts, contributed fixtures - and the harness
@@ -24,8 +24,8 @@ import { ConfigurationError } from '../internal/errors.ts';
 
 // Semantics the spec requires every engine and contributed fixture to
 // reproduce exactly, exported so an engine never carries its own copy: the
-// runner error taxonomy (06-cli.md), text-pattern matching (04-locators.md),
-// URL matching (03-assertions.md), assertion polling (03-assertions.md), and
+// runner error taxonomy, text-pattern matching,
+// URL matching, assertion polling, and
 // the JSON-value rules for data a fixture returns.
 export { ConfigurationError, InfrastructureError, TestError } from '../internal/errors.ts';
 export { validateJsonValue, type JsonValueRules } from '../internal/json-value.ts';
@@ -91,7 +91,7 @@ export type EngineCapability =
   | (string & {});
 
 /**
- * What an engine declares about the app it drives (RFC0002 step 7b). The app
+ * What an engine declares about the app it drives. The app
  * under test is the engine's to describe: a browser engine names a URL, a
  * device engine a bundle id. The harness resolves the declaration once per
  * target and owns everything built on it - navigation and origin policy,

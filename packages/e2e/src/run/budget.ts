@@ -5,8 +5,8 @@ import { Deadline } from '../internal/time.ts';
 /**
  * One attempt's fixture budget. Through `beforeEach` and the body it is the
  * attempt signal and the test deadline. Each `afterEach` hook then enters a
- * budget of its own (spec 11-lifecycle.md: every teardown hook has a separate
- * `cleanupTimeout`), so teardown can still drive the app after the body timed
+ * budget of its own (every teardown hook has a separate `cleanupTimeout`), so
+ * teardown can still drive the app after the body timed
  * out or was cancelled, and a hook that overruns is cancelled without taking
  * the next hook's budget with it. Fixtures read the budget at call time, so a
  * fixture acquired in the body keeps working in teardown.

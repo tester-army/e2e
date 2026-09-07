@@ -1,5 +1,5 @@
 /**
- * `agent.act()` coverage: the harness-owned step dispatch (RFC0001 layer 3),
+ * `agent.act()` coverage: the harness-owned step dispatch,
  * the raw StepExecutor socket driven by a hand-rolled executor with no AI SDK,
  * and the default ToolLoopAgent executor driven by a scripted tool-calling
  * model. Real Playwright observations and actions throughout.

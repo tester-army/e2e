@@ -1,5 +1,5 @@
 /**
- * Human-readable list reporter (spec 06-cli.md), styled after vitest's
+ * Human-readable list reporter, styled after vitest's
  * default reporter: one block per test file and target, a `Failed Tests`
  * section with code frames, and a padded summary. On a TTY a live window
  * below the log shows the running files, their tests, and the counters.

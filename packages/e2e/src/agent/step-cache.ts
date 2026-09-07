@@ -1,5 +1,5 @@
 /**
- * One step's trace-cache session (RFC0001 layer 3, cache-in decision): key
+ * One step's trace-cache session: key
  * derivation, the replay attempt, live recording, and the stage-or-evict
  * decision once the step has settled — everything cache-shaped about one
  * dispatched act step, kept beside the dispatch rather than threaded through

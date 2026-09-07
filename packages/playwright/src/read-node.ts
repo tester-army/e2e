@@ -529,7 +529,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       if (projection.attributes.indexOf(attribute.name) !== -1 || attribute.name.startsWith('aria-')) {
         if (secure && attribute.name === 'value') continue;
         // Observations expose href origin and path only: query strings and
-        // fragments routinely carry tokens (spec 10-determinism.md).
+        // fragments routinely carry tokens.
         if (projection.redactHref && attribute.name === 'href') {
           attributes[attribute.name] = originAndPath(attribute.value, el.ownerDocument.baseURI);
           continue;

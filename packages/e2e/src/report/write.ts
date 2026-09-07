@@ -1,4 +1,4 @@
-/** Atomic report persistence (spec 13-reporting.md). */
+/** Atomic report persistence. */
 
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';

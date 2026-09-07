@@ -1,5 +1,5 @@
 /**
- * Zero-turn trace replay (RFC0001 layer 3, cache-in decision).
+ * Zero-turn trace replay.
  *
  * Replays one recorded trace through the same action grammar the executor
  * uses — every replayed action runs under the step's deadline, action budget,

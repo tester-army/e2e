@@ -1,4 +1,4 @@
-/** Text normalization and matching rules (spec 03-assertions.md, 08-platforms.md). */
+/** Text normalization and matching rules. */
 
 import type { TextMatch } from '../types.ts';
 import { sanitizeText } from './errors.ts';

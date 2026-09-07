@@ -1,4 +1,4 @@
-/** trace-1 entry format and the replay decision (RFC0001 cache-in). */
+/** trace-1 entry format and the replay decision. */
 
 import { describe, expect, it } from 'vitest';
 import { decideTraceReplay } from '../../src/cache/decide.ts';

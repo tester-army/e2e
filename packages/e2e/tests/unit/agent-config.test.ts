@@ -109,7 +109,7 @@ describe('agent as the executor itself', () => {
     expect(renamed.configDigest).not.toBe(first.configDigest);
   });
 
-  it('accepts an executor alongside the agent options (RFC0002)', () => {
+  it('accepts an executor alongside the agent options', () => {
     const config = resolve({ agent: { executor: brain(), maxModelCalls: 40 } } as never);
     expect(config.agent.executor?.name).toBe('custom-brain');
     expect(config.agent.maxModelCalls).toBe(40);
@@ -203,7 +203,7 @@ describe('model resolution', () => {
     expect(config.agent.model).toMatchObject({ apiKey: 'secret-value' });
     const withoutKey = resolve({ agent: { model: 'openai/gpt-5.4-mini' } });
     expect(withoutKey.agent.model).toMatchObject({ apiKey: undefined });
-    // Environment values never affect the digest (13-reporting.md).
+    // Environment values never affect the digest.
     expect(withoutKey.configDigest).toBe(config.configDigest);
   });
 

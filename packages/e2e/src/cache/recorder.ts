@@ -1,5 +1,5 @@
 /**
- * Step trace recording (RFC0001 layer 3, cache-in decision).
+ * Step trace recording.
  *
  * Records every grammar action a step commits, capturing a durable target
  * descriptor at commit time — the moment the harness resolved the node — so

@@ -1,6 +1,5 @@
 /**
- * The run engine: dispatches file-target work units across workers (spec
- * 11-lifecycle.md). Per target, setup units complete before ordinary units
+ * The run engine: dispatches file-target work units across workers. Per target, setup units complete before ordinary units
  * dispatch; a worker is bound to one target, runs one unit at a time, and is
  * discarded after any failing unit or infrastructure fault.
  *
@@ -503,7 +502,7 @@ class Scheduler {
           });
         }
         if (worker.state !== 'retired') {
-          // Spec 11-lifecycle.md: discard the worker after a failing unit.
+          // Discard the worker after a failing unit.
           if (worker.sawFailure) this.retire(worker);
           else worker.state = 'idle';
         }

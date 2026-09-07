@@ -1,4 +1,4 @@
-/** Non-destructive project scaffolding (spec 06-cli.md). */
+/** Non-destructive project scaffolding. */
 
 import * as clack from '@clack/prompts';
 import { spawnSync } from 'node:child_process';

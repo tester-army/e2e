@@ -1,4 +1,4 @@
-/** Route URL pattern grammar per 08-platforms.md. */
+/** Route URL pattern grammar. */
 
 /** Escapes one character for literal use inside a regexp source. */
 function escapeRegexpChar(ch: string): string {

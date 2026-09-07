@@ -1,5 +1,5 @@
 /**
- * Work-unit planning (spec 11-lifecycle.md) and the records for work the
+ * Work-unit planning and the records for work the
  * scheduler reports without dispatching it. Every `ResultRecord` built from a
  * pair goes through `pairResult`, which narrows the pair's collected test to
  * its serializable identity.

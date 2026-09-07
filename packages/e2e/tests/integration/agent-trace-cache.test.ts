@@ -1,5 +1,5 @@
 /**
- * The adaptive trace cache end to end (RFC0001 cache-in): a first run records
+ * The adaptive trace cache end to end: a first run records
  * the step's action trace, the second replays it zero-turn without invoking
  * the executor, a diverged trace hands the step over mid-step with the
  * replayedPrefix notice, and a passing step rewrites its entry. Real

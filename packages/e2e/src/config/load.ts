@@ -1,4 +1,4 @@
-/** Config discovery and ESM/TypeScript loading (spec 05-config.md). */
+/** Config discovery and ESM/TypeScript loading. */
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';

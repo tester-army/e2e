@@ -1,4 +1,4 @@
-/** Test glob grammar per 05-config.md. */
+/** Test glob grammar. */
 
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -126,7 +126,7 @@ function walk(
   }
 }
 
-/** Sorts strings by Unicode code point as required by 11-lifecycle.md. */
+/** Sorts strings by Unicode code point, the order collection is defined in. */
 export function compareCodePoints(a: string, b: string): number {
   const aPoints = [...a];
   const bPoints = [...b];

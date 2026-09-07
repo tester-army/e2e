@@ -182,7 +182,7 @@ describe('agent judgment tier', () => {
   });
 
   it('discloses href origin and path only, never query strings or fragments', () => {
-    // Query strings routinely carry tokens (spec 10-determinism.md).
+    // Query strings routinely carry tokens.
     for (const call of fakeCalls) {
       expect(call.observation).not.toContain('super-secret-token');
       expect(call.observation).not.toContain('#frag');

@@ -1,5 +1,5 @@
 /**
- * Runner-owned agent policy and prompt construction (spec 14-security.md).
+ * Runner-owned agent policy and prompt construction.
  *
  * System policy always precedes trusted project context, which always precedes
  * untrusted evidence. Nothing below the policy can add tools, origins,

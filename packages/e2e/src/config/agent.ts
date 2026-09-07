@@ -1,4 +1,4 @@
-/** Agent, model, and resource-limit resolution (spec 05-config.md, 14-security.md). */
+/** Agent, model, and resource-limit resolution. */
 
 import type { LanguageModel } from 'ai';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
@@ -121,7 +121,7 @@ export function resolveAgentConfig(
   limits: ResolvedBaseLimits,
 ): ResolvedAgentConfig {
   const value = raw.agent;
-  // Three accepted shapes (RFC0002): the agent itself, an options object, or
+  // Three accepted shapes: the agent itself, an options object, or
   // an options object carrying `executor` — a custom brain no longer forfeits
   // the model, budgets, or context.
   const bare = value !== undefined && isStepExecutor(value) ? value : undefined;

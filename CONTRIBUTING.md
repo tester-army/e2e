@@ -9,7 +9,7 @@ This project is a pnpm monorepo containing:
 - `packages/e2e` — the published `@e2edev/e2e` package (SDK, runner, CLI, engine contract)
 - `packages/playwright` — the published `@e2edev/playwright` browser engine
 - `packages/testbed` — private dogfood suite that consumes the built packages
-- `fern/` — the docs site, `docs/rfcs/` — dated decision records
+- `fern/` — the docs site
 
 Install dependencies from the root:
 

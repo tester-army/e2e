@@ -1,5 +1,5 @@
 /**
- * The engine contract vocabulary (RFC0002): the platform-neutral types every
+ * The engine contract vocabulary: the platform-neutral types every
  * engine speaks and the harness consumes. An engine imports these from
  * `@e2edev/e2e/engine`; core never imports anything from an engine.
  *
@@ -125,7 +125,7 @@ export interface SemanticNode {
    * It SHOULD be anchored on an attribute naming the node or one of its
    * ancestors, and SHOULD be absent rather than positional all the way to the
    * document root: such a path is shifted by anything inserted above the node,
-   * so it does not survive to the later run it exists for (10-determinism.md).
+   * so it does not survive to the later run it exists for.
    */
   readonly selector?: string;
   /**

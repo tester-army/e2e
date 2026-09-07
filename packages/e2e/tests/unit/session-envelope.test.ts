@@ -1,4 +1,4 @@
-/** Session envelope wire format (spec 14-security.md, SESSION-SCHEMA-001). */
+/** Session envelope wire format. */
 
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

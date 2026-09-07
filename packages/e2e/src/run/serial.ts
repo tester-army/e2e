@@ -1,4 +1,4 @@
-/** Serial-group execution: one shared session per group attempt (spec 11-lifecycle.md). */
+/** Serial-group execution: one shared session per group attempt. */
 
 import type { TargetSession } from '../engine/surface.ts';
 import {
@@ -124,7 +124,7 @@ export async function runSerialUnit(
       const attempt = await runSerialAttempt(host, members, absolutePath, attemptIndex);
       group.attempts.push(attempt);
       for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
-      // A beforeAll failure is not retry-eligible (spec 11-lifecycle.md): the
+      // A beforeAll failure is not retry-eligible: the
       // attempt stands as recorded and the retry loop stops here.
       if (attempt.error?.code === 'HOOK_FAILED') return undefined;
       return attempt;
@@ -276,7 +276,7 @@ async function runSerialAttempt(
     }
     // Suite scopes enter per member, exactly as for ordinary tests: a
     // beforeAll failure skips this member and, since later members build on
-    // its screen, every member after it (spec 11-lifecycle.md).
+    // its screen, every member after it.
     hookFailure = await host.realms.enterScopes(realm, registered);
     if (hookFailure !== undefined) {
       skipRemaining = { cause: 'hook-failed', reason: hookFailure.message };

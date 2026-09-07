@@ -1,4 +1,4 @@
-/** Opaque credential handles (spec 02-test-api.md, 14-security.md). */
+/** Opaque credential handles. */
 
 import { credentialBrand, secretBrand } from './internal/brands.ts';
 import { ConfigurationError } from './internal/errors.ts';

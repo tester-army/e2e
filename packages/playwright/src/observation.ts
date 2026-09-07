@@ -189,7 +189,7 @@ async function captureInto(
  *
  * A `data:` document is *not* admitted, even though its bytes are written by the
  * page that embeds it. It has an opaque origin rather than an inherited one, and
- * 14-security.md denies the scheme by name alongside `file:` and `javascript:`.
+ * origin policy denies the scheme by name alongside `file:` and `javascript:`.
  */
 function isAllowedFrameOrigin(url: string, allowedOrigins: readonly string[]): boolean {
   if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;

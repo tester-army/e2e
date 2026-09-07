@@ -1,5 +1,5 @@
 /**
- * Trace entry storage (RFC0001 layer 3, cache-in decision).
+ * Trace entry storage.
  *
  * One file per key under `.e2e/cache/`, named for the key digest. Reads fail
  * closed: an oversized or unreadable entry is a miss, never a repair. Writes go

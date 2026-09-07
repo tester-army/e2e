@@ -1,5 +1,5 @@
 /**
- * Runner<->engine contract tests (RFC0002, `@e2edev/e2e/engine`). Drives the real
+ * Runner<->engine contract tests (`@e2edev/e2e/engine`). Drives the real
  * runner with an instrumented in-memory engine so the guarantees out-of-tree
  * engines rely on - lifecycle order, operation contexts, error mapping,
  * capability gating - can never silently regress.

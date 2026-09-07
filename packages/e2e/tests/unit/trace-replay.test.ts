@@ -1,4 +1,4 @@
-/** Zero-turn replay: typed dispatch, relocation backoff, divergence (RFC0001 cache-in). */
+/** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';

@@ -1,4 +1,4 @@
-/** Immutable locator expression construction (spec 08-platforms.md). */
+/** Immutable locator expression construction. */
 
 import type { LocatorExpression, SemanticQuery } from '../engine/surface.ts';
 import { toTextPattern } from '../internal/text.ts';

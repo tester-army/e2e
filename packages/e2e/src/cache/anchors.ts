@@ -1,5 +1,5 @@
 /**
- * End anchors (RFC0001 layer 3, cache-in decision).
+ * End anchors.
  *
  * A recording run does not end when its last action commits; it ends when the
  * executor looks at the screen and judges the step done. The trace used to

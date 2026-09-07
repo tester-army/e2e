@@ -1,4 +1,4 @@
-/** Runner-owned agent error classification (spec 02-test-api.md, 06-cli.md). */
+/** Runner-owned agent error classification. */
 
 import { classifyError, E2EError, type ErrorCategory } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
@@ -18,7 +18,7 @@ export type BlockedCategory =
 
 /**
  * The single source of truth for the closed agent code set: exit/result class
- * per 06-cli.md, plus the blocked category for codes a `blocked` verdict may
+ * for every code, plus the blocked category for codes a `blocked` verdict may
  * carry. The model never selects a code, a category, or a blocked category —
  * everything derives from this table.
  */

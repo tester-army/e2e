@@ -73,7 +73,7 @@ export interface Collection {
   readonly unmatchedPositionals: readonly string[];
 }
 
-/** Derives the serial unit source ID per 11-lifecycle.md. */
+/** Derives the serial unit source ID. */
 function serialSourceId(file: string, group: GroupNode): string {
   return `serial::${testId(file, groupTitles(group))}`;
 }
@@ -154,7 +154,7 @@ const GLOB_CHARACTERS = /[*?]/;
 /**
  * Narrows the files the config globs discovered by positional arguments. Each
  * positional resolves from the project root and is one of: a glob (any `*` or
- * `?`) in the 05-config.md grammar matched against the discovered files, an
+ * `?`) in the test glob grammar matched against the discovered files, an
  * existing directory selecting every discovered file beneath it, or a file
  * path matched exactly. Positionals only narrow: a file the config globs did
  * not discover is never selected. Discovery order is preserved.
@@ -183,7 +183,7 @@ export function selectPositionals(
 function positionalMatcher(projectRoot: string, positional: string): (file: string) => boolean {
   const normalized = relativeToRoot(projectRoot, positional);
   if (GLOB_CHARACTERS.test(normalized)) {
-    // Globs keep the 05-config.md grammar: case-sensitive on every OS.
+    // Globs keep the test glob grammar: case-sensitive on every OS.
     const glob = compileGlob(normalized);
     return (file) => matchesGlob(glob, file);
   }

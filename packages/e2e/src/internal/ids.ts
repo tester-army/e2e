@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 /**
- * Percent-encodes one title per 11-lifecycle.md: RFC 3986 unreserved characters
+ * Percent-encodes one title: RFC 3986 unreserved characters
  * stay literal, every other UTF-8 byte becomes uppercase %HH.
  */
 export function encodeTitle(title: string): string {
@@ -27,7 +27,7 @@ export function encodeTitle(title: string): string {
   return out;
 }
 
-/** Validates one raw title per 11-lifecycle.md (1..512 UTF-8 bytes after NFC, no NUL). */
+/** Validates one raw title (1..512 UTF-8 bytes after NFC, no NUL). */
 export function validateTitle(title: string): string | null {
   const normalized = title.normalize('NFC');
   const bytes = new TextEncoder().encode(normalized).byteLength;
@@ -105,7 +105,7 @@ export function canonicalDigest(value: unknown): string {
   return sha256Hex(canonicalJson(value));
 }
 
-/** Result ID per 13-reporting.md: SHA-256/JCS of `{ testId, targetId }`. */
+/** Result ID: SHA-256/JCS of `{ testId, targetId }`. */
 export function resultId(test: string, targetId: string): string {
   return canonicalDigest({ testId: test, targetId });
 }

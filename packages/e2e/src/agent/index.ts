@@ -1,5 +1,5 @@
 /**
- * The `agent` fixture (spec 02-test-api.md).
+ * The `agent` fixture.
  *
  * Two tiers, deliberately few methods. `act` plans and executes a flow on the
  * executor socket; `assert`, `waitFor`, and `extract` are the judgment tier —
@@ -48,7 +48,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   /**
    * Default budget for polling, judgment, and extraction steps: the action
    * timeout expresses the suite's model-latency headroom in one place, with a
-   * 30 s floor (spec 02-test-api.md). Tests then rarely need per-call
+   * 30 s floor. Tests then rarely need per-call
    * timeouts.
    */
   const stepTimeout = Math.max(MIN_STEP_TIMEOUT_MS, runtime.config.actionTimeout);
@@ -206,7 +206,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           const observation = await invocation.observe();
           const judgment = await askJudgment(invocation, assertion, observation);
           invocation.note({ explanation: judgment.explanation });
-          // Spec 03-assertions.md: the report keeps the redacted screenshot
+          // The report keeps the redacted screenshot
           // whenever `screenshot` allows it, on a passing judgment too.
           const screenshot = evidenceAllowed(invocation, options?.screenshot)
             ? await captureEvidence(invocation)

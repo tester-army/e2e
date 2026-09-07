@@ -1,5 +1,5 @@
 /**
- * The step-executor socket (RFC0001, layer 4).
+ * The step-executor socket.
  *
  * The harness owns each `agent.act()` step — observation, action dispatch,
  * budgets, recording, and verdict mapping — and delegates only the thinking to
@@ -206,7 +206,7 @@ export type ReplayHandOffReason =
   | 'end-mismatch';
 
 /**
- * The mid-step hand-off from a diverged cache replay (RFC0001 layer 4). The
+ * The mid-step hand-off from a diverged cache replay. The
  * replayed actions already ran against the live app under the same budgets
  * and recording as the executor's own; the executor continues the step from
  * the current application state and must not redo them.

@@ -1,4 +1,4 @@
-/** Attempt-scoped fixture graph (spec 02-test-api.md, 08-platforms.md). */
+/** Attempt-scoped fixture graph. */
 
 import { createAgentFixture } from '../agent/index.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
@@ -201,7 +201,7 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
 }
 
 /**
- * Engine-contributed fixtures (RFC0002): factories declare operation metadata
+ * Engine-contributed fixtures: factories declare operation metadata
  * through context.fixture and must return the surface they declared. Factories
  * stay lazy and each instance belongs to one test's fixture graph; the
  * session's secrecy state outlives that graph.

@@ -1,5 +1,5 @@
 /**
- * One bounded agent invocation (spec 02-test-api.md, 10-determinism.md).
+ * One bounded agent invocation.
  *
  * Every `agent.*` call is a separate invocation with a fresh observation, an
  * explicit deadline, a model-call budget, and no shared model transcript.
@@ -54,7 +54,7 @@ import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './pr
 export interface AgentContext {
   readonly engine: LocatorEngine;
   readonly steps: StepRecorder;
-  /** The step executor `agent.act()` dispatches to (RFC0001 layer 4). */
+  /** The step executor `agent.act()` dispatches to. */
   readonly executor: StepExecutor;
   /**
    * True when the executor came from config rather than the built-in default.

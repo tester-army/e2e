@@ -1,5 +1,5 @@
 /**
- * Trace cache key identity (RFC0001 layer 3, cache-in decision).
+ * Trace cache key identity.
  *
  * A key names the exact context a trace was recorded in. Every field that can
  * change replay behavior is part of the key, so a stale entry can only ever be

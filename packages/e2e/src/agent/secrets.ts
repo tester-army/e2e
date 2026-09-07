@@ -1,4 +1,4 @@
-/** Host-side secret fill authorization (spec 04-resources.md, 14-security.md). */
+/** Host-side secret fill authorization. */
 
 import type { TargetSession, OperationContext, SemanticNode } from '../engine/surface.ts';
 import type { Secret } from '../types.ts';

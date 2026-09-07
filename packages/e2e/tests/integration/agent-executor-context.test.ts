@@ -1,6 +1,5 @@
 /**
- * The executor owns its context (spec 16-executors.md, "Context is the
- * executor's"): attempt identity and lifecycle, structured prior steps, the
+ * The executor owns its context: attempt identity and lifecycle, structured prior steps, the
  * per-attempt memory, opt-in tree and pixels on `observe()`, per-executor
  * cache opt-out, and the built-in agent carrying its conversation across the
  * steps of a test. Real Playwright observations throughout.

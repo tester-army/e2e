@@ -1,5 +1,5 @@
 /**
- * The agent-device engine for e2e (RFC0002): a mobile body built with the
+ * The agent-device engine for e2e: a mobile body built with the
  * public `defineEngine`, validated by the same rules and graded by the same
  * capabilities as any other engine. Core imports nothing from here; this
  * package imports the contract from `@e2edev/e2e/engine` and contributes the

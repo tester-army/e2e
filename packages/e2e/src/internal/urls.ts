@@ -1,4 +1,4 @@
-/** URL normalization and origin policy helpers (spec 05-config.md). */
+/** URL normalization and origin policy helpers. */
 
 import { ConfigurationError } from './errors.ts';
 import { testPattern } from './regexp.ts';
@@ -113,7 +113,7 @@ export function resolveNavigationUrl(
 }
 
 /**
- * Compares a current URL to an expected string/regexp per 03-assertions.md.
+ * Compares a current URL to an expected string/regexp.
  * Relative expected strings resolve against the base URL; string comparison is
  * exact after WHATWG serialization; regexps test the complete serialized URL.
  */

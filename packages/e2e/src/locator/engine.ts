@@ -1,4 +1,4 @@
-/** Runner-owned query polling, strictness, and action retry (spec 08-platforms.md). */
+/** Runner-owned query polling, strictness, and action retry. */
 
 import {
   type TargetSession,

@@ -1,4 +1,4 @@
-/** Per-run encrypted session store (spec 11-lifecycle.md, 13-reporting.md). */
+/** Per-run encrypted session store. */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';

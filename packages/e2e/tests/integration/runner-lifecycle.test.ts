@@ -420,7 +420,7 @@ test.describe('wizard', { serial: true }, () => {
 });
 `;
       const { outcome, project } = await runProject({ 'tests/serial.e2e.ts': file }, { appUrl: app.url });
-      // 11-lifecycle.md: without a successful group attempt, each member uses
+      // Without a successful group attempt, each member uses
       // its status in the final group attempt.
       expect(resultByTitle(outcome, 'step 1 increments').status).toBe('passed');
       expect(resultByTitle(outcome, 'step 3 fails').status).toBe('failed');

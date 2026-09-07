@@ -1,4 +1,4 @@
-/** report-1 document construction (spec 13-reporting.md). */
+/** report-1 document construction. */
 
 import os from 'node:os';
 import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts';
@@ -268,7 +268,7 @@ function relativeSource(
   return { file, line: Math.max(1, source.line), column: Math.max(1, source.column) };
 }
 
-/** Step source capture is not implemented yet (spec 13-reporting.md). */
+/** Step source capture is not implemented yet. */
 const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
 
 function serializeStep(step: StepRecord): ReportStep {
@@ -463,7 +463,7 @@ const DEFAULT_LIMITS: ReportLimits = {
   maxObservationBytes: DEFAULT_OBSERVATION_BYTES,
 };
 
-/** Aggregates observed usage against the resolved limits (13-reporting.md). */
+/** Aggregates observed usage against the resolved limits. */
 function computeUsage(options: {
   results: readonly ResultRecord[];
   serialGroups: readonly SerialGroupRecord[];
@@ -599,7 +599,7 @@ function compareResults(a: ResultRecord, b: ResultRecord): number {
   return a.target.index - b.target.index;
 }
 
-/** Report order is completion-time independent (spec 13-reporting.md). */
+/** Report order is completion-time independent. */
 function compareSerialGroups(
   a: SerialGroupRecord,
   b: SerialGroupRecord,

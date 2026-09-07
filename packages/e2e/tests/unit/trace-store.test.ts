@@ -1,4 +1,4 @@
-/** trace-1 file store: atomic writes, fail-to-miss reads (RFC0001 cache-in). */
+/** trace-1 file store: atomic writes, fail-to-miss reads. */
 
 import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

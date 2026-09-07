@@ -1,4 +1,4 @@
-/** Observation capture, redaction, and model serialization (spec 09-drivers.md, 14-security.md). */
+/** Observation capture, redaction, and model serialization. */
 
 import type { Observation, SemanticNode } from '../engine/surface.ts';
 import { collapseText } from '../internal/text.ts';
@@ -104,7 +104,7 @@ export function prepareObservation(
  * Every secure node the engine observed must be covered by a masked region.
  * When it is not, the engine masked less than it saw and the image cannot be
  * proven redacted, so it is dropped exactly like an incompletely redacted
- * artifact (14-security.md) — the semantic tree still goes out.
+ * artifact — the semantic tree still goes out.
  */
 function clearPixels(observation: Observation): {
   cleared?: ExecutorPixels;

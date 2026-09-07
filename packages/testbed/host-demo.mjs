@@ -81,7 +81,7 @@ try {
     rawConfig: {
       projectId: 'host-demo',
       tests: 'tests/**/*.e2e.ts',
-      // The platform is explicit since the engine contract (RFC0002): a host
+      // The platform is explicit since the engine contract: a host
       // declares the target and the engine that drives it, same as a config;
       // the engine declares the app it drives.
       targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:4273' }) }],

@@ -1,4 +1,4 @@
-/** Runner-owned error taxonomy and exit-code mapping (spec 06-cli.md). */
+/** Runner-owned error taxonomy and exit-code mapping. */
 
 import {
   ENGINE_ERROR_CODES,
@@ -151,7 +151,7 @@ export class TestTimeoutError extends TestError {
   }
 }
 
-/** Maps a category to its process exit code per 06-cli.md. */
+/** Maps a category to its process exit code. */
 export function exitCodeForCategory(category: ErrorCategory): 0 | 1 | 2 | 3 | 4 | 130 {
   switch (category) {
     case 'test':

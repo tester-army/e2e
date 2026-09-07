@@ -1,6 +1,6 @@
 /**
  * Whether a typed value is the step's own data or data it derived at run
- * time (spec 10-determinism.md, entries and keys).
+ * time.
  *
  * A value the instruction or the params spell out — "Nimbus Paper Co", 4.25,
  * a param's string — is the step's literal input and replays verbatim. A

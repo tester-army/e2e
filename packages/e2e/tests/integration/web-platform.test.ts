@@ -291,7 +291,7 @@ describe('web platform integration', () => {
 
   it('exits with configuration precedence and writes report.json', () => {
     // POLICY_DENIED failures classify as configuration errors, and exit-code
-    // precedence is 130 > 4 > 3 > 2 > 1 > 0 (06-cli.md).
+    // precedence is 130 > 4 > 3 > 2 > 1 > 0.
     expect(outcome.exitCode).toBe(2);
     expect(outcome.status).toBe('error');
     expect(outcome.reportPath).toBeDefined();

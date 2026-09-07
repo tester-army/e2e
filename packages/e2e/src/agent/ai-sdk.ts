@@ -1,6 +1,5 @@
 /**
- * Lazy loader for the optional `ai` peer dependency (RFC0001: "AI SDK is a
- * peerDependency with a tested range"). Deterministic suites and custom
+ * Lazy loader for the optional `ai` peer dependency. Deterministic suites and custom
  * executors never load the AI SDK; everything model-backed funnels through
  * here, so the install weight is opt-in and the failure mode is one clear
  * MODEL_UNAVAILABLE instead of a module-resolution crash at startup.

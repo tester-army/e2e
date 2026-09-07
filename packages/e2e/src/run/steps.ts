@@ -1,4 +1,4 @@
-/** Attempt-scoped step timeline (spec 10-determinism.md, 13-reporting.md). */
+/** Attempt-scoped step timeline. */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { isAgentError } from '../agent/error.ts';
@@ -54,7 +54,7 @@ export interface StepMetrics {
 
 /**
  * Why a vision step fell back to tree-only input. Pixel evidence degrades
- * rather than failing the step (spec 14-security.md).
+ * rather than failing the step.
  */
 export type VisionDegradation = 'PIXEL_TAINTED' | 'MASKING_UNPROVEN' | 'UNSUPPORTED_CAPABILITY';
 

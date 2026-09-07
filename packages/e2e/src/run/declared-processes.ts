@@ -1,6 +1,6 @@
 /**
  * The processes a run owns, gathered from every target's engine declaration
- * (spec 05-config.md). Declarations are deduplicated across targets, so two
+ *. Declarations are deduplicated across targets, so two
  * browsers on one dev server share one process and one set of services, and
  * the merged order is checked for consistency before anything spawns.
  */

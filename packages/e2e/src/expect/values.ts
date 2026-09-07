@@ -1,4 +1,4 @@
-/** Synchronous plain-value matchers (spec 03-assertions.md). */
+/** Synchronous plain-value matchers. */
 
 import { equals, iterableEquality } from '@vitest/expect';
 import { TestError } from '../internal/errors.ts';

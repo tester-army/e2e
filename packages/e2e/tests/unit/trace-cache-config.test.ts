@@ -1,4 +1,4 @@
-/** Cache config resolution and the staged-write settlement (RFC0001 cache-in). */
+/** Cache config resolution and the staged-write settlement. */
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

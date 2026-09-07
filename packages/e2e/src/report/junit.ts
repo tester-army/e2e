@@ -1,4 +1,4 @@
-/** JUnit XML reporter (spec 06-cli.md): the report-1 document as `.e2e/junit.xml`. */
+/** JUnit XML reporter: the report-1 document as `.e2e/junit.xml`. */
 
 import { sanitizeText } from '../internal/errors.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';

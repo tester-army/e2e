@@ -1,4 +1,4 @@
-/** e2e CLI (spec 06-cli.md). */
+/** e2e CLI. */
 
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import { run } from '../run/runner.ts';
@@ -36,7 +36,7 @@ function isTagMode(value: string): value is 'any' | 'all' {
 function createProgram(): Command {
   const program = new Command('e2e');
   program.description('open, local-first standard for agentic end-to-end testing');
-  // Commander would exit(1) on a usage error itself; spec 06-cli.md reserves 1
+  // Commander would exit(1) on a usage error itself; the exit-code table reserves 1
   // for product failures and 2 for CLI errors, so exits are decided in main.
   program.exitOverride();
 
