@@ -38,9 +38,9 @@
       "types": "./dist/agent/public.d.ts",
       "default": "./dist/agent/public.js"
     },
-    "./backend": {
-      "types": "./dist/backend/index.d.ts",
-      "default": "./dist/backend/index.js"
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "default": "./dist/engine/index.js"
     },
     "./run": {
       "types": "./dist/run/public.d.ts",

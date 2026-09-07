@@ -1,6 +1,6 @@
 ---
 title: device
-subtitle: The device fixture and backend options @e2edev/agent-device contributes for iOS and Android targets.
+subtitle: The device fixture and engine options @e2edev/agent-device contributes for iOS and Android targets.
 ---
 
 Choose **agent-device** in `e2e init` to add this package and generate a
@@ -8,14 +8,14 @@ Settings example. Init defaults to iOS on macOS and Android elsewhere; the
 platform is editable in `e2e.config.ts`. AI testing defaults to enabled and can
 be declined. The generated config uses one worker and requires no `APP_URL`.
 
-`@e2edev/agent-device` is the mobile backend: iOS simulators and Android
+`@e2edev/agent-device` is the mobile engine: iOS simulators and Android
 emulators through [agent-device](https://github.com/callstack/agent-device),
-against the same `@e2edev/e2e/backend` contract the browser backend implements. `agent`,
+against the same `@e2edev/e2e/engine` contract the browser engine implements. `agent`,
 `app`, `screen`, and `expect` work as they do everywhere; this page covers what
 is specific to a device target. Import `test` from the package to have `device`
 typed; declare `requires: ['device']` in portable suites.
 
-## Backend
+## Engine
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from '@e2edev/e2e';
@@ -28,15 +28,15 @@ const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
 export default defineConfig({
   targets: [
-    { name: 'iphone', platform: 'ios', backend: iphone },
-    { name: 'pixel', platform: 'android', backend: pixel },
+    { name: 'iphone', platform: 'ios', engine: iphone },
+    { name: 'pixel', platform: 'android', engine: pixel },
   ],
   workers: 1,
   agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
 });
 ```
 
-One backend per device; a config declares as many as it has devices. A test
+One engine per device; a config declares as many as it has devices. A test
 written against `agent`, `app`, `screen`, and `device` runs on every target;
 a deterministic check that names a platform label is scoped with
 `platforms: ['ios']` or `platforms: ['android']`.
@@ -77,7 +77,7 @@ secure regions opaque black.
 ## Trace cache on a device
 
 The cache anchors a recorded `agent.act` step on the path the surface reports
-when the step begins and ends. This backend reports `app://device/<bundle
+when the step begins and ends. This engine reports `app://device/<bundle
 id>/<title>`, with the title read off the navigation bar (its label, its inner
 text, or its identifier). A step recorded on `/com.apple.preferences/General`
 replays only when Settings is on General again, and every grammar action inside it (tap, type,
@@ -115,7 +115,7 @@ export interface Device {
 
 Every async method is a recorded step named `device.<method>`, bounded by
 `config.actionTimeout` and the attempt signal, and never involves a model. A
-failure is `BACKEND_FAILURE` with agent-device's message; a command the
+failure is `ENGINE_FAILURE` with agent-device's message; a command the
 platform cannot run is `UNSUPPORTED_CAPABILITY`.
 
 `installApp` puts a build on the device from inside a test, for upgrade and
@@ -147,10 +147,10 @@ any locator.
 
 ## Agent tools
 
-`agentDeviceTools(...backends)` returns a `defineTool` pack for `createAgent`.
-Pass every device backend the config declares: tool names are fixed, so two
-packs cannot be merged; the pack is scoped to the platforms of those backends
-and dispatches each call to the backend whose attempt is running (a worker
+`agentDeviceTools(...engines)` returns a `defineTool` pack for `createAgent`.
+Pass every device engine the config declares: tool names are fixed, so two
+packs cannot be merged; the pack is scoped to the platforms of those engines
+and dispatches each call to the engine whose attempt is running (a worker
 runs one attempt at a time):
 
 | Tool | Replay | Purpose |
@@ -161,7 +161,7 @@ runs one attempt at a time):
 | `alert` | gap | Accept or dismiss a system alert. |
 | `screenshot` | read | Show the model the actual pixels. |
 
-The grammar verbs (`tap`, `type`, `scroll`) come from the backend manifest and
+The grammar verbs (`tap`, `type`, `scroll`) come from the engine manifest and
 need no tool. `type_secret` is not offered: secret fills require an origin the
 runner can check, and `app://` has none.
 

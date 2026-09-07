@@ -361,7 +361,7 @@ export const test: TestAPI = Object.assign(testFunction, {
   afterAll(fn: SuiteHookFn): void {
     requireCollector('test.afterAll()').registerHook({ kind: 'afterAll', fn });
   },
-  // Type-only refinement: contributed fixtures are resolved from the backend
+  // Type-only refinement: contributed fixtures are resolved from the engine
   // at runtime, so the same test object serves every fixture shape.
   extend(): TestAPI {
     return test;

@@ -80,7 +80,7 @@ describe('async step ownership', () => {
       late = lateGate.promise.then(() => {
         steps.attachArtifact('late');
         steps.attachViewport({ width: 1, height: 1, scale: 1 });
-        steps.recordEvent({ kind: 'backend', startedAt: '', durationMs: 0, status: 'passed' });
+        steps.recordEvent({ kind: 'engine', startedAt: '', durationMs: 0, status: 'passed' });
       });
     });
     await steps.run('resource', 'newer', '', async () => { lateGate.resolve(); await late; });

@@ -13,7 +13,7 @@
  * be equal, text included, and presence is enough — uniqueness is not asked.
  */
 
-import type { SemanticNode } from '../backend/surface.ts';
+import type { SemanticNode } from '../engine/surface.ts';
 import { describeTarget } from '../agent/actions.ts';
 import {
   describeNodes,

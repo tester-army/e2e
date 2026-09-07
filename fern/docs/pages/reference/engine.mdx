@@ -1,17 +1,17 @@
 ---
-title: e2e/backend
-subtitle: The backend contract a target's surface implements, and the fixture context it contributes through.
+title: e2e/engine
+subtitle: The engine contract a target's surface implements, and the fixture context it contributes through.
 ---
 
-`@e2edev/e2e/backend` is the authoring import for a backend. `defineBackend` validates
+`@e2edev/e2e/engine` is the authoring import for an engine. `defineEngine` validates
 the body synchronously at config load, freezes it, computes its capability set,
 and returns the branded handle a target accepts.
 
 ```ts
-import { defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
+import { defineEngine, type EngineHandle } from '@e2edev/e2e/engine';
 
-export function defineBackend(spec: Backend): BackendHandle;
-export function isBackendHandle(value: unknown): value is BackendHandle;
+export function defineEngine(spec: Engine): EngineHandle;
+export function isEngineHandle(value: unknown): value is EngineHandle;
 ```
 
 Validation fails with `INVALID_CONFIG`, never a silent demotion: a missing or
@@ -25,33 +25,33 @@ name that is not a lower-camel identifier or shadows a universal fixture
 is bound to the spec it came from, so a class instance is as valid a body as an
 object literal.
 
-## Backend
+## Engine
 
 ```ts
-export interface Backend {
+export interface Engine {
   readonly name: string;
   readonly version: string;
   readonly spiVersion: 1;
 
-  observe?(context: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot>;
+  observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
   locate?(expression: LocatorExpression, context: OperationContext): Promise<readonly SemanticNode[]>;
   swipe?(direction: ScrollDirection, momentum: Momentum | undefined, context: OperationContext): Promise<void>;
-  readonly fixtures?: Readonly<Record<string, BackendFixtureFactory>>;
-  readonly state?: BackendStateCapability;
-  readonly artifacts?: BackendArtifacts;
-  readonly app?: BackendApp;
+  readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
+  readonly state?: EngineStateCapability;
+  readonly artifacts?: EngineArtifacts;
+  readonly app?: EngineApp;
   url?(context: OperationContext): Promise<string>;
 
-  init?(info: BackendInitInfo): Promise<void>;
-  startAttempt?(context: BackendAttemptContext): Promise<void>;
-  endAttempt?(context: BackendCleanupContext): Promise<void>;
-  dispose?(context: BackendCleanupContext): Promise<void>;
+  init?(info: EngineInitInfo): Promise<void>;
+  startAttempt?(context: EngineAttemptContext): Promise<void>;
+  endAttempt?(context: EngineCleanupContext): Promise<void>;
+  dispose?(context: EngineCleanupContext): Promise<void>;
 }
 ```
 
 `version` is required and non-empty. It is recorded as provenance in the report
-and is part of the trace cache identity: a backend that resolves nodes
+and is part of the trace cache identity: an engine that resolves nodes
 differently must never replay another version's traces.
 
 | Member | Capability | Requires | Unlocks |
@@ -66,13 +66,13 @@ differently must never replay another version's traces.
 | `app` | - | - | `app.open()` and the agent's `navigate` verb (`navigate`), `app.back()` (`back`), `app.restart()`, `app.clearState()` |
 | `url` | - | - | trace start anchors, the secret-fill origin check |
 
-The agent offers the model only the verbs the backend declares: `tap`, `type`,
+The agent offers the model only the verbs the engine declares: `tap`, `type`,
 `press`, `select`, and `type_secret` need `perform`; `scroll` needs `swipe`
 (a scroll aimed at a node is `perform` with `{ kind: 'swipe' }`); `navigate`
 needs `app.navigate`. An undeclared verb is absent from the toolset rather than
 a runtime surprise.
 
-`backend.capabilities` is the computed `ReadonlySet` of capability names and is
+`engine.capabilities` is the computed `ReadonlySet` of capability names and is
 what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 
 ## Lifecycle
@@ -80,13 +80,13 @@ what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 | Hook | When | Budget |
 | --- | --- | --- |
 | `prepare(info)` | once per run and target, in the runner process, before any worker starts: install a browser engine, fetch a toolchain. Progress reported through `info.log` streams as `notice` run events, which the list reporter prints above its live status block | none; only `info.signal` (the run's interrupt) cuts it short, so a first-run download is never charged against `launchTimeout`; failure is infrastructure and ends the run before any test |
-| `init(info)` | once per worker, before the first attempt; runs again after `dispose` when a config-held handle outlives an in-process worker, so it must work on a disposed backend as on a fresh one | `launchTimeout`; `info.signal` aborts on interrupt or timeout; failure is infrastructure |
+| `init(info)` | once per worker, before the first attempt; runs again after `dispose` when a config-held handle outlives an in-process worker, so it must work on a disposed engine as on a fresh one | `launchTimeout`; `info.signal` aborts on interrupt or timeout; failure is infrastructure |
 | `startAttempt(context)` | before every attempt; `context.artifactsDir` is where artifacts go | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
 | `endAttempt(context)` | after every attempt, idempotent, and safe after a failed `startAttempt` | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure marks cleanup failed, the test keeps its status |
 | `dispose(context)` | worker shutdown, whether or not `init` ran | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure is a run error |
 
 ```ts
-export interface BackendPrepareInfo {
+export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;
   /** The run's environment, the one every worker starts with. */
@@ -95,7 +95,7 @@ export interface BackendPrepareInfo {
   readonly log: (line: string) => void;
 }
 
-export interface BackendInitInfo {
+export interface EngineInitInfo {
   readonly runId: string;
   readonly targetName: string;
   readonly projectRoot: string;
@@ -105,13 +105,13 @@ export interface BackendInitInfo {
   readonly signal: AbortSignal;
 }
 
-export interface BackendAttemptContext {
+export interface EngineAttemptContext {
   readonly attemptId: string;
   readonly artifactsDir: string;
   readonly signal: AbortSignal;
 }
 
-export interface BackendCleanupContext {
+export interface EngineCleanupContext {
   readonly signal: AbortSignal;
   readonly timeoutMs: number;
 }
@@ -123,7 +123,7 @@ needs one fails the call that needs it; it never navigates to a placeholder.
 ## Observation
 
 ```ts
-export interface BackendSnapshot {
+export interface EngineSnapshot {
   readonly url?: string;
   readonly nodes: readonly SemanticNode[];
   readonly viewport?: { width: number; height: number; scale: number };
@@ -140,7 +140,7 @@ screenshot-and-coordinates surface is observable.
 
 When location requires a snapshot, return `url` from that same capture. The
 harness reuses it for the executor's path and trace-cache anchors. `url()`
-remains a fresh probe for replay polling after mutations; backends without
+remains a fresh probe for replay polling after mutations; engines without
 snapshot location metadata still use that hook.
 
 ## Actions
@@ -158,7 +158,7 @@ export type LocatorAction =
 ```
 
 `perform(ref, action, context)` performs exactly one action on a ref this
-backend minted, from the newest observation or from `locate` (both live in one
+engine minted, from the newest observation or from `locate` (both live in one
 id space), with the platform's actionability checks. The agent's grammar verbs
 and the `screen` tier's actions both bottom out here, so a surface implements
 each action once. Throw a retryable `NODE_STALE` when the ref no longer binds
@@ -170,10 +170,10 @@ The grammar is closed. Anything beyond it is an agent-side `defineTool`.
 
 ## App
 
-The `app` manifest is the app under test: what the backend declares about it,
+The `app` manifest is the app under test: what the engine declares about it,
 and the hooks behind the universal `app` fixture.
 ```ts
-export interface BackendAppDeclaration {
+export interface EngineAppDeclaration {
   readonly url?: string;
   readonly allowedOrigins?: readonly string[];
   readonly environment?: 'test' | 'staging' | 'production';
@@ -182,7 +182,7 @@ export interface BackendAppDeclaration {
   readonly readyUrl?: string;
 }
 
-export interface BackendApp extends BackendAppDeclaration {
+export interface EngineApp extends EngineAppDeclaration {
   navigate?(url: string, context: OperationContext): Promise<void>;
   back?(context: OperationContext): Promise<void>;
   restart?(context: OperationContext): Promise<void>;
@@ -190,9 +190,9 @@ export interface BackendApp extends BackendAppDeclaration {
 }
 ```
 
-The declaration is the backend's to make and the runner's to enforce: a
-browser backend passes its `url` and `command` options through, a device
-backend declares the bundle id it pins as `identity`. The runner resolves it
+The declaration is the engine's to make and the runner's to enforce: a
+browser engine passes its `url` and `command` options through, a device
+engine declares the bundle id it pins as `identity`. The runner resolves it
 once per target at config load (invalid values fail naming the target) and
 owns everything built on it - navigation and origin policy (`allowedOrigins`
 defaults to the URL's origin), cache and session identity (`identity`
@@ -201,7 +201,7 @@ or keys entries on the target alone), the report's target record, and the
 app process (`command`, polled at `readyUrl`, default `url`; targets
 declaring the same command share one process). Every field is documented
 under [the app under test](/reference/config#the-app-under-test); the resolved
-URL and origins come back to the backend in `BackendInitInfo.app`.
+URL and origins come back to the engine in `EngineInitInfo.app`.
 `navigate` receives a URL the harness already resolved against the base URL and
 the origin policy, and is absent on a surface without addressable locations.
 Node actions never live here; they are `perform`.
@@ -209,19 +209,19 @@ Node actions never live here; they are `perform`.
 ## Errors
 
 ```ts
-export class BackendError extends Error {
-  constructor(code: BackendErrorCode, message: string, options: { retryable: boolean; cause?: unknown });
-  readonly code: BackendErrorCode;
+export class EngineError extends Error {
+  constructor(code: EngineErrorCode, message: string, options: { retryable: boolean; cause?: unknown });
+  readonly code: EngineErrorCode;
   readonly retryable: boolean;
 }
 
-export const BACKEND_ERROR_CODES: readonly BackendErrorCode[];
-export const RETRYABLE_BACKEND_ERROR_CODES: ReadonlySet<BackendErrorCode>; // NODE_STALE, FRAME_NOT_FOUND
+export const ENGINE_ERROR_CODES: readonly EngineErrorCode[];
+export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode>; // NODE_STALE, FRAME_NOT_FOUND
 
-export type BackendErrorCode =
+export type EngineErrorCode =
   | 'NODE_STALE' | 'FRAME_NOT_FOUND' | 'FRAME_AMBIGUOUS' | 'NOT_ACTIONABLE'
   | 'ACTION_MAY_HAVE_COMMITTED' | 'OPERATION_TIMEOUT' | 'CANCELLED'
-  | 'UNSUPPORTED_CAPABILITY' | 'INVALID_STATE' | 'BACKEND_FAILURE';
+  | 'UNSUPPORTED_CAPABILITY' | 'INVALID_STATE' | 'ENGINE_FAILURE';
 ```
 
 | Code | Runner mapping | Retryable |
@@ -233,14 +233,14 @@ export type BackendErrorCode =
 | `CANCELLED` | infrastructure `CANCELLED` | no |
 | `UNSUPPORTED_CAPABILITY` | configuration `UNSUPPORTED_CAPABILITY` | no |
 | `INVALID_STATE` | `APP_NOT_OPEN` | no |
-| `BACKEND_FAILURE`, any non-`BackendError` | infrastructure `BACKEND_FAILURE` | no |
+| `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
 
-Retryability is closed to `RETRYABLE_BACKEND_ERROR_CODES`, the two
+Retryability is closed to `RETRYABLE_ENGINE_ERROR_CODES`, the two
 repeatable-read codes; a retryable claim on any other code is coerced to a
-non-retryable `BACKEND_FAILURE`.
+non-retryable `ENGINE_FAILURE`.
 
 A contributed fixture method fails a step with the runner's own taxonomy,
-exported from the same entry so a backend never carries a copy:
+exported from the same entry so an engine never carries a copy:
 
 ```ts
 export class TestError extends Error {}            // a test failure: ASSERTION_FAILED, INVALID_LOCATOR, ACTION_FAILED, ...
@@ -250,8 +250,8 @@ export class InfrastructureError extends Error {}  // the surface itself failed:
 
 ## Shared semantics
 
-What the spec requires every backend and fixture to reproduce exactly is
-exported rather than re-implemented per backend:
+What the spec requires every engine and fixture to reproduce exactly is
+exported rather than re-implemented per engine:
 
 | Export | Spec | Use |
 | --- | --- | --- |
@@ -260,51 +260,51 @@ exported rather than re-implemented per backend:
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | 03-assertions | Assertion polling cadence and the negation grace window |
 | `validateJsonValue(value, label)` | 04-locators | Rejects non-JSON data (`undefined`, `NaN`, cycles) a fixture would return |
 
-There is no other shared entry: anything a backend needs beyond the contract
+There is no other shared entry: anything an engine needs beyond the contract
 is its own to write.
 
 ## State
 
 ```ts
-export interface BackendState {
+export interface EngineState {
   readonly format: string;
   readonly version: number;
   readonly data: unknown;
   readonly expiresAt?: string;
 }
 
-export interface BackendStateCapability {
-  capture(context: OperationContext): Promise<BackendState>;
-  restore(state: BackendState, context: OperationContext): Promise<void>;
+export interface EngineStateCapability {
+  capture(context: OperationContext): Promise<EngineState>;
+  restore(state: EngineState, context: OperationContext): Promise<void>;
 }
 ```
 
 A snapshot is a credential. The harness encrypts it at rest with a per-run
-AES-256-GCM key, binds it to run, target, backend, and app identity, deletes it
-at run end, and never logs, reports, digests, or sends it to a model. A backend
+AES-256-GCM key, binds it to run, target, engine, and app identity, deletes it
+at run end, and never logs, reports, digests, or sends it to a model. An engine
 must not persist, cache, log, or echo a snapshot, and `restore` replaces the
 surface's persisted state rather than merging into it.
 
 ## Artifacts
 
 ```ts
-export interface BackendArtifacts {
+export interface EngineArtifacts {
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   startTrace?(context: OperationContext): Promise<void>;
   stopTrace?(context: OperationContext): Promise<string>;
 }
 ```
 
-Every returned path is relative to the `artifactsDir` the backend received in
+Every returned path is relative to the `artifactsDir` the engine received in
 `startAttempt`. `screenshot` masks secure fields at the source. `startTrace`
 and `stopTrace` are declared together or not at all.
 
 ## Contributed fixtures
 
 ```ts
-export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
+export type EngineFixtureFactory = (context: EngineFixtureContext) => object;
 
-export interface BackendFixtureContext {
+export interface EngineFixtureContext {
   readonly targetName: string;
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
   readonly app: { baseUrl?: string; allowedOrigins: readonly string[]; resolveUrl(url: string): string };
@@ -338,7 +338,7 @@ calls. Work arriving after its step has closed cannot attach to a later step.
 
 A factory must return the surface it declared through `context.fixture`; a
 plain, undeclared surface is rejected with `INVALID_CONFIG` the first time a
-test reaches for the fixture, because its methods would run backend code
+test reaches for the fixture, because its methods would run engine code
 outside any recorded step.
 `expectable` attaches an expectation surface so `expect(fixture)` returns it;
 use `context.fixture('expect', matchers, operations)` in its factory to declare
@@ -347,7 +347,7 @@ matcher recording. Type the fixture with `test.extend<{ name: Type }>()`.
 `app.resolveUrl` throws `APP_URL_REQUIRED` when no app URL is configured and
 `POLICY_DENIED` for a disallowed origin or scheme.
 
-The backend entrypoint also exports `obj(value)`, which drops
+The engine entrypoint also exports `obj(value)`, which drops
 `undefined`-valued keys and types them as absent optional properties, so a
 manifest or fixture result built from optional inputs satisfies exact optional
 property types without a conditional spread per key. It also exports `raceAbort(work, signal, label)`,
@@ -361,15 +361,15 @@ wait does not stop an underlying command.
 
 `OperationContext`, `TextPattern`, `SemanticQuery`, `LocatorExpression`,
 `NodeRef`, `SemanticNode`, `ObservationPixels`, `LocatorAction`,
-`BACKEND_SPI_VERSION`, `BACKEND_ERROR_CODES`, `RETRYABLE_BACKEND_ERROR_CODES`,
+`ENGINE_SPI_VERSION`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
 `OBSERVED_NAME_LIMIT`, `OBSERVED_TEXT_LIMIT`, and the shared semantics above are exported from
-`@e2edev/e2e/backend` and are the platform-neutral words every backend speaks. The
+`@e2edev/e2e/engine` and are the platform-neutral words every engine speaks. The
 `selector` expression kind carries a platform-native selector string (CSS or
 XPath on a document platform); `frame` scopes a query into a nested document.
 
 A `SemanticQuery` with `visible: true` must match only nodes whose
-`states.hidden` is false, judged by the same predicate the backend reports on
+`states.hidden` is false, judged by the same predicate the engine reports on
 `SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()` never
 disagree about a node. The harness drops hidden nodes from a top-level query as
-a backstop; only the backend can apply the predicate under a scope, filter, or
+a backstop; only the engine can apply the predicate under a scope, filter, or
 index, so evaluate it wherever the query sits in the expression.

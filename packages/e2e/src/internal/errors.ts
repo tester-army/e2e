@@ -1,11 +1,11 @@
 /** Runner-owned error taxonomy and exit-code mapping (spec 06-cli.md). */
 
 import {
-  BACKEND_ERROR_CODES,
-  BackendError,
-  RETRYABLE_BACKEND_ERROR_CODES,
-  type BackendErrorCode,
-} from '../backend/contract.ts';
+  ENGINE_ERROR_CODES,
+  EngineError,
+  RETRYABLE_ENGINE_ERROR_CODES,
+  type EngineErrorCode,
+} from '../engine/contract.ts';
 
 /** Message of an arbitrary thrown value, for diagnostics that must not throw. */
 export function errorMessage(cause: unknown): string {
@@ -45,32 +45,32 @@ export interface SerializedError {
 const E2E_ERROR_MARKER = Symbol.for('e2e.error.v1');
 
 /**
- * Normalizes a backend failure, including one thrown by another copy of the
- * backend module.
+ * Normalizes an engine failure, including one thrown by another copy of the
+ * engine module.
  *
- * A backend imported by a config file is loaded through a different module
- * registry than the runner, so its `BackendError` is a different class and
+ * An engine imported by a config file is loaded through a different module
+ * registry than the runner, so its `EngineError` is a different class and
  * `instanceof` misses it. Detection is therefore structural, keyed on the
- * closed code set: without this, every out-of-tree backend's typed failures
+ * closed code set: without this, every out-of-tree engine's typed failures
  * silently degrade to a generic error and lose their taxonomy. A foreign
  * instance is held to the same retryability rule as the local class.
  */
-export function asBackendError(
+export function asEngineError(
   value: unknown,
-): { code: BackendErrorCode; message: string; retryable: boolean } | undefined {
-  if (value instanceof BackendError) return value;
-  if (!(value instanceof Error) || value.name !== 'BackendError') return undefined;
+): { code: EngineErrorCode; message: string; retryable: boolean } | undefined {
+  if (value instanceof EngineError) return value;
+  if (!(value instanceof Error) || value.name !== 'EngineError') return undefined;
   const code = (value as unknown as { code?: unknown }).code;
-  if (!isBackendErrorCode(code)) return undefined;
+  if (!isEngineErrorCode(code)) return undefined;
   const retryable = (value as unknown as { retryable?: unknown }).retryable === true;
-  if (retryable && !RETRYABLE_BACKEND_ERROR_CODES.has(code)) {
-    return { code: 'BACKEND_FAILURE', message: value.message, retryable: false };
+  if (retryable && !RETRYABLE_ENGINE_ERROR_CODES.has(code)) {
+    return { code: 'ENGINE_FAILURE', message: value.message, retryable: false };
   }
   return { code, message: value.message, retryable };
 }
 
-function isBackendErrorCode(value: unknown): value is BackendErrorCode {
-  return typeof value === 'string' && (BACKEND_ERROR_CODES as readonly string[]).includes(value);
+function isEngineErrorCode(value: unknown): value is EngineErrorCode {
+  return typeof value === 'string' && (ENGINE_ERROR_CODES as readonly string[]).includes(value);
 }
 
 /** Base class for every runner-classified error. */
@@ -177,53 +177,53 @@ export function combineExitCodes(codes: readonly number[]): 0 | 1 | 2 | 3 | 4 | 
 }
 
 /**
- * Canonical BackendError -> runner taxonomy mapping.
- * Applies to every backend surface: lifecycle, app, screen, artifacts,
- * state capture/restore, and observation. Non-BackendError causes become
- * non-retryable infrastructure BACKEND_FAILURE.
+ * Canonical EngineError -> runner taxonomy mapping.
+ * Applies to every engine surface: lifecycle, app, screen, artifacts,
+ * state capture/restore, and observation. Non-EngineError causes become
+ * non-retryable infrastructure ENGINE_FAILURE.
  */
-export function translateBackendError(cause: unknown, suffix = ''): E2EError {
+export function translateEngineError(cause: unknown, suffix = ''): E2EError {
   if (cause instanceof E2EError) return cause;
-  const backendError = asBackendError(cause);
-  if (backendError !== undefined) {
-    switch (backendError.code) {
+  const engineError = asEngineError(cause);
+  if (engineError !== undefined) {
+    switch (engineError.code) {
       case 'NODE_STALE':
         return new TestError('LOCATOR_NOT_FOUND', `node became stale${suffix}`, { cause });
       case 'FRAME_NOT_FOUND':
-        return new TestError('LOCATOR_NOT_FOUND', `${backendError.message}${suffix}`, { cause });
+        return new TestError('LOCATOR_NOT_FOUND', `${engineError.message}${suffix}`, { cause });
       case 'FRAME_AMBIGUOUS':
-        return new TestError('LOCATOR_AMBIGUOUS', `${backendError.message}${suffix}`, { cause });
+        return new TestError('LOCATOR_AMBIGUOUS', `${engineError.message}${suffix}`, { cause });
       case 'NOT_ACTIONABLE':
-        return new TestError('ACTION_FAILED', `${backendError.message}${suffix}`, { cause });
+        return new TestError('ACTION_FAILED', `${engineError.message}${suffix}`, { cause });
       case 'ACTION_MAY_HAVE_COMMITTED':
-        return new TestError('ACTION_FAILED', `${backendError.message}${suffix}`, { cause });
+        return new TestError('ACTION_FAILED', `${engineError.message}${suffix}`, { cause });
       case 'OPERATION_TIMEOUT':
         return new TestError('ACTION_FAILED', `operation timed out${suffix}`, { cause });
       case 'CANCELLED':
         return new E2EError('infrastructure', 'CANCELLED', 'operation cancelled', { cause });
       case 'UNSUPPORTED_CAPABILITY':
-        return new E2EError('configuration', 'UNSUPPORTED_CAPABILITY', backendError.message, { cause });
+        return new E2EError('configuration', 'UNSUPPORTED_CAPABILITY', engineError.message, { cause });
       case 'INVALID_STATE':
-        return new TestError('APP_NOT_OPEN', backendError.message, { cause });
-      case 'BACKEND_FAILURE':
-        return new E2EError('infrastructure', 'BACKEND_FAILURE', backendError.message, { cause });
+        return new TestError('APP_NOT_OPEN', engineError.message, { cause });
+      case 'ENGINE_FAILURE':
+        return new E2EError('infrastructure', 'ENGINE_FAILURE', engineError.message, { cause });
     }
   }
-  return new E2EError('infrastructure', 'BACKEND_FAILURE', errorMessage(cause), { cause });
+  return new E2EError('infrastructure', 'ENGINE_FAILURE', errorMessage(cause), { cause });
 }
 
 /**
- * Classifies a failure of a backend's `prepare` hook. Provisioning runs before
+ * Classifies a failure of an engine's `prepare` hook. Provisioning runs before
  * any test exists, so nothing thrown there can be a test failure: a harness-
  * classified error keeps the category its author chose (a `ConfigurationError`
- * for an option the backend cannot honour), a backend cancellation stays a
- * cancellation, and everything else - a `BackendError` of any code, a plain
+ * for an option the engine cannot honour), an engine cancellation stays a
+ * cancellation, and everything else - an `EngineError` of any code, a plain
  * `Error` from an installer - is infrastructure.
  */
 export function translateProvisioningError(cause: unknown, suffix = ''): E2EError {
   if (cause instanceof E2EError || isForeignE2EError(cause)) return classifyError(cause);
-  if (asBackendError(cause)?.code === 'CANCELLED') return translateBackendError(cause);
-  return new InfrastructureError('BACKEND_FAILURE', `${errorMessage(cause)}${suffix}`, { cause });
+  if (asEngineError(cause)?.code === 'CANCELLED') return translateEngineError(cause);
+  return new InfrastructureError('ENGINE_FAILURE', `${errorMessage(cause)}${suffix}`, { cause });
 }
 
 /** Classifies an arbitrary thrown value into an E2EError; unknown values become test failures. */
@@ -235,8 +235,8 @@ export function classifyError(value: unknown): E2EError {
       cause: value,
     });
   }
-  if (asBackendError(value) !== undefined) {
-    return translateBackendError(value);
+  if (asEngineError(value) !== undefined) {
+    return translateEngineError(value);
   }
   if (value instanceof Error) {
     return new TestError('ERROR', value.message, { cause: value });

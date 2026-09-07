@@ -49,7 +49,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: APP_URL,
         command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4310' } },
       }),

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
-import { defineBackend, type BackendAppDeclaration } from '../../src/backend/index.ts';
+import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
 
 const ROOT = '/tmp/e2e-config-project';
 const BASE_ENV = {} as NodeJS.ProcessEnv;
@@ -14,14 +14,14 @@ function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEn
   return resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env });
 }
 
-/** A minimal observing backend declaring the given app facts, the way playwright() or agentDevice() would. */
-function fakeBackend(app: BackendAppDeclaration = {}) {
-  return defineBackend({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app });
+/** A minimal observing engine declaring the given app facts, the way playwright() or agentDevice() would. */
+function fakeEngine(app: EngineAppDeclaration = {}) {
+  return defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app });
 }
 
-/** Resolves one web target whose backend declares `app`, and returns the resolved app. */
-function resolveApp(app: BackendAppDeclaration = {}) {
-  return resolve({ targets: [{ ...WEB, backend: fakeBackend(app) }] }).targets[0]!.app;
+/** Resolves one web target whose engine declares `app`, and returns the resolved app. */
+function resolveApp(app: EngineAppDeclaration = {}) {
+  return resolve({ targets: [{ ...WEB, engine: fakeEngine(app) }] }).targets[0]!.app;
 }
 
 describe('CI mode', () => {
@@ -72,15 +72,15 @@ describe('resolveConfig', () => {
     expect(config.workers).toBe(1);
   });
 
-  it('requires explicit targets: core resolves no default backend', () => {
+  it('requires explicit targets: core resolves no default engine', () => {
     expect(() => resolveConfig({}, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
       /targets is required/,
     );
     const config = resolve({});
-    expect(config.targets[0]).toMatchObject({ name: 'web', platform: 'web', backend: undefined });
+    expect(config.targets[0]).toMatchObject({ name: 'web', platform: 'web', engine: undefined });
   });
 
-  it('resolves the empty app for a target without a backend, or whose backend declares none', () => {
+  it('resolves the empty app for a target without an engine, or whose engine declares none', () => {
     expect(resolve({}).targets[0]!.app).toEqual({
       base: undefined,
       allowedOrigins: [],
@@ -93,7 +93,7 @@ describe('resolveConfig', () => {
     expect(resolveApp().base).toBeUndefined();
   });
 
-  it('resolves the URL a backend declares and rejects the retired top-level app key', () => {
+  it('resolves the URL an engine declares and rejects the retired top-level app key', () => {
     const app = resolveApp({ url: 'http://127.0.0.1:4000' });
     expect(app.base?.origin).toBe('http://127.0.0.1:4000');
     expect(app.base?.href).toBe('http://127.0.0.1:4000/');
@@ -102,7 +102,7 @@ describe('resolveConfig', () => {
   });
 
   it('accepts a command only beside a URL to poll, and defaults readyUrl to it', () => {
-    expect(() => fakeBackend({ command: { executable: 'node' } })).not.toThrow();
+    expect(() => fakeEngine({ command: { executable: 'node' } })).not.toThrow();
     expect(() => resolveApp({ command: { executable: 'node' } })).toThrow(/without a URL to poll/);
     expect(resolveApp({ url: 'http://localhost:3000', command: { executable: 'node' } })).toMatchObject({
       command: { executable: 'node' },
@@ -143,17 +143,17 @@ describe('resolveConfig', () => {
     ).toThrow(/duplicate target/);
   });
 
-  it('accepts any platform: the backend decides what a target can do', () => {
-    const backend = fakeBackend();
-    const config = resolve({ targets: [{ name: 'ios', platform: 'ios', backend }] });
-    expect(config.targets[0]).toMatchObject({ name: 'ios', platform: 'ios', backend });
-    expect(config.targets[0]!.backend?.capabilities.has('observation')).toBe(true);
+  it('accepts any platform: the engine decides what a target can do', () => {
+    const engine = fakeEngine();
+    const config = resolve({ targets: [{ name: 'ios', platform: 'ios', engine }] });
+    expect(config.targets[0]).toMatchObject({ name: 'ios', platform: 'ios', engine });
+    expect(config.targets[0]!.engine?.capabilities.has('observation')).toBe(true);
   });
 
-  it('accepts defineBackend handles and rejects plain objects', () => {
+  it('accepts defineEngine handles and rejects plain objects', () => {
     expect(() =>
-      resolve({ targets: [{ ...WEB, backend: { name: 'x', spiVersion: 1 } }] } as never),
-    ).toThrow(/defineBackend/);
+      resolve({ targets: [{ ...WEB, engine: { name: 'x', spiVersion: 1 } }] } as never),
+    ).toThrow(/defineEngine/);
   });
 
   it('defaults environment to test for loopback/.localhost/.test hosts and production elsewhere', () => {
@@ -218,8 +218,8 @@ describe('resolveConfig', () => {
     );
   });
 
-  it('rejects unknown app declaration keys at defineBackend', () => {
-    expect(() => fakeBackend({ allowProduction: true } as never)).toThrow(/app has unknown key "allowProduction"/);
+  it('rejects unknown app declaration keys at defineEngine', () => {
+    expect(() => fakeEngine({ allowProduction: true } as never)).toThrow(/app has unknown key "allowProduction"/);
   });
 
   it('defaults allowedOrigins to the exact base origin, or to none without a URL', () => {
@@ -275,8 +275,8 @@ describe('resolveConfig', () => {
     expect(a.configDigest).not.toBe(c.configDigest);
   });
 
-  it('digests the app a backend declares, replacing command env values by name', () => {
-    const declare = (app: BackendAppDeclaration) => resolve({ targets: [{ ...WEB, backend: fakeBackend(app) }] });
+  it('digests the app an engine declares, replacing command env values by name', () => {
+    const declare = (app: EngineAppDeclaration) => resolve({ targets: [{ ...WEB, engine: fakeEngine(app) }] });
     const a = declare({ url: 'http://localhost:3000', command: { executable: 'x', env: { TOKEN: 'aaa' } } });
     const b = declare({ url: 'http://localhost:3000', command: { executable: 'x', env: { TOKEN: 'bbb' } } });
     expect(a.configDigest).toBe(b.configDigest);
@@ -308,7 +308,7 @@ describe('resolveConfig', () => {
 
     it('rejects an empty log path, naming the target', () => {
       expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', log: '' } })).toThrow(
-        /target "web" backend fake app\.command\.log must be a non-empty path/,
+        /target "web" engine fake app\.command\.log must be a non-empty path/,
       );
       expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', log: '  ' } })).toThrow(
         /app\.command\.log must be a non-empty path/,
@@ -347,7 +347,7 @@ describe('resolveConfig', () => {
       const base = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-log-root-'));
       const resolveIn = (projectRoot: string, log: string) =>
         resolveConfig(
-          { targets: [{ ...WEB, backend: fakeBackend({ url: APP_URL, command: { executable: 'x', log } }) }] },
+          { targets: [{ ...WEB, engine: fakeEngine({ url: APP_URL, command: { executable: 'x', log } }) }] },
           { projectRoot, env: BASE_ENV },
         ).targets[0]!.app;
       try {
@@ -377,7 +377,7 @@ describe('resolveConfig', () => {
 
     it('enters the config digest like cwd does', () => {
       const declare = (log: string) =>
-        resolve({ targets: [{ ...WEB, backend: fakeBackend({ url: APP_URL, command: { executable: 'x', log } }) }] });
+        resolve({ targets: [{ ...WEB, engine: fakeEngine({ url: APP_URL, command: { executable: 'x', log } }) }] });
       expect(declare('a.log').configDigest).not.toBe(declare('b.log').configDigest);
       expect(declare('a.log').configDigest).toBe(declare('a.log').configDigest);
     });
@@ -516,12 +516,12 @@ describe('resolveConfig', () => {
       ).toThrow(/app\.services\[0\]\.teardown\.reuseExisting needs readyUrl/);
       expect(() =>
         resolveApp({ url: APP_URL, command: { executable: 'x', reuseExisting: 'yes' as unknown as boolean } }),
-      ).toThrow(/target "web" backend fake app\.command\.reuseExisting must be a boolean/);
+      ).toThrow(/target "web" engine fake app\.command\.reuseExisting must be a boolean/);
     });
 
     it('rejects malformed services, naming the target', () => {
       expect(() => resolveApp({ url: APP_URL, services: { executable: 'x' } as unknown as [] })).toThrow(
-        /target "web" backend fake app\.services must be an array/,
+        /target "web" engine fake app\.services must be an array/,
       );
       expect(() => resolveApp({ url: APP_URL, services: [{ executable: '', waitForExit: true }] })).toThrow(
         /app\.services\[0\]\.executable is required/,
@@ -580,7 +580,7 @@ describe('resolveConfig', () => {
     });
 
     it('replaces service and teardown env values in the config digest', () => {
-      const declare = (app: BackendAppDeclaration) => resolve({ targets: [{ ...WEB, backend: fakeBackend(app) }] });
+      const declare = (app: EngineAppDeclaration) => resolve({ targets: [{ ...WEB, engine: fakeEngine(app) }] });
       const services = (secret: string) => [
         {
           executable: 'docker',

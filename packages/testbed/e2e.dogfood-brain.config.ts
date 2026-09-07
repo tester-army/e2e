@@ -1,8 +1,8 @@
 /**
  * Dogfood: a fully hand-rolled StepExecutor whose tools have nothing to do
- * with the backend — the "agent-device pattern". The config sets no
+ * with the engine — the "agent-device pattern". The config sets no
  * `agent.model`; the executor brings its own transport. Tests never open the
- * app, so the backend surface is never touched.
+ * app, so the engine surface is never touched.
  *
  *   AI_GATEWAY_API_KEY=... node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.dogfood-brain.config.ts
  */
@@ -79,7 +79,7 @@ export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-brain',
   tests: 'tests-dogfood-brain/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://127.0.0.1:4312' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://127.0.0.1:4312' }) }],
   timeout: 120_000,
   agent: mathBrain,
 });

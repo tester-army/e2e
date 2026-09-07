@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { anchorsPresent, describeAnchors } from '../../src/cache/anchors.ts';
 import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
-import type { SemanticNode } from '../../src/backend/surface.ts';
+import type { SemanticNode } from '../../src/engine/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 const options = { redact: createRedactor(new Map()), testIdAttribute: 'data-testid' };

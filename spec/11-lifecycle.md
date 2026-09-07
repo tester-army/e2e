@@ -103,7 +103,7 @@ Every retry imports the file in a fresh execution realm and reruns applicable
 module state is never carried from a failed realm into a retry.
 
 Driver launch and session restore use the separate launch timeout and occur
-before any test/member timeout starts. Launch/restore timeout or backend failure
+before any test/member timeout starts. Launch/restore timeout or engine failure
 is infrastructure error and is not test-retry eligible. It still creates the
 framework attempt record: an ordinary attempt fails before hooks; a serial-group
 attempt fails with every member skipped as `infrastructure-unavailable`. One
@@ -120,7 +120,7 @@ Each independent test attempt receives:
 Pooling is allowed only when behavior is observationally equivalent to a fresh
 instance, including storage, handlers, pending operations, and process state.
 The framework does not isolate application-server or database state. Tests
-that mutate shared backend state MUST provision unique data, use isolated
+that mutate shared engine state MUST provision unique data, use isolated
 tenants, or opt into serial execution.
 
 ## Hooks
@@ -315,5 +315,5 @@ signal. Cleanup failure is reported and affects run status according to
 `globalSetup`, `globalTeardown`, `test.each`, conditional skips, custom
 fixtures, sharding, watch mode, and clock control are post-v0. Dependency
 processes that must run before the app boots are declared, not scripted:
-the backend's `services` declaration (05-config.md) starts them in order and tears them down in
+the engine's `services` declaration (05-config.md) starts them in order and tears them down in
 reverse.

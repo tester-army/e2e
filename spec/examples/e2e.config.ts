@@ -5,13 +5,13 @@ export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.testerarmy.orbit',
 
-  // The backend declares the app it drives: where it is served, the services
+  // The engine declares the app it drives: where it is served, the services
   // and command that start it, and the environment label.
   targets: [
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         browser: 'chromium',
         url: process.env.APP_URL ?? 'http://localhost:3000',
         services: [

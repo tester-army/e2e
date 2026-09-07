@@ -1,5 +1,5 @@
 /**
- * Opt-in Reminders stress suite on the `@e2edev/agent-device` backend: long
+ * Opt-in Reminders stress suite on the `@e2edev/agent-device` engine: long
  * agentic sessions against a real iOS app with real data entry, completion,
  * swipe-to-delete, and list management. Reminders is relaunched fresh for
  * every attempt; its data persists on the simulator, so every test leaves
@@ -23,7 +23,7 @@ export default defineConfig({
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-reminders',
   tests: 'tests-reminders/**/*.e2e.ts',
-  targets: [{ name: 'ios-simulator', platform: 'ios', backend: device }],
+  targets: [{ name: 'ios-simulator', platform: 'ios', engine: device }],
   timeout: 900_000,
   actionTimeout: 90_000,
   workers: 1,

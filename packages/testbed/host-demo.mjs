@@ -81,10 +81,10 @@ try {
     rawConfig: {
       projectId: 'host-demo',
       tests: 'tests/**/*.e2e.ts',
-      // The platform is explicit since the backend contract (RFC0002): a host
-      // declares the target and the backend that drives it, same as a config;
-      // the backend declares the app it drives.
-      targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:4273' }) }],
+      // The platform is explicit since the engine contract (RFC0002): a host
+      // declares the target and the engine that drives it, same as a config;
+      // the engine declares the app it drives.
+      targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:4273' }) }],
       // Same budgets as the bench config: model turns on a busy gateway can
       // run tens of seconds, and a hosted platform sets its own ceilings.
       timeout: 300_000,

@@ -15,7 +15,7 @@
  * rules and can never drift from relocation.
  */
 
-import type { SemanticNode } from '../backend/surface.ts';
+import type { SemanticNode } from '../engine/surface.ts';
 import { containerKey, describeTarget, parentsOf } from '../agent/actions.ts';
 import type { TraceTargetDescriptor } from './trace.ts';
 

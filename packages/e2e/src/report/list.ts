@@ -86,7 +86,7 @@ function aiSegment(usage: AiUsage): string | undefined {
 }
 
 /**
- * Live tail for one step event. Model and backend calls are the ones worth a
+ * Live tail for one step event. Model and engine calls are the ones worth a
  * glance (`tool:` prefixes come from executor tool accounting); polls and
  * policy decisions stay quiet.
  */
@@ -96,8 +96,8 @@ function eventTail(event: StepEvent): string | undefined {
       event.count !== undefined && event.count > 0 ? ` · ${formatTokens(event.count)} tokens` : '';
     return `model turn ${formatDuration(event.durationMs)}${tokens}`;
   }
-  if (event.kind === 'backend') {
-    const name = sanitizeText(event.name ?? 'backend').replace(/^tool:/, '');
+  if (event.kind === 'engine') {
+    const name = sanitizeText(event.name ?? 'engine').replace(/^tool:/, '');
     const failed = event.status === 'passed' ? '' : ' ✗';
     return `${truncateUtf8(name, 40)} ${formatDuration(event.durationMs)}${failed}`;
   }
@@ -125,7 +125,7 @@ export class ListReporter {
   private readonly liveBase = new Map<string, string>();
   /** Current step line of each running pair, rendered under its header. */
   private readonly liveStep = new Map<string, string>();
-  /** Rolling window of the running step's latest model and backend calls. */
+  /** Rolling window of the running step's latest model and engine calls. */
   private readonly liveEvents = new Map<string, string[]>();
   /** Pairs whose permanent header line has been written. */
   private readonly headerPrinted = new Set<string>();
@@ -220,7 +220,7 @@ export class ListReporter {
   /**
    * Streams step progress of a running pair. With a single test running, the
    * whole story prints permanently and chronologically: a test header, one
-   * line per step, one line per model or backend call, and a step summary -
+   * line per step, one line per model or engine call, and a step summary -
    * the scrollback of a run reads without `--debug`. With parallel tests the
    * stream would interleave, so each pair instead shows its current step and
    * latest calls transiently in the live block.

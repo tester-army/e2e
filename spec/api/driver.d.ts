@@ -285,7 +285,7 @@ export interface DriverScreen {
   ): Promise<readonly NodeRef[]>;
   /** Reads one node from its observation revision. */
   read(ref: NodeRef, operation: OperationContext): Promise<SemanticNode>;
-  /** Performs exactly one action with backend actionability checks. */
+  /** Performs exactly one action with engine actionability checks. */
   perform(
     ref: NodeRef,
     action: LocatorAction,
@@ -479,7 +479,7 @@ export interface DriverSession {
   restoreState?(state: DriverState, operation: OperationContext): Promise<void>;
   /** Captures one atomic, fully redacted agent observation. */
   observe(operation: OperationContext, options?: ObserveOptions): Promise<Observation>;
-  /** Returns current runtime provenance after viewport/backend changes. */
+  /** Returns current runtime provenance after viewport/engine changes. */
   runtime(operation: OperationContext): Promise<DriverRuntime>;
   /** Releases all session resources. It MUST be idempotent. */
   close(context: CleanupContext): Promise<void>;
@@ -495,7 +495,7 @@ export interface Driver extends DriverHandle {
    */
   launch(context: DriverContext): Promise<DriverSession>;
   /**
-   * Provisions backend prerequisites once per run, before any session
+   * Provisions engine prerequisites once per run, before any session
    * launches. The runner calls it at most once per driver id, passing every
    * target in the run that resolves to that driver. Slow first-run work
    * (browser downloads, simulator boots, device leases) belongs here so it is
@@ -505,7 +505,7 @@ export interface Driver extends DriverHandle {
    */
   prepare?(targets: readonly Target[]): Promise<void>;
   /**
-   * Releases backend resources retained between sessions (for example a
+   * Releases engine resources retained between sessions (for example a
    * pooled browser process, booted simulator, or device lease). The runner
    * calls it at most once per driver instance, after every session is
    * closed. It MUST be idempotent and MUST NOT affect previously captured
@@ -517,7 +517,7 @@ export interface Driver extends DriverHandle {
 export interface DriverDefinition extends DriverManifest {
   /** Launches one logical test or serial-group attempt. */
   launch(context: DriverContext): Promise<DriverSession>;
-  /** Provisions backend prerequisites once per run. It MUST be idempotent. */
+  /** Provisions engine prerequisites once per run. It MUST be idempotent. */
   prepare?(targets: readonly Target[]): Promise<void>;
   /** Releases resources retained between sessions. It MUST be idempotent. */
   dispose?(): Promise<void>;

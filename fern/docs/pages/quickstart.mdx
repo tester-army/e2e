@@ -20,8 +20,8 @@ Requires Node.js 20.19 or newer.
 
     Init adds the runner to `devDependencies`. For this guide, select
     **Playwright**, keep **AI testing** enabled, and confirm installation. This
-    also adds the browser backend and AI SDK v7. You can skip either optional
-    package: without a backend, the example checks an HTTP response; without
+    also adds the browser engine and AI SDK v7. You can skip either optional
+    package: without an engine, the example checks an HTTP response; without
     AI, the generated files make no model calls.
 
     Config and test files are ES modules. In an empty directory, `init` creates
@@ -46,8 +46,8 @@ Requires Node.js 20.19 or newer.
       agent: createAgent({
         system: 'You are a thorough QA agent. Verify every outcome.',
       }),
-      // The backend declares the app it drives; APP_URL overrides the default at run time.
-      targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
+      // The engine declares the app it drives; APP_URL overrides the default at run time.
+      targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
     });
     ```
 
@@ -55,7 +55,7 @@ Requires Node.js 20.19 or newer.
     `playwright()`. A scheme is optional: `localhost:3000`
     becomes `http://localhost:3000` and `app.example.com` becomes
     `https://app.example.com`. The runner knows no platform, so every target
-    names the backend that drives it, and the backend declares the app under
+    names the engine that drives it, and the engine declares the app under
     test: a URL for a browser, a bundle id for a device.
 
     `system` shapes how it works. Later you can hand it your own tools, or
@@ -92,7 +92,7 @@ Requires Node.js 20.19 or newer.
 
     Import `test` from `@e2edev/playwright` when a test touches the `web`
     fixture: it is the same runtime `test` as `e2e`'s, typed with the fixture
-    the browser backend contributes. One goal per `act`. Real values go through
+    the browser engine contributes. One goal per `act`. Real values go through
     `params`, not through the instruction. The final `expect` is deterministic: it costs no model calls
     and cannot vary. There are no waits or sleeps anywhere: queries poll,
     actions wait, assertions retry.
@@ -122,7 +122,7 @@ Requires Node.js 20.19 or newer.
 ## Let the runner start your app
 
 Instead of starting a database and a dev server by hand before `e2e run`, give
-the backend the whole stack: the dependencies as `services`, then the app as
+the engine the whole stack: the dependencies as `services`, then the app as
 `command`:
 
 ```ts title="e2e.config.ts"
@@ -131,7 +131,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'http://127.0.0.1:3000',
         services: [
           {

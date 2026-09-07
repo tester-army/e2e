@@ -12,14 +12,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { createAgentDeviceClient } from 'agent-device';
 import {
-  BackendError,
+  EngineError,
   raceAbort,
   withinCleanupBudget,
-  type BackendAttemptContext,
-  type BackendCleanupContext,
-  type BackendInitInfo,
-  type BackendObserveOptions,
-  type BackendSnapshot,
+  type EngineAttemptContext,
+  type EngineCleanupContext,
+  type EngineInitInfo,
+  type EngineObserveOptions,
+  type EngineSnapshot,
   type LocatorAction,
   type LocatorExpression,
   type Momentum,
@@ -28,7 +28,7 @@ import {
   type OperationContext,
   type ScrollDirection,
   type SemanticNode,
-} from '@e2edev/e2e/backend';
+} from '@e2edev/e2e/engine';
 import { staleOr, translateError } from './errors.ts';
 import { resolveExpression } from './locate.ts';
 import { isWithin, projectSnapshot, screenTitle, type ProjectedNode, type ProjectedSnapshot, type RawNode } from './nodes.ts';
@@ -109,7 +109,7 @@ export interface InstalledApp {
   readonly bundleId?: string;
 }
 
-/** The install fields this backend reads off agent-device's response. */
+/** The install fields this engine reads off agent-device's response. */
 interface RawInstallResult {
   readonly app: string;
   readonly appId?: string;
@@ -117,7 +117,7 @@ interface RawInstallResult {
   readonly package?: string;
 }
 
-/** The snapshot fields this backend reads off agent-device's response. */
+/** The snapshot fields this engine reads off agent-device's response. */
 interface RawSnapshot {
   readonly nodes?: readonly RawNode[];
   readonly appName?: string;
@@ -211,7 +211,7 @@ export class AgentDeviceSurface {
 
   /** The live client; INVALID_STATE before init or after dispose. */
   requireClient(): AgentDeviceClient {
-    if (this.client === undefined) throw invalidState('the agent-device backend is not initialized');
+    if (this.client === undefined) throw invalidState('the agent-device engine is not initialized');
     return this.client;
   }
 
@@ -250,7 +250,7 @@ export class AgentDeviceSurface {
     }
   }
 
-  async init(info: BackendInitInfo): Promise<void> {
+  async init(info: EngineInitInfo): Promise<void> {
     this.testIdAttribute = info.testIdAttribute;
     this.projectRoot = info.projectRoot;
     this.client ??= this.createClient(this.options.session ?? `e2e-${info.targetName}`);
@@ -272,9 +272,9 @@ export class AgentDeviceSurface {
     if (this.options.app === undefined) this.installedApp = installed.app;
   }
 
-  async startAttempt(context: BackendAttemptContext): Promise<void> {
+  async startAttempt(context: EngineAttemptContext): Promise<void> {
     if (this.attempt !== undefined) {
-      throw invalidState('an attempt is already running on this agent-device backend');
+      throw invalidState('an attempt is already running on this agent-device engine');
     }
     await this.settleInflight(context.signal);
     this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0 };
@@ -285,13 +285,13 @@ export class AgentDeviceSurface {
     await this.openApp(app, true, context.signal);
   }
 
-  async endAttempt(_context: BackendCleanupContext): Promise<void> {
+  async endAttempt(_context: EngineCleanupContext): Promise<void> {
     this.attempt = undefined;
     this.generation = new Map();
     this.located.clear();
   }
 
-  async dispose(context: BackendCleanupContext): Promise<void> {
+  async dispose(context: EngineCleanupContext): Promise<void> {
     const client = this.client;
     this.client = undefined;
     this.attempt = undefined;
@@ -334,7 +334,7 @@ export class AgentDeviceSurface {
     };
     const app = options.app ?? (options.reinstall === true ? this.pinnedApp : undefined);
     if (options.reinstall === true && app === undefined) {
-      throw invalidState('reinstall needs an app: pass `app`, or pin one with the backend option `app` or `appPath`');
+      throw invalidState('reinstall needs an app: pass `app`, or pin one with the engine option `app` or `appPath`');
     }
     const result = (await this.command(
       `install ${resolved}`,
@@ -352,7 +352,7 @@ export class AgentDeviceSurface {
     let last: RawSnapshot = {};
     for (const backoffMs of SPARSE_RETRY_BACKOFF_MS) {
       if (backoffMs > 0) await sleep(backoffMs, operation.signal);
-      if (operation.signal.aborted) throw new BackendError('CANCELLED', 'snapshot cancelled', { retryable: false });
+      if (operation.signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
       last = (await this.command(
         'snapshot',
         (client) => client.capture.snapshot({ interactiveOnly }),
@@ -375,7 +375,7 @@ export class AgentDeviceSurface {
     try {
       return await this.snapshot(operation, interactiveOnly);
     } catch (cause) {
-      if (!this.managesApp && cause instanceof BackendError && cause.code === 'INVALID_STATE') return { nodes: [] };
+      if (!this.managesApp && cause instanceof EngineError && cause.code === 'INVALID_STATE') return { nodes: [] };
       throw cause;
     }
   }
@@ -390,7 +390,7 @@ export class AgentDeviceSurface {
     });
   }
 
-  async observe(operation: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot> {
+  async observe(operation: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot> {
     const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive');
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected.index)]));
@@ -420,7 +420,7 @@ export class AgentDeviceSurface {
   private resolveRef(ref: NodeRef): NodeBinding {
     const entry = this.located.get(ref.id) ?? this.generation.get(ref.id);
     if (entry === undefined) {
-      throw new BackendError('NODE_STALE', `node ${ref.id} is not part of the newest observation`, { retryable: true });
+      throw new EngineError('NODE_STALE', `node ${ref.id} is not part of the newest observation`, { retryable: true });
     }
     return entry;
   }
@@ -561,13 +561,13 @@ export class AgentDeviceSurface {
 
   async restart(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
-    if (app === undefined) throw unsupported('app.restart needs the backend option `app` or `appPath`');
+    if (app === undefined) throw unsupported('app.restart needs the engine option `app` or `appPath`');
     await this.openApp(app, true, operation.signal);
   }
 
   async clearState(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
-    if (app === undefined) throw unsupported('app.clearState needs the backend option `app` or `appPath`');
+    if (app === undefined) throw unsupported('app.clearState needs the engine option `app` or `appPath`');
     await this.command(
       'clear app state',
       (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),
@@ -617,7 +617,7 @@ export class AgentDeviceSurface {
    * Screenshot with every secure node on the current screen painted over.
    * Observes first so the regions describe the screen the pixels show;
    * throws when a secure field cannot be covered, because an image that may
-   * hold a credential must not leave the backend.
+   * hold a credential must not leave the engine.
    */
   private async maskedScreenshot(signal?: AbortSignal): Promise<{ data: Uint8Array; masked: number }> {
     const operation: OperationContext = {
@@ -630,7 +630,7 @@ export class AgentDeviceSurface {
     const data = await this.rawScreenshot(signal);
     const masked = redactSecure(data, projected);
     if (masked === undefined) {
-      throw new BackendError('BACKEND_FAILURE', 'a secure field on screen could not be masked; screenshot withheld', {
+      throw new EngineError('ENGINE_FAILURE', 'a secure field on screen could not be masked; screenshot withheld', {
         retryable: false,
       });
     }

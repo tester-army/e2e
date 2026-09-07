@@ -1,6 +1,6 @@
 /** Runner-owned polling locator assertions (spec 03-assertions.md). */
 
-import type { SemanticNode } from '../backend/surface.ts';
+import type { SemanticNode } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';
 import { normalizeText, containsText, matchesText, toTextPattern, describePattern } from '../internal/text.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';

@@ -49,7 +49,7 @@ missing material rejects with `AUTH_CREDENTIAL_UNAVAILABLE` before a model
 request.
 
 Each credential is scoped to `allowedOrigins` from its config entry, or the
-target's allowed origins (the backend's `allowedOrigins` declaration,
+target's allowed origins (the engine's `allowedOrigins` declaration,
 05-config.md) when omitted. A secret fill outside that scope is
 `POLICY_DENIED`.
 
@@ -70,5 +70,5 @@ define identity.
 Email, webhook, file, and phone resources are post-v0 extension profiles. They
 MUST be imported from their extension package rather than adding core fixtures.
 An extension defines its own versioned config namespace, lifecycle, local
-backend, wire-safe report events, and conformance suite. Managed backends do not
+engine, wire-safe report events, and conformance suite. Managed engines do not
 change test-file syntax.

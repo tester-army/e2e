@@ -1,7 +1,7 @@
 /** report-1 document construction (spec 13-reporting.md). */
 
 import os from 'node:os';
-import { BACKEND_SPI_VERSION, type BackendSpiVersion } from '../backend/contract.ts';
+import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts';
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
@@ -36,33 +36,33 @@ export interface ReportSource {
 }
 
 export interface TargetProvenance {
-  backend: { name: string; version: string; spiVersion: BackendSpiVersion };
+  engine: { name: string; version: string; spiVersion: EngineSpiVersion };
   capabilities: string[];
   artifactCapabilities: ('screenshot' | 'trace')[];
   stateCapability: boolean;
 }
 
 /**
- * What a target's backend declaration says about it: the one description the
- * runner grades against and the report records. A target without a backend is
+ * What a target's engine declaration says about it: the one description the
+ * runner grades against and the report records. A target without an engine is
  * agent-tools-only and honestly reports no capabilities.
  */
 export function describeTarget(target: ResolvedTarget): TargetProvenance {
-  const backend = target.backend;
+  const engine = target.engine;
   const artifactCapabilities: TargetProvenance['artifactCapabilities'] = [];
-  if (backend?.artifacts !== undefined) {
+  if (engine?.artifacts !== undefined) {
     artifactCapabilities.push('screenshot');
-    if (backend.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
+    if (engine.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
   }
   return {
-    backend: {
-      name: backend?.name ?? 'none',
-      version: backend?.version ?? 'unversioned',
-      spiVersion: backend?.spiVersion ?? BACKEND_SPI_VERSION,
+    engine: {
+      name: engine?.name ?? 'none',
+      version: engine?.version ?? 'unversioned',
+      spiVersion: engine?.spiVersion ?? ENGINE_SPI_VERSION,
     },
-    capabilities: [...(backend?.capabilities ?? [])].toSorted(),
+    capabilities: [...(engine?.capabilities ?? [])].toSorted(),
     artifactCapabilities,
-    stateCapability: backend?.state !== undefined,
+    stateCapability: engine?.state !== undefined,
   };
 }
 
@@ -184,11 +184,11 @@ export interface ReportTarget {
   id: string;
   index: number;
   platform: string;
-  /** Origin of the backend's declared app URL; absent for a surface without one. */
+  /** Origin of the engine's declared app URL; absent for a surface without one. */
   baseOrigin?: string;
   environment: string;
   testIdAttribute: string;
-  backend: { name: string; version: string; spiVersion: BackendSpiVersion };
+  engine: { name: string; version: string; spiVersion: EngineSpiVersion };
   capabilities: readonly string[];
   artifactCapabilities: readonly string[];
   stateCapability: boolean;

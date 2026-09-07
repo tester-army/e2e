@@ -14,13 +14,13 @@ seed/inspect/reset APIs and world-state assertions.
 A service package owns:
 
 - its import path and TypeScript declarations;
-- namespaced config and exact backend version;
+- namespaced config and exact engine version;
 - per-attempt resource handles and finalizers;
 - local process/network lifecycle;
 - deterministic seed, inspect, reset, and matcher semantics;
 - report events and JSON-safe match values;
 - secret, PII, retention, and redaction policy;
-- local and optional hosted backend conformance.
+- local and optional hosted engine conformance.
 
 It must not add a universal fixture. A future package could expose imports such
 as `stripeTest.sandbox()` or `slackTest.channel()`; exact names remain undecided.

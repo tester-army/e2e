@@ -54,7 +54,7 @@ export interface TargetWorkerHost {
   emit(message: WorkerToMain): void;
   /** Unrecoverable failure: the worker must be treated as dead afterwards. */
   fatal(cause: unknown): void;
-  /** Graceful end of life, after backend disposal. */
+  /** Graceful end of life, after engine disposal. */
   finished(): void;
 }
 
@@ -124,7 +124,7 @@ export class TargetWorker {
   /**
    * A forced interrupt. Disposal runs beside the running unit instead of
    * queued behind it: the unit is exactly what a second interrupt refuses to
-   * wait for. Its later backend calls fail against a disposed backend, which
+   * wait for. Its later engine calls fail against a disposed engine, which
    * no longer matters — nothing it reports from here on is kept.
    */
   private terminate(): void {
@@ -192,7 +192,7 @@ export class TargetWorker {
   }
 
   private async disposeAndFinish(): Promise<void> {
-    // The backend belongs to this worker's executor on both transports. Its
+    // The engine belongs to this worker's executor on both transports. Its
     // disposal records run errors after the last unit drained, so they ship
     // on a final message of their own; dispose itself never throws.
     const executor = this.executor;

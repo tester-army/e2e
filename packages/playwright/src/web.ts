@@ -1,7 +1,7 @@
 /**
- * The `web` fixture: the browser-shaped deterministic surface this backend
+ * The `web` fixture: the browser-shaped deterministic surface this engine
  * contributes. It lives here, not in core, because the harness knows the
- * backend contract and never a platform's fixture shape. Every async method
+ * engine contract and never a platform's fixture shape. Every async method
  * runs as a harness-recorded `web.<method>` step; `expect(web)` reaches the
  * matchers attached through `context.expectable`.
  *
@@ -23,12 +23,12 @@ import {
   toTextPattern,
   urlMatches,
   validateJsonValue,
-  type BackendFixtureContext,
+  type EngineFixtureContext,
   type FixtureOperation,
   type FixtureOperations,
   type OperationContext,
   type TextPattern,
-} from '@e2edev/e2e/backend';
+} from '@e2edev/e2e/engine';
 import type { DialogHandler } from './dialogs.ts';
 import { message as causeMessage } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
@@ -175,7 +175,7 @@ interface StoredRoute {
 }
 
 /** Builds the `web` fixture for one attempt over the shared surface. */
-export function createWebFixture(surface: PlaywrightSurface, context: BackendFixtureContext): Web {
+export function createWebFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Web {
   const routes: StoredRoute[] = [];
 
   /**
@@ -483,7 +483,7 @@ interface ExpectationDeps {
   currentTitle(): Promise<string>;
   baseHref(): string;
   deadlineFor(timeout: number | undefined): Deadline;
-  readonly context: BackendFixtureContext;
+  readonly context: EngineFixtureContext;
 }
 
 /** `expect(web)` matchers: URL and title polling against the assertion budget. */

@@ -32,9 +32,9 @@ export interface TraceCacheKey {
   readonly testId: string;
   readonly targetId: string;
   readonly platform: string;
-  readonly backendName: string;
-  readonly backendVersion: string;
-  readonly backendSpiVersion: number;
+  readonly engineName: string;
+  readonly engineVersion: string;
+  readonly engineSpiVersion: number;
   readonly kind: TraceCacheKind;
   /** Zero-based occurrence of this signature within the attempt. */
   readonly callIndex: number;
@@ -44,24 +44,24 @@ export interface TraceCacheKey {
   readonly policyVersion: string;
 }
 
-/** Identity of the target/backend/app a trace was recorded against. */
+/** Identity of the target/engine/app a trace was recorded against. */
 export interface CacheTargetIdentity {
   readonly targetId: string;
   readonly platform: string;
-  readonly backendName: string;
-  readonly backendVersion: string;
+  readonly engineName: string;
+  readonly engineVersion: string;
   readonly spiVersion: number;
   readonly appIdentity: string;
 }
 
 /**
- * Reduces a backend version to the part that can change how a semantic node
+ * Reduces an engine version to the part that can change how a semantic node
  * resolves: `1.61.1` becomes `1.61`. Keying on the exact version cold-started
  * every entry on a patch release for no benefit; a minor might change matching,
  * so that part is kept. A version that is not `major.minor[.patch]` is used
  * unchanged rather than guessed at.
  */
-export function backendCompatibilityVersion(version: string): string {
+export function engineCompatibilityVersion(version: string): string {
   const match = /^(\d+)\.(\d+)(?:[.\-+].*)?$/u.exec(version);
   return match === null ? version : `${match[1]!}.${match[2]!}`;
 }
@@ -166,9 +166,9 @@ export function buildTraceCacheKey(parts: {
     testId: parts.testId,
     targetId: parts.target.targetId,
     platform: parts.target.platform,
-    backendName: parts.target.backendName,
-    backendVersion: backendCompatibilityVersion(parts.target.backendVersion),
-    backendSpiVersion: parts.target.spiVersion,
+    engineName: parts.target.engineName,
+    engineVersion: engineCompatibilityVersion(parts.target.engineVersion),
+    engineSpiVersion: parts.target.spiVersion,
     kind: parts.signature.kind,
     callIndex: parts.callIndex,
     instructionDigest: parts.signature.instructionDigest,

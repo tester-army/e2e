@@ -17,7 +17,7 @@
  * matter whose brain runs the step.
  */
 
-import type { ObservationPixels, SemanticNode } from '../backend/surface.ts';
+import type { ObservationPixels, SemanticNode } from '../engine/surface.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
@@ -73,7 +73,7 @@ export interface ExecutorObserveOptions {
   /** Include the redacted node tree as `tree`. */
   readonly tree?: boolean;
   /**
-   * Include masked viewport pixels as `pixels`. Granted only when the backend
+   * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels, its masking is proven, and no secret has been filled in
    * this attempt; otherwise `pixelsWithheld` names the reason.
    */
@@ -98,7 +98,7 @@ export interface ExecutorNode {
   readonly children?: readonly ExecutorNode[];
 }
 
-/** Masked viewport pixels cleared for model input: the backend's capture plus its proven mask count. */
+/** Masked viewport pixels cleared for model input: the engine's capture plus its proven mask count. */
 export interface ExecutorPixels extends ObservationPixels {
   readonly maskedRegionCount: number;
 }
@@ -111,8 +111,8 @@ export interface ExecutorObservation {
   readonly truncated: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   /**
-   * The current location as path and query, redacted, when the backend
-   * reports one. Absent on backends without a location (a device screen).
+   * The current location as path and query, redacted, when the engine
+   * reports one. Absent on engines without a location (a device screen).
    */
   readonly path?: string;
   /** The redacted node tree; present when requested with `observe({ tree: true })`. */
@@ -138,7 +138,7 @@ export interface ExecutorTarget {
  * observation, so concurrency can never soften the staleness rule. A
  * committed mutation does not mint a new observation: ids from the newest
  * observation stay addressable afterward (batching independent targets — a
- * form fill — is legitimate), the backend rejects references it can no longer
+ * form fill — is legitimate), the engine rejects references it can no longer
  * bind (`NODE_STALE`), and the mutation's effects are visible only through a
  * fresh `observe()`.
  */
@@ -149,7 +149,7 @@ export interface ExecutorActions {
    * Fills one secret declared in the step's params into a secure input. The
    * harness authorizes the fill (registered credential, origin policy, an
    * editable sink whose purpose matches) and hands the plaintext straight to
-   * the backend — it never passes through the executor or any model.
+   * the engine — it never passes through the executor or any model.
    */
   typeSecret(target: ExecutorTarget, name: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;
@@ -235,7 +235,7 @@ export interface StepExecutorContext {
   readonly attempt: ExecutorAttempt;
   /**
    * The target this step runs on. Tool packs scope themselves by its platform;
-   * `verbs` is the subset of the action grammar the backend declared, so an
+   * `verbs` is the subset of the action grammar the engine declared, so an
    * executor offers a model exactly the vocabulary the surface can honor.
    */
   readonly target: {

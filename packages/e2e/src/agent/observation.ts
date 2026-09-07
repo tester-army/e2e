@@ -1,6 +1,6 @@
 /** Observation capture, redaction, and model serialization (spec 09-drivers.md, 14-security.md). */
 
-import type { Observation, SemanticNode } from '../backend/surface.ts';
+import type { Observation, SemanticNode } from '../engine/surface.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
 import type { VisionDegradation } from '../run/steps.ts';
@@ -13,7 +13,7 @@ const TRUNCATION_MARKER = '[observation truncated at the resolved observation by
 type PixelsWithheld = 'MASKING_UNPROVEN';
 
 export interface AgentObservation {
-  /** Location captured with this tree, when the backend can provide it. */
+  /** Location captured with this tree, when the engine can provide it. */
   readonly url?: string;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
@@ -22,20 +22,20 @@ export interface AgentObservation {
   readonly nodes: ReadonlyMap<string, SemanticNode>;
   /** Parent id of every non-root node, for the container a target sits in. */
   readonly parents: ReadonlyMap<string, string>;
-  /** The raw tree as the backend reported it; redacted only on the way out. */
+  /** The raw tree as the engine reported it; redacted only on the way out. */
   readonly tree: SemanticNode;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   readonly truncated: boolean;
-  /** Present only when the backend captured pixels and masking checks out. */
+  /** Present only when the engine captured pixels and masking checks out. */
   readonly pixels?: ExecutorPixels | undefined;
   /** Set when captured pixels were dropped instead of being sent. */
   readonly pixelsWithheld?: PixelsWithheld | undefined;
 }
 
 /**
- * Turns one raw backend observation into redacted model input.
+ * Turns one raw engine observation into redacted model input.
  *
- * Pixels whose masking the backend cannot prove (fewer masked regions than
+ * Pixels whose masking the engine cannot prove (fewer masked regions than
  * secure nodes) are withheld before they reach a model or disk; the semantic
  * tree never carries secure values. Registered secret values are additionally
  * replaced by their stable secret name.
@@ -101,8 +101,8 @@ export function prepareObservation(
 /**
  * Clears captured pixels for model input, or withholds them.
  *
- * Every secure node the backend observed must be covered by a masked region.
- * When it is not, the backend masked less than it saw and the image cannot be
+ * Every secure node the engine observed must be covered by a masked region.
+ * When it is not, the engine masked less than it saw and the image cannot be
  * proven redacted, so it is dropped exactly like an incompletely redacted
  * artifact (14-security.md) — the semantic tree still goes out.
  */
@@ -182,7 +182,7 @@ function formatNode(
   if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(redact(node.name)));
   const text = node.text === undefined ? '' : collapseText(node.text);
   if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
-  // Disambiguators the model needs when role and name repeat. The backend has
+  // Disambiguators the model needs when role and name repeat. The engine has
   // already reduced href to origin and path.
   const testId = node.attributes?.[testIdAttribute];
   if (testId !== undefined && testId !== '') parts.push(`testid=${JSON.stringify(testId)}`);

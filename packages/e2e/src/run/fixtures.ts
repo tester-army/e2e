@@ -5,8 +5,8 @@ import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
 import { createModelAdapter } from '../agent/model/sdk.ts';
-import type { BackendFixtureContext } from '../backend/index.ts';
-import type { TargetSession } from '../backend/surface.ts';
+import type { EngineFixtureContext } from '../engine/index.ts';
+import type { TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError } from '../internal/errors.ts';
@@ -180,8 +180,8 @@ export function createFixtures(
 const PROBED_KEYS = new Set(['then', 'constructor', 'toJSON', 'toString', 'valueOf', 'inspect']);
 
 /**
- * Reaching for a fixture the target's backend does not contribute fails at
- * the first touch with the earliest honest error: the backend's name and what
+ * Reaching for a fixture the target's engine does not contribute fails at
+ * the first touch with the earliest honest error: the engine's name and what
  * it does declare, instead of a TypeError three lines later.
  */
 function gateUnknownFixtures<T extends object>(fixtures: T, environment: AttemptEnvironment): T {
@@ -190,18 +190,18 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
       if (typeof property !== 'string' || property in target || PROBED_KEYS.has(property)) {
         return Reflect.get(target, property, receiver) as unknown;
       }
-      const backend = environment.target.backend;
-      const declared = Object.keys(backend?.fixtures ?? {});
+      const engine = environment.target.engine;
+      const declared = Object.keys(engine?.fixtures ?? {});
       throw new ConfigurationError(
         'UNSUPPORTED_CAPABILITY',
-        `target "${environment.target.name}" has no "${property}" fixture: backend ${backend?.name ?? 'none'} contributes ${declared.length === 0 ? 'no fixtures' : declared.join(', ')}`,
+        `target "${environment.target.name}" has no "${property}" fixture: engine ${engine?.name ?? 'none'} contributes ${declared.length === 0 ? 'no fixtures' : declared.join(', ')}`,
       );
     },
   });
 }
 
 /**
- * Backend-contributed fixtures (RFC0002): factories declare operation metadata
+ * Engine-contributed fixtures (RFC0002): factories declare operation metadata
  * through context.fixture and must return the surface they declared. Factories
  * stay lazy and each instance belongs to one test's fixture graph; the
  * session's secrecy state outlives that graph.
@@ -211,7 +211,7 @@ function contributedFixtures(
   engine: LocatorEngine,
   screenContext: ScreenContext,
 ): Record<string, unknown> {
-  const declared = environment.target.backend?.fixtures;
+  const declared = environment.target.engine?.fixtures;
   if (declared === undefined) return {};
   const contributed: Record<string, unknown> = {};
   const recorder = new FixtureRecorder(environment);
@@ -234,7 +234,7 @@ function fixtureContext(
   engine: LocatorEngine,
   screenContext: ScreenContext,
   recorder: FixtureRecorder,
-): BackendFixtureContext {
+): EngineFixtureContext {
   const { config, steps } = environment;
   const { app } = environment.target;
   return {
@@ -323,14 +323,14 @@ function initialSecretLedger(environment: AttemptEnvironment): SecretLedger {
   );
 }
 
-/** Navigation needs an app URL, and only the target's backend can declare one. */
+/** Navigation needs an app URL, and only the target's engine can declare one. */
 function requireAppUrl(target: ResolvedTarget): asserts target is ResolvedTarget & {
   app: { base: NonNullable<ResolvedTarget['app']['base']> };
 } {
   if (target.app.base !== undefined) return;
   throw new ConfigurationError(
     'APP_URL_REQUIRED',
-    `navigation needs an app URL: the backend of target "${target.name}" declares none (${target.backend?.name ?? 'no backend'})`,
+    `navigation needs an app URL: the engine of target "${target.name}" declares none (${target.engine?.name ?? 'no engine'})`,
   );
 }
 

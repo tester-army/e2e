@@ -1,8 +1,8 @@
 # @e2edev/agent-device
 
-The mobile backend for [`e2e`](https://www.npmjs.com/package/e2e), built on
+The mobile engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [agent-device](https://github.com/callstack/agent-device): iOS simulators and
-Android emulators through the same `@e2edev/e2e/backend` contract the browser backend
+Android emulators through the same `@e2edev/e2e/engine` contract the browser engine
 implements. A test written against `screen`, `expect`, `app`, and `agent` runs
 on a device target unchanged; nothing in `e2e` core knows this package exists.
 
@@ -32,8 +32,8 @@ const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
 export default defineConfig({
   targets: [
-    { name: 'iphone', platform: 'ios', backend: iphone },
-    { name: 'pixel', platform: 'android', backend: pixel },
+    { name: 'iphone', platform: 'ios', engine: iphone },
+    { name: 'pixel', platform: 'android', engine: pixel },
   ],
   workers: 1,
   agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
@@ -56,7 +56,7 @@ Options:
 | `session` | agent-device session name; defaults to `e2e-<target name>`. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 
-## What the backend declares
+## What the engine declares
 
 - **Observation**: the accessibility tree, projected onto the role vocabulary
   (iOS `Button` becomes `button`, `TextField` becomes `textbox`, `Cell` becomes
@@ -80,7 +80,7 @@ Options:
 ## Trace cache
 
 The runner caches `agent.act` steps by their location anchor, and a device has
-no address bar. This backend reports one anyway: `app://device/<bundle
+no address bar. This engine reports one anyway: `app://device/<bundle
 id>/<screen title>`, with the title read off the navigation bar on iOS and the
 collapsing toolbar on Android. The cache compares pathnames, so the app
 identity is part of the path and two apps with a "General" screen never share
@@ -122,13 +122,13 @@ the bundle id or package to `openApp` the build by.
 
 ## Agent tools
 
-`@e2edev/agent-device/tools` exports `agentDeviceTools(...backends)`:
+`@e2edev/agent-device/tools` exports `agentDeviceTools(...engines)`:
 `open_app`, `swipe` (free-form, in logical pixels), `type_text` (into the
 focused field, for editors that hide it from the tree), `alert`, and
-`screenshot` (the model sees the image). Pass every device backend the config
+`screenshot` (the model sees the image). Pass every device engine the config
 declares: tool names are fixed, so two packs cannot be merged, and the pack
-dispatches each call to the backend whose attempt is running. Tools are scoped
-to the platforms of those backends, so a suite that mixes web and device
+dispatches each call to the engine whose attempt is running. Tools are scoped
+to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one `createAgent`.
 
 ## Secrets

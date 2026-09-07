@@ -18,7 +18,7 @@ control is progressive disclosure, not mandatory ceremony.
 
 ### One canonical contract
 
-The root import is `e2e`; backend authoring is `@e2edev/e2e/backend`. Canonical public
+The root import is `e2e`; engine authoring is `@e2edev/e2e/engine`. Canonical public
 types live under `spec/api`, wire formats under `spec/schema`, and behavioral
 requirements in this specification. Examples never define behavior by accident.
 
@@ -37,16 +37,16 @@ moves through the ledger.
 
 ### The standard owns semantics
 
-Backends implement immediate queries, reads, actionability, input dispatch,
+Engines implement immediate queries, reads, actionability, input dispatch,
 observation, state, and artifacts. The runner owns waiting, strictness, retries,
-lifecycle, policy, caching, and reporting. Backend defaults cannot change a
+lifecycle, policy, caching, and reporting. Engine defaults cannot change a
 portable test's observable semantics.
 
 ### Platforms and capabilities differ
 
 Targets identify execution environments. Platforms describe the environment;
 capabilities describe available family-specific APIs. The portable core stays
-small, while versioned backend profiles and namespaced capability fixtures allow
+small, while versioned engine profiles and namespaced capability fixtures allow
 new environments without changing test primitives.
 
 ### Local-first means accountless
@@ -86,7 +86,7 @@ It is not described as full parity when exclusions exist.
 - YAML or JSON test DSLs.
 - An autonomous outer testing agent.
 - A homegrown browser/device automation engine.
-- Raw backend objects in public tests.
+- Raw engine objects in public tests.
 - Unit or component testing.
 - Silent self-healing after an action may have committed.
 - Deterministic claims for model judgment.

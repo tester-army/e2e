@@ -122,8 +122,8 @@ describe('flushStagedTraces', () => {
       target: {
         targetId: 'web',
         platform: 'web',
-        backendName: 'playwright',
-        backendVersion: '1.61.1',
+        engineName: 'playwright',
+        engineVersion: '1.61.1',
         spiVersion: 1,
         appIdentity: 'a'.repeat(64),
       },

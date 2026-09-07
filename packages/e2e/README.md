@@ -14,21 +14,21 @@ APP_URL=http://localhost:3000 npx --no-install e2e run
 ```
 
 Init adds the runner to `devDependencies`, offers Playwright or agent-device
-as the backend and AI SDK v7 for the built-in agent, then asks whether to
+as the engine and AI SDK v7 for the built-in agent, then asks whether to
 install. Choose Playwright for the config and browser test below. `--yes`
-skips the prompts: AI on, no backend, no installation.
+skips the prompts: AI on, no engine, no installation.
 
 ```ts title="e2e.config.ts"
 import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
 });
 ```
 
-The backend declares the app it drives: the URL is an option of `playwright()`,
-not a config key, and a device backend names a bundle id instead. Or let the
+The engine declares the app it drives: the URL is an option of `playwright()`,
+not a config key, and a device engine names a bundle id instead. Or let the
 runner start the whole stack itself: the dependencies as `services`, then the
 app as `command`:
 
@@ -38,7 +38,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'http://127.0.0.1:3000',
         services: [
           {
@@ -91,7 +91,7 @@ test('user signs in', async ({ app, screen, web }) => {
 });
 ```
 
-The runner itself knows no platform: every target names the backend that
+The runner itself knows no platform: every target names the engine that
 drives it, and `@e2edev/playwright` is the browser one. Missing Playwright
 browsers are downloaded on first run. To provision them ahead of time (for
 example in a CI image), run `npx playwright install chromium`.
@@ -152,7 +152,7 @@ agent step, in the AI SDK devtools database shape. Open it with
   (`options.vision`) reject with `UNSUPPORTED_CAPABILITY`.
 - The HTML reporter and video artifacts are not available.
 - Reported steps carry no source locations.
-- iOS and Android need a backend package; none ships in this repo yet.
+- iOS and Android need an engine package; none ships in this repo yet.
 
 ## Contributing
 

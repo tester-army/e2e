@@ -30,7 +30,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'http://localhost:4273',
         command: { executable: 'pnpm', args: ['run', 'bench:serve'] },
       }),

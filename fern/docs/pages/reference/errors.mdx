@@ -38,11 +38,11 @@ Check `code` rather than using `instanceof`.
 | `MODEL_UNAVAILABLE` | No model configured, an unknown provider, or a missing provider credential. Raised when the `agent` fixture is acquired. | configuration | 2 |
 | `POLICY_DENIED` | Origin, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
 | `APP_UNREACHABLE` | The app process or URL did not respond | infrastructure | 3 |
-| `APP_ALREADY_RUNNING` | `readyUrl` already answered before the backend's `command` (or a `readyUrl` service) was spawned and `reuseExisting` was not in effect; stop that process or set `reuseExisting: true` locally | infrastructure | 3 |
+| `APP_ALREADY_RUNNING` | `readyUrl` already answered before the engine's `command` (or a `readyUrl` service) was spawned and `reuseExisting` was not in effect; stop that process or set `reuseExisting: true` locally | infrastructure | 3 |
 | `MODEL_PROVIDER_FAILED` | Provider transport failure (network error, 5xx, rate limit) after the adapter's transport retries (up to 5 per model call, honoring `retry-after`, bounded by the remaining step timeout) | infrastructure | 3 |
 | `CANCELLED` | The runner cancelled the operation, without a process signal | infrastructure | 3 |
 | `MODEL_OUTPUT_INVALID` | Structured output still failed validation after the repair budget was spent | test | 1 |
-| `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the backend reported invalid state | test | 1 |
+| `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the engine reported invalid state | test | 1 |
 | `LOCATOR_NOT_FOUND` | Zero matches within the deadline, or the model declined to name a node | test | 1 |
 | `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails immediately, no polling. | test | 1 |
 | `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
@@ -58,33 +58,33 @@ These appear in terminal output and in the report as plain string codes.
 | --- | --- | --- | ---: |
 | `CONFIG_NOT_FOUND` | `--config <path>` names a file that does not exist | configuration | 2 |
 | `CONFIG_AMBIGUOUS` | Both `e2e.config.ts` and `e2e.config.mts` in one directory | configuration | 2 |
-| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, backend }`, a `backend` that is not a `defineBackend` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
+| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, engine }`, an `engine` that is not a `defineEngine` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
-| `APP_URL_REQUIRED` | A navigation or relative URL on a target whose backend declares no `url`, or a declared `command` with no `url` or `readyUrl` to poll | configuration | 2 |
+| `APP_URL_REQUIRED` | A navigation or relative URL on a target whose engine declares no `url`, or a declared `command` with no `url` or `readyUrl` to poll | configuration | 2 |
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, or unparseable | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
-| `UNSUPPORTED_ARTIFACT` | A configured artifact kind the target's backend cannot produce. `video` is not implemented by any first-party backend. | configuration | 2 |
-| `UNSUPPORTED_CAPABILITY` | A fixture, action, or tier the target's backend does not declare: a contributed fixture it does not contribute, `screen` without `locate`, state restore without `state`, screenshots without `artifacts` | configuration | 2 |
+| `UNSUPPORTED_ARTIFACT` | A configured artifact kind the target's engine cannot produce. `video` is not implemented by any first-party engine. | configuration | 2 |
+| `UNSUPPORTED_CAPABILITY` | A fixture, action, or tier the target's engine does not declare: a contributed fixture it does not contribute, `screen` without `locate`, state restore without `state`, screenshots without `artifacts` | configuration | 2 |
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. Suppress with `--pass-with-no-tests`. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
 | `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, or a positional path outside the project root | configuration | 2 |
 | `POLICY_DENIED` | Origin, cookie, scheme, secret-sink, or route policy denial | configuration | 2 |
-| `SESSION_MISMATCH` | A stored session does not match the current run, target, backend, platform, or app identity | configuration | 2 |
+| `SESSION_MISMATCH` | A stored session does not match the current run, target, engine, platform, or app identity | configuration | 2 |
 | `SESSION_EXPIRED` | A stored session is past its expiry at restore time | configuration | 2 |
 | `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |
 | `SESSION_UNAVAILABLE` | A test requires a session no selected setup test produced | configuration | 2 |
 | `SESSION_CONTRACT` | A setup test saved a session twice, saved an undeclared name, or finished without saving a declared one | test | 1 |
 | `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout` | test | 1 |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
-| `LAUNCH_TIMEOUT` | Backend init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
-| `CLEANUP_TIMEOUT` | Backend attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |
+| `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
+| `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
 | `WORKER_EXIT` | A worker exited unexpectedly between tests | infrastructure | 3 |
 | `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
 | `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
-| `BACKEND_FAILURE` | Any backend fault with no more specific mapping | infrastructure | 3 |
+| `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |
 | `INTERNAL_ERROR` | A runner invariant was violated. Report it. | internal | 4 |
 | `INTERRUPTED` | A user or CI signal aborted the run | interrupted | 130 |
 
@@ -99,7 +99,7 @@ value from test code is reported as `ERROR`.
 | 0 | All selected tests passed, were flaky, or were explicitly skipped |
 | 1 | Final test or setup failure, or test timeout |
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
-| 3 | Backend, app process, model provider, artifact, or cleanup infrastructure failure |
+| 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure |
 | 4 | Internal runner invariant or unhandled runner error |
 | 130 | Interrupted by a user or CI signal |
 

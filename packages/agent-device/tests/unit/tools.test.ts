@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { defineBackend } from '@e2edev/e2e/backend';
-import { buildBackend } from '../../src/backend.ts';
+import { defineEngine } from '@e2edev/e2e/engine';
+import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { agentDeviceTools } from '../../src/tools.ts';
 import { createFakeClient } from '../helpers/fake-client.ts';
 
 describe('agent tool pack', () => {
-  it('scopes every tool to the platforms of its backends and rejects a foreign handle', () => {
+  it('scopes every tool to the platforms of its engines and rejects a foreign handle', () => {
     const fake = createFakeClient();
-    const ios = buildBackend(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
-    const android = buildBackend(new AgentDeviceSurface({ platform: 'android' }, () => fake.client));
+    const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => fake.client));
     const tools = agentDeviceTools(ios);
     expect(Object.keys(tools).toSorted()).toEqual(['alert', 'open_app', 'screenshot', 'swipe', 'type_text']);
     for (const defined of Object.values(tools)) {
@@ -19,17 +19,17 @@ describe('agent tool pack', () => {
       expect(defined.annotations.platforms).toEqual(['ios', 'android']);
     }
     expect(tools['screenshot']?.annotations.mutates).toBe(false);
-    const foreign = defineBackend({ name: 'other', version: '1', spiVersion: 1 });
+    const foreign = defineEngine({ name: 'other', version: '1', spiVersion: 1 });
     expect(() => agentDeviceTools(foreign)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
   });
 
-  it('dispatches to the backend whose attempt is running, and refuses outside an attempt', async () => {
+  it('dispatches to the engine whose attempt is running, and refuses outside an attempt', async () => {
     const iosFake = createFakeClient({ 'apps.open': () => ({ appName: 'Reminders' }) });
     const androidFake = createFakeClient({ 'apps.open': () => ({ appName: 'Clock' }) });
-    const ios = buildBackend(new AgentDeviceSurface({ platform: 'ios' }, () => iosFake.client));
-    const android = buildBackend(new AgentDeviceSurface({ platform: 'android' }, () => androidFake.client));
-    const init = (backend: typeof ios, targetName: string) =>
-      backend.init!({
+    const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => iosFake.client));
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => androidFake.client));
+    const init = (engine: typeof ios, targetName: string) =>
+      engine.init!({
         runId: 'r',
         targetName,
         projectRoot: '/project',

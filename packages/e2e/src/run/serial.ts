@@ -1,6 +1,6 @@
 /** Serial-group execution: one shared session per group attempt (spec 11-lifecycle.md). */
 
-import type { TargetSession } from '../backend/surface.ts';
+import type { TargetSession } from '../engine/surface.ts';
 import {
   classifyError,
   ConfigurationError,

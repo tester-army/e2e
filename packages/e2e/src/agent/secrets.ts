@@ -1,6 +1,6 @@
 /** Host-side secret fill authorization (spec 04-resources.md, 14-security.md). */
 
-import type { TargetSession, OperationContext, SemanticNode } from '../backend/surface.ts';
+import type { TargetSession, OperationContext, SemanticNode } from '../engine/surface.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
 import type { AgentContext } from './invocation.ts';
@@ -22,7 +22,7 @@ const EDITABLE_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
 /**
  * Authorizes one secret fill and resolves the plaintext only after every check
  * passes. The value is returned to the caller for a single immediate handoff to
- * the trusted backend and is never logged, cached, or sent to a model.
+ * the trusted engine and is never logged, cached, or sent to a model.
  */
 export async function authorizeSecretFill(
   host: SecretFillHost,
@@ -84,7 +84,7 @@ async function currentOrigin(host: SecretFillHost): Promise<string> {
   if (url === undefined) {
     throw new AgentError(
       'POLICY_DENIED',
-      'secret fills require a backend that exposes the current top-level URL',
+      'secret fills require an engine that exposes the current top-level URL',
     );
   }
   let href: string;

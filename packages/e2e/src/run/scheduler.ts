@@ -54,12 +54,12 @@ export interface RunUnitsOptions {
   readonly interruptGraceMs: number;
   readonly interruptSignal: AbortSignal;
   /**
-   * A forced interrupt: every busy worker is told to dispose its backend at
+   * A forced interrupt: every busy worker is told to dispose its engine at
    * once instead of finishing its unit, and is killed after `forceGraceMs`.
    * The runner aborts it only with or after `interruptSignal`.
    */
   readonly forceSignal: AbortSignal;
-  /** Budget for a worker to dispose its backend after a forced interrupt. */
+  /** Budget for a worker to dispose its engine after a forced interrupt. */
   readonly forceGraceMs: number;
   readonly spawn: SpawnUnitRunner;
   readonly events: SchedulerEvents;
@@ -148,7 +148,7 @@ class SchedulerWorker {
   }
 
   /**
-   * Asks for immediate backend disposal and force-kills once the budget is
+   * Asks for immediate engine disposal and force-kills once the budget is
    * spent, replacing the interrupt grace a busy worker was given.
    */
   terminate(graceMs: number): void {
@@ -246,7 +246,7 @@ class Scheduler {
 
   /**
    * The forced interrupt: no worker gets to finish its unit any more. Each
-   * busy one disposes its backend now and is killed after the force budget,
+   * busy one disposes its engine now and is killed after the force budget,
    * however long the unit's own grace still had to run. Retired workers were
    * already told to leave, on a shorter clock.
    */

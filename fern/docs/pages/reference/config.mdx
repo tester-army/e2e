@@ -20,7 +20,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
+      engine: playwright({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
     },
   ],
 });
@@ -28,7 +28,7 @@ export default defineConfig({
 
 Unknown keys are rejected with `INVALID_CONFIG` at every level: top level,
 `agent`, `agent.model`, and `limits`. There is no top-level `app` key: the
-backend declares the app it drives (see [the app under test](#the-app-under-test)).
+engine declares the app it drives (see [the app under test](#the-app-under-test)).
 
 ## Loading
 
@@ -38,9 +38,9 @@ stopping at the repository root. Both names in one directory is
 `CONFIG_AMBIGUOUS`. The selected file's directory is the project root; with no
 config file, the working directory is.
 
-A config file is required. Targets that drive an app name a backend;
+A config file is required. Targets that drive an app name an engine;
 HTTP tests and agents using their own tools can use a target without one.
-`npx --no-install e2e init` offers optional backend and AI setup.
+`npx --no-install e2e init` offers optional engine and AI setup.
 
 Config and test modules run as ESM. For `.ts` files, the nearest `package.json`
 must set `"type": "module"`. In a directory without a package manifest, `init`
@@ -57,11 +57,11 @@ the module type of `.ts` test files or helpers.
 | Key | Type | Default | Valid range |
 | --- | --- | --- | --- |
 | `projectId` | `string` | nearest `package.json` name, else a generated ID | 1-256 characters |
-| `targets` | `readonly Target[]` | required | non-empty; each backend declares [the app under test](#the-app-under-test) |
+| `targets` | `readonly Target[]` | required | non-empty; each engine declares [the app under test](#the-app-under-test) |
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
 | `timeout` | `number` | `120000` | positive safe integer |
 | `launchTimeout` | `number` | `60000` | positive safe integer |
-| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every backend operation, including each observation and action inside an agent step |
+| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every engine operation, including each observation and action inside an agent step |
 | `assertionTimeout` | `number` | `5000` | positive safe integer |
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
@@ -77,7 +77,7 @@ the module type of `.ts` test files or helpers.
 Every numeric value must be a safe integer.
 
 `artifacts` accepts `screenshot` and `trace` only; `video` is not a
-configurable artifact kind. A configured kind the target's backend cannot
+configurable artifact kind. A configured kind the target's engine cannot
 produce fails before collection with `UNSUPPORTED_ARTIFACT`.
 
 ### artifacts
@@ -109,16 +109,16 @@ Every run writes `.e2e/report.json` regardless of the selected reporters; the
 
 ## The app under test
 
-The app is declared by the backend that drives it, never by a config key. The
-browser backend takes the declaration as options of `playwright(...)`; the
-device backend derives it from the app it pins
+The app is declared by the engine that drives it, never by a config key. The
+browser engine takes the declaration as options of `playwright(...)`; the
+device engine derives it from the app it pins
 (`agentDevice({ platform, app })`). The runner resolves each target's
 declaration at config load and owns what is built on it: navigation and
 origin policy, cache and session identity, the report's target record, and
 the app process.
 
 ```ts
-export interface BackendAppDeclaration {
+export interface EngineAppDeclaration {
   url?: string;
   command?: CommandConfig;
   readyUrl?: string;
@@ -139,9 +139,9 @@ export interface BackendAppDeclaration {
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts and without a URL, otherwise `'production'` | A label for the report and the cache/session identity digest; it never gates a run |
 | `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache/session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys, or on a surface without a URL; never share one identity across genuinely different apps. The environment always joins the derived identity. |
 
-A target without a backend, or whose backend declares nothing, resolves to the
+A target without an engine, or whose engine declares nothing, resolves to the
 empty app: no URL, no allowed origins, environment `test`, no identity. Unknown
-declaration keys fail at `defineBackend`; invalid values fail at config load
+declaration keys fail at `defineEngine`; invalid values fail at config load
 naming the target.
 
 ```ts title="e2e.config.ts"
@@ -150,7 +150,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
       }),
@@ -263,7 +263,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'http://localhost:3000',
         services: [
           {
@@ -304,15 +304,15 @@ Target names are required, unique, and limited to ASCII letters, digits, `_`,
 export interface Target {
   name: string;
   platform: Platform;
-  backend?: BackendHandle; // defineBackend(...) from '@e2edev/e2e/backend'
+  engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
 }
 ```
 
-Every target is served by a backend, and the runner knows only the backend
-contract: the backend's declared capabilities (observation, actions, location,
+Every target is served by an engine, and the runner knows only the engine
+contract: the engine's declared capabilities (observation, actions, location,
 state, artifacts, contributed fixtures) grade what the target serves, and
 anything undeclared fails loud with `UNSUPPORTED_CAPABILITY`. A target without
-a `backend` is agent-tools-only and runs everything opaque. The backend
+an `engine` is agent-tools-only and runs everything opaque. The engine
 declares [the app under test](#the-app-under-test); a URL is needed only once
 a test calls `app.open()`. With an `executor` in the `agent`
 block, a custom brain composes with the model, budget, and context options
@@ -322,16 +322,16 @@ instead of replacing them.
 | --- | --- | --- | --- |
 | `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
 | `platform` | `Platform` | - | Any label; `platforms: [...]` on a test filters against it |
-| `backend` | `BackendHandle` | none | `playwright({ url?, command?, browser?, viewport?, connect? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP); `agentDevice({ platform, app?, appPath? })` from `@e2edev/agent-device` for an [iOS or Android device](/reference/device); any [`defineBackend`](/writing-a-backend) handle otherwise |
+| `engine` | `EngineHandle` | none | `playwright({ url?, command?, browser?, viewport?, connect? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP); `agentDevice({ platform, app?, appPath? })` from `@e2edev/agent-device` for an [iOS or Android device](/reference/device); any [`defineEngine`](/writing-an-engine) handle otherwise |
 
 The app URL, browser choice, and viewport are options of the playwright
-backend, not of the runner. Two browsers on one app each name it:
+engine, not of the runner. Two browsers on one app each name it:
 
 ```ts
 const app = { url: 'http://localhost:3000' };
 targets: [
-  { name: 'chromium', platform: 'web', backend: playwright(app) },
-  { name: 'webkit-mobile', platform: 'web', backend: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+  { name: 'chromium', platform: 'web', engine: playwright(app) },
+  { name: 'webkit-mobile', platform: 'web', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
 ],
 ```
 
@@ -425,7 +425,7 @@ type SecretProvider = () => string | Promise<string>;
 | --- | --- | --- | --- |
 | `username` | `string` | yes | Default username |
 | `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill — a vault lookup, a freshly computed TOTP. Recorded in the config digest by name only; a resolved value joins redaction the moment it exists and never reaches a model. An `E2E_USER_*` env override wins over a provider. |
-| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins (the backend's `allowedOrigins` declaration). It can only narrow. |
+| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins (the engine's `allowedOrigins` declaration). It can only narrow. |
 
 `credentials.user(name)` resolves a configured entry into a `Credential`. The
 username is a plain string; the password is an opaque `Secret` that test code
@@ -451,7 +451,7 @@ An unconfigured name, or a call outside an active runner, throws
 
 ```ts title="e2e.config.ts"
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
   credentials: {
     member: { username: 'member@example.test', password: 'local-dev-only' },
     admin: {
@@ -544,7 +544,7 @@ The runner reads a closed set. There are no verbosity variables; diagnostics are
 
 | Setting | Order |
 | --- | --- |
-| Base URL | the backend's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself (`url: process.env.APP_URL ?? ...`) |
+| Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself (`url: process.env.APP_URL ?? ...`) |
 | Model | `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
 | Vision model | `agent.visionModel`, then `E2E_VISION_MODEL`, then `agent.model` |
 | Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |

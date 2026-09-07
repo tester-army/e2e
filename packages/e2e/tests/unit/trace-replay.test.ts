@@ -5,7 +5,7 @@ import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import { replayTrace, verifyAnchors, type ReplayHost } from '../../src/agent/replay.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
-import type { SemanticNode } from '../../src/backend/surface.ts';
+import type { SemanticNode } from '../../src/engine/surface.ts';
 
 const upgrade: SemanticNode = { ref: { id: 'n1', revision: 'r1' }, role: 'button', name: 'Upgrade' };
 const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox', name: 'Email' };

@@ -1,6 +1,6 @@
-/** Locator action dispatch for the Playwright backend. */
+/** Locator action dispatch for the Playwright engine. */
 
-import { BackendError, type LocatorAction, type NodeRef } from '@e2edev/e2e/backend';
+import { EngineError, type LocatorAction, type NodeRef } from '@e2edev/e2e/engine';
 import {
   asActionable,
   isClassified,
@@ -97,7 +97,7 @@ export async function dispatchLocatorAction(
 
 /**
  * Whether a failure of this action may carry the value it was given. A
- * sensitive fill's plaintext must never leave the backend: its message is
+ * sensitive fill's plaintext must never leave the engine: its message is
  * scrubbed and the raw Playwright error - whose stack the report would
  * otherwise print - is not attached as a cause.
  */
@@ -105,7 +105,7 @@ function isSensitive(action: LocatorAction): action is LocatorAction & { kind: '
   return action.kind === 'fill' && action.sensitive;
 }
 
-/** Scrubs a sensitive fill value out of text that is about to leave the backend. */
+/** Scrubs a sensitive fill value out of text that is about to leave the engine. */
 function redactSensitive(text: string, action: LocatorAction): string {
   if (!isSensitive(action) || action.value.length === 0) return text;
   return text.replaceAll(action.value, '[redacted]');
@@ -114,34 +114,34 @@ function redactSensitive(text: string, action: LocatorAction): string {
 /**
  * Classifies a failed action onto the error contract (see the table above
  * `POST_DISPATCH_PATTERN` in support.ts): stale, not actionable, possibly
- * committed, or a backend fault.
+ * committed, or an engine fault.
  */
 export function classifyActionError(rawCause: unknown, action: LocatorAction): Error {
   if (isClassified(rawCause)) return rawCause;
   const text = redactSensitive(message(rawCause), action);
   const cause = isSensitive(action) ? undefined : rawCause;
   if (/strict mode violation/i.test(text)) {
-    return new BackendError('BACKEND_FAILURE', text, { retryable: false, cause });
+    return new EngineError('ENGINE_FAILURE', text, { retryable: false, cause });
   }
   if (/element (is |was )?(detached|not attached)/i.test(text)) {
-    return new BackendError('NODE_STALE', text, { retryable: true, cause });
+    return new EngineError('NODE_STALE', text, { retryable: true, cause });
   }
   if (/Timeout .*exceeded/i.test(text) || isPwTimeout(rawCause)) {
     if (POST_DISPATCH_PATTERN.test(text)) {
-      return new BackendError(
+      return new EngineError(
         'ACTION_MAY_HAVE_COMMITTED',
         `${action.kind} timed out after its input was dispatched: ${text}`,
         { retryable: false, cause },
       );
     }
-    return new BackendError(
+    return new EngineError(
       'NOT_ACTIONABLE',
       `${action.kind} did not become actionable in time: ${text}`,
       { retryable: false, cause },
     );
   }
   if (/not an? <?(input|checkbox|radio|select)|not editable|not checkable/i.test(text)) {
-    return new BackendError('NOT_ACTIONABLE', text, { retryable: false, cause });
+    return new EngineError('NOT_ACTIONABLE', text, { retryable: false, cause });
   }
-  return new BackendError('BACKEND_FAILURE', text, { retryable: false, cause });
+  return new EngineError('ENGINE_FAILURE', text, { retryable: false, cause });
 }

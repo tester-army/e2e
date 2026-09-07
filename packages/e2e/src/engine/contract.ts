@@ -1,7 +1,7 @@
 /**
- * The backend contract vocabulary (RFC0002): the platform-neutral types every
- * backend speaks and the harness consumes. A backend imports these from
- * `@e2edev/e2e/backend`; core never imports anything from a backend.
+ * The engine contract vocabulary (RFC0002): the platform-neutral types every
+ * engine speaks and the harness consumes. An engine imports these from
+ * `@e2edev/e2e/engine`; core never imports anything from an engine.
  *
  * Everything here is capability vocabulary - semantic nodes, locator
  * expressions, action kinds, the error contract - never a platform noun. A
@@ -12,9 +12,9 @@
 
 import type { Momentum, ScrollDirection, SelectOption } from '../types.ts';
 
-/** The backend contract version this runner speaks. */
-export const BACKEND_SPI_VERSION = 1;
-export type BackendSpiVersion = typeof BACKEND_SPI_VERSION;
+/** The engine contract version this runner speaks. */
+export const ENGINE_SPI_VERSION = 1;
+export type EngineSpiVersion = typeof ENGINE_SPI_VERSION;
 
 export interface OperationContext {
   readonly signal: AbortSignal;
@@ -38,7 +38,7 @@ export interface SemanticQuery {
     Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'hidden', boolean>>
   >;
   /**
-   * When true, a backend MUST exclude every match whose `states.hidden` would
+   * When true, an engine MUST exclude every match whose `states.hidden` would
    * be true, using the same predicate its `SemanticNode` reports, so that the
    * query set the harness counts is the set `toBeVisible()` would accept. The
    * predicate applies wherever the query sits in an expression: under a
@@ -85,7 +85,7 @@ export interface NodeRef {
 }
 
 /**
- * Per-field bounds a backend applies to observation-tree nodes. A `name` or
+ * Per-field bounds an engine applies to observation-tree nodes. A `name` or
  * `text` whose length reaches its limit was cut at exactly that limit, so
  * "length >= limit" is a precise truncation signal; every shorter value is
  * complete. Single-node reads are unbounded and always carry the full value.
@@ -187,8 +187,8 @@ export type LocatorAction =
       readonly momentum?: Momentum;
     };
 
-/** The closed backend error code set; the type is derived from it, so the two cannot drift. */
-export const BACKEND_ERROR_CODES = [
+/** The closed engine error code set; the type is derived from it, so the two cannot drift. */
+export const ENGINE_ERROR_CODES = [
   'NODE_STALE',
   'FRAME_NOT_FOUND',
   'FRAME_AMBIGUOUS',
@@ -198,40 +198,40 @@ export const BACKEND_ERROR_CODES = [
   'CANCELLED',
   'UNSUPPORTED_CAPABILITY',
   'INVALID_STATE',
-  'BACKEND_FAILURE',
+  'ENGINE_FAILURE',
 ] as const;
 
-export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
+export type EngineErrorCode = (typeof ENGINE_ERROR_CODES)[number];
 
 /**
  * The only codes that may be retryable: both describe a repeatable read. Any
  * other retryable claim, from this module's class or a foreign copy of it, is
- * coerced to a non-retryable `BACKEND_FAILURE`.
+ * coerced to a non-retryable `ENGINE_FAILURE`.
  */
-export const RETRYABLE_BACKEND_ERROR_CODES: ReadonlySet<BackendErrorCode> = new Set([
+export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Set([
   'NODE_STALE',
   'FRAME_NOT_FOUND',
 ]);
 
 /**
- * The error contract a backend throws across the seam. Retryability is closed
- * to `RETRYABLE_BACKEND_ERROR_CODES`; any other retryable claim is coerced to
- * a non-retryable `BACKEND_FAILURE` so a backend can never talk the harness
+ * The error contract an engine throws across the seam. Retryability is closed
+ * to `RETRYABLE_ENGINE_ERROR_CODES`; any other retryable claim is coerced to
+ * a non-retryable `ENGINE_FAILURE` so an engine can never talk the harness
  * into repeating an action that may have committed.
  */
-export class BackendError extends Error {
-  readonly code: BackendErrorCode;
+export class EngineError extends Error {
+  readonly code: EngineErrorCode;
   readonly retryable: boolean;
 
   constructor(
-    code: BackendErrorCode,
+    code: EngineErrorCode,
     message: string,
     options: { retryable: boolean; cause?: unknown },
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
-    this.name = 'BackendError';
-    if (options.retryable && !RETRYABLE_BACKEND_ERROR_CODES.has(code)) {
-      this.code = 'BACKEND_FAILURE';
+    this.name = 'EngineError';
+    if (options.retryable && !RETRYABLE_ENGINE_ERROR_CODES.has(code)) {
+      this.code = 'ENGINE_FAILURE';
       this.retryable = false;
       return;
     }

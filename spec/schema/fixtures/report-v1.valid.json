@@ -30,7 +30,7 @@
         "baseOrigin": "https://example.test",
         "environment": "test",
         "testIdAttribute": "data-testid",
-        "backend": {
+        "engine": {
           "name": "playwright",
           "version": "1.0.0",
           "spiVersion": 1

@@ -1,4 +1,4 @@
-/** Object helpers shared by the runner and, through `@e2edev/e2e/backend`, by backends. */
+/** Object helpers shared by the runner and, through `@e2edev/e2e/engine`, by engines. */
 
 /** Keys that may be `undefined` become optional with `undefined` removed from their type. */
 export type WithoutUndefined<T> = {

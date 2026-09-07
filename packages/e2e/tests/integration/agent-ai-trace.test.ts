@@ -162,7 +162,7 @@ import { playwright } from '@e2edev/playwright';
 import { installFakeLoopModel } from ${JSON.stringify(helper)};
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: 2,
   agent: { model: installFakeLoopModel(${RESPONDER_SOURCE}) },
 });

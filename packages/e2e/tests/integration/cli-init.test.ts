@@ -83,11 +83,11 @@ describe('initializing standalone projects', () => {
       identity: platform === 'ios' ? 'Settings' : 'com.android.settings',
     });
     expect(config.workers).toBe(1);
-    expect(config.targets).toMatchObject([{ name: platform, platform, backend: { name: 'agent-device' } }]);
+    expect(config.targets).toMatchObject([{ name: platform, platform, engine: { name: 'agent-device' } }]);
     expect(collection.tests.map((test) => test.title)).toEqual(['Settings opens']);
   });
 
-  it('runs the generated HTTP example without a backend or model calls', async () => {
+  it('runs the generated HTTP example without an engine or model calls', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
     linkPackages('e2e');
     const server = createServer((_request, response) => response.end('hello'));

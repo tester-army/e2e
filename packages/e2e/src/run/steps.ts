@@ -23,7 +23,7 @@ export type StepKind =
  * by this milestone.
  */
 export interface StepEvent {
-  kind: 'poll' | 'observation' | 'model' | 'policy' | 'backend' | 'schema';
+  kind: 'poll' | 'observation' | 'model' | 'policy' | 'engine' | 'schema';
   startedAt: string;
   durationMs: number;
   status: 'passed' | 'failed' | 'cancelled';

@@ -6,7 +6,7 @@ import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/ca
 import { StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
-import type { SemanticNode } from '../../src/backend/surface.ts';
+import type { SemanticNode } from '../../src/engine/surface.ts';
 
 const savedMarker: SemanticNode = {
   ref: { id: 'm1', revision: 'r1' },
@@ -275,7 +275,7 @@ describe('StepTraceSession', () => {
     expect(context.staged).toHaveLength(0);
   });
 
-  it('lets a backend-independent executor run when the baseline cannot be observed, and stages nothing', async () => {
+  it('lets an engine-independent executor run when the baseline cannot be observed, and stages nothing', async () => {
     const context = fakeContext(async () => ({ status: 'miss' }));
     const blindHost: StepCacheHost = {
       ...makeHost(['/', '/billing']),

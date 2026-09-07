@@ -9,7 +9,7 @@ import { expect, test } from './fixtures.ts';
 const SETTINGS_APP = { ios: 'Settings', android: 'com.android.settings' } as const;
 const SETTINGS_IDENTITY = /settings|com\.apple\.Preferences/i;
 
-test('reports the Settings app the backend opened', async ({ device }) => {
+test('reports the Settings app the engine opened', async ({ device }) => {
   const app = await device.foregroundApp();
   expect(`${app.name} ${app.bundleId ?? ''}`).toMatch(SETTINGS_IDENTITY);
 });

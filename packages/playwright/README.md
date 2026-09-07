@@ -1,11 +1,11 @@
 # @e2edev/playwright
 
-The browser backend for [`e2e`](https://www.npmjs.com/package/e2e), built on
+The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [Playwright](https://playwright.dev).
 
-`e2e` ships no backend of its own: every target names the backend that drives
+`e2e` ships no engine of its own: every target names the engine that drives
 it, and this package is the one for browsers. It implements the public
-`@e2edev/e2e/backend` contract, so a device or desktop backend plugs into the same
+`@e2edev/e2e/engine` contract, so a device or desktop engine plugs into the same
 seam with no privilege either way.
 
 ## Install
@@ -19,11 +19,11 @@ import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
 });
 ```
 
-The backend declares the app it drives. App options: `url` (the base URL
+The engine declares the app it drives. App options: `url` (the base URL
 `app.open()` opens; required once a test navigates), `command` (a process the
 runner starts before the run and stops after it, with `readyUrl` to poll,
 default `url`), `allowedOrigins` (default: the URL's origin), `environment`
@@ -42,18 +42,18 @@ endpoint is provisioned per run — a cloud session URL that is not known at
 config load — resolves each time it is needed. The resolver receives an
 `AbortSignal` that fires when the init or attempt is cancelled or exceeds its
 budget; a browser that connects after that is detached, never used. CDP attach
-is chromium-only, and disposing the backend detaches the session without
+is chromium-only, and disposing the engine detaches the session without
 killing the remote process the host owns.
 
 ```ts
-backend: playwright({
+engine: playwright({
   connect: { cdpEndpoint: async () => acquireCloudBrowserSession() },
 });
 ```
 
 ## The `web` fixture
 
-The backend contributes `web`: navigation, routes, cookies, dialogs, frames,
+The engine contributes `web`: navigation, routes, cookies, dialogs, frames,
 downloads, keyboard and mouse, plus `expect(web).toHaveURL()` and
 `toHaveTitle()`. Import `test` from this package to have it typed; it is the
 same runtime `test` as `e2e`'s.
@@ -71,7 +71,7 @@ test('signs in', async ({ app, screen, web }) => {
 
 ## Browsers
 
-Missing browsers are downloaded when the backend boots in each worker, before
+Missing browsers are downloaded when the engine boots in each worker, before
 that worker's first test starts, so a first-run download never counts against
 a test's timeout. It does count against `launchTimeout`, and with several
 workers the others wait on the download lock, so a cold machine with many

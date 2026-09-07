@@ -1,5 +1,5 @@
-/** Explicit fixture operations: open the step before running any backend code. */
-import type { FixtureOperation, FixtureOperations } from '../backend/index.ts';
+/** Explicit fixture operations: open the step before running any engine code. */
+import type { FixtureOperation, FixtureOperations } from '../engine/index.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { AttemptEnvironment } from './fixtures.ts';
@@ -12,9 +12,9 @@ export class FixtureRecorder {
 
   /**
    * The surface a factory returned, which must be the one it declared through
-   * `fixture` under its own name: an undeclared surface would run backend code
+   * `fixture` under its own name: an undeclared surface would run engine code
    * outside any step, and another fixture's surface would record its steps
-   * under that fixture's name. Both are backend authoring errors.
+   * under that fixture's name. Both are engine authoring errors.
    */
   require<T extends object>(name: string, surface: T): T {
     const declaredAs = this.declared.get(surface);

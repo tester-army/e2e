@@ -3,7 +3,7 @@ import { test, expect } from '@e2edev/e2e';
 /**
  * Cross-platform strategies, side by side:
  * 1. one portable test with platform branching,
- * 2. a mobile-only test on a backend target, driven entirely through `agent`.
+ * 2. a mobile-only test on an engine target, driven entirely through `agent`.
  */
 
 test('mention shows an unread badge', { session: 'member' }, async ({ app, agent, screen, platform }) => {
@@ -26,7 +26,7 @@ test(
   'tapping a push notification opens the task',
   { platforms: ['ios', 'android'] },
   async ({ agent }) => {
-    // On a backend target every device affordance is an agent tool declared
+    // On an engine target every device affordance is an agent tool declared
     // by the integration (push injection, permissions, home).
     await agent.act('allow notifications, go to the home screen, and inject a push titled "Ada mentioned you" for thread task-42');
     await agent.act('open the notification that just arrived');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode } from '../../src/backend/surface.ts';
+import type { SemanticNode } from '../../src/engine/surface.ts';
 import { containerKey, describeAction } from '../../src/agent/actions.ts';
 import { relocateDescriptor } from '../../src/cache/relocate.ts';
 

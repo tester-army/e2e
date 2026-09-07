@@ -21,7 +21,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({ url: 'https://seleniumbase.io', allowedOrigins: ['https://seleniumbase.io'] }),
+      engine: playwright({ url: 'https://seleniumbase.io', allowedOrigins: ['https://seleniumbase.io'] }),
     },
   ],
   // Third-party pages over the public internet: pages such as /canvas and

@@ -1,18 +1,18 @@
 /**
- * Runner<->backend contract tests (RFC0002, `@e2edev/e2e/backend`). Drives the real
- * runner with an instrumented in-memory backend so the guarantees out-of-tree
- * backends rely on - lifecycle order, operation contexts, error mapping,
+ * Runner<->engine contract tests (RFC0002, `@e2edev/e2e/engine`). Drives the real
+ * runner with an instrumented in-memory engine so the guarantees out-of-tree
+ * engines rely on - lifecycle order, operation contexts, error mapping,
  * capability gating - can never silently regress.
  */
 
 import { rmSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  backendFailure,
-  createFakeBackend,
+  engineFailure,
+  createFakeEngine,
   FAKE_APP_URL,
-  type FakeBackendHandle,
-} from '../helpers/fake-backend.ts';
+  type FakeEngineHandle,
+} from '../helpers/fake-engine.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
@@ -20,11 +20,11 @@ import type { E2EConfig } from '../../src/index.ts';
 
 const APP_URL = FAKE_APP_URL;
 
-/** A config over the fake backend; the app URL is the backend's own declaration. */
-function fakeConfig(fake: FakeBackendHandle, extra: Partial<E2EConfig> = {}): E2EConfig {
+/** A config over the fake engine; the app URL is the engine's own declaration. */
+function fakeConfig(fake: FakeEngineHandle, extra: Partial<E2EConfig> = {}): E2EConfig {
   return {
     specVersion: '0.1',
-    targets: [{ name: 'fake', platform: 'web', backend: fake.backend }],
+    targets: [{ name: 'fake', platform: 'web', engine: fake.engine }],
     artifacts: [],
     ...extra,
   } as E2EConfig;
@@ -54,11 +54,11 @@ test('waits for a condition', async ({ app, agent }) => {
 });
 `;
 
-describe('runner <-> backend contract', () => {
+describe('runner <-> engine contract', () => {
   it(
     'hands init the harness-resolved facts and every attempt its own context',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/contract.e2e.ts': PASSING_TEST },
         { appUrl: APP_URL, config: fakeConfig(fake) },
@@ -80,7 +80,7 @@ describe('runner <-> backend contract', () => {
       expect(attempt.signal.aborted).toBe(false);
 
       const target = outcome.report.run.targets.find((entry) => entry.id === 'fake');
-      expect(target?.backend).toEqual({ name: 'fake', version: '1.0.0', spiVersion: 1 });
+      expect(target?.engine).toEqual({ name: 'fake', version: '1.0.0', spiVersion: 1 });
       expect(target?.capabilities).toEqual(['actions', 'location', 'observation']);
       assertValidReport(outcome.report);
       project.cleanup();
@@ -91,7 +91,7 @@ describe('runner <-> backend contract', () => {
   it(
     'runs init once, before the first attempt, and dispose once after the last',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       const files = {
         'tests/one.e2e.ts': PASSING_TEST,
         'tests/two.e2e.ts': `import { test } from '@e2edev/e2e';
@@ -134,7 +134,7 @@ test('third test', async ({ app }) => {
   it(
     'classifies an init failure as infrastructure and never starts an attempt',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         onInit: () => {
           throw new Error('no device for you');
         },
@@ -155,9 +155,9 @@ test('third test', async ({ app }) => {
   );
 
   it(
-    'threads a consistent, live OperationContext through every backend call',
+    'threads a consistent, live OperationContext through every engine call',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/ops.e2e.ts': PASSING_TEST },
         { appUrl: APP_URL, config: fakeConfig(fake) },
@@ -180,29 +180,29 @@ test('third test', async ({ app }) => {
   it(
     'ends the attempt after a failure and starts a fresh one for the retry',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       // Attempts run in fresh module realms, so first-attempt state lives on disk.
       const file = `import { existsSync, writeFileSync } from 'node:fs';
 import { test } from '@e2edev/e2e';
 
-test('flaky against backend', { retries: 1 }, async ({ app }) => {
+test('flaky against engine', { retries: 1 }, async ({ app }) => {
   await app.open('/');
-  const marker = process.env.BACKEND_CONTRACT_MARKER!;
+  const marker = process.env.ENGINE_CONTRACT_MARKER!;
   if (!existsSync(marker)) {
     writeFileSync(marker, 'attempted');
     throw new Error('first attempt fails');
   }
 });
 `;
-      const marker = `/tmp/e2e-backend-contract-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      process.env['BACKEND_CONTRACT_MARKER'] = marker;
+      const marker = `/tmp/e2e-engine-contract-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      process.env['ENGINE_CONTRACT_MARKER'] = marker;
       const { outcome, project } = await runProject(
         { 'tests/retry.e2e.ts': file },
         { appUrl: APP_URL, config: fakeConfig(fake) },
       );
-      delete process.env['BACKEND_CONTRACT_MARKER'];
+      delete process.env['ENGINE_CONTRACT_MARKER'];
       rmSync(marker, { force: true });
-      const result = resultByTitle(outcome, 'flaky against backend');
+      const result = resultByTitle(outcome, 'flaky against engine');
       expect(result.status).toBe('flaky');
       expect(fake.events.filter((event) => event.includes('Attempt'))).toEqual([
         'startAttempt:0',
@@ -217,11 +217,11 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   );
 
   it(
-    'classifies a startAttempt BackendError as infrastructure, never consuming retry budget',
+    'classifies a startAttempt EngineError as infrastructure, never consuming retry budget',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         onStartAttempt() {
-          throw backendFailure('BACKEND_FAILURE', 'backend exploded');
+          throw engineFailure('ENGINE_FAILURE', 'engine exploded');
         },
       });
       const file = PASSING_TEST.replace(
@@ -237,8 +237,8 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
       const error = result.attempts[0]!.error;
       expect(error?.phase).toBe('launch');
       expect(error?.category).toBe('infrastructure');
-      expect(error?.code).toBe('BACKEND_FAILURE');
-      expect(error?.message).toContain('backend exploded');
+      expect(error?.code).toBe('ENGINE_FAILURE');
+      expect(error?.message).toContain('engine exploded');
       // Infrastructure failures are not retry-eligible: one attempt despite retries: 2.
       expect(result.attempts).toHaveLength(1);
       expect(outcome.exitCode).toBe(3);
@@ -251,11 +251,11 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   );
 
   it(
-    'classifies BackendErrors from fixture surfaces (app.open) with the canonical mapping',
+    'classifies EngineErrors from fixture surfaces (app.open) with the canonical mapping',
     async () => {
-      const failure = createFakeBackend({
+      const failure = createFakeEngine({
         onNavigate() {
-          throw backendFailure('BACKEND_FAILURE', 'renderer crashed');
+          throw engineFailure('ENGINE_FAILURE', 'renderer crashed');
         },
       });
       const { outcome, project } = await runProject(
@@ -265,14 +265,14 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
       expect(result.attempts[0]!.error?.category).toBe('infrastructure');
-      expect(result.attempts[0]!.error?.code).toBe('BACKEND_FAILURE');
+      expect(result.attempts[0]!.error?.code).toBe('ENGINE_FAILURE');
       expect(outcome.exitCode).toBe(3);
       expect(failure.stats().attemptsEnded).toBe(1);
       project.cleanup();
 
-      const unsupported = createFakeBackend({
+      const unsupported = createFakeEngine({
         onNavigate() {
-          throw backendFailure('UNSUPPORTED_CAPABILITY', 'deep links unsupported');
+          throw engineFailure('UNSUPPORTED_CAPABILITY', 'deep links unsupported');
         },
       });
       const second = await runProject(
@@ -291,7 +291,7 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   it(
     'maps a hung startAttempt to an infrastructure LAUNCH_TIMEOUT',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         onStartAttempt: () => new Promise<never>(() => {}),
       });
       const { outcome, project } = await runProject(
@@ -314,7 +314,7 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   it(
     'a failing endAttempt marks cleanup failed with a secondary error but keeps the test passed',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         onEndAttempt() {
           throw new Error('close exploded');
         },
@@ -337,7 +337,7 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   it(
     'a failing dispose is a cleanup run error and fails the run',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         onDispose() {
           throw new Error('device lease release exploded');
         },
@@ -364,15 +364,15 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   it(
     'boots the same handle again after dispose when an in-process worker is retired for another target',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/two-targets.e2e.ts': PASSING_TEST },
         {
           appUrl: APP_URL,
           config: fakeConfig(fake, {
             targets: [
-              { name: 'first', platform: 'web', backend: fake.backend },
-              { name: 'second', platform: 'web', backend: fake.backend },
+              { name: 'first', platform: 'web', engine: fake.engine },
+              { name: 'second', platform: 'web', engine: fake.engine },
             ],
           }),
         },
@@ -388,9 +388,9 @@ test('flaky against backend', { retries: 1 }, async ({ app }) => {
   );
 
   it(
-    'reaching a fixture the backend does not contribute is a configuration error',
+    'reaching a fixture the engine does not contribute is a configuration error',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       const file = `import { test } from '@e2edev/e2e';
 
 test('needs web', async ({ app, web }) => {
@@ -415,7 +415,7 @@ test('needs web', async ({ app, web }) => {
   it(
     'session.save without a state capability fails with UNSUPPORTED_CAPABILITY',
     async () => {
-      const fake = createFakeBackend({ state: false });
+      const fake = createFakeEngine({ state: false });
       // Setup tests only run when a selected test depends on their session.
       const files = {
         'tests/no-state.setup.e2e.ts': `import { test } from '@e2edev/e2e';
@@ -448,7 +448,7 @@ test('wants session', { session: 'acct' }, async ({ app }) => {
   it(
     'round-trips captured state into the dependent attempt via state.restore',
     async () => {
-      const fake = createFakeBackend({ state: true });
+      const fake = createFakeEngine({ state: true });
       const files = {
         'tests/auth.setup.e2e.ts': `import { test } from '@e2edev/e2e';
 
@@ -479,14 +479,14 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   );
 
   it(
-    'retries retryable stale nodes against the backend and never repeats a possibly committed action',
+    'retries retryable stale nodes against the engine and never repeats a possibly committed action',
     async () => {
       let performCalls = 0;
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         perform() {
           performCalls += 1;
           if (performCalls === 1) {
-            throw backendFailure('NODE_STALE', 'node went stale', true);
+            throw engineFailure('NODE_STALE', 'node went stale', true);
           }
         },
       });
@@ -498,10 +498,10 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       expect(performCalls).toBe(2);
 
       let committedCalls = 0;
-      const committed = createFakeBackend({
+      const committed = createFakeEngine({
         perform() {
           committedCalls += 1;
-          throw backendFailure('ACTION_MAY_HAVE_COMMITTED', 'maybe committed');
+          throw engineFailure('ACTION_MAY_HAVE_COMMITTED', 'maybe committed');
         },
       });
       const second = await runProject(
@@ -519,14 +519,14 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   );
 
   it(
-    're-observes when a backend reports a retryable observation failure',
+    're-observes when an engine reports a retryable observation failure',
     async () => {
       let observeCalls = 0;
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         observe() {
           observeCalls += 1;
           if (observeCalls === 1) {
-            throw backendFailure('NODE_STALE', 'execution context was destroyed', true);
+            throw engineFailure('NODE_STALE', 'execution context was destroyed', true);
           }
         },
       });
@@ -545,9 +545,9 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   it(
     'fails an agent call when a non-retryable observation failure repeats',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         observe() {
-          throw backendFailure('BACKEND_FAILURE', 'observation is broken');
+          throw engineFailure('ENGINE_FAILURE', 'observation is broken');
         },
       });
       const model = installFakeModel(() => judgment(true, 'unreachable'));
@@ -567,15 +567,15 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
     'reports the step timeout when an observation outlives the deadline that bounded it',
     async () => {
       // An observation is handed whatever remains of the invocation deadline,
-      // so one starting near the end cannot finish. The backend failure that
+      // so one starting near the end cannot finish. The engine failure that
       // follows describes a truncated budget, not a broken app.
       let observeCalls = 0;
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         async observe(operation) {
           observeCalls += 1;
           if (observeCalls === 1) return;
           await new Promise((resolve) => setTimeout(resolve, operation.timeoutMs + 50));
-          throw backendFailure('BACKEND_FAILURE', 'observation ran out of budget');
+          throw engineFailure('ENGINE_FAILURE', 'observation ran out of budget');
         },
       });
       const model = installFakeModel(() => judgment(false, 'the Submit button is disabled'));
@@ -593,9 +593,9 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   );
 
   it(
-    'surfaces UNSUPPORTED_ARTIFACT before any attempt when config demands more than the backend offers',
+    'surfaces UNSUPPORTED_ARTIFACT before any attempt when config demands more than the engine offers',
     async () => {
-      const fake = createFakeBackend();
+      const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/artifact.e2e.ts': PASSING_TEST },
         { appUrl: APP_URL, config: fakeConfig(fake, { artifacts: ['trace'] }) },
@@ -611,9 +611,9 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   );
 
   it(
-    'normalizes a plain Error thrown by a backend member to infrastructure BACKEND_FAILURE',
+    'normalizes a plain Error thrown by an engine member to infrastructure ENGINE_FAILURE',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         onNavigate() {
           throw new TypeError('renderer gone');
         },
@@ -625,7 +625,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
       expect(result.attempts[0]!.error?.category).toBe('infrastructure');
-      expect(result.attempts[0]!.error?.code).toBe('BACKEND_FAILURE');
+      expect(result.attempts[0]!.error?.code).toBe('ENGINE_FAILURE');
       expect(result.attempts[0]!.error?.message).toContain('renderer gone');
       expect(outcome.exitCode).toBe(3);
       project.cleanup();
@@ -636,10 +636,10 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   it(
     'ends the attempt when session restore fails after it started',
     async () => {
-      const fake = createFakeBackend({
+      const fake = createFakeEngine({
         state: true,
         onRestore() {
-          throw backendFailure('BACKEND_FAILURE', 'cannot seed storage');
+          throw engineFailure('ENGINE_FAILURE', 'cannot seed storage');
         },
       });
       const files = {
@@ -663,7 +663,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       });
       const result = resultByTitle(outcome, 'consumes session');
       expect(result.status).toBe('failed');
-      expect(result.attempts[0]!.error?.code).toBe('BACKEND_FAILURE');
+      expect(result.attempts[0]!.error?.code).toBe('ENGINE_FAILURE');
       expect(fake.stats().attemptsEnded).toBe(fake.stats().attemptsStarted);
       expect(fake.stats().maxConcurrentAttempts).toBe(1);
       project.cleanup();
@@ -674,7 +674,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   it(
     'runs a contributed fixture with harness discipline: steps, namespaces, accessors, bounds, matchers, artifacts',
     async () => {
-      const fake = createFakeBackend({ fixtures: true });
+      const fake = createFakeEngine({ fixtures: true });
       const file = `import { test, expect } from '@e2edev/e2e';
 
 test('drives the gadget', async (fixtures) => {
@@ -735,7 +735,7 @@ test('bounds a hanging fixture call', async (fixtures) => {
   it(
     'gates requires against the declared capability set at selection',
     async () => {
-      const fake = createFakeBackend({ fixtures: true });
+      const fake = createFakeEngine({ fixtures: true });
       const file = `import { test } from '@e2edev/e2e';
 
 test('needs gadget', { requires: ['gadget'] }, async () => {});
@@ -755,9 +755,9 @@ test('needs web', { requires: ['web'] }, async () => {});
   );
 
   it(
-    'registers a backend screenshot as an attempt artifact and reports unsupported gestures honestly',
+    'registers an engine screenshot as an attempt artifact and reports unsupported gestures honestly',
     async () => {
-      const fake = createFakeBackend({ artifacts: true });
+      const fake = createFakeEngine({ artifacts: true });
       const file = `import { test } from '@e2edev/e2e';
 
 test('takes evidence', async ({ app }) => {

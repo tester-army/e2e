@@ -1,8 +1,8 @@
 /**
  * Ctrl-C against the built CLI, the way a terminal delivers it: SIGINT to the
- * whole process group, runner and workers alike. The backend is a file-logging
+ * whole process group, runner and workers alike. The engine is a file-logging
  * fake declared in the fixture config, so the test can see, from outside,
- * whether the backend was disposed and whether the worker outlived the runner.
+ * whether the engine was disposed and whether the worker outlived the runner.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -24,14 +24,14 @@ const LOG_HELPER =
 
 const CONFIG = `import { appendFileSync } from 'node:fs';
 import { defineConfig } from '@e2edev/e2e';
-import { defineBackend } from '@e2edev/e2e/backend';
+import { defineEngine } from '@e2edev/e2e/engine';
 
 ${LOG_HELPER}
 const node = { ref: { id: 'n1', revision: '' }, role: 'button', name: 'Go', states: { hidden: false } };
 
 export default defineConfig({
   tests: 'tests/**/*.e2e.ts',
-  targets: [{ name: 'fake', platform: 'ios', backend: defineBackend({
+  targets: [{ name: 'fake', platform: 'ios', engine: defineEngine({
     name: 'signal-fake',
     version: '1.0.0',
     spiVersion: 1,
@@ -89,7 +89,7 @@ interface RunningCli {
   /** The pid of the worker that started the test. */
   readonly workerPid: number;
   readonly exit: Promise<number | null>;
-  /** Backend and fixture events logged so far, pid prefix stripped. */
+  /** Engine and fixture events logged so far, pid prefix stripped. */
   events(): string[];
   output(): string;
   signalGroup(signal: NodeJS.Signals): void;
@@ -165,7 +165,7 @@ function alive(pid: number): boolean {
 
 describe('interrupt signals against the CLI', () => {
   it(
-    'one Ctrl-C ends a sleeping test at once, disposes the backend, and exits 130',
+    'one Ctrl-C ends a sleeping test at once, disposes the engine, and exits 130',
     () =>
       withRunningTest(SLEEPING_TEST, async (run) => {
         const interruptedAt = Date.now();
@@ -207,7 +207,7 @@ describe('interrupt signals against the CLI', () => {
   );
 
   it(
-    'a worker whose runner is killed disposes its backend and exits on its own',
+    'a worker whose runner is killed disposes its engine and exits on its own',
     () =>
       withRunningTest(SLEEPING_TEST, async (run) => {
         const pid = run.workerPid;

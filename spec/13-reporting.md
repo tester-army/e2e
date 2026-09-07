@@ -39,22 +39,22 @@ ignore unknown extension keys and reject unknown core fields.
 - Serial-group ID is SHA-256 of `{ serialId, targetId }`; serial member step ID
   is `<group-attempt-id>:member:<member-index>:<step-index>`.
 
-IDs never contain secrets, absolute paths, random model text, or backend node
+IDs never contain secrets, absolute paths, random model text, or engine node
 references.
 
 ## `report-1`
 
 `report-v1.schema.json` is the canonical run document. It contains runner and
-environment provenance, resolved target/backend manifests, every discovered
+environment provenance, resolved target/engine manifests, every discovered
 test-target result (including filtered/skipped pairs), all attempts, steps,
 artifacts, errors, cleanup outcomes, and selection counts.
-Target provenance includes the backend name/version/contract version, the
+Target provenance includes the engine name/version/contract version, the
 declared capability set (harness capabilities plus contributed fixture names),
 artifact capabilities, state capability, origin, and environment.
-`artifactCapabilities` lists the configurable kinds a backend can produce on
+`artifactCapabilities` lists the configurable kinds an engine can produce on
 request, `screenshot` and `trace`; `video` is not a configurable capability,
 though it remains a valid kind for a fixture to attach. The report carries no
-platform noun and no backend method name: a step that changes the viewport
+platform noun and no engine method name: a step that changes the viewport
 records the resulting viewport on that step as an optional field, and nothing
 else about the surface is assumed.
 
@@ -63,15 +63,15 @@ discovered-result limit. That error report contains no results and zero summary
 counts, avoiding an unbounded report while preserving the typed run error.
 
 `configDigest` is SHA-256/JCS of resolved config after replacing credential
-material and model API keys with `{ secretName }`, replacing backend handles with
+material and model API keys with `{ secretName }`, replacing engine handles with
 their manifests, normalizing paths relative to project root, and omitting
-ambient environment values not represented in config. A backend manifest
+ambient environment values not represented in config. An engine manifest
 digests as its name, version, contract version, capability set, and app
 declaration; every `command.env`, `services[].env`, and
 `services[].teardown.env` value in that declaration is replaced by
 `{ envName: key }`, so no environment value contributes to the digest. Base
 URLs cannot contain queries, userinfo, or fragments. A target's `baseOrigin`
-is the origin of its backend's declared URL and is absent for a surface
+is the origin of its engine's declared URL and is absent for a surface
 without one.
 
 ### Ordering
@@ -116,17 +116,17 @@ Stacks are optional, project-root-relative, source-mapped, and sanitized. Core
 error/event objects contain no open metadata bags; recognized extensions are
 validated against their own schema before a trusted consumer uses them. A
 report MUST NOT include environment values, authorization headers, cookies,
-session payloads, provider requests/responses, or raw backend dumps.
+session payloads, provider requests/responses, or raw engine dumps.
 
 ### Steps and events
 
 Top-level step boundaries follow 10-determinism.md. Polls, model calls,
-observations, tool proposals, policy decisions, backend operations, and schema
+observations, tool proposals, policy decisions, engine operations, and schema
 validation are child events. Events record metadata and counts, not sensitive
 payloads. Core event metadata is limited to bounded name, count, byte, decision,
 code, and detail fields defined by the schema.
 
-A committed backend action's event carries `detail`: bounded, redacted prose
+A committed engine action's event carries `detail`: bounded, redacted prose
 for what the action did — `tap button "Approve"`, `fill secret "password"
 into textbox "Password"` — with the same wording as the recorded trace
 summaries (10-determinism.md), so a live reporter can render the act without
@@ -185,8 +185,8 @@ runner implementation, not a standalone specification-repository script.
 
 ## `session-1`
 
-`session-v1.schema.json` wraps AES-256-GCM encrypted backend state with run,
-target, backend, platform, app identity, creation, required expiry, IV, tag, and
+`session-v1.schema.json` wraps AES-256-GCM encrypted engine state with run,
+target, engine, platform, app identity, creation, required expiry, IV, tag, and
 ciphertext. All cleartext metadata is authenticated additional data using JCS.
 
 The IV is a unique random 96-bit value for the per-run key and session write;

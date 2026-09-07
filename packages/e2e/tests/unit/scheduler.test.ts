@@ -43,7 +43,7 @@ function makeTarget(name: string, index: number): ResolvedTarget {
     name,
     index,
     platform: 'web',
-    backend: undefined,
+    engine: undefined,
     app: EMPTY_APP,
   };
 }

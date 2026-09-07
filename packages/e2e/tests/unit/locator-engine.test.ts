@@ -1,23 +1,23 @@
 /**
- * LocatorEngine <-> backend error contract: retry-on-stale semantics and the
- * complete BackendError -> runner taxonomy mapping.
+ * LocatorEngine <-> engine error contract: retry-on-stale semantics and the
+ * complete EngineError -> runner taxonomy mapping.
  */
 
 import { describe, expect, it } from 'vitest';
 import {
-  BackendError,
-  type BackendErrorCode,
+  EngineError,
+  type EngineErrorCode,
   type TargetSession,
   type LocatorExpression,
   type NodeRef,
   type SemanticNode,
-} from '../../src/backend/surface.ts';
+} from '../../src/engine/surface.ts';
 import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/locator/engine.ts';
 import { E2EError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
-import { defineBackend } from '../../src/backend/index.ts';
-import { createBackendSession } from '../../src/backend/session.ts';
+import { defineEngine } from '../../src/engine/index.ts';
+import { createEngineSession } from '../../src/engine/session.ts';
 import { roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
 
 const REF: NodeRef = { id: 'node-1', revision: 'rev-1' };
@@ -34,14 +34,14 @@ interface ScreenScript {
 }
 
 /**
- * A `NODE_STALE` thrown by a backend loaded through another module registry, so
- * it is not an instance of the runner's own `BackendError` class. The runner's
+ * A `NODE_STALE` thrown by an engine loaded through another module registry, so
+ * it is not an instance of the runner's own `EngineError` class. The runner's
  * staleness retries must recognize it structurally, or a recoverable race
- * becomes an immediate test failure for every out-of-tree backend.
+ * becomes an immediate test failure for every out-of-tree engine.
  */
 function foreignStale(retryable: boolean): Error {
   const error = new Error('stale');
-  error.name = 'BackendError';
+  error.name = 'EngineError';
   Object.assign(error, { code: 'NODE_STALE', retryable });
   return error;
 }
@@ -57,30 +57,30 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
       async locate() {
         const step = next(script.resolve, 'resolve');
         if (step === undefined || typeof step === 'function') return step?.() ?? [REF];
-        if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
+        if (step === 'stale') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
         if (step === 'foreign-stale') throw foreignStale(true);
         if (step === 'frame')
-          throw new BackendError('FRAME_NOT_FOUND', 'frame missing', { retryable: true });
-        throw new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false });
+          throw new EngineError('FRAME_NOT_FOUND', 'frame missing', { retryable: true });
+        throw new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false });
       },
       async read() {
         const step = next(script.read, 'read');
         if (step === undefined || typeof step === 'function') return step?.() ?? NODE;
-        if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: false });
+        if (step === 'stale') throw new EngineError('NODE_STALE', 'stale', { retryable: false });
         if (step === 'foreign-stale') throw foreignStale(false);
-        if (step === 'stale-retryable') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
-        throw new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false });
+        if (step === 'stale-retryable') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
+        throw new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false });
       },
       async perform() {
         const step = next(script.perform, 'perform');
         if (step === undefined || typeof step === 'function') return step?.();
-        if (step === 'stale') throw new BackendError('NODE_STALE', 'stale', { retryable: true });
+        if (step === 'stale') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
         if (step === 'foreign-stale') throw foreignStale(true);
         if (step === 'committed')
-          throw new BackendError('ACTION_MAY_HAVE_COMMITTED', 'maybe committed', {
+          throw new EngineError('ACTION_MAY_HAVE_COMMITTED', 'maybe committed', {
             retryable: false,
           });
-        throw new BackendError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
+        throw new EngineError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
       },
       async swipe() {},
   } as unknown as TargetSession;
@@ -111,7 +111,7 @@ describe('LocatorEngine read retry contract', () => {
 });
 
 describe('LocatorEngine resolve retry contract', () => {
-  it('retries retryable frame misses until the backend recovers', async () => {
+  it('retries retryable frame misses until the engine recovers', async () => {
     const { engine, calls } = makeEngine({ resolve: ['frame', 'stale', () => [REF]] });
     const refs = await engine.resolveAll(EXPRESSION);
     expect(refs).toEqual([REF]);
@@ -122,7 +122,7 @@ describe('LocatorEngine resolve retry contract', () => {
     const { engine, calls } = makeEngine({ resolve: ['failure'] });
     await expect(engine.resolveAll(EXPRESSION)).rejects.toMatchObject({
       category: 'infrastructure',
-      code: 'BACKEND_FAILURE',
+      code: 'ENGINE_FAILURE',
     });
     expect(calls.resolve).toBe(1);
   });
@@ -195,7 +195,7 @@ describe('LocatorEngine read contract', () => {
   it('translates non-stale read failures', async () => {
     const { engine } = makeEngine({ read: ['failure'] });
     await expect(engine.tryRead(EXPRESSION, new Deadline(5_000))).rejects.toMatchObject({
-      code: 'BACKEND_FAILURE',
+      code: 'ENGINE_FAILURE',
       category: 'infrastructure',
     });
   });
@@ -207,7 +207,7 @@ describe('LocatorEngine read contract', () => {
 });
 
 describe('translateLocatorError mapping table', () => {
-  const cases: Array<[BackendErrorCode, string, string]> = [
+  const cases: Array<[EngineErrorCode, string, string]> = [
     ['NODE_STALE', 'test', 'LOCATOR_NOT_FOUND'],
     ['FRAME_NOT_FOUND', 'test', 'LOCATOR_NOT_FOUND'],
     ['FRAME_AMBIGUOUS', 'test', 'LOCATOR_AMBIGUOUS'],
@@ -217,17 +217,17 @@ describe('translateLocatorError mapping table', () => {
     ['CANCELLED', 'infrastructure', 'CANCELLED'],
     ['UNSUPPORTED_CAPABILITY', 'configuration', 'UNSUPPORTED_CAPABILITY'],
     ['INVALID_STATE', 'test', 'APP_NOT_OPEN'],
-    ['BACKEND_FAILURE', 'infrastructure', 'BACKEND_FAILURE'],
+    ['ENGINE_FAILURE', 'infrastructure', 'ENGINE_FAILURE'],
   ];
 
-  it.each(cases)('%s -> %s/%s', (backendCode, category, code) => {
+  it.each(cases)('%s -> %s/%s', (engineCode, category, code) => {
     const translated = translateLocatorError(
-      new BackendError(backendCode, 'boom', { retryable: false }),
+      new EngineError(engineCode, 'boom', { retryable: false }),
     );
     expect(translated).toBeInstanceOf(E2EError);
     expect(translated.category).toBe(category);
     expect(translated.code).toBe(code);
-    expect(translated.cause).toBeInstanceOf(BackendError);
+    expect(translated.cause).toBeInstanceOf(EngineError);
   });
 
   it('passes existing E2EErrors through unchanged', () => {
@@ -235,17 +235,17 @@ describe('translateLocatorError mapping table', () => {
     expect(translateLocatorError(original)).toBe(original);
   });
 
-  it('wraps unknown errors as infrastructure BACKEND_FAILURE', () => {
+  it('wraps unknown errors as infrastructure ENGINE_FAILURE', () => {
     const translated = translateLocatorError(new Error('socket hangup'));
     expect(translated.category).toBe('infrastructure');
-    expect(translated.code).toBe('BACKEND_FAILURE');
+    expect(translated.code).toBe('ENGINE_FAILURE');
     expect(translated.message).toContain('socket hangup');
     expect(translateLocatorError('string failure').message).toContain('string failure');
   });
 
   it('appends the locator description when an expression is provided', () => {
     const translated = translateLocatorError(
-      new BackendError('NODE_STALE', 'stale', { retryable: false }),
+      new EngineError('NODE_STALE', 'stale', { retryable: false }),
       EXPRESSION,
     );
     expect(translated.message).toContain('stale');
@@ -254,17 +254,17 @@ describe('translateLocatorError mapping table', () => {
 });
 
 describe('LocatorEngine visible queries', () => {
-  /** A visible node and its hidden twin, as a backend that ignores `visible` would report them. */
+  /** A visible node and its hidden twin, as an engine that ignores `visible` would report them. */
   const twins: SemanticNode[] = [
     { ref: { id: 'shown', revision: '' }, role: 'button', name: 'Save', states: {} },
     { ref: { id: 'hidden', revision: '' }, role: 'button', name: 'Save', states: { hidden: true } },
   ];
 
-  /** Engine over the real session adapter and a backend that answers every locate with the twins. */
-  function makeEngineOverBackend(nodes: readonly SemanticNode[] = twins) {
+  /** Locator engine over the real session adapter and an engine that answers every locate with the twins. */
+  function makeLocatorEngineOverEngine(nodes: readonly SemanticNode[] = twins) {
     const expressions: LocatorExpression[] = [];
-    const session = createBackendSession({
-      backend: defineBackend({
+    const session = createEngineSession({
+      engine: defineEngine({
         name: 'twins',
         version: '1.0.0',
         spiVersion: 1,
@@ -297,14 +297,14 @@ describe('LocatorEngine visible queries', () => {
   ];
 
   it.each(kinds)('%s with visible: true resolves the shown twin and ignores the hidden one', async (_kind, build) => {
-    const { engine } = makeEngineOverBackend();
+    const { engine } = makeLocatorEngineOverEngine();
     const ref = await engine.resolveExactlyOne(build(true), new Deadline(5_000));
     expect(ref.id).toBe('shown');
     expect(await engine.resolveAll(build(true))).toHaveLength(1);
   });
 
   it.each(kinds)('%s without visible keeps the hidden twin, so the pair is LOCATOR_AMBIGUOUS', async (_kind, build) => {
-    const { engine } = makeEngineOverBackend();
+    const { engine } = makeLocatorEngineOverEngine();
     await expect(engine.resolveExactlyOne(build(undefined), new Deadline(5_000))).rejects.toMatchObject({
       code: 'LOCATOR_AMBIGUOUS',
     });
@@ -315,7 +315,7 @@ describe('LocatorEngine visible queries', () => {
   });
 
   it('names the predicate in the ambiguity message when two visible nodes remain', async () => {
-    const { engine } = makeEngineOverBackend([
+    const { engine } = makeLocatorEngineOverEngine([
       { ref: { id: 'a', revision: '' }, role: 'button', name: 'Save' },
       { ref: { id: 'b', revision: '' }, role: 'button', name: 'Save' },
     ]);
@@ -325,17 +325,17 @@ describe('LocatorEngine visible queries', () => {
     });
   });
 
-  it('keeps nodes whose backend reports no visibility at all', async () => {
-    const { engine } = makeEngineOverBackend([{ ref: { id: 'unknown', revision: '' }, role: 'button', name: 'Save' }]);
+  it('keeps nodes whose engine reports no visibility at all', async () => {
+    const { engine } = makeLocatorEngineOverEngine([{ ref: { id: 'unknown', revision: '' }, role: 'button', name: 'Save' }]);
     const ref = await engine.resolveExactlyOne(kinds[0]![1](true), new Deadline(5_000));
     expect(ref.id).toBe('unknown');
   });
 
-  it('hands a visible query under an index to the backend unchanged: only it can filter before nth', async () => {
-    const { engine, expressions } = makeEngineOverBackend();
+  it('hands a visible query under an index to the engine unchanged: only it can filter before nth', async () => {
+    const { engine, expressions } = makeLocatorEngineOverEngine();
     const indexed: LocatorExpression = { kind: 'index', source: kinds[1]![1](true), index: 'first' };
-    // The adapter cannot know which of the backend's answers came first, so it
-    // must not second-guess them; the backend applied `visible` before `first`.
+    // The adapter cannot know which of the engine's answers came first, so it
+    // must not second-guess them; the engine applied `visible` before `first`.
     expect(await engine.resolveAll(indexed)).toHaveLength(2);
     expect(expressions[0]).toEqual(indexed);
   });

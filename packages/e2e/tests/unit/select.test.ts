@@ -3,7 +3,7 @@ import { collectFromRegistration, type Collection } from '../../src/collect/coll
 import { collectModule, test } from '../../src/collect/registry.ts';
 import { resolveOptions, select } from '../../src/collect/select.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
-import { defineBackend } from '../../src/backend/index.ts';
+import { defineEngine } from '../../src/engine/index.ts';
 
 const noop = async () => {};
 const ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
@@ -129,10 +129,10 @@ describe('select', () => {
       test('needs device', { requires: ['device'] }, noop);
       test('needs web', { requires: ['web'] }, noop);
     });
-    // Capabilities are the backend's declared set: harness tiers plus one name
-    // per contributed fixture. This backend contributes `web`, not `device`.
-    const backend = defineBackend({ name: 'toy', version: '1.0.0', spiVersion: 1, fixtures: { web: () => ({}) } });
-    const selection = select(col, config({ targets: [{ name: 'web', platform: 'web', backend }] }));
+    // Capabilities are the engine's declared set: harness tiers plus one name
+    // per contributed fixture. This engine contributes `web`, not `device`.
+    const engine = defineEngine({ name: 'toy', version: '1.0.0', spiVersion: 1, fixtures: { web: () => ({}) } });
+    const selection = select(col, config({ targets: [{ name: 'web', platform: 'web', engine }] }));
     const device = selection.pairs.find((pair) => pair.test.title === 'needs device')!;
     expect(device.disposition).toBe('skip');
     expect(device.skip?.cause).toBe('capability-unavailable');

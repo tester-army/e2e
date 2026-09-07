@@ -155,7 +155,7 @@ describe('observe() with the tree and pixels', () => {
     expect(JSON.stringify(seen!.tree)).not.toContain('selector');
   });
 
-  it('returns masked pixels when the backend can prove masking', () => {
+  it('returns masked pixels when the engine can prove masking', () => {
     expect(seen?.pixelsWithheld).toBeUndefined();
     expect(seen?.pixels).toBeDefined();
     expect(seen!.pixels!.width).toBeGreaterThan(0);

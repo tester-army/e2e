@@ -1,6 +1,6 @@
 /**
  * The internal session surface the harness consumes for one attempt. It is
- * produced only by `createBackendSession` (the backend-to-session adapter) and
+ * produced only by `createEngineSession` (the engine-to-session adapter) and
  * is never part of the public API: the locator engine, the agent tiers, and
  * the attempt executor program against it so that revision minting, staleness
  * checks, and capability gating exist exactly once.
@@ -17,20 +17,20 @@ import type {
   OperationContext,
   SemanticNode,
 } from './contract.ts';
-import type { BackendObserveOptions, BackendState } from './index.ts';
+import type { EngineObserveOptions, EngineState } from './index.ts';
 
 export type * from './contract.ts';
-export { BackendError } from './contract.ts';
-export type { BackendObserveOptions, BackendState } from './index.ts';
+export { EngineError } from './contract.ts';
+export type { EngineObserveOptions, EngineState } from './index.ts';
 
 /**
  * The agent's action grammar, by verb. A session declares which verbs its
- * backend can honor so the agent offers the model exactly that vocabulary.
+ * engine can honor so the agent offers the model exactly that vocabulary.
  */
 export type GrammarVerb = 'tap' | 'type' | 'typeSecret' | 'press' | 'select' | 'scroll' | 'navigate';
 
 export interface Observation {
-  /** Location captured with this tree, when the backend can provide it. */
+  /** Location captured with this tree, when the engine can provide it. */
   readonly url?: string;
   readonly revision: string;
   readonly capturedAt: string;
@@ -42,7 +42,7 @@ export interface Observation {
     readonly scale: number;
   };
   /**
-   * What the backend masked against what it saw. Pixel completeness is judged
+   * What the engine masked against what it saw. Pixel completeness is judged
    * downstream from these counts: fewer masked regions than secure nodes
    * withholds the pixels and keeps the tree.
    */
@@ -73,10 +73,10 @@ export interface SessionArtifacts {
 }
 
 export interface TargetSession {
-  /** Grammar verbs the backend can honor, read from its declaration. */
+  /** Grammar verbs the engine can honor, read from its declaration. */
   readonly verbs: ReadonlySet<GrammarVerb>;
   /** Captures one atomic agent observation; the harness redacts it downstream. */
-  observe(operation: OperationContext, options?: BackendObserveOptions): Promise<Observation>;
+  observe(operation: OperationContext, options?: EngineObserveOptions): Promise<Observation>;
   /** Resolves immediately; the runner owns query polling and strictness. */
   locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly NodeRef[]>;
   /** Reads one node from the resolution that minted its ref. */
@@ -92,9 +92,9 @@ export interface TargetSession {
   readonly app: SessionApp;
   readonly artifacts: SessionArtifacts;
   /** Captures immutable app state for a session envelope. */
-  captureState?(operation: OperationContext): Promise<BackendState>;
+  captureState?(operation: OperationContext): Promise<EngineState>;
   /** Replaces current app state with an immutable captured state. */
-  restoreState?(state: BackendState, operation: OperationContext): Promise<void>;
+  restoreState?(state: EngineState, operation: OperationContext): Promise<void>;
   /** Current top-level URL of the surface, when the platform has one. */
   url?(operation: OperationContext): Promise<string>;
   /** Ends the attempt's isolation within the operation's budget. Idempotent. */

@@ -17,7 +17,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'https://example.com',
         allowedOrigins: ['https://example.com', 'https://www.iana.org', 'https://playwright.dev'],
       }),

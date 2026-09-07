@@ -20,7 +20,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'https://tester.army',
         allowedOrigins: ['https://tester.army', 'https://www.tester.army', 'https://auth.tester.army'],
       }),

@@ -1,22 +1,22 @@
 # 08 - Targets and Deterministic Surfaces
 
 `web-0.1` defines web execution. The canonical source API is
-[`api/e2e.d.ts`](./api/e2e.d.ts); the normalized backend contract is
+[`api/e2e.d.ts`](./api/e2e.d.ts); the normalized engine contract is
 [`api/driver.d.ts`](./api/driver.d.ts).
 
 ## Targets
 
 A target is one named execution environment. Every target has a unique
-required `name`, a platform ID, and the backend that serves it (05-config.md);
-there is no implicit target. The backend declares the app it drives, so two
+required `name`, a platform ID, and the engine that serves it (05-config.md);
+there is no implicit target. The engine declares the app it drives, so two
 browsers on one app each name it:
 
 ```ts
 const app = { url: 'http://localhost:3000' };
 export default defineConfig({
   targets: [
-    { name: 'chromium', platform: 'web', backend: playwright({ ...app, browser: 'chromium' }) },
-    { name: 'firefox', platform: 'web', backend: playwright({ ...app, browser: 'firefox' }) },
+    { name: 'chromium', platform: 'web', engine: playwright({ ...app, browser: 'chromium' }) },
+    { name: 'firefox', platform: 'web', engine: playwright({ ...app, browser: 'firefox' }) },
   ],
 });
 ```
@@ -110,7 +110,7 @@ expressions and negative indices are errors.
 ## Waiting and actionability
 
 The runner owns query, matcher, URL, and condition polling. `resolve` and
-`read` in `driver-1` are immediate. This rule overrides backend defaults and
+`read` in `driver-1` are immediate. This rule overrides engine defaults and
 ensures one timeout model across drivers.
 
 The driver owns actionability for one already resolved node. For web, an
@@ -243,7 +243,7 @@ test statement can complete.
 
 `waitForDownload` registers the waiter before running its trigger. The returned
 path is artifact-root-relative and contained beneath the attempt directory.
-Temporary backend paths are never exposed.
+Temporary engine paths are never exposed.
 
 Cookies supplied with `url` derive domain/path from that URL. Cookies supplied
 with `domain` default path to `/`. `expires` is a Unix timestamp in whole

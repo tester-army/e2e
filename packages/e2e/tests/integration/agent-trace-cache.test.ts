@@ -491,7 +491,7 @@ function toolsOnlyExecutor(record: ExecutorRecord): StepExecutor {
   };
 }
 
-describe('trace cache: a backend-independent executor is not gated by the cache', () => {
+describe('trace cache: an engine-independent executor is not gated by the cache', () => {
   let app: FixtureApp;
 
   beforeAll(async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { defineBackend, type BackendHandle } from '../../src/backend/index.ts';
-import { createBackendSession } from '../../src/backend/session.ts';
+import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
+import { createEngineSession } from '../../src/engine/session.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { Deadline } from '../../src/internal/time.ts';
@@ -13,15 +13,15 @@ import { defineTool, getToolContext } from '../../src/agent/tool.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
 
-/** A real fixture graph with an in-memory backend and no runner process or model provider. */
-function runtime(backend: BackendHandle, overrides: E2EConfig = {}) {
-  const config = resolveConfig({ targets: [{ name: 'fake', platform: 'custom', backend }], cache: 'off', ...overrides }, {
+/** A real fixture graph with an in-memory engine and no runner process or model provider. */
+function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
+  const config = resolveConfig({ targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off', ...overrides }, {
     projectRoot: process.cwd(), env: {},
   });
   const signal = new AbortController().signal;
   const steps = new StepRecorder('attempt');
   const fixtures = createFixtures({
-    config, target: config.targets[0]!, session: createBackendSession({ backend, targetName: 'fake' }),
+    config, target: config.targets[0]!, session: createEngineSession({ engine, targetName: 'fake' }),
     steps, budget: new AttemptBudget(signal, new Deadline(10_000)), runId: 'run', attemptId: 'attempt',
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: () => 'artifact' }, priorSteps: () => steps.completed(),
@@ -30,7 +30,7 @@ function runtime(backend: BackendHandle, overrides: E2EConfig = {}) {
   return { fixtures, steps };
 }
 
-const empty = () => defineBackend({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+const empty = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
 
 describe('explicit fixture operations', () => {
   it('preserves mutable state, identity, and private-field receivers', async () => {
@@ -45,10 +45,10 @@ describe('explicit fixture operations', () => {
       get value(): number { return this.#value; }
     }
     const counter = new Counter();
-    const backend = defineBackend({ name: 'fake', version: '1', spiVersion: 1, fixtures: {
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, fixtures: {
       counter: (context) => context.fixture('counter', counter, { increment: { kind: 'resource' } }),
     } });
-    const { fixtures, steps } = runtime(backend);
+    const { fixtures, steps } = runtime(engine);
     const fixture = (fixtures as unknown as { counter: Counter }).counter;
     await fixture.increment();
     expect(fixture.count).toBe(1);
@@ -79,13 +79,13 @@ describe('explicit fixture operations', () => {
       set counter(value: Counter) { this.#counter = value; }
     }
     const original = new Gadget();
-    const backend = defineBackend({ name: 'fake', version: '1', spiVersion: 1, fixtures: {
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, fixtures: {
       gadget: (context) => context.fixture('gadget', original, {
         counter: { increment: { kind: 'resource' } },
         plain: {},
       }),
     } });
-    const { fixtures, steps } = runtime(backend);
+    const { fixtures, steps } = runtime(engine);
     const gadget = (fixtures as unknown as { gadget: typeof original }).gadget;
     expect(reads).toBe(0);
     await gadget.counter.increment();
@@ -101,7 +101,7 @@ describe('explicit fixture operations', () => {
 
   it('opens the step before invoking a method, preserves sync accessors, and verifies contributed assertions', async () => {
     const accessor = () => ({ direct: true });
-    const backend = defineBackend({
+    const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
       fixtures: {
         gadget: (context) => context.fixture('gadget', context.expectable({
@@ -117,7 +117,7 @@ describe('explicit fixture operations', () => {
         }),
       },
     });
-    const { fixtures, steps } = runtime(backend);
+    const { fixtures, steps } = runtime(engine);
     const gadget = (fixtures as unknown as { gadget: { accessor: typeof accessor; attach(): Promise<void>; fail(): Promise<void> } }).gadget;
     expect(gadget.accessor).toBe(accessor);
     await gadget.attach();
@@ -129,10 +129,10 @@ describe('explicit fixture operations', () => {
   });
 
   it('rejects a factory that returns a surface it did not declare through context.fixture', () => {
-    const backend = defineBackend({ name: 'undeclared', version: '1', spiVersion: 1, fixtures: {
+    const engine = defineEngine({ name: 'undeclared', version: '1', spiVersion: 1, fixtures: {
       gadget: () => ({ async capture() {} }),
     } });
-    const { fixtures } = runtime(backend);
+    const { fixtures } = runtime(engine);
     expect(() => (fixtures as unknown as { gadget: object }).gadget).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('fixture "gadget"') }),
     );
@@ -140,14 +140,14 @@ describe('explicit fixture operations', () => {
 
   it('rejects a factory that returns a surface another fixture declared', () => {
     let shared: object | undefined;
-    const backend = defineBackend({ name: 'aliased', version: '1', spiVersion: 1, fixtures: {
+    const engine = defineEngine({ name: 'aliased', version: '1', spiVersion: 1, fixtures: {
       gadget: (context) => {
         shared = context.fixture('gadget', { async capture() {} }, { capture: { kind: 'resource' } });
         return shared;
       },
       widget: (context) => shared ?? context.fixture('gadget', { async capture() {} }, { capture: { kind: 'resource' } }),
     } });
-    const { fixtures } = runtime(backend);
+    const { fixtures } = runtime(engine);
     const surfaces = fixtures as unknown as { gadget: object; widget: object };
     expect(surfaces.gadget).toBe(shared);
     expect(() => surfaces.widget).toThrow(
@@ -178,11 +178,11 @@ describe('project tool dispatch', () => {
 
   it('serializes grammar actions with project mutations and records failed tools accurately', async () => {
     const order: string[] = [];
-    const backend = defineBackend({ name: 'fake', version: '1', spiVersion: 1,
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
       observe: async () => ({ nodes: [{ ref: { id: 'button', revision: '' }, role: 'button' }] }),
       perform: async () => { order.push('tap'); },
     });
-    const { fixtures, steps } = runtime(backend, { agent: { executor: { name: 'test', async runStep(context) {
+    const { fixtures, steps } = runtime(engine, { agent: { executor: { name: 'test', async runStep(context) {
       await context.observe();
       const tool = context.budgets.runTool({ name: 'mutation', mutates: true }, async () => {
         order.push('start');
@@ -204,7 +204,7 @@ describe('project tool dispatch', () => {
   it('gives read-only tools the guarded observation capability', async () => {
     let path: string | undefined;
     let urlReads = 0;
-    const backend = defineBackend({ name: 'fake', version: '1', spiVersion: 1,
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
       observe: async () => ({ nodes: [], url: 'app://device/settings/general' }),
       url: async () => { urlReads += 1; return 'app://device/wrong'; },
     });
@@ -218,7 +218,7 @@ describe('project tool dispatch', () => {
         return observation.pixelsWithheld;
       } }, { mutates: false }),
     } });
-    await runtime(backend, { agent: { executor, model } }).fixtures.agent.act('inspect');
+    await runtime(engine, { agent: { executor, model } }).fixtures.agent.act('inspect');
     expect(path).toBe('/settings/general');
     expect(urlReads).toBe(0);
   });

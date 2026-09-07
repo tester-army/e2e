@@ -1,6 +1,6 @@
 /**
  * Worker process glue. Owns nothing but the process: it loads the config
- * itself (config modules may hold live backend handles that cannot cross
+ * itself (config modules may hold live engine handles that cannot cross
  * IPC), resolves each unit's pairs by re-importing the file, and hands all
  * actual execution to `TargetWorker`.
  */
@@ -140,7 +140,7 @@ function main(): void {
 
   // The channel closes when the runner is gone: killed, crashed, or exited
   // before this worker. A worker nobody is listening to must not keep driving
-  // a device or a browser: it tears its backend down right away — bounded by
+  // a device or a browser: it tears its engine down right away — bounded by
   // the cleanup budget like every disposal — and exits.
   process.on('disconnect', () => {
     if (worker === undefined) process.exit(1);

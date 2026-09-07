@@ -14,8 +14,8 @@ import {
 
 const identity: SessionIdentity = {
   targetId: 'web',
-  backendName: 'playwright',
-  backendVersion: '1.61.1',
+  engineName: 'playwright',
+  engineVersion: '1.61.1',
   spiVersion: 1,
   platform: 'web',
   appIdentity: 'a'.repeat(64),

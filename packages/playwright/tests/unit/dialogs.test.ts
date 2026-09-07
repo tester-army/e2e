@@ -96,14 +96,14 @@ describe('DialogRouter', () => {
     expect(() => router.throwPending()).not.toThrow();
   });
 
-  it('latches a failing handler as BACKEND_FAILURE and clears it on reset', async () => {
+  it('latches a failing handler as ENGINE_FAILURE and clears it on reset', async () => {
     const router = new DialogRouter();
     router.add(() => {
       throw new Error('handler exploded');
     });
     await router.dispatch(fakeDialog().dialog);
     expect(() => router.throwPending()).toThrowError(
-      expect.objectContaining({ code: 'BACKEND_FAILURE', message: expect.stringContaining('handler exploded') }),
+      expect.objectContaining({ code: 'ENGINE_FAILURE', message: expect.stringContaining('handler exploded') }),
     );
 
     await router.dispatch(fakeDialog().dialog);

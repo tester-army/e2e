@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Page } from 'playwright';
-import type { BackendFixtureContext } from '@e2edev/e2e/backend';
+import type { EngineFixtureContext } from '@e2edev/e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createWebFixture, type Web } from '../../src/web.ts';
 
@@ -27,7 +27,7 @@ describe('web.evaluate error boundaries', () => {
       expectable: (target: object) => target,
       // The recorder is the harness's concern; these tests exercise evaluate's error boundaries only.
       fixture: (_name: string, target: object) => target,
-    } as unknown as BackendFixtureContext);
+    } as unknown as EngineFixtureContext);
   });
 
   afterEach(async () => {
@@ -65,7 +65,7 @@ describe('web.evaluate error boundaries', () => {
     'page.evaluate: Execution context was destroyed, most likely because of a navigation.',
   ])('keeps a Playwright rejection as infrastructure: %s', async (message) => {
     vi.spyOn(page, 'evaluate').mockRejectedValueOnce(new Error(message));
-    await expect(web.evaluate('() => 1')).rejects.toMatchObject({ code: 'BACKEND_FAILURE' });
+    await expect(web.evaluate('() => 1')).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
   it('keeps a Playwright timeout as OPERATION_TIMEOUT', async () => {
@@ -84,7 +84,7 @@ describe('web.evaluate error boundaries', () => {
     await started;
     if (target === 'page') await page.close();
     else await page.context().close();
-    expect(await rejected).toMatchObject({ code: 'BACKEND_FAILURE' });
+    expect(await rejected).toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
   it('preserves JSON results, explicit arguments, and zero-argument invocation', async () => {

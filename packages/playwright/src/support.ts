@@ -1,8 +1,8 @@
-/** Shared error translation, filename, and swipe helpers for the Playwright backend. */
+/** Shared error translation, filename, and swipe helpers for the Playwright engine. */
 
 import type { ElementHandle, Locator as PwLocator, Page } from 'playwright';
-import { BackendError, type Momentum, type ScrollDirection } from '@e2edev/e2e/backend';
-import { ConfigurationError, InfrastructureError, TestError } from '@e2edev/e2e/backend';
+import { EngineError, type Momentum, type ScrollDirection } from '@e2edev/e2e/engine';
+import { ConfigurationError, InfrastructureError, TestError } from '@e2edev/e2e/engine';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 
@@ -130,7 +130,7 @@ export async function performPointerDrag(
   }
 
   if (from === null || to === null) {
-    throw new BackendError('NOT_ACTIONABLE', 'a drag endpoint has no visible bounding box', {
+    throw new EngineError('NOT_ACTIONABLE', 'a drag endpoint has no visible bounding box', {
       retryable: false,
     });
   }
@@ -145,7 +145,7 @@ export async function performPointerDrag(
     ['destination', end],
   ] as const) {
     if (!withinViewport(point, viewport)) {
-      throw new BackendError(
+      throw new EngineError(
         'NOT_ACTIONABLE',
         `the drag ${label} is outside the viewport at (${Math.round(point.x)}, ${Math.round(point.y)}) ` +
           `of ${viewport.width}x${viewport.height}: the two endpoints cannot be reached in one gesture`,
@@ -181,12 +181,12 @@ export function isPwTimeout(cause: unknown): boolean {
   return cause instanceof Error && cause.name === 'TimeoutError';
 }
 
-export function invalidState(text: string): BackendError {
-  return new BackendError('INVALID_STATE', text, { retryable: false });
+export function invalidState(text: string): EngineError {
+  return new EngineError('INVALID_STATE', text, { retryable: false });
 }
 
-export function cancelled(text: string): BackendError {
-  return new BackendError('CANCELLED', text, { retryable: false });
+export function cancelled(text: string): EngineError {
+  return new EngineError('CANCELLED', text, { retryable: false });
 }
 
 /**
@@ -218,15 +218,15 @@ export class ErrorLatch {
 }
 
 /**
- * True for an error that already carries its classification: a `BackendError`
+ * True for an error that already carries its classification: an `EngineError`
  * from any module copy, or a runner error (policy, validation, timeout). Those
  * must cross the boundary untouched; re-wrapping one would turn a
  * `POLICY_DENIED` into an infrastructure failure.
  */
 export function isClassified(cause: unknown): cause is Error {
-  if (cause instanceof BackendError || cause instanceof TestError) return true;
+  if (cause instanceof EngineError || cause instanceof TestError) return true;
   if (cause instanceof ConfigurationError || cause instanceof InfrastructureError) return true;
-  return cause instanceof Error && cause.name === 'BackendError';
+  return cause instanceof Error && cause.name === 'EngineError';
 }
 
 /**
@@ -235,14 +235,14 @@ export function isClassified(cause: unknown): cause is Error {
  *
  * | Playwright failure                                              | Code                      |
  * | --------------------------------------------------------------- | ------------------------- |
- * | already a BackendError / runner error                           | passed through untouched  |
+ * | already an EngineError / runner error                           | passed through untouched  |
  * | `TimeoutError` on a read, navigation, or artifact call          | OPERATION_TIMEOUT         |
  * | `TimeoutError` on an action, log ends before the input dispatch | NOT_ACTIONABLE            |
  * | `TimeoutError` on an action, log shows the dispatch started     | ACTION_MAY_HAVE_COMMITTED |
  * | element detached / not attached / no element / resolved hidden  | NODE_STALE (retryable)    |
  * | execution context destroyed / frame detached by a navigation    | NODE_STALE (retryable)    |
  * | not an input / not editable / not checkable                     | NOT_ACTIONABLE            |
- * | strict mode violation, anything else                            | BACKEND_FAILURE           |
+ * | strict mode violation, anything else                            | ENGINE_FAILURE           |
  *
  * The action split is read from the call log Playwright appends to a timeout
  * message: `performing <x> action`, `<x> action done`, and `waiting for
@@ -260,12 +260,12 @@ export const POST_DISPATCH_PATTERN =
 export function translatePwError(cause: unknown, operation: string): Error {
   if (isClassified(cause)) return cause;
   if (isPwTimeout(cause)) {
-    return new BackendError('OPERATION_TIMEOUT', `${operation} timed out: ${message(cause)}`, {
+    return new EngineError('OPERATION_TIMEOUT', `${operation} timed out: ${message(cause)}`, {
       retryable: false,
       cause,
     });
   }
-  return new BackendError('BACKEND_FAILURE', `${operation} failed: ${message(cause)}`, {
+  return new EngineError('ENGINE_FAILURE', `${operation} failed: ${message(cause)}`, {
     retryable: false,
     cause,
   });
@@ -294,7 +294,7 @@ function isNavigationRace(cause: unknown): boolean {
  */
 export function navigationStaleOr(cause: unknown, operation: string): Error {
   if (!isClassified(cause) && isNavigationRace(cause)) {
-    return new BackendError('NODE_STALE', `${operation}: ${message(cause)}`, {
+    return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, {
       retryable: true,
       cause,
     });
@@ -311,7 +311,7 @@ export function staleOr(cause: unknown, operation: string): Error {
   if (isClassified(cause)) return cause;
   const text = message(cause);
   if (STALE_PATTERN.test(text) || isNavigationRace(cause)) {
-    return new BackendError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
+    return new EngineError('NODE_STALE', `${operation}: ${text}`, { retryable: true, cause });
   }
   return translatePwError(cause, operation);
 }
@@ -341,7 +341,7 @@ export async function performElementSwipe(
   await asActionable(target).hover({ timeout });
   const box = await targetBoundingBox(target, timeout);
   if (box === null) {
-    throw new BackendError('NOT_ACTIONABLE', 'element has no visible bounding box', {
+    throw new EngineError('NOT_ACTIONABLE', 'element has no visible bounding box', {
       retryable: false,
     });
   }

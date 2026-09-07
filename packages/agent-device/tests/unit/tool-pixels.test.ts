@@ -5,7 +5,7 @@ import path from 'node:path';
 import { expect, it } from 'vitest';
 import { createAgent } from '@e2edev/e2e/agent';
 import { run } from '@e2edev/e2e/run';
-import { buildBackend } from '../../src/backend.ts';
+import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { agentDeviceTools } from '../../src/tools.ts';
 import { createFakeClient, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
@@ -20,7 +20,7 @@ it('withholds a device screenshot after a secret fill without capturing pixels',
       await agent.act('inspect the pixels');
     });`);
   const fake = createFakeClient({ 'capture.snapshot': () => SETTINGS_SNAPSHOT });
-  const backend = buildBackend(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
+  const engine = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
   let turn = 0;
   let seenToolResult = '';
   const model = {
@@ -39,10 +39,10 @@ it('withholds a device screenshot after a secret fill without capturing pixels',
   };
   try {
     const outcome = await run({ cwd: project, quiet: true, env: {}, rawConfig: {
-      tests: '*.e2e.ts', targets: [{ name: 'ios', platform: 'ios', backend }], cache: 'off',
+      tests: '*.e2e.ts', targets: [{ name: 'ios', platform: 'ios', engine }], cache: 'off',
       artifacts: [],
       credentials: { audit: { username: 'audit', password: () => 'synthetic-device-secret' } },
-      agent: { executor: createAgent({ tools: agentDeviceTools(backend) }), model },
+      agent: { executor: createAgent({ tools: agentDeviceTools(engine) }), model },
     } });
     expect(outcome.status).toBe('passed');
     expect(seenToolResult).toContain('PIXEL_TAINTED');

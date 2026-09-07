@@ -4,7 +4,7 @@
  * divergence.
  *
  * Validation is runner-owned: a response that does not match exactly is a
- * policy error before any backend dispatch (14-security.md).
+ * policy error before any engine dispatch (14-security.md).
  */
 
 import type { JSONSchema7 } from 'ai';

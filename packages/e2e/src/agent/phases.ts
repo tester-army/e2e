@@ -5,7 +5,7 @@
  * and observation race-hardening cannot drift between the two paths.
  */
 
-import { BackendError, type Observation, type OperationContext } from '../backend/surface.ts';
+import { EngineError, type Observation, type OperationContext } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -16,7 +16,7 @@ import type { StepEvent, StepRecorder } from '../run/steps.ts';
 import { AgentError, toAgentError } from './error.ts';
 
 /**
- * One backend operation's budget: `actionTimeout`, capped by the step clock.
+ * One engine operation's budget: `actionTimeout`, capped by the step clock.
  * Bounding each call independently is what keeps a single screen that never
  * settles from consuming the whole step: the hang costs one action timeout and
  * a clearly attributed failure, not the test budget.
@@ -144,7 +144,7 @@ export function checkStepClock(options: {
 }
 
 /**
- * Captures one raw observation, re-capturing while the backend reports a
+ * Captures one raw observation, re-capturing while the engine reports a
  * retryable failure and the step clock allows. A screen that navigates as it is
  * read (a redirect, a hydration swap, a form submit still committing) makes
  * the capture lose its document; that is a race, not a broken app, so it is
@@ -164,7 +164,7 @@ export async function retryingObserve(options: {
       return await options.observe(options.operation());
     } catch (cause) {
       options.guard(cause);
-      if (!(cause instanceof BackendError && cause.retryable)) {
+      if (!(cause instanceof EngineError && cause.retryable)) {
         throw cause;
       }
       agentTrace(

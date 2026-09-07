@@ -5,7 +5,7 @@
  */
 
 import type { Dialog as PwDialog } from 'playwright';
-import { BackendError } from '@e2edev/e2e/backend';
+import { EngineError } from '@e2edev/e2e/engine';
 import { ErrorLatch, message } from './support.ts';
 
 /** A native dialog as a test's handler sees it. */
@@ -61,7 +61,7 @@ export class DialogRouter {
     const handler = this.registrations.at(-1)?.handler;
     if (handler === undefined) {
       this.latch.latch(
-        new BackendError(
+        new EngineError(
           'INVALID_STATE',
           `unhandled ${dialog.type()} dialog: ${dialog.message()}`,
           { retryable: false },
@@ -93,7 +93,7 @@ export class DialogRouter {
         if (!decided) {
           await dialog.dismiss().catch(() => undefined);
           this.latch.latch(
-            new BackendError(
+            new EngineError(
               'INVALID_STATE',
               `dialog handler returned without calling accept or dismiss for ${dialog.type()} dialog: ${dialog.message()}`,
               { retryable: false },
@@ -103,7 +103,7 @@ export class DialogRouter {
       }
     } catch (cause) {
       this.latch.latch(
-        new BackendError('BACKEND_FAILURE', `dialog handler failed: ${message(cause)}`, {
+        new EngineError('ENGINE_FAILURE', `dialog handler failed: ${message(cause)}`, {
           retryable: false,
           cause,
         }),

@@ -1,12 +1,12 @@
 /**
  * LocatorExpression projection: which compositions land on Playwright's own
  * locator chain, which ones a display-value query defers until its candidates
- * are read, and which ones the backend cannot express at all.
+ * are read, and which ones the engine cannot express at all.
  */
 
 import type { Locator as PwLocator, Page } from 'playwright';
 import { describe, expect, it } from 'vitest';
-import type { LocatorExpression } from '@e2edev/e2e/backend';
+import type { LocatorExpression } from '@e2edev/e2e/engine';
 import { applyPostSteps, projectExpression, type PostStep } from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */
@@ -88,7 +88,7 @@ describe('projectExpression', () => {
   });
 
   it('rejects a displayValue query as a scope or has-filter, and names only those cases', () => {
-    const message = 'displayValue queries cannot scope child queries or serve as a has-filter in this backend';
+    const message = 'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
     expect(() => projectExpression(page, { ...textbox, scope: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );

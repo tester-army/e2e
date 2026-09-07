@@ -11,9 +11,9 @@ export function expect<E extends object>(actual: Expectable<E>): E;
 export function expect<T>(actual: T): ValueExpectation<T>;
 ```
 
-A backend-contributed fixture may carry its own expectation surface
+An engine-contributed fixture may carry its own expectation surface
 (`Expectable<E>`): `expect(web)` returns the `WebExpectation` the playwright
-backend attaches. Anything that is neither a runner locator nor such a fixture
+engine attaches. Anything that is neither a runner locator nor such a fixture
 falls through to `ValueExpectation<T>`, including a promise. Await the value
 first.
 

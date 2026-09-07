@@ -8,7 +8,7 @@
       { "id": "SDK-TYPES-003", "source": "api/type-tests.ts", "requirement": "Async describe callbacks are rejected by the type surface." },
       { "id": "SDK-TYPES-004", "source": "examples", "requirement": "Every canonical example type-checks without implementation-only types." },
       { "id": "SDK-TYPES-005", "source": "02-test-api.md", "requirement": "Setup-only and ordinary fixture authority remain type-distinct." },
-      { "id": "SDK-TYPES-006", "source": "api/e2e.d.ts", "requirement": "Backend handles and secret handles are nominal and nonforgeable." }
+      { "id": "SDK-TYPES-006", "source": "api/e2e.d.ts", "requirement": "Engine handles and secret handles are nominal and nonforgeable." }
     ],
     "runner-0.1": [
       { "id": "RUNNER-CONFIG-001", "source": "05-config.md", "requirement": "Project/config discovery, unknown-key rejection, and precedence are deterministic." },
@@ -19,7 +19,7 @@
       { "id": "RUNNER-SELECT-001", "source": "11-lifecycle.md", "requirement": "File, tag, target, platform, capability, only, skip, and zero-test selection match the algorithm." },
       { "id": "RUNNER-SELECT-002", "source": "11-lifecycle.md", "requirement": "Session producers and serial closure are selected statically and atomically." },
       { "id": "RUNNER-HOOK-001", "source": "11-lifecycle.md", "requirement": "Nested hook order, entered-scope teardown, and primary/secondary errors are exact." },
-      { "id": "RUNNER-ATTEMPT-001", "source": "11-lifecycle.md", "requirement": "Independent attempts receive fresh logical backend, fixture, handler, ledger, and artifact state." },
+      { "id": "RUNNER-ATTEMPT-001", "source": "11-lifecycle.md", "requirement": "Independent attempts receive fresh logical engine, fixture, handler, ledger, and artifact state." },
       { "id": "RUNNER-RETRY-001", "source": "11-lifecycle.md", "requirement": "Retry eligibility, realm replacement, and flaky outcome match the transition table." },
       { "id": "RUNNER-SERIAL-001", "source": "11-lifecycle.md", "requirement": "Serial groups restore once, share state, retry from member one, and report every member attempt." },
       { "id": "RUNNER-CANCEL-001", "source": "11-lifecycle.md", "requirement": "Timeout and signal cancellation propagate; forced realm death preserves host finalizers and partial results." },
@@ -81,7 +81,7 @@
       { "id": "REPORT-SCHEMA-001", "source": "schema/report-v1.schema.json", "requirement": "Positive and hostile report fixtures satisfy strict schema expectations." },
       { "id": "REPORT-SEMANTIC-001", "source": "13-reporting.md", "requirement": "Reference validator recomputes identity, order, status, summary, references, and usage." },
       { "id": "REPORT-PATH-001", "source": "13-reporting.md", "requirement": "All paths are relative POSIX, canonical, contained, and symlink safe." },
-      { "id": "REPORT-PROVENANCE-001", "source": "13-reporting.md", "requirement": "Target, backend, model, policy, and environment provenance is complete." },
+      { "id": "REPORT-PROVENANCE-001", "source": "13-reporting.md", "requirement": "Target, engine, model, policy, and environment provenance is complete." },
       { "id": "REPORT-ARTIFACT-001", "source": "13-reporting.md", "requirement": "Artifact producer, digest, size, redaction, and incomplete-evidence rules are exact." },
       { "id": "REPORT-PARTIAL-001", "source": "13-reporting.md", "requirement": "Interrupted/error runs atomically produce valid bounded partial reports." },
       { "id": "REPORT-HOSTILE-001", "source": "14-security.md", "requirement": "Hostile schema-valid reports cannot bypass semantic validation or renderer escaping." }
@@ -89,7 +89,7 @@
     "trace-1": [
       { "id": "TRACE-ENTRY-001", "source": "10-determinism.md", "requirement": "Entries validate strictly on read; any malformed, oversized, or truncated entry is a miss, never an error or a repair." },
       { "id": "TRACE-SECRET-001", "source": "10-determinism.md", "requirement": "No secret plaintext ever enters an entry: fills are recorded by stable name and all recorded strings pass the run's redactor." },
-      { "id": "TRACE-KEY-001", "source": "10-determinism.md", "requirement": "Keys bind project, test, target/backend/app identity, kind, instruction and params digests, occurrence index, and policy version." },
+      { "id": "TRACE-KEY-001", "source": "10-determinism.md", "requirement": "Keys bind project, test, target/engine/app identity, kind, instruction and params digests, occurrence index, and policy version." },
       { "id": "TRACE-REPLAY-001", "source": "10-determinism.md", "requirement": "Replay runs through the step's own grammar under identical deadline, budget, policy, and recording; a full replay self-finalizes as passed only while the recorded postcondition holds — the live pathname matches the recorded end path and every recorded end anchor is present again — and otherwise hands off with end-mismatch." },
       { "id": "TRACE-ANCHOR-001", "source": "10-determinism.md", "requirement": "A passing step records as end anchors the relocatable descriptors on screen at its pass that were absent at its start, for a step that ended on the pathname it began on; anchors never carry secret plaintext or node values." },
       { "id": "TRACE-DIVERGE-001", "source": "16-executors.md", "requirement": "Any divergence hands the step to the executor mid-step with the replayedPrefix notice; a divergence is never a step failure, runtime hard stops are never divergence, and a consumed replay whose step settles non-passed evicts its entry." },
@@ -98,7 +98,7 @@
     "session-1": [
       { "id": "SESSION-SCHEMA-001", "source": "schema/session-v1.schema.json", "requirement": "Session envelope and positive/hostile fixtures satisfy strict schema and expiry semantics." },
       { "id": "SESSION-CRYPTO-001", "source": "11-lifecycle.md", "requirement": "AES-256-GCM uses random memory-only per-run key and authenticates all metadata." },
-      { "id": "SESSION-BIND-001", "source": "11-lifecycle.md", "requirement": "Run, name, target, platform, backend version/SPI, app identity, and expiry all bind restore." },
+      { "id": "SESSION-BIND-001", "source": "11-lifecycle.md", "requirement": "Run, name, target, platform, engine version/SPI, app identity, and expiry all bind restore." },
       { "id": "SESSION-PUBLISH-001", "source": "11-lifecycle.md", "requirement": "Only successful setup attempts atomically publish every declared output once." },
       { "id": "SESSION-CLEANUP-001", "source": "11-lifecycle.md", "requirement": "Owner-only files are per-run, deleted on cleanup, and abandoned ciphertext is scavenged." }
     ],

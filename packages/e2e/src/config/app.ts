@@ -1,11 +1,11 @@
 /**
- * Per-target app resolution (spec 05-config.md): what a backend declares
+ * Per-target app resolution (spec 05-config.md): what an engine declares
  * about the app it drives, validated where an error can name the target.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BackendAppDeclaration, BackendHandle } from '../backend/index.ts';
+import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
 import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
@@ -33,10 +33,10 @@ export interface ResolvedService extends ResolvedCommand {
 }
 
 /**
- * The app one target drives, as the harness resolved the backend's `app`
+ * The app one target drives, as the harness resolved the engine's `app`
  * declaration. Navigation policy, cache and session identity, the report's
  * target record, and the app processes all read from here; a target without a
- * backend, or whose backend declares nothing, gets the empty resolution.
+ * engine, or whose engine declares nothing, gets the empty resolution.
  */
 export interface ResolvedApp {
   /** Normalized base URL; undefined for a surface without addressable locations. */
@@ -45,7 +45,7 @@ export interface ResolvedApp {
   readonly environment: 'test' | 'staging' | 'production';
   /**
    * Stable identity keying cache and session entries: the declared identity,
-   * else the base URL's origin and path. Undefined when the backend declares
+   * else the base URL's origin and path. Undefined when the engine declares
    * neither, so entries key on the target and environment alone.
    */
   readonly identity: string | undefined;
@@ -59,19 +59,19 @@ export interface ResolvedApp {
 const ENVIRONMENTS = new Set(['test', 'staging', 'production']);
 
 /**
- * Resolves one target's app from its backend's `app` declaration. Every fact
+ * Resolves one target's app from its engine's `app` declaration. Every fact
  * is optional: a URL normalizes like any base URL, origins must be serialized
  * origins, a command needs something to poll, services need one readiness
  * contract each, and the identity defaults to where the app is served when
- * the backend gives none. `projectRoot` anchors every command's `log` path.
+ * the engine gives none. `projectRoot` anchors every command's `log` path.
  */
 export function resolveTargetApp(
   targetName: string,
-  backend: BackendHandle | undefined,
+  engine: EngineHandle | undefined,
   projectRoot: string,
 ): ResolvedApp {
-  const declared: BackendAppDeclaration = backend?.app ?? {};
-  const where = `target "${targetName}" backend ${backend?.name ?? 'none'}`;
+  const declared: EngineAppDeclaration = engine?.app ?? {};
+  const where = `target "${targetName}" engine ${engine?.name ?? 'none'}`;
   const base = declared.url === undefined ? undefined : normalizeBaseUrl(declared.url);
 
   const environment =
@@ -239,10 +239,10 @@ function serviceName(service: ServiceConfig, position: string, taken: Set<string
  * (`name`, `readyUrl`, `waitForExit`, `teardown`) are lifted out of the
  * command; `reuseExisting` stays on it, and only a `readyUrl` service may set it.
  * `projectRoot` anchors each `log` path; `prefix` names the declaring target
- * in errors, so a failing service is traceable to the backend that declared it.
+ * in errors, so a failing service is traceable to the engine that declared it.
  */
 export function resolveServices(
-  raw: BackendAppDeclaration['services'],
+  raw: EngineAppDeclaration['services'],
   projectRoot: string,
   prefix = 'app.services',
 ): readonly ResolvedService[] {
@@ -292,12 +292,12 @@ function digestCommand<T extends CommandConfig>(command: T): Omit<T, 'env'> & Di
 }
 
 /**
- * The declarative part of a backend's `app` manifest as it enters the config
+ * The declarative part of an engine's `app` manifest as it enters the config
  * digest: hooks stripped, and every `command.env`, service env, and service
  * teardown env value replaced by `{ envName: key }`, so no environment value
  * contributes to the digest.
  */
-export function digestAppDeclaration(app: BackendAppDeclaration) {
+export function digestAppDeclaration(app: EngineAppDeclaration) {
   const { url, allowedOrigins, environment, identity, command, readyUrl, services } = app;
   return obj({
     url,

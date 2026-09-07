@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { defineBackend } from '../../src/backend/index.ts';
+import { defineEngine } from '../../src/engine/index.ts';
 import { judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
@@ -21,7 +21,7 @@ describe('reported model usage', () => {
     }));
     try {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
-        targets: [{ name: 'fake', platform: 'custom', backend: defineBackend({
+        targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
           name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }),
         }) }], agent: { model }, cache: 'off',
       } });
@@ -47,7 +47,7 @@ describe('reported model usage', () => {
     }));
     try {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
-        targets: [{ name: 'fake', platform: 'custom', backend: defineBackend({
+        targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
           name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }),
         }) }], agent: { model }, cache: 'off',
       } });

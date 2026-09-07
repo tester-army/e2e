@@ -4,10 +4,10 @@ import { expect } from '@e2edev/e2e';
 /**
  * seleniumbase.io/hobbit/login is an anti-bot page: it scores the client and
  * only then reveals a "Verify you are human" button and a sign-in link. The
- * reference backend never gets that far — a stock Playwright Chromium is
+ * reference engine never gets that far — a stock Playwright Chromium is
  * detected on load and redirected to a block page.
  *
- * This is a real limit of the backend, not of the site, so it is pinned rather
+ * This is a real limit of the engine, not of the site, so it is pinned rather
  * than hidden. When stealth launch options land, the first test here fails and
  * the second one becomes the suite.
  */

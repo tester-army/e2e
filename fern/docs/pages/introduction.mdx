@@ -13,7 +13,7 @@ import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
   agent: createAgent({
     system: 'You are a thorough QA agent. Verify every outcome on screen.',
   }),
@@ -72,10 +72,10 @@ rather than as a failing test, so red keeps meaning "the product misbehaved".
 `agent.act` and the model sees its name only; the runner fills the field
 itself.
 
-<Callout intent="note" title="Two backends">
+<Callout intent="note" title="Two engines">
 This release ships `@e2edev/playwright` for browsers and
 [`@e2edev/agent-device`](/reference/device) for iOS simulators and Android
 emulators. The API and the runner are platform-neutral: the same test runs on
 both, and a surface neither covers plugs in as a
-[backend](/writing-a-backend) of its own.
+[engine](/writing-an-engine) of its own.
 </Callout>

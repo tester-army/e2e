@@ -17,7 +17,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         url: 'http://127.0.0.1:4311',
         command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4311' } },
       }),

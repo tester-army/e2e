@@ -7,8 +7,8 @@
 
 import type { Locator as PwLocator } from 'playwright';
 import { describe, expect, it, vi } from 'vitest';
-import { BackendError, type LocatorAction } from '@e2edev/e2e/backend';
-import { TestError } from '@e2edev/e2e/backend';
+import { EngineError, type LocatorAction } from '@e2edev/e2e/engine';
+import { TestError } from '@e2edev/e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from '../../src/actions.ts';
 import type { ActionTarget } from '../../src/support.ts';
 
@@ -41,19 +41,19 @@ const TAP: LocatorAction = { kind: 'tap' };
 
 describe('classifyActionError', () => {
   it('passes classified errors through untouched, whatever their class', () => {
-    const backend = new BackendError('NODE_STALE', 'gone', { retryable: true });
-    expect(classifyActionError(backend, TAP)).toBe(backend);
+    const engine = new EngineError('NODE_STALE', 'gone', { retryable: true });
+    expect(classifyActionError(engine, TAP)).toBe(engine);
     const runner = new TestError('INVALID_ARGUMENT', 'bad');
     expect(classifyActionError(runner, TAP)).toBe(runner);
   });
 
   it.each([
-    ['strict mode violation: 2 elements', 'BACKEND_FAILURE', false],
+    ['strict mode violation: 2 elements', 'ENGINE_FAILURE', false],
     ['element is detached from the DOM', 'NODE_STALE', true],
     ['Element is not attached to the DOM', 'NODE_STALE', true],
     ['Element is not an <input>, <textarea> or [contenteditable] element', 'NOT_ACTIONABLE', false],
     ['Element is not a checkbox', 'NOT_ACTIONABLE', false],
-    ['Target page, context or browser has been closed', 'BACKEND_FAILURE', false],
+    ['Target page, context or browser has been closed', 'ENGINE_FAILURE', false],
   ] as const)('maps "%s" to %s', (text, code, retryable) => {
     expect(classifyActionError(new Error(text), TAP)).toMatchObject({ code, retryable });
   });

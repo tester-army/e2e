@@ -9,7 +9,7 @@ import type { StepExecutorContext } from './executor.ts';
 import type { JSONSchema7 } from 'ai';
 import type { AgentCacheContext } from '../cache/context.ts';
 import type { ResolvedApp, ResolvedConfig } from '../config/resolve.ts';
-import type { TargetSession, Observation } from '../backend/surface.ts';
+import type { TargetSession, Observation } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline } from '../internal/time.ts';
@@ -425,8 +425,8 @@ export class Invocation {
   }
 
   /**
-   * Builds a backend operation context: `actionTimeout`, capped by this
-   * invocation's deadline. Each backend call is bounded independently so one
+   * Builds an engine operation context: `actionTimeout`, capped by this
+   * invocation's deadline. Each engine call is bounded independently so one
    * hung observation cannot consume the invocation's whole clock.
    */
   operation(): ReturnType<LocatorEngine['operation']> {

@@ -4,7 +4,7 @@
  * a wrong model verdict cannot pass. With the trace cache on (the default),
  * the second run replays the whole tour zero-turn.
  *
- * No per-act timeouts: every backend operation inside a step is bounded by
+ * No per-act timeouts: every engine operation inside a step is bounded by
  * `actionTimeout` (90s in this config), so a page that never settles costs
  * one bounded, attributed failure — never the test budget.
  */

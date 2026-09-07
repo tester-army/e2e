@@ -58,8 +58,8 @@ Required conformance IDs:
 
 - npm package and CLI: `e2e`;
 - root SDK import: `e2e`;
-- backend authoring import: `@e2edev/e2e/backend`;
-- reference web backend: `@e2edev/playwright` (`playwright()`);
+- engine authoring import: `@e2edev/e2e/engine`;
+- reference web engine: `@e2edev/playwright` (`playwright()`);
 - default tests: `tests/**/*.e2e.ts`;
 - config: `e2e.config.ts` or `e2e.config.mts`.
 

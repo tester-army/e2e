@@ -153,7 +153,7 @@
       "required": ["kind", "startedAt", "durationMs", "status"],
       "properties": {
         "kind": {
-          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "backend", "schema"]
+          "enum": ["poll", "observation", "model", "tool-proposal", "policy", "engine", "schema"]
         },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
@@ -459,7 +459,7 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "index", "platform", "environment", "testIdAttribute", "backend", "capabilities", "artifactCapabilities", "stateCapability"],
+      "required": ["id", "index", "platform", "environment", "testIdAttribute", "engine", "capabilities", "artifactCapabilities", "stateCapability"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
@@ -467,7 +467,7 @@
         "baseOrigin": { "type": "string", "format": "uri" },
         "environment": { "enum": ["test", "staging", "production"] },
         "testIdAttribute": { "type": "string", "minLength": 1 },
-        "backend": {
+        "engine": {
           "type": "object",
           "additionalProperties": false,
           "required": ["name", "version", "spiVersion"],

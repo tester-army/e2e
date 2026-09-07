@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Unit tests drive the backend through a scripted agent-device client and run
+ * Unit tests drive the engine through a scripted agent-device client and run
  * fully in parallel. Integration tests own one real simulator through the
  * agent-device daemon, so they run serially and only when a developer opts in
  * with `E2E_AGENT_DEVICE_SIMULATOR=1`: CI has no simulator and a skipped suite

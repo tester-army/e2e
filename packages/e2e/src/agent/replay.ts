@@ -15,7 +15,7 @@
 import { anchorsPresent } from '../cache/anchors.ts';
 import { relocateDescriptor, type RelocationResult } from '../cache/relocate.ts';
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor } from '../cache/trace.ts';
-import type { SemanticNode } from '../backend/surface.ts';
+import type { SemanticNode } from '../engine/surface.ts';
 import { sleep } from '../internal/time.ts';
 import {
   isRuntimeHardStop,

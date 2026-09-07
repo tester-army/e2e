@@ -1,14 +1,14 @@
 /**
- * Backend targets (RFC0002): a target whose surface is a
- * defineBackend body. Covers the full pipeline — config, worker, adapter,
+ * Engine targets (RFC0002): a target whose surface is a
+ * defineEngine body. Covers the full pipeline — config, worker, adapter,
  * executor socket, lifecycle, capability gating, and the report — with a toy
- * in-memory backend and a hand-rolled executor, no model and no browser.
+ * in-memory engine and a hand-rolled executor, no model and no browser.
  */
 
 import { describe, expect, it } from 'vitest';
-import { defineBackend, type BackendFixtureContext } from '../../src/backend/index.ts';
+import { defineEngine, type EngineFixtureContext } from '../../src/engine/index.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
-import type { SemanticNode } from '../../src/backend/surface.ts';
+import type { SemanticNode } from '../../src/engine/surface.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject } from '../helpers/run-project.ts';
 
@@ -24,7 +24,7 @@ test('agent drives the toy device', async ({ agent }) => {
 
 const SCREEN_SUITE = `import { test, expect } from '@e2edev/e2e';
 
-test('screen is unavailable on a backend without location', async ({ screen }) => {
+test('screen is unavailable on an engine without location', async ({ screen }) => {
   await expect(screen.getByRole('button')).toBeVisible();
 });
 `;
@@ -61,7 +61,7 @@ test('restores the seeded counter', { session: 'seeded' }, async ({ screen }) =>
 
 
 /** A two-node screen: a counter value and a button that increments it. */
-function toyBackend(
+function toyEngine(
   options: {
     withLocate?: boolean;
     withFixtures?: boolean;
@@ -78,7 +78,7 @@ function toyBackend(
     { ref: { id: 'counter', revision: '' }, role: 'status', name: 'count', text: String(count) },
     { ref: { id: 'increment', revision: '' }, role: 'button', name: 'Increment' },
   ];
-  const backend = defineBackend({
+  const engine = defineEngine({
     name: 'toy-device',
     version: '1.0.0',
     spiVersion: 1,
@@ -143,7 +143,7 @@ function toyBackend(
       ? {}
       : {
           fixtures: {
-            device: (context: BackendFixtureContext) => context.fixture('device', {
+            device: (context: EngineFixtureContext) => context.fixture('device', {
               async reset() {
                 fixtureCalls.push(`reset:${context.targetName}`);
                 count = 0;
@@ -169,7 +169,7 @@ function toyBackend(
           },
         }),
   });
-  return { backend, lifecycle, fixtureCalls, current: () => count };
+  return { engine, lifecycle, fixtureCalls, current: () => count };
 }
 
 /** Observes, taps until the counter reads the goal, verifies, concludes. */
@@ -196,15 +196,15 @@ const tapper: StepExecutor = {
   },
 };
 
-describe('backend targets', () => {
+describe('engine targets', () => {
   it('runs an agent step over the adapter, with lifecycle and honest provenance', async () => {
-    const toy = toyBackend();
+    const toy = toyEngine();
     const project = createProject({ 'tests/toy.e2e.ts': SUITE });
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           agent: { executor: tapper, maxModelCalls: 10 },
           cache: 'off',
         },
@@ -215,7 +215,7 @@ describe('backend targets', () => {
       expect(toy.current()).toBe(2);
       expect(toy.lifecycle).toEqual(['init', 'dispose']);
       const reportTarget = outcome.report.run.targets.find((entry) => entry.id === 'toy-sim');
-      expect(reportTarget?.backend.name).toBe('toy-device');
+      expect(reportTarget?.engine.name).toBe('toy-device');
       expect(reportTarget?.platform).toBe('ios');
       assertValidReport(outcome.report);
     } finally {
@@ -224,13 +224,13 @@ describe('backend targets', () => {
   });
 
   it('fails a screen test loud with UNSUPPORTED_CAPABILITY', async () => {
-    const toy = toyBackend();
+    const toy = toyEngine();
     const project = createProject({ 'tests/screen.e2e.ts': SCREEN_SUITE });
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           agent: { executor: tapper },
           cache: 'off',
         },
@@ -240,20 +240,20 @@ describe('backend targets', () => {
       expect(outcome.exitCode).not.toBe(0);
       const result = outcome.results[0];
       const message = result?.attempts.at(-1)?.error?.message ?? '';
-      expect(message).toMatch(/no backend capability|UNSUPPORTED/i);
+      expect(message).toMatch(/no engine capability|UNSUPPORTED/i);
     } finally {
       project.cleanup();
     }
   });
 
-  it('runs the deterministic screen/expect tier over backend.locate', async () => {
-    const toy = toyBackend({ withLocate: true });
+  it('runs the deterministic screen/expect tier over engine.locate', async () => {
+    const toy = toyEngine({ withLocate: true });
     const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -268,13 +268,13 @@ describe('backend targets', () => {
   });
 
   it('runs a contributed fixture with harness step discipline', async () => {
-    const toy = toyBackend({ withFixtures: true });
+    const toy = toyEngine({ withFixtures: true });
     const project = createProject({ 'tests/fixture.e2e.ts': FIXTURE_SUITE });
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -294,14 +294,14 @@ describe('backend targets', () => {
     }
   });
 
-  it('captures and restores opaque backend state across a session', async () => {
-    const toy = toyBackend({ withLocate: true, withState: true });
+  it('captures and restores opaque engine state across a session', async () => {
+    const toy = toyEngine({ withLocate: true, withState: true });
     const project = createProject({ 'tests/state.e2e.ts': STATE_SUITE });
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -316,7 +316,7 @@ describe('backend targets', () => {
 
 
   it('resets per-attempt state via startAttempt/endAttempt isolation', async () => {
-    const toy = toyBackend({ withLocate: true, withIsolation: true });
+    const toy = toyEngine({ withLocate: true, withIsolation: true });
     const suite = `import { test, expect } from '@e2edev/e2e';
 
 test('first attempt starts fresh', async ({ screen }) => {
@@ -334,7 +334,7 @@ test('second attempt also starts fresh', async ({ screen }) => {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -352,14 +352,14 @@ test('second attempt also starts fresh', async ({ screen }) => {
     }
   });
 
-  it('disposes a backend that declares no init', async () => {
-    const toy = toyBackend({ withLocate: true, withoutInit: true });
+  it('disposes an engine that declares no init', async () => {
+    const toy = toyEngine({ withLocate: true, withoutInit: true });
     const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -374,8 +374,8 @@ test('second attempt also starts fresh', async ({ screen }) => {
     }
   });
 
-  it('prepares a backend once in the runner, before any worker, narrating through notice events', async () => {
-    const toy = toyBackend({ withLocate: true, withPrepare: 'ok' });
+  it('prepares an engine once in the runner, before any worker, narrating through notice events', async () => {
+    const toy = toyEngine({ withLocate: true, withPrepare: 'ok' });
     const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
     const notices: { target: string; message: string }[] = [];
     let noticeSeq = 0;
@@ -384,7 +384,7 @@ test('second attempt also starts fresh', async ({ screen }) => {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '', TOY_CACHE: '/run/cache' },
@@ -409,14 +409,14 @@ test('second attempt also starts fresh', async ({ screen }) => {
   });
 
   it('ends the run before any worker starts when prepare fails', async () => {
-    const toy = toyBackend({ withLocate: true, withPrepare: 'fail' });
+    const toy = toyEngine({ withLocate: true, withPrepare: 'fail' });
     const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
     const errors: { message: string; phase: string | undefined }[] = [];
     try {
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -440,7 +440,7 @@ test('second attempt also starts fresh', async ({ screen }) => {
   });
 
   it('gates an undeclared fixture at selection via requires', async () => {
-    const toy = toyBackend(); // no fixtures declared
+    const toy = toyEngine(); // no fixtures declared
     const project = createProject({
       'tests/req.e2e.ts': `import { test } from '@e2edev/e2e';
 
@@ -451,7 +451,7 @@ test('needs device', { requires: ['device'] }, async () => {});
       const outcome = await run({
         cwd: project.dir,
         rawConfig: {
-          targets: [{ name: 'toy-sim', platform: 'ios', backend: toy.backend }],
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },

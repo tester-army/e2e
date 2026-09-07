@@ -1,5 +1,5 @@
 /**
- * Node reference registry for one attempt: the ids the backend mints for
+ * Node reference registry for one attempt: the ids the engine mints for
  * located and observed nodes and the Playwright targets behind them.
  *
  * Two populations with different lifetimes live here. Locator-backed refs
@@ -10,7 +10,7 @@
  * an in-flight observation still references.
  */
 
-import { BackendError, type NodeRef } from '@e2edev/e2e/backend';
+import { EngineError, type NodeRef } from '@e2edev/e2e/engine';
 import type { ActionTarget } from './support.ts';
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
@@ -48,13 +48,13 @@ export class RefRegistry {
   }
 
   /**
-   * Ids are the backend's; revisions are the harness's. The adapter already
+   * Ids are the engine's; revisions are the harness's. The adapter already
    * rejected a ref from a superseded resolution, so lookup is by id alone.
    */
   lookup(ref: NodeRef): ActionTarget {
     const target = this.located.get(ref.id) ?? this.observation.get(ref.id);
     if (target === undefined) {
-      throw new BackendError('NODE_STALE', `node reference ${ref.id} is stale`, { retryable: true });
+      throw new EngineError('NODE_STALE', `node reference ${ref.id} is stale`, { retryable: true });
     }
     return target;
   }

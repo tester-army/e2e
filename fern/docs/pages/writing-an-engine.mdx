@@ -1,25 +1,25 @@
 ---
-title: Writing a backend
+title: Writing an engine
 subtitle: How the runner talks to a surface, and what it takes to add a new one.
 ---
 
-Everything in `e2e` above the backend is portable. `test`, `expect`, `screen`,
+Everything in `e2e` above the engine is portable. `test`, `expect`, `screen`,
 `app`, and the agent tiers never touch a browser, a simulator, or a device: they
-speak one narrow contract from `@e2edev/e2e/backend`, and a backend is the package that
+speak one narrow contract from `@e2edev/e2e/engine`, and an engine is the package that
 maps it onto a real surface.
 
 `@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
-with the same public `defineBackend` as anything the community writes. A
-backend for a desktop shell, a TV, or a surface nobody has thought of yet
+with the same public `defineEngine` as anything the community writes. A
+engine for a desktop shell, a TV, or a surface nobody has thought of yet
 integrates against the same contract: the runner cannot tell them apart, and
 neither can a test. The agent-device package is the smaller of the two and a
-good model for a device-shaped backend: one client, one id generation per
+good model for a device-shaped engine: one client, one id generation per
 observation, a contributed `device` fixture, and a minted `app://` location
 so the trace cache has an anchor.
 
 ## The ownership boundary
 
-Read this table before writing any code. Most backend bugs are a backend doing
+Read this table before writing any code. Most engine bugs are an engine doing
 the runner's job.
 
 | Concern | Owner |
@@ -27,32 +27,32 @@ the runner's job.
 | Collection, targets, retries, hooks, sessions | runner |
 | Query polling and strict single-match cardinality | runner |
 | Assertion polling, step recording, timeouts | runner |
-| One immediate query, one node read | backend |
-| One node's actionability and input dispatch | backend |
+| One immediate query, one node read | engine |
+| One node's actionability and input dispatch | engine |
 | Agent planning, prompts, budgets, ledger | runner |
 | Tool authorization and secret resolution | runner |
-| Process, page, and device mechanics | backend |
-| Source masking of secure observations | backend |
+| Process, page, and device mechanics | engine |
+| Source masking of secure observations | engine |
 | Defense-in-depth redaction | runner |
 
-Two rules follow from it and get broken most often: a backend **must not** add
+Two rules follow from it and get broken most often: an engine **must not** add
 hidden query retries - `locate` answers with what is on screen right now and
-returns an empty array without complaint - and a backend **must not** enforce
+returns an empty array without complaint - and an engine **must not** enforce
 single-match strictness, because `screen.getByRole(...)` deciding that two
 matches is an error is a runner decision.
 
-## The shape of a backend
+## The shape of an engine
 
-A backend is a factory returning a validated handle. `defineBackend` checks the
+An engine is a factory returning a validated handle. `defineEngine` checks the
 manifest synchronously at config load, freezes it, computes its capability set,
 and stamps the brand that makes the handle acceptable in a target.
 
 ```ts title="src/index.ts"
-import { BackendError, defineBackend, type BackendHandle } from '@e2edev/e2e/backend';
+import { EngineError, defineEngine, type EngineHandle } from '@e2edev/e2e/engine';
 
-export function hyperdrive(options: { device: string }): BackendHandle {
+export function hyperdrive(options: { device: string }): EngineHandle {
   const client = createClient(options);
-  return defineBackend({
+  return defineEngine({
     name: 'hyperdrive',
     version: '1.0.0',
     spiVersion: 1,
@@ -64,7 +64,7 @@ export function hyperdrive(options: { device: string }): BackendHandle {
         case 'tap': return client.tap(ref.id);
         case 'fill': return client.type(ref.id, action.value);
         default:
-          throw new BackendError('UNSUPPORTED_CAPABILITY', `hyperdrive cannot ${action.kind}`, { retryable: false });
+          throw new EngineError('UNSUPPORTED_CAPABILITY', `hyperdrive cannot ${action.kind}`, { retryable: false });
       }
     },
     async swipe(direction) { await client.scroll(direction); },
@@ -73,22 +73,22 @@ export function hyperdrive(options: { device: string }): BackendHandle {
 ```
 
 `version` is required: it is recorded as provenance and keys the trace cache,
-so a backend that resolves nodes differently never replays another version's
+so an engine that resolves nodes differently never replays another version's
 traces.
 
 ```ts title="e2e.config.ts"
-targets: [{ name: 'phone', platform: 'ios', backend: hyperdrive({ device: 'iPhone 16' }) }],
+targets: [{ name: 'phone', platform: 'ios', engine: hyperdrive({ device: 'iPhone 16' }) }],
 ```
 
 <Callout intent="note">
-Depend on `@e2edev/e2e/backend` only, and take `e2e` as a **peer** dependency, never a
-regular one: the backend and the runner must agree on one copy of the error
-classes. Everything the spec requires a backend to reproduce exactly is exported
+Depend on `@e2edev/e2e/engine` only, and take `e2e` as a **peer** dependency, never a
+regular one: the engine and the runner must agree on one copy of the error
+classes. Everything the spec requires an engine to reproduce exactly is exported
 there: the runner error taxonomy (`TestError`, `ConfigurationError`,
 `InfrastructureError`), text-pattern matching (`matchesText`, `toTextPattern`,
 `describePattern`), URL matching (`urlMatches`), assertion polling
 (`pollCondition`, `Deadline`), and the JSON-value rules (`validateJsonValue`).
-Anything else a backend needs is its own to write; there is no shared internal
+Anything else an engine needs is its own to write; there is no shared internal
 subpath.
 </Callout>
 
@@ -122,13 +122,13 @@ key in any of them fails at config load.
 `init` runs once per worker before the first attempt, outside every step
 budget: boot devices and download runtimes there. A config-held handle can
 outlive an in-process worker, so `init` may run again after `dispose` on the
-same handle and must work on a disposed backend as on a fresh one.
+same handle and must work on a disposed engine as on a fresh one.
 `startAttempt`/`endAttempt` bracket one test attempt and carry the attempt's
 artifact directory; give each test a fresh surface here (a new browser
 context, a reset app). When `startAttempt` fails or exceeds `launchTimeout`,
 its `context.signal` aborts and `endAttempt` runs right behind it, so stop
 promptly and keep `endAttempt` idempotent. `endAttempt` and `dispose` receive a
-`BackendCleanupContext` (`{ signal, timeoutMs }`) whose `signal` aborts when
+`EngineCleanupContext` (`{ signal, timeoutMs }`) whose `signal` aborts when
 the `cleanupTimeout` budget is spent. `dispose` runs at worker shutdown whether
 or not `init` ran.
 
@@ -154,7 +154,7 @@ gets, and nothing else in the harness changes.
 A `state` snapshot carries whatever authenticates the app: cookies, tokens,
 storage. The contract splits the duties. The harness encrypts it at rest with a
 per-run key that never touches disk, keeps it in the run's private session
-directory, binds it to the run, target, backend, and app identity, deletes it
+directory, binds it to the run, target, engine, and app identity, deletes it
 when the run ends, and never logs, reports, digests, or sends it to a model.
 Your side: never persist, cache, or log a snapshot; never echo its contents in
 an error; make `restore` replace the surface's whole persisted state rather than
@@ -162,9 +162,9 @@ merge into it.
 
 ### Errors
 
-Throw `BackendError` across the seam. Retryability is closed to `NODE_STALE`
-and `FRAME_NOT_FOUND`; asking for a retryable `BACKEND_FAILURE` is coerced to
-non-retryable so a backend can never talk the runner into repeating an action
+Throw `EngineError` across the seam. Retryability is closed to `NODE_STALE`
+and `FRAME_NOT_FOUND`; asking for a retryable `ENGINE_FAILURE` is coerced to
+non-retryable so an engine can never talk the runner into repeating an action
 that may have committed. `ACTION_MAY_HAVE_COMMITTED` says exactly that;
 `INVALID_STATE` maps to `APP_NOT_OPEN`; `UNSUPPORTED_CAPABILITY` is a
 configuration error; anything else is infrastructure.
@@ -172,7 +172,7 @@ configuration error; anything else is infrastructure.
 ## Contributed fixtures
 
 A platform-shaped surface - `web` for a browser, `device` for a simulator - is
-a fixture the backend contributes, not something core declares. The harness
+a fixture the engine contributes, not something core declares. The harness
 records the methods declared through `context.fixture` as steps named
 `<fixture>.<method>`. Declare labels and timeouts explicitly; synchronous
 accessors pass through. The step opens before the method runs, so artifacts
@@ -192,13 +192,13 @@ fixtures: {
 
 ```ts title="tests/fixtures.ts"
 import { test as base } from '@e2edev/e2e';
-import type { Device } from 'e2e-backend-hyperdrive';
+import type { Device } from 'e2e-engine-hyperdrive';
 
 export const test = base.extend<{ device: Device }>();
 ```
 
 The factory's `context` carries what a fixture legitimately needs from the
-harness and nothing else: the app's base URL (absent when the backend declares none)
+harness and nothing else: the app's base URL (absent when the engine declares none)
 and origin policy (`app.resolveUrl` enforces it), the configured timeouts, `operation()` budgets, `attachArtifact`
 and `attachViewport` for the current step, `locator(expression)` and
 `screen(scope)` to mint core locators from a platform selector or a nested
@@ -208,7 +208,7 @@ document, and `expectable(target, factory)` to attach an expectation surface so
 
 ## Scoping agent tools to a platform
 
-Agent tools are declared with `defineTool` on the agent, not on the backend. A
+Agent tools are declared with `defineTool` on the agent, not on the engine. A
 project that mixes web and device targets scopes a tool pack with the
 `platforms` annotation; the agent offers a tool only on targets whose
 `platform` is listed, so a swipe tool never reaches a web target and a route
@@ -223,7 +223,7 @@ const swipe = defineTool(swipeTool(client), {
 
 ## Verify it
 
-Run the runner against your backend with a real test file: the contract test
-`packages/e2e/tests/integration/backend-contract.test.ts` shows the guarantees
+Run the runner against your engine with a real test file: the contract test
+`packages/e2e/tests/integration/engine-contract.test.ts` shows the guarantees
 the runner holds - lifecycle order, operation contexts, error mapping, capability
-gating - and is the reference for what your backend can rely on.
+gating - and is the reference for what your engine can rely on.

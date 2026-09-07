@@ -1,25 +1,25 @@
 /**
- * The Playwright backend for e2e (RFC0002): a browser body built with the
- * public `defineBackend`, validated by the same rules and graded by the same
- * capabilities as any other backend. Core imports nothing from here; this
- * package imports the contract from `@e2edev/e2e/backend` and contributes the `web`
- * fixture the way a device backend contributes `device`.
+ * The Playwright engine for e2e (RFC0002): a browser body built with the
+ * public `defineEngine`, validated by the same rules and graded by the same
+ * capabilities as any other engine. Core imports nothing from here; this
+ * package imports the contract from `@e2edev/e2e/engine` and contributes the `web`
+ * fixture the way a device engine contributes `device`.
  */
 
 import type { BrowserContext, Page } from 'playwright';
 import {
   ConfigurationError,
-  defineBackend,
+  defineEngine,
   obj,
-  type BackendAppDeclaration,
-  type BackendHandle,
-} from '@e2edev/e2e/backend';
+  type EngineAppDeclaration,
+  type EngineHandle,
+} from '@e2edev/e2e/engine';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
 
-/** Creates one Playwright backend: one browser per worker, one context per attempt. */
-const surfaces = new WeakMap<BackendHandle, PlaywrightSurface>();
+/** Creates one Playwright engine: one browser per worker, one context per attempt. */
+const surfaces = new WeakMap<EngineHandle, PlaywrightSurface>();
 
 /**
  * The live browser objects behind a `playwright()` handle, for agent-side code
@@ -34,22 +34,22 @@ export interface PlaywrightLiveSurface {
   readonly context: () => BrowserContext;
 }
 
-/** The live surface of a handle this module created, or undefined for any other backend. */
-export function surfaceOf(backend: BackendHandle): PlaywrightLiveSurface | undefined {
-  const surface = surfaces.get(backend);
+/** The live surface of a handle this module created, or undefined for any other engine. */
+export function surfaceOf(engine: EngineHandle): PlaywrightLiveSurface | undefined {
+  const surface = surfaces.get(engine);
   if (surface === undefined) return undefined;
   return { page: () => surface.requirePage(), context: () => surface.requireContext() };
 }
 
-export function playwright(options: PlaywrightOptions = {}): BackendHandle {
+export function playwright(options: PlaywrightOptions = {}): EngineHandle {
   if (options.connect !== undefined && options.browser !== undefined && options.browser !== 'chromium') {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `playwright({ connect }) requires the chromium engine; CDP attach is chromium-only, got "${options.browser}"`,
+      `playwright({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
     );
   }
   const surface = new PlaywrightSurface(options);
-  const handle = defineBackend({
+  const handle = defineEngine({
     name: 'playwright',
     version: ownVersion(),
     spiVersion: 1,
@@ -88,7 +88,7 @@ export function playwright(options: PlaywrightOptions = {}): BackendHandle {
 }
 
 /** The app-declaration half of the options, so browser knobs never reach the manifest. */
-function declaredApp(options: PlaywrightOptions): BackendAppDeclaration {
+function declaredApp(options: PlaywrightOptions): EngineAppDeclaration {
   const { url, allowedOrigins, environment, identity, command, readyUrl, services } = options;
   return obj({ url, allowedOrigins, environment, identity, command, readyUrl, services });
 }

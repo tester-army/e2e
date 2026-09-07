@@ -64,10 +64,10 @@ construction. The context provides:
   share the ledger. An executor that keeps state per attempt keys it by
   `attemptId` or stores it in `memory`, and releases it on the signal.
 - `observe(options?)` — a fresh, redacted, size-bounded semantic observation
-  as text, with the current location as `path` when the backend reports one.
+  as text, with the current location as `path` when the engine reports one.
   `{ tree: true }` adds the redacted node tree (names, text, values, and
   attribute values redacted; a secure node carries no value); `{ pixels: true }`
-  adds masked viewport pixels when the backend captures them, masking is
+  adds masked viewport pixels when the engine captures them, masking is
   proven, and no secret has been filled in the attempt — otherwise
   `pixelsWithheld` names the reason (`PIXEL_TAINTED`, `MASKING_UNPROVEN`,
   `UNSUPPORTED_CAPABILITY`) and the decision is recorded as a policy event.

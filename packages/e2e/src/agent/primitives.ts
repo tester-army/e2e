@@ -123,7 +123,7 @@ export interface GrammarToolOptions {
 
 /**
  * AI SDK tools over the harness action grammar, limited to the verbs the
- * target's backend declared. A verb the surface cannot honor is not offered
+ * target's engine declared. A verb the surface cannot honor is not offered
  * at all, so the model never learns vocabulary it can only be rejected on.
  * Every mutating tool returns the updated screen.
  */

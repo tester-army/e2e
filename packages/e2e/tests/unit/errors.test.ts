@@ -12,16 +12,16 @@ import {
   translateProvisioningError,
   truncateUtf8,
 } from '../../src/internal/errors.ts';
-import { BackendError } from '../../src/backend/surface.ts';
+import { EngineError } from '../../src/engine/surface.ts';
 
 describe('translateProvisioningError', () => {
-  it('never yields a test error: a backend error of any code is infrastructure', () => {
+  it('never yields a test error: an engine error of any code is infrastructure', () => {
     const stale = translateProvisioningError(
-      new BackendError('NODE_STALE', 'ref gone', { retryable: true }),
+      new EngineError('NODE_STALE', 'ref gone', { retryable: true }),
       ' while preparing',
     );
     expect(stale.category).toBe('infrastructure');
-    expect(stale.code).toBe('BACKEND_FAILURE');
+    expect(stale.code).toBe('ENGINE_FAILURE');
     expect(stale.message).toBe('ref gone while preparing');
     const plain = translateProvisioningError(new Error('download failed'), ' while preparing');
     expect(plain.category).toBe('infrastructure');
@@ -30,7 +30,7 @@ describe('translateProvisioningError', () => {
 
   it('keeps a cancellation a cancellation', () => {
     const cancelled = translateProvisioningError(
-      new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }),
+      new EngineError('CANCELLED', 'browser install cancelled', { retryable: false }),
     );
     expect(cancelled.category).toBe('infrastructure');
     expect(cancelled.code).toBe('CANCELLED');
@@ -73,25 +73,25 @@ describe('classifyError', () => {
     expect(classifyError('string failure').category).toBe('test');
   });
 
-  it('applies the canonical driver mapping to BackendErrors from any surface', () => {
+  it('applies the canonical driver mapping to EngineErrors from any surface', () => {
     const failure = classifyError(
-      new BackendError('BACKEND_FAILURE', 'backend died', { retryable: false }),
+      new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false }),
     );
     expect(failure.category).toBe('infrastructure');
-    expect(failure.code).toBe('BACKEND_FAILURE');
+    expect(failure.code).toBe('ENGINE_FAILURE');
 
     const unsupported = classifyError(
-      new BackendError('UNSUPPORTED_CAPABILITY', 'no video', { retryable: false }),
+      new EngineError('UNSUPPORTED_CAPABILITY', 'no video', { retryable: false }),
     );
     expect(unsupported.category).toBe('configuration');
     expect(unsupported.code).toBe('UNSUPPORTED_CAPABILITY');
 
-    const cancelled = classifyError(new BackendError('CANCELLED', 'stop', { retryable: false }));
+    const cancelled = classifyError(new EngineError('CANCELLED', 'stop', { retryable: false }));
     expect(cancelled.category).toBe('infrastructure');
     expect(cancelled.code).toBe('CANCELLED');
 
     const invalidState = classifyError(
-      new BackendError('INVALID_STATE', 'nothing open', { retryable: false }),
+      new EngineError('INVALID_STATE', 'nothing open', { retryable: false }),
     );
     expect(invalidState.category).toBe('test');
     expect(invalidState.code).toBe('APP_NOT_OPEN');
@@ -150,9 +150,9 @@ describe('truncateUtf8', () => {
 
 describe('E2EError', () => {
   it('carries category, code, and retryability', () => {
-    const error = new E2EError('infrastructure', 'BACKEND_FAILURE', 'x', { retryable: false });
+    const error = new E2EError('infrastructure', 'ENGINE_FAILURE', 'x', { retryable: false });
     expect(error.category).toBe('infrastructure');
-    expect(error.code).toBe('BACKEND_FAILURE');
+    expect(error.code).toBe('ENGINE_FAILURE');
     expect(error.retryable).toBe(false);
   });
 });

@@ -43,9 +43,9 @@ navigation:
       - section: Extend
         skip-slug: true
         contents:
-          - page: Writing a backend
-            path: docs/pages/writing-a-backend.mdx
-            slug: writing-a-backend
+          - page: Writing an engine
+            path: docs/pages/writing-an-engine.mdx
+            slug: writing-an-engine
   - tab: reference
     layout:
       - section: API
@@ -81,9 +81,9 @@ navigation:
           - page: Errors
             path: docs/pages/reference/errors.mdx
             slug: reference/errors
-          - page: e2e/backend
-            path: docs/pages/reference/backend.mdx
-            slug: reference/backend
+          - page: e2e/engine
+            path: docs/pages/reference/engine.mdx
+            slug: reference/engine
 
 navbar-links:
   - type: minimal
@@ -118,4 +118,8 @@ redirects:
   - source: /troubleshooting
     destination: /reference/errors
   - source: /writing-a-driver
-    destination: /writing-a-backend
+    destination: /writing-an-engine
+  - source: /writing-a-backend
+    destination: /writing-an-engine
+  - source: /reference/backend
+    destination: /reference/engine

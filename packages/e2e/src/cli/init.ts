@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { esmPackageHint } from '../config/esm.ts';
-import { getBackendPresets, DEFAULT_BACKEND_ID, type BackendId } from './init/backends.ts';
+import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { addDependencies, detectPackageManager, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold } from './init/scaffold.ts';
 
@@ -55,24 +55,24 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const ignoreLines = existingIgnore.split(/\r?\n/);
   const missingIgnore = GITIGNORE_ENTRIES.filter((entry) => !ignoreLines.includes(entry));
 
-  // Backend and AI are choices for a new config only; an existing config keeps its own dependencies.
-  let backend: BackendId = DEFAULT_BACKEND_ID;
+  // Engine and AI are choices for a new config only; an existing config keeps its own dependencies.
+  let engine: EngineId = DEFAULT_ENGINE_ID;
   let ai = existingConfig === undefined;
   if (existingConfig === undefined && !options.yes) {
-    const selectedBackend = await clack.select<BackendId>({
-      message: 'Which backend?',
-      initialValue: DEFAULT_BACKEND_ID,
-      options: getBackendPresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
+    const selectedEngine = await clack.select<EngineId>({
+      message: 'Which engine?',
+      initialValue: DEFAULT_ENGINE_ID,
+      options: getEnginePresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
     });
-    if (clack.isCancel(selectedBackend)) return cancelled();
-    backend = selectedBackend;
+    if (clack.isCancel(selectedEngine)) return cancelled();
+    engine = selectedEngine;
 
     const enableAi = await clack.confirm({ message: 'Enable AI testing? Adds AI SDK v7.', initialValue: true });
     if (clack.isCancel(enableAi)) return cancelled();
     ai = enableAi;
   }
 
-  const scaffold = createScaffold(backend, ai);
+  const scaffold = createScaffold(engine, ai);
   const { manifest, additions } = addDependencies(pkg.manifest, scaffold.dependencies);
   if (additions.length > 0) {
     clack.log.info(`add dev dependencies: ${additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);

@@ -45,7 +45,7 @@ export interface Agent {
 ## Budgets
 
 Model calls count every model request including repair rounds. Action steps count
-committed backend actions. Every timeout is additionally capped by the remaining
+committed engine actions. Every timeout is additionally capped by the remaining
 test timeout.
 
 | Method | Model calls | Action steps | Default timeout |
@@ -84,7 +84,7 @@ in `params` is projected before the model sees anything: the model receives the
 secret's name and purpose, and the harness fills the value host-side, subject
 to the same authorization as `locator.fill`: the credential must be
 registered, the current origin must be allowed by both the target's allowed
-origins (the backend's `allowedOrigins` declaration) and the credential's own
+origins (the engine's `allowedOrigins` declaration) and the credential's own
 `allowedOrigins`, the field must be an enabled secure
 input whose purpose equals the secret's purpose.
 
@@ -198,9 +198,9 @@ cheap, and its node references are what keep a step auditable.
 
 Pixel evidence degrades instead of failing the call. It is withheld, and the tree
 sent alone, when the viewport is pixel-tainted by a secret fill
-(`visionDegraded: "PIXEL_TAINTED"` on the step), when the backend masked fewer
+(`visionDegraded: "PIXEL_TAINTED"` on the step), when the engine masked fewer
 regions than the secure fields it observed (`MASKING_UNPROVEN`), or when the
-backend cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
+engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
 pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
 
 `options.vision` and `assert`'s `options.screenshot` are unrelated: `screenshot`

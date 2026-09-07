@@ -73,7 +73,7 @@ export interface RunOptions {
   /** Cancellation: the running test ends, its teardown runs, the run finishes as `interrupted`. */
   interruptSignal?: AbortSignal | undefined;
   /**
-   * Forced cancellation: every worker disposes its backend at once instead
+   * Forced cancellation: every worker disposes its engine at once instead
    * of finishing its test, and is killed after the cleanup budget. Counts as
    * an interrupt on its own. The runner never handles process signals itself;
    * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
@@ -118,7 +118,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const results: ResultRecord[] = [];
   const serialGroups: SerialGroupRecord[] = [];
   const targetProvenance = new Map<string, TargetProvenance>();
-  /** Dependency processes declared by the targets' backends, deduplicated, started before any app command. */
+  /** Dependency processes declared by the targets' engines, deduplicated, started before any app command. */
   let services: ServiceStack | undefined;
   /** App processes started for this run, one per distinct declared command. */
   const appProcesses: ManagedProcess[] = [];
@@ -332,7 +332,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
   const executeRun = async (): Promise<void> => {
     const interrupted = interruptController.signal;
-    // Each backend declares the app it drives: the dependency processes it
+    // Each engine declares the app it drives: the dependency processes it
     // needs and the command that starts it. Declarations are deduplicated
     // across targets (two browsers on one dev server share one process), and
     // every service is ready before the first app command starts. Nothing
@@ -389,21 +389,21 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const store = SessionStore.create(runId, sessionsRoot);
     sessionStore = store;
 
-    // Pre-flight: grade every selected target from its backend declaration
+    // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the
-    // backend offers fails here, once, instead of inside a launch budget.
+    // engine offers fails here, once, instead of inside a launch budget.
     for (const { target } of selection.perTarget) {
-      targetProvenance.set(target.name, validateBackend(target, config));
+      targetProvenance.set(target.name, validateEngine(target, config));
     }
 
-    // Provisioning: a backend that must fetch something onto this machine (a
+    // Provisioning: an engine that must fetch something onto this machine (a
     // first-run browser download) does it here, once per target and before
     // any worker, outside every launch budget. Only an interrupt cuts it
     // short, and its progress streams as `notice` events, so the reporter
     // prints it instead of a worker's stderr fighting the live status block.
     try {
-      await debug.time('backend.prepare', () =>
-        prepareBackends(
+      await debug.time('engine.prepare', () =>
+        prepareEngines(
           selection.perTarget.map(({ target }) => target),
           { runId, env, signal: interrupted },
           (target, message) => emit({ type: 'notice', target, message }),
@@ -417,7 +417,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A programmatic `rawConfig` cannot cross a process
-    // boundary (it may hold live backend handles), so it runs in-process
+    // boundary (it may hold live engine handles), so it runs in-process
     // against one worker. Either way the scheduler is the only engine.
     if (aiTrace !== undefined && config.configPath === undefined) {
       // In-process execution shares this process with the runner, so the
@@ -543,22 +543,22 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
 /**
  * Runs each target's `prepare` hook in turn. Sequential on purpose: two
- * backends provisioning the same toolchain would race, and the notices of
+ * engines provisioning the same toolchain would race, and the notices of
  * one download read better than two interleaved.
  */
-async function prepareBackends(
+async function prepareEngines(
   targets: readonly ResolvedTarget[],
   scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
   notice: (target: string, message: string) => void,
 ): Promise<void> {
   for (const target of targets) {
-    const backend = target.backend;
-    if (backend?.prepare === undefined) continue;
+    const engine = target.engine;
+    if (engine?.prepare === undefined) continue;
     if (scope.signal.aborted) return;
     try {
       // The same `env` the workers are started with: what prepare provisions
       // must be where a worker's launch will look for it.
-      await backend.prepare({
+      await engine.prepare({
         runId: scope.runId,
         targetName: target.name,
         env: scope.env,
@@ -566,7 +566,7 @@ async function prepareBackends(
         log: (line) => notice(target.name, line),
       });
     } catch (cause) {
-      throw translateProvisioningError(cause, ` while preparing backend ${backend.name} for target "${target.name}"`);
+      throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
     }
   }
 }
@@ -596,18 +596,18 @@ function statusOf(exitCode: RunExitCode): RunOutcome['status'] {
 }
 
 /**
- * Grades one target from its backend declaration and validates the configured
+ * Grades one target from its engine declaration and validates the configured
  * artifacts against it; returns the report provenance.
  */
-function validateBackend(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
+function validateEngine(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
   const provenance = describeTarget(target);
-  // The default artifact set is best-effort: a backend without evidence
+  // The default artifact set is best-effort: an engine without evidence
   // capture simply records none. Asking for one explicitly is a contract.
   for (const artifact of config.artifactsExplicit ? config.artifacts : []) {
     if (!provenance.artifactCapabilities.includes(artifact)) {
       throw new ConfigurationError(
         'UNSUPPORTED_ARTIFACT',
-        `target "${target.name}" (backend ${provenance.backend.name}) does not support the configured "${artifact}" artifact`,
+        `target "${target.name}" (engine ${provenance.engine.name}) does not support the configured "${artifact}" artifact`,
       );
     }
   }

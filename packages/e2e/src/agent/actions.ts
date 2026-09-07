@@ -9,7 +9,7 @@
  * summary, a live event line, and a relocation candidate can never drift.
  */
 
-import type { SemanticNode } from '../backend/surface.ts';
+import type { SemanticNode } from '../engine/surface.ts';
 import {
   bound,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -140,7 +140,7 @@ export function describeAction(
 
 /**
  * Builds the durable descriptor for one resolved node: the semantic fields
- * replay re-finds it by, plus the backend's structural selector hint (kept as
+ * replay re-finds it by, plus the engine's structural selector hint (kept as
  * provenance for tuned policies; the conservative relocator ignores it).
  * Values a secure node holds are never part of it — descriptors carry how a
  * node is named, not what it contains.

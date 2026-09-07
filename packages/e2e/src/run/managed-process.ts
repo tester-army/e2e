@@ -1,4 +1,4 @@
-/** Spawned-process management for the commands and services backends declare, and their teardowns (spec 05-config.md). */
+/** Spawned-process management for the commands and services engines declare, and their teardowns (spec 05-config.md). */
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
@@ -240,7 +240,7 @@ export class ManagedProcess {
 }
 
 /**
- * The dependency processes the backends declared as `services`: started
+ * The dependency processes the engines declared as `services`: started
  * sequentially in declaration order, each ready before the next starts, and
  * torn down in reverse.
  */

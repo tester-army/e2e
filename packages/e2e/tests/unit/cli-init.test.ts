@@ -63,31 +63,31 @@ describe('e2e init', () => {
   });
 
   it.each([
-    { backend: 'none', ai: false },
-    { backend: 'none', ai: true },
-    { backend: 'playwright', ai: false },
-    { backend: 'playwright', ai: true },
-    { backend: 'agent-device', ai: false },
-    { backend: 'agent-device', ai: true },
-  ] as const)('matches imports and dependencies to backend=$backend, ai=$ai', async ({ backend, ai }) => {
-    vi.mocked(clack.select).mockResolvedValueOnce(backend);
+    { engine: 'none', ai: false },
+    { engine: 'none', ai: true },
+    { engine: 'playwright', ai: false },
+    { engine: 'playwright', ai: true },
+    { engine: 'agent-device', ai: false },
+    { engine: 'agent-device', ai: true },
+  ] as const)('matches imports and dependencies to engine=$engine, ai=$ai', async ({ engine, ai }) => {
+    vi.mocked(clack.select).mockResolvedValueOnce(engine);
     vi.mocked(clack.confirm).mockResolvedValueOnce(ai).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     const manifest = JSON.parse(read('package.json'));
-    const device = backend === 'agent-device';
+    const device = engine === 'agent-device';
     expect(Object.keys(manifest.devDependencies)).toEqual([
       '@e2edev/e2e',
-      ...(backend === 'playwright' ? ['@e2edev/playwright'] : []),
+      ...(engine === 'playwright' ? ['@e2edev/playwright'] : []),
       ...(device ? ['@e2edev/agent-device'] : []),
       ...(ai ? ['ai'] : []),
     ]);
     expect(manifest.devDependencies.ai).toBe(ai ? '^7.0.0' : undefined);
     expect(read('e2e.config.ts').includes('createAgent')).toBe(ai);
-    expect(read('e2e.config.ts').includes('@e2edev/playwright')).toBe(backend === 'playwright');
-    expect(read('tests/example.e2e.ts').includes('@e2edev/playwright')).toBe(backend === 'playwright');
+    expect(read('e2e.config.ts').includes('@e2edev/playwright')).toBe(engine === 'playwright');
+    expect(read('tests/example.e2e.ts').includes('@e2edev/playwright')).toBe(engine === 'playwright');
     expect(read('e2e.config.ts').includes('@e2edev/agent-device')).toBe(device);
     expect(read('tests/example.e2e.ts').includes('@e2edev/agent-device')).toBe(device);
-    expect(read('e2e.config.ts').includes('APP_URL')).toBe(backend === 'playwright');
+    expect(read('e2e.config.ts').includes('APP_URL')).toBe(engine === 'playwright');
     expect(output()).toContain(`next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npx --no-install e2e run`);
     expect(spawnSync).not.toHaveBeenCalled();
   });
@@ -140,9 +140,9 @@ describe('e2e init', () => {
     expect(output()).toContain('next: npm install, then APP_URL=');
   });
 
-  it.each(['backend', 'ai', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
+  it.each(['engine', 'ai', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
     const cancel = Symbol('cancel');
-    vi.mocked(clack.select).mockResolvedValueOnce(stage === 'backend' ? cancel : 'playwright');
+    vi.mocked(clack.select).mockResolvedValueOnce(stage === 'engine' ? cancel : 'playwright');
     vi.mocked(clack.confirm)
       .mockResolvedValueOnce(stage === 'ai' ? cancel : true)
       .mockResolvedValueOnce(stage !== 'files')
@@ -171,7 +171,7 @@ describe('e2e init', () => {
     const manifest = {
       name: 'existing-app', type: 'commonjs', scripts: { dev: 'vite' },
       dependencies: { ai: '^7.0.12' },
-      devDependencies: { '@e2edev/playwright': 'file:../backend', vite: '^7.0.0' },
+      devDependencies: { '@e2edev/playwright': 'file:../engine', vite: '^7.0.0' },
       custom: { enabled: true },
     };
     writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 4).replaceAll('\n', '\r\n')}\r\n`);

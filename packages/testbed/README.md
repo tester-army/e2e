@@ -8,7 +8,7 @@ tests.
 
 - `app/server.mjs` — dependency-free playground app (todos, login/session,
   forms, wizard, network, dialogs, iframes, downloads). The runner starts and
-  stops it via the playwright backend's `command` option.
+  stops it via the playwright engine's `command` option.
 - `e2e.config.ts` — local config used by `pnpm test`.
 - `tests/` — the local suite: queries, actions, polling assertions, sessions
   (`test.setup` + `session:`), serial groups, routes, dialogs, frames,
@@ -20,7 +20,7 @@ tests.
   playground: `agent.act` flows, assisted polling, judgments, and
   schema-validated extraction with zod.
 - `e2e.device.config.ts` + `tests-device/` — opt-in mobile suite on the
-  `@e2edev/agent-device` backend, two targets: an iOS simulator and an Android
+  `@e2edev/agent-device` engine, two targets: an iOS simulator and an Android
   emulator, each with its Settings app. Portable files (`about`, `device`) run
   on both unchanged; `ios` and `android` hold the label-bound deterministic
   checks. Needs a booted simulator, one AVD, and a model credential; steps
@@ -100,7 +100,7 @@ AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:device      # Settings
 AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:reminders   # Reminders: long agentic stress sessions
 ```
 
-Each backend opens its platform's Settings app fresh before every test, so no
+Each engine opens its platform's Settings app fresh before every test, so no
 step needs an agent-side tool to get started and every `agent.act` step stays
 inside the grammar. The portable tests describe goals, not labels ("open the
 screen that describes this device"), and read the result back with judgments
@@ -137,7 +137,7 @@ the call site.
    errors" is reconstructed from `web.route` on the request side.
 5. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
    `tabpanel`, so radio groups and selects need `web.locator`.
-6. **The reference backend is detected by anti-bot.** `/hobbit/login` redirects to
+6. **The reference engine is detected by anti-bot.** `/hobbit/login` redirects to
    a block page on load; the aspirational test is `skip`ped and the block pinned.
 
 ### Closed

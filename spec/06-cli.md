@@ -10,13 +10,13 @@ missing scaffold files. It adds missing selected dependencies to
 fields. A new manifest is private and sets `"type": "module"`; an existing
 manifest's module type is preserved and any required ESM opt-in is explained.
 
-- The runner is always added. When creating a config, the backend (none,
-  Playwright, or agent-device) and AI support are choices: a backend adds its
+- The runner is always added. When creating a config, the engine (none,
+  Playwright, or agent-device) and AI support are choices: an engine adds its
   package; AI adds the AI SDK v7 peer and constructs the built-in agent in the
   generated config. AI defaults to enabled. Skipped choices leave no imports or
   dependencies behind.
 - `tests/example.e2e.ts` is deterministic: an HTTP response check without a
-  backend, an app-open test with Playwright, or a Settings check on the default
+  engine, an app-open test with Playwright, or a Settings check on the default
   device platform (iOS on macOS, Android elsewhere). HTTP and Playwright setups
   read `APP_URL`; device setup pins the platform and Settings app in the config,
   uses one worker, and needs no `APP_URL`.
@@ -29,10 +29,10 @@ manifest's module type is preserved and any required ESM opt-in is explained.
   invalid manifest exits 2 before any write. A successful init ends with one
   `next:` line: the install command if needed, then the run command.
 
-`--yes` skips prompts: AI enabled, no backend, no installation. Existing configs
+`--yes` skips prompts: AI enabled, no engine, no installation. Existing configs
 are never rewritten or assigned optional dependencies.
 
-Browser provisioning uses the locked driver/backend version installed with the
+Browser provisioning uses the locked driver/engine version installed with the
 project. The runner MUST NOT execute a mutable package version or download an
 unverified browser binary.
 

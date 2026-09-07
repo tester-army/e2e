@@ -1,7 +1,7 @@
 /**
- * Opt-in device suite on the `@e2edev/agent-device` backend: two honest
+ * Opt-in device suite on the `@e2edev/agent-device` engine: two honest
  * mobile targets, an iOS simulator and an Android emulator, with no browser
- * and no app URL. Each backend opens its platform's Settings app fresh for
+ * and no app URL. Each engine opens its platform's Settings app fresh for
  * every attempt, so each test starts on the same screen and every `agent.act`
  * step stays inside the tap/type/scroll grammar the trace cache replays
  * zero-turn on the next run. Tests pick their platform with `platforms`: the
@@ -33,8 +33,8 @@ export default defineConfig({
   projectId: 'dev.e2e.testbed-device',
   tests: 'tests-device/**/*.e2e.ts',
   targets: [
-    { name: 'ios-simulator', platform: 'ios', backend: ios },
-    { name: 'android-emulator', platform: 'android', backend: android },
+    { name: 'ios-simulator', platform: 'ios', engine: ios },
+    { name: 'android-emulator', platform: 'android', engine: android },
   ],
   timeout: 300_000,
   actionTimeout: 90_000,

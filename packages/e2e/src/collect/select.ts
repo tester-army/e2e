@@ -251,10 +251,10 @@ function classifyPair(
     };
   }
 
-  // Targets are graded from the backend's declared capability set: harness
+  // Targets are graded from the engine's declared capability set: harness
   // tiers plus one name per contributed fixture. Selection runs at config
-  // load, before any backend boots, which is why the manifest is synchronous.
-  const capabilities = target.backend?.capabilities;
+  // load, before any engine boots, which is why the manifest is synchronous.
+  const capabilities = target.engine?.capabilities;
   const missing = options.requires.filter((capability) => capabilities?.has(capability) !== true);
   if (missing.length > 0) {
     return {
@@ -262,7 +262,7 @@ function classifyPair(
       disposition: 'skip',
       skip: {
         cause: 'capability-unavailable',
-        reason: `backend lacks required capabilities: ${missing.join(', ')}`,
+        reason: `engine lacks required capabilities: ${missing.join(', ')}`,
       },
     };
   }

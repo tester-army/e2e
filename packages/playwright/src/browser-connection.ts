@@ -9,7 +9,7 @@ export type BrowserName = 'chromium' | 'firefox' | 'webkit';
  * Launching a browser process costs hundreds of milliseconds; per-attempt
  * isolation lives in browser contexts, so every attempt a worker runs can
  * share the process. The connection relaunches a browser that crashed or
- * disconnected and is emptied by `dispose` (wired to the backend `dispose`
+ * disconnected and is emptied by `dispose` (wired to the engine `dispose`
  * hook).
  */
 export class BrowserConnection {
@@ -67,7 +67,7 @@ export function browserType(name: BrowserName): typeof chromium {
 
 /**
  * Attaches to a remote browser over the Chrome DevTools Protocol. CDP attach
- * is chromium-only; a hosted-browser backend (a per-run cloud session) resolves
+ * is chromium-only; a hosted-browser engine (a per-run cloud session) resolves
  * the endpoint itself and hands it here. `browser.close()` on the result
  * detaches the CDP session without killing the remote process the host owns.
  */

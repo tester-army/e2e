@@ -88,14 +88,14 @@ describe('run events', () => {
     }
   });
 
-  it('carries redacted prose detail on backend action events', () => {
-    const backendEvents = events.flatMap((event) =>
-      event.type === 'step' && event.progress.phase === 'event' && event.progress.event.kind === 'backend'
+  it('carries redacted prose detail on engine action events', () => {
+    const engineEvents = events.flatMap((event) =>
+      event.type === 'step' && event.progress.phase === 'event' && event.progress.event.kind === 'engine'
         ? [event.progress.event]
         : [],
     );
-    expect(backendEvents.length).toBeGreaterThan(0);
-    expect(backendEvents[0]?.detail).toBe('tap button "Increment"');
+    expect(engineEvents.length).toBeGreaterThan(0);
+    expect(engineEvents[0]?.detail).toBe('tap button "Increment"');
   });
 
   it('streams step phases for the agent step', () => {

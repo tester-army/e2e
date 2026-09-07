@@ -1,22 +1,22 @@
 /**
- * The agent-device backend for e2e (RFC0002): a mobile body built with the
- * public `defineBackend`, validated by the same rules and graded by the same
- * capabilities as any other backend. Core imports nothing from here; this
- * package imports the contract from `@e2edev/e2e/backend` and contributes the
- * `device` fixture the way the browser backend contributes `web`.
+ * The agent-device engine for e2e (RFC0002): a mobile body built with the
+ * public `defineEngine`, validated by the same rules and graded by the same
+ * capabilities as any other engine. Core imports nothing from here; this
+ * package imports the contract from `@e2edev/e2e/engine` and contributes the
+ * `device` fixture the way the browser engine contributes `web`.
  */
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { defineBackend, obj, type BackendAppDeclaration, type BackendHandle } from '@e2edev/e2e/backend';
+import { defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from '@e2edev/e2e/engine';
 import { createDeviceFixture } from './device.ts';
 import { AgentDeviceSurface, type AgentDeviceOptions, type ClientFactory } from './surface.ts';
 
-const surfaces = new WeakMap<BackendHandle, AgentDeviceSurface>();
+const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
 
 /** Assembles the manifest for one surface. Exported for tests that script the client. */
-export function buildBackend(surface: AgentDeviceSurface): BackendHandle {
-  const handle = defineBackend({
+export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
+  const handle = defineEngine({
     name: 'agent-device',
     version: ownVersion(),
     spiVersion: 1,
@@ -50,26 +50,26 @@ export function buildBackend(surface: AgentDeviceSurface): BackendHandle {
   return handle;
 }
 
-/** Creates one agent-device backend: one device session per worker, one fresh app launch per attempt. */
-export function agentDevice(options: AgentDeviceOptions): BackendHandle {
+/** Creates one agent-device engine: one device session per worker, one fresh app launch per attempt. */
+export function agentDevice(options: AgentDeviceOptions): EngineHandle {
   const factory: ClientFactory = (session) => createAgentDeviceClient({ session });
-  return buildBackend(new AgentDeviceSurface(options, factory));
+  return buildEngine(new AgentDeviceSurface(options, factory));
 }
 
 /**
- * What the device backend declares about its app: the pinned app (else the
+ * What the device engine declares about its app: the pinned app (else the
  * build it installs) is the identity cache and session entries key on.
  */
-function declaredApp(options: AgentDeviceOptions): Pick<BackendAppDeclaration, 'identity' | 'environment'> {
+function declaredApp(options: AgentDeviceOptions): Pick<EngineAppDeclaration, 'identity' | 'environment'> {
   return obj({
     identity: options.identity ?? options.app ?? options.appPath,
     environment: options.environment,
   });
 }
 
-/** The surface behind a handle this package created; undefined for any other backend. */
-export function surfaceOf(backend: BackendHandle): AgentDeviceSurface | undefined {
-  return surfaces.get(backend);
+/** The surface behind a handle this package created; undefined for any other engine. */
+export function surfaceOf(engine: EngineHandle): AgentDeviceSurface | undefined {
+  return surfaces.get(engine);
 }
 
 /** This package's published version, read through require resolution. */

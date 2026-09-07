@@ -1,29 +1,29 @@
 /**
- * The backend contract (RFC0002): the typed, model-free body of one target.
+ * The engine contract (RFC0002): the typed, model-free body of one target.
  *
- * A backend never talks to a model. It declares capabilities - observation,
+ * An engine never talks to a model. It declares capabilities - observation,
  * actions, location, state, artifacts, contributed fixtures - and the harness
- * grades what a target can do from what its backend declares: observation
+ * grades what a target can do from what its engine declares: observation
  * unlocks the judgment tier and prompt snapshots, `perform` unlocks the
  * harness-routed node actions (the agent's grammar verbs and the `screen`
  * tier's actions alike), location unlocks `screen`/`expect`. Every piece of
  * model-facing vocabulary is an agent-side `defineTool`; a target with no
- * backend at all is valid and simply runs everything opaque.
+ * engine at all is valid and simply runs everything opaque.
  *
- * Core knows this contract and never a backend's internals: no platform noun
- * appears here. A document backend, a simulator backend, and a desktop backend
+ * Core knows this contract and never an engine's internals: no platform noun
+ * appears here. A document engine, a simulator engine, and a desktop engine
  * fill in the same members with different bodies.
  *
- * `defineBackend` is the loud manifest: capability detection happens here,
- * synchronously, at config load - a malformed backend fails the run instead
+ * `defineEngine` is the loud manifest: capability detection happens here,
+ * synchronously, at config load - a malformed engine fails the run instead
  * of silently demoting itself to a lower tier.
  */
 
-import { backendBrand } from '../internal/brands.ts';
+import { engineBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 
-// Semantics the spec requires every backend and contributed fixture to
-// reproduce exactly, exported so a backend never carries its own copy: the
+// Semantics the spec requires every engine and contributed fixture to
+// reproduce exactly, exported so an engine never carries its own copy: the
 // runner error taxonomy (06-cli.md), text-pattern matching (04-locators.md),
 // URL matching (03-assertions.md), assertion polling (03-assertions.md), and
 // the JSON-value rules for data a fixture returns.
@@ -45,8 +45,8 @@ import type {
   ServiceConfig,
 } from '../types.ts';
 import {
-  BACKEND_SPI_VERSION,
-  type BackendSpiVersion,
+  ENGINE_SPI_VERSION,
+  type EngineSpiVersion,
   type LocatorAction,
   type LocatorExpression,
   type NodeRef,
@@ -57,12 +57,12 @@ import {
 
 export type * from './contract.ts';
 export {
-  BACKEND_ERROR_CODES,
-  BACKEND_SPI_VERSION,
-  BackendError,
+  ENGINE_ERROR_CODES,
+  ENGINE_SPI_VERSION,
+  EngineError,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
-  RETRYABLE_BACKEND_ERROR_CODES,
+  RETRYABLE_ENGINE_ERROR_CODES,
 } from './contract.ts';
 export type {
   CommandConfig,
@@ -82,7 +82,7 @@ export type {
  * contributed fixture. `actions` is `perform`; `location` is `locate`. Both
  * require observation, because their refs live in the observation's id space.
  */
-export type BackendCapability =
+export type EngineCapability =
   | 'observation'
   | 'actions'
   | 'location'
@@ -91,14 +91,14 @@ export type BackendCapability =
   | (string & {});
 
 /**
- * What a backend declares about the app it drives (RFC0002 step 7b). The app
- * under test is the backend's to describe: a browser backend names a URL, a
- * device backend a bundle id. The harness resolves the declaration once per
+ * What an engine declares about the app it drives (RFC0002 step 7b). The app
+ * under test is the engine's to describe: a browser engine names a URL, a
+ * device engine a bundle id. The harness resolves the declaration once per
  * target and owns everything built on it - navigation and origin policy,
  * cache and session identity, the report's target record, and the app
  * process it starts before the run.
  */
-export interface BackendAppDeclaration {
+export interface EngineAppDeclaration {
   /**
    * Base URL of an addressable app: `app.open()` opens it and relative
    * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
@@ -150,11 +150,11 @@ export interface BackendAppDeclaration {
   readonly services?: readonly ServiceConfig[];
 }
 
-/** The app under test as the harness resolved the backend's declaration, handed back at init. */
-export interface BackendAppInfo {
+/** The app under test as the harness resolved the engine's declaration, handed back at init. */
+export interface EngineAppInfo {
   /**
    * Normalized base URL; the target of `app.open()` with no path. Absent when
-   * the backend declared no `url`: a surface that needs one then fails the
+   * the engine declared no `url`: a surface that needs one then fails the
    * call that needs it, and never navigates to a placeholder.
    */
   readonly baseUrl?: string;
@@ -180,14 +180,14 @@ export type FixtureOperations<T extends object> = {
 };
 
 /** Context handed to a contributed fixture factory, once per attempt. */
-export interface BackendFixtureContext {
+export interface EngineFixtureContext {
   readonly targetName: string;
   /** Records the declared operations before invoking them; undeclared accessors retain their identity. */
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
-  readonly app: BackendAppInfo & {
+  readonly app: EngineAppInfo & {
     /**
      * Resolves a navigation target against the base URL and the origin
-     * policy. Throws `APP_URL_REQUIRED` when the backend declared no URL and
+     * policy. Throws `APP_URL_REQUIRED` when the engine declared no URL and
      * `POLICY_DENIED` for a disallowed origin or scheme, so a fixture never
      * re-implements the policy the harness owns.
      */
@@ -233,19 +233,19 @@ export interface BackendFixtureContext {
  * labels, deadlines and verification. The factory must return the declared
  * surface; a plain one is rejected with INVALID_CONFIG.
  */
-export type BackendFixtureFactory = (context: BackendFixtureContext) => object;
+export type EngineFixtureFactory = (context: EngineFixtureContext) => object;
 
 /**
- * An opaque, restorable snapshot of a backend's state. `data` is JSON the
+ * An opaque, restorable snapshot of an engine's state. `data` is JSON the
  * harness never inspects - a document platform's storage state, a device's app state, a
  * desktop's window state all satisfy it identically. `format`/`version` let a
- * backend reject a snapshot it can no longer read.
+ * engine reject a snapshot it can no longer read.
  */
-export interface BackendState {
+export interface EngineState {
   readonly format: string;
   readonly version: number;
   readonly data: unknown;
-  /** Earliest moment the state is known to be invalid, if the backend knows one. */
+  /** Earliest moment the state is known to be invalid, if the engine knows one. */
   readonly expiresAt?: string;
 }
 
@@ -257,24 +257,24 @@ export interface BackendState {
  * the app under test. The duties split at the seam. The harness owns the
  * snapshot from the moment `capture` returns: it encrypts it at rest with a
  * per-run AES-256-GCM key that never touches disk, stores it under the run's
- * private session directory, binds it to the run, target, backend, and app
+ * private session directory, binds it to the run, target, engine, and app
  * identity, and deletes it when the run ends; it never logs it, reports it,
- * digests it, or sends it to a model. A backend MUST NOT persist, cache, or
+ * digests it, or sends it to a model. An engine MUST NOT persist, cache, or
  * log a snapshot on its own, MUST NOT echo snapshot contents in an error
  * message, and MUST treat `restore` as a replacement of the surface's whole
  * persisted state, never a merge, so a restored session cannot leak into the
  * next attempt.
  */
-export interface BackendStateCapability {
-  capture(context: OperationContext): Promise<BackendState>;
-  restore(state: BackendState, context: OperationContext): Promise<void>;
+export interface EngineStateCapability {
+  capture(context: OperationContext): Promise<EngineState>;
+  restore(state: EngineState, context: OperationContext): Promise<void>;
 }
 
 /**
  * Evidence capture. Paths are relative to the attempt artifact directory the
- * backend received in `startAttempt`.
+ * engine received in `startAttempt`.
  */
-export interface BackendArtifacts {
+export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   /** Starts recording an execution trace for the attempt. */
@@ -284,12 +284,12 @@ export interface BackendArtifacts {
 }
 
 /**
- * The app under test: what the backend declares about it
- * (`BackendAppDeclaration`) and the app-level hooks behind the universal
+ * The app under test: what the engine declares about it
+ * (`EngineAppDeclaration`) and the app-level hooks behind the universal
  * `app` fixture and the agent's `navigate` verb. Node actions never live
  * here; they are `perform`.
  */
-export interface BackendApp extends BackendAppDeclaration {
+export interface EngineApp extends EngineAppDeclaration {
   /**
    * Opens one URL the harness already resolved against the base URL and the
    * origin policy. Absent on a surface without addressable locations.
@@ -307,7 +307,7 @@ export interface BackendApp extends BackendAppDeclaration {
  * Facts handed to `prepare`, once per run and target in the runner process,
  * before any worker exists.
  */
-export interface BackendPrepareInfo {
+export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;
   /**
@@ -333,17 +333,17 @@ export interface BackendPrepareInfo {
 }
 
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
-export interface BackendInitInfo {
+export interface EngineInitInfo {
   readonly runId: string;
   readonly targetName: string;
   /**
    * Directory relative paths in the config resolve against: the config file's
-   * directory, or the run's `cwd` for a programmatic config. A backend option
+   * directory, or the run's `cwd` for a programmatic config. An engine option
    * naming a file (a build to install) resolves here, never against
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
-  readonly app: BackendAppInfo;
+  readonly app: EngineAppInfo;
   /** Attribute the `testId` query resolves against. */
   readonly testIdAttribute: string;
   /** Whether the run asked for a visible surface (`--headed`). */
@@ -353,11 +353,11 @@ export interface BackendInitInfo {
 }
 
 /**
- * Per-attempt isolation context. A backend that must give each test a fresh
+ * Per-attempt isolation context. An engine that must give each test a fresh
  * surface (a fresh isolated context per test, a reset device) sets it up in
  * `startAttempt` and tears it down in `endAttempt`.
  */
-export interface BackendAttemptContext {
+export interface EngineAttemptContext {
   readonly attemptId: string;
   /** Absolute directory every artifact of this attempt is written under. */
   readonly artifactsDir: string;
@@ -374,13 +374,13 @@ export interface BackendAttemptContext {
  * the budget is exhausted, so a hook that cannot finish in time stops instead
  * of running on into the next attempt's setup.
  */
-export interface BackendCleanupContext {
+export interface EngineCleanupContext {
   readonly signal: AbortSignal;
   /** Remaining cleanup budget when the call starts. */
   readonly timeoutMs: number;
 }
 
-export interface BackendObserveOptions {
+export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
 }
@@ -388,10 +388,10 @@ export interface BackendObserveOptions {
 /**
  * One fresh semantic snapshot of the surface under test. The harness owns
  * everything downstream: revision minting, secret redaction, and the
- * observation byte budget apply to every backend equally.
+ * observation byte budget apply to every engine equally.
  */
-export interface BackendSnapshot {
-  /** Location captured with this tree, when the backend can provide it. */
+export interface EngineSnapshot {
+  /** Location captured with this tree, when the engine can provide it. */
   readonly url?: string;
   readonly nodes: readonly SemanticNode[];
   readonly viewport?: { readonly width: number; readonly height: number; readonly scale: number };
@@ -402,24 +402,24 @@ export interface BackendSnapshot {
 }
 
 /** The body of one target: typed, model-free, capability-graded. */
-export interface Backend {
+export interface Engine {
   readonly name: string;
   /**
    * Implementation version, recorded as provenance and part of the trace
-   * cache identity: a backend that resolves nodes differently must not replay
-   * another version's traces, so an unversioned backend is not accepted.
+   * cache identity: an engine that resolves nodes differently must not replay
+   * another version's traces, so an unversioned engine is not accepted.
    */
   readonly version: string;
   /**
    * Contract version literal. Additive optional members never bump it;
    * changed required semantics do.
    */
-  readonly spiVersion: BackendSpiVersion;
+  readonly spiVersion: EngineSpiVersion;
   /** capability: observation. */
-  observe?(context: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot>;
+  observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   /**
    * capability: actions - requires observation. Performs exactly one action
-   * on a ref this backend minted, from the newest observation or from
+   * on a ref this engine minted, from the newest observation or from
    * `locate` (both live in one id space), with the platform's actionability
    * checks. The agent's grammar verbs (tap, type, press, select, node scroll)
    * and the `screen` tier's actions both bottom out here, so a surface
@@ -435,7 +435,7 @@ export interface Backend {
    * capability: location - requires observation. Deterministic locator
    * resolution for the `screen`/`expect` tier: resolve one expression to the
    * nodes it currently matches. The harness owns polling, strictness, and
-   * staleness; a backend resolves once, immediately.
+   * staleness; an engine resolves once, immediately.
    */
   locate?(
     expression: LocatorExpression,
@@ -451,17 +451,17 @@ export interface Backend {
     context: OperationContext,
   ): Promise<void>;
   /**
-   * Named deterministic surfaces this backend contributes to TestFixtures
+   * Named deterministic surfaces this engine contributes to TestFixtures
    * (a device fixture, a document fixture - anything). Keys become fixture and
    * capability names; `requires: ['<name>']` gates at selection.
    */
-  readonly fixtures?: Readonly<Record<string, BackendFixtureFactory>>;
+  readonly fixtures?: Readonly<Record<string, EngineFixtureFactory>>;
   /** capability: state - opaque snapshot capture/restore for session reuse. */
-  readonly state?: BackendStateCapability;
+  readonly state?: EngineStateCapability;
   /** capability: artifacts - screenshots and traces under the attempt directory. */
-  readonly artifacts?: BackendArtifacts;
+  readonly artifacts?: EngineArtifacts;
   /** The app under test: its declaration (url, identity, command...) and hooks (navigate, back, restart, clearState). */
-  readonly app?: BackendApp;
+  readonly app?: EngineApp;
   /**
    * Current top-level URL of the surface, when the platform has one. Enables
    * trace start anchors and the secret-fill origin check.
@@ -469,41 +469,41 @@ export interface Backend {
   url?(context: OperationContext): Promise<string>;
   /**
    * Once per run and target, in the runner process, before any worker starts
-   * and outside every launch budget. Provision what the backend needs on this
+   * and outside every launch budget. Provision what the engine needs on this
    * machine here (a first-run browser download, a toolchain fetch), so it
    * happens once instead of per worker and its progress reaches the reporter
    * through `info.log`. Failure is infrastructure and ends the run before any
    * test executes.
    */
-  prepare?(info: BackendPrepareInfo): Promise<void>;
+  prepare?(info: EnginePrepareInfo): Promise<void>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held
    * handle outlives an in-process worker, so init MUST work on a disposed
-   * backend as it does on a fresh one.
+   * engine as it does on a fresh one.
    */
-  init?(info: BackendInitInfo): Promise<void>;
+  init?(info: EngineInitInfo): Promise<void>;
   /** Before each attempt: set up per-test isolation. */
-  startAttempt?(context: BackendAttemptContext): Promise<void>;
+  startAttempt?(context: EngineAttemptContext): Promise<void>;
   /**
    * After each attempt, within the cleanup budget: tear that isolation down.
    * MUST be idempotent, and safe to call after a failed `startAttempt`.
    */
-  endAttempt?(context: BackendCleanupContext): Promise<void>;
+  endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold backend.
+   * whether or not `init` ran, so it MUST tolerate a cold engine.
    */
-  dispose?(context: BackendCleanupContext): Promise<void>;
+  dispose?(context: EngineCleanupContext): Promise<void>;
 }
 
-/** A validated backend: branded, frozen, capabilities computed. */
-export interface BackendHandle extends Backend {
-  readonly [backendBrand]: true;
-  readonly capabilities: ReadonlySet<BackendCapability>;
+/** A validated engine: branded, frozen, capabilities computed. */
+export interface EngineHandle extends Engine {
+  readonly [engineBrand]: true;
+  readonly capabilities: ReadonlySet<EngineCapability>;
 }
 
-/** Every key a backend may declare; anything else is rejected at config load. */
+/** Every key an engine may declare; anything else is rejected at config load. */
 const KNOWN_KEYS = [
   'name',
   'version',
@@ -522,7 +522,7 @@ const KNOWN_KEYS = [
   'startAttempt',
   'endAttempt',
   'dispose',
-] as const satisfies readonly (keyof Backend)[];
+] as const satisfies readonly (keyof Engine)[];
 
 /** Keys of the nested manifests, closed like the top level. */
 const NESTED_KEYS = {
@@ -544,7 +544,7 @@ const APP_DECLARATION_KEYS = [
   'command',
   'readyUrl',
   'services',
-] as const satisfies readonly (keyof BackendAppDeclaration)[];
+] as const satisfies readonly (keyof EngineAppDeclaration)[];
 const FUNCTION_MEMBERS = [
   'observe',
   'locate',
@@ -564,7 +564,7 @@ const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'sessio
 const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 
 function invalid(name: string, detail: string): ConfigurationError {
-  return new ConfigurationError('INVALID_CONFIG', `backend "${name}": ${detail}`);
+  return new ConfigurationError('INVALID_CONFIG', `engine "${name}": ${detail}`);
 }
 
 /**
@@ -613,7 +613,7 @@ function nestedManifest<K extends keyof typeof NESTED_KEYS>(
 }
 
 /**
- * Validates a backend and computes its capability set. Runs synchronously at
+ * Validates an engine and computes its capability set. Runs synchronously at
  * config load and fails loud: a misspelled member or an undeclared dependency
  * is `INVALID_CONFIG`, never a silent demotion to a lower tier.
  *
@@ -621,21 +621,21 @@ function nestedManifest<K extends keyof typeof NESTED_KEYS>(
  * through the prototype chain and binding every function to the spec, so a
  * class instance (own state fields included) is as valid a body as a literal.
  */
-export function defineBackend(spec: Backend): BackendHandle {
+export function defineEngine(spec: Engine): EngineHandle {
   if (typeof spec !== 'object' || spec === null) {
-    throw new ConfigurationError('INVALID_CONFIG', 'defineBackend requires a backend object');
+    throw new ConfigurationError('INVALID_CONFIG', 'defineEngine requires an engine object');
   }
   if (typeof spec.name !== 'string' || spec.name.trim() === '') {
-    throw new ConfigurationError('INVALID_CONFIG', 'backend.name must be a non-empty string');
+    throw new ConfigurationError('INVALID_CONFIG', 'engine.name must be a non-empty string');
   }
   const name = spec.name;
   if (typeof spec.version !== 'string' || spec.version.trim() === '') {
     throw invalid(name, 'version must be a non-empty string; it is provenance and keys the trace cache');
   }
-  if (spec.spiVersion !== BACKEND_SPI_VERSION) {
+  if (spec.spiVersion !== ENGINE_SPI_VERSION) {
     throw invalid(
       name,
-      `declares spiVersion ${String(spec.spiVersion)}; this runner supports ${BACKEND_SPI_VERSION}`,
+      `declares spiVersion ${String(spec.spiVersion)}; this runner supports ${ENGINE_SPI_VERSION}`,
     );
   }
   // A literal's unknown key is a misspelling or a misplaced tool; a class
@@ -644,7 +644,7 @@ export function defineBackend(spec: Backend): BackendHandle {
     const known: readonly string[] = KNOWN_KEYS;
     for (const key of Object.keys(spec)) {
       if (!known.includes(key)) {
-        throw invalid(name, `unknown key "${key}" - tools belong on the agent, not the backend`);
+        throw invalid(name, `unknown key "${key}" - tools belong on the agent, not the engine`);
       }
     }
   }
@@ -654,7 +654,7 @@ export function defineBackend(spec: Backend): BackendHandle {
     }
   }
 
-  const capabilities = new Set<BackendCapability>();
+  const capabilities = new Set<EngineCapability>();
   if (spec.observe !== undefined) capabilities.add('observation');
   if (spec.perform !== undefined) {
     if (!capabilities.has('observation')) {
@@ -693,7 +693,7 @@ export function defineBackend(spec: Backend): BackendHandle {
       }
       capabilities.add(fixture);
     }
-    // Bound like every other member, so a class-based backend keeps `this`
+    // Bound like every other member, so a class-based engine keeps `this`
     // in its fixture factories too.
     handle['fixtures'] = Object.freeze(
       Object.fromEntries(
@@ -718,19 +718,19 @@ export function defineBackend(spec: Backend): BackendHandle {
   }
   if (spec.app !== undefined) handle['app'] = nestedManifest(name, 'app', spec.app);
 
-  // Assembled key by key above, so the record is a Backend by construction.
+  // Assembled key by key above, so the record is an Engine by construction.
   return Object.freeze({
     ...handle,
-    [backendBrand]: true as const,
+    [engineBrand]: true as const,
     capabilities,
-  }) as unknown as BackendHandle;
+  }) as unknown as EngineHandle;
 }
 
-/** True for a defineBackend-branded handle, across realms. */
-export function isBackendHandle(value: unknown): value is BackendHandle {
+/** True for a defineEngine-branded handle, across realms. */
+export function isEngineHandle(value: unknown): value is EngineHandle {
   return (
     typeof value === 'object' &&
     value !== null &&
-    (value as Record<PropertyKey, unknown>)[backendBrand] === true
+    (value as Record<PropertyKey, unknown>)[engineBrand] === true
   );
 }

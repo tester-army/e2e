@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineBackend } from '../../src/backend/index.ts';
+import { defineEngine } from '../../src/engine/index.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
 
 const SENTINEL = 'synthetic-serial-secret-2718';
@@ -20,7 +20,7 @@ describe('serial session secrecy', () => {
     let launches = 0;
     const observations: { step: string; secretVisible: boolean; pixels: boolean; withheld: string | undefined }[] = [];
     let pixelCaptures = 0;
-    const backend = defineBackend({
+    const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
       startAttempt: async () => { echo = ''; launches += 1; },
       observe: async (_operation, options) => {
@@ -36,7 +36,7 @@ describe('serial session secrecy', () => {
     const project = createProject({ 'tests/serial.e2e.ts': suite });
     try {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
-        targets: [{ name: 'fake', platform: 'custom', backend }], cache: 'off',
+        targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off',
         credentials: { audit: { username: 'audit', password: source === 'static' ? SENTINEL : () => SENTINEL } },
         agent: { executor: { name: 'probe', async runStep(context) {
           const observation = await context.observe({ pixels: true });

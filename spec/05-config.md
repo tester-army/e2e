@@ -25,10 +25,10 @@ original TypeScript source location for load and execution errors.
 ## Minimal config
 
 `targets` is REQUIRED and there is no implicit target: the runner knows no
-platform, so every target names the backend that serves it. The app under
-test is the backend's to declare, never a config key: a browser backend is
-told where the app is served, a device backend which app it pins. The
-smallest useful config is one web target on the playwright backend from
+platform, so every target names the engine that serves it. The app under
+test is the engine's to declare, never a config key: a browser engine is
+told where the app is served, a device engine which app it pins. The
+smallest useful config is one web target on the playwright engine from
 `@e2edev/playwright`:
 
 ```ts
@@ -36,7 +36,7 @@ import { defineConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
 });
 ```
 
@@ -46,7 +46,7 @@ config that wants an environment override reads it itself
 scaffolds). A URL is REQUIRED once a test calls `app.open()` or navigates
 relatively and optional otherwise; without one those calls fail with
 `APP_URL_REQUIRED`. The runner passes each target's resolved URL and origin
-policy back to its backend's `init`.
+policy back to its engine's `init`.
 
 The base URL uses WHATWG URL parsing/serialization and MUST NOT contain
 userinfo, query, or fragment. A base URL without a scheme gets `https://`, or
@@ -67,7 +67,7 @@ export default defineConfig({
     {
       name: 'web',
       platform: 'web',
-      backend: playwright({
+      engine: playwright({
         browser: 'chromium',
         url: 'http://localhost:3000',
         command: { executable: 'pnpm', args: ['dev'] },
@@ -132,7 +132,7 @@ Every run writes the canonical JSON report regardless of renderer selection.
 (02-test-api.md) and MUST be `true`, `false`, `"fallback"`, or `"only"`. Any mode
 that can send pixels requires a model that accepts image input.
 
-`actionTimeout` bounds every backend operation, including each observation and
+`actionTimeout` bounds every engine operation, including each observation and
 action inside an agent step (16-executors.md): the step deadline caps the
 whole step, `actionTimeout` caps each call within it.
 
@@ -149,45 +149,45 @@ file cache and states its own trust through its `writable` flag
 
 ## Targets and capabilities
 
-A target (RFC0002) is `{ name, platform, backend? }`. The runner itself
+A target (RFC0002) is `{ name, platform, engine? }`. The runner itself
 resolves, launches, and downloads nothing: whatever the platform, the surface
-is the `backend` value, a `defineBackend(...)` handle from `@e2edev/e2e/backend`. The
-web backend is `playwright()` from `@e2edev/playwright`; a device or desktop
-backend plugs into the same seam. There is no top-level `browser` key and no
+is the `engine` value, a `defineEngine(...)` handle from `@e2edev/e2e/engine`. The
+web engine is `playwright()` from `@e2edev/playwright`; a device or desktop
+engine plugs into the same seam. There is no top-level `browser` key and no
 `driver` or `browser` target key; browser choice and viewport are options of
-the playwright backend.
+the playwright engine.
 
-A backend's declared capabilities (observation, actions, location, state,
+An engine's declared capabilities (observation, actions, location, state,
 artifacts, contributed fixtures) grade what the target serves. A test that
-uses a fixture the backend does not support fails loud with
+uses a fixture the engine does not support fails loud with
 `UNSUPPORTED_CAPABILITY` — at selection when statically known, at first use
-otherwise. A target with no backend at all serves only the agent fixture, with
+otherwise. A target with no engine at all serves only the agent fixture, with
 every action opaque to the harness; it has no app URL and needs none.
 
-Before collection, the runner reads each backend's capability set, artifact
+Before collection, the runner reads each engine's capability set, artifact
 capabilities, and state capability. Configured artifacts unsupported by a
-backend fail before collection. After collection/selection, any selected setup
-or session consumer on a backend without state capability fails before launch.
+engine fail before collection. After collection/selection, any selected setup
+or session consumer on an engine without state capability fails before launch.
 Capability names are distinct from platform names.
 
 ## The app under test
 
-A backend's `app` manifest declares the app it drives beside its app hooks
-(`BackendAppDeclaration` in [`api/e2e.d.ts`](./api/e2e.d.ts)): `url`,
+An engine's `app` manifest declares the app it drives beside its app hooks
+(`EngineAppDeclaration` in [`api/e2e.d.ts`](./api/e2e.d.ts)): `url`,
 `allowedOrigins`, `environment`, `identity`, `command`, `readyUrl`, and
 `services`, every one optional. The runner resolves the declaration once per target at config
 load and owns what is built on it: navigation and origin policy, cache and
 session identity, the report's target record, and the app process. A target
-without a backend, or whose backend declares nothing, resolves to the empty
+without an engine, or whose engine declares nothing, resolves to the empty
 app: no URL, no allowed origins, environment `test`, no identity. Unknown
-declaration keys fail at `defineBackend`; invalid values fail at config load
+declaration keys fail at `defineEngine`; invalid values fail at config load
 naming the target.
 
 `identity` is the stable logical identity cache and session entries key on.
 It defaults to the declared URL's origin and base path, so an ephemeral
 per-deploy origin (a PR preview) cold-starts every entry; an explicit identity
 keys them by what the app *is* instead of where it happens to be served this
-run. A backend without a URL declares its own (a bundle id, a build) or its
+run. An engine without a URL declares its own (a bundle id, a build) or its
 entries key on the target alone. The environment always joins the derived
 identity — an identity never bleeds entries across environments. It MUST be a
 non-empty string, and it MUST NOT be shared across genuinely different apps:
@@ -417,7 +417,7 @@ process boundary: workers re-resolve the config module.
 ## Environment variables
 
 The runner reads a closed set. `APP_URL` is not in it: the scaffolded config
-reads it itself and hands it to the backend, so a project may name any
+reads it itself and hands it to the engine, so a project may name any
 variable, or none.
 | Variable | Meaning |
 |---|---|

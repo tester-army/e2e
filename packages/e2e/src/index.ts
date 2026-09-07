@@ -37,4 +37,4 @@ export type {
   StepVerdictStatus,
 } from './agent/executor.ts';
 export type { VisionDegradation } from './run/steps.ts';
-export type { BackendAppDeclaration } from './backend/index.ts';
+export type { EngineAppDeclaration } from './engine/index.ts';

@@ -13,7 +13,7 @@ mobile example that is filtered out of the v0 target matrix.
 To start a new project, run `npx @e2edev/e2e@beta init` and pick Playwright
 for a browser example or agent-device for a mobile one (Settings on iOS when
 run on macOS, Android elsewhere). `--yes` skips the prompts and writes an HTTP
-example with no backend.
+example with no engine.
 
 | File | Demonstrates |
 |---|---|
@@ -28,10 +28,10 @@ example with no backend.
 
 ## Isolation conventions
 
-The runner isolates backend/client attempts, not Orbit's database. The task
+The runner isolates engine/client attempts, not Orbit's database. The task
 examples use separately seeded boards so parallel tests do not mutate the same
 records. Real suites should use per-test tenants, unique entities, isolated
-fixtures, or serial groups for shared backend workflows.
+fixtures, or serial groups for shared engine workflows.
 
 Sessions remove repeated UI login but do not isolate accounts or server data.
 Setup state is captured fresh for every runner invocation.

@@ -1,8 +1,8 @@
-/** CLI scaffold presets. Backend packages are referenced as generated source, never imported. */
+/** CLI scaffold presets. Engine packages are referenced as generated source, never imported. */
 
 import os from 'node:os';
 
-export interface BackendPreset {
+export interface EnginePreset {
   readonly id: string;
   readonly label: string;
   readonly hint: string;
@@ -15,16 +15,16 @@ export interface BackendPreset {
 }
 
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
-export function getBackendPresets() {
+export function getEnginePresets() {
   const ios = os.platform() === 'darwin';
   return [
     {
       id: 'none',
       label: 'None',
-      hint: 'HTTP tests or your own backend',
+      hint: 'HTTP tests or your own engine',
       dependencies: {},
       imports: [],
-      config: `  // Add a backend here when your tests need to drive an app.
+      config: `  // Add an engine here when your tests need to drive an app.
   targets: [{ name: 'default', platform: 'custom' }],`,
       example: `import { test, expect } from '@e2edev/e2e';
 
@@ -41,8 +41,8 @@ test('app responds', async () => {
       hint: 'browser testing',
       dependencies: { '@e2edev/playwright': 'beta' },
       imports: ["import { playwright } from '@e2edev/playwright';"],
-      config: `  // The backend declares the app it drives; APP_URL overrides the default at run time.
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],`,
+      config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],`,
       example: `import { test } from '@e2edev/playwright';
 import { expect } from '@e2edev/e2e';
 
@@ -69,10 +69,10 @@ test('app opens', async ({ app, web }) => {
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
         ? `  // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
-  targets: [{ name: 'ios', platform: 'ios', backend: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', platform: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,`
         : `  // Requires the Android SDK and an emulator. Replace com.android.settings with your app's package.
-  targets: [{ name: 'android', platform: 'android', backend: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
+  targets: [{ name: 'android', platform: 'android', engine: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
   workers: 1,`,
       example: `import { test } from '@e2edev/agent-device';
 import { expect } from '@e2edev/e2e';
@@ -98,15 +98,15 @@ test('Settings opens', async ({ screen }) => {
 `,
       runCommand: 'npx --no-install e2e run',
     },
-  ] as const satisfies readonly BackendPreset[];
+  ] as const satisfies readonly EnginePreset[];
 }
 
-export type BackendId = ReturnType<typeof getBackendPresets>[number]['id'];
-export const DEFAULT_BACKEND_ID = 'none' satisfies BackendId;
+export type EngineId = ReturnType<typeof getEnginePresets>[number]['id'];
+export const DEFAULT_ENGINE_ID = 'none' satisfies EngineId;
 
 /** Resolves a preset with the common shape used by scaffold generation. */
-export function getBackendPreset(id: BackendId): BackendPreset {
-  const preset = getBackendPresets().find((entry) => entry.id === id);
-  if (preset === undefined) throw new Error(`unknown backend: ${id}`);
+export function getEnginePreset(id: EngineId): EnginePreset {
+  const preset = getEnginePresets().find((entry) => entry.id === id);
+  if (preset === undefined) throw new Error(`unknown engine: ${id}`);
   return preset;
 }

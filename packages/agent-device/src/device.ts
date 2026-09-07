@@ -1,11 +1,11 @@
 /**
- * The `device` fixture: deterministic device management this backend
+ * The `device` fixture: deterministic device management this engine
  * contributes. Not an agent tool; a test calls these directly to arrange or
  * assert device state, and the harness records each call as a
  * `device.<method>` step bounded by the action timeout.
  */
 
-import type { BackendFixtureContext, Locator } from '@e2edev/e2e/backend';
+import type { EngineFixtureContext, Locator } from '@e2edev/e2e/engine';
 import type { AgentDeviceSurface, InstallAppOptions, InstalledApp } from './surface.ts';
 
 /** Permissions agent-device can grant, deny, or reset on an open app. */
@@ -85,7 +85,7 @@ export interface Device {
 }
 
 /** Builds the device fixture for one attempt. */
-export function createDeviceFixture(surface: AgentDeviceSurface, context: BackendFixtureContext): Device {
+export function createDeviceFixture(surface: AgentDeviceSurface, context: EngineFixtureContext): Device {
   const device: Device = {
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {

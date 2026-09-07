@@ -51,7 +51,7 @@ Resources and tooling:
 - global hooks, sharding, watch mode, inspector, custom reporters/matchers;
 - multi-tab/popups, visual snapshots, HAR, clock control, scheduling;
 - PR-aware selection/dynamic testing;
-- raw backend objects and model/portable raw-coordinate targeting. Trusted
+- raw engine objects and model/portable raw-coordinate targeting. Trusted
   deterministic `web.mouse` coordinates remain included in the web capability.
 
 Reserved future declarations do not constitute runtime support. A v0 runner

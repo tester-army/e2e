@@ -1,7 +1,7 @@
 /** LocatorExpression -> Playwright locator projection. */
 
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
-import { BackendError, type LocatorExpression, type SemanticQuery, type TextPattern } from '@e2edev/e2e/backend';
+import { EngineError, type LocatorExpression, type SemanticQuery, type TextPattern } from '@e2edev/e2e/engine';
 
 type PwScope = Page | FrameLocator | PwLocator;
 
@@ -18,7 +18,7 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {
-        throw new BackendError('BACKEND_FAILURE', 'role query value must be a string', {
+        throw new EngineError('ENGINE_FAILURE', 'role query value must be a string', {
           retryable: false,
         });
       }
@@ -112,7 +112,7 @@ export interface ProjectedLocator {
 }
 
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
-  'displayValue queries cannot scope child queries or serve as a has-filter in this backend';
+  'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
 
 /**
  * Projects a complete immutable expression onto a Playwright locator within
@@ -186,7 +186,7 @@ export function projectExpression(page: Page, expression: LocatorExpression): Pr
  */
 function requireComposable(projected: ProjectedLocator): PwLocator {
   if (projected.displayValue !== null) {
-    throw new BackendError('UNSUPPORTED_CAPABILITY', DISPLAY_VALUE_COMPOSITION_MESSAGE, {
+    throw new EngineError('UNSUPPORTED_CAPABILITY', DISPLAY_VALUE_COMPOSITION_MESSAGE, {
       retryable: false,
     });
   }

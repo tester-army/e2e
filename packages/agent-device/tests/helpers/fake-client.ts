@@ -2,8 +2,8 @@
  * A scripted agent-device client: every nested method call is recorded as
  * `namespace.method` with its first argument and answered by the responder
  * registered under that name (or an empty object). Tests assert on the
- * command stream the backend produced, which is the whole of what the
- * backend owes agent-device.
+ * command stream the engine produced, which is the whole of what the
+ * engine owes agent-device.
  */
 
 import type { AgentDeviceClient } from '../../src/surface.ts';

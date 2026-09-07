@@ -15,7 +15,7 @@ declare const secretBrand: unique symbol;
 declare const credentialBrand: unique symbol;
 declare const testCaseBrand: unique symbol;
 declare const driverHandleBrand: unique symbol;
-declare const backendBrand: unique symbol;
+declare const engineBrand: unique symbol;
 
 /** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
@@ -520,7 +520,7 @@ export interface TestFixtures {
   /**
    * The web capability fixture. Transitional: it is the one platform surface
    * still declared in core, because web is driver-provided today. When
-   * playwright becomes a backend (RFC0002 migration) `web` moves to a backend
+   * playwright becomes an engine (RFC0002 migration) `web` moves to an engine
    * contribution and is declared by augmentation like any other platform
    * fixture (`device`, `desktop`), leaving only the universal fixtures here.
    */
@@ -586,7 +586,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
   /** Registers one setup test with statically declared session outputs. */
   setup(title: string, options: SetupOptions, fn: SetupFn<Fixtures>): TestCase;
   /**
-   * Returns the same runtime `test`, typed with a backend's contributed
+   * Returns the same runtime `test`, typed with an engine's contributed
    * fixtures — a pure type refinement, so a project types its
    * device/desktop/web surface without a global `declare module`.
    */
@@ -698,12 +698,12 @@ export interface DriverHandle extends DriverManifest {
 }
 
 /**
- * A validated backend from `defineBackend` (`@e2edev/e2e/backend`, RFC0002): the
+ * A validated engine from `defineEngine` (`@e2edev/e2e/engine`, RFC0002): the
  * typed, model-free body of one target. Opaque here; the full contract lives
- * on the `@e2edev/e2e/backend` entry point.
+ * on the `@e2edev/e2e/engine` entry point.
  */
-export interface BackendHandle {
-  readonly [backendBrand]: true;
+export interface EngineHandle {
+  readonly [engineBrand]: true;
   readonly name: string;
   readonly spiVersion: 1;
 }
@@ -754,15 +754,15 @@ export interface ServiceConfig extends CommandConfig {
 }
 
 /**
- * What a backend declares about the app it drives (RFC0002 step 7b). The
+ * What an engine declares about the app it drives (RFC0002 step 7b). The
  * runner resolves it once per target and owns everything built on it:
  * navigation and origin policy, cache and session identity, the report's
  * target record, and the app process it starts before the run. A config
- * carries no app key of its own; the browser backend takes these as options
- * (`playwright({ url, command })`), a device backend derives them from the
+ * carries no app key of its own; the browser engine takes these as options
+ * (`playwright({ url, command })`), a device engine derives them from the
  * app it pins.
  */
-export interface BackendAppDeclaration {
+export interface EngineAppDeclaration {
   /**
    * Base URL of an addressable app: `app.open()` opens it and relative
    * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
@@ -811,30 +811,30 @@ export interface BackendAppDeclaration {
 }
 
 /**
- * A web target. The browser surface is its `backend` (`playwright()` from
+ * A web target. The browser surface is its `engine` (`playwright()` from
  * `@e2edev/playwright`); the app URL, browser choice, and viewport are
- * options of that backend, never target keys.
+ * options of that engine, never target keys.
  */
 export interface WebTarget {
   name: string;
   platform: 'web';
-  backend?: BackendHandle;
+  engine?: EngineHandle;
 }
 
 /**
- * A target whose surface is a backend (RFC0002): no driver, no browser. What
- * the target can serve is graded from the backend's declared capabilities;
- * with no `backend` the target is agent-tools-only and everything runs
+ * A target whose surface is an engine (RFC0002): no driver, no browser. What
+ * the target can serve is graded from the engine's declared capabilities;
+ * with no `engine` the target is agent-tools-only and everything runs
  * opaque. A test that requests an undeclared capability fails loud, never
  * silently.
  */
-export interface BackendTarget {
+export interface EngineTarget {
   name: string;
   platform: Platform;
-  backend?: BackendHandle;
+  engine?: EngineHandle;
 }
 
-export type Target = WebTarget | BackendTarget;
+export type Target = WebTarget | EngineTarget;
 
 export interface ModelConfig {
   provider: string;
@@ -1030,7 +1030,7 @@ export interface AgentConfig {
 export interface E2EConfig {
   specVersion?: '0.1';
   projectId?: string;
-  /** Every target names the backend that drives it; the backend declares the app under test. */
+  /** Every target names the engine that drives it; the engine declares the app under test. */
   targets?: readonly Target[];
   tests?: string | readonly string[];
   timeout?: number;
@@ -1185,7 +1185,7 @@ export interface ExecutorObserveOptions {
   /** Include the redacted node tree as `tree`. */
   readonly tree?: boolean;
   /**
-   * Include masked viewport pixels as `pixels`. Granted only when the backend
+   * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels, its masking is proven, and no secret has been filled in
    * this attempt; otherwise `pixelsWithheld` names the reason.
    */
@@ -1232,7 +1232,7 @@ export interface ExecutorObservation {
   readonly text: string;
   readonly truncated: boolean;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
-  /** Current location as path and query, redacted; absent when the backend has none. */
+  /** Current location as path and query, redacted; absent when the engine has none. */
   readonly path?: string;
   /** The redacted node tree; present when requested with `observe({ tree: true })`. */
   readonly tree?: ExecutorNode;

@@ -1,17 +1,17 @@
 /**
  * Agent-side tools for device targets. Everything a model plans through
- * beyond the grammar verbs the backend already unlocks (tap, type, scroll)
+ * beyond the grammar verbs the engine already unlocks (tap, type, scroll)
  * lives here: opening another app, a free-form swipe, typing into the focused
  * field, system alerts, and a look at the pixels when the accessibility tree
- * is not enough. Each tool is scoped to the platforms of the backends it was
+ * is not enough. Each tool is scoped to the platforms of the engines it was
  * built from, so a mixed suite never offers it on a browser.
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
 import { defineTool, getToolContext, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
-import { BackendError, type BackendHandle } from '@e2edev/e2e/backend';
-import { surfaceOf } from './backend.ts';
+import { EngineError, type EngineHandle } from '@e2edev/e2e/engine';
+import { surfaceOf } from './engine.ts';
 import type { AgentDeviceSurface } from './surface.ts';
 
 interface Screenshot {
@@ -19,10 +19,10 @@ interface Screenshot {
   readonly withheld?: string;
 }
 
-function requireSurface(backend: BackendHandle): AgentDeviceSurface {
-  const surface = surfaceOf(backend);
+function requireSurface(engine: EngineHandle): AgentDeviceSurface {
+  const surface = surfaceOf(engine);
   if (surface === undefined) {
-    throw new BackendError('INVALID_STATE', 'agentDeviceTools needs handles returned by agentDevice()', {
+    throw new EngineError('INVALID_STATE', 'agentDeviceTools needs handles returned by agentDevice()', {
       retryable: false,
     });
   }
@@ -30,27 +30,27 @@ function requireSurface(backend: BackendHandle): AgentDeviceSurface {
 }
 
 /**
- * Builds the tool pack for one or more agent-device backends, keyed the way
- * `createAgent({ tools })` expects. Pass every device backend a config
+ * Builds the tool pack for one or more agent-device engines, keyed the way
+ * `createAgent({ tools })` expects. Pass every device engine a config
  * declares: tool names are fixed, so two packs cannot be merged, and each
- * tool is offered only on the platforms those backends drive. A worker runs
+ * tool is offered only on the platforms those engines drive. A worker runs
  * one attempt at a time, so at execution the pack dispatches to the surface
  * whose attempt is running.
  *
  * Mutating tools are recorded as replay gaps by the trace cache; a step that
- * stays within the grammar verbs replays zero-turn, so prefer the backend's
+ * stays within the grammar verbs replays zero-turn, so prefer the engine's
  * `app` option over `open_app` when a test always starts in the same app.
  */
 export function agentDeviceTools(
-  ...backends: readonly [BackendHandle, ...BackendHandle[]]
+  ...engines: readonly [EngineHandle, ...EngineHandle[]]
 ): Readonly<Record<string, DefinedTool>> {
-  const surfaces = backends.map(requireSurface);
+  const surfaces = engines.map(requireSurface);
   const platforms = [...new Set(surfaces.map((surface) => surface.options.platform))];
   const active = (): AgentDeviceSurface => {
     const running = surfaces.filter((surface) => surface.attemptRunning);
     const [surface] = running;
     if (surface === undefined || running.length > 1) {
-      throw new BackendError(
+      throw new EngineError(
         'INVALID_STATE',
         running.length === 0
           ? 'no agent-device attempt is running; device tools act inside a test attempt only'

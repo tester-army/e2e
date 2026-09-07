@@ -2,7 +2,7 @@
  * Protocol between the scheduler and one target worker. Every message is
  * JSON-serializable so the same shapes work over a child-process IPC channel
  * and in-process (see `run/unit-runner.ts`). Two things deliberately never
- * cross: `ResolvedTarget`, which may hold a live backend handle, and test
+ * cross: `ResolvedTarget`, which may hold a live engine handle, and test
  * functions. Work units therefore carry `TestIdentity` and the worker pairs
  * each identity with a locally resolved test function.
  */
@@ -77,9 +77,9 @@ export interface ShutdownMessage {
 }
 
 /**
- * A forced interrupt: dispose the backend now, beside whatever the running
+ * A forced interrupt: dispose the engine now, beside whatever the running
  * unit is still doing, and exit. The runner kills the worker once the cleanup
- * budget is spent, so the backend gets exactly one bounded chance to let go.
+ * budget is spent, so the engine gets exactly one bounded chance to let go.
  */
 export interface TerminateMessage {
   readonly type: 'terminate';
@@ -132,7 +132,7 @@ export interface UnitDoneMessage {
 }
 
 /**
- * The worker's last word before it exits: backend disposal happens after the
+ * The worker's last word before it exits: engine disposal happens after the
  * final unit drained its errors, so its outcome rides here.
  */
 export interface ShutdownDoneMessage {

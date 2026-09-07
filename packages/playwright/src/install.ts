@@ -1,10 +1,10 @@
-/** First-run browser provisioning for the Playwright backend. */
+/** First-run browser provisioning for the Playwright engine. */
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { BackendError, InfrastructureError } from '@e2edev/e2e/backend';
+import { EngineError, InfrastructureError } from '@e2edev/e2e/engine';
 import { browserType, type BrowserName } from './browser-connection.ts';
 
 /**
@@ -42,7 +42,7 @@ export interface InstallContext {
 
 export interface EnsureBrowsersOptions {
   /**
-   * Receives progress lines; defaults to stderr. The backend's `prepare` hands
+   * Receives progress lines; defaults to stderr. The engine's `prepare` hands
    * the harness's `info.log` here, so a first-run download narrates through
    * the reporter rather than underneath it.
    */
@@ -62,7 +62,7 @@ export interface EnsureBrowsersOptions {
 
 /**
  * Ensures the given Playwright browsers are installed, downloading any
- * missing ones via `playwright install`. Called from the backend's `prepare`,
+ * missing ones via `playwright install`. Called from the engine's `prepare`,
  * once per run before any worker starts, so a download is never charged
  * against a launch timeout and never runs once per worker. Concurrent
  * installs (two runs at once) are still safe: the Playwright CLI serializes
@@ -120,7 +120,7 @@ function runPlaywrightInstall(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted === true) {
-      reject(new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }));
+      reject(new EngineError('CANCELLED', 'browser install cancelled', { retryable: false }));
       return;
     }
     const child = spawn(process.execPath, [playwrightCliPath(), 'install', ...names], {
@@ -131,7 +131,7 @@ function runPlaywrightInstall(
     forwardLines(child.stderr, log);
     const onAbort = () => {
       child.kill();
-      reject(new BackendError('CANCELLED', 'browser install cancelled', { retryable: false }));
+      reject(new EngineError('CANCELLED', 'browser install cancelled', { retryable: false }));
     };
     signal?.addEventListener('abort', onAbort, { once: true });
     child.on('exit', () => signal?.removeEventListener('abort', onAbort));

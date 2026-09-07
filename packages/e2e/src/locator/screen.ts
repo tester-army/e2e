@@ -1,7 +1,7 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
 import nodePath from 'node:path';
-import type { LocatorExpression, SemanticNode } from '../backend/surface.ts';
+import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { realmSlot } from '../internal/realm-slot.ts';

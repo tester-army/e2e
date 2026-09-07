@@ -10,4 +10,4 @@ Removes public API that had no consumer, was deprecated, or duplicated another s
 - `createToolLoopExecutor` options `onConclude`, `loopGuards`, and `windDown` (and the `WindDownPolicy` / `LoopGuardThresholds` types): the chassis keeps its own loop guards and wind-down policy.
 - The `@e2edev/e2e/agent` primitives `createGrammarTools`, `createVerdictTool`, `trackModelCalls`, `conversationMemory`, `VERDICT_RULES`, `serializeLedger`, `compactSnapshotHistory`, and `formatReplayedPrefix`: `createAgent` and `createToolLoopExecutor` are the two supported layers.
 - `blockedCategoryOf` and `BlockedCategory` from the main entrypoint.
-- The legacy fixture adapter: a backend fixture factory must return the surface it declared through `context.fixture`; a plain surface is rejected with `INVALID_CONFIG`.
+- The legacy fixture adapter: an engine fixture factory must return the surface it declared through `context.fixture`; a plain surface is rejected with `INVALID_CONFIG`.

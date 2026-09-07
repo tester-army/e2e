@@ -91,11 +91,11 @@ export function resolveNavigationUrl(
     url = new URL(input, base?.href);
   } catch {
     // A relative reference has nothing to resolve against on a target whose
-    // backend declares no URL; that is a missing URL, not a malformed one.
+    // engine declares no URL; that is a missing URL, not a malformed one.
     if (base === undefined && !URL.canParse(input)) {
       throw new ConfigurationError(
         'APP_URL_REQUIRED',
-        `navigation to "${input}" needs an app URL; the target's backend declares none`,
+        `navigation to "${input}" needs an app URL; the target's engine declares none`,
       );
     }
     throw new ConfigurationError('POLICY_DENIED', `malformed URL: ${input}`);

@@ -7,7 +7,7 @@
  */
 
 import { parseSelectorChain } from 'agent-device/selectors';
-import { BackendError } from '@e2edev/e2e/backend';
+import { EngineError } from '@e2edev/e2e/engine';
 import { normalizeKind, type ProjectedNode } from './nodes.ts';
 import { message } from './errors.ts';
 
@@ -29,7 +29,7 @@ export function compileSelector(raw: string): CompiledSelector {
   try {
     chain = parseSelectorChain(raw);
   } catch (cause) {
-    throw new BackendError('BACKEND_FAILURE', `invalid agent-device selector ${JSON.stringify(raw)}: ${message(cause)}`, {
+    throw new EngineError('ENGINE_FAILURE', `invalid agent-device selector ${JSON.stringify(raw)}: ${message(cause)}`, {
       retryable: false,
       cause,
     });

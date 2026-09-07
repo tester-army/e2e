@@ -1,6 +1,6 @@
-/** Shared helpers for the agent-device backend: abort racing, filenames, PNG headers, gestures, path anchors. */
+/** Shared helpers for the agent-device engine: abort racing, filenames, PNG headers, gestures, path anchors. */
 
-import { BackendError, type Momentum, type ScrollDirection } from '@e2edev/e2e/backend';
+import { EngineError, type Momentum, type ScrollDirection } from '@e2edev/e2e/engine';
 
 export interface Point {
   readonly x: number;
@@ -14,20 +14,20 @@ export interface Rect {
   readonly height: number;
 }
 
-export function cancelled(text: string): BackendError {
-  return new BackendError('CANCELLED', text, { retryable: false });
+export function cancelled(text: string): EngineError {
+  return new EngineError('CANCELLED', text, { retryable: false });
 }
 
-export function invalidState(text: string): BackendError {
-  return new BackendError('INVALID_STATE', text, { retryable: false });
+export function invalidState(text: string): EngineError {
+  return new EngineError('INVALID_STATE', text, { retryable: false });
 }
 
-export function notActionable(text: string): BackendError {
-  return new BackendError('NOT_ACTIONABLE', text, { retryable: false });
+export function notActionable(text: string): EngineError {
+  return new EngineError('NOT_ACTIONABLE', text, { retryable: false });
 }
 
-export function unsupported(text: string): BackendError {
-  return new BackendError('UNSUPPORTED_CAPABILITY', text, { retryable: false });
+export function unsupported(text: string): EngineError {
+  return new EngineError('UNSUPPORTED_CAPABILITY', text, { retryable: false });
 }
 
 /** Constrains a caller-supplied artifact label to a safe filename. */
@@ -76,7 +76,7 @@ export function swipeWithin(
 /**
  * The location a device surface reports through `url`. A simulator has no
  * address bar, but the trace cache anchors every recorded step on a path and
- * refuses to write a trace for a surface without one, so the backend mints
+ * refuses to write a trace for a surface without one, so the engine mints
  * one: `app://device/<app>/<screen title>`. The cache compares pathnames
  * only, so the app identity lives in the path, not the host: two apps with a
  * screen called "General" must not share an anchor. `new URL(...)` parses

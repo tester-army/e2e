@@ -17,7 +17,7 @@ import type {
   SecretProvider,
   TraceCacheStore,
 } from '../types.ts';
-import { isBackendHandle, type BackendHandle } from '../backend/index.ts';
+import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import {
   isModelInstance,
   resolveAgentConfig,
@@ -34,9 +34,9 @@ export interface ResolvedTarget {
   readonly name: string;
   readonly index: number;
   readonly platform: Platform;
-  /** Validated backend; undefined for an agent-tools-only target. */
-  readonly backend: BackendHandle | undefined;
-  /** The app under test, resolved from the backend's declaration. */
+  /** Validated engine; undefined for an agent-tools-only target. */
+  readonly engine: EngineHandle | undefined;
+  /** The app under test, resolved from the engine's declaration. */
   readonly app: ResolvedApp;
 }
 
@@ -64,7 +64,7 @@ export interface ResolvedConfig {
   readonly retries: number;
   readonly workers: number;
   readonly artifacts: readonly ('trace' | 'screenshot')[];
-  /** True when artifact kinds were set in config, so a backend that cannot produce one is an error. */
+  /** True when artifact kinds were set in config, so an engine that cannot produce one is an error. */
   readonly artifactsExplicit: boolean;
   /** Host store every produced artifact is handed to; undefined keeps files local only. */
   readonly artifactStore: ArtifactStore | undefined;
@@ -105,7 +105,7 @@ export interface CliOverrides {
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
-const TARGET_KEYS = new Set(['name', 'platform', 'backend']);
+const TARGET_KEYS = new Set(['name', 'platform', 'engine']);
 
 const TOP_LEVEL_KEYS = new Set([
   'specVersion',
@@ -397,8 +397,8 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
   if (raw.targets === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'targets is required: declare at least one target and the backend that drives it, ' +
-        'e.g. targets: [{ name, platform, backend }]',
+      'targets is required: declare at least one target and the engine that drives it, ' +
+        'e.g. targets: [{ name, platform, engine }]',
     );
   }
   if (!Array.isArray(raw.targets) || raw.targets.length === 0) {
@@ -420,7 +420,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
       if (!TARGET_KEYS.has(key)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `target "${target.name}" has unknown key "${key}"; a target is { name, platform, backend? }`,
+          `target "${target.name}" has unknown key "${key}"; a target is { name, platform, engine? }`,
         );
       }
     }
@@ -430,18 +430,18 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
         `target "${target.name}" requires a non-empty platform`,
       );
     }
-    if (target.backend !== undefined && !isBackendHandle(target.backend)) {
+    if (target.engine !== undefined && !isEngineHandle(target.engine)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" backend must be a defineBackend(...) handle`,
+        `target "${target.name}" engine must be a defineEngine(...) handle`,
       );
     }
     return {
       name: target.name,
       index,
       platform: target.platform,
-      backend: target.backend,
-      app: resolveTargetApp(target.name, target.backend, projectRoot),
+      engine: target.engine,
+      app: resolveTargetApp(target.name, target.engine, projectRoot),
     };
   });
 }
@@ -503,7 +503,7 @@ function resolveCredentials(
 /**
  * SHA-256/JCS digest of resolved config after replacing credential material
  * with `{ secretName }` and env values with `{ envName }` (13-reporting.md).
- * Live objects (backend handles, model instances) are replaced by their stable
+ * Live objects (engine handles, model instances) are replaced by their stable
  * identity before the JSON clone, so they never enter the digest and cannot
  * make it nondeterministic across processes.
  */
@@ -562,19 +562,19 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   }
   if (raw.targets !== undefined) {
     sanitized['targets'] = raw.targets.map((target) => {
-      // A backend handle holds live functions; its digest identity is the
+      // An engine handle holds live functions; its digest identity is the
       // declaration - name, version, contract version, capability set, and
       // what it declares about the app under test.
-      if (isBackendHandle(target.backend)) {
-        const { backend, ...rest } = target;
+      if (isEngineHandle(target.engine)) {
+        const { engine, ...rest } = target;
         return {
           ...rest,
-          backend: {
-            name: backend.name,
-            ...(backend.version === undefined ? {} : { version: backend.version }),
-            spiVersion: backend.spiVersion,
-            capabilities: [...backend.capabilities].toSorted(),
-            app: digestAppDeclaration(backend.app ?? {}),
+          engine: {
+            name: engine.name,
+            ...(engine.version === undefined ? {} : { version: engine.version }),
+            spiVersion: engine.spiVersion,
+            capabilities: [...engine.capabilities].toSorted(),
+            app: digestAppDeclaration(engine.app ?? {}),
           },
         };
       }

@@ -197,11 +197,11 @@ export interface SuiteFixtures {
 | `screen` | [`Screen`](/reference/screen) | Always available. |
 | `platform` | `Platform` | `'web' \| 'ios' \| 'android' \| (string & {})`. |
 
-Everything else is a **contributed fixture**: the target's backend declares it,
+Everything else is a **contributed fixture**: the target's engine declares it,
 and `test.extend<{ ... }>()` types it. `@e2edev/playwright` contributes
 [`web`](/reference/app-web) and exports a `test` already typed with it; a
-device backend contributes `device` the same way. Reaching for a fixture the
-backend does not declare fails at first touch with `UNSUPPORTED_CAPABILITY`;
+device engine contributes `device` the same way. Reaching for a fixture the
+engine does not declare fails at first touch with `UNSUPPORTED_CAPABILITY`;
 declare `requires: ['web']` to skip such tests at selection instead.
 
 Fixtures are lazy. Destructuring in the callback parameter list acquires them

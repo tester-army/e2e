@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { defineBackend, type BackendAppDeclaration } from '../../src/backend/index.ts';
+import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { declaredProcesses } from '../../src/run/declared-processes.ts';
 
 const ROOT = '/tmp/e2e-declared-processes';
 
 /** Resolves one target per declaration, named t0, t1, ..., the way two browsers on one app would be configured. */
-function targets(...declarations: BackendAppDeclaration[]) {
+function targets(...declarations: EngineAppDeclaration[]) {
   return resolveConfig(
     {
       targets: declarations.map((app, index) => ({
         name: `t${index}`,
         platform: 'web',
-        backend: defineBackend({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app }),
+        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app }),
       })),
     },
     { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },

@@ -12,7 +12,7 @@ Status: `v0` ships in the web profile, `future mobile` requires unassigned mobil
 
 Existing suites can run beside `tests/**/*.e2e.ts`. Teams can write new tests
 first, port touched flows, and remove the old runner only when the documented
-subset covers their needs. Backend reuse does not make unsupported Playwright
+subset covers their needs. Engine reuse does not make unsupported Playwright
 objects or semantics implicitly available.
 
 ## Playwright to e2e
@@ -50,7 +50,7 @@ objects or semantics implicitly available.
 | `test.step` | derived steps; grouping marker if needed | no direct API |
 | retries/serial/tags | runner options | v0 |
 | sharding | planned runner capability | later |
-| web server | structured `command` on the backend's app declaration | v0 |
+| web server | structured `command` on the engine's app declaration | v0 |
 | clock/HAR/visual diff | dedicated future profiles | later |
 | component testing | workflows only | no |
 
@@ -83,8 +83,8 @@ not make a v0 web runner mobile-conformant.
 ## Deliberate differences
 
 - e2e owns runner polling, cardinality, policy, reports, and retries; it does
-  not inherit every backend default.
-- Backend objects never appear in tests.
+  not inherit every engine default.
+- Engine objects never appear in tests.
 - Sessions isolate client state, not application databases.
 - Agent path guidance remains model-assisted and is not deterministic replay.
 - Credentials are the only v0 resource; email, files, webhooks, and phone are

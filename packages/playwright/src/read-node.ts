@@ -10,7 +10,7 @@
  *
  * It is a selector rather than a predicate because it has to be applied from
  * two sides that cannot share code: the in-page reader matches elements
- * against it to mark nodes `secure`, and the backend hands the same string to
+ * against it to mark nodes `secure`, and the engine hands the same string to
  * the screenshot masker. One string means the tree's redaction and the image's
  * redaction cannot describe different sets of elements, which is what the
  * runner's pixel-clearance check relies on.
@@ -624,7 +624,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     if (isHidden(el, style)) return;
 
     // Iframes are emitted as boundary nodes and never entered: their content
-    // lives in another document, which the backend captures per frame and
+    // lives in another document, which the engine captures per frame and
     // stitches under this node.
     if (tag === 'iframe') {
       if (nodes.length >= maxNodes) {

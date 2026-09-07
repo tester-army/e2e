@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { defineBackend } from '../../src/backend/index.ts';
+import { defineEngine } from '../../src/engine/index.ts';
 
-describe('defineBackend fixtures', () => {
+describe('defineEngine fixtures', () => {
   it('binds fixture factories to the spec like every other member', () => {
-    class ClassBackend {
+    class ClassEngine {
       readonly name = 'classy';
       readonly version = '1.0.0';
       readonly spiVersion = 1 as const;
@@ -12,11 +12,11 @@ describe('defineBackend fixtures', () => {
       async observe() {
         return { nodes: [] };
       }
-      hello(this: ClassBackend) {
+      hello(this: ClassEngine) {
         return this.greeting;
       }
     }
-    const handle = defineBackend(new ClassBackend() as never) as unknown as {
+    const handle = defineEngine(new ClassEngine() as never) as unknown as {
       fixtures: Record<string, () => unknown>;
     };
     const factory = handle.fixtures['hello']!;

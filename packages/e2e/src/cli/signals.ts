@@ -20,7 +20,7 @@ export class SignalLadder {
     return this.graceful.signal;
   }
 
-  /** Aborts on the second signal: every worker tears its backend down at once. */
+  /** Aborts on the second signal: every worker tears its engine down at once. */
   get forceSignal(): AbortSignal {
     return this.forced.signal;
   }

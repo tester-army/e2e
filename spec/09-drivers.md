@@ -2,12 +2,12 @@
 
 The canonical `driver-1` contract is
 [`api/driver.d.ts`](./api/driver.d.ts). Drivers are trusted executable packages
-that map e2e-owned semantics onto an automation backend.
+that map e2e-owned semantics onto an automation engine.
 
 ## Packaging and selection
 
 `@e2edev/playwright` is the required reference driver for `web-0.1`. It ships
-separately from the runner so that a project targeting another backend does not
+separately from the runner so that a project targeting another engine does not
 pay for a browser download. Community drivers use their own package names,
 conventionally `e2e-driver-*`, and create instances with `defineDriver` from
 `@e2edev/e2e/driver`.
@@ -60,7 +60,7 @@ A runner MAY support out-of-process sandboxed drivers, but that is not a v0
 portability guarantee. Package provenance and sandbox claims are implementation
 metadata, never inferred from conformance.
 
-`driver-1` itself is an in-process TypeScript boundary. A backend using another
+`driver-1` itself is an in-process TypeScript boundary. An engine using another
 process supplies an in-process proxy that performs serialization, callback
 delivery, cancellation, and teardown while preserving this contract.
 
@@ -96,7 +96,7 @@ a runner that executes tests in parallel acquires parallelism by creating one
 driver instance per worker (one browser process or one device per worker),
 never by overlapping sessions on a shared instance.
 
-Within that serialized lifecycle a driver MAY keep expensive backend
+Within that serialized lifecycle a driver MAY keep expensive engine
 resources alive between sessions — one browser process, one booted simulator
 or emulator, one device lease — provided each new session observes a fully
 isolated app state. Such drivers implement the optional `dispose` method. The
@@ -115,7 +115,7 @@ No operation may continue mutating an app after it rejects or after `close`
 resolves. Route/dialog decision methods and download waiters are bound to the
 attempt signal and receive a current operation context for each decision.
 
-`runtime()` supplies current viewport/scale and backend provenance. A
+`runtime()` supplies current viewport/scale and engine provenance. A
 `web-0.1` session MUST return browser engine and exact version. The runner reads
 it after launch to populate target provenance and after viewport changes to
 record the operation's resulting runtime state.
@@ -131,12 +131,12 @@ record the operation's resulting runtime state.
 | one node's actionability and input dispatch | driver |
 | agent planning, prompts, budgets, ledger | runner |
 | tool authorization and secret resolution | runner |
-| backend process/page/device mechanics | driver |
+| engine process/page/device mechanics | driver |
 | step/report schemas | runner |
 | source masking of secure observations | driver |
 | defense-in-depth redaction | runner |
 
-A driver MUST NOT add hidden query retries. Backend actionability waiting is
+A driver MUST NOT add hidden query retries. Engine actionability waiting is
 allowed only inside `perform` and only within the supplied operation budget.
 
 ## Locator expressions
@@ -179,7 +179,7 @@ captured viewport.
 
 Pixel evidence is captured only when the runner asks for it. When it does, the
 driver captures it within the same observation and under the same revision, as
-close in time to the tree as its backend allows, and it MUST report:
+close in time to the tree as its engine allows, and it MUST report:
 
 - the true pixel dimensions of the image bytes it returns, measured rather than
   assumed. They are the coordinate space of everything read off the image, so a
@@ -236,7 +236,7 @@ cookies, local storage, and IndexedDB.
 The public `Web` object is a runner proxy. Drivers expose lower-level
 `DriverWeb` operations that all receive operation context, allowing the runner
 to apply deadlines, policy, step recording, path containment, and redaction.
-Drivers MUST NOT return their backend page/context objects.
+Drivers MUST NOT return their engine page/context objects.
 
 Public callback functions are trusted local code. The runner serializes
 `evaluate` source and `JsonValue` arguments; remote/out-of-process drivers MUST
@@ -272,7 +272,7 @@ Capabilities do not bypass the universal SPI. Every platform still implements
 
 ## Errors
 
-Drivers throw `DriverError` for expected backend conditions. `retryable` means
+Drivers throw `DriverError` for expected engine conditions. `retryable` means
 the exact operation is known not to have committed and may be attempted again
 within the same deadline. Unknown exceptions become non-retryable
 `DRIVER_FAILURE` and retain sanitized cause metadata.

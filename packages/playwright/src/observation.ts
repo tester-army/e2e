@@ -5,13 +5,13 @@
 
 import type { ElementHandle, Frame, JSHandle } from 'playwright';
 import {
-  BackendError,
+  EngineError,
   withTimeout,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
   type NodeRef,
   type SemanticNode,
-} from '@e2edev/e2e/backend';
+} from '@e2edev/e2e/engine';
 import {
   readDocumentSemanticsFunction,
   SECURE_FIELD_SELECTOR,
@@ -122,9 +122,9 @@ async function captureInto(
     void evaluation.then((handle) => handle.dispose()).catch(() => undefined);
     // Retryability is closed to NODE_STALE and FRAME_NOT_FOUND, so asking
     // for a retryable timeout here would silently downgrade the code to
-    // BACKEND_FAILURE - reporting a broken backend for a capture that
+    // ENGINE_FAILURE - reporting a broken engine for a capture that
     // merely outlived the budget it was handed.
-    return new BackendError('OPERATION_TIMEOUT', 'observation capture timed out', {
+    return new EngineError('OPERATION_TIMEOUT', 'observation capture timed out', {
       retryable: false,
     });
   });
@@ -137,7 +137,7 @@ async function captureInto(
       captured.getProperty('elements'),
     ]);
     if (!Array.isArray(ids) || ids.length !== nodes.length || typeof nextId !== 'number') {
-      throw new BackendError('BACKEND_FAILURE', 'observation ids do not align with its nodes', {
+      throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
         retryable: false,
       });
     }
@@ -217,7 +217,7 @@ async function collectElementHandles(
     if (element === null) {
       // The in-page array outlived its document (a navigation committed while
       // the handles were being read back). The capture is repeatable.
-      throw new BackendError('NODE_STALE', `observation node ${index} lost its element`, {
+      throw new EngineError('NODE_STALE', `observation node ${index} lost its element`, {
         retryable: true,
       });
     }
@@ -243,7 +243,7 @@ function assembleTree(
   if (nodes.length === 0 || ids.length === 0) {
     // An empty document is what a navigation in flight looks like; a real page
     // always has nodes, so the capture is worth repeating.
-    throw new BackendError('NODE_STALE', 'observation produced no nodes', { retryable: true });
+    throw new EngineError('NODE_STALE', 'observation produced no nodes', { retryable: true });
   }
   const childLists: SemanticNode[][] = nodes.map(() => []);
   const built: SemanticNode[] = [];

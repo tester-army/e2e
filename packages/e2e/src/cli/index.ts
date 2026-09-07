@@ -43,7 +43,7 @@ function createProgram(): Command {
   program
     .command('init')
     .description('scaffold an ESM package, e2e.config.ts, an example test, and .gitignore entries')
-    .option('-y, --yes', 'skip prompts; enable AI without a backend or installation')
+    .option('-y, --yes', 'skip prompts; enable AI without an engine or installation')
     .action(async (options: InitOptions) => {
       process.exitCode = await init(process.cwd(), options);
     });
@@ -56,7 +56,7 @@ function createProgram(): Command {
     .option('--target <ids>', 'comma-separated target IDs', parseList)
     .option('--tag <tag>', 'repeatable tag filter', (value: string, previous: string[] = []) => [...previous, value])
     .option('--tag-mode <mode>', 'tag composition: any or all', 'any')
-    .option('--headed', 'request visible UI when the backend supports it')
+    .option('--headed', 'request visible UI when the engine supports it')
     .option('--retries <n>', 'replace resolved retry count', parseNonNegativeInt)
     .option('--workers <n>', 'replace worker count', parseNonNegativeInt)
     .option('--reporter <ids>', 'comma-separated reporters: list, json, junit', parseList)

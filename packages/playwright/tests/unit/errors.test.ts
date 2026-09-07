@@ -1,12 +1,12 @@
 /**
- * Playwright error translation at the backend contract boundary: what the
+ * Playwright error translation at the engine contract boundary: what the
  * runner is allowed to retry, what it must surface, and what must pass through
  * untouched because it is already classified.
  */
 
 import { describe, expect, it } from 'vitest';
-import { BackendError } from '@e2edev/e2e/backend';
-import { ConfigurationError, TestError } from '@e2edev/e2e/backend';
+import { EngineError } from '@e2edev/e2e/engine';
+import { ConfigurationError, TestError } from '@e2edev/e2e/engine';
 import { navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {
@@ -22,8 +22,8 @@ const NAVIGATION_RACES = [
 ];
 
 describe('translatePwError', () => {
-  it('passes backend errors through untouched', () => {
-    const original = new BackendError('NODE_STALE', 'gone', { retryable: true });
+  it('passes engine errors through untouched', () => {
+    const original = new EngineError('NODE_STALE', 'gone', { retryable: true });
     expect(translatePwError(original, 'observe')).toBe(original);
   });
 
@@ -34,9 +34,9 @@ describe('translatePwError', () => {
     expect(translatePwError(invalid, 'evaluate')).toBe(invalid);
   });
 
-  it('recognizes a BackendError from another module copy structurally', () => {
+  it('recognizes an EngineError from another module copy structurally', () => {
     const foreign = new Error('stale');
-    foreign.name = 'BackendError';
+    foreign.name = 'EngineError';
     Object.assign(foreign, { code: 'NODE_STALE', retryable: true });
     expect(translatePwError(foreign, 'read')).toBe(foreign);
   });
@@ -59,13 +59,13 @@ describe('navigationStaleOr', () => {
     expect(error).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
   });
 
-  it('leaves every other failure a non-retryable BACKEND_FAILURE', () => {
+  it('leaves every other failure a non-retryable ENGINE_FAILURE', () => {
     const error = navigationStaleOr(new Error('protocol error'), 'observe');
-    expect(error).toMatchObject({ code: 'BACKEND_FAILURE', retryable: false });
+    expect(error).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });
   });
 
-  it('never reclassifies a backend error the capture already classified', () => {
-    const original = new BackendError('BACKEND_FAILURE', 'Execution context was destroyed', {
+  it('never reclassifies an engine error the capture already classified', () => {
+    const original = new EngineError('ENGINE_FAILURE', 'Execution context was destroyed', {
       retryable: false,
     });
     expect(navigationStaleOr(original, 'observe')).toBe(original);

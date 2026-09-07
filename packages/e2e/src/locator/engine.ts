@@ -7,12 +7,12 @@ import {
   type NodeRef,
   type OperationContext,
   type SemanticNode,
-} from '../backend/surface.ts';
+} from '../engine/surface.ts';
 import {
-  asBackendError,
+  asEngineError,
   E2EError,
   TestError,
-  translateBackendError,
+  translateEngineError,
 } from '../internal/errors.ts';
 import { describeExpression } from './expression.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
@@ -23,7 +23,7 @@ export function isNodeVisible(node: SemanticNode | null): boolean {
   return node !== null && node.states?.hidden !== true;
 }
 
-interface EngineOptions {
+interface LocatorEngineOptions {
   readonly session: TargetSession;
   /** The running phase's signal and deadline, read per operation. */
   readonly budget: AttemptBudget;
@@ -35,7 +35,7 @@ interface EngineOptions {
 
 /** Per-attempt locator execution engine. */
 export class LocatorEngine {
-  constructor(private readonly options: EngineOptions) {}
+  constructor(private readonly options: LocatorEngineOptions) {}
 
   get session(): TargetSession {
     return this.options.session;
@@ -72,7 +72,7 @@ export class LocatorEngine {
     };
   }
 
-  /** One immediate backend resolve, retrying retryable frame misses within the deadline. */
+  /** One immediate engine resolve, retrying retryable frame misses within the deadline. */
   private async resolveOnce(
     expression: LocatorExpression,
     deadline: Deadline,
@@ -81,7 +81,7 @@ export class LocatorEngine {
       try {
         return await this.session.locate(expression, this.operationWithin(deadline));
       } catch (cause) {
-        if (asBackendError(cause)?.retryable === true && !deadline.expired()) {
+        if (asEngineError(cause)?.retryable === true && !deadline.expired()) {
           await sleep(POLL_INTERVAL_MS, this.signal);
           continue;
         }
@@ -123,7 +123,7 @@ export class LocatorEngine {
 
   /**
    * Resolves all current matches once without waiting. The caller's deadline,
-   * when given, bounds internal retries of retryable backend errors; it
+   * when given, bounds internal retries of retryable engine errors; it
    * defaults to the action timeout.
    */
   async resolveAll(
@@ -145,8 +145,8 @@ export class LocatorEngine {
       try {
         return await this.session.read(ref, this.operationWithin(deadline));
       } catch (cause) {
-        const backendError = asBackendError(cause);
-        if (backendError?.code === 'NODE_STALE' && backendError.retryable && !deadline.expired()) {
+        const engineError = asEngineError(cause);
+        if (engineError?.code === 'NODE_STALE' && engineError.retryable && !deadline.expired()) {
           continue;
         }
         throw translateLocatorError(cause, expression);
@@ -165,7 +165,7 @@ export class LocatorEngine {
       const node = await this.session.read(ref, this.operationWithin(deadline));
       return { node, count: 1 };
     } catch (cause) {
-      if (asBackendError(cause)?.code === 'NODE_STALE') {
+      if (asEngineError(cause)?.code === 'NODE_STALE') {
         return { node: null, count: 0 };
       }
       throw translateLocatorError(cause, expression);
@@ -191,10 +191,10 @@ export class LocatorEngine {
         await this.session.perform(ref, resolved, this.operationWithin(deadline));
         return;
       } catch (cause) {
-        const backendError = asBackendError(cause);
+        const engineError = asEngineError(cause);
         if (
-          backendError?.code === 'NODE_STALE' &&
-          backendError.retryable &&
+          engineError?.code === 'NODE_STALE' &&
+          engineError.retryable &&
           !deadline.expired()
         ) {
           continue;
@@ -216,8 +216,8 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
   return refs[0] ?? null;
 }
 
-/** Translates a backend error into the runner-owned public taxonomy. */
+/** Translates an engine error into the runner-owned public taxonomy. */
 export function translateLocatorError(cause: unknown, expression?: LocatorExpression): E2EError {
   const suffix = expression === undefined ? '' : `: ${describeExpression(expression)}`;
-  return translateBackendError(cause, suffix);
+  return translateEngineError(cause, suffix);
 }

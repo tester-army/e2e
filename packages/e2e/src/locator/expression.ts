@@ -1,6 +1,6 @@
 /** Immutable locator expression construction (spec 08-platforms.md). */
 
-import type { LocatorExpression, SemanticQuery } from '../backend/surface.ts';
+import type { LocatorExpression, SemanticQuery } from '../engine/surface.ts';
 import { toTextPattern } from '../internal/text.ts';
 import { TestError } from '../internal/errors.ts';
 import type { Role, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';

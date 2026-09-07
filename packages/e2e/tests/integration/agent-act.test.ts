@@ -143,9 +143,9 @@ describe('agent.act with a hand-rolled step executor', () => {
     expect(step!.status).toBe('passed');
     expect(step!.metrics!.actionSteps).toBe(1);
     expect(step!.explanation).toContain('the counter shows 1');
-    const backendEvents = step!.events.filter((event) => event.kind === 'backend');
+    const engineEvents = step!.events.filter((event) => event.kind === 'engine');
     const observations = step!.events.filter((event) => event.kind === 'observation');
-    expect(backendEvents).toHaveLength(1);
+    expect(engineEvents).toHaveLength(1);
     // The executor's two looks, plus the trace cache's two (on by default):
     // the settled baseline before any action and the passing observation,
     // whose delta becomes the staged trace's end anchors.
@@ -455,7 +455,7 @@ describe('agent.act verdict mapping', () => {
   }, 120_000);
 });
 
-describe('agent.act backend operations are bounded by actionTimeout', () => {
+describe('agent.act engine operations are bounded by actionTimeout', () => {
   it('a page that never settles costs one action timeout, not the step budget', async () => {
     const app = await startFixtureApp();
     const executor: StepExecutor = {

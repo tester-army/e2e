@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
-import type { BackendSpiVersion, BackendState } from '../backend/surface.ts';
+import type { EngineSpiVersion, EngineState } from '../engine/surface.ts';
 import { ConfigurationError, E2EError } from '../internal/errors.ts';
 import { canonicalJson, timestamp } from '../internal/ids.ts';
 
@@ -12,9 +12,9 @@ const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface SessionIdentity {
   readonly targetId: string;
-  readonly backendName: string;
-  readonly backendVersion: string;
-  readonly spiVersion: BackendSpiVersion;
+  readonly engineName: string;
+  readonly engineVersion: string;
+  readonly spiVersion: EngineSpiVersion;
   readonly platform: string;
   readonly appIdentity: string;
 }
@@ -24,7 +24,7 @@ interface SessionEnvelope {
   runId: string;
   name: string;
   targetId: string;
-  backend: { name: string; version: string; spiVersion: number };
+  engine: { name: string; version: string; spiVersion: number };
   platform: string;
   appIdentity: string;
   createdAt: string;
@@ -44,12 +44,12 @@ interface SessionEnvelope {
  * contract: each declared name saved exactly once, nothing undeclared.
  */
 export class SessionStaging {
-  private readonly staged = new Map<string, BackendState>();
+  private readonly staged = new Map<string, EngineState>();
 
   constructor(private readonly declared: readonly string[]) {}
 
   /** Stages one captured state, rejecting duplicate or undeclared names. */
-  stage(name: string, state: BackendState): void {
+  stage(name: string, state: EngineState): void {
     if (this.staged.has(name)) {
       throw new E2EError('test', 'SESSION_CONTRACT', `session "${name}" saved twice`);
     }
@@ -68,7 +68,7 @@ export class SessionStaging {
     return this.declared.filter((name) => !this.staged.has(name));
   }
 
-  entries(): IterableIterator<[string, BackendState]> {
+  entries(): IterableIterator<[string, EngineState]> {
     return this.staged.entries();
   }
 }
@@ -78,7 +78,7 @@ export class SessionStore {
   private readonly key: Buffer;
   private readonly directory: string;
   /** Decrypted states by target and name; see `load`. */
-  private readonly loaded = new Map<string, Promise<BackendState>>();
+  private readonly loaded = new Map<string, Promise<EngineState>>();
 
   private constructor(
     private readonly runId: string,
@@ -115,8 +115,8 @@ export class SessionStore {
     return path.join(this.directory, `${targetId}--${name}.json`);
   }
 
-  /** Encrypts and atomically persists one captured backend state. */
-  async save(name: string, identity: SessionIdentity, state: BackendState): Promise<void> {
+  /** Encrypts and atomically persists one captured engine state. */
+  async save(name: string, identity: SessionIdentity, state: EngineState): Promise<void> {
     this.ensureDirectory();
     const createdAt = timestamp();
     let expiresAt = new Date(Date.now() + MAX_SESSION_AGE_MS).toISOString();
@@ -136,9 +136,9 @@ export class SessionStore {
       runId: this.runId,
       name,
       targetId: identity.targetId,
-      backend: {
-        name: identity.backendName,
-        version: identity.backendVersion,
+      engine: {
+        name: identity.engineName,
+        version: identity.engineVersion,
         spiVersion: identity.spiVersion,
       },
       platform: identity.platform,
@@ -181,7 +181,7 @@ export class SessionStore {
    * decrypted state is memoized per store: a worker running many consumers
    * of one session reads and decrypts its file once.
    */
-  async load(name: string, identity: SessionIdentity): Promise<BackendState> {
+  async load(name: string, identity: SessionIdentity): Promise<EngineState> {
     const memoKey = `${identity.targetId}\u0000${name}`;
     const cached = this.loaded.get(memoKey);
     if (cached !== undefined) return cached;
@@ -195,7 +195,7 @@ export class SessionStore {
     }
   }
 
-  private async loadUncached(name: string, identity: SessionIdentity): Promise<BackendState> {
+  private async loadUncached(name: string, identity: SessionIdentity): Promise<EngineState> {
     let rawText: string;
     try {
       rawText = await readFile(this.filePath(identity.targetId, name), 'utf8');
@@ -209,15 +209,15 @@ export class SessionStore {
       envelope.schemaVersion !== 'session-1' ||
       envelope.runId !== this.runId ||
       envelope.targetId !== identity.targetId ||
-      envelope.backend.name !== identity.backendName ||
-      envelope.backend.version !== identity.backendVersion ||
-      envelope.backend.spiVersion !== identity.spiVersion ||
+      envelope.engine.name !== identity.engineName ||
+      envelope.engine.version !== identity.engineVersion ||
+      envelope.engine.spiVersion !== identity.spiVersion ||
       envelope.platform !== identity.platform ||
       envelope.appIdentity !== identity.appIdentity
     ) {
       throw new ConfigurationError(
         'SESSION_MISMATCH',
-        `session "${name}" does not match the current run/target/backend identity`,
+        `session "${name}" does not match the current run/target/engine identity`,
       );
     }
     if (Date.parse(envelope.expiresAt) <= Date.now()) {
@@ -274,8 +274,8 @@ function parseEnvelope(rawText: string, name: string): SessionEnvelope {
     parsed === null ||
     typeof (parsed as { state?: unknown }).state !== 'object' ||
     (parsed as { state: unknown }).state === null ||
-    typeof (parsed as { backend?: unknown }).backend !== 'object' ||
-    (parsed as { backend: unknown }).backend === null
+    typeof (parsed as { engine?: unknown }).engine !== 'object' ||
+    (parsed as { engine: unknown }).engine === null
   ) {
     throw new ConfigurationError('SESSION_INVALID', `session "${name}" has an unexpected shape`);
   }

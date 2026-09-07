@@ -10,7 +10,7 @@ and executable conformance vectors.
 | Candidate | Required work before adoption |
 |---|---|
 | iOS/Android | app identity, deep links, accessibility projection, actionability, state, permissions, device safety, reference apps |
-| Resource extensions | package-owned imports/config, attempt ownership, local backend, report events, secret/PII policy |
+| Resource extensions | package-owned imports/config, attempt ownership, local engine, report events, secret/PII policy |
 | Watch/inspector | rerun invalidation, live-session policy, report/event compatibility |
 | Sharding | deterministic assignment, setup/session fan-out, report merge schema |
 | Cloud runner | execution bundle, tenant/token isolation, encryption, cancellation, profile negotiation |
@@ -27,5 +27,5 @@ unspecified.
 
 No roadmap design may add a universal fixture casually. Integrations use
 extension packages; platform-family capabilities use namespaced driver
-fixtures. Managed backends must preserve the same test source and normative
+fixtures. Managed engines must preserve the same test source and normative
 profile behavior, not merely similar method names.

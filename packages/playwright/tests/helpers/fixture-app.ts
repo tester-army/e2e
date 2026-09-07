@@ -1,7 +1,7 @@
 /**
- * Minimal HTTP fixture for backend-level integration tests.
+ * Minimal HTTP fixture for engine-level integration tests.
  *
- * Backend tests assert on the backend's own behaviour: pooling, attempt
+ * Engine tests assert on the engine's own behaviour: pooling, attempt
  * lifecycle, navigation, location, state, artifacts. They need a reachable
  * origin and a few stable pages, not the runner's full multi-page fixture app.
  */

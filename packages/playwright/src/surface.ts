@@ -1,7 +1,7 @@
 /**
  * The Playwright surface: one browser per worker, one browser context per
- * attempt, and the page every backend member delegates to. This is the closure
- * state behind `playwright()`; the backend hooks in `backend.ts` and the `web`
+ * attempt, and the page every engine member delegates to. This is the closure
+ * state behind `playwright()`; the engine hooks in `engine.ts` and the `web`
  * fixture in `web.ts` are thin delegates onto it. Action dispatch lives in
  * `actions.ts` and tree capture in `observation.ts`; this file owns lifecycle,
  * location, navigation, artifacts, and state.
@@ -11,18 +11,18 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Browser, BrowserContext, ElementHandle, Page, Route } from 'playwright';
 import {
-  BackendError,
+  EngineError,
   raceAbort,
   withinCleanupBudget,
-  type BackendAppDeclaration,
-  type BackendAppInfo,
-  type BackendAttemptContext,
-  type BackendCleanupContext,
-  type BackendInitInfo,
-  type BackendObserveOptions,
-  type BackendPrepareInfo,
-  type BackendSnapshot,
-  type BackendState,
+  type EngineAppDeclaration,
+  type EngineAppInfo,
+  type EngineAttemptContext,
+  type EngineCleanupContext,
+  type EngineInitInfo,
+  type EngineObserveOptions,
+  type EnginePrepareInfo,
+  type EngineSnapshot,
+  type EngineState,
   type LocatorAction,
   type LocatorExpression,
   type Momentum,
@@ -30,8 +30,8 @@ import {
   type OperationContext,
   type ScrollDirection,
   type SemanticNode,
-} from '@e2edev/e2e/backend';
-import { matchesText } from '@e2edev/e2e/backend';
+} from '@e2edev/e2e/engine';
+import { matchesText } from '@e2edev/e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { DialogRouter } from './dialogs.ts';
@@ -108,7 +108,7 @@ function isStorageState(data: unknown): data is StorageState {
 
 /**
  * Attach to a remote browser over CDP instead of launching a local one. The
- * seam a hosted-browser backend plugs into: a per-run cloud session (its
+ * seam a hosted-browser engine plugs into: a per-run cloud session (its
  * endpoint provisioned only once the run starts) resolves through
  * `cdpEndpoint` at `init`, and again on any reconnect. CDP attach is
  * chromium-only.
@@ -127,18 +127,18 @@ export interface PlaywrightConnectOptions {
 }
 
 /**
- * Options of the browser backend: the app it drives (`url`, `command`,
+ * Options of the browser engine: the app it drives (`url`, `command`,
  * `services`, `allowedOrigins`, `environment`, `identity`, `readyUrl` - the
- * backend contract's app declaration) plus the browser itself.
+ * engine contract's app declaration) plus the browser itself.
  */
-export interface PlaywrightOptions extends BackendAppDeclaration {
-  /** Browser engine; defaults to chromium. */
+export interface PlaywrightOptions extends EngineAppDeclaration {
+  /** Browser to launch; defaults to chromium. */
   readonly browser?: BrowserName;
   /** Initial viewport of every attempt's page. */
   readonly viewport?: { readonly width: number; readonly height: number };
   /**
    * Attach to a remote browser over CDP instead of launching locally. Requires
-   * the chromium engine (the default). Wired by a hosted-browser backend.
+   * the chromium browser (the default). Wired by a hosted-browser engine.
    */
   readonly connect?: PlaywrightConnectOptions;
 }
@@ -160,7 +160,7 @@ export class PlaywrightSurface {
   private booted = false;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
-  private app: BackendAppInfo = { allowedOrigins: [] };
+  private app: EngineAppInfo = { allowedOrigins: [] };
   private testIdAttribute = 'data-testid';
   private headed = false;
   private artifactsDir = '';
@@ -187,22 +187,22 @@ export class PlaywrightSurface {
   // --- lifecycle ---
 
   /**
-   * Installs the browser engine on first run, once per run before any worker.
+   * Installs the browser on first run, once per run before any worker.
    * A CDP attach uses the remote's browser, so only a local launch needs the
-   * engine here. The download narrates through `info.log` and is bounded by
+   * browser here. The download narrates through `info.log` and is bounded by
    * the run's interrupt alone, never by a launch budget.
    */
-  async prepare(info: BackendPrepareInfo): Promise<void> {
+  async prepare(info: EnginePrepareInfo): Promise<void> {
     if (this.connect !== undefined) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
   }
 
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
-  async init(info: BackendInitInfo): Promise<void> {
+  async init(info: EngineInitInfo): Promise<void> {
     this.app = info.app;
     this.testIdAttribute = info.testIdAttribute;
     this.headed = info.headed;
-    // The engine was installed in `prepare`; a launch or attach is the one
+    // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
     // init signal.
     this.browser = await this.acquireBrowser(info.signal);
@@ -225,8 +225,8 @@ export class PlaywrightSurface {
         `browser ${verb}`,
       );
     } catch (cause) {
-      if (cause instanceof BackendError) throw cause;
-      throw new BackendError('BACKEND_FAILURE', `browser ${verb} failed: ${message(cause)}`, {
+      if (cause instanceof EngineError) throw cause;
+      throw new EngineError('ENGINE_FAILURE', `browser ${verb} failed: ${message(cause)}`, {
         retryable: false,
         cause,
       });
@@ -247,7 +247,7 @@ export class PlaywrightSurface {
       const endpoint = await connect.cdpEndpoint(signal);
       if (signal.aborted) throw cancelled('browser connect cancelled');
       if (typeof endpoint !== 'string' || endpoint.trim() === '') {
-        throw new BackendError('BACKEND_FAILURE', 'connect.cdpEndpoint resolved to an empty CDP endpoint', {
+        throw new EngineError('ENGINE_FAILURE', 'connect.cdpEndpoint resolved to an empty CDP endpoint', {
           retryable: false,
         });
       }
@@ -280,9 +280,9 @@ export class PlaywrightSurface {
    * context is open is a harness bug, not a relaunch: honouring it would leak
    * the first context and leave the dialog router listening to both.
    */
-  async startAttempt(context: BackendAttemptContext): Promise<void> {
+  async startAttempt(context: EngineAttemptContext): Promise<void> {
     if (this.context !== null) {
-      throw new BackendError('INVALID_STATE', 'an attempt is already running', { retryable: false });
+      throw new EngineError('INVALID_STATE', 'an attempt is already running', { retryable: false });
     }
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
@@ -298,13 +298,13 @@ export class PlaywrightSurface {
    * Playwright and abandons the close. Idempotent, and a no-op before
    * `startAttempt`.
    */
-  async endAttempt(context: BackendCleanupContext): Promise<void> {
+  async endAttempt(context: EngineCleanupContext): Promise<void> {
     await this.closeContext(context);
     this.refs.clear();
   }
 
   /** Closes the shared browser process within the cleanup budget. Idempotent, and safe cold. */
-  async dispose(context: BackendCleanupContext): Promise<void> {
+  async dispose(context: EngineCleanupContext): Promise<void> {
     await this.endAttempt(context);
     this.browser = null;
     this.booted = false;
@@ -312,7 +312,7 @@ export class PlaywrightSurface {
   }
 
   /** Stops any trace and closes the current context, best-effort, within the budget. */
-  private async closeContext(budget: BackendCleanupContext): Promise<void> {
+  private async closeContext(budget: EngineCleanupContext): Promise<void> {
     const context = this.context;
     this.context = null;
     this.page = null;
@@ -326,7 +326,7 @@ export class PlaywrightSurface {
 
   private requireBrowser(): Browser {
     if (this.browser === null || !this.browser.isConnected()) {
-      throw new BackendError('BACKEND_FAILURE', 'the browser is not running; init did not complete', {
+      throw new EngineError('ENGINE_FAILURE', 'the browser is not running; init did not complete', {
         retryable: false,
       });
     }
@@ -359,8 +359,8 @@ export class PlaywrightSurface {
       await this.context?.close().catch(() => undefined);
       this.context = null;
       this.page = null;
-      if (cause instanceof BackendError) throw cause;
-      throw new BackendError('BACKEND_FAILURE', `browser context launch failed: ${message(cause)}`, {
+      if (cause instanceof EngineError) throw cause;
+      throw new EngineError('ENGINE_FAILURE', `browser context launch failed: ${message(cause)}`, {
         retryable: false,
         cause,
       });
@@ -600,12 +600,12 @@ export class PlaywrightSurface {
         throw translatePwError(cause, 'frame resolution');
       }
       if (count === 0) {
-        throw new BackendError('FRAME_NOT_FOUND', `no frame matches ${selector}`, {
+        throw new EngineError('FRAME_NOT_FOUND', `no frame matches ${selector}`, {
           retryable: true,
         });
       }
       if (count > 1) {
-        throw new BackendError('FRAME_AMBIGUOUS', `${count} frames match ${selector}`, {
+        throw new EngineError('FRAME_AMBIGUOUS', `${count} frames match ${selector}`, {
           retryable: false,
         });
       }
@@ -670,7 +670,7 @@ export class PlaywrightSurface {
 
   // --- state ---
 
-  captureState(operation: OperationContext): Promise<BackendState> {
+  captureState(operation: OperationContext): Promise<EngineState> {
     return this.guard(operation, 'state capture', async () => {
       const storageState = await this.requireContext().storageState({ indexedDB: true });
       return { format: STATE_FORMAT, version: 1, data: storageState };
@@ -678,10 +678,10 @@ export class PlaywrightSurface {
   }
 
   /** Replaces the attempt's context with one seeded from the snapshot. */
-  restoreState(state: BackendState, operation: OperationContext): Promise<void> {
+  restoreState(state: EngineState, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'state restore', async () => {
       if (state.format !== STATE_FORMAT || state.version !== 1) {
-        throw new BackendError(
+        throw new EngineError(
           'INVALID_STATE',
           `unsupported state format ${state.format}@${String(state.version)}`,
           { retryable: false },
@@ -690,7 +690,7 @@ export class PlaywrightSurface {
       // A string here would be read by Playwright as a file path; a session
       // envelope must never be able to point the browser at the filesystem.
       if (!isStorageState(state.data)) {
-        throw new BackendError('INVALID_STATE', 'state data must be a storage-state object', {
+        throw new EngineError('INVALID_STATE', 'state data must be a storage-state object', {
           retryable: false,
         });
       }
@@ -702,14 +702,14 @@ export class PlaywrightSurface {
 
   /**
    * Captures one atomic semantic observation. Secure fields are masked in the
-   * page before the tree leaves the backend, and every node keeps a live
+   * page before the tree leaves the engine, and every node keeps a live
    * element handle valid until the next observation replaces the generation.
    *
    * With `options.pixels`, masked viewport pixels are captured alongside the
    * tree rather than after it, so the image and the node geometry describe the
-   * page as closely in time as two backend calls can.
+   * page as closely in time as two engine calls can.
    */
-  observe(operation: OperationContext, options?: BackendObserveOptions): Promise<BackendSnapshot> {
+  observe(operation: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot> {
     // A capture that lost its document to a navigation reads as a stale node:
     // nothing was dispatched, so the runner re-observes the new document
     // within the same deadline instead of failing the call.
@@ -724,8 +724,8 @@ export class PlaywrightSurface {
   /** One observation capture attempt, unclassified. */
   private async captureObservation(
     operation: OperationContext,
-    options: BackendObserveOptions | undefined,
-  ): Promise<BackendSnapshot> {
+    options: EngineObserveOptions | undefined,
+  ): Promise<EngineSnapshot> {
     const page = this.requirePage();
     // One deadline for the whole observation: settle, every document, and the
     // pixels each spend from what remains of it, never from the full budget.
@@ -742,7 +742,7 @@ export class PlaywrightSurface {
     // The screenshot masks by sweeping the page's frames, so it needs nothing
     // from the tree walk and runs with it instead of after it. Pixels never
     // fail an observation: an image the page could not produce in time gives
-    // a tree-only observation, exactly like a backend that has no pixels.
+    // a tree-only observation, exactly like an engine that has no pixels.
     const pixelCapture =
       options?.pixels === true
         ? capturePixels(page, operation, viewport).catch(() => undefined)

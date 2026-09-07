@@ -1,15 +1,15 @@
 /**
  * The CDP-attach seam without a real browser: the factory rejects a non-chromium
- * engine, and `init` fails cleanly when the endpoint resolver yields nothing.
+ * browser, and `init` fails cleanly when the endpoint resolver yields nothing.
  * The end-to-end attach against a live Chrome is in tests/integration.
  */
 
 import { describe, expect, it } from 'vitest';
-import type { BackendInitInfo } from '@e2edev/e2e/backend';
+import type { EngineInitInfo } from '@e2edev/e2e/engine';
 import { playwright } from '../../src/index.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 
-function initInfo(signal = new AbortController().signal): BackendInitInfo {
+function initInfo(signal = new AbortController().signal): EngineInitInfo {
   return {
     runId: 'run-cdp',
     targetName: 'web',
@@ -22,14 +22,14 @@ function initInfo(signal = new AbortController().signal): BackendInitInfo {
 }
 
 describe('playwright({ connect })', () => {
-  it('accepts a connect option with the default chromium engine', () => {
+  it('accepts a connect option with the default chromium browser', () => {
     expect(() => playwright({ connect: { cdpEndpoint: () => 'ws://localhost:0' } })).not.toThrow();
     expect(() =>
       playwright({ browser: 'chromium', connect: { cdpEndpoint: () => 'ws://localhost:0' } }),
     ).not.toThrow();
   });
 
-  it('rejects connect with a non-chromium engine as INVALID_CONFIG', () => {
+  it('rejects connect with a non-chromium browser as INVALID_CONFIG', () => {
     for (const browser of ['firefox', 'webkit'] as const) {
       expect(() => playwright({ browser, connect: { cdpEndpoint: () => 'ws://x' } })).toThrowError(
         /chromium-only/,
@@ -39,10 +39,10 @@ describe('playwright({ connect })', () => {
 });
 
 describe('PlaywrightSurface CDP attach', () => {
-  it('fails init with BACKEND_FAILURE when the endpoint resolves empty, without touching a browser', async () => {
+  it('fails init with ENGINE_FAILURE when the endpoint resolves empty, without touching a browser', async () => {
     const surface = new PlaywrightSurface({ connect: { cdpEndpoint: () => '   ' } });
     await expect(surface.init(initInfo())).rejects.toMatchObject({
-      code: 'BACKEND_FAILURE',
+      code: 'ENGINE_FAILURE',
       retryable: false,
     });
   });
@@ -55,7 +55,7 @@ describe('PlaywrightSurface CDP attach', () => {
         },
       },
     });
-    await expect(surface.init(initInfo())).rejects.toMatchObject({ code: 'BACKEND_FAILURE' });
+    await expect(surface.init(initInfo())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
   it('hands the init signal to the resolver', async () => {

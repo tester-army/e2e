@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
-import { BackendError, TestError } from '@e2edev/e2e/backend';
+import { EngineError, TestError } from '@e2edev/e2e/engine';
 import { staleOr, translateError } from '../../src/errors.ts';
 
 describe('error translation', () => {
   it('passes classified errors through untouched', () => {
-    const backend = new BackendError('NOT_ACTIONABLE', 'no', { retryable: false });
-    expect(translateError(backend, 'perform')).toBe(backend);
+    const engine = new EngineError('NOT_ACTIONABLE', 'no', { retryable: false });
+    expect(translateError(engine, 'perform')).toBe(engine);
     const runner = new TestError('POLICY_DENIED', 'no');
     expect(staleOr(runner, 'perform')).toBe(runner);
   });
@@ -39,9 +39,9 @@ describe('error translation', () => {
       retryable: true,
     });
     expect(staleOr(new Error('Unknown ref: @e3'), 'perform tap')).toMatchObject({ code: 'NODE_STALE', retryable: true });
-    expect(translateError(new Error('ref @e12 not found'), 'observe')).toMatchObject({ code: 'BACKEND_FAILURE' });
+    expect(translateError(new Error('ref @e12 not found'), 'observe')).toMatchObject({ code: 'ENGINE_FAILURE' });
     const failure = translateError(new AppError('COMMAND_FAILED', 'xcrun exploded'), 'boot');
-    expect(failure).toMatchObject({ code: 'BACKEND_FAILURE', retryable: false });
+    expect(failure).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });
     expect(failure.message).toBe('boot failed: xcrun exploded');
   });
 

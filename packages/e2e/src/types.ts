@@ -10,7 +10,7 @@ import type {
   testCaseBrand,
 } from './internal/brands.ts';
 import type { StepExecutor } from './agent/executor.ts';
-import type { BackendHandle } from './backend/index.ts';
+import type { EngineHandle } from './engine/index.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
@@ -432,9 +432,9 @@ export interface TestAPI<Fixtures = TestFixtures> {
   /** Registers one setup test with statically declared session outputs. */
   setup(title: string, options: SetupOptions, fn: SetupFn<Fixtures>): TestCase;
   /**
-   * Returns the same runtime `test`, typed with a backend's contributed
+   * Returns the same runtime `test`, typed with an engine's contributed
    * fixtures. A pure type refinement — the fixtures still resolve from the
-   * target's backend at runtime — so a project types its device/desktop/web
+   * target's engine at runtime — so a project types its device/desktop/web
    * surface without a global `declare module` augmentation:
    *
    *   export const test = base.extend<{ device: Device }>();
@@ -488,8 +488,8 @@ export interface AsyncExpectation {
 
 /**
  * An object that carries its own expectation surface, so `expect(object)`
- * returns `E`. Backend-contributed fixtures attach one through
- * `BackendFixtureContext.expectable`; core never declares a platform's
+ * returns `E`. Engine-contributed fixtures attach one through
+ * `EngineFixtureContext.expectable`; core never declares a platform's
  * matchers, it only routes to them.
  */
 export interface Expectable<E> {
@@ -568,16 +568,16 @@ export interface ServiceConfig extends CommandConfig {
 }
 
 /**
- * One target: a named surface on one platform, served by a backend (RFC0002).
- * What the target can do is graded from the backend's declared capabilities;
- * with no `backend` the target is agent-tools-only and everything runs opaque.
- * The app under test is the backend's to declare (its URL, identity, or the
+ * One target: a named surface on one platform, served by an engine (RFC0002).
+ * What the target can do is graded from the engine's declared capabilities;
+ * with no `engine` the target is agent-tools-only and everything runs opaque.
+ * The app under test is the engine's to declare (its URL, identity, or the
  * command that starts it); a target carries no app config of its own.
  */
 export interface Target {
   name: string;
   platform: Platform;
-  backend?: BackendHandle;
+  engine?: EngineHandle;
 }
 
 export interface ModelConfig {

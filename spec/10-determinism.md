@@ -234,7 +234,7 @@ written via a temporary file and an atomic rename; entries over 1 MiB are
 invalid on read and refused on write. A project may replace the store with
 any `TraceCacheStore` implementation (a shared remote cache); the read/write
 contract and the fail-to-miss rule travel with the interface, not the
-backend.
+engine.
 
 Runs are comparable through the report either way: every agent step records
 how the cache participated (`self-finalized`, `agent-concluded`, or `missed`,

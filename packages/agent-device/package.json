@@ -1,7 +1,7 @@
 {
   "name": "@e2edev/agent-device",
   "version": "0.2.1",
-  "description": "agent-device mobile backend (iOS and Android) for the e2e agentic end-to-end testing standard",
+  "description": "agent-device mobile engine (iOS and Android) for the e2e agentic end-to-end testing standard",
   "keywords": [
     "e2e",
     "testing",
@@ -10,7 +10,7 @@
     "agent-device",
     "ios",
     "android",
-    "backend"
+    "engine"
   ],
   "license": "MIT",
   "contributors": [

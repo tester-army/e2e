@@ -4,7 +4,7 @@
  * The harness opens the step, owns the deadline, the action budget, origin
  * policy, observation redaction, and recording — then hands the step to the
  * configured executor and maps its verdict back onto the runner's error
- * taxonomy. The executor never touches the backend: everything bottoms out in
+ * taxonomy. The executor never touches the engine: everything bottoms out in
  * the context built here, on the same accounting core (phases.ts) the
  * locate/judgment tier runs on. Trace-cache participation — replay, live
  * recording, staging — lives beside the dispatch in `StepTraceSession`.
@@ -12,7 +12,7 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BackendError, type OperationContext, type SemanticNode } from '../backend/surface.ts';
+import { EngineError, type OperationContext, type SemanticNode } from '../engine/surface.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { Deadline } from '../internal/time.ts';
@@ -597,7 +597,7 @@ class ActDispatch {
       }
       return instrumentPhase(
         this.runtime,
-        { api: this.spec.api, kind: 'backend', phase: 'agent.action', name: `tool:${call.name}` },
+        { api: this.spec.api, kind: 'engine', phase: 'agent.action', name: `tool:${call.name}` },
         body,
       );
     };
@@ -713,7 +713,7 @@ class ActDispatch {
 
     const wantPixels = options.pixels === true;
     const observation = await this.observeSettled(wantPixels);
-    // Prefer location from this capture; only backends without it need a separate probe.
+    // Prefer location from this capture; only engines without it need a separate probe.
     const path = await this.currentPath(observation);
     return {
       revision: observation.revision,
@@ -760,7 +760,7 @@ class ActDispatch {
   /** One recorded observation; when `settle`, the captures loop inside it. */
   private async observeNow(settle: boolean, pixels: boolean): Promise<AgentObservation> {
     this.checkpoint();
-    // A tainted viewport never captures pixels: the backend would mask what it
+    // A tainted viewport never captures pixels: the engine would mask what it
     // knows about, and the secret may be anywhere on screen by now.
     const capturePixels = pixels && !this.runtime.taint.value;
     const observation = await instrumentPhase(
@@ -783,7 +783,7 @@ class ActDispatch {
     return observation;
   }
 
-  /** One raw observation capture: retried at the backend, then redacted and bounded. */
+  /** One raw observation capture: retried at the engine, then redacted and bounded. */
   private async captureObservation(pixels: boolean): Promise<AgentObservation> {
     const raw = await retryingObserve({
       observe: (operation) => this.session.observe(operation, { pixels }),
@@ -823,8 +823,8 @@ class ActDispatch {
   }
 
   /**
-   * Runs one grammar action against the action budget, recorded as a backend
-   * event. The body performs the backend call and returns the committed
+   * Runs one grammar action against the action budget, recorded as an engine
+   * event. The body performs the engine call and returns the committed
    * action's recordable descriptor — one value carries both concerns: the
    * event's `detail` prose derives from it in a pure hook, and the dispatch
    * writes it to the trace cache after the phase settles.
@@ -839,7 +839,7 @@ class ActDispatch {
     try {
       action = await instrumentPhase(
         this.runtime,
-        { api: this.spec.api, kind: 'backend', phase: 'agent.action', name },
+        { api: this.spec.api, kind: 'engine', phase: 'agent.action', name },
         body,
         (committed) => ({
           detail: describeAction(committed, this.redact, this.runtime.config.testIdAttribute).summary,
@@ -877,7 +877,7 @@ class ActDispatch {
         const action = await perform(node);
         return within === undefined ? action : { ...action, within };
       } catch (cause) {
-        if (cause instanceof BackendError && cause.code === 'NODE_STALE') {
+        if (cause instanceof EngineError && cause.code === 'NODE_STALE') {
           throw new AgentError(
             'LOCATOR_NOT_FOUND',
             'the target node is stale; re-observe and use a current id',

@@ -1,7 +1,7 @@
 /** Masked pixel capture for an observation (spec 14-security.md). */
 
 import type { Locator, Page } from 'playwright';
-import type { ObservationPixels, OperationContext } from '@e2edev/e2e/backend';
+import type { ObservationPixels, OperationContext } from '@e2edev/e2e/engine';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /**
@@ -39,7 +39,7 @@ export interface PixelCapture {
 /**
  * Captures masked viewport pixels.
  *
- * Secure fields are covered before the image leaves the backend and the covered
+ * Secure fields are covered before the image leaves the engine and the covered
  * regions are counted, so the runner can prove the image is at least as redacted
  * as the tree (the runner's clearance check requires the masked set to be a
  * superset of the observed secure set, which `secureFieldMasks` guarantees).

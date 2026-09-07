@@ -48,7 +48,7 @@ export type RunEventFact =
   | { readonly type: 'plan'; readonly total: number }
   | {
       /**
-       * One line of run-level progress outside any test: backend provisioning,
+       * One line of run-level progress outside any test: engine provisioning,
        * a first-run download, a reused app process. `target` is the target the
        * line is about, or `app` for the app process and its services.
        */
@@ -75,7 +75,7 @@ export type RunEventFact =
       /**
        * An interrupt landed. `graceful`: the running test is interrupted and
        * its teardown runs. `forced` (a second interrupt): every worker tears
-       * its backend down at once and is killed after the cleanup budget.
+       * its engine down at once and is killed after the cleanup budget.
        */
       readonly type: 'run-interrupted';
       readonly mode: 'graceful' | 'forced';

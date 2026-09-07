@@ -60,7 +60,7 @@ const seedCart = defineTool(
 );
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   agent: createAgent({ tools: { seedCart } }),
 });
 ```
@@ -146,7 +146,7 @@ export default defineConfig({
 `guard()` stops a tool from running once the step is concluding and turns
 budget and timeout stops into a clean end of the loop. `runTool` reserves the
 action budget before the body runs, serializes mutations, and records their
-outcomes. A mutating `runTool` body must call its backend directly; queuing another grammar operation from
+outcomes. A mutating `runTool` body must call its engine directly; queuing another grammar operation from
 inside that body would wait on itself. The
 step deadline still settles the verdict either way, but a device operation
 that ignores cancellation finishes on its own time, so keep tool bodies
@@ -183,8 +183,8 @@ attempt scope, as they share the ledger.
 
 `ctx.actions` is the whole action surface (`tap`, `type`, `typeSecret`,
 `press`, `select`, `scroll`, `navigate`) and `ctx.observe()` is the only view
-of the app. `ctx.target.verbs` is the subset of those verbs the target's backend
-declared (a backend with `perform` gives `tap`/`type`/`typeSecret`/`press`/
+of the app. `ctx.target.verbs` is the subset of those verbs the target's engine
+declared (an engine with `perform` gives `tap`/`type`/`typeSecret`/`press`/
 `select`, `swipe` gives `scroll`, `app.navigate` gives `navigate`); offer a model
 exactly that vocabulary, as the built-in agent does, rather than a verb the
 surface can only reject.
@@ -203,13 +203,13 @@ accessors throw `INVALID_STATE` before an attempt is running or a page is open.
 ```ts
 import { playwright, surfaceOf } from "@e2edev/playwright";
 
-const backend = playwright();
+const engine = playwright();
 const own: StepExecutor = {
   name: "own-tools",
   version: "1",
   cache: "off",
   async runStep(ctx) {
-    const page = surfaceOf(backend)!.page();   // the page app.open() navigated
+    const page = surfaceOf(engine)!.page();   // the page app.open() navigated
     await ctx.budgets.runTool({ name: "click", mutates: true }, () =>
       page.getByRole("button", { name: "Save" }).click(),
     );
@@ -300,7 +300,7 @@ database per process and rewrites it whole, so use it with `workers: 1`.
   <Card title="agent reference" icon="code" href="/reference/agent">
     Every method, option, and budget.
   </Card>
-  <Card title="Writing a backend" icon="plug" href="/writing-a-backend">
-    Plug in a whole new backend below the executor.
+  <Card title="Writing an engine" icon="plug" href="/writing-an-engine">
+    Plug in a whole new engine below the executor.
   </Card>
 </CardGroup>

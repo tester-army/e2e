@@ -20,13 +20,13 @@ const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '.
 const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
 
 /**
- * The web target integration suites run against, its backend declaring the
+ * The web target integration suites run against, its engine declaring the
  * fixture app's URL. The handle comes from the built playwright package, whose
  * `e2e` peer resolves to this package's dist, so the brand symbol is shared at
  * runtime even though the src/dist types differ.
  */
 function defaultTargets(appUrl: string): NonNullable<E2EConfig['targets']> {
-  return [{ name: 'web', platform: 'web', backend: playwright({ url: appUrl }) }] as unknown as NonNullable<
+  return [{ name: 'web', platform: 'web', engine: playwright({ url: appUrl }) }] as unknown as NonNullable<
     E2EConfig['targets']
   >;
 }
@@ -75,7 +75,7 @@ export async function runExisting(
 ): Promise<RunOutcome> {
   return run({
     cwd: project.dir,
-    // Core knows no backend: a web target is served by the playwright backend
+    // Core knows no engine: a web target is served by the playwright engine
     // the test explicitly passes, exactly as a project config would.
     rawConfig: { targets: defaultTargets(options.appUrl), ...options.config },
     env: {
@@ -94,7 +94,7 @@ export function workerConfigSource(workers: number, extra = ''): string {
 import { playwright } from '@e2edev/playwright';
 
 export default defineConfig({
-  targets: [{ name: 'web', platform: 'web', backend: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: ${workers},${extra}
 });
 `;

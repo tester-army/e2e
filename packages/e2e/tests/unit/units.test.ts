@@ -23,7 +23,7 @@ const target: ResolvedTarget = {
   name: 'web',
   index: 0,
   platform: 'web',
-  backend: undefined,
+  engine: undefined,
   app: EMPTY_APP,
 };
 

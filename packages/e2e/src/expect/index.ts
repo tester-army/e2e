@@ -9,7 +9,7 @@ import { createValueExpectation } from './values.ts';
 
 /**
  * A fixture's attached expectation surface hangs off the fixture object under
- * a global symbol (`BackendFixtureContext.expectable`), so an expect()
+ * a global symbol (`EngineFixtureContext.expectable`), so an expect()
  * imported in an isolated test-module realm can still reach it. Core routes
  * to the surface and never knows which matchers a platform contributed.
  */

@@ -18,7 +18,7 @@ Untrusted data:
   network responses;
 - model output, reasoning, tool arguments, and handoff text;
 - sessions read from disk;
-- artifact labels, filenames, backend paths, and errors;
+- artifact labels, filenames, engine paths, and errors;
 - PR title/body/diff and all code from an untrusted branch.
 
 Conformance does not sandbox trusted executable code. Documentation and CLI
@@ -45,7 +45,7 @@ the UI, page source, PR metadata, or handoff have no policy authority.
 
 The runner validates initial URL, redirects, popups, frames, deep links, and
 agent-requested navigation against the target's allowed origins (the
-backend's `allowedOrigins` declaration, 05-config.md). Origin comparison uses
+engine's `allowedOrigins` declaration, 05-config.md). Origin comparison uses
 normalized URL scheme, ASCII host, and effective port. Userinfo and fragments
 do not affect origin.
 
@@ -114,7 +114,7 @@ nonlocal model endpoint or unexpected runner/driver egress fails before tests.
 ## Observation and artifact redaction
 
 Secure semantic nodes are masked by the driver before observation leaves the
-backend. The runner additionally replaces every exact registered secret in
+engine. The runner additionally replaces every exact registered secret in
 textual observations and metadata. Sensitive attributes and network headers are
 removed, not merely replaced.
 
@@ -224,7 +224,7 @@ redaction patterns without weakening required masking.
 ## Supply chain
 
 Official releases SHOULD publish provenance and integrity metadata. CI uses
-frozen lockfiles, exact framework/driver/backend versions, immutable action
+frozen lockfiles, exact framework/driver/engine versions, immutable action
 SHAs, and verified browser/device downloads. Driver conformance is not a supply
 chain trust signal.
 

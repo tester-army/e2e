@@ -5,7 +5,7 @@
  * polling, strictness, and staleness stay with the runner.
  */
 
-import { BackendError, matchesText, type LocatorExpression, type SemanticQuery } from '@e2edev/e2e/backend';
+import { EngineError, matchesText, type LocatorExpression, type SemanticQuery } from '@e2edev/e2e/engine';
 import { isWithin, type ProjectedNode } from './nodes.ts';
 import { compileSelector } from './selector.ts';
 
@@ -46,7 +46,7 @@ export function resolveExpression(
     case 'selector':
       return compileSelector(expression.selector)(index);
     case 'frame':
-      throw new BackendError('FRAME_NOT_FOUND', 'a device surface has no nested documents to scope a query into', {
+      throw new EngineError('FRAME_NOT_FOUND', 'a device surface has no nested documents to scope a query into', {
         retryable: false,
       });
   }
@@ -84,7 +84,7 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery, options: Locat
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {
-        throw new BackendError('BACKEND_FAILURE', 'role query value must be a string', { retryable: false });
+        throw new EngineError('ENGINE_FAILURE', 'role query value must be a string', { retryable: false });
       }
       if ((node.role ?? '') !== query.value.value) return false;
       if (query.name !== undefined && !matchesText(node.name ?? '', query.name)) return false;

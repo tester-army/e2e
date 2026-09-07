@@ -1,7 +1,7 @@
 /** Test-target execution engine (spec 11-lifecycle.md). */
 
 import path from 'node:path';
-import type { TargetSession, OperationContext } from '../backend/surface.ts';
+import type { TargetSession, OperationContext } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
   classifyError,
@@ -10,7 +10,7 @@ import {
   InfrastructureError,
   serializeError,
   TestTimeoutError,
-  translateBackendError,
+  translateEngineError,
   type SerializedError,
 } from '../internal/errors.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
@@ -26,8 +26,8 @@ import type { TestTargetPair } from '../collect/select.ts';
 import type { ArtifactStore } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
-import { BACKEND_SPI_VERSION } from '../backend/contract.ts';
-import { createBackendSession } from '../backend/session.ts';
+import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
+import { createEngineSession } from '../engine/session.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
@@ -102,8 +102,8 @@ export class TargetExecutor implements SerialHost {
 
   private readonly runErrors: RunError[] = [];
   private readonly sessionIdentity: SessionIdentity;
-  /** Resolves once the backend's init hook completed for this worker. */
-  private backendReady: Promise<void> | undefined;
+  /** Resolves once the engine's init hook completed for this worker. */
+  private engineReady: Promise<void> | undefined;
 
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
@@ -120,13 +120,13 @@ export class TargetExecutor implements SerialHost {
     });
     this.sessionIdentity = {
       targetId: options.target.name,
-      // Session and cache identity comes from the backend declaration, so a
-      // backend swap never restores another backend's state.
-      backendName: options.target.backend?.name ?? 'none',
-      backendVersion: options.target.backend?.version ?? 'unversioned',
-      spiVersion: options.target.backend?.spiVersion ?? BACKEND_SPI_VERSION,
+      // Session and cache identity comes from the engine declaration, so a
+      // engine swap never restores another engine's state.
+      engineName: options.target.engine?.name ?? 'none',
+      engineVersion: options.target.engine?.version ?? 'unversioned',
+      spiVersion: options.target.engine?.spiVersion ?? ENGINE_SPI_VERSION,
       platform: options.target.platform,
-      // The backend's declared identity (else the URL it declared) keys cache
+      // The engine's declared identity (else the URL it declared) keys cache
       // and session entries, so an ephemeral per-deploy origin (a PR preview)
       // can share them with the app it is a deployment of. The environment
       // always joins the digest: an identity must never bleed entries across
@@ -146,7 +146,7 @@ export class TargetExecutor implements SerialHost {
     this.options.events?.onResult?.(result);
   }
 
-  /** Builds one backend operation context. */
+  /** Builds one engine operation context. */
   private op(attemptId: string, timeoutMs: number, signal: AbortSignal): OperationContext {
     return { signal, timeoutMs, runId: this.options.runId, attemptId };
   }
@@ -157,21 +157,21 @@ export class TargetExecutor implements SerialHost {
   }
 
   /**
-   * Runs the backend's init hook once per worker, before the first session.
+   * Runs the engine's init hook once per worker, before the first session.
    * Boot work (simulators, device leases) is bounded by the launch timeout
    * but never charged against a step budget.
    */
-  private initBackendOnce(): Promise<void> {
-    const backend = this.target.backend;
-    const init = backend?.init?.bind(backend);
+  private initEngineOnce(): Promise<void> {
+    const engine = this.target.engine;
+    const init = engine?.init?.bind(engine);
     if (init === undefined) return Promise.resolve();
-    // Memoized for the worker's lifetime, failure included: a backend that
+    // Memoized for the worker's lifetime, failure included: an engine that
     // could not boot fails every attempt on this worker with the same cause
     // instead of re-running a broken boot per test. Init outlives any single
     // attempt, so it aborts on worker interrupt, not on one test's deadline.
-    this.backendReady ??= this.debug.time('backend.init', () =>
+    this.engineReady ??= this.debug.time('engine.init', () =>
       this.lifecycle(
-        `initializing backend ${backend?.name ?? 'none'}`,
+        `initializing engine ${engine?.name ?? 'none'}`,
         this.config.launchTimeout,
         'LAUNCH_TIMEOUT',
         this.interruptSignal,
@@ -190,15 +190,15 @@ export class TargetExecutor implements SerialHost {
           }),
       ),
     );
-    return this.backendReady;
+    return this.engineReady;
   }
 
   /**
-   * Runs one lifecycle call on the backend seam within the given budget. The
+   * Runs one lifecycle call on the engine seam within the given budget. The
    * signal handed to `run` follows `parent` and is aborted the moment the call
    * fails, timeout included, so a hook that outlived its budget is told to
    * stop instead of running on into the retry. Synchronous throws are caught,
-   * and every failure is translated onto the runner taxonomy: a backend
+   * and every failure is translated onto the runner taxonomy: an engine
    * failing outside its contract is infrastructure, never a test error.
    */
   private async lifecycle<T>(
@@ -217,25 +217,25 @@ export class TargetExecutor implements SerialHost {
       );
     } catch (cause) {
       scope.abort();
-      throw translateBackendError(cause, ` while ${label}`);
+      throw translateEngineError(cause, ` while ${label}`);
     }
   }
 
   /**
-   * Disposes the backend at worker end of life, bounded by the cleanup budget.
-   * Runs whether or not `init` did: a backend may hold resources it acquired
-   * lazily, and the contract makes `dispose` safe to call on a cold backend.
+   * Disposes the engine at worker end of life, bounded by the cleanup budget.
+   * Runs whether or not `init` did: an engine may hold resources it acquired
+   * lazily, and the contract makes `dispose` safe to call on a cold engine.
    */
   async dispose(): Promise<void> {
-    const disposeBackend = this.target.backend?.dispose?.bind(this.target.backend);
-    if (disposeBackend === undefined) return;
+    const disposeEngine = this.target.engine?.dispose?.bind(this.target.engine);
+    if (disposeEngine === undefined) return;
     try {
       await this.lifecycle(
-        'disposing the backend',
+        'disposing the engine',
         this.config.cleanupTimeout,
         'CLEANUP_TIMEOUT',
         NEVER_ABORTS,
-        (signal) => disposeBackend({ signal, timeoutMs: this.config.cleanupTimeout }),
+        (signal) => disposeEngine({ signal, timeoutMs: this.config.cleanupTimeout }),
       );
     } catch (cause) {
       this.runErrors.push({ error: serializeError(classifyError(cause), { phase: 'cleanup' }) });
@@ -435,36 +435,36 @@ export class TargetExecutor implements SerialHost {
 
   // --- attempt core ---
 
-  /** Starts one attempt on the backend, restores a configured session, and starts tracing. */
+  /** Starts one attempt on the engine, restores a configured session, and starts tracing. */
   async launchSession(
     pair: TestTargetPair,
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
   ): Promise<TargetSession> {
-    // The backend booted in init() once per worker; the adapter is per-attempt
+    // The engine booted in init() once per worker; the adapter is per-attempt
     // so refs never cross attempts.
-    await this.initBackendOnce();
-    const backend = this.target.backend;
-    // Session restore rides the backend's neutral state capability. Checked
+    await this.initEngineOnce();
+    const engine = this.target.engine;
+    // Session restore rides the engine's neutral state capability. Checked
     // before any per-attempt isolation opens, so a misconfigured session never
     // orphans a started attempt.
-    if (pair.options.session !== undefined && backend?.state === undefined) {
+    if (pair.options.session !== undefined && engine?.state === undefined) {
       throw new ConfigurationError(
         'UNSUPPORTED_CAPABILITY',
-        `target "${this.target.name}" has no backend state capability for session restore`,
+        `target "${this.target.name}" has no engine state capability for session restore`,
       );
     }
-    const session = createBackendSession({ backend, targetName: this.target.name });
+    const session = createEngineSession({ engine, targetName: this.target.name });
     const launch = <T>(label: string, run: (launchSignal: AbortSignal) => Promise<T>) =>
       this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', signal, run);
     const launchOp = (launchSignal: AbortSignal) =>
       this.op(attemptId, this.config.launchTimeout, launchSignal);
     try {
-      const startAttempt = backend?.startAttempt?.bind(backend);
+      const startAttempt = engine?.startAttempt?.bind(engine);
       if (startAttempt !== undefined) {
         await this.debug.time('session.launch', () =>
-          launch(`starting an attempt on backend ${backend?.name ?? 'none'}`, (launchSignal) =>
+          launch(`starting an attempt on engine ${engine?.name ?? 'none'}`, (launchSignal) =>
             startAttempt({ attemptId, artifactsDir, signal: launchSignal }),
           ),
         );
@@ -486,7 +486,7 @@ export class TargetExecutor implements SerialHost {
     } catch (cause) {
       // The attempt's isolation is open, or a timed-out startAttempt may still
       // open it: end it within the cleanup budget, or the retry opens a second
-      // one. A backend without startAttempt makes this a no-op.
+      // one. An engine without startAttempt makes this a no-op.
       await this.endAttempt(session, attemptId).catch(() => undefined);
       throw cause;
     }
@@ -671,7 +671,7 @@ export class TargetExecutor implements SerialHost {
               if (session.captureState === undefined) {
                 throw new ConfigurationError(
                   'UNSUPPORTED_CAPABILITY',
-                  `target "${this.target.name}" has no backend state capability for session.save()`,
+                  `target "${this.target.name}" has no engine state capability for session.save()`,
                 );
               }
               const state = await session.captureState(

@@ -1,5 +1,5 @@
 /**
- * Instrumented in-memory backend for runner<->backend contract tests. Runtime
+ * Instrumented in-memory engine for runner<->engine contract tests. Runtime
  * classes come from the built package so `instanceof` checks inside the built
  * runner (used by run-project.ts) see the same identities.
  */
@@ -7,22 +7,22 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
-  BackendAppDeclaration,
-  BackendAttemptContext,
-  BackendHandle,
-  BackendInitInfo,
-  BackendState,
+  EngineAppDeclaration,
+  EngineAttemptContext,
+  EngineHandle,
+  EngineInitInfo,
+  EngineState,
   LocatorAction,
   LocatorExpression,
   NodeRef,
   OperationContext,
   SemanticNode,
-} from '../../src/backend/index.ts';
+} from '../../src/engine/index.ts';
 
-const builtBackendModule = '../../dist/backend/index.js';
-const { defineBackend, BackendError, BACKEND_SPI_VERSION } = (await import(
-  builtBackendModule
-)) as typeof import('../../src/backend/index.ts');
+const builtEngineModule = '../../dist/engine/index.js';
+const { defineEngine, EngineError, ENGINE_SPI_VERSION } = (await import(
+  builtEngineModule
+)) as typeof import('../../src/engine/index.ts');
 
 
 export interface RecordedOperation {
@@ -34,11 +34,11 @@ export interface RecordedOperation {
   readonly abortedAtCall: boolean;
 }
 
-export interface FakeBackendBehavior {
+export interface FakeEngineBehavior {
   /** Throw to fail worker boot. Called before any attempt. */
-  onInit?(info: BackendInitInfo): void | Promise<void>;
+  onInit?(info: EngineInitInfo): void | Promise<void>;
   /** Throw or hang to fail attempt launches. */
-  onStartAttempt?(context: BackendAttemptContext, attemptIndex: number): void | Promise<void>;
+  onStartAttempt?(context: EngineAttemptContext, attemptIndex: number): void | Promise<void>;
   /** Throw to fail attempt close. */
   onEndAttempt?(attemptIndex: number): void | Promise<void>;
   /** Throw to fail worker-end disposal. */
@@ -69,24 +69,24 @@ export interface FakeBackendBehavior {
   /** Declares a viewport swipe, unlocking the agent's scroll verb. */
   swipe?: boolean;
   /** Throw to fail state restore after startAttempt succeeded. */
-  onRestore?(state: BackendState): void | Promise<void>;
+  onRestore?(state: EngineState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
   fixtures?: boolean;
-  /** What the backend declares about its app; defaults to the URL its `url()` reports. */
-  app?: BackendAppDeclaration;
+  /** What the engine declares about its app; defaults to the URL its `url()` reports. */
+  app?: EngineAppDeclaration;
 }
 
 /** The app URL the fake serves and declares by default. */
 export const FAKE_APP_URL = 'http://127.0.0.1:4599';
-export interface FakeBackendHandle {
-  readonly backend: BackendHandle;
+export interface FakeEngineHandle {
+  readonly engine: EngineHandle;
   /** Ordered event names, e.g. 'init', 'startAttempt:0', 'endAttempt:0', 'dispose'. */
   readonly events: string[];
-  readonly inits: BackendInitInfo[];
-  readonly attempts: BackendAttemptContext[];
+  readonly inits: EngineInitInfo[];
+  readonly attempts: EngineAttemptContext[];
   readonly operations: RecordedOperation[];
-  readonly capturedStates: BackendState[];
-  readonly restoredStates: BackendState[];
+  readonly capturedStates: EngineState[];
+  readonly restoredStates: EngineState[];
   /** Calls the contributed `gadget` fixture received, in order. */
   readonly fixtureCalls: string[];
   stats(): {
@@ -105,14 +105,14 @@ const FAKE_NODE: SemanticNode = {
   states: { hidden: false },
 };
 
-/** Creates a branded, instrumented fake backend. */
-export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBackendHandle {
+/** Creates a branded, instrumented fake engine. */
+export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineHandle {
   const events: string[] = [];
-  const inits: BackendInitInfo[] = [];
-  const attempts: BackendAttemptContext[] = [];
+  const inits: EngineInitInfo[] = [];
+  const attempts: EngineAttemptContext[] = [];
   const operations: RecordedOperation[] = [];
-  const capturedStates: BackendState[] = [];
-  const restoredStates: BackendState[] = [];
+  const capturedStates: EngineState[] = [];
+  const restoredStates: EngineState[] = [];
   const fixtureCalls: string[] = [];
   let openAttempts = 0;
   let attemptsStarted = 0;
@@ -134,10 +134,10 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
 
   const tree = behavior.tree ?? FAKE_NODE;
 
-  const backend = defineBackend({
+  const engine = defineEngine({
     name: 'fake',
     version: '1.0.0',
-    spiVersion: BACKEND_SPI_VERSION,
+    spiVersion: ENGINE_SPI_VERSION,
     async init(info) {
       events.push('init');
       inits.push(info);
@@ -202,7 +202,7 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
           state: {
             async capture(operation) {
               record('state.capture', operation);
-              const state: BackendState = { format: 'fake-state', version: 1, data: { ok: true } };
+              const state: EngineState = { format: 'fake-state', version: 1, data: { ok: true } };
               capturedStates.push(state);
               return state;
             },
@@ -232,7 +232,7 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
               },
               async dropFile() {
                 // Artifacts are real files under the attempt directory the
-                // backend received in startAttempt; the harness hashes them.
+                // engine received in startAttempt; the harness hashes them.
                 const dir = attempts.at(-1)!.artifactsDir;
                 mkdirSync(path.join(dir, 'gadget'), { recursive: true });
                 writeFileSync(path.join(dir, 'gadget', 'log.txt'), 'gadget log\n');
@@ -278,7 +278,7 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
   });
 
   return {
-    backend,
+    engine,
     events,
     inits,
     attempts,
@@ -296,11 +296,11 @@ export function createFakeBackend(behavior: FakeBackendBehavior = {}): FakeBacke
   };
 }
 
-/** A thrown `BackendError` from the built package, for behaviors that fail on purpose. */
-export function backendFailure(
-  code: ConstructorParameters<typeof BackendError>[0],
+/** A thrown `EngineError` from the built package, for behaviors that fail on purpose. */
+export function engineFailure(
+  code: ConstructorParameters<typeof EngineError>[0],
   message: string,
   retryable = false,
-): InstanceType<typeof BackendError> {
-  return new BackendError(code, message, { retryable });
+): InstanceType<typeof EngineError> {
+  return new EngineError(code, message, { retryable });
 }

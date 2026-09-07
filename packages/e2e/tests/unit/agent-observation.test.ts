@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Observation, SemanticNode } from '../../src/backend/surface.ts';
+import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
 import { observationShape, prepareObservation } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
@@ -22,7 +22,7 @@ const NO_REDACT = (text: string): string => text;
 const TEST_ID = 'data-testid';
 
 describe('prepareObservation', () => {
-  it('withholds pixels whose masking the backend cannot prove and keeps the tree', () => {
+  it('withholds pixels whose masking the engine cannot prove and keeps the tree', () => {
     const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
     const prepared = prepareObservation(observation(node('root'), pixels), {
       redact: NO_REDACT,

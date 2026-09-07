@@ -1,18 +1,18 @@
 /**
  * `surfaceOf` hands agent-side code the live page and context behind a
- * `playwright()` handle, and nothing for any other backend. Without an
+ * `playwright()` handle, and nothing for any other engine. Without an
  * attempt there is nothing live, so both accessors refuse with INVALID_STATE.
  */
 
 import { describe, expect, it } from 'vitest';
-import { BackendError, defineBackend } from '@e2edev/e2e/backend';
+import { EngineError, defineEngine } from '@e2edev/e2e/engine';
 import { playwright, surfaceOf } from '../../src/index.ts';
 
 describe('surfaceOf', () => {
   it('returns a live surface for a playwright handle and undefined for a foreign one', () => {
     const handle = playwright();
     expect(surfaceOf(handle)).toBeDefined();
-    const other = defineBackend({ name: 'other', version: '1', spiVersion: 1 });
+    const other = defineEngine({ name: 'other', version: '1', spiVersion: 1 });
     expect(surfaceOf(other)).toBeUndefined();
   });
 
@@ -24,8 +24,8 @@ describe('surfaceOf', () => {
         read();
         throw new Error('expected INVALID_STATE');
       } catch (error) {
-        expect(error).toBeInstanceOf(BackendError);
-        expect((error as BackendError).code).toBe('INVALID_STATE');
+        expect(error).toBeInstanceOf(EngineError);
+        expect((error as EngineError).code).toBe('INVALID_STATE');
       }
     }
   });
