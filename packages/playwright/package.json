@@ -54,12 +54,12 @@
     "@e2edev/e2e": ">=0.4.0 <1"
   },
   "devDependencies": {
-    "@types/node": "26.1.1",
+    "@types/node": "26.4.1",
     "@e2edev/e2e": "workspace:*",
     "@types/pngjs": "6.0.5",
     "pngjs": "7.0.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.10"
+    "vitest": "5.0.0"
   },
   "engines": {
     "node": ">=22.12.0"

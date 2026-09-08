@@ -78,13 +78,13 @@
     }
   },
   "devDependencies": {
-    "ai": "7.0.37",
+    "ai": "7.0.93",
     "@e2edev/playwright": "workspace:*",
-    "@types/node": "26.1.1",
+    "@types/node": "26.4.1",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",
-    "vitest": "4.1.10"
+    "vitest": "5.0.0"
   },
   "engines": {
     "node": ">=22.12.0"
