@@ -1,6 +1,6 @@
 # @e2edev/playwright
 
-The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
+The browser engine for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2e), built on
 [Playwright](https://playwright.dev).
 
 `e2e` ships no engine of its own: every target names the engine that drives
@@ -88,4 +88,4 @@ npx playwright install chromium --with-deps
 
 ## Documentation
 
-Full documentation lives at [e2e.dev](https://e2e.dev).
+Full documentation lives at [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).

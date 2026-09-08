@@ -99,7 +99,7 @@ function createProgram(): Command {
       styleSubcommandTerm: pc.cyan,
       styleArgumentTerm: pc.cyan,
     })
-    .addHelpText('before', `${pc.bold(`e2e v${version}`)} ${pc.dim('·')} local-first agentic end-to-end testing\n`)
+    .addHelpText('before', `${pc.bold(`e2e v${version}`)} ${pc.dim('·')} an open framework for agentic end-to-end testing\n`)
     .addHelpText(
       'after',
       [
