@@ -9,4 +9,5 @@ animated `Thinking` indicator - at a fixed height so the summary stays put; the
 file block prints once the file completes, with agent steps nested under their
 test. The `RUN` banner names the configured model. Model events record
 `inputTokens` and `outputTokens` beside `count`, and `run-started` carries the
-configured `model`, both additive.
+configured `model`, both additive. The window repaints every 80ms instead of
+200ms so the indicator animates.

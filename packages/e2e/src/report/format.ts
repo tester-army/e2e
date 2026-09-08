@@ -13,6 +13,11 @@ import type { StepRecord } from '../run/steps.ts';
 /** A picocolors instance; the reporter decides whether it emits color. */
 export type Colors = ReturnType<typeof picocolors.createColors>;
 
+/** Glyphs shared by the list reporter's permanent lines and its live tree. */
+export const F_POINTER = '❯';
+export const F_CHECK = '✓';
+export const F_CROSS = '×';
+
 /** Every untrusted field is capped here before it reaches the terminal. */
 const MAX_FIELD_BYTES = 8192;
 const LONG_DASH = '⎯';
@@ -32,28 +37,6 @@ export function bounded(text: string): string {
 export function ellipsize(text: string, max: number): string {
   const chars = [...text];
   return chars.length <= max ? text : `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
-}
-
-/** Terminals that bundle Nerd Font symbols as a built-in fallback font, by `TERM_PROGRAM`. */
-const NERD_FONT_TERMINALS = new Set(['wezterm', 'ghostty', 'warpterminal']);
-/**
- * Variables those terminals export and multiplexers pass through. tmux and
- * screen overwrite `TERM_PROGRAM` with their own name, so it alone misses the
- * common case of a Nerd Font terminal hosting a tmux session.
- */
-const NERD_FONT_TERMINAL_MARKERS = ['GHOSTTY_RESOURCES_DIR', 'WEZTERM_EXECUTABLE', 'WEZTERM_PANE'];
-const NERD_FONT_BUNDLE_IDS = new Set(['com.mitchellh.ghostty', 'com.github.wez.wezterm', 'dev.warp.warp-stable']);
-
-/**
- * Whether the terminal renders Nerd Font glyphs. No terminal reports its font,
- * so terminals known to ship the symbols qualify, recognized through a
- * multiplexer by the variables they leave behind, and everything else gets
- * plain fallbacks.
- */
-export function detectNerdFont(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (NERD_FONT_TERMINALS.has((env.TERM_PROGRAM ?? '').trim().toLowerCase())) return true;
-  if (NERD_FONT_TERMINAL_MARKERS.some((name) => (env[name] ?? '').trim() !== '')) return true;
-  return NERD_FONT_BUNDLE_IDS.has((env['__CFBundleIdentifier'] ?? '').trim());
 }
 
 /** The terminal width; a pty without a size reports 0, which counts as unknown. */

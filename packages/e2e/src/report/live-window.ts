@@ -8,8 +8,17 @@
 import { terminalColumns, terminalRows } from './format.ts';
 
 const ESC = '\u001b';
-/** Matches the reporter's animation frame, so spinners advance every repaint. */
-const REPAINT_INTERVAL_MS = 80;
+/**
+ * Repaint cadence, and so the animation frame of anything the window shows:
+ * a spinner keyed to it advances exactly once per paint.
+ */
+export const REPAINT_INTERVAL_MS = 80;
+/**
+ * Columns a window line leaves free: the ellipsis takes one, and a line that
+ * reaches the exact width puts some terminals into pending-wrap, which breaks
+ * the erase row count the same way real wrapping does.
+ */
+export const WIDTH_MARGIN = 2;
 /** Synchronized-output markers: terminals that support them repaint atomically. */
 const SYNC_START = `${ESC}[?2026h`;
 const SYNC_END = `${ESC}[?2026l`;
@@ -20,10 +29,7 @@ const SYNC_END = `${ESC}[?2026l`;
  * would leave stale fragments behind on every repaint.
  */
 function clampToWidth(text: string, columns: number): string {
-  // Two columns of margin: the ellipsis takes one, and a line that reaches
-  // the exact width puts some terminals into pending-wrap, which breaks the
-  // erase row count the same way real wrapping does.
-  const max = Math.max(4, columns - 2);
+  const max = Math.max(4, columns - WIDTH_MARGIN);
   let width = 0;
   let out = '';
   for (let i = 0; i < text.length; ) {

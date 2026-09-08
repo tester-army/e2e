@@ -4,7 +4,6 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
-import { detectNerdFont } from '../../src/report/format.ts';
 import type { RunEventFact, RunEventResult } from '../../src/run/events.ts';
 import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 
@@ -186,13 +185,9 @@ function failedAttempt(message: string, stack?: string): AttemptRecord {
   });
 }
 
-/** Reporter with colors off and Nerd Font glyphs on, so assertions read stable plain text. */
-function plainReporter(
-  output: { write(line: string): void; raw?(text: string): void },
-  live = false,
-  nerdFont = true,
-) {
-  return new ListReporter(output, { live, colors: false, nerdFont });
+/** Reporter with colors off, so assertions read the plain text. */
+function plainReporter(output: { write(line: string): void; raw?(text: string): void }, live = false) {
+  return new ListReporter(output, { live, colors: false });
 }
 
 /** Overrides the reported terminal size for one test; returns the restore function. */
@@ -793,19 +788,17 @@ describe('ListReporter', () => {
       expect(lines).toEqual(['   ✓ checkout > agent.act "add to cart" 4.20s · 3 model calls']);
     });
 
-    it('clips a finished step label so the line fits the terminal width', () => {
+    it('prints the whole label without a live window, whatever the terminal width', () => {
       const restore = withTerminalSize({ columns: 80 });
       try {
         const { lines, output } = capture();
         const reporter = plainReporter(output);
         reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
         reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
-        const label = 'add two todos named "Buy milk" and "Walk the dog", then mark the first one as done';
+        const label = 'add two todos named "Buy milk" and "Walk the dog", then mark the first';
         reporter.handle({ type: 'step', testId: 't1', target: 'chromium', progress: agentStep('start', label) });
         reporter.handle({ type: 'step', testId: 't1', target: 'chromium', progress: agentStep('end', label) });
-        const line = lines.at(-1)!;
-        expect([...line].length).toBeLessThanOrEqual(80);
-        expect(line).toMatch(/^ {3}✓ checkout > agent\.act "add two todos .*…" 4\.20s · 3 model calls$/);
+        expect(lines.at(-1)).toBe(`   ✓ checkout > agent.act "${label}" 4.20s · 3 model calls`);
       } finally {
         restore();
       }
@@ -894,6 +887,26 @@ describe('ListReporter', () => {
       expect(window).toContain('└── b');
     });
 
+    it('clips a finished step label so the row keeps its tail at the terminal width', () => {
+      const restore = withTerminalSize({ columns: 80, rows: 40 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
+        const label = 'add two todos named "Buy milk" and "Walk the dog", then mark the first one as done';
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', target: 'chromium', progress } as never);
+        step({ phase: 'start', kind: 'agent', api: 'agent.act', label });
+        step({ phase: 'end', kind: 'agent', api: 'agent.act', label, status: 'passed', durationMs: 4_200, modelCalls: 3 });
+        const row = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').find((line) => line.includes('agent.act'))!;
+        expect([...row].length).toBeLessThanOrEqual(78);
+        expect(row).toMatch(/^ {7}✓ agent\.act "add two todos .*…" 4\.20s · 3 model calls$/);
+      } finally {
+        restore();
+      }
+    });
+
     it('shows finished steps under the running test, then the current step with its calls and wait', () => {
       const { chunks, output } = liveCapture();
       const reporter = plainReporter(output, true);
@@ -907,12 +920,12 @@ describe('ListReporter', () => {
       step({ phase: 'event', api: 'agent.act', event: { kind: 'engine', name: 'tool:tap', detail: 'tap button "Pay"', durationMs: 27, status: 'passed' } });
       const window = chunks.at(-1)!.replace(ANSI_PATTERN, '');
       expect(window).toMatch(
-        /\n ❯ \|chromium\| tests\/flow\.e2e\.ts 0\/1\n   └── checkout \d+m?s\n {7}✓ agent\.act "add to cart" 4\.20s · 3 model calls\n {7}↳ agent\.act "pay"\n {9}\uf0ad tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/,
+        /\n ❯ \|chromium\| tests\/flow\.e2e\.ts 0\/1\n   └── checkout \d+m?s\n {7}✓ agent\.act "add to cart" 4\.20s · 3 model calls\n {7}↳ agent\.act "pay"\n {9}› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/,
       );
       step({ phase: 'event', api: 'agent.act', event: { kind: 'model', durationMs: 9_000, count: 133, inputTokens: 6, outputTokens: 127 } });
       // The turn is reported after its tools ran; it is shown before them, as it happened.
       expect(chunks.at(-1)!.replace(ANSI_PATTERN, '')).toMatch(
-        /• Thinking \(9\.00s\) \(↑6 ↓127\)\n {9}\uf0ad tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/,
+        /• Thinking \(9\.00s\) \(↑6 ↓127\)\n {9}› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/,
       );
     });
 
@@ -956,43 +969,6 @@ describe('ListReporter', () => {
       } finally {
         restore();
       }
-    });
-
-    it('marks tool calls by indentation alone without a Nerd Font', () => {
-      const { chunks, output } = liveCapture();
-      const reporter = plainReporter(output, true, false);
-      reporter.handle(runStarted());
-      reporter.handle(testStarted('t1', 'checkout', 'chromium'));
-      reporter.handle({
-        type: 'step',
-        testId: 't1',
-        target: 'chromium',
-        progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' },
-      });
-      reporter.handle({
-        type: 'step',
-        testId: 't1',
-        target: 'chromium',
-        progress: { phase: 'event', api: 'agent.act', event: { kind: 'engine', name: 'tool:tap', detail: 'tap button "Pay"', durationMs: 27, status: 'passed' } as never },
-      });
-      const window = chunks.at(-1)!.replace(ANSI_PATTERN, '');
-      expect(window).toContain('\n           tap button "Pay" (27ms)\n');
-      expect(window).not.toContain('\uf0ad');
-    });
-
-    it('detects Nerd Font support from terminals that bundle the symbols', () => {
-      expect(detectNerdFont({})).toBe(false);
-      expect(detectNerdFont({ TERM_PROGRAM: 'iTerm.app' })).toBe(false);
-      expect(detectNerdFont({ TERM_PROGRAM: 'WezTerm' })).toBe(true);
-      expect(detectNerdFont({ TERM_PROGRAM: 'ghostty' })).toBe(true);
-      expect(detectNerdFont({ TERM_PROGRAM: 'WarpTerminal' })).toBe(true);
-    });
-
-    it('sees through tmux to the hosting terminal by the variables it leaves behind', () => {
-      expect(detectNerdFont({ TERM_PROGRAM: 'tmux', GHOSTTY_RESOURCES_DIR: '/Applications/Ghostty.app/x' })).toBe(true);
-      expect(detectNerdFont({ TERM_PROGRAM: 'tmux', WEZTERM_PANE: '3' })).toBe(true);
-      expect(detectNerdFont({ TERM_PROGRAM: 'tmux', __CFBundleIdentifier: 'com.mitchellh.ghostty' })).toBe(true);
-      expect(detectNerdFont({ TERM_PROGRAM: 'tmux', __CFBundleIdentifier: 'com.googlecode.iterm2' })).toBe(false);
     });
 
     it('tracks the counters in the window as results arrive', () => {
