@@ -304,6 +304,7 @@ class ActDispatch {
       get model() {
         return dispatch.resolveModel();
       },
+      providerOptions: this.runtime.config.agent.providerOptions,
       ledger: ledger.text,
       agentContext: this.runtime.agentContext,
       budgets: {

@@ -42,6 +42,8 @@ const DEFAULT_WAIT_INTERVAL_MS = 3_000;
  */
 const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
+/** One judgment plus one repair round for a response that missed the grammar. */
+const ASSERT_MODEL_CALLS = 2;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -189,7 +191,8 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     assert(assertion, options) {
       // A custom executor judges assertions through the socket: swapping
       // brains swaps all the thinking. The built-in path keeps the optimized
-      // single-judgment tier below (one model call, vision-capable).
+      // judgment tier below: one call, plus one repair round for a response
+      // that missed the grammar, vision-capable.
       if (runtime.customExecutor) {
         return runAssertStep(runtime, assertion, options);
       }
@@ -198,7 +201,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.assert',
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
-          maxModelCalls: 1,
+          maxModelCalls: ASSERT_MODEL_CALLS,
           vision: resolveVision(options?.vision),
         },
         assertion,

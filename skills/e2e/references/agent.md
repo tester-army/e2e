@@ -89,7 +89,8 @@ expect(data.titles).toContain('Buy milk');
 ```
 
 - `assert` does not poll. A false judgment is `ASSERTION_FAILED` with the
-  model's explanation and a screenshot in the report.
+  model's explanation and a screenshot in the report. Malformed output gets
+  one repair round, then `MODEL_OUTPUT_INVALID`.
 - `waitFor` observes every `intervalMs` (default 3 s) and spends a judgment
   only when the screen changed; `STEP_TIMEOUT` after `timeout` (default
   30 s).
@@ -142,7 +143,7 @@ tool call before it executes.
 | Call | Model calls | Default timeout |
 | --- | ---: | --- |
 | `act` | up to `agent.maxModelCalls` (25) | the test `timeout`, 120 s |
-| `assert` | 1 | 30 s |
+| `assert` | 2 | 30 s |
 | `extract` | 2 | 30 s |
 | `waitFor` | up to `agent.maxModelCalls` (25) | 30 s |
 

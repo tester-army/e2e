@@ -685,6 +685,13 @@ export interface ArtifactsConfig {
   store?: ArtifactStore;
 }
 
+/**
+ * AI SDK provider options, keyed by provider then option name, e.g.
+ * `{ openai: { reasoningEffort: 'low' } }`. Sent with every model call of
+ * both the act tier and the judgment tier.
+ */
+export type ProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   /**
@@ -702,6 +709,8 @@ export interface AgentConfig {
   context?: string;
   /** Project-wide default for the per-call `vision` option. */
   vision?: VisionMode;
+  /** Provider options every model call carries, e.g. a reasoning effort. */
+  providerOptions?: ProviderOptions;
 }
 
 export interface E2EConfig {
