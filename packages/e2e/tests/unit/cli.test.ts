@@ -339,13 +339,14 @@ describe('e2e --version and --help', () => {
     expect(stderrSpy).not.toHaveBeenCalled();
   });
 
-  it('opens the help with the version, lists both commands with examples, and exits 0', async () => {
+  it('opens the help with the version, lists every command with examples, and exits 0', async () => {
     await invoke('--help');
     const help = written(stdoutSpy);
     expect(help.startsWith(`e2e v${packageVersion} · an open framework for agentic end-to-end testing\n`)).toBe(true);
     expect(help).toContain('Usage: e2e <command> [options]');
     expect(help).toMatch(/^ {2}init \[options\] \[directory\] {2,}scaffold/mu);
     expect(help).toMatch(/^ {2}run \[options\] \[files\.\.\.\] {2,}run the tests$/mu);
+    expect(help).toMatch(/^ {2}cache {2,}inspect, measure, and clear the trace cache$/mu);
     expect(help).toMatch(/^ {2}help \[command\] {2,}show help for a command$/mu);
     expect(help).toMatch(/^ {2}-v, --version {2,}print the version$/mu);
     expect(help).toMatch(/^ {2}-h, --help {2,}show help$/mu);
