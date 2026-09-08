@@ -48,9 +48,12 @@ export interface AsyncExpectation {
   toBeChecked(options?: { timeout?: number }): Promise<void>;
   toBeSelected(options?: { timeout?: number }): Promise<void>;
   toBeExpanded(options?: { timeout?: number }): Promise<void>;
+  toBeFocused(options?: { timeout?: number }): Promise<void>;
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveAttribute(name: string, options?: { timeout?: number }): Promise<void>;
+  toHaveAttribute(name: string, value: TextMatch, options?: { timeout?: number }): Promise<void>;
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
   toHaveAccessibleName(
     expected: TextMatch,
@@ -68,9 +71,12 @@ export interface AsyncExpectation {
 | `toBeChecked()` | Checked | Missing state is `false` |
 | `toBeSelected()` | Selected | Missing state is `false` |
 | `toBeExpanded()` | Expanded | Missing state is `false` |
+| `toBeFocused()` | Focused | Single-node matcher |
 | `toHaveText(expected)` | Full normalized text equals `expected` | - |
 | `toContainText(expected)` | Normalized text contains `expected` | Substring or regexp |
 | `toHaveValue(expected)` | Exposed input value | - |
+| `toHaveAttribute(name)` | Attribute is present | Single-node matcher |
+| `toHaveAttribute(name, value)` | Attribute matches `value` | String comparison is not whitespace-normalized |
 | `toHaveCount(expected)` | Exact match count | The only matcher that tolerates zero or many matches |
 | `toHaveAccessibleName(expected)` | Accessible name | - |
 
@@ -90,6 +96,7 @@ export interface WebExpectation {
   readonly not: WebExpectation;
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
   toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveClass(target: Locator, expected: TextMatch, options?: { timeout?: number }): Promise<void>;
 }
 ```
 
@@ -97,10 +104,12 @@ export interface WebExpectation {
 | --- | --- | --- |
 | `toHaveURL(expected)` | Current URL matches | A relative string resolves against the base URL and matches exactly after normalization. A `RegExp` tests the full URL. |
 | `toHaveTitle(expected)` | Document title matches | Normalized text comparison |
+| `toHaveClass(target, expected)` | Target's class attribute matches | String comparison normalizes class-list whitespace |
 
 ```ts
 await expect(web).toHaveURL('/dashboard');
 await expect(web).toHaveTitle(/Dashboard/);
+await expect(web).toHaveClass(web.locator('.card'), 'card active');
 ```
 
 ## Value matchers

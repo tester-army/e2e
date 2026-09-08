@@ -83,7 +83,13 @@ function makeCollection(files: readonly string[], pairs: readonly TestTargetPair
     registration: { tests: [], hooks: [] },
     tests: pairs.filter((pair) => pair.test.file === file).map((pair) => pair.test),
   }));
-  return { files: collected, tests: collected.flatMap((file) => file.tests), unmatchedPositionals: [] };
+  return {
+    files: collected,
+    tests: collected.flatMap((file) => file.tests),
+    discovered: files,
+    nearMisses: [],
+    unmatchedPositionals: [],
+  };
 }
 
 function makeSelection(perTarget: readonly { target: ResolvedTarget; pairs: TestTargetPair[] }[]): Selection {

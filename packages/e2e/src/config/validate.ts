@@ -2,13 +2,34 @@
 
 import { ConfigurationError } from '../internal/errors.ts';
 
-/** A positive safe integer, or undefined when the value is absent. */
-export function positiveInt(value: number | undefined, label: string): number | undefined {
+/**
+ * A positive safe integer, or undefined when the value is absent. Durations
+ * name their unit, because `'30s'` and `30` are the two ways this key is
+ * usually written wrong.
+ */
+export function positiveInt(
+  value: number | undefined,
+  label: string,
+  unit?: 'milliseconds',
+): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label} must be a positive safe integer`);
+    const expected = unit === undefined ? 'a positive safe integer' : `a positive safe integer of ${unit}`;
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} must be ${expected}, got ${describeValue(value)}`,
+    );
   }
   return value;
+}
+
+/** A value as the author wrote it, for messages that quote the offending input. */
+function describeValue(value: unknown): string {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return String(value);
+  if (Array.isArray(value)) return 'an array';
+  if (typeof value === 'function') return 'a function';
+  return `a ${typeof value}`;
 }
 
 /** A safe integer within [min, max], or undefined when the value is absent. */

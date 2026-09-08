@@ -8,6 +8,7 @@ This project is a pnpm monorepo containing:
 
 - `packages/e2e` — the published `@e2edev/e2e` package (SDK, runner, CLI, engine contract)
 - `packages/playwright` — the published `@e2edev/playwright` browser engine
+- `packages/agent-device` — the published `@e2edev/agent-device` mobile engine
 - `packages/testbed` — private dogfood suite that consumes the built packages
 - `fern/` — the docs site
 
@@ -54,7 +55,7 @@ pnpm docs:check   # validate configuration and pages
 
 We follow the [conventional commits specification](https://www.conventionalcommits.org/en):
 
-- `fix`: bug fixes, e.g. fix a crash when the driver disconnects.
+- `fix`: bug fixes, e.g. fix a crash when the engine disconnects.
 - `feat`: new features, e.g. add a new assertion.
 - `refactor`: code refactor with no behavior change.
 - `docs`: documentation changes.
@@ -67,7 +68,8 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `@e2edev/e2e` or `@e2edev/playwright`, add a changeset:
+If your change affects `@e2edev/e2e`, `@e2edev/playwright`, or
+`@e2edev/agent-device`, add a changeset:
 
 ```sh
 pnpm changeset
@@ -88,11 +90,12 @@ granular access token with read/write on the `@e2edev` scope (packages and
 scopes, not just a single package, so a first publish of a new package works).
 To publish by hand, `npm login` as an org member and run `pnpm run release`.
 The `e2e` CLI binary keeps its unscoped name; the unscoped `e2e` package on
-npmjs is unrelated, so consumers must run it as `npx --no-install e2e`.
+npmjs is a placeholder the team reserved, so consumers must run it as
+`npx --no-install e2e`.
 
 Everything ships to the `beta` dist-tag while the surface stabilizes, so npm's
-`latest` is not moved. The root `release` script passes `--tag beta`, and both
-publishable packages also carry `publishConfig.tag: "beta"`. The flag is what
+`latest` is not moved. The root `release` script passes `--tag beta`, and all
+three publishable packages also carry `publishConfig.tag: "beta"`. The flag is what
 actually decides the channel — `changeset publish` always forwards `--tag` to the
 publish tool, and `pnpm publish` ignores `publishConfig.tag` — so the manifest
 field is a backstop for a hand-run `npm publish`, and a record of intent that
@@ -104,7 +107,7 @@ Two caveats worth knowing:
   the tag you ask for. A brand-new package therefore lands on `latest` once no
   matter what, and `latest` can only be moved afterwards, never removed.
 - Versions stay plain 0.x. Changesets pre mode is deliberately unused: a
-  prerelease version falls outside the driver's `@e2edev/e2e` peer range, forcing a major
+  prerelease version falls outside the engine's `@e2edev/e2e` peer range, forcing a major
   bump of `@e2edev/playwright` on every runner minor. Widening the range does not
   help — node-semver only lets a prerelease satisfy a comparator set when some
   comparator with the same `major.minor.patch` also carries a prerelease, so

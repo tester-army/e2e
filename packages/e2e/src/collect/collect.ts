@@ -5,6 +5,7 @@ import path from 'node:path';
 import { compileGlob, discoverFiles, matchesGlob } from '../internal/globs.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { setupTestId, testId } from '../internal/ids.ts';
+import { explainModuleError } from '../config/diagnose.ts';
 import { importModule } from '../config/load.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import {
@@ -65,12 +66,64 @@ export interface CollectedFile {
 export interface Collection {
   readonly files: readonly CollectedFile[];
   readonly tests: readonly CollectedTest[];
+  /** Every file the config globs matched, before positionals narrowed it. */
+  readonly discovered: readonly string[];
+  /**
+   * Files that look like tests but match no config glob, gathered only when
+   * the globs matched nothing: a `login.test.ts` beside an empty `tests/**`
+   * is almost always the file the author meant.
+   */
+  readonly nearMisses: readonly string[];
   /**
    * Positional arguments, as written, that selected no discovered file. They
    * are not an error on their own: a positional narrows the selection, and
    * the `NO_TESTS` message names them when nothing is left to run.
    */
   readonly unmatchedPositionals: readonly string[];
+}
+
+/** Suffixes other runners use, and ours with the wrong extension. */
+const NEAR_MISS_SUFFIXES = [
+  '*.test.ts',
+  '*.spec.ts',
+  '*.test.js',
+  '*.spec.js',
+  '*.e2e.js',
+  '*.e2e.mjs',
+  '*.e2e.mts',
+  '*.e2e.cts',
+  '*.e2e.tsx',
+  '*.e2e-spec.ts',
+  '*.e2e.test.ts',
+  '*.e2e.spec.ts',
+];
+
+/**
+ * Test-looking files under the directories the config globs name that no
+ * glob matches. The scan stays inside each glob's literal prefix (`tests/`
+ * for `tests/**\/*.e2e.ts`), so a repository's unit tests elsewhere are not
+ * offered as candidates.
+ */
+function findNearMissTestFiles(projectRoot: string, patterns: readonly string[]): string[] {
+  const compiled = patterns.map(compileGlob);
+  const prefixes = new Set(
+    patterns.map((pattern) => {
+      const literal: string[] = [];
+      for (const segment of pattern.split('/')) {
+        if (/[*?]/.test(segment)) break;
+        literal.push(segment);
+      }
+      // A pattern with no glob segment names one file; look beside it.
+      if (literal.length === pattern.split('/').length) literal.pop();
+      return literal.join('/');
+    }),
+  );
+  const candidates = [...prefixes].flatMap((prefix) =>
+    NEAR_MISS_SUFFIXES.map((suffix) => (prefix === '' ? `**/${suffix}` : `${prefix}/**/${suffix}`)),
+  );
+  return discoverFiles(projectRoot, candidates).filter(
+    (file) => !compiled.some((glob) => matchesGlob(glob, file)),
+  );
 }
 
 /** Derives the serial unit source ID. */
@@ -235,11 +288,17 @@ export async function collect(
     } catch (cause) {
       if (cause instanceof CollectionError) throw cause;
       throw new CollectionError(
-        `failed to collect ${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        `failed to collect ${file}: ${explainModuleError(cause, absolutePath)}`,
         { cause },
       );
     }
     files.push(collectFromRegistration(config.projectRoot, absolutePath, registration));
   }
-  return { files, tests: files.flatMap((file) => file.tests), unmatchedPositionals: unmatched };
+  return {
+    files,
+    tests: files.flatMap((file) => file.tests),
+    discovered,
+    nearMisses: discovered.length === 0 ? findNearMissTestFiles(config.projectRoot, config.tests) : [],
+    unmatchedPositionals: unmatched,
+  };
 }

@@ -193,7 +193,7 @@ await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
 | --- | --- | --- |
 | `textContent` | `textContent(): Promise<string \| null>` | Normalized text, or `null` |
 | `inputValue` | `inputValue(): Promise<string>` | Current input value, `''` when unset |
-| `getAttribute` | `getAttribute(name: string): Promise<string \| null>` | One exposed attribute, or `null` |
+| `getAttribute` | `getAttribute(name: string): Promise<string \| null>` | Any attribute present on the element, or `null` |
 | `isVisible` | `isVisible(): Promise<boolean>` | Current visibility, `false` when nothing matches |
 | `isEnabled` | `isEnabled(): Promise<boolean>` | `true` unless the node reports disabled |
 | `isChecked` | `isChecked(): Promise<boolean>` | `true` only when the node reports checked |
@@ -205,8 +205,9 @@ await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
 `config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
 
 `textContent`, `inputValue`, and `getAttribute` throw `POLICY_DENIED` on a node
-the platform reports as a secure field. `isEnabled`, `isChecked`, and
-`boundingBox` are allowed there because they expose no value.
+the platform reports as a secure field. `value` is never exposed on secure
+fields. `isEnabled`, `isChecked`, and `boundingBox` are allowed there because
+they expose no value.
 
 ```ts
 if (await screen.getByRole('alert').isVisible()) {

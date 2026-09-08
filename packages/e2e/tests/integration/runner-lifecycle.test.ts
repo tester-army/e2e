@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { resultByTitle, runProject, type RunOutcome } from '../helpers/run-project.ts';
+import { listProject, resultByTitle, runProject, type RunOutcome } from '../helpers/run-project.ts';
 
 describe('runner lifecycle', () => {
   let app: FixtureApp;
@@ -511,6 +511,46 @@ test('fails', async () => {
   );
 
   it(
+    'lists the selected pairs in report order without running anything',
+    async () => {
+      const files = {
+        'tests/list.e2e.ts': `import { test } from '@e2edev/e2e';
+test('plain', async () => {});
+test.describe('group', () => {
+  test('nested', { tags: ['smoke'] }, async () => {});
+  test('left out', { skip: 'not today' }, async () => {});
+});
+`,
+        'tests/other.e2e.ts': `import { test } from '@e2edev/e2e';
+test('other', { tags: ['smoke'] }, async () => {});
+`,
+      };
+      const { pairs, project } = await listProject(files, { appUrl: 'http://127.0.0.1:9' });
+      expect(pairs.map((pair) => [pair.file, pair.titlePath.join(' > '), pair.target, pair.disposition])).toEqual([
+        ['tests/list.e2e.ts', 'plain', 'web', 'run'],
+        ['tests/list.e2e.ts', 'group > nested', 'web', 'run'],
+        ['tests/list.e2e.ts', 'group > left out', 'web', 'skip'],
+        ['tests/other.e2e.ts', 'other', 'web', 'run'],
+      ]);
+      expect(pairs[2]?.skipReason).toBe('not today');
+      expect(existsSync(path.join(project.dir, '.e2e'))).toBe(false);
+      project.cleanup();
+
+      const tagged = await listProject(files, {
+        appUrl: 'http://127.0.0.1:9',
+        listOptions: { tags: ['smoke'], files: ['tests/other.e2e.ts'] },
+      });
+      expect(tagged.pairs.map((pair) => pair.title)).toEqual(['other']);
+      tagged.project.cleanup();
+
+      await expect(listProject({ 'tests/empty.txt': '' }, { appUrl: 'http://127.0.0.1:9' })).rejects.toMatchObject({
+        code: 'NO_TESTS',
+      });
+    },
+    120_000,
+  );
+
+  it(
     'fails with NO_TESTS unless --pass-with-no-tests',
     async () => {
       const empty = { 'tests/empty.txt': 'not a test' };
@@ -561,7 +601,9 @@ test('fails', async () => {
       expect(missing.outcome.report.run.errors.map((error) => [error.code, error.message])).toEqual([
         [
           'NO_TESTS',
-          'zero runnable ordinary test-target pairs (no test file matched: tests/agnet, tests/*.spec.ts); pass --pass-with-no-tests to allow this',
+          expect.stringMatching(
+            /^no test file matched tests\/agnet, tests\/\*\.spec\.ts; the config globs discovered tests\/.* and \d+ more; pass --pass-with-no-tests to allow this$/,
+          ),
         ],
       ]);
       missing.project.cleanup();

@@ -130,10 +130,17 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   /**
    * How the active mode projects one node, expressed as data so `describe`
    * stays branch-free. Tree mode is the model-bound projection: bounded text,
-   * a lean attribute allowlist, hrefs reduced to origin+path, and the root
+   * a bounded attribute projection, hrefs reduced to origin+path, and the root
    * document named by its title. Node mode is the full locator-read surface.
    */
-  const projection =
+  const projection: {
+    attributes: readonly string[] | null;
+    textLimit: number | null;
+    nameLimit: number | null;
+    redactHref: boolean;
+    directTextOnly: boolean;
+    documentRoot: boolean;
+  } =
     options.mode.kind === 'tree'
       ? {
           attributes: [options.testIdAttribute, 'type', 'autocomplete', 'href', 'role'],
@@ -144,19 +151,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
           documentRoot: true,
         }
       : {
-          attributes: [
-            options.testIdAttribute,
-            'type',
-            'autocomplete',
-            'href',
-            'role',
-            'id',
-            'name',
-            'placeholder',
-            'title',
-            'alt',
-            'value',
-          ],
+          attributes: null,
           textLimit: null,
           nameLimit: null,
           redactHref: false,
@@ -526,7 +521,11 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
 
     const attributes: Record<string, string> = {};
     for (const attribute of Array.from(el.attributes)) {
-      if (projection.attributes.indexOf(attribute.name) !== -1 || attribute.name.startsWith('aria-')) {
+      if (
+        projection.attributes === null ||
+        projection.attributes.indexOf(attribute.name) !== -1 ||
+        attribute.name.startsWith('aria-')
+      ) {
         if (secure && attribute.name === 'value') continue;
         // Observations expose href origin and path only: query strings and
         // fragments routinely carry tokens.

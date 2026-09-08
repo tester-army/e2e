@@ -105,7 +105,11 @@ export interface InvocationOptions {
   readonly vision: VisionMode;
 }
 
-const MAX_OUTPUT_TOKENS = 2048;
+/**
+ * Output ceiling for one judgment. A reasoning model spends this on its
+ * hidden reasoning before the answer, so the cap has to leave room for both.
+ */
+const MAX_OUTPUT_TOKENS = 8192;
 
 /**
  * Headroom reserved for the method instruction and parameters, in the
@@ -368,6 +372,7 @@ export class Invocation {
               validate: request.validate,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
               maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
+              providerOptions: this.runtime.config.agent.providerOptions,
               signal: this.runtime.engine.signal,
               timeoutMs: Math.max(1, this.deadline.remaining()),
             }),

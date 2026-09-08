@@ -211,7 +211,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     nothing here sandboxes them. Untrusted PR code belongs in an external
     sandbox with no secrets or write tokens.
 
-- CI (`.github/workflows/spec.yml`) runs Node 26 and pins actions by SHA; keep
+- CI (`.github/workflows/spec.yml`) runs lint, typecheck, and the testbed on Node 26 and `pnpm test` on Node 22, 24, and 26, and pins actions by SHA; keep
   new actions SHA-pinned.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
@@ -241,7 +241,8 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 - Private phase: every package publishes restricted under the `@e2edev`
   scope (`e2e` -> `@e2edev/e2e`; entry points follow the name). Provenance
   is off (npm only attests public packages) and the release job authenticates
-  with the `NPM_TOKEN` secret. The unscoped `e2e` on npmjs is a foreign package:
-  never document a bare `npx e2e`, always `npx --no-install e2e`.
+  with the `NPM_TOKEN` secret. The unscoped `e2e` on npmjs is a placeholder
+  the team reserved: never document a bare `npx e2e`, always
+  `npx --no-install e2e`.
 - Private packages are skipped entirely by changesets (`privatePackages: false`),
   so `@e2edev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.

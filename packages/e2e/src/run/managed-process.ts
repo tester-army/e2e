@@ -16,6 +16,34 @@ const READY_POLL_MAX_MS = 250;
 /** One readiness probe never outlives this, so a half-open server cannot stall the deadline check. */
 const READY_PROBE_TIMEOUT_MS = 2_000;
 
+/** Every spawned process group still running, for the forced exit that cannot wait on `stop`. */
+const live = new Set<ChildProcess>();
+
+/**
+ * Sends `signal` to the whole process group behind `child` (the child alone
+ * on Windows, which has no process groups); a group already gone is fine.
+ */
+function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  try {
+    if (process.platform !== 'win32') process.kill(-pid, signal);
+    else child.kill(signal);
+  } catch {
+    // process already gone
+  }
+}
+
+/**
+ * Kills every process group this module spawned and has not yet seen exit,
+ * synchronously and without waiting: the last resort before the process
+ * exits on the spot, so nothing it started outlives it. A reused process was
+ * never spawned here and is left alone.
+ */
+export function killManagedProcessGroups(): void {
+  for (const child of live) signalProcessGroup(child, 'SIGKILL');
+}
+
 interface ExitStatus {
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
@@ -134,6 +162,7 @@ export class ManagedProcess {
       if (logFd !== undefined) fs.closeSync(logFd);
     }
     this.child = child;
+    live.add(child);
     let spawnError: Error | undefined;
     child.on('error', (error) => {
       spawnError = error;
@@ -141,6 +170,7 @@ export class ManagedProcess {
     let exit: ExitStatus | undefined;
     const exited = new Promise<void>((resolve) => {
       child.once('exit', (code, exitSignal) => {
+        live.delete(child);
         exit = { code, signal: exitSignal };
         resolve();
       });
@@ -216,24 +246,14 @@ export class ManagedProcess {
     this.child = null;
     if (child === null || child.exitCode !== null || child.signalCode !== null) return;
     const shutdownTimeout = this.command.shutdownTimeout ?? 10_000;
-    const pid = child.pid;
-    const signalGroup = (signal: NodeJS.Signals) => {
-      if (pid === undefined) return;
-      try {
-        if (process.platform !== 'win32') process.kill(-pid, signal);
-        else child.kill(signal);
-      } catch {
-        // process already gone
-      }
-    };
-    signalGroup('SIGTERM');
+    signalProcessGroup(child, 'SIGTERM');
     const exited = new Promise<void>((resolve) => {
       child.once('exit', () => resolve());
     });
     const timer = sleep(shutdownTimeout).then(() => 'timeout' as const);
     const winner = await Promise.race([exited.then(() => 'exited' as const), timer]);
     if (winner === 'timeout') {
-      signalGroup('SIGKILL');
+      signalProcessGroup(child, 'SIGKILL');
       await exited.catch(() => undefined);
     }
   }

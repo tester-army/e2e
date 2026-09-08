@@ -1,0 +1,132 @@
+/**
+ * Turns a module loading failure into a sentence that names the fix. The
+ * loader's own messages are accurate but stop at the symptom: a missing
+ * package reads the same whether it was never added or just not installed,
+ * and a removed export looks like a typo.
+ */
+
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { withHint } from '../internal/errors.ts';
+import { addDevDependencyCommand, detectPackageManager } from '../internal/package-manager.ts';
+import { didYouMean, suggest } from '../internal/suggest.ts';
+
+/** The runtime exports of `@e2edev/e2e`; a unit test keeps this list equal to the real module. */
+export const RUNTIME_EXPORTS: readonly string[] = [
+  'test',
+  'expect',
+  'credentials',
+  'AgentError',
+  'BLOCKABLE_CODES',
+  'RUNTIME_CODES',
+  'buildTraceEntry',
+  'readTraceEntry',
+];
+
+interface Manifest {
+  readonly path: string;
+  readonly dir: string;
+  readonly packageManager: string | undefined;
+  readonly dependencies: ReadonlySet<string>;
+}
+
+/**
+ * The message of a failed import of `importer`, extended with what to do
+ * about it when the cause is one the runner recognizes. Any other cause keeps
+ * its own message.
+ */
+export function explainModuleError(cause: unknown, importer: string): string {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return withHint(message, moduleErrorHint(message, (cause as { code?: unknown } | null)?.code, importer));
+}
+
+function moduleErrorHint(message: string, code: unknown, importer: string): string {
+  if (code === 'ERR_MODULE_NOT_FOUND') {
+    const missing = /Cannot find (?:package|module) '([^']+)'/.exec(message)?.[1];
+    if (missing !== undefined && !missing.startsWith('.') && !path.isAbsolute(missing)) {
+      return missingPackageHint(packageNameOf(missing), importer);
+    }
+    return '';
+  }
+  if (code === 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
+    const match = /Package subpath '([^']+)' is not defined by "exports" in (.+?package\.json)/.exec(message);
+    return match === null ? '' : subpathHint(match[1]!, match[2]!);
+  }
+  const missingExport = /The requested module '([^']+)' does not provide an export named '([^']+)'/.exec(message);
+  return missingExport === null ? '' : missingExportHint(missingExport[1]!, missingExport[2]!);
+}
+
+/** `@scope/name/subpath` and `name/subpath` reduce to the package that would be installed. */
+function packageNameOf(specifier: string): string {
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]!;
+}
+
+function missingPackageHint(name: string, importer: string): string {
+  const manifest = nearestManifest(path.dirname(importer));
+  const manager = detectPackageManager(manifest?.dir ?? path.dirname(importer), manifest?.packageManager);
+  if (manifest?.dependencies.has(name) === true) {
+    return `${name} is declared in ${manifest.path} but is not installed: run ${manager} install`;
+  }
+  return `add it to the project: ${addDevDependencyCommand(manager, name)}`;
+}
+
+function subpathHint(subpath: string, manifestPath: string): string {
+  let parsed: { name?: unknown; exports?: unknown };
+  try {
+    parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as typeof parsed;
+  } catch {
+    return '';
+  }
+  const name = typeof parsed.name === 'string' ? parsed.name : path.basename(path.dirname(manifestPath));
+  const entries =
+    typeof parsed.exports === 'object' && parsed.exports !== null && !Array.isArray(parsed.exports)
+      ? Object.keys(parsed.exports).filter((key) => key.startsWith('.'))
+      : ['.'];
+  const specifiers = entries.map((entry) => (entry === '.' ? name : `${name}/${entry.slice(2)}`));
+  const attempted = `${name}/${subpath.replace(/^\.\//, '')}`;
+  return `${name} exports ${specifiers.join(', ')}${didYouMean(attempted, specifiers)}`;
+}
+
+function missingExportHint(specifier: string, exportName: string): string {
+  if (specifier !== '@e2edev/e2e') return '';
+  if (exportName === 'defineConfig') {
+    return 'defineConfig was removed in @e2edev/e2e 0.5: default-export the object and end it with satisfies E2EConfig';
+  }
+  const suggestion = suggest(exportName, RUNTIME_EXPORTS);
+  if (suggestion !== undefined) return `did you mean "${suggestion}"?`;
+  return /^[A-Z]/.test(exportName)
+    ? `if ${exportName} is a type, import it with import type { ${exportName} } from '@e2edev/e2e'`
+    : `@e2edev/e2e exports ${RUNTIME_EXPORTS.join(', ')}`;
+}
+
+/** The closest package.json above `dir`, read for its declared dependencies. */
+function nearestManifest(dir: string): Manifest | undefined {
+  let current = dir;
+  for (;;) {
+    const manifestPath = path.join(current, 'package.json');
+    if (existsSync(manifestPath)) {
+      try {
+        const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+        const dependencies = new Set<string>();
+        for (const block of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+          const section = parsed[block];
+          if (typeof section === 'object' && section !== null) {
+            for (const name of Object.keys(section)) dependencies.add(name);
+          }
+        }
+        return {
+          path: manifestPath,
+          dir: current,
+          packageManager: typeof parsed['packageManager'] === 'string' ? parsed['packageManager'] : undefined,
+          dependencies,
+        };
+      } catch {
+        return undefined;
+      }
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}

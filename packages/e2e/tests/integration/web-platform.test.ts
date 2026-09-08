@@ -9,7 +9,7 @@ import type { RunOutcome } from '../helpers/run-project.ts';
 const KITCHEN_SINK = `import { test } from '@e2edev/playwright';
 import { expect } from '@e2edev/e2e';
 
-test('deterministic queries and reads', async ({ app, screen }) => {
+test('deterministic queries and reads', async ({ app, screen, web }) => {
   await app.open();
 
   await expect(screen.getByRole('heading', { name: 'Home' })).toBeVisible();
@@ -32,9 +32,14 @@ test('deterministic queries and reads', async ({ app, screen }) => {
 
   await expect(screen.getByRole('button', { name: 'Disabled action' })).toBeDisabled();
   await expect(screen.getByRole('button', { name: 'Increment' })).toBeEnabled();
+
+  expect(await screen.getByTestId('items').getAttribute('class')).toBeNull();
+  expect(await web.locator('#class-card').getAttribute('class')).toBe('card active');
+  expect(await screen.getByLabel('Readonly').getAttribute('readonly')).toBe('');
+  expect(await web.locator('#fixture-image').getAttribute('src')).toBe('/fixture.png');
 });
 
-test('actions and state', async ({ app, screen }) => {
+test('actions and state', async ({ app, screen, web }) => {
   await app.open();
 
   await screen.getByRole('button', { name: 'Increment' }).tap();
@@ -62,6 +67,28 @@ test('actions and state', async ({ app, screen }) => {
   await screen.getByLabel('Email').fill('draft');
   await screen.getByLabel('Email').press('Backspace');
   await expect(screen.getByLabel('Email')).toHaveValue('draf');
+
+  await expect(screen.getByLabel('Readonly')).toHaveAttribute('readonly');
+  await expect(web.locator('#class-card')).toHaveAttribute('class', /active/);
+  await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('hidden');
+
+  await screen.getByLabel('Focus target').focus();
+  await expect(screen.getByLabel('Focus target')).toBeFocused();
+  await expect(screen.getByLabel('Email')).not.toBeFocused();
+
+  await expect(web).toHaveClass(web.locator('#class-card'), 'card active');
+  await expect(web).toHaveClass(web.locator('#class-card'), /active/);
+  await expect(web).not.toHaveClass(web.locator('#class-card'), 'card inactive');
+});
+
+test('class assertions report the observed class on failure', async ({ app, web }) => {
+  await app.open();
+  try {
+    await expect(web).toHaveClass(web.locator('#class-card'), 'card inactive', { timeout: 300 });
+    throw new Error('toHaveClass unexpectedly passed');
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('class "card active"')) throw error;
+  }
 });
 
 test('assertions poll until the app settles', async ({ app, screen }) => {

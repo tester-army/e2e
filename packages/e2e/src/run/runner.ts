@@ -1,7 +1,7 @@
 /** Run orchestration: config, collection, selection, execution, reporting. */
 
 import path from 'node:path';
-import { discoverConfig, loadConfigModule } from '../config/load.ts';
+import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import {
   isCiMode,
   resolveConfig,
@@ -81,6 +81,57 @@ export interface RunOptions {
   forceSignal?: AbortSignal | undefined;
   /** Structured, JSON-serializable run events for embedding hosts. */
   onEvent?: RunEventSink | undefined;
+}
+
+/** The selection flags of `run`, without anything that would start a process. */
+export type ListOptions = Pick<
+  RunOptions,
+  'cwd' | 'configPath' | 'files' | 'tags' | 'tagMode' | 'targetIds' | 'passWithNoTests' | 'rawConfig' | 'env'
+>;
+
+/** One test-target pair the runner would report, as `e2e list` prints it. */
+export interface ListedPair {
+  readonly file: string;
+  readonly title: string;
+  readonly titlePath: readonly string[];
+  readonly kind: 'test' | 'setup';
+  readonly target: string;
+  readonly disposition: 'run' | 'skip';
+  readonly skipReason?: string;
+}
+
+/**
+ * Collects and selects like `run` and stops there: no app process, no engine
+ * prepare, no worker. The pairs are the ones `run` would report, in report
+ * order; pairs the selection filtered out are left out, as the list reporter
+ * leaves them out. Config, collection, and selection failures throw the same
+ * classified error `run` would record.
+ */
+export async function list(options: ListOptions = {}): Promise<{ pairs: ListedPair[] }> {
+  const cwd = options.cwd ?? process.cwd();
+  const env = options.env ?? process.env;
+  const config = await loadRunConfig(options, cwd, env, {});
+  const collection = await collect(config, options.files);
+  const selection = select(
+    collection,
+    config,
+    selectionFilters(options),
+    options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
+  );
+  const pairs: ListedPair[] = [];
+  for (const pair of selection.pairs) {
+    if (pair.disposition === 'filtered') continue;
+    pairs.push({
+      file: pair.test.file,
+      title: pair.test.title,
+      titlePath: pair.test.titlePath,
+      kind: pair.test.kind,
+      target: pair.target.name,
+      disposition: pair.disposition,
+      ...(pair.skip === undefined ? {} : { skipReason: pair.skip.reason }),
+    });
+  }
+  return { pairs };
 }
 
 export interface RunOutcome {
@@ -379,15 +430,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     try {
       planned = await debug.time('collect', async () => {
         const collection = await collect(config, options.files);
-        const filters: SelectionFilters = {
-          ...(options.tags !== undefined ? { tags: options.tags } : {}),
-          ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
-          ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
-        };
         const selection = select(
           collection,
           config,
-          filters,
+          selectionFilters(options),
           options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
         );
         return { collection, selection };
@@ -588,9 +634,17 @@ async function prepareEngines(
   }
 }
 
+function selectionFilters(options: ListOptions): SelectionFilters {
+  return {
+    ...(options.tags !== undefined ? { tags: options.tags } : {}),
+    ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
+    ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
+  };
+}
+
 /** Resolves the run's config: a supplied value, or the discovered file. */
 async function loadRunConfig(
-  options: RunOptions,
+  options: ListOptions,
   cwd: string,
   env: NodeJS.ProcessEnv,
   cli: CliOverrides,
@@ -599,10 +653,13 @@ async function loadRunConfig(
     return resolveConfig(options.rawConfig, { projectRoot: cwd, env, cli });
   }
   const discovered = discoverConfig(cwd, options.configPath);
-  const raw = discovered.configPath === undefined ? {} : await loadConfigModule(discovered.configPath);
+  // A run with no config file has nothing to run against: `targets` is
+  // required, so resolving an empty config would only report that symptom.
+  if (discovered.configPath === undefined) throw missingConfigError(cwd);
+  const raw = await loadConfigModule(discovered.configPath);
   return resolveConfig(raw, {
     projectRoot: discovered.projectRoot,
-    ...(discovered.configPath !== undefined ? { configPath: discovered.configPath } : {}),
+    configPath: discovered.configPath,
     env,
     cli,
   });

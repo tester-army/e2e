@@ -14,6 +14,9 @@
 import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
+import { withHint } from '../internal/errors.ts';
+import type { ProviderOptions } from '../types.ts';
+import { credentialHint } from './model/sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -77,8 +80,11 @@ export interface ToolLoopExecutorOptions {
   readonly buildPrompt: (context: StepExecutorContext) => string | ModelMessage[] | Promise<string | ModelMessage[]>;
   /** Upper bound on model turns; capped at the harness model-call budget. */
   readonly maxTurns?: number;
-  /** AI SDK provider options sent with every model call (thinking level, effort). */
-  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /**
+   * AI SDK provider options sent with every model call (thinking level,
+   * effort). Defaults to the config-resolved `agent.providerOptions`.
+   */
+  readonly providerOptions?: ProviderOptions;
   /**
    * Between-turn history preparation: compaction, and anything the executor
    * wants the model to read before its next turn. Runs before the loop's own
@@ -169,14 +175,13 @@ class LoopRun {
       ...this.options.tools(this.context, helpers),
       complete_step: this.conclusion.tool,
     };
+    const providerOptions = this.options.providerOptions ?? this.context.providerOptions;
     const loop = new this.ai.ToolLoopAgent({
       model: this.model,
       instructions: this.instructions(),
       tools,
       toolChoice: 'required',
-      ...(this.options.providerOptions === undefined
-        ? {}
-        : { providerOptions: this.options.providerOptions as never }),
+      ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
       stopWhen: [
         () => this.conclusion.concluded() || this.hardStop !== undefined,
         this.ai.stepCountIs(this.maxTurns),
@@ -208,7 +213,10 @@ class LoopRun {
       if (isAgentError(cause)) throw cause;
       throw new AgentError(
         'MODEL_PROVIDER_FAILED',
-        `the model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+        withHint(
+          `the model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          credentialHint(cause, this.model),
+        ),
         { cause },
       );
     }

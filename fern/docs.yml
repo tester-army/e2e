@@ -1,7 +1,7 @@
 instances:
   - url: https://e2e.docs.buildwithfern.com
 
-title: e2e - the cross-platform agentic test runner
+title: e2e - an open framework for agentic end-to-end testing
 
 tabs:
   docs:
@@ -40,6 +40,9 @@ navigation:
           - page: Continuous integration
             path: docs/pages/ci.mdx
             slug: ci
+          - page: Coding agents
+            path: docs/pages/coding-agents.mdx
+            slug: coding-agents
       - section: Extend
         skip-slug: true
         contents:

@@ -19,7 +19,15 @@
 
 import type { ObservationPixels, SemanticNode } from '../engine/surface.ts';
 import type { VisionDegradation } from '../run/steps.ts';
-import type { AgentErrorCode, JsonValue, ModelInstance, Platform, ScrollDirection, Secret } from '../types.ts';
+import type {
+  AgentErrorCode,
+  JsonValue,
+  ModelInstance,
+  Platform,
+  ProviderOptions,
+  ScrollDirection,
+  Secret,
+} from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
 /**
@@ -261,6 +269,11 @@ export interface StepExecutorContext {
    * no model at all.
    */
   readonly model: ModelInstance | undefined;
+  /**
+   * The config-resolved `agent.providerOptions`, when set. The built-in
+   * executor sends them with every model call unless it was given its own.
+   */
+  readonly providerOptions: ProviderOptions | undefined;
   /**
    * Completed prior steps of this attempt (and, in a serial group, of earlier
    * members) serialized for prompt context, oldest first, bounded by

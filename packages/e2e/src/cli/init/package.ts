@@ -1,4 +1,4 @@
-/** package.json reading, dependency additions, and package-manager detection for `e2e init`. */
+/** package.json reading and dependency additions for `e2e init`. */
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -14,15 +14,6 @@ const packageSchema = z.looseObject({
 });
 type PackageManifest = z.infer<typeof packageSchema>;
 
-const PACKAGE_MANAGERS = new Set(['npm', 'pnpm', 'yarn', 'bun']);
-const LOCKFILES = [
-  ['pnpm-lock.yaml', 'pnpm'],
-  ['yarn.lock', 'yarn'],
-  ['bun.lock', 'bun'],
-  ['bun.lockb', 'bun'],
-  ['package-lock.json', 'npm'],
-] as const;
-
 /**
  * Reads and validates the manifest, keeping its original text so edits can
  * preserve formatting. A missing manifest starts as a private ESM package.
@@ -32,6 +23,16 @@ export function readPackage(cwd: string) {
   const original = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : undefined;
   const manifest = packageSchema.parse(original === undefined ? { private: true, type: 'module' } : JSON.parse(original));
   return { original, manifest };
+}
+
+/** Why a manifest failed to read: the JSON parser's own position, or the field that has the wrong shape. */
+export function describeManifestError(cause: unknown): string {
+  if (cause instanceof z.ZodError) {
+    return cause.issues
+      .map((issue) => `${issue.path.length === 0 ? 'package.json' : issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
+  }
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** True when any dependency section lists `name`, so existing versions and workspace links are kept. */
@@ -48,17 +49,6 @@ export function addDependencies(manifest: PackageManifest, dependencies: Readonl
     manifest: { ...manifest, devDependencies: { ...manifest.devDependencies, ...Object.fromEntries(additions) } },
     additions,
   };
-}
-
-/** The `packageManager` field wins, then a lockfile, then the manager that invoked the CLI, then npm. */
-export function detectPackageManager(cwd: string, manifest: PackageManifest): string {
-  const configured = manifest.packageManager?.split('@')[0];
-  if (configured !== undefined && PACKAGE_MANAGERS.has(configured)) return configured;
-  for (const [lock, manager] of LOCKFILES) {
-    if (existsSync(path.join(cwd, lock))) return manager;
-  }
-  const invoking = process.env['npm_config_user_agent']?.split('/')[0];
-  return invoking !== undefined && PACKAGE_MANAGERS.has(invoking) ? invoking : 'npm';
 }
 
 /** Serializes with the original manifest's indentation and newline convention. */

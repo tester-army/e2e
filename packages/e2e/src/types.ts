@@ -343,7 +343,7 @@ export interface Locator extends Screen {
   textContent(): Promise<string | null>;
   /** Reads the current input value. */
   inputValue(): Promise<string>;
-  /** Reads one exposed attribute. */
+  /** Reads one attribute. */
   getAttribute(name: string): Promise<string | null>;
   /** Reads current visibility. */
   isVisible(): Promise<boolean>;
@@ -491,12 +491,17 @@ export interface AsyncExpectation {
   toBeSelected(options?: { timeout?: number }): Promise<void>;
   /** Waits for expanded state. */
   toBeExpanded(options?: { timeout?: number }): Promise<void>;
+  /** Waits for focused state. */
+  toBeFocused(options?: { timeout?: number }): Promise<void>;
   /** Waits for exact normalized text. */
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for contained normalized text. */
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for an input value. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for the attribute to be present; with `value`, for it to match. */
+  toHaveAttribute(name: string, options?: { timeout?: number }): Promise<void>;
+  toHaveAttribute(name: string, value: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for an exact match count. */
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
   /** Waits for an accessible name. */
@@ -680,6 +685,13 @@ export interface ArtifactsConfig {
   store?: ArtifactStore;
 }
 
+/**
+ * AI SDK provider options, keyed by provider then option name, e.g.
+ * `{ openai: { reasoningEffort: 'low' } }`. Sent with every model call of
+ * both the act tier and the judgment tier.
+ */
+export type ProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   /**
@@ -697,6 +709,8 @@ export interface AgentConfig {
   context?: string;
   /** Project-wide default for the per-call `vision` option. */
   vision?: VisionMode;
+  /** Provider options every model call carries, e.g. a reasoning effort. */
+  providerOptions?: ProviderOptions;
 }
 
 export interface E2EConfig {

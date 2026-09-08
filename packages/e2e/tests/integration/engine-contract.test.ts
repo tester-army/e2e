@@ -289,6 +289,33 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
   );
 
   it(
+    'names APP_UNREACHABLE, with the URL, when the network refused the navigation',
+    async () => {
+      const refused = createFakeEngine({
+        onNavigate(url) {
+          throw engineFailure('ENGINE_FAILURE', `navigation failed: page.goto: net::ERR_CONNECTION_REFUSED at ${url}`);
+        },
+      });
+      const { outcome, project } = await runProject(
+        { 'tests/open-refused.e2e.ts': PASSING_TEST },
+        { appUrl: APP_URL, config: fakeConfig(refused) },
+      );
+      const result = resultByTitle(outcome, 'taps a node');
+      expect(result.status).toBe('failed');
+      expect(result.attempts[0]!.error).toMatchObject({
+        category: 'infrastructure',
+        code: 'APP_UNREACHABLE',
+        message: expect.stringMatching(
+          /^nothing answered at http:\/\/\S+ \(ERR_CONNECTION_REFUSED\); start the app there, point the engine's url at where it runs, or give the engine a command so the runner starts it$/,
+        ),
+      });
+      expect(outcome.exitCode).toBe(3);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'maps a hung startAttempt to an infrastructure LAUNCH_TIMEOUT',
     async () => {
       const fake = createFakeEngine({
