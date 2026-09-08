@@ -14,9 +14,9 @@
  * replace the filesystem without the harness noticing.
  */
 
-import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { buildTraceEntry, readTraceEntry, type ActionTrace, type TraceEntry } from './trace.ts';
 
@@ -104,17 +104,7 @@ export class FileTraceCacheStore implements TraceCacheStore {
     if (bytes > this.maxBytes) return undefined;
 
     await mkdir(this.directory, { recursive: true });
-    // Random rather than pid+clock: two writers racing on one key in the same
-    // millisecond would otherwise pick the same temporary name, and the first
-    // rename would pull the file out from under the second.
-    const temporary = `${path}.${randomBytes(8).toString('hex')}.tmp`;
-    try {
-      await writeFile(temporary, serialized, { encoding: 'utf8', mode: 0o600 });
-      await rename(temporary, path);
-    } catch (cause) {
-      await unlink(temporary).catch(() => undefined);
-      throw cause;
-    }
+    await writeFileAtomic(path, serialized, { mode: 0o600 });
     return { bytes };
   }
 

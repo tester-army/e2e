@@ -490,7 +490,7 @@ test('fails', async () => {
       expect(xml).toContain('<testcase name="passes [web]" classname="tests/junit.e2e.ts"');
       expect(xml).toContain('<testcase name="fails [web]" classname="tests/junit.e2e.ts"');
       expect(xml).toContain('<failure message="junit &lt;sees&gt; &amp; &quot;reports&quot; this"');
-      expect(readdirSync(path.join(project.dir, '.e2e')).filter((name) => name.includes('.tmp-'))).toEqual([]);
+      expect(readdirSync(path.join(project.dir, '.e2e')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
       project.cleanup();
     },
     120_000,

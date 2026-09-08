@@ -2,9 +2,10 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EngineSpiVersion, EngineState } from '../engine/surface.ts';
+import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { ConfigurationError, E2EError } from '../internal/errors.ts';
 import { canonicalJson, timestamp } from '../internal/ids.ts';
 
@@ -170,9 +171,7 @@ export class SessionStore {
     };
 
     const target = this.filePath(identity.targetId, name);
-    const temporary = `${target}.tmp-${randomBytes(4).toString('hex')}`;
-    await writeFile(temporary, `${JSON.stringify(envelope, null, 2)}\n`, { mode: 0o600 });
-    await rename(temporary, target);
+    await writeFileAtomic(target, `${JSON.stringify(envelope, null, 2)}\n`, { mode: 0o600 });
   }
 
   /**
