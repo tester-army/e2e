@@ -160,8 +160,8 @@ platform, skipped, or is a setup test.
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it |
-| `--retries <n>` | nonnegative integer | resolved config value | Replaces the retry count |
-| `--workers <n>` | nonnegative integer | resolved config value | Replaces the worker count |
+| `--retries <n>` | integer 0-10 | resolved config value | Replaces `config.retries`; out of range is `INVALID_CONFIG` |
+| `--workers <n>` | integer 1-1024 | resolved config value | Replaces `config.workers`; `--workers 0` is `INVALID_CONFIG` |
 | `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree |
 | `--no-cache` | boolean | `false` | Runs with the trace cache off, overriding `config.cache` — the quickest way to check whether a failure is cache-related |
@@ -169,11 +169,9 @@ platform, skipped, or is a setup test.
 | `--debug` | boolean | `false` | Prints aggregated phase timings and an agent step table to stderr after the run |
 | `--ai-trace` | boolean | `false` | Records every model call of the run to `.e2e/ai-trace.json`, an AI SDK devtools database a trace viewer such as [unbox-ai](https://github.com/tester-army/unbox-ai) opens directly |
 
-<Callout intent="warning">
-`--retries` and `--workers` replace the resolved value directly and bypass the
-config range checks. `retries` is validated 0-10 and `workers` 1-1024 only when
-the value comes from the config file.
-</Callout>
+`--retries` and `--workers` obey the bounds of the config keys they replace
+(`retries` 0-10, `workers` 1-1024). An out-of-range flag fails with
+`INVALID_CONFIG` before anything starts, the same as the config value would.
 
 ```bash
 npx --no-install e2e run

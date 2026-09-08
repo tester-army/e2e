@@ -140,7 +140,7 @@ function createProgram(): Command {
       'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, tests/example.e2e.ts, .gitignore entries, and the e2e skill for coding agents. Prompts for the engine, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills.',
     )
     .argument('[directory]', 'project directory, created when missing (default: the current directory)')
-    .option('-y, --yes', 'skip the prompts: AI on, no engine, no installation')
+    .option('-y, --yes', 'skip the prompts: Playwright, AI on, no installation')
     .addHelpText(
       'after',
       ['', examples(['e2e init', 'e2e init my-app', 'e2e init --yes']), '', docsLine('/reference/cli')].join('\n'),

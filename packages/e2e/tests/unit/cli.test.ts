@@ -410,7 +410,7 @@ describe('e2e --version and --help', () => {
     expect(help).toContain('Usage: e2e init [options] [directory]');
     expect(help).toContain('without touching existing files');
     expect(help).toMatch(/^ {2}directory {2,}project directory, created when missing/mu);
-    expect(help).toMatch(/^ {2}-y, --yes {2,}skip the prompts: AI on, no engine, no installation$/mu);
+    expect(help).toMatch(/^ {2}-y, --yes {2,}skip the prompts: Playwright, AI on, no installation$/mu);
     expect(help).toContain('  $ e2e init my-app\n  $ e2e init --yes\n');
     expect(process.exitCode).toBe(0);
   });

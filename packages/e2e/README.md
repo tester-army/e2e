@@ -16,7 +16,7 @@ APP_URL=http://localhost:3000 npx --no-install e2e run
 Init adds the runner to `devDependencies`, offers Playwright or agent-device
 as the engine and AI SDK v7 for the built-in agent, then asks whether to
 install. Choose Playwright for the config and browser test below. `--yes`
-skips the prompts: AI on, no engine, no installation.
+skips the prompts: Playwright, AI on, no installation.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
