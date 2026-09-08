@@ -1,7 +1,7 @@
 # e2e
 
 The `e2e` SDK, runner, and CLI for agentic end-to-end testing. Full
-documentation: [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
+documentation: [e2e-docs.vercel.app](https://e2e-docs.vercel.app).
 
 ```bash
 pnpm dlx @e2edev/e2e init
@@ -63,7 +63,7 @@ ready. On every exit path the runner stops the app, then stops the services in
 reverse order, then runs their `teardown` commands in reverse order, so
 `docker compose down` runs after the migration step and the app are gone.
 Every service option is listed under
-[services](https://e2e.docs.buildwithfern.com/reference/config#services).
+[services](https://e2e-docs.vercel.app/reference/config#services).
 
 The runner spawns the command, waits until `readyUrl` (defaults to `url`)
 answers with a 200-499 status, and terminates it when the run finishes, fails,
@@ -77,7 +77,7 @@ secrets included, must be passed explicitly through `command.env`. If the app
 never becomes ready the run fails with `APP_UNREACHABLE` and `.e2e/report.json`
 is still written; set `command.log: '.e2e/logs/app.log'` to keep what the
 server printed, since its output is otherwise discarded. Every option is listed under
-[the app under test](https://e2e.docs.buildwithfern.com/reference/config#the-app-under-test).
+[the app under test](https://e2e-docs.vercel.app/reference/config#the-app-under-test).
 
 ```ts
 import { test } from '@e2edev/playwright';

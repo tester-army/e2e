@@ -203,7 +203,7 @@ make no model calls.
   can be the `agent`; the runner still owns observations, actions, budgets,
   and the report.
 
-Full reference: https://e2e.docs.buildwithfern.com/agents
+Full reference: https://e2e-docs.vercel.app/agents
 
 ## In CI
 

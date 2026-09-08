@@ -293,7 +293,7 @@ describe('e2e list', () => {
     const flags = [...help.matchAll(/^ {2}(-{1,2}[a-z-]+)/gmu)].map((match) => match[1]);
     expect(flags).toEqual(['--config', '--target', '--tag', '--tag-mode', '--pass-with-no-tests', '--reporter', '-h']);
     expect(help).toContain('  $ e2e list --reporter json\n');
-    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#e2e-list\n');
+    expect(help).toContain('Docs: https://e2e-docs.vercel.app/reference/cli#e2e-list\n');
     expect(process.exitCode).toBe(0);
     expect(listMock).not.toHaveBeenCalled();
   });
@@ -352,7 +352,7 @@ describe('e2e --version and --help', () => {
     expect(help).toMatch(/^ {2}-h, --help {2,}show help$/mu);
     expect(help).toContain('Examples:\n  $ e2e init\n  $ e2e run\n');
     expect(help).toContain('Run e2e <command> --help for the flags of one command.');
-    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com\n');
+    expect(help).toContain('Docs: https://e2e-docs.vercel.app\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
   });
@@ -386,7 +386,7 @@ describe('e2e --version and --help', () => {
     expect(help).toContain("  $ e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke\n");
     expect(help).toMatch(/^Exit codes:\n {2}0 {4}every selected test passed/mu);
     expect(help).toMatch(/^ {2}130 {2}interrupted/mu);
-    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#exit-codes\n');
+    expect(help).toContain('Docs: https://e2e-docs.vercel.app/reference/cli#exit-codes\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
   });
@@ -460,7 +460,7 @@ describe('e2e guide', () => {
     expect(help).toContain('Usage: e2e guide [options] [topic]');
     expect(help).toMatch(/one of agent, debugging, running, setup,\s+writing-tests/u);
     expect(help).toContain('  $ e2e guide writing-tests\n');
-    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#e2e-guide\n');
+    expect(help).toContain('Docs: https://e2e-docs.vercel.app/reference/cli#e2e-guide\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
   });

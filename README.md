@@ -49,14 +49,14 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 
 ## Documentation
 
-[e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com)
+[e2e-docs.vercel.app](https://e2e-docs.vercel.app)
 
 ## Coding agents
 
 `e2e init` installs an agent skill into `.agents/skills/` and
 `.claude/skills/`, and `npx skills add tester-army/e2e` installs it
 anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
-See [Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
+See [Coding agents](https://e2e-docs.vercel.app/coding-agents).
 
 ## Packages
 
@@ -65,7 +65,7 @@ See [Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
   to a target as `engine: playwright()`.
 - [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
   simulators and Android emulators; see the
-  [device reference](https://e2e.docs.buildwithfern.com/reference/device).
+  [device reference](https://e2e-docs.vercel.app/reference/device).
 
 ## Contributing
 

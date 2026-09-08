@@ -88,4 +88,4 @@ npx playwright install chromium --with-deps
 
 ## Documentation
 
-Full documentation lives at [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
+Full documentation lives at [e2e-docs.vercel.app](https://e2e-docs.vercel.app).

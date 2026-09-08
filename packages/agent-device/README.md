@@ -140,4 +140,4 @@ through a deterministic `screen` action in a setup step instead.
 
 ## Documentation
 
-Full documentation lives at [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
+Full documentation lives at [e2e-docs.vercel.app](https://e2e-docs.vercel.app).
