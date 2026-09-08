@@ -57,7 +57,7 @@
   "dependencies": {
     "agent-device": "0.20.10",
     "pngjs": "7.0.0",
-    "zod": "4.4.3"
+    "zod": "4.5.4"
   },
   "peerDependencies": {
     "ai": "^7.0.0",
