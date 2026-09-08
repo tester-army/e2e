@@ -1,5 +1,16 @@
 # @e2edev/agent-device
 
+## 0.3.1
+
+### Patch Changes
+
+- [#161](https://github.com/tester-army/e2e/pull/161) [`41612dc`](https://github.com/tester-army/e2e/commit/41612dcf44e6e395d578a23c09cf1dd451231095) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Package and CLI descriptions no longer call e2e a "standard".
+
+- [#168](https://github.com/tester-army/e2e/pull/168) [`1ef5b00`](https://github.com/tester-army/e2e/commit/1ef5b003b62a588f554ad567f9d1f4540ffd8b35) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - READMEs and CLI help use the scoped package names (`@e2edev/e2e`,
+  `@e2edev/playwright`, `@e2edev/agent-device`) on every install line, point at
+  the Fern docs instead of e2e.dev, and describe e2e as an open framework for
+  agentic end-to-end testing.
+
 ## 0.3.0
 
 ### Minor Changes

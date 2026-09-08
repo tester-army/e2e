@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/e2e",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "keywords": [
     "e2e",

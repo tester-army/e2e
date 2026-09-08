@@ -1,5 +1,145 @@
 # @e2edev/e2e
 
+## 0.6.0
+
+### Minor Changes
+
+- [`51ba502`](https://github.com/tester-army/e2e/commit/51ba50207bd0fab811a56cd11cf7a97530a90190) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The package ships an agent skill: `SKILL.md` plus one reference file per
+  topic (`setup`, `writing-tests`, `agent`, `running`, `debugging`) that
+  teaches a coding agent to configure e2e, write tests, and read a failing run.
+  `e2e init` installs it into `.agents/skills/e2e/` and `.claude/skills/e2e/`
+  (a prompt on the first run, a silent refresh of the existing copies after an
+  upgrade), `e2e guide [topic]` prints it for an agent that lacks the files,
+  and `npx skills add tester-army/e2e` installs it from the repository.
+
+- [#178](https://github.com/tester-army/e2e/pull/178) [`eb46707`](https://github.com/tester-army/e2e/commit/eb467071b5b2e11a7c4e74dc6edb3c44490a4d43) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - `e2e cache ls`, `e2e cache stats`, and `e2e cache clear` read and empty the
+  trace cache. Until now the only controls were `--no-cache` and deleting the
+  directory, and a reviewer of a committed cache had no way to see what it held:
+  entry files are named after the digest of their key. `ls` prints the test, the
+  target, the instruction digest, the age, and the action count of every entry,
+  `stats` prints the entry count and the size, and `clear` deletes the store's
+  files and the directory. Recorded traces now carry the test, target, and
+  instruction digest they were recorded for, which is where `ls` reads them
+  from; entries written by an earlier version replay as before and list with
+  `-` in those columns.
+
+- [#171](https://github.com/tester-army/e2e/pull/171) [`fe569f2`](https://github.com/tester-army/e2e/commit/fe569f25ec3236c98751b6dc2628ff82763e62eb) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - `e2e list` prints the test-target pairs a run would select, one line per
+  pair as `file › title [target]`, and exits without starting the app, an
+  engine, or a worker. It takes the same files and selection flags as `e2e run`
+  (`--config`, `--target`, `--tag`, `--tag-mode`, `--pass-with-no-tests`);
+  `--reporter json` prints `{ "pairs": [...] }`.
+
+- [#165](https://github.com/tester-army/e2e/pull/165) [`391f444`](https://github.com/tester-army/e2e/commit/391f444ff6e1f399ab71d057aa32c90f6b06c6db) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The CLI has `--version` and a help worth reading. `e2e --version` (or `-v`)
+  prints the installed version and exits 0. `e2e --help` opens with the version
+  and tagline, lists the commands with examples, and points at the docs;
+  `e2e run --help` groups the flags into Selection, Execution, and Output, then
+  lists examples and the exit codes. `e2e help <command>` is the same as
+  `e2e <command> --help`. Titles and flags are colored on a terminal and plain
+  when piped or under `NO_COLOR`. A usage error now ends with
+  `(add --help for usage)`.
+
+- [#160](https://github.com/tester-army/e2e/pull/160) [`25a5838`](https://github.com/tester-army/e2e/commit/25a5838512ebb0942d9c248cb2befc226c305e28) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `defineConfig` is gone. An `e2e.config.ts` default-exports the object literal
+  and ends it with `satisfies E2EConfig`, which gives the same completion and
+  unknown-key checks without a runtime import from `@e2edev/e2e`.
+
+  ```ts
+  // before
+  import { defineConfig } from '@e2edev/e2e';
+  export default defineConfig({ targets: [...] });
+
+  // after
+  import type { E2EConfig } from '@e2edev/e2e';
+  export default { targets: [...] } satisfies E2EConfig;
+  ```
+
+- [#163](https://github.com/tester-army/e2e/pull/163) [`9e2519d`](https://github.com/tester-army/e2e/commit/9e2519d1ed0c1b45d3c3cebed23de780c04ed617) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The first run of a new project fails with a sentence that names the fix, not a
+  symptom. Walking through everything a first-time user does wrong:
+
+  - `e2e init` without a terminal (a CI step, a pipe) used to wait forever on a
+    prompt nobody could answer; it now exits 2 and names `--yes`. `e2e init
+<directory>` scaffolds into that directory, creating it when missing, and the
+    `next:` line starts with `cd`. An invalid `package.json` quotes the parser's
+    position or the field with the wrong shape.
+  - A Node.js older than 22.12 is told so, with both versions, before anything
+    else loads.
+  - `e2e run` with no config file is `CONFIG_NOT_FOUND` naming the directory
+    searched and `e2e init`, and calls out `e2e.config.js` (or another
+    look-alike) when that is what exists, instead of `targets is required`.
+  - A failing import in the config or a test file says what to do: a declared
+    but uninstalled package ends with `run pnpm install` (or the project's
+    package manager), an undeclared one with the add command, a wrong subpath
+    with the subpaths the package exports, `defineConfig` with its replacement,
+    and a misspelled export with the nearest one.
+  - `NO_TESTS` says why: no file matched the `tests` globs (naming
+    `tests/login.test.ts` and other look-alikes beneath the globbed directories),
+    a positional matched nothing (with the nearest discovered file), a file
+    registered no tests (its `test` is imported from elsewhere), or every test
+    was filtered, skipped, or is a setup test.
+  - Unknown config, target, agent, cache, limits, and artifacts keys, unknown
+    `--target` IDs and reporters, and unknown fixtures all suggest the nearest
+    valid name. Keys from other runners (`testDir`, `baseURL`, `webServer`,
+    `use`, `projects`, a `url` on a target) point at where that fact lives here;
+    `page`, `browser`, `context`, `request`, and `driver` fixtures are explained
+    in terms of `app`, `screen`, and `web`. Durations name their unit and quote
+    the value: `timeout must be a positive safe integer of milliseconds, got "30s"`.
+  - A test failure carries its `cause` chain, so the scaffold's HTTP check fails
+    with `fetch failed: connect ECONNREFUSED 127.0.0.1:3000` rather than `fetch
+failed`. `app.open()` against an address where nothing listens is
+    `APP_UNREACHABLE` with the URL and the three ways to fix it, not an engine
+    failure. A target without an engine says so when `screen` or `agent` is
+    used, and names the two first-party engines.
+  - A rejected model credential names the variable it was read from
+    (`E2E_MODEL_API_KEY`, `AI_GATEWAY_API_KEY`, or the configured `apiKeyEnv`)
+    rather than the gateway's own default, and ANSI color codes in provider
+    messages no longer reach the report or the terminal.
+
+- [#177](https://github.com/tester-army/e2e/pull/177) [`7e5b0cf`](https://github.com/tester-army/e2e/commit/7e5b0cffc2ce8a39e003ffc90ade25f8dd1e0a18) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Judgments work on reasoning models. The judgment output cap is 8192 tokens
+  so hidden reasoning no longer eats the answer, `agent.assert` has two model
+  calls so a malformed response gets one repair round, and the adapter no
+  longer pins `temperature: 0`, which reasoning models reject. A new
+  `agent.providerOptions` config key sends AI SDK provider options (a reasoning
+  effort, a thinking budget) with every model call of both the `act` and the
+  judgment tiers.
+
+- [#175](https://github.com/tester-army/e2e/pull/175) [`766cf52`](https://github.com/tester-army/e2e/commit/766cf52c0db44be69d05079fa4f97726c3e5fa15) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Node.js 22.12 is the floor. Node 20 reached end of life in April 2026; the
+  `engines` field, the CLI's startup check, and the docs now all say 22.12.
+
+- [#167](https://github.com/tester-army/e2e/pull/167) [`bbe8420`](https://github.com/tester-army/e2e/commit/bbe842042737f5df92766628429e5eb1cf67239f) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Add `toBeFocused` and `toHaveAttribute` locator matchers, and make `getAttribute` read any attribute present on the element.
+  Add `expect(web).toHaveClass(target, expected)` to the web fixture.
+
+### Patch Changes
+
+- [#162](https://github.com/tester-army/e2e/pull/162) [`203e938`](https://github.com/tester-army/e2e/commit/203e9385a23a63d1ed103eb54804c4951a0c751a) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The list reporter paints target badges on bright backgrounds. GitHub Actions
+  renders the plain yellow background as dark brown, which made the first
+  target's black label unreadable in CI logs.
+
+- [#173](https://github.com/tester-army/e2e/pull/173) [`a312d5b`](https://github.com/tester-army/e2e/commit/a312d5b9256e59470266d5e65e14289b5148c63c) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - `e2e init` prints a pointer to the new "Commit your traces" section of the
+  config reference when it adds `.e2e/cache/` to `.gitignore`. Committing cache
+  entries is opt-in; the section says how to opt in and what CI does with a
+  committed cache.
+
+- [#161](https://github.com/tester-army/e2e/pull/161) [`41612dc`](https://github.com/tester-army/e2e/commit/41612dcf44e6e395d578a23c09cf1dd451231095) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Package and CLI descriptions no longer call e2e a "standard".
+
+- [#168](https://github.com/tester-army/e2e/pull/168) [`1ef5b00`](https://github.com/tester-army/e2e/commit/1ef5b003b62a588f554ad567f9d1f4540ffd8b35) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - READMEs and CLI help use the scoped package names (`@e2edev/e2e`,
+  `@e2edev/playwright`, `@e2edev/agent-device`) on every install line, point at
+  the Fern docs instead of e2e.dev, and describe e2e as an open framework for
+  agentic end-to-end testing.
+
+- [#176](https://github.com/tester-army/e2e/pull/176) [`cef82f8`](https://github.com/tester-army/e2e/commit/cef82f8e46c9f8ffbd79fa96b1dcc7843ea5dca5) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - A third Ctrl-C kills the process groups of every app command and service the
+  run started before exiting, so they no longer survive the forced exit and
+  fail the next run with `APP_ALREADY_RUNNING`.
+
+- [#159](https://github.com/tester-army/e2e/pull/159) [`2bd509d`](https://github.com/tester-army/e2e/commit/2bd509d263b6b5a06d697261ab70d4df21926ba6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `Role` accepts the landmark roles (`main`, `navigation`, `banner`, `contentinfo`,
+  `complementary`, `region`), `alertdialog`, and the structural and form roles the
+  engines already report in observations (`searchbox`, `combobox`, `listbox`,
+  `option`, `radio`, `list`, `table`, `row`, `cell`, `columnheader`). Scoping a query
+  to the page's main content or a confirmation dialog no longer needs a platform
+  selector such as `web.locator('main')` or `web.locator('[role="alertdialog"]')`:
+  `screen.getByRole('main').getByText('Release website')` is portable. The Playwright
+  engine resolves every role through Playwright's own accessibility engine, and the
+  device engine matches the roles its node mapping produces; roles a platform never
+  reports simply match nothing, as before.
+
 ## 0.5.0
 
 ### Minor Changes
