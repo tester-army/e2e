@@ -11,6 +11,7 @@ const packageSchema = z.looseObject({
   peerDependencies: dependencyBlock,
   optionalDependencies: dependencyBlock,
   packageManager: z.string().optional(),
+  scripts: z.record(z.string(), z.string()).optional(),
 });
 type PackageManifest = z.infer<typeof packageSchema>;
 
@@ -47,6 +48,16 @@ export function addDependencies(manifest: PackageManifest, dependencies: Readonl
   if (additions.length === 0) return { manifest, additions };
   return {
     manifest: { ...manifest, devDependencies: { ...manifest.devDependencies, ...Object.fromEntries(additions) } },
+    additions,
+  };
+}
+
+/** Adds only missing scripts and returns what was added. */
+export function addScripts(manifest: PackageManifest, scripts: Readonly<Record<string, string>>) {
+  const additions = Object.entries(scripts).filter(([name]) => manifest.scripts?.[name] === undefined);
+  if (additions.length === 0) return { manifest, additions };
+  return {
+    manifest: { ...manifest, scripts: { ...manifest.scripts, ...Object.fromEntries(additions) } },
     additions,
   };
 }

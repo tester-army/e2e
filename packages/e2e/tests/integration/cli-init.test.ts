@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,18 +49,37 @@ describe('initializing standalone projects', () => {
     async (appUrl) => {
       vi.stubEnv('APP_URL', appUrl);
       await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
-      linkPackages('e2e');
+      linkPackages('e2e', 'playwright');
 
       const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
       const config = resolveConfig(raw, { projectRoot: dir, env: {} });
       const collection = await collect(config);
 
-      expect(config.targets[0]!.app.base).toBeUndefined();
+      expect(config.targets).toMatchObject([{ name: 'web', platform: 'web', engine: { name: 'playwright' } }]);
+      expect(config.targets[0]!.app.base).toMatchObject({ origin: appUrl ?? 'http://localhost:3000' });
+      expect(config.targets[0]!.app.command).toBeUndefined();
       expect(collection.tests.map((test) => ({ title: test.title, file: test.file }))).toEqual([
-        { title: 'app responds', file: 'tests/example.e2e.ts' },
+        { title: 'app opens', file: 'tests/example.e2e.ts' },
       ]);
     },
   );
+
+  it('loads the engine-less scaffold and collects its HTTP example', async () => {
+    const scaffold = createScaffold('none', true);
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
+    writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
+    mkdirSync(path.join(dir, 'tests'));
+    writeFileSync(path.join(dir, 'tests/example.e2e.ts'), scaffold.example);
+    linkPackages('e2e');
+
+    const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
+    const config = resolveConfig(raw, { projectRoot: dir, env: {} });
+    const collection = await collect(config);
+
+    expect(scaffold.dependencies).not.toHaveProperty('@e2edev/playwright');
+    expect(config.targets[0]!.app.base).toBeUndefined();
+    expect(collection.tests.map((test) => test.title)).toEqual(['app responds']);
+  });
 
   it.each([
     { host: 'darwin', platform: 'ios' },
@@ -87,21 +106,23 @@ describe('initializing standalone projects', () => {
     expect(collection.tests.map((test) => test.title)).toEqual(['Settings opens']);
   });
 
-  it('runs the generated HTTP example without an engine or model calls', async () => {
+  it('runs the generated browser example against any page without a model key', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
-    linkPackages('e2e');
-    const server = createServer((_request, response) => response.end('hello'));
+    linkPackages('e2e', 'playwright');
+    const server = createServer((_request, response) => response.end('<p>hello</p>'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     try {
       const address = server.address();
       if (address === null || typeof address === 'string') throw new Error('expected TCP listener');
-      const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], {
-        cwd: dir,
-        env: { ...process.env, APP_URL: `http://127.0.0.1:${address.port}` },
-      });
+      const env: NodeJS.ProcessEnv = { ...process.env, APP_URL: `http://127.0.0.1:${address.port}` };
+      delete env.E2E_MODEL;
+      delete env.E2E_MODEL_API_KEY;
+      const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir, env });
       expect(stdout).toContain('1 passed');
-      expect(existsSync(path.join(dir, 'node_modules', '@e2edev', 'playwright'))).toBe(false);
-      expect(JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).devDependencies.ai).toBe('^7.0.0');
+      const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      expect(manifest.devDependencies['@e2edev/playwright']).toBe('0.x');
+      expect(manifest.devDependencies.ai).toBe('^7.0.0');
+      expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
@@ -188,7 +209,7 @@ describe('initializing standalone projects', () => {
 
   it('names look-alike test files when the globs match nothing', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
-    linkPackages('e2e');
+    linkPackages('e2e', 'playwright');
     writeFileSync(path.join(dir, 'tests', 'login.test.ts'), 'export {};\n');
     rmSync(path.join(dir, 'tests', 'example.e2e.ts'));
     await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({

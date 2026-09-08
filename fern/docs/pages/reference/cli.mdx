@@ -34,8 +34,9 @@ Existing dependency versions and other package fields are preserved. With a
 `directory` argument the project is scaffolded there, the directory is created
 when missing, and the closing `next:` line starts with `cd` into it.
 
-For a new config, choose **None**, **Playwright**, or **agent-device**.
-Playwright adds `@e2edev/playwright`; agent-device adds `@e2edev/agent-device`.
+For a new config, choose **Playwright** (the default), **None**, or
+**agent-device**. Playwright adds `@e2edev/playwright`; agent-device adds
+`@e2edev/agent-device`.
 AI testing is enabled by default and adds `ai@^7.0.0` and `createAgent` in the
 config; you can decline it in the wizard. Next the wizard offers the agent
 skill (see [e2e guide](#e2e-guide)) for `.agents/skills/`, the directory
@@ -53,13 +54,13 @@ needs the Android SDK and an emulator. See [Device](/reference/device).
 | Argument or flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `[directory]` | path | the working directory | Where to scaffold; created when missing |
-| `-y`, `--yes` | boolean | `false` | Skips prompts; enables AI for a new config, with no engine or installation, and writes the skill to both agent directories |
+| `-y`, `--yes` | boolean | `false` | Skips prompts; a new config gets Playwright and AI, nothing is installed, and the skill is written to both agent directories |
 
 | Creates | Content |
 | --- | --- |
-| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies are added. The runner uses the current CLI's version range, engine packages use `beta`, and AI uses `^7.0.0` |
-| `e2e.config.ts` | Imports and target configuration match the selected engine and AI options. Playwright setup hands `APP_URL` (default `http://localhost:3000`) to `playwright({ url })`; the HTTP example reads it in the test itself; device setup pins an app without a URL |
-| `tests/example.e2e.ts` | An HTTP response check for the minimal setup, an app-open test asserting `toHaveURL('/')` for Playwright, or a deterministic Settings check for the selected device platform |
+| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies and scripts are added. The runner uses the current CLI's version range, engine packages use `0.x`, and AI uses `^7.0.0`. A `test:e2e` script runs `e2e run` unless the project already defines one |
+| `e2e.config.ts` | Imports and target configuration match the selected engine and AI options. Playwright setup hands `APP_URL` (default `http://localhost:3000`) to `playwright({ url })` and shows the `command` option in a comment for starting the dev server; the HTTP example reads `APP_URL` in the test itself; device setup pins an app without a URL. With AI, a comment shows `createAgent({ model })` for calling a provider directly |
+| `tests/example.e2e.ts` | For Playwright, an app-open test that visits `/` and asserts `web.locator('body')` is visible, so it passes against any page, plus a commented agent test; an HTTP response check for the minimal setup; a deterministic Settings check for the selected device platform |
 | `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, and `.e2e/logs/` when missing |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | The agent skill: `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic, in the directories selected in the wizard |
 
@@ -74,7 +75,10 @@ opt-in; converting also changes how the package's existing `.js` files run.
 The installer uses the project's `packageManager` field or lockfile, then the
 invoking package manager, falling back to npm. Declining installation still
 saves the dependencies to `package.json`, and the closing `next:` line starts
-with the install command. Device setup runs without `APP_URL`.
+with the install command, followed by the run command for the engine:
+`APP_URL=http://localhost:3000 npx --no-install e2e run` for Playwright.
+Device setup runs without `APP_URL`. When the project has no
+`tsconfig.json`, `init` prints a one-line suggestion to add one.
 
 Engine and AI choices apply only when creating a config. Re-running `init`
 keeps an existing `.ts` or `.mts` config and adds no optional packages for it.

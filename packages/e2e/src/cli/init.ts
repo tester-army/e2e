@@ -9,7 +9,7 @@ import { esmPackageHint } from '../config/esm.ts';
 import { detectPackageManager } from '../internal/package-manager.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
-import { addDependencies, describeManifestError, readPackage, serializePackage } from './init/package.ts';
+import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 
@@ -39,6 +39,8 @@ const GITIGNORE_ENTRIES = [
   '.e2e/logs/',
 ];
 
+const SCRIPTS = { 'test:e2e': 'e2e run' };
+
 /**
  * Runs `e2e init`. Every prompt happens before the first write, existing
  * config and test files are never touched, and dependencies install only when
@@ -50,7 +52,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
 
   if (options.interactive === false && !options.yes) {
     clack.log.error(
-      'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (no engine, AI on, no installation)',
+      'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (Playwright, AI on, no installation)',
     );
     return 2;
   }
@@ -88,7 +90,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const missingIgnore = GITIGNORE_ENTRIES.filter((entry) => !ignoreLines.includes(entry));
 
   // Engine and AI are choices for a new config only; an existing config keeps its own dependencies.
-  let engine: EngineId = DEFAULT_ENGINE_ID;
+  let engine: EngineId = existingConfig === undefined ? DEFAULT_ENGINE_ID : 'none';
   let ai = existingConfig === undefined;
   if (existingConfig === undefined && !options.yes) {
     const selectedEngine = await clack.select<EngineId>({
@@ -123,13 +125,17 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
 
   const scaffold = createScaffold(engine, ai);
-  const { manifest, additions } = addDependencies(pkg.manifest, scaffold.dependencies);
-  if (additions.length > 0) {
-    clack.log.info(`add dev dependencies: ${additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);
+  const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
+  const { manifest, additions: scripts } = addScripts(dependencies.manifest, SCRIPTS);
+  if (dependencies.additions.length > 0) {
+    clack.log.info(`add dev dependencies: ${dependencies.additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);
+  }
+  if (scripts.length > 0) {
+    clack.log.info(`add scripts: ${scripts.map(([name, command]) => `${name} (${command})`).join(', ')}`);
   }
 
   const files = [
-    ...(pkg.original === undefined || additions.length > 0
+    ...(pkg.original === undefined || dependencies.additions.length > 0 || scripts.length > 0
       ? [{ relative: 'package.json', content: serializePackage(manifest, pkg.original), existing: pkg.original !== undefined }]
       : []),
     ...(existingConfig === undefined ? [{ relative: 'e2e.config.ts', content: scaffold.config, existing: false }] : []),
@@ -191,6 +197,9 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       clack.outro('scaffold saved');
       return result.signal === 'SIGINT' ? 130 : 2;
     }
+  }
+  if (!existsSync(path.join(cwd, 'tsconfig.json'))) {
+    clack.log.info('no tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
   }
   const next = [
     options.directory === undefined ? undefined : `cd ${shellArgument(options.directory)}`,
