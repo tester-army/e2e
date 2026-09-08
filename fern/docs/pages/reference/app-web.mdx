@@ -105,7 +105,8 @@ export interface Web {
 
 | Member | Default timeout |
 | --- | --- |
-| `goto`, `reload`, `back`, `forward`, `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
+| `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms, the same budget `app.open()` uses; `{ timeout }` overrides, capped by the test deadline |
+| `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
@@ -117,7 +118,7 @@ the call fails with `APP_URL_REQUIRED`.
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` selects the readiness condition and defaults to the engine default. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
+| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` selects the readiness condition and defaults to `'load'`. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
 | `reload(options?)` | One history reload | `ACTION_FAILED` |
 | `back(options?)` | One history entry back | `ACTION_FAILED` |
 | `forward(options?)` | One history entry forward | `ACTION_FAILED` |

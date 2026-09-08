@@ -115,7 +115,9 @@ Requires Node.js 22.12 or newer.
 
     Every run writes `.e2e/report.json`: results, attempts, steps, artifacts,
     and model usage. Exit codes separate test failures (1) from configuration
-    (2) and infrastructure (3); blocked agent steps land in the latter two.
+    (2) and infrastructure (3). A step blocked by credentials or the environment
+    exits as configuration or infrastructure; one that ran out of its own budget
+    or time stays a test failure.
   </Step>
 </Steps>
 

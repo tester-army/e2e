@@ -87,7 +87,8 @@ classes. Everything the spec requires an engine to reproduce exactly is exported
 there: the runner error taxonomy (`TestError`, `ConfigurationError`,
 `InfrastructureError`), text-pattern matching (`matchesText`, `toTextPattern`,
 `describePattern`), URL matching (`urlMatches`), assertion polling
-(`pollCondition`, `Deadline`), and the JSON-value rules (`validateJsonValue`).
+(`pollCondition`, `Deadline`), the JSON-value rules (`validateJsonValue`), and
+the utilities `obj`, `raceAbort`, `withTimeout`, and `withinCleanupBudget`.
 Anything else an engine needs is its own to write; there is no shared internal
 subpath.
 </Callout>
@@ -106,7 +107,7 @@ never silently.
 | `swipe(direction, momentum, context)` | - (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
 | `artifacts.{screenshot,startTrace?,stopTrace?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']` |
-| `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?}` | - | declares the app under test: navigation policy, cache and session identity, the report's target record, and the app process the runner starts ([reference](/reference/config#the-app-under-test)) |
+| `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?,services?}` | - | declares the app under test: navigation policy, cache and session identity, the report's target record, and the app process the runner starts ([reference](/reference/config#the-app-under-test)) |
 | `app.{navigate?,back?,restart?,clearState?}` | - | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `url(context)` | - | trace start anchors, the secret-fill origin check |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |

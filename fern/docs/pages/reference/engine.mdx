@@ -43,6 +43,7 @@ export interface Engine {
   readonly app?: EngineApp;
   url?(context: OperationContext): Promise<string>;
 
+  prepare?(info: EnginePrepareInfo): Promise<void>;
   init?(info: EngineInitInfo): Promise<void>;
   startAttempt?(context: EngineAttemptContext): Promise<void>;
   endAttempt?(context: EngineCleanupContext): Promise<void>;
@@ -180,6 +181,7 @@ export interface EngineAppDeclaration {
   readonly identity?: string;
   readonly command?: CommandConfig;
   readonly readyUrl?: string;
+  readonly services?: readonly ServiceConfig[];
 }
 
 export interface EngineApp extends EngineAppDeclaration {
@@ -260,8 +262,9 @@ exported rather than re-implemented per engine:
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | 03-assertions | Assertion polling cadence and the negation grace window |
 | `validateJsonValue(value, label)` | 04-locators | Rejects non-JSON data (`undefined`, `NaN`, cycles) a fixture would return |
 
-There is no other shared entry: anything an engine needs beyond the contract
-is its own to write.
+Beyond these and the four utilities described under Contributed fixtures
+(`obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget`) there is no shared
+entry: anything else an engine needs is its own to write.
 
 ## State
 

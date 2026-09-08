@@ -208,8 +208,8 @@ your code or a model.
 An executor that brings its own browser tooling needs the page e2e opened, not a
 second one. `@e2edev/playwright` exports `surfaceOf(handle)` for that: the live
 `Page` and `BrowserContext` of the current attempt behind the handle you passed
-to the target, the way `@e2edev/agent-device` exposes its device surface. Both
-accessors throw `INVALID_STATE` before an attempt is running or a page is open.
+to the target. Both accessors throw `INVALID_STATE` before an attempt is running
+or a page is open. `@e2edev/agent-device` has no equivalent export.
 
 ```ts
 import { playwright, surfaceOf } from "@e2edev/playwright";
@@ -299,8 +299,9 @@ debugging aid, not part of the report, and `e2e init` ignores it.
 
 The recorder is an AI SDK telemetry integration, so it also sees calls a
 custom executor makes through its own `ai` import. The reverse works too:
-`registerTelemetry` in your config runs in every worker, so any AI SDK
-telemetry integration observes the run — for example the
+calling `registerTelemetry` from `ai` at the top of your config module runs
+in every worker, so any AI SDK telemetry integration observes the run, for
+example the
 [`@ai-sdk/devtools`](https://www.npmjs.com/package/@ai-sdk/devtools) recorder
 whose live viewer `npx unbox-ai devtools` replaces. That integration keeps one
 database per process and rewrites it whole, so use it with `workers: 1`.
