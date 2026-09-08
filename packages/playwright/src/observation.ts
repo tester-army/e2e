@@ -130,12 +130,12 @@ async function captureInto(
   });
   let elementsHandle: JSHandle | undefined;
   try {
-    const [nodes, ids, nextId, elementsProperty] = await Promise.all([
-      captured.getProperty('nodes').then((handle) => handle.jsonValue()),
-      captured.getProperty('ids').then((handle) => handle.jsonValue()),
-      captured.getProperty('nextId').then((handle) => handle.jsonValue()),
-      captured.getProperty('elements'),
-    ]);
+    // Property handles would keep earlier captures alive after their parent is disposed.
+    const { nodes, ids, nextId } = await captured.evaluate((observation) => ({
+      nodes: observation.nodes,
+      ids: observation.ids,
+      nextId: observation.nextId,
+    }));
     if (!Array.isArray(ids) || ids.length !== nodes.length || typeof nextId !== 'number') {
       throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
         retryable: false,
@@ -145,7 +145,7 @@ async function captureInto(
     // even when this capture is abandoned, and a later document must not
     // hand the same number to a different node.
     deps.advanceIds(nextId);
-    elementsHandle = elementsProperty;
+    elementsHandle = await captured.getProperty('elements');
     const elements = await collectElementHandles(elementsHandle, nodes.length);
     elements.forEach((element, index) => stage(ids[index] as string, element));
     let nodeCount = nodes.length;
