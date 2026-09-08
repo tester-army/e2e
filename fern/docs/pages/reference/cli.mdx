@@ -1,17 +1,19 @@
 ---
 title: CLI
-subtitle: e2e init, e2e guide, and e2e run, flag by flag.
+subtitle: e2e init, e2e guide, e2e run, e2e list, and e2e cache, flag by flag.
 ---
 
 ```bash
 npx --no-install e2e init [directory]
 npx --no-install e2e guide [topic]
 npx --no-install e2e run [files...] [options]
+npx --no-install e2e list [files...] [options]
+npx --no-install e2e cache ls|clear|stats [--config <path>]
 npx --no-install e2e --help
 npx --no-install e2e --version
 ```
 
-The CLI needs Node.js 20.19 or newer and says so, naming both versions, before
+The CLI needs Node.js 22.12 or newer and says so, naming both versions, before
 it loads anything else on an older runtime.
 
 ## Help and version
@@ -211,7 +213,11 @@ exits, and the runner writes a partial report with `status: interrupted` and
 exits 130. A second signal forces: every worker disposes its engine right
 away instead of finishing its test, and is killed once the cleanup budget is
 spent; the report is still written. A third signal exits on the spot, the last
-resort for a teardown that is itself stuck. This ladder belongs to the CLI;
+resort for a teardown that is itself stuck; before exiting it kills the process
+groups of every app command and service the run started, so no dev server or
+database container survives to fail the next run with `APP_ALREADY_RUNNING`. A
+process reused through `reuseExisting` was not started by the run and is left
+alone. This ladder belongs to the CLI;
 the [programmatic runner](/reference/embedding) never handles process signals.
 
 A worker whose runner disappears (killed, crashed) never runs on by itself: it
@@ -249,6 +255,49 @@ npx --no-install e2e list tests/signup.e2e.ts
 npx --no-install e2e list --tag smoke --target web
 npx --no-install e2e list --reporter json
 ```
+
+## e2e cache
+
+Reads and empties the trace cache the runs write under `.e2e/cache/`. A cache
+entry is a file named after the digest of its key, so a directory listing says
+nothing about what is in it; these commands are the reader. All three resolve
+the store the same way a run does — through the discovered config or
+`--config <path>`, honoring `cache.dir` — and all three exit 0 on an empty or
+absent store, because a cache nobody has filled yet is not an error.
+
+| Command | Prints |
+| --- | --- |
+| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target, oldest first. |
+| `e2e cache stats` | The store directory, the number of readable entries, and their total size. |
+| `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
+
+```bash
+npx --no-install e2e cache ls
+npx --no-install e2e cache stats
+npx --no-install e2e cache clear
+npx --no-install e2e cache ls --config packages/web/e2e.config.ts
+```
+
+```text
+TEST                                 TARGET  INSTRUCTION   AGE  ACTIONS
+tests/billing.e2e.ts::upgrades       web     4f1c0a9d3b62  2h   4
+tests/signup.e2e.ts::signs up        web     9ab7715ce004  3d   7 (truncated)
+```
+
+The provenance comes from the entry itself, so an entry recorded before
+entries carried it prints `-` in those columns; it still replays.
+
+A file the store cannot read — truncated, over the 1 MiB entry ceiling, or
+from a newer schema — is not an entry: `ls` and `stats` count it separately on
+stderr, a run treats it as a miss, and `clear` removes it. Files the runner
+never wrote are left alone and named on stderr, so a `cache.dir` pointing at a
+directory that holds anything else cannot lose it.
+
+<Callout intent="info">
+A project that configures `cache.store` replaced the file store with its own,
+and these commands read files only, so they exit 2 and say so rather than
+reporting an empty cache.
+</Callout>
 
 ## Exit codes
 

@@ -53,6 +53,23 @@ export const MAX_TRACE_END_WAIT_MS = 120_000;
 
 const SCROLL_DIRECTIONS: ReadonlySet<string> = new Set(['up', 'down', 'left', 'right']);
 
+/** The shape of a SHA-256 digest in hex, as `instructionDigest` writes it. */
+const SHA256_HEX = /^[a-f0-9]{64}$/u;
+
+/**
+ * What a trace was recorded for, in the terms a person uses: the test, the
+ * target, and the digest of the instruction. None of it is replay input —
+ * every one of these fields is already in the key, so a mismatch is a miss
+ * before an entry is ever read — and none of it is trusted as such. It exists
+ * so a file named after a digest can say which test it belongs to.
+ */
+export interface TraceProvenance {
+  readonly testId: string;
+  readonly targetId: string;
+  /** SHA-256 of the normalized instruction (`cache/identity.ts`). */
+  readonly instructionDigest: string;
+}
+
 /**
  * How a recorded action addressed its node, independent of observation ids.
  * Ids are minted per observation, so replay re-finds the node from the
@@ -140,6 +157,8 @@ export interface ActionTrace {
   readonly actions: readonly RecordedAction[];
   /** Executor that produced the trace — provenance, never part of the key (OQ10). */
   readonly executor: { readonly name: string; readonly version?: string };
+  /** Which test, target, and instruction recorded it; absent on older entries. */
+  readonly recordedFor?: TraceProvenance;
   /** The recorded run's verdict summary. */
   readonly summary: string;
   /** Location path when the step began; a precondition unless the trace opens with navigate. */
@@ -219,6 +238,10 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   if (typeof executorName !== 'string' || executorName === '') return undefined;
   if (executorVersion !== undefined && typeof executorVersion !== 'string') return undefined;
 
+  const recordedForRaw = raw['recordedFor'];
+  const recordedFor = recordedForRaw === undefined ? undefined : readProvenance(recordedForRaw);
+  if (recordedForRaw !== undefined && recordedFor === undefined) return undefined;
+
   const summary = readBoundedText(raw['summary'], MAX_TRACE_SUMMARY_CHARS);
   if (summary === undefined) return undefined;
 
@@ -273,6 +296,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
       name: executorName,
       ...(executorVersion === undefined ? {} : { version: executorVersion }),
     },
+    ...(recordedFor === undefined ? {} : { recordedFor }),
     summary,
     ...(startPath === undefined ? {} : { startPath }),
     ...(endPath === undefined ? {} : { endPath }),
@@ -367,6 +391,19 @@ function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
   }
   if (Object.keys(descriptor).length === 0) return undefined;
   return descriptor as TraceTargetDescriptor;
+}
+
+function readProvenance(document: unknown): TraceProvenance | undefined {
+  if (typeof document !== 'object' || document === null || Array.isArray(document)) {
+    return undefined;
+  }
+  const raw = document as Record<string, unknown>;
+  const testId = readBoundedText(raw['testId'], MAX_TRACE_DESCRIPTOR_CHARS);
+  const targetId = readBoundedText(raw['targetId'], MAX_TRACE_DESCRIPTOR_CHARS);
+  const instructionDigest = raw['instructionDigest'];
+  if (testId === undefined || targetId === undefined) return undefined;
+  if (typeof instructionDigest !== 'string' || !SHA256_HEX.test(instructionDigest)) return undefined;
+  return { testId, targetId, instructionDigest };
 }
 
 function readBoundedText(value: unknown, maxChars: number): string | undefined {

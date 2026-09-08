@@ -88,7 +88,9 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
           ? { prompt: call.prompt }
           : { messages: [userMessage(call.prompt, images)] }),
         maxOutputTokens: call.maxOutputTokens,
-        temperature: 0,
+        ...(call.providerOptions === undefined
+          ? {}
+          : { providerOptions: call.providerOptions as never }),
         maxRetries: TRANSPORT_RETRIES,
         abortSignal: call.signal,
         timeout: call.timeoutMs,

@@ -20,6 +20,7 @@ import {
   samePathname,
   type TraceReplayMissReason,
 } from '../cache/decide.ts';
+import { instructionDigest } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { readTraceEntry, type ActionTrace, type TraceEntry } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
@@ -334,6 +335,11 @@ export class StepTraceSession {
     const endAnchors = moved ? undefined : describeAnchors(this.startNodes, endNodes, this.options);
     const trace = recorder.finalize({
       executor: this.replayed?.executor ?? this.options.executor,
+      recordedFor: {
+        testId: this.cache.identity.testId,
+        targetId: this.cache.identity.targetId,
+        instructionDigest: instructionDigest(this.options.instruction),
+      },
       summary: this.replayed?.summary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),

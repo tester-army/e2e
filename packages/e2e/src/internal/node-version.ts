@@ -5,7 +5,7 @@
  */
 
 /** Mirrors `engines.node` in package.json; a unit test keeps the two in step. */
-export const MINIMUM_NODE_VERSION = '20.19.0';
+export const MINIMUM_NODE_VERSION = '22.12.0';
 
 function parse(version: string): [number, number, number] {
   const [major = 0, minor = 0, patch = 0] = version

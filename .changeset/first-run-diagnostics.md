@@ -10,7 +10,7 @@ symptom. Walking through everything a first-time user does wrong:
   <directory>` scaffolds into that directory, creating it when missing, and the
   `next:` line starts with `cd`. An invalid `package.json` quotes the parser's
   position or the field with the wrong shape.
-- A Node.js older than 20.19 is told so, with both versions, before anything
+- A Node.js older than 22.12 is told so, with both versions, before anything
   else loads.
 - `e2e run` with no config file is `CONFIG_NOT_FOUND` naming the directory
   searched and `e2e init`, and calls out `e2e.config.js` (or another
