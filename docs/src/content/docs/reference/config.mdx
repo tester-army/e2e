@@ -504,7 +504,11 @@ recorded fields match several controls on the recording screen (one unlabeled
 "Set up" button per card) is recorded with its `position` among them, and a
 replay honors that position only when the live screen shows exactly as many.
 A distinct accessible name (`aria-label="Set up Coolify"`) makes the position
-unnecessary and is the better fix.
+unnecessary and is the better fix. A step that ends on another page records
+that page's first stable anchors too, and its end path is matched up to the
+ids the app mints per record (a uuid, a hex or digit run, a long short id), so
+a flow that creates a project and lands on it replays even though the next
+project has a new id.
 
 An entry is written only once a **verification step** after it passes: an
 `expect(...)` assertion, a locator `waitFor`, or an `agent.assert` /

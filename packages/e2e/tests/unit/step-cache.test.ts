@@ -172,14 +172,30 @@ describe('StepTraceSession', () => {
     expect(context.staged[0]?.trace.endPath).toBe('/storage');
   });
 
-  it('records no anchors for a step that moved to another pathname', async () => {
+  it('records the new screen as anchors for a step that moved to another pathname', async () => {
     const context = fakeContext(noEntry.store.read);
     const session = makeSession(context, makeHost(['/pricing', '/customers?ref=nav'], [[], [savedMarker]]));
     await session.begin();
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', 'opened customers');
-    expect(context.staged[0]?.trace.endAnchors).toBeUndefined();
+    expect(context.staged[0]?.trace.endAnchors).toEqual([savedAnchor]);
     expect(context.staged[0]?.trace.endPath).toBe('/customers?ref=nav');
+  });
+
+  it("self-finalizes on a created record's page whose minted id differs from the recording", async () => {
+    const context = entryContext({ endPath: '/projects/95488a620f65', endAnchors: [savedAnchor] });
+    const session = makeSession(context, makeHost(['/pricing', '/projects/0c1d2e3f4a5b'], [[], [savedMarker]]));
+    const verdict = await session.begin();
+    expect(verdict?.status).toBe('passed');
+    expect(session.cacheInfo).toMatchObject({ mode: 'self-finalized' });
+  });
+
+  it('still refuses a different page even when the anchors happen to be on it', async () => {
+    const context = entryContext({ endPath: '/projects/95488a620f65', endAnchors: [savedAnchor] });
+    const session = makeSession(context, makeHost(['/pricing', '/customers'], [[], [savedMarker]]));
+    const verdict = await session.begin();
+    expect(verdict).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
   });
 
   it('refuses to self-finalize when a recorded end anchor is not on screen again', async () => {

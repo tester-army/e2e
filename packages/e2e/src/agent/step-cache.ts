@@ -17,7 +17,7 @@ import type { AgentCacheContext } from '../cache/context.ts';
 import {
   decideTraceReplay,
   opensWithNavigate,
-  samePathname,
+  samePathShape,
   type TraceReplayMissReason,
 } from '../cache/decide.ts';
 import { instructionDigest } from '../cache/identity.ts';
@@ -252,20 +252,20 @@ export class StepTraceSession {
 
   /**
    * The trace's postcondition against the live screen: the recorded end path
-   * (pathname only, when the live location is known) and every recorded end
-   * anchor present again.
+   * (pathname only, when the live location is known, and up to the ids the
+   * app mints per record) and every recorded end anchor present again.
    */
   private async endStateMatches(trace: ActionTrace): Promise<boolean> {
     if (trace.endPath !== undefined && !(await this.pathSettles(trace.endPath))) return false;
     return verifyAnchors(this.host, trace.endAnchors ?? [], trace.endWaitMs);
   }
 
-  /** Whether the current path becomes `endPath` within the settling backoff. */
+  /** Whether the current path becomes `endPath`, up to minted ids, within the settling backoff. */
   private async pathSettles(endPath: string): Promise<boolean> {
     const startedMs = Date.now();
     for (let attempt = 0; ; attempt += 1) {
       const current = await this.host.currentPath();
-      if (current === undefined || samePathname(current, endPath)) return true;
+      if (current === undefined || samePathShape(endPath, current)) return true;
       const delay = END_PATH_DELAYS_MS[attempt];
       if (
         delay === undefined ||
@@ -319,20 +319,18 @@ export class StepTraceSession {
    * The end path and a fresh settled observation are the trace's
    * postcondition — the state the step passed in. The delta between the
    * baseline and the passing observation becomes the end anchors. When the
-   * step moved to another pathname the whole screen is the delta and the path
-   * is the postcondition, so anchors are recorded only for a step that ended
-   * where it began (or on a surface without a location at all, where they are
-   * the only check). A postcondition that cannot be captured stages nothing:
-   * a trace without its check would replay on mechanics alone.
+   * step moved to another pathname the whole new screen is the delta, and its
+   * first stable anchors back the path check, which matches a created
+   * record's page up to the id the app minted for it. A postcondition that
+   * cannot be captured stages nothing: a trace without its check would
+   * replay on mechanics alone.
    */
   private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
     if (this.startNodes === undefined) return;
     const endNodes = await probeScreen(this.host);
     if (endNodes === undefined) return;
     const endPath = await this.host.currentPath(endNodes);
-    const moved =
-      this.startPath !== undefined && endPath !== undefined && !samePathname(this.startPath, endPath);
-    const endAnchors = moved ? undefined : describeAnchors(this.startNodes, endNodes, this.options);
+    const endAnchors = describeAnchors(this.startNodes, endNodes, this.options);
     const trace = recorder.finalize({
       executor: this.replayed?.executor ?? this.options.executor,
       recordedFor: {
@@ -343,10 +341,10 @@ export class StepTraceSession {
       summary: this.replayed?.summary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
-      ...(endAnchors === undefined ? {} : { endAnchors }),
+      endAnchors,
       // What the live run needed to reach its end state, plus room for a
       // slower day: the budget a replay waits for the anchors to return.
-      ...(endAnchors === undefined ? {} : { endWaitMs: Date.now() - this.startedMs + END_WAIT_MARGIN_MS }),
+      endWaitMs: Date.now() - this.startedMs + END_WAIT_MARGIN_MS,
     });
     if (trace === undefined) return;
     // A trace with no start anchor — no recorded path (a surface without a URL)

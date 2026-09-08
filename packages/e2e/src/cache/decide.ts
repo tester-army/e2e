@@ -25,6 +25,38 @@ function pathnameOf(path: string): string {
 }
 
 /**
+ * A path segment the app mints per record: a uuid, a hex or digit run of
+ * eight or more, or a long mixed alphanumeric such as a short id or slug
+ * suffix. Only such segments may differ between two paths of the same shape.
+ */
+const MINTED_SEGMENT: readonly RegExp[] = [
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  /^[0-9a-f]{8,}$/i,
+  /^\d{4,}$/,
+  /^(?=.*\d)(?=.*[a-z])[a-z0-9_-]{12,}$/i,
+];
+
+/**
+ * Whether a live end path is the recorded one up to the identifiers the app
+ * mints per record. A step that creates something ends on that thing's page,
+ * and the next run's record has a different id, so an exact path could never
+ * match again. Same segment count; every segment equal, or different only
+ * where both look minted (`MINTED_SEGMENT`). The query is ignored as in
+ * `samePathname`.
+ */
+export function samePathShape(recorded: string, live: string): boolean {
+  if (samePathname(recorded, live)) return true;
+  const expected = pathnameOf(recorded).split('/');
+  const actual = pathnameOf(live).split('/');
+  if (expected.length !== actual.length) return false;
+  return expected.every((segment, index) => {
+    const other = actual[index] ?? '';
+    if (segment === other) return true;
+    return MINTED_SEGMENT.some((pattern) => pattern.test(segment) && pattern.test(other));
+  });
+}
+
+/**
  * Whether a trace establishes its own starting point by navigating first.
  * Such a trace needs no start-path precondition — and a trace with neither
  * anchor can never replay at all, so it is not worth writing.
