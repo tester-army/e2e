@@ -69,11 +69,18 @@ test('observes the token link page', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the About with token link is present');
 });
+
+test('a malformed judgment gets one repair round', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the Home heading is visible after a malformed first answer');
+});
 `;
 
 const FALSE_ASSERTION = 'the checkout page is visible';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
 const NEVER_CONDITION = 'a checkout button is on the About page';
+const REPAIRED_ASSERTION = 'the Home heading is visible after a malformed first answer';
+const PROVIDER_OPTIONS = { fake: { reasoningEffort: 'low' } };
 
 /** Scripted responder: judge and extract from the observation. */
 function respond(call: FakeCall): unknown {
@@ -86,6 +93,14 @@ function respond(call: FakeCall): unknown {
       if (call.instruction === LATE_BUTTON_CONDITION) {
         const present = call.observation.includes('Late arrival');
         return judgment(present, present ? 'Late arrival is present' : 'not rendered yet');
+      }
+      if (call.instruction === REPAIRED_ASSERTION) {
+        // A reasoning model that ran out of output mid-answer: no verdict.
+        const first = !fakeCalls.some(
+          (earlier) => earlier !== call && earlier.instruction === REPAIRED_ASSERTION,
+        );
+        if (first) return { protocolVersion: 'agent-judgment-1', explanation: 'thinking' };
+        return judgment(true, 'the Home heading is visible');
       }
       return judgment(true, 'the observation supports the assertion');
     }
@@ -116,7 +131,11 @@ describe('agent judgment tier', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: { model, context: 'This is the e2e fixture application.' },
+          agent: {
+            model,
+            context: 'This is the e2e fixture application.',
+            providerOptions: PROVIDER_OPTIONS,
+          },
         },
       },
     );
@@ -150,6 +169,23 @@ describe('agent judgment tier', () => {
     // It kept looking, though: observations are driver-only and cost nothing.
     const observations = step.events.filter((event) => event.kind === 'observation').length;
     expect(observations).toBeGreaterThan(2);
+  });
+
+  it('repairs a malformed judgment with a second model call', () => {
+    const result = resultByTitle(outcome, 'a malformed judgment gets one repair round');
+    expect(result.status).toBe('passed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.assert')!;
+    expect(step.metrics!.modelCalls).toBe(2);
+    const repairCalls = fakeCalls.filter((call) => call.instruction === REPAIRED_ASSERTION);
+    expect(repairCalls).toHaveLength(2);
+    expect(repairCalls[1]!.prompt).toContain('result must be a boolean');
+  });
+
+  it('leaves room for reasoning and sends provider options without pinning temperature', () => {
+    const judged = fakeCalls.find((call) => call.schemaName === 'agent-judgment-1')!;
+    expect(judged.settings.maxOutputTokens).toBe(8192);
+    expect(judged.settings.temperature).toBeUndefined();
+    expect(judged.settings.providerOptions).toEqual(PROVIDER_OPTIONS);
   });
 
   it('validates extracted data with Standard Schema v1', () => {

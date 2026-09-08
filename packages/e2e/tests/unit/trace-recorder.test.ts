@@ -32,7 +32,11 @@ function makeRecorder(options: { maxActions?: number; secrets?: ReadonlyMap<stri
   });
 }
 
-const conclusion = { executor: { name: 'example-agent', version: '1' }, summary: 'done' };
+const conclusion = {
+  executor: { name: 'example-agent', version: '1' },
+  recordedFor: { testId: 'tests/billing.e2e.ts::upgrade', targetId: 'web', instructionDigest: 'c'.repeat(64) },
+  summary: 'done',
+};
 
 describe('TraceRecorder', () => {
   it('records durable descriptors and readable summaries', () => {

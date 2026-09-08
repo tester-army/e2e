@@ -66,6 +66,8 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts')).not.toContain('fetch(');
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
+    expect(read('.gitignore')).toContain('.e2e/cache/');
+    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.docs.buildwithfern.com/reference/config#commit-your-traces');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
     expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(clack.confirm).not.toHaveBeenCalled();
@@ -311,6 +313,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
     expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/logs/\n`);
+    expect(output()).not.toContain('commit-your-traces');
   });
 
   it('installs the skill where selected, then refreshes only those copies', async () => {

@@ -355,6 +355,7 @@ agent?: {
   maxObservationBytes?: number;
   context?: string;
   vision?: boolean | 'fallback' | 'only';
+  providerOptions?: Record<string, Record<string, unknown>>;
 };
 ```
 
@@ -367,6 +368,11 @@ agent?: {
 | `maxObservationBytes` | `number` | `1048576` | integer 1024-16777216 | Observation payload ceiling. Not a `limits` key. |
 | `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
 | `vision` | `boolean \| 'fallback' \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option. `'fallback'` behaves like `false` for `assert`, `waitFor`, and `extract`; `'only'` sends pixels instead of the tree. A per-call value wins. |
+| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call of both `act` and the judgments, e.g. `{ openai: { reasoningEffort: 'low' } }`. Values pass through unchecked; a non-object provider entry is `INVALID_CONFIG`. `createAgent({ providerOptions })` overrides it for `act`. |
+
+Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
+and set no temperature, so a reasoning model keeps its default sampling and
+has room to think before the answer.
 
 ### agent.model
 
@@ -507,6 +513,23 @@ Entries are disposable: deleting `.e2e/cache/` slows the next run and changes
 nothing else. Every agent step's report records how the cache participated
 (`step.cache`: `self-finalized`, `agent-concluded`, or `missed`, with a
 reason).
+
+### Commit your traces
+
+Committing cache entries is opt-in. `e2e init` adds `.e2e/cache/` to
+`.gitignore`, so out of the box every machine records its own entries and CI
+starts with none: an unset mode is `read-only` there, and with nothing to read
+every `agent.act()` runs live.
+
+To share replays, remove the `.e2e/cache/` line from `.gitignore` and commit
+the directory. Entries a passing local run wrote then replay in CI and on every
+teammate's machine. CI stays `read-only` unless you set `cache: 'read-write'`
+explicitly, which is the right call only when CI restores the directory from
+its own cache service rather than from git.
+
+Treat committed entries as test data: review them in the same pull request as
+the test change that re-recorded them, and delete the directory when a flow
+changes so much that the next passing run should record it from scratch.
 
 ## limits
 

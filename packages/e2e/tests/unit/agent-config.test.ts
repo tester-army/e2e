@@ -62,6 +62,22 @@ describe('agent config defaults', () => {
 
 
 
+  it('passes agent.providerOptions through untouched, defaulting to none', () => {
+    expect(resolve({}).agent.providerOptions).toBeUndefined();
+    const providerOptions = { openai: { reasoningEffort: 'low' }, google: { thinkingConfig: { thinkingBudget: 0 } } };
+    expect(resolve({ agent: { providerOptions } }).agent.providerOptions).toEqual(providerOptions);
+  });
+
+  it('rejects agent.providerOptions that is not a record of provider records', () => {
+    expect(() => resolve({ agent: { providerOptions: 'low' } } as never)).toThrow(
+      /agent\.providerOptions must be an object/,
+    );
+    expect(() => resolve({ agent: { providerOptions: [] } } as never)).toThrow(/agent\.providerOptions/);
+    expect(() => resolve({ agent: { providerOptions: { openai: 'low' } } } as never)).toThrow(
+      /agent\.providerOptions\.openai must be an object/,
+    );
+  });
+
   it('bounds budgets to 1 through 100 and observation bytes to 1 KiB through 16 MiB', () => {
     expect(() => resolve({ agent: { maxSteps: 0 } })).toThrow(/maxSteps/);
     expect(() => resolve({ agent: { maxSteps: 101 } })).toThrow(/maxSteps/);

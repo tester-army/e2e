@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 20.19 or newer.
+- Node.js 22.12 or newer.
 - ES modules. The `package.json` nearest to the config and the tests must set
   `"type": "module"`. An `e2e.config.mts` is ESM on its own, but `.ts` tests
   still follow their package. In a CommonJS package either run
@@ -89,7 +89,7 @@ export default {
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers. Use `1` for device targets. |
 | `reporters` | `['list']` | `list`, `json`, `junit`. `json` excludes `list`. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
-| `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. |
+| `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep, or `{ kinds, store }`. |
