@@ -1,0 +1,175 @@
+---
+title: Coding agents
+subtitle: What e2e gives Claude Code, Codex, Cursor, and friends, and how they should use it.
+---
+
+e2e ships no MCP server. A coding agent works with the same three things you
+do: the skill that teaches the API, the `e2e` CLI, and the JSON report a run
+writes. `e2e init` installs the first and describes the other two in an
+`## e2e` section of `AGENTS.md`.
+
+## What init installs
+
+```bash
+npx --no-install e2e init
+```
+
+| Path | Read by | Content |
+| --- | --- | --- |
+| `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, and `debugging.md` |
+| `.claude/skills/e2e/` | Claude Code | The same files |
+| `AGENTS.md` | Any agent that reads the project's instructions file | An `## e2e` section: where the tests live, how to run one file, how to read a failing run, what `.e2e/cache/` is, and a pointer at the skill |
+
+The skill is the long form. The `AGENTS.md` section is the short one, a dozen
+lines an agent can act on without opening another file. Both come from the
+installed `@e2edev/e2e` version, and re-running `init` after an upgrade
+refreshes both.
+
+The section sits between `<!-- e2e:start -->` and `<!-- e2e:end -->` markers.
+`init` creates `AGENTS.md` when the project has none and appends to it
+otherwise; a later run replaces only the text between the markers, so what you
+write above or below it stays.
+
+Agents that do not read `AGENTS.md` need a copy. `init` prints the two places
+that matter:
+
+- `CLAUDE.md`: either copy the section in, or make the file a symlink to
+  `AGENTS.md` so the two never drift.
+- `.cursor/rules/e2e.mdc`: paste the section as the rule body. A rule without
+  frontmatter applies to every request, which is what you want here.
+
+Without `init`, `npx skills add tester-army/e2e` installs the skill from the
+repository, and `npx --no-install e2e guide [topic]` prints it from the
+installed package for an agent that has neither.
+
+## How an agent writes a test
+
+The skill tells an agent to look before it writes: read `e2e.config.ts` for
+the `tests` glob, targets, and credentials, then read an existing test for the
+project's conventions. Then it writes deterministic steps first and reaches for
+the agent only where the flow varies.
+
+```ts title="tests/checkout.e2e.ts"
+import { test, expect } from '@e2edev/e2e';
+
+test('a signed-in user reaches checkout', async ({ screen, app, agent, credentials }) => {
+  const user = credentials.user('customer');
+  await app.open('/login');
+  await screen.getByLabel('Email').fill(user.username);
+  await screen.getByLabel('Password').fill(user.password);
+  await screen.getByRole('button', { name: 'Sign in' }).click();
+  await expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+
+  await agent.act('Add the cheapest item on the page to the cart and open the cart');
+  await expect(screen.getByRole('heading', { name: 'Your cart' })).toBeVisible();
+});
+```
+
+The rules the fragment states, and the reason each is there:
+
+- `npx --no-install e2e`, never `npx e2e`. The bare form fetches whatever
+  package is called `e2e` on npm when the runner is not installed locally.
+- One `agent.act` per goal, followed by an `expect`. The assertion is what
+  makes the step's cache entry eligible for replay, and it is what fails when
+  the agent did the wrong thing.
+- No sleeps. Locators poll, actions wait for their target, and `expect`
+  retries until its timeout.
+- Secrets through `credentials.user(name)`, declared in the config, never
+  literal in a test.
+
+## How an agent runs it
+
+```bash
+npx --no-install e2e run tests/checkout.e2e.ts
+```
+
+One file, not the suite, while iterating. Agent steps need `E2E_MODEL` and
+`E2E_MODEL_API_KEY` in the environment; a run without them fails with a
+model-config error before the browser starts, which is a good first check for
+an agent that sees exit code 2.
+
+The exit code says which side failed. 1 is a test. 2 is the CLI, config, or
+collection, and is deterministic; retrying it changes nothing. 3 is the
+engine, the app process, or the model provider. The full table is in the
+[CLI reference](/reference/cli#exit-codes).
+
+## How an agent reads the result
+
+Every run writes `.e2e/report.json`. `--reporter json` prints the same
+document on stdout, which suits an agent that would rather parse than open a
+file.
+
+```bash
+npx --no-install e2e run tests/checkout.e2e.ts --reporter json
+```
+
+```json
+{
+  "run": {
+    "status": "failed",
+    "exitCode": 1,
+    "errors": [],
+    "results": [
+      {
+        "titlePath": ["a signed-in user reaches checkout"],
+        "file": "tests/checkout.e2e.ts",
+        "status": "failed",
+        "attempts": [
+          {
+            "status": "failed",
+            "steps": [{ "kind": "agent", "api": "agent.act", "label": "Add the cheapest item...", "status": "passed" }],
+            "error": { "code": "ASSERTION_FAILED", "message": "expected heading \"Your cart\" to be visible" },
+            "artifacts": [{ "kind": "screenshot", "path": ".e2e/artifacts/checkout/failure.png" }]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The reading order the skill teaches: `run.errors[]` first, because a run-level
+failure such as `APP_UNREACHABLE` means no test result is meaningful. Then the
+`error` of the last attempt of each failed result, and the `artifacts[]`
+beside it; the screenshot usually says more than the message. `steps[]` shows
+how far the test got. For an agent step that went wrong, `--debug` adds the
+transcript as an artifact, and `--ai-trace` writes a trace the `unbox-ai` CLI
+summarizes. Nothing should read `.e2e/ai-trace.json` directly; it is
+megabytes of resent context.
+
+## How an agent treats the cache
+
+Each passing `agent.act` records the actions it took under `.e2e/cache/`. The
+next run replays them with no model call and hands back to the live agent the
+moment the page stops matching. `init` gitignores the directory; committing
+it is a project choice.
+
+For a coding agent this means three things.
+
+- A test is not proven until it passes with the cache off. A step that was
+  recorded against one page state can replay against a changed one and still
+  hit the `expect`. Run `--no-cache` once before declaring done, and always
+  when the failure might be the recording rather than the app.
+- Never edit a cache entry. A failing run evicts the entries it implicates;
+  deleting the directory only slows the next run.
+- `--no-cache` also makes `--ai-trace` complete, since replayed steps make no
+  model calls to trace.
+
+## The acceptance test for this page
+
+An agent given only the `AGENTS.md` section, a project that `init` scaffolded,
+and a target it can reach should write a test that passes on its first run.
+That is the bar the section is written to, with the playground in this
+repository's testbed as the reference target. If your agent needs a second attempt, the section
+is missing something; the fix belongs in `packages/e2e/src/cli/init/agents-md.ts`
+in the e2e repository, not in your project's copy, so every project gets it
+on the next `init`.
+
+<CardGroup cols={2}>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    init, guide, and run, flag by flag.
+  </Card>
+  <Card title="Your own agent" icon="robot" href="/agents">
+    The agent behind agent.act, and the trace cache in detail.
+  </Card>
+</CardGroup>

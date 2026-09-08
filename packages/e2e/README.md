@@ -152,8 +152,11 @@ agent step, in the AI SDK devtools database shape. Open it with
 `.agents/skills/e2e/` (read by Codex, Cursor, Copilot, Gemini CLI, OpenCode,
 Zed, and most other agents) and `.claude/skills/e2e/` (Claude Code), so an
 agent working in the project knows how to configure e2e, write tests, and
-read a failing run. `npx skills add tester-army/e2e` installs the same skill
-from the repository. An agent without it can print the text:
+read a failing run. It also writes an `## e2e` section into `AGENTS.md`
+(created when missing, appended otherwise) with the commands and rules an
+agent needs without opening the skill, and prints where to copy it for
+`CLAUDE.md` and Cursor rules. `npx skills add tester-army/e2e` installs the
+same skill from the repository. An agent without it can print the text:
 
 ```bash
 npx --no-install e2e guide                # the overview and the topic list
