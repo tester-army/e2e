@@ -100,6 +100,12 @@ export interface ListedPair {
   readonly skipReason?: string;
 }
 
+/** One `e2e list` line: `file › title [target]`, with the skip reason when there is one. */
+export function formatListedPair(pair: ListedPair): string {
+  const line = `${pair.file} › ${pair.titlePath.join(' › ')} [${pair.target}]`;
+  return pair.disposition === 'skip' ? `${line} (skipped: ${pair.skipReason ?? 'skipped'})` : line;
+}
+
 /**
  * Collects and selects like `run` and stops there: no app process, no engine
  * prepare, no worker. The pairs are the ones `run` would report, in report

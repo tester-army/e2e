@@ -61,6 +61,7 @@ one. Without them, the installed CLI prints the same text:
 | `agent` | [references/agent.md](references/agent.md) | Adding `agent.*` steps, picking a model, cost and budgets, the trace cache |
 | `running` | [references/running.md](references/running.md) | CLI flags, reporters, `.e2e/report.json`, exit codes, CI |
 | `debugging` | [references/debugging.md](references/debugging.md) | A run failed: error codes and their fixes, `--headed`, `--debug`, `--ai-trace` |
+| `mcp` | [references/mcp.md](references/mcp.md) | Working through the `e2e mcp` server from a coding agent: listing and running tests, reading a failed run |
 
 ## Workflow
 

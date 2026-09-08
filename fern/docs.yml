@@ -78,6 +78,9 @@ navigation:
           - page: CLI
             path: docs/pages/reference/cli.mdx
             slug: reference/cli
+          - page: MCP server (e2e mcp)
+            path: docs/pages/reference/mcp.mdx
+            slug: reference/mcp
           - page: Embedding (e2e/run)
             path: docs/pages/reference/embedding.mdx
             slug: reference/embedding

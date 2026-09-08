@@ -63,6 +63,7 @@
   },
   "dependencies": {
     "@clack/prompts": "1.7.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@vitest/expect": "4.1.10",
     "commander": "15.0.0",
     "picocolors": "1.1.1",
@@ -78,9 +79,9 @@
     }
   },
   "devDependencies": {
-    "ai": "7.0.37",
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.1.1",
+    "ai": "7.0.37",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",

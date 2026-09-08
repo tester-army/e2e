@@ -6,8 +6,9 @@
 npx --no-install e2e run [files...] [options]   # run tests
 npx --no-install e2e list [files...] [options]  # print what run would select, without running
 npx --no-install e2e init [--yes]               # scaffold a project, refresh the agent skill
-npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, debugging
+npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, debugging, mcp
 npx --no-install e2e cache ls|clear|stats       # read or empty the trace cache
+npx --no-install e2e mcp                        # serve the project to a coding agent over MCP (topic mcp)
 ```
 
 `run` flags:

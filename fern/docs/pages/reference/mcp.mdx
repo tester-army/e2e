@@ -1,0 +1,79 @@
+---
+title: MCP server (e2e mcp)
+subtitle: Serve the project to a coding agent over the Model Context Protocol.
+---
+
+```bash
+npx --no-install e2e mcp [--config <path>]
+```
+
+`e2e mcp` is an MCP server over stdio for a coding agent such as Claude Code
+or Cursor. It lists the tests, runs a selection exactly like `e2e run`, and
+digests a finished run, so the agent writes a test, runs it, and reads the
+failures without leaving the conversation. The agent skill is served as
+resources beside the tools.
+
+## Setup
+
+The server ships with `@e2edev/e2e`; nothing else is installed. `e2e init`
+offers to register it in `.mcp.json` (Claude Code) and `.cursor/mcp.json`
+(Cursor); a later `init` refreshes the files that exist. By hand:
+
+```bash
+claude mcp add e2e -- npx --no-install e2e mcp
+```
+
+Every client that reads a project-level MCP config takes the same entry:
+
+```json
+{
+  "mcpServers": {
+    "e2e": { "command": "npx", "args": ["--no-install", "e2e", "mcp"] }
+  }
+}
+```
+
+| Flag | Behavior |
+| --- | --- |
+| `--config <path>` | Config file (default: the nearest `e2e.config.ts`). The config is loaded again on every call, so an edit applies without restarting the server. |
+
+Everything the server prints for the operator goes to stderr, prefixed
+`e2e mcp:`; stdout carries only the protocol. A config module or a library
+that writes to stdout is redirected to stderr for the life of the process.
+
+## Tools
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `list_tests` | `files`, `tags`, `target` (all optional) | The pairs `e2e list` prints, grouped per file: title path, target, and the skip reason when a pair is skipped. An empty selection is the runner's `NO_TESTS` error, which names what matched nothing. Boots no engine. |
+| `run_tests` | `files`, `tags`, `tagMode`, `target`, `headed`, `noCache`, `retries`, `workers` | Runs the selection through the same runner as `e2e run`, streaming one progress line per test, and returns the digest below. One run at a time (`RUN_IN_PROGRESS`); cancelling the request interrupts the run like Ctrl-C. |
+| `read_report` | `path` (optional) | The digest of `.e2e/report.json`, or of the given report. `REPORT_NOT_FOUND` before the first run. |
+
+The digest is markdown: the run status and exit code, the counts, run-level
+errors, then each failed test with its title path, `file:line`, the last
+attempt's error code, category, and message, the failing steps with their
+own source line and error, the agent's explanation and model usage for agent
+steps, and the absolute paths of the attempt's artifacts. A passing run is
+three lines.
+
+## Resources
+
+| URI | Content |
+| --- | --- |
+| `e2e://guide` | The agent skill's overview, the text `e2e guide` prints. |
+| `e2e://guide/{topic}` | One topic: `setup`, `writing-tests`, `agent`, `running`, `debugging`, `mcp`. |
+| `e2e://report/latest` | The digest of the project's last run. |
+
+## Exit codes
+
+`e2e mcp` exits 0 when the client disconnects or a signal ends it, and 2
+when the command line is invalid. Config and
+engine failures never end the server: they come back as tool errors the
+agent can act on, with the same codes the CLI prints.
+
+<CardGroup cols={2}>
+  <Card title="CLI" icon="terminal" href="/reference/cli" />
+  <Card title="Writing tests" icon="pen" href="/writing-tests" />
+  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
+  <Card title="Embedding (e2e/run)" icon="plug" href="/reference/embedding" />
+</CardGroup>

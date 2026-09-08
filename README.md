@@ -58,6 +58,10 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
 See [Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
 
+`e2e mcp` serves the project to a coding agent over MCP: it lists and runs
+the tests and digests a failed run without leaving the conversation. `e2e
+init` registers it for Claude Code and Cursor.
+
 ## Packages
 
 - [`@e2edev/e2e`](./packages/e2e) — the SDK, runner, and CLI.

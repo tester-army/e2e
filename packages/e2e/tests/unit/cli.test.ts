@@ -9,7 +9,9 @@ const runMock = vi.hoisted(() => vi.fn());
 const listMock = vi.hoisted(() => vi.fn());
 const initMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/run/runner.ts', () => ({
+// Only the entry points are mocked; the pure helpers (formatListedPair) stay real.
+vi.mock('../../src/run/runner.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/run/runner.ts')>()),
   run: runMock,
   list: listMock,
 }));
@@ -347,6 +349,7 @@ describe('e2e --version and --help', () => {
     expect(help).toMatch(/^ {2}init \[options\] \[directory\] {2,}scaffold/mu);
     expect(help).toMatch(/^ {2}run \[options\] \[files\.\.\.\] {2,}run the tests$/mu);
     expect(help).toMatch(/^ {2}cache {2,}inspect, measure, and clear the trace cache$/mu);
+    expect(help).toMatch(/^ {2}mcp \[options\] {2,}serve the project to a coding agent over MCP$/mu);
     expect(help).toMatch(/^ {2}help \[command\] {2,}show help for a command$/mu);
     expect(help).toMatch(/^ {2}-v, --version {2,}print the version$/mu);
     expect(help).toMatch(/^ {2}-h, --help {2,}show help$/mu);
@@ -445,7 +448,7 @@ describe('e2e guide', () => {
     await invoke('guide', 'nope');
     expect(process.exitCode).toBe(2);
     expect(stdoutSpy).not.toHaveBeenCalled();
-    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, debugging, running, setup, writing-tests\n');
+    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, debugging, mcp, running, setup, writing-tests\n');
   });
 
   it('is listed in the help with an example, and its own help names the topics', async () => {
@@ -458,7 +461,7 @@ describe('e2e guide', () => {
     await invoke('guide', '--help');
     const help = written(stdoutSpy);
     expect(help).toContain('Usage: e2e guide [options] [topic]');
-    expect(help).toMatch(/one of agent, debugging, running, setup,\s+writing-tests/u);
+    expect(help).toMatch(/one of agent, debugging, mcp, running, setup,\s+writing-tests/u);
     expect(help).toContain('  $ e2e guide writing-tests\n');
     expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#e2e-guide\n');
     expect(process.exitCode).toBe(0);

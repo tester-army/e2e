@@ -5,10 +5,11 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
-import { list, run, type ListedPair } from '../run/runner.ts';
+import { formatListedPair, list, run, type ListedPair } from '../run/runner.ts';
 import { cache, type CacheCommand } from './cache.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
+import { mcp } from './mcp.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 
@@ -59,12 +60,6 @@ type TagMode = (typeof TAG_MODES)[number];
 
 const LIST_REPORTERS = ['list', 'json'] as const;
 type ListReporter = (typeof LIST_REPORTERS)[number];
-
-/** One `e2e list` line: `file › title [target]`, with the skip reason when there is one. */
-function formatListedPair(pair: ListedPair): string {
-  const line = `${pair.file} › ${pair.titlePath.join(' › ')} [${pair.target}]`;
-  return pair.disposition === 'skip' ? `${line} (skipped: ${pair.skipReason ?? 'skipped'})` : line;
-}
 
 /** The exit-code table of the CLI reference; the runner decides which one applies. */
 const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
@@ -124,6 +119,7 @@ function createProgram(): Command {
           'e2e list --tag smoke',
           'e2e cache ls',
           'e2e guide',
+          'e2e mcp',
         ]),
         '',
         `Run ${pc.cyan('e2e <command> --help')} for the flags of one command.`,
@@ -165,6 +161,26 @@ function createProgram(): Command {
     .addHelpText('after', ['', examples(['e2e guide', 'e2e guide writing-tests']), '', docsLine('/reference/cli#e2e-guide')].join('\n'))
     .action((topic: string | undefined) => {
       process.exitCode = guide(topic);
+    });
+
+  program
+    .command('mcp')
+    .summary('serve the project to a coding agent over MCP')
+    .description(
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: list_tests, run_tests, and read_report for the project, and the e2e guide as resources. Register it with the client, e.g. claude mcp add e2e -- npx --no-install e2e mcp.',
+    )
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples(['e2e mcp', 'claude mcp add e2e -- npx --no-install e2e mcp']),
+        '',
+        docsLine('/reference/mcp'),
+      ].join('\n'),
+    )
+    .action(async (options: { config?: string }) => {
+      process.exitCode = await mcp(version, options);
     });
 
   program

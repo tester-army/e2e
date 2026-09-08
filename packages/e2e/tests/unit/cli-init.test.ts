@@ -35,7 +35,11 @@ beforeEach(() => {
   vi.stubEnv('npm_config_user_agent', 'npm/11.0.0');
   vi.mocked(clack.select).mockReset().mockResolvedValue('none');
   vi.mocked(clack.confirm).mockReset().mockResolvedValue(false);
-  vi.mocked(clack.multiselect).mockReset().mockResolvedValue(['.agents/skills', '.claude/skills']);
+  vi.mocked(clack.multiselect)
+    .mockReset()
+    .mockImplementation(async (prompt) =>
+      String(prompt.message).includes('MCP') ? ['.mcp.json', '.cursor/mcp.json'] : ['.agents/skills', '.claude/skills'],
+    );
   vi.mocked(clack.isCancel).mockImplementation((value) => typeof value === 'symbol');
   vi.mocked(spawnSync).mockReset().mockReturnValue(spawnResult(0));
 });
@@ -54,6 +58,8 @@ describe('e2e init', () => {
       type: 'module',
       devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), ai: '^7.0.0' },
     });
+    expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['--no-install', 'e2e', 'mcp'] } } });
+    expect(JSON.parse(read('.cursor/mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['--no-install', 'e2e', 'mcp'] } } });
     expect(read('e2e.config.ts')).toContain('createAgent');
     expect(read('e2e.config.ts')).not.toContain('playwright');
     expect(read('tests/example.e2e.ts')).toContain("test('app responds'");
@@ -146,10 +152,12 @@ describe('e2e init', () => {
     expect(output()).toContain('next: npm install, then APP_URL=');
   });
 
-  it.each(['engine', 'ai', 'skill', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
+  it.each(['engine', 'ai', 'skill', 'mcp', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
     const cancel = Symbol('cancel');
     vi.mocked(clack.select).mockResolvedValueOnce(stage === 'engine' ? cancel : 'playwright');
-    vi.mocked(clack.multiselect).mockResolvedValueOnce(stage === 'skill' ? cancel : ['.agents/skills']);
+    vi.mocked(clack.multiselect)
+      .mockResolvedValueOnce(stage === 'skill' ? cancel : ['.agents/skills'])
+      .mockResolvedValueOnce(stage === 'mcp' ? cancel : ['.mcp.json']);
     vi.mocked(clack.confirm)
       .mockResolvedValueOnce(stage === 'ai' ? cancel : true)
       .mockResolvedValueOnce(stage !== 'files')
@@ -296,11 +304,18 @@ describe('e2e init', () => {
     vi.mocked(clack.multiselect).mockResolvedValueOnce(['.claude/skills']);
     vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect(await init(dir)).toBe(0);
-    expect(clack.multiselect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    expect(clack.multiselect).toHaveBeenCalledTimes(2);
+    expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
       options: [expect.objectContaining({ value: '.agents/skills' }), expect.objectContaining({ value: '.claude/skills' })],
       initialValues: ['.agents/skills', '.claude/skills'],
       required: false,
     }));
+    expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
+      options: [expect.objectContaining({ value: '.mcp.json' }), expect.objectContaining({ value: '.cursor/mcp.json' })],
+      initialValues: ['.mcp.json', '.cursor/mcp.json'],
+      required: false,
+    }));
+    expect(read('.mcp.json')).toContain('"e2e"');
     expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('create .claude/skills/e2e/') }));
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
     expect(output()).toContain('created .claude/skills/e2e/');
@@ -312,7 +327,7 @@ describe('e2e init', () => {
     expect(await init(dir, { yes: true })).toBe(0);
     expect(read('.claude/skills/e2e/references/setup.md')).toBe(shipped);
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
-    expect(clack.multiselect).toHaveBeenCalledTimes(1);
+    expect(clack.multiselect).toHaveBeenCalledTimes(2);
     expect(output()).toContain('updated .claude/skills/e2e/');
   });
 
@@ -338,14 +353,16 @@ describe('e2e init', () => {
 
   it('offers the skill to an initialized project and points at e2e guide when declined', async () => {
     writeFileSync(path.join(dir, 'e2e.config.ts'), '// custom config\n');
-    vi.mocked(clack.multiselect).mockResolvedValueOnce([]);
+    vi.mocked(clack.multiselect).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect(await init(dir)).toBe(0);
     expect(clack.select).not.toHaveBeenCalled();
-    expect(clack.multiselect).toHaveBeenCalledTimes(1);
+    expect(clack.multiselect).toHaveBeenCalledTimes(2);
     expect(existsSync(path.join(dir, '.agents'))).toBe(false);
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
+    expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npx --no-install e2e guide');
+    expect(output()).toContain('claude mcp add e2e -- npx --no-install e2e mcp');
   });
 
   it('is idempotent', async () => {
