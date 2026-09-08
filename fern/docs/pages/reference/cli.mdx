@@ -219,8 +219,12 @@ resort for a teardown that is itself stuck; before exiting it kills the process
 groups of every app command and service the run started, so no dev server or
 database container survives to fail the next run with `APP_ALREADY_RUNNING`. A
 process reused through `reuseExisting` was not started by the run and is left
-alone. This ladder belongs to the CLI;
-the [programmatic runner](/reference/embedding) never handles process signals.
+alone. The final summary names the interrupt: a run cut while its services or
+app were still starting, before any test was discovered, ends with `Test Files
+none started (interrupted)` rather than `no test files`, and a run cut after
+its plan arrived keeps its counters against the planned total. This ladder
+belongs to the CLI; the [programmatic runner](/reference/embedding) never
+handles process signals.
 
 A worker whose runner disappears (killed, crashed) never runs on by itself: it
 disposes its engine and exits within the cleanup budget, so a device or a

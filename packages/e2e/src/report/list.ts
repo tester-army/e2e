@@ -161,6 +161,12 @@ export class ListReporter {
   private readonly pendingSerial = new Map<string, { group: SerialGroupRecord; remaining: number }>();
   /** Run-level errors, printed once at the end; the stream carries them as they happen. */
   private readonly errors: SerializedError[] = [];
+  /**
+   * Whether the run was cut short. An interrupt during service or app startup
+   * lands before discovery, so the counters stay at zero; the summary must not
+   * read that as "no test files".
+   */
+  private interrupted = false;
   /** Run-wide model usage, summed from every reported result and serial group. */
   private readonly runUsage = emptyUsage();
 
@@ -277,6 +283,7 @@ export class ListReporter {
 
   /** Acknowledged immediately, so a bounded teardown is not mistaken for a hang. */
   private runInterrupted(event: RunEventOf<'run-interrupted'>): void {
+    this.interrupted = true;
     this.print(
       this.pc.yellow(
         event.mode === 'graceful'
@@ -522,8 +529,8 @@ export class ListReporter {
     const files = this.fileCounters();
     const tests = this.testCounters();
     const rows = [
-      padTitle(pc, 'Test Files') + (files.total === 0 ? pc.dim('no test files') : stateString(pc, files)),
-      padTitle(pc, 'Tests') + (tests.total === 0 ? pc.dim('no tests executed') : stateString(pc, tests)),
+      padTitle(pc, 'Test Files') + (files.total === 0 ? this.emptyState('no test files', 'none started') : stateString(pc, files)),
+      padTitle(pc, 'Tests') + (tests.total === 0 ? this.emptyState('no tests executed', 'none executed') : stateString(pc, tests)),
     ];
     const ai = usageText(this.runUsage);
     if (ai !== undefined) rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls`);
@@ -534,6 +541,12 @@ export class ListReporter {
     rows.push(padTitle(pc, 'Start at') + formatClock(this.startedAt));
     rows.push(padTitle(pc, 'Duration') + formatTime(Date.now() - this.startedAt.getTime()));
     return rows;
+  }
+
+  /** A zero counter's label: the plain text, or the interrupt when that is why nothing is counted. */
+  private emptyState(none: string, cut: string): string {
+    const { pc } = this;
+    return this.interrupted ? pc.yellow(`${cut} (interrupted)`) : pc.dim(none);
   }
 
   /** The live window: the running tree, then the summary. */
@@ -611,6 +624,7 @@ export class ListReporter {
 
   private runFinished(event: RunEventOf<'run-finished'>): void {
     const { pc } = this;
+    if (event.status === 'interrupted') this.interrupted = true;
     this.window.stop();
     // An interrupted or crashed run leaves files without their full result
     // set; print what they have so nothing that ran goes unreported.

@@ -145,8 +145,8 @@ function finished(record: RunEventResult): RunEventFact {
 
 function runFinished(
   overrides: {
-    status?: 'passed' | 'failed' | 'error';
-    exitCode?: 0 | 1 | 2;
+    status?: 'passed' | 'failed' | 'error' | 'interrupted';
+    exitCode?: 0 | 1 | 2 | 130;
     reportPath?: string;
     junitPath?: string;
     aiTracePath?: string;
@@ -627,6 +627,35 @@ describe('ListReporter', () => {
       const { lines, output } = capture();
       plainReporter(output).handle(runFinished({ reportPath: 'r.json' }));
       expect(lines.join('\n')).toContain('no tests executed');
+    });
+
+    it('names the interrupt when the run was cut before discovery', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle({ type: 'run-interrupted', mode: 'graceful' });
+      reporter.handle(runFinished({ status: 'interrupted', exitCode: 130, reportPath: 'r.json' }));
+      expect(lines).toContain(' Test Files  none started (interrupted)');
+      expect(lines).toContain('      Tests  none executed (interrupted)');
+      expect(lines.join('\n')).not.toContain('no test files');
+    });
+
+    it('names the interrupt from run-finished alone when the host aborted without the event', () => {
+      const { lines, output } = capture();
+      plainReporter(output).handle(runFinished({ status: 'interrupted', exitCode: 130 }));
+      expect(lines).toContain(' Test Files  none started (interrupted)');
+      expect(lines).toContain('      Tests  none executed (interrupted)');
+    });
+
+    it('keeps the counters of a run interrupted after its plan arrived', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 3 }]));
+      reporter.handle(finished(result({ status: 'passed', id: 'a', file: 'tests/a.e2e.ts', title: ['first'] })));
+      reporter.handle({ type: 'run-interrupted', mode: 'graceful' });
+      reporter.handle(runFinished({ status: 'interrupted', exitCode: 130 }));
+      expect(lines).toContain('      Tests  1 passed (3)');
+      expect(lines.join('\n')).not.toContain('(interrupted)');
     });
   });
 
