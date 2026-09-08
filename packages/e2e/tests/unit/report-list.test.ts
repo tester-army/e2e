@@ -916,6 +916,29 @@ describe('ListReporter', () => {
       expect(window).toContain('└── b');
     });
 
+    it('lists a passing file\u2019s tests and steps when it ran agent steps, and keeps other files to one line', () => {
+      const lines: string[] = [];
+      const output = { write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')), raw: () => {} };
+      const reporter = plainReporter(output, true);
+      reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }, { file: 'tests/plain.e2e.ts', tests: 1 }]));
+      reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
+      reporter.handle({
+        type: 'step',
+        testId: 't1',
+        target: 'chromium',
+        progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'passed', durationMs: 4_200, modelCalls: 3 },
+      });
+      reporter.handle(finished(result({ status: 'passed', id: 't1', file: 'tests/flow.e2e.ts', title: ['checkout'] })));
+      reporter.handle(testStarted('t2', 'renders', 'chromium', 'tests/plain.e2e.ts'));
+      reporter.handle(finished(result({ status: 'passed', id: 't2', file: 'tests/plain.e2e.ts', title: ['renders'] })));
+      expect(lines).toEqual([
+        ' ✓ |chromium| tests/flow.e2e.ts (1 test) 120ms',
+        '   ✓ checkout 120ms',
+        '     ✓ agent.act "pay" 4.20s · 3 model calls',
+        ' ✓ |chromium| tests/plain.e2e.ts (1 test) 120ms',
+      ]);
+    });
+
     it('clips a finished step label so the row keeps its tail at the terminal width', () => {
       const restore = withTerminalSize({ columns: 80, rows: 40 });
       try {

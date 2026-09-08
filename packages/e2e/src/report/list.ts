@@ -434,7 +434,9 @@ export class ListReporter {
    * Prints one file's block: the file line with its counts, then - when the
    * file failed, had a flaky pass, or is the run's only file - one line per
    * test with its finished agent steps nested, as vitest lists tests for a
-   * failed module.
+   * failed module. With a live window the block is also the only permanent
+   * record of a file's agent steps, so a file that has any lists its tests
+   * too; without one the steps already printed as they finished.
    */
   private printGroup(group: FileGroup): void {
     if (group.printed) return;
@@ -466,7 +468,11 @@ export class ListReporter {
     if (durationMs > 0) parts.push(pc.dim(formatTime(durationMs)));
     if (ai !== undefined) parts.push(pc.dim(ai));
     this.print(parts.join(' '));
-    const verbose = counts.failed > 0 || counts.flaky > 0 || this.groups.size === 1;
+    const verbose =
+      counts.failed > 0 ||
+      counts.flaky > 0 ||
+      this.groups.size === 1 ||
+      (this.live && group.lines.some((line) => line.steps.length > 0));
     if (!verbose) return;
     const ordered = group.lines.toSorted((a, b) => a.declarationIndex - b.declarationIndex);
     for (const line of ordered) {
