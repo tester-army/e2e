@@ -144,8 +144,14 @@ export class ListReporter {
   private projectRoot: string | undefined;
   /** Selected targets in declaration order; decides each badge's color. */
   private targets: readonly string[] = [];
-  /** When the run began: the summary's `Start at` and the origin of `Duration`. */
-  private startedAt = new Date();
+  /** When the run was launched (`run-started`): what a run that never reached `plan` reports. */
+  private launchedAt = new Date();
+  /**
+   * When the run began executing (`plan`): the summary's `Start at` and the
+   * origin of `Duration`. Undefined until then, so the clock never ticks
+   * while a first-run download narrates above the live window.
+   */
+  private startedAt: Date | undefined;
   /** File groups keyed `${target}\u0000${file}`, in first-seen order. */
   private readonly groups = new Map<string, FileGroup>();
   /** Pairs that started and whose result is still to come, keyed by `pairKey`, in start order. */
@@ -252,7 +258,7 @@ export class ListReporter {
     const { pc } = this;
     this.projectRoot = event.projectRoot;
     this.targets = event.targets;
-    this.startedAt = new Date();
+    this.launchedAt = new Date();
     const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
     this.output.write('');
     this.output.write(
@@ -268,7 +274,13 @@ export class ListReporter {
     this.window.start();
   }
 
+  /**
+   * The plan is settled once collection and every engine's `prepare` are
+   * done, so its arrival is when the run starts executing and the clock
+   * starts: a browser downloaded moments earlier is not on it.
+   */
   private plan(event: RunEventOf<'plan'>): void {
+    this.startedAt = new Date();
     for (const planned of event.files) {
       this.group(planned.file, planned.target).planned = planned.tests;
     }
@@ -515,9 +527,12 @@ export class ListReporter {
 
   /**
    * vitest's padded summary, shared by the live window and the final report:
-   * files, tests, model usage, run errors, start time, and elapsed time.
+   * files, tests, model usage, run errors, start time, and elapsed time. The
+   * clock rows wait for `plan`; the final summary of a run that never got
+   * there (a config or collection failure, a failed download) counts from
+   * the launch instead, so the time it took to fail is still on record.
    */
-  private summaryRows(): string[] {
+  private summaryRows(final: boolean): string[] {
     const { pc } = this;
     const files = this.fileCounters();
     const tests = this.testCounters();
@@ -531,15 +546,18 @@ export class ListReporter {
       const count = this.errors.length;
       rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));
     }
-    rows.push(padTitle(pc, 'Start at') + formatClock(this.startedAt));
-    rows.push(padTitle(pc, 'Duration') + formatTime(Date.now() - this.startedAt.getTime()));
+    const startedAt = this.startedAt ?? (final ? this.launchedAt : undefined);
+    if (startedAt !== undefined) {
+      rows.push(padTitle(pc, 'Start at') + formatClock(startedAt));
+      rows.push(padTitle(pc, 'Duration') + formatTime(Date.now() - startedAt.getTime()));
+    }
     return rows;
   }
 
   /** The live window: the running tree, then the summary. */
   private renderWindow(): string[] {
     const running = [...this.pairs.values()].filter((test) => test.executing);
-    return this.tree.render(running, this.summaryRows(), Date.now());
+    return this.tree.render(running, this.summaryRows(false), Date.now());
   }
 
   /** vitest's `Failed Tests` section: a banner, then each failure with its code frame. */
@@ -620,7 +638,7 @@ export class ListReporter {
     this.printFailures();
     this.printErrors();
     this.print('');
-    for (const row of this.summaryRows()) this.print(row);
+    for (const row of this.summaryRows(true)) this.print(row);
     this.print(
       padTitle(pc, 'Report') +
         (event.reportPath === undefined ? pc.dim('(not written)') : this.displayPath(event.reportPath)),

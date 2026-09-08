@@ -30,8 +30,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Provision the browser up front so a first-run download is never
-      # charged against a launch timeout.
+      # Provision the browser as its own step, so the first run does not
+      # download it and the cost is visible in the job log.
       - name: Install browsers
         run: npx playwright install chromium --with-deps
 

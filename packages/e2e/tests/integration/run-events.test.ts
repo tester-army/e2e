@@ -70,10 +70,22 @@ describe('run events', () => {
     expect(outcome.exitCode).toBe(0);
     const types = events.map((event) => event.type);
     expect(types[0]).toBe('run-started');
-    expect(types[1]).toBe('plan');
+    // Only provisioning notices may sit between the header and the plan.
+    const planIndex = types.indexOf('plan');
+    expect(planIndex).toBeGreaterThan(0);
+    expect(types.slice(1, planIndex).filter((type) => type !== 'notice')).toEqual([]);
     expect(types.at(-1)).toBe('run-finished');
     expect(types.indexOf('test-started')).toBeLessThan(types.indexOf('step'));
     expect(types.indexOf('step')).toBeLessThan(types.indexOf('test-finished'));
+  });
+
+  it('starts the run clock with the plan', () => {
+    // Collection and engine provisioning happen between run-started and
+    // plan; the report's span begins with the plan, not the launch.
+    const at = (type: RunEvent['type']) => Date.parse(events.find((event) => event.type === type)!.at);
+    const startedAt = Date.parse(outcome.report.run.startedAt);
+    expect(startedAt).toBeGreaterThanOrEqual(at('run-started'));
+    expect(startedAt).toBeLessThanOrEqual(at('plan'));
   });
 
   it('stamps a strictly increasing seq', () => {

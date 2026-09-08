@@ -283,7 +283,13 @@ describe('interrupt signals against the CLI', () => {
     () =>
       withRunningCli(
         {
-          files: { 'e2e.config.ts': config(STUCK_SERVICE_APP), 'service.cjs': STUCK_SERVICE },
+          // The run collects before it starts any process, so the project
+          // needs a test for the service to start at all; it never runs.
+          files: {
+            'e2e.config.ts': config(STUCK_SERVICE_APP),
+            'service.cjs': STUCK_SERVICE,
+            'tests/sleep.e2e.ts': SLEEPING_TEST,
+          },
           until: 'service.child',
         },
         async (run) => {

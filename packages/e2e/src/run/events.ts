@@ -49,10 +49,15 @@ export type RunEventFact =
     }
   | {
       /**
-       * What the run will execute. `total` counts every test-target pair,
-       * including unselected ones; `files` breaks the reportable pairs (run
-       * or explicitly skipped) down per test file and target, so a reporter
-       * can tell when a file's results are complete without a side lookup.
+       * What the run will execute, emitted once collection, selection, and
+       * every engine's `prepare` are done: from here the run executes, so
+       * this event's `at` is the run's start (the report's `startedAt`, the
+       * list reporter's `Start at`), and a first-run download narrated
+       * before it is not on the clock. `total` counts every test-target
+       * pair, including unselected ones; `files` breaks the reportable pairs
+       * (run or explicitly skipped) down per test file and target, so a
+       * reporter can tell when a file's results are complete without a side
+       * lookup.
        */
       readonly type: 'plan';
       readonly total: number;
@@ -64,9 +69,10 @@ export type RunEventFact =
     }
   | {
       /**
-       * One line of run-level progress outside any test: engine provisioning,
-       * a first-run download, a reused app process. `target` is the target the
-       * line is about, or `app` for the app process and its services.
+       * One line of run-level progress outside any test: engine provisioning
+       * and a first-run download (between `run-started` and `plan`), a reused
+       * app process (after `plan`). `target` is the target the line is
+       * about, or `app` for the app process and its services.
        */
       readonly type: 'notice';
       readonly target: string;

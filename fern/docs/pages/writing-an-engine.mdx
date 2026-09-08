@@ -120,10 +120,13 @@ each action once; throw `UNSUPPORTED_CAPABILITY` for a kind the surface cannot
 express. `state`, `artifacts`, and `app` are closed manifests too: an unknown
 key in any of them fails at config load.
 
+`prepare` runs once per run and target in the runner process, after the tests
+are collected and before the app starts or the run's clock does: download
+runtimes there and narrate through `info.log`, which the reporter prints.
 `init` runs once per worker before the first attempt, outside every step
-budget: boot devices and download runtimes there. A config-held handle can
-outlive an in-process worker, so `init` may run again after `dispose` on the
-same handle and must work on a disposed engine as on a fresh one.
+budget: boot devices there. A config-held handle can outlive an in-process
+worker, so `init` may run again after `dispose` on the same handle and must
+work on a disposed engine as on a fresh one.
 `startAttempt`/`endAttempt` bracket one test attempt and carry the attempt's
 artifact directory; give each test a fresh surface here (a new browser
 context, a reset app). When `startAttempt` fails or exceeds `launchTimeout`,

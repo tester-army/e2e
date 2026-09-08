@@ -472,8 +472,11 @@ export interface Engine {
    * and outside every launch budget. Provision what the engine needs on this
    * machine here (a first-run browser download, a toolchain fetch), so it
    * happens once instead of per worker and its progress reaches the reporter
-   * through `info.log`. Failure is infrastructure and ends the run before any
-   * test executes.
+   * through `info.log`. It runs after collection and before the run's clock
+   * starts: `plan` is emitted, the report's `startedAt` taken, and the app
+   * started only once every target is prepared, so a download is never part
+   * of a run's duration. Failure is infrastructure and ends the run before
+   * any test executes.
    */
   prepare?(info: EnginePrepareInfo): Promise<void>;
   /**

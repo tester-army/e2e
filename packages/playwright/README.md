@@ -71,13 +71,12 @@ test('signs in', async ({ app, screen, web }) => {
 
 ## Browsers
 
-Missing browsers are downloaded when the engine boots in each worker, before
-that worker's first test starts, so a first-run download never counts against
-a test's timeout. It does count against `launchTimeout`, and with several
-workers the others wait on the download lock, so a cold machine with many
-workers should install browsers up front.
+A missing browser is downloaded once per run, in the runner process, after the
+tests are collected and before the app starts: the progress prints in the run
+log, the run's clock starts only once the download is done, and no launch or
+test timeout ever includes it. Workers launch the browser the runner installed.
 
-In CI, install them as their own step instead, so the cost is visible and
+In CI, install browsers as their own step instead, so the cost is visible and
 cacheable:
 
 ```bash

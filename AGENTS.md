@@ -88,8 +88,9 @@ pnpm --filter @e2edev/testbed run test:headed
   package `typecheck` covers `tests/**`, which is what makes
   `tests/types/sdk-types.ts` a test.
 - Integration tests need Chromium: `pnpm --filter @e2edev/playwright exec
-  playwright install chromium`. The engine's `init` hook also installs
-  missing browsers once per worker, before any attempt starts.
+  playwright install chromium`. The Playwright engine's `prepare` hook
+  also installs a missing browser once per run, in the runner, before `plan`
+  is emitted and the run's clock starts.
 
 ## Non-obvious conventions
 

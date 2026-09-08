@@ -66,11 +66,17 @@ type RunEventFact =
   | { type: 'run-finished'; status; exitCode; reportPath?; junitPath?; aiTracePath? };
 ```
 
-`plan` announces the run's size: `total` counts every test-target pair,
-while `files` breaks the reportable pairs (run or explicitly skipped) down per
-test file and target, so a consumer can tell when a file's results are
-complete. `notice` carries one line of run-level progress outside any test — a
-engine's `prepare` hook narrating a first-run browser download, for example.
+`run-started` comes first. Collection, selection, and every engine's
+`prepare` hook follow it, so a `notice` — one line of run-level progress
+outside any test, such as an engine's `prepare` hook narrating a first-run
+browser download — can arrive before `plan`. `plan` announces the run's size
+once those are done: `total` counts every test-target pair, while `files`
+breaks the reportable pairs (run or explicitly skipped) down per test file and
+target, so a consumer can tell when a file's results are complete. It also
+marks the moment the run starts executing: the app command starts after it,
+the report's `run.startedAt` is taken with it, and the list reporter's
+`Start at` and `Duration` count from it, so a download is never on the run's
+clock.
 `step` events stream each public step's `start` and `end` phases plus its
 child events (observations, model calls, engine actions, policy decisions) as
 they happen — the same feed the list reporter renders. `test-finished`
