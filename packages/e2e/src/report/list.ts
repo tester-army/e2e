@@ -10,7 +10,7 @@ import path from 'node:path';
 import picocolors from 'picocolors';
 import type { SerializedError } from '../internal/errors.ts';
 import { packageVersion } from '../internal/package-version.ts';
-import type { RunEventFact, RunEventOf, RunEventResult } from '../run/events.ts';
+import type { RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
 import type { AttemptRecord, ResultStatus, SerialGroupRecord } from '../run/records.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
@@ -144,8 +144,14 @@ export class ListReporter {
   private projectRoot: string | undefined;
   /** Selected targets in declaration order; decides each badge's color. */
   private targets: readonly string[] = [];
-  /** When the run began: the summary's `Start at` and the origin of `Duration`. */
-  private startedAt = new Date();
+  /** When the run was launched (`run-started`): what a run that never reached `plan` reports. */
+  private launchedAt = new Date();
+  /**
+   * When the run began executing (`plan`): the summary's `Start at` and the
+   * origin of `Duration`. Undefined until then, so the clock never ticks
+   * while a first-run download narrates above the live window.
+   */
+  private startedAt: Date | undefined;
   /** File groups keyed `${target}\u0000${file}`, in first-seen order. */
   private readonly groups = new Map<string, FileGroup>();
   /** Pairs that started and whose result is still to come, keyed by `pairKey`, in start order. */
@@ -167,6 +173,14 @@ export class ListReporter {
    * read that as "no test files".
    */
   private interrupted = false;
+  /**
+   * The setup step in flight, ticking in the live window. `narrated` once a
+   * notice printed under it: a step that said something (a browser download)
+   * prints its total when done, a silent one (an instant `prepare`) does not.
+   */
+  private inFlight: { readonly step: SetupStep; readonly verb: string; readonly subject: string; readonly startedMs: number; narrated: boolean } | undefined;
+  /** Time spent starting services and app commands, split out of the summary's `Duration`. */
+  private startupMs = 0;
   /** Run-wide model usage, summed from every reported result and serial group. */
   private readonly runUsage = emptyUsage();
 
@@ -195,7 +209,11 @@ export class ListReporter {
         this.plan(event);
         break;
       case 'notice':
+        if (this.inFlight !== undefined) this.inFlight.narrated = true;
         this.print(`${this.pc.dim('ℹ')} ${bounded(event.message)}`);
+        break;
+      case 'setup':
+        this.setupStep(event);
         break;
       case 'test-started':
         this.testStarted(event);
@@ -258,7 +276,7 @@ export class ListReporter {
     const { pc } = this;
     this.projectRoot = event.projectRoot;
     this.targets = event.targets;
-    this.startedAt = new Date();
+    this.launchedAt = new Date();
     const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
     this.output.write('');
     this.output.write(
@@ -274,21 +292,63 @@ export class ListReporter {
     this.window.start();
   }
 
+  /**
+   * The plan is settled once collection and every target's `prepare` are
+   * done, so its arrival is when the run starts executing and the clock
+   * starts: a browser downloaded moments earlier is not on it.
+   */
   private plan(event: RunEventOf<'plan'>): void {
+    this.startedAt = new Date();
     for (const planned of event.files) {
       this.group(planned.file, planned.target).planned = planned.tests;
     }
     this.window.redraw();
   }
 
-  /** Acknowledged immediately, so a bounded teardown is not mistaken for a hang. */
+  /**
+   * The setup stretch before any test: collection, each target's `prepare`,
+   * then the services and app commands. Without this the window showed only
+   * zero counters while a database booted or a browser downloaded. The step
+   * in flight ticks in the live window; a finished process prints once with
+   * its wait, a finished collection or provisioning only when it narrated;
+   * the process waits sum into the summary's startup split.
+   */
+  private setupStep(event: RunEventOf<'setup'>): void {
+    const { pc } = this;
+    const { verb, subject, done } = setupWording(event.step);
+    if (event.state === 'started') {
+      this.inFlight = { step: event.step, verb, subject, startedMs: Date.now(), narrated: false };
+      this.window.redraw();
+      return;
+    }
+    const narrated = this.inFlight?.narrated ?? false;
+    this.inFlight = undefined;
+    const process = event.step.kind === 'service' || event.step.kind === 'app';
+    if (process) this.startupMs += event.durationMs;
+    if (!process && !narrated) {
+      this.window.redraw();
+      return;
+    }
+    const outcome = event.outcome ?? done;
+    this.print(` ${pc.green(F_CHECK)} ${subject} ${pc.dim(`${outcome} ${formatTime(event.durationMs)}`)}`);
+  }
+
+  /**
+   * Acknowledged immediately, so a bounded teardown is not mistaken for a
+   * hang. An interrupt that lands during setup names the step it cut short
+   * (`interrupted while starting service "postgres"`), since no test was
+   * running to stop.
+   */
   private runInterrupted(event: RunEventOf<'run-interrupted'>): void {
     this.interrupted = true;
+    const during = this.inFlight === undefined ? undefined : `${this.inFlight.verb} ${this.inFlight.subject}`;
     this.print(
       this.pc.yellow(
-        event.mode === 'graceful'
-          ? 'interrupted: stopping the running test and tearing down (interrupt again to force)'
-          : 'interrupted again: tearing every worker down now',
+        event.mode === 'forced'
+          ? 'interrupted again: tearing every worker down now'
+          : during === undefined
+            ? 'interrupted: stopping the running test and tearing down (interrupt again to force)'
+            : `interrupted while ${during}: tearing down (interrupt again to force)`,
       ),
     );
   }
@@ -522,9 +582,12 @@ export class ListReporter {
 
   /**
    * vitest's padded summary, shared by the live window and the final report:
-   * files, tests, model usage, run errors, start time, and elapsed time.
+   * files, tests, model usage, run errors, start time, and elapsed time. The
+   * clock rows wait for `plan`; the final summary of a run that never got
+   * there (a config or collection failure, a failed download) counts from
+   * the launch instead, so the time it took to fail is still on record.
    */
-  private summaryRows(): string[] {
+  private summaryRows(final: boolean): string[] {
     const { pc } = this;
     const files = this.fileCounters();
     const tests = this.testCounters();
@@ -538,8 +601,12 @@ export class ListReporter {
       const count = this.errors.length;
       rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));
     }
-    rows.push(padTitle(pc, 'Start at') + formatClock(this.startedAt));
-    rows.push(padTitle(pc, 'Duration') + formatTime(Date.now() - this.startedAt.getTime()));
+    const startedAt = this.startedAt ?? (final ? this.launchedAt : undefined);
+    if (startedAt !== undefined) {
+      rows.push(padTitle(pc, 'Start at') + formatClock(startedAt));
+      const startup = this.startupMs > 0 ? pc.dim(` (startup ${formatTime(this.startupMs)})`) : '';
+      rows.push(padTitle(pc, 'Duration') + formatTime(Date.now() - startedAt.getTime()) + startup);
+    }
     return rows;
   }
 
@@ -552,7 +619,7 @@ export class ListReporter {
   /** The live window: the running tree, then the summary. */
   private renderWindow(): string[] {
     const running = [...this.pairs.values()].filter((test) => test.executing);
-    return this.tree.render(running, this.summaryRows(), Date.now());
+    return this.tree.render(running, this.summaryRows(false), Date.now(), this.inFlight);
   }
 
   /** vitest's `Failed Tests` section: a banner, then each failure with its code frame. */
@@ -634,7 +701,7 @@ export class ListReporter {
     this.printFailures();
     this.printErrors();
     this.print('');
-    for (const row of this.summaryRows()) this.print(row);
+    for (const row of this.summaryRows(true)) this.print(row);
     this.print(
       padTitle(pc, 'Report') +
         (event.reportPath === undefined ? pc.dim('(not written)') : this.displayPath(event.reportPath)),
@@ -647,5 +714,27 @@ export class ListReporter {
       this.print(padTitle(pc, 'AI trace') + `${shown} ${pc.dim(`(open with: npx unbox-ai ${shown})`)}`);
     }
     this.print('');
+  }
+}
+
+
+/**
+ * How the reporter phrases one setup step: the verb and subject while it
+ * runs (`starting service "postgres"`), and the word for its completion
+ * (`ready`); a reused process says `reused` instead.
+ */
+function setupWording(step: SetupStep): { verb: string; subject: string; done: string } {
+  switch (step.kind) {
+    case 'collect':
+      return { verb: 'collecting', subject: 'tests', done: 'collected' };
+    case 'prepare':
+      return {
+        verb: 'preparing',
+        subject: `${bounded(step.engine)} engine for target "${bounded(step.target)}"`,
+        done: 'prepared',
+      };
+    case 'service':
+    case 'app':
+      return { verb: 'starting', subject: bounded(step.label), done: 'ready' };
   }
 }

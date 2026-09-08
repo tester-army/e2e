@@ -242,8 +242,12 @@ Exactly one of `readyUrl` or `waitForExit` is required per service, otherwise
 service or a `teardown` command there is nothing to reuse and it is
 `INVALID_CONFIG`. Services start sequentially in declaration order before any
 app command, each ready before the next starts, and `startupTimeout` bounds
-every readiness wait. `services` works without `command` when the app is
-already running or is itself one of the services. Services declared
+every readiness wait. Each service is one setup step of the run: the list
+reporter shows the one starting with a ticking clock, prints its wait once it
+is ready, and splits the whole startup out of the summary's `Duration`; the
+programmatic runner streams the same as `setup` events. `services` works
+without `command` when the app is already running or is itself one of the
+services. Services declared
 identically by several targets start once; two targets that order shared
 services differently, or put one explicit `name` on two different services,
 are `INVALID_CONFIG`.

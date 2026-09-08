@@ -65,12 +65,16 @@ async function answers(url: string, timeoutMs: number): Promise<boolean> {
 
 /**
  * What the runner tells a managed process about the run: whether CI mode is
- * active (where `reuseExisting` is ignored) and where to narrate run-level
- * progress such as a reused app.
+ * active (where `reuseExisting` is ignored), where to narrate run-level
+ * progress such as a reused app, and where to report the process starting
+ * and becoming ready.
  */
 export interface ManagedProcessHooks {
   readonly ci?: boolean;
   readonly notice?: (message: string) => void;
+  readonly starting?: (label: string) => void;
+  /** `reused` when the process attached to one already serving the URL instead of spawning. */
+  readonly ready?: (label: string, durationMs: number, reused: boolean) => void;
 }
 
 /**
@@ -110,6 +114,17 @@ export class ManagedProcess {
    * The probe spends from the same `startupTimeout` budget as the wait.
    */
   async start(signal?: AbortSignal): Promise<void> {
+    // A function, not a narrowed local: the signal flips while `launch` awaits.
+    const aborted = (): boolean => signal?.aborted === true;
+    if (aborted()) return;
+    const startedAt = Date.now();
+    this.hooks.starting?.(this.label);
+    await this.launch(signal);
+    if (!aborted()) this.hooks.ready?.(this.label, Date.now() - startedAt, this.reusedExisting);
+  }
+
+  /** The preflight probe, the spawn, and the readiness wait behind `start`. */
+  private async launch(signal?: AbortSignal): Promise<void> {
     // A function, not a narrowed local: the signal flips while the loop awaits.
     const aborted = (): boolean => signal?.aborted === true;
     if (aborted()) return;

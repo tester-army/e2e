@@ -6,7 +6,7 @@
  */
 
 import { bounded, F_POINTER, formatTime, terminalColumns, terminalRows, type Colors } from './format.ts';
-import type { FileGroup, RunningTest } from './list-model.ts';
+import type { FileGroup, RunningTest, SetupInFlight } from './list-model.ts';
 import { eventLine, stepLabel, stepLine } from './list-steps.ts';
 import { REPAINT_INTERVAL_MS, WIDTH_MARGIN } from './live-window.ts';
 
@@ -83,7 +83,12 @@ export class RunningTree {
    * once every test has its own row, and tests that still do not fit fold
    * into one `more running` marker.
    */
-  render(running: readonly RunningTest[], summary: readonly string[], now: number): string[] {
+  render(
+    running: readonly RunningTest[],
+    summary: readonly string[],
+    now: number,
+    setup?: SetupInFlight,
+  ): string[] {
     const { pc } = this;
     const active = new Map<FileGroup, RunningTest[]>();
     for (const test of running) {
@@ -100,6 +105,12 @@ export class RunningTree {
     const maxEvents = Math.min(MAX_EVENTS, perTest);
     const lines: string[] = [];
     let hidden = 0;
+    if (setup !== undefined && budget > 0) {
+      lines.push(
+        `${pc.bold(pc.yellow(` ${F_POINTER} `))}${pc.dim(setup.verb)} ${setup.subject} ${this.clock(now - setup.startedMs)}`,
+      );
+      budget -= 1;
+    }
     for (const [group, tests] of active) {
       if (budget < 2) {
         hidden += tests.length;

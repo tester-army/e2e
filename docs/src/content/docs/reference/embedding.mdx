@@ -57,6 +57,8 @@ type RunEventFact =
   | { type: 'run-started'; runId; projectId; projectRoot; ci; targets; model? }
   | { type: 'plan'; total; files: { file; target; tests }[] }
   | { type: 'notice'; target; message }
+  | { type: 'setup'; step: SetupStep; state: 'started' }
+  | { type: 'setup'; step: SetupStep; state: 'finished'; durationMs; outcome?: 'reused' }
   | { type: 'test-started'; testId; title; file; serialId; target }
   | { type: 'step'; testId; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
@@ -64,13 +66,34 @@ type RunEventFact =
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
   | { type: 'run-finished'; status; exitCode; reportPath?; junitPath?; aiTracePath? };
+
+type SetupStep =
+  | { kind: 'collect' }
+  | { kind: 'prepare'; target; engine }
+  | { kind: 'service'; label }
+  | { kind: 'app'; label };
 ```
 
-`plan` announces the run's size: `total` counts every test-target pair,
-while `files` breaks the reportable pairs (run or explicitly skipped) down per
-test file and target, so a consumer can tell when a file's results are
-complete. `notice` carries one line of run-level progress outside any test — a
-engine's `prepare` hook narrating a first-run browser download, for example.
+`run-started` comes first. Everything before the first test is a `setup`
+step, `started` then `finished` with its length: `collect` loads the test
+files, `prepare` is one target's engine provisioning (a first-run browser
+download), `service` and `app` are the processes the run owns, labelled as
+the runner names them (`service "postgres"`, `target "web" command`), with
+`outcome: 'reused'` when the run attached to a process already serving the
+URL instead of spawning. A `notice` is one line of progress inside the step
+in flight, such as the `prepare` hook narrating the download. A step that
+fails ends as a `run-error` instead, and a step the interrupt cuts short
+reports nothing more. Collection and provisioning come before `plan`; the
+services and app commands start after it.
+
+`plan` announces the run's size once collection and provisioning are done:
+`total` counts every test-target pair, while `files` breaks the reportable
+pairs (run or explicitly skipped) down per test file and target, so a
+consumer can tell when a file's results are complete. It also marks the
+moment the run starts executing: the report's `run.startedAt` is taken with
+it, and the list reporter's `Start at` and `Duration` count from it, so a
+download is never on the run's clock while the startup of services and the
+app is, split out as `(startup 41.20s)`.
 `step` events stream each public step's `start` and `end` phases plus its
 child events (observations, model calls, engine actions, policy decisions) as
 they happen — the same feed the list reporter renders. `test-finished`

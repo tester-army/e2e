@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
 import type { RunEventFact, RunEventResult } from '../../src/run/events.ts';
@@ -575,6 +575,56 @@ describe('ListReporter', () => {
       expect(lines.at(-1)).toBe('');
     });
 
+    it('starts the clock at plan, so a download narrated before it is not on it', () => {
+      vi.useFakeTimers({ now: new Date('2026-09-08T10:00:00.000Z') });
+      try {
+        const { lines, output } = capture();
+        const reporter = plainReporter(output);
+        reporter.handle(runStarted());
+        reporter.handle({
+          type: 'notice',
+          target: 'web',
+          message: 'Downloading missing Playwright browsers (first run): chromium...',
+        });
+        vi.advanceTimersByTime(15_000);
+        const executionStart = new Date();
+        reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+        vi.advanceTimersByTime(2_000);
+        reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts' })));
+        reporter.handle(runFinished({ reportPath: 'r.json' }));
+        expect(lines).toContain(`   Start at  ${executionStart.toTimeString().split(' ')[0]}`);
+        expect(lines).toContain('   Duration  2.00s');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('counts a run that never reached plan from its launch', () => {
+      vi.useFakeTimers({ now: new Date('2026-09-08T10:00:00.000Z') });
+      try {
+        const { lines, output } = capture();
+        const reporter = plainReporter(output);
+        const launch = new Date();
+        reporter.handle(runStarted());
+        vi.advanceTimersByTime(1_500);
+        reporter.handle({
+          type: 'run-error',
+          error: {
+            category: 'configuration',
+            code: 'NO_TESTS',
+            message: 'no test file matched tests/**/*.e2e.ts',
+            retryable: false,
+            phase: 'collection',
+          },
+        });
+        reporter.handle(runFinished({ status: 'error', exitCode: 2, reportPath: 'r.json' }));
+        expect(lines).toContain(`   Start at  ${launch.toTimeString().split(' ')[0]}`);
+        expect(lines).toContain('   Duration  1.50s');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('reports model usage per file and for the run', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
@@ -656,6 +706,61 @@ describe('ListReporter', () => {
       reporter.handle(runFinished({ status: 'interrupted', exitCode: 130 }));
       expect(lines).toContain('      Tests  1 passed (3)');
       expect(lines.join('\n')).not.toContain('(interrupted)');
+    });
+  });
+
+  describe('setup steps', () => {
+    it('prints each process once it is ready and splits startup out of the duration', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'started' });
+      reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'finished', durationMs: 41_200 });
+      reporter.handle({ type: 'setup', step: { kind: 'app', label: 'target "chromium" command' }, state: 'started' });
+      reporter.handle({ type: 'setup', step: { kind: 'app', label: 'target "chromium" command' }, state: 'finished', durationMs: 1_800, outcome: 'reused' });
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines).toContain(' ✓ service "compose" ready 41.20s');
+      expect(lines).toContain(' ✓ target "chromium" command reused 1.80s');
+      expect(lines.find((line) => line.includes('Duration'))).toMatch(/^   Duration  \S+ \(startup 43\.00s\)$/);
+    });
+
+    it('leaves the duration alone when the run started no process', () => {
+      const { lines, output } = capture();
+      plainReporter(output).handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines.find((line) => line.includes('Duration'))).not.toContain('startup');
+    });
+
+    it('prints a provisioning step only when it narrated, and never the collection', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle({ type: 'setup', step: { kind: 'collect' }, state: 'started' });
+      reporter.handle({ type: 'setup', step: { kind: 'collect' }, state: 'finished', durationMs: 310 });
+      const prepare = { kind: 'prepare', target: 'web', engine: 'playwright' } as const;
+      reporter.handle({ type: 'setup', step: prepare, state: 'started' });
+      reporter.handle({ type: 'setup', step: prepare, state: 'finished', durationMs: 2 });
+      reporter.handle({ type: 'setup', step: prepare, state: 'started' });
+      reporter.handle({ type: 'notice', target: 'web', message: 'Downloading missing Playwright browsers (first run): chromium...' });
+      reporter.handle({ type: 'setup', step: prepare, state: 'finished', durationMs: 13_200 });
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines.filter((line) => line.includes('collected'))).toEqual([]);
+      expect(lines.filter((line) => line.includes('prepared'))).toEqual([
+        ' ✓ playwright engine for target "web" prepared 13.20s',
+      ]);
+      // Provisioning is off the clock: no startup split for it.
+      expect(lines.find((line) => line.includes('Duration'))).not.toContain('startup');
+    });
+
+    it('names the setup step an interrupt cut short', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "postgres"' }, state: 'started' });
+      reporter.handle({ type: 'run-interrupted', mode: 'graceful' });
+      reporter.handle(runFinished({ status: 'interrupted', exitCode: 130, reportPath: 'r.json' }));
+      expect(lines).toContain('interrupted while starting service "postgres": tearing down (interrupt again to force)');
+      // No test was running, so the summary keeps the interrupt wording for empty counters.
+      expect(lines).toContain(' Test Files  none started (interrupted)');
     });
   });
 
@@ -1086,6 +1191,35 @@ describe('ListReporter', () => {
       expect(eraseIndex).toBeGreaterThan(-1);
       expect(eraseIndex).toBeLessThan(noticeIndex);
       expect(chunks.at(-1)).toContain('Tests');
+    });
+
+    it('shows no clock in the live window until the plan arrives', () => {
+      const { chunks, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle({
+        type: 'notice',
+        target: 'web',
+        message: 'Downloading missing Playwright browsers (first run): chromium...',
+      });
+      // The block below a first-run download has counters but no ticking
+      // duration: the run has not started executing yet.
+      expect(chunks.at(-1)).toContain('Tests');
+      expect(chunks.at(-1)).not.toContain('Duration');
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      expect(chunks.at(-1)).toContain('Duration');
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+    });
+
+    it('shows the setup step in flight with its clock and drops it once done', () => {
+      const { chunks, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'started' });
+      expect(chunks.at(-1)).toMatch(/ ❯ starting service "compose" \d+ms/);
+      reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'finished', durationMs: 900 });
+      expect(chunks.at(-1)).not.toContain('starting');
+      expect(chunks.some((chunk) => chunk.includes(' ✓ service "compose" ready 900ms'))).toBe(true);
     });
 
     it('never writes control sequences when live rendering is off', () => {

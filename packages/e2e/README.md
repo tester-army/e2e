@@ -93,8 +93,9 @@ test('user signs in', async ({ app, screen, web }) => {
 
 The runner itself knows no platform: every target names the engine that
 drives it, and `@e2edev/playwright` is the browser one. Missing Playwright
-browsers are downloaded on first run. To provision them ahead of time (for
-example in a CI image), run `npx playwright install chromium`.
+browsers are downloaded once, on the first run, before the run's clock starts.
+To provision them ahead of time (for example in a CI image), run
+`npx playwright install chromium`.
 
 Run files in parallel with `--workers`, or set `workers` in the config.
 

@@ -43,6 +43,18 @@ export interface RunEventResult extends WireResultRecord {
   readonly target: { readonly name: string; readonly platform: string };
 }
 
+/**
+ * What one setup step is about. `collect` loads the test files; `prepare` is
+ * one target's engine provisioning (a first-run browser download); `service`
+ * and `app` are the processes the run owns, labelled the way the runner names
+ * them (`service "postgres"`, `target "web" command`).
+ */
+export type SetupStep =
+  | { readonly kind: 'collect' }
+  | { readonly kind: 'prepare'; readonly target: string; readonly engine: string }
+  | { readonly kind: 'service'; readonly label: string }
+  | { readonly kind: 'app'; readonly label: string };
+
 /** One fact about the run; the emitter wraps it in the envelope. */
 export type RunEventFact =
   | {
@@ -57,10 +69,15 @@ export type RunEventFact =
     }
   | {
       /**
-       * What the run will execute. `total` counts every test-target pair,
-       * including unselected ones; `files` breaks the reportable pairs (run
-       * or explicitly skipped) down per test file and target, so a reporter
-       * can tell when a file's results are complete without a side lookup.
+       * What the run will execute, emitted once collection, selection, and
+       * every target's `prepare` are done: from here the run executes, so
+       * this event's `at` is the run's start (the report's `startedAt`, the
+       * list reporter's `Start at`), and a first-run download narrated
+       * before it is not on the clock. `total` counts every test-target
+       * pair, including unselected ones; `files` breaks the reportable pairs
+       * (run or explicitly skipped) down per test file and target, so a
+       * reporter can tell when a file's results are complete without a side
+       * lookup.
        */
       readonly type: 'plan';
       readonly total: number;
@@ -72,13 +89,35 @@ export type RunEventFact =
     }
   | {
       /**
-       * One line of run-level progress outside any test: engine provisioning,
-       * a first-run download, a reused app process. `target` is the target the
-       * line is about, or `app` for the app process and its services.
+       * One line of run-level progress outside any test, inside the setup
+       * step in flight: a first-run download narrating under a `prepare`
+       * step, a reused app process under an `app` step. `target` is the
+       * target the line is about, or `app` for the app process and its
+       * services.
        */
       readonly type: 'notice';
       readonly target: string;
       readonly message: string;
+    }
+  | {
+      /**
+       * One step of the run's setup, before any test: `started` as it begins,
+       * `finished` once it is done, with how long it took. Collection and each
+       * target's engine `prepare` come before `plan`; the services and app
+       * commands start after it. A step that fails ends as a `run-error`
+       * instead, and a step the interrupt cuts short reports nothing more.
+       */
+      readonly type: 'setup';
+      readonly step: SetupStep;
+      readonly state: 'started';
+    }
+  | {
+      readonly type: 'setup';
+      readonly step: SetupStep;
+      readonly state: 'finished';
+      readonly durationMs: number;
+      /** `reused` when a service or app command attached to a process already serving its URL instead of spawning. */
+      readonly outcome?: 'reused';
     }
   | {
       readonly type: 'test-started';

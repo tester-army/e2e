@@ -314,6 +314,32 @@ describe('ServiceStack', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('reports each service starting and ready through the hooks, in order', async () => {
+    const events: string[] = [];
+    const services = new ServiceStack(
+      resolveServices(
+        [
+          { name: 'db', executable: process.execPath, args: ['-e', 'process.exit(0)'], waitForExit: true },
+          { name: 'seed', executable: process.execPath, args: ['-e', 'process.exit(0)'], waitForExit: true },
+        ],
+        dir,
+      ),
+      dir,
+      {
+        starting: (label) => events.push(`starting ${label}`),
+        ready: (label, durationMs, reused) => events.push(`ready ${label} ${durationMs >= 0} ${reused}`),
+      },
+    );
+    await services.start();
+    expect(events).toEqual([
+      'starting service "db"',
+      'ready service "db" true false',
+      'starting service "seed"',
+      'ready service "seed" true false',
+    ]);
+    expect(await stopAll(services)).toEqual([]);
+  });
+
   it('starts waitForExit services in order and runs their teardowns in reverse', async () => {
     const log = path.join(dir, 'log');
     const services = stack([

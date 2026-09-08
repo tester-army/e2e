@@ -85,3 +85,10 @@ export interface FileGroup {
   readonly lines: TestLine[];
   printed: boolean;
 }
+
+/** The setup step in flight, ticking in the live window: `starting service "postgres"`, `preparing playwright engine for target "web"`. */
+export interface SetupInFlight {
+  readonly verb: string;
+  readonly subject: string;
+  readonly startedMs: number;
+}

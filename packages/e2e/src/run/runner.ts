@@ -32,7 +32,7 @@ import { renderJunitReport } from '../report/junit.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport, writeTextReport } from '../report/write.ts';
 import { ManagedProcess, ServiceStack } from './managed-process.ts';
-import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus } from './events.ts';
+import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
@@ -159,7 +159,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const runId = uuidv7();
-  const startedAt = timestamp();
+  /**
+   * When the run began executing: taken again right before `plan`, once
+   * collection and provisioning are done, so a first-run download is never
+   * part of the reported span. A run that fails before then keeps its launch
+   * time, and the span is the time it took to fail.
+   */
+  let startedAt = timestamp();
   const debug = new DebugTrace(options.debug === true);
   const aiTrace = options.aiTrace === true ? new AiTraceCollector() : undefined;
   /** The in-process recorder; child-process workers own their own. */
@@ -406,7 +412,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
   const executeRun = async (): Promise<void> => {
     const interrupted = interruptController.signal;
+    // A run cancelled before it began collects nothing: the interrupt alone
+    // decides the outcome.
     if (interrupted.aborted) return;
+
+    // Which targets the run is for, settled before anything is collected,
+    // downloaded, or started: an unknown --target is a collection failure.
     let targets: readonly ResolvedTarget[];
     try {
       targets = selectTargets(config.targets, options.targetIds);
@@ -414,57 +425,48 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       recordFailure(cause, 'collection');
       return;
     }
-    // Each engine declares the app it drives: the dependency processes it
-    // needs and the command that starts it. Declarations are deduplicated
-    // across targets (two browsers on one dev server share one process), and
-    // every service is ready before the first app command starts. Nothing
-    // spawns once the run was interrupted. A reused process or an ignored
-    // `reuseExisting` narrates as a run notice.
-    const processHooks = {
-      ci: isCiMode(env),
-      notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
-    };
-    const declared = declaredProcesses(targets);
-    if (declared.services.length > 0) {
-      const stack = new ServiceStack(declared.services, config.projectRoot, processHooks);
-      services = stack;
-      await debug.time('app.services.start', () => stack.start(interrupted));
-      if (interrupted.aborted) return;
-    }
-    for (const { label, command, readyUrl } of declared.commands) {
-      const app = new ManagedProcess(label, command, config.projectRoot, { readyUrl }, processHooks);
-      appProcesses.push(app);
-      await debug.time(`app.start(${label})`, () => app.start(interrupted));
-      if (interrupted.aborted) return;
-    }
-    // A run cancelled before any test could start collects nothing: the
-    // interrupt alone decides the outcome.
-    if (interrupted.aborted) return;
 
+    // Each selected engine declares the app it drives: the dependency
+    // processes it needs and the command that starts it. Declarations are
+    // deduplicated across targets (two browsers on one dev server share one
+    // process) and checked for consistency here, first; the processes start
+    // only after the plan, and only for the selected targets.
+    const declared = declaredProcesses(targets);
+
+    /**
+     * Narrates and times one setup step on the event spine. A step that
+     * throws ends as a run error, and a step the interrupt cut short reports
+     * nothing more; either way no `finished` follows.
+     */
+    const setupStep = async <T>(step: SetupStep, work: () => Promise<T>): Promise<T> => {
+      emit({ type: 'setup', step, state: 'started' });
+      const startedMs = Date.now();
+      const result = await work();
+      if (!interrupted.aborted) emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });
+      return result;
+    };
+
+    // Collection comes first and starts no process: a collection failure or
+    // NO_TESTS is reported before any dev server boots or browser downloads.
     let planned: { collection: Collection; selection: Selection };
     try {
-      planned = await debug.time('collect', async () => {
-        const collection = await collect(config, options.files);
-        const selection = select(
-          collection,
-          config,
-          selectionFilters(options),
-          options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
-        );
-        return { collection, selection };
-      });
+      planned = await setupStep({ kind: 'collect' }, () =>
+        debug.time('collect', async () => {
+          const collection = await collect(config, options.files);
+          const selection = select(
+            collection,
+            config,
+            selectionFilters(options),
+            options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
+          );
+          return { collection, selection };
+        }),
+      );
     } catch (cause) {
       recordFailure(cause, 'collection');
       return;
     }
     const { collection, selection } = planned;
-
-    emit({ type: 'plan', total: selection.pairs.length, files: plannedFiles(selection) });
-
-    const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
-    const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
-    const store = SessionStore.create(runId, sessionsRoot);
-    sessionStore = store;
 
     // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the
@@ -474,16 +476,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
 
     // Provisioning: an engine that must fetch something onto this machine (a
-    // first-run browser download) does it here, once per target and before
-    // any worker, outside every launch budget. Only an interrupt cuts it
-    // short, and its progress streams as `notice` events, so the reporter
-    // prints it instead of a worker's stderr fighting the live status block.
+    // first-run browser download) does it here, once per target, before the
+    // app starts and before the run's clock starts. Only an interrupt cuts it
+    // short. Each target is one setup step, and the engine's progress lines
+    // stream as `notice` events under it, so the reporter prints them instead
+    // of a worker's stderr fighting the live status block.
     try {
       await debug.time('engine.prepare', () =>
         prepareEngines(
           selection.perTarget.map(({ target }) => target),
           { runId, env, signal: interrupted },
-          (target, message) => emit({ type: 'notice', target, message }),
+          emit,
         ),
       );
     } catch (cause) {
@@ -491,6 +494,50 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       return;
     }
     if (interrupted.aborted) return;
+
+    // The run's clock starts here, once collection and provisioning are done.
+    // `plan` marks the moment and the report's `startedAt` agrees with it, so
+    // everything a run pays for every time (the app, the tests, the report)
+    // is on the clock and a one-off download is not.
+    startedAt = timestamp();
+    emit({ type: 'plan', total: selection.pairs.length, files: plannedFiles(selection) });
+
+    // Every service is ready before the first app command starts. Nothing
+    // spawns once the run was interrupted. Each process is one setup step; a
+    // reused process or an ignored `reuseExisting` narrates as a run notice.
+    const processHooks = (kind: 'service' | 'app') => ({
+      ci: isCiMode(env),
+      notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
+      starting: (label: string) => emit({ type: 'setup', step: { kind, label }, state: 'started' }),
+      ready: (label: string, durationMs: number, reused: boolean) =>
+        emit({
+          type: 'setup',
+          step: { kind, label },
+          state: 'finished',
+          durationMs,
+          ...(reused ? { outcome: 'reused' as const } : {}),
+        }),
+    });
+    if (declared.services.length > 0) {
+      const stack = new ServiceStack(declared.services, config.projectRoot, processHooks('service'));
+      services = stack;
+      await debug.time('app.services.start', () => stack.start(interrupted));
+      if (interrupted.aborted) return;
+    }
+    for (const { label, command, readyUrl } of declared.commands) {
+      const app = new ManagedProcess(label, command, config.projectRoot, { readyUrl }, processHooks('app'));
+      appProcesses.push(app);
+      await debug.time(`app.start(${label})`, () => app.start(interrupted));
+      if (interrupted.aborted) return;
+    }
+    // A run cancelled while the app was starting runs no test: the interrupt
+    // alone decides the outcome.
+    if (interrupted.aborted) return;
+
+    const artifactsRoot = resolveArtifactsRoot(config, options.artifactsDir);
+    const sessionsRoot = path.join(config.projectRoot, '.e2e', 'sessions');
+    const store = SessionStore.create(runId, sessionsRoot);
+    sessionStore = store;
 
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A programmatic `rawConfig` cannot cross a process
@@ -620,19 +667,24 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 }
 
 /**
- * Runs each target's `prepare` hook in turn. Sequential on purpose: two
- * engines provisioning the same toolchain would race, and the notices of
- * one download read better than two interleaved.
+ * Runs each target's `prepare` hook in turn, before `plan` is emitted and the
+ * run's clock starts, each as one `setup` step with the hook's progress lines
+ * streaming as `notice` events under it. Sequential on purpose: two engines
+ * provisioning the same toolchain would race, and the notices of one download
+ * read better than two interleaved.
  */
 async function prepareEngines(
   targets: readonly ResolvedTarget[],
   scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
-  notice: (target: string, message: string) => void,
+  emit: (fact: RunEventFact) => void,
 ): Promise<void> {
   for (const target of targets) {
     const engine = target.engine;
     if (engine?.prepare === undefined) continue;
     if (scope.signal.aborted) return;
+    const step: SetupStep = { kind: 'prepare', target: target.name, engine: engine.name };
+    emit({ type: 'setup', step, state: 'started' });
+    const startedMs = Date.now();
     try {
       // The same `env` the workers are started with: what prepare provisions
       // must be where a worker's launch will look for it.
@@ -641,10 +693,13 @@ async function prepareEngines(
         targetName: target.name,
         env: scope.env,
         signal: scope.signal,
-        log: (line) => notice(target.name, line),
+        log: (line) => emit({ type: 'notice', target: target.name, message: line }),
       });
     } catch (cause) {
       throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
+    }
+    if (!scope.signal.aborted) {
+      emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });
     }
   }
 }

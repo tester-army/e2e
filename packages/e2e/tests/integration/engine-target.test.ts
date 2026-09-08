@@ -89,6 +89,9 @@ function toyEngine(
             lifecycle.push('prepare');
             info.log(`provisioning toy device for ${info.env['TOY_CACHE'] ?? 'no cache'}`);
             if (options.withPrepare === 'fail') throw new Error('toolchain missing');
+            // Long enough that a clock started after this hook is measurably
+            // later than the notice it just logged.
+            await new Promise((resolve) => setTimeout(resolve, 50));
           },
         }),
     ...(options.withoutInit === true
@@ -374,12 +377,14 @@ test('second attempt also starts fresh', async ({ screen }) => {
     }
   });
 
-  it('prepares an engine once in the runner, before any worker, narrating through notice events', async () => {
+  it('prepares an engine once in the runner as a setup step before the plan, narrating through notice events', async () => {
     const toy = toyEngine({ withLocate: true, withPrepare: 'ok' });
     const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
     const notices: { target: string; message: string }[] = [];
-    let noticeSeq = 0;
-    let firstTestSeq = 0;
+    const setup: { kind: string; state: string; engine?: string; durationMs?: number }[] = [];
+    /** Event types in order of first appearance. */
+    const order: string[] = [];
+    let noticeAt = 0;
     try {
       const outcome = await run({
         cwd: project.dir,
@@ -390,19 +395,41 @@ test('second attempt also starts fresh', async ({ screen }) => {
         env: { ...process.env, APP_URL: '', CI: '', TOY_CACHE: '/run/cache' },
         quiet: true,
         onEvent: (event) => {
+          if (!order.includes(event.type)) order.push(event.type);
           if (event.type === 'notice') {
             notices.push({ target: event.target, message: event.message });
-            noticeSeq = event.seq;
+            noticeAt = Date.parse(event.at);
           }
-          if (event.type === 'test-started' && firstTestSeq === 0) firstTestSeq = event.seq;
+          if (event.type === 'setup') {
+            setup.push({
+              kind: event.step.kind,
+              state: event.state,
+              ...(event.step.kind === 'prepare' ? { engine: event.step.engine } : {}),
+              ...(event.state === 'finished' ? { durationMs: event.durationMs } : {}),
+            });
+          }
         },
       });
       expect(outcome.exitCode).toBe(0);
       expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose']);
       // The hook sees the run's environment, the one the workers start with.
       expect(notices).toEqual([{ target: 'toy-sim', message: 'provisioning toy device for /run/cache' }]);
-      expect(noticeSeq).toBeGreaterThan(0);
-      expect(noticeSeq).toBeLessThan(firstTestSeq);
+      // Collection and provisioning are setup steps between the header and
+      // the plan; the notice narrates under the prepare step, which names the
+      // engine and lasts at least the hook's own wait.
+      expect(order.slice(0, 5)).toEqual(['run-started', 'setup', 'notice', 'plan', 'test-started']);
+      expect(setup.map((step) => `${step.kind}:${step.state}`)).toEqual([
+        'collect:started',
+        'collect:finished',
+        'prepare:started',
+        'prepare:finished',
+      ]);
+      const prepared = setup[3]!;
+      expect(prepared.engine).toBe('toy-device');
+      expect(prepared.durationMs).toBeGreaterThanOrEqual(40);
+      // The clock starts with the plan: the report's startedAt is later than
+      // the download it narrated (with a margin for a timer firing early).
+      expect(Date.parse(outcome.report.run.startedAt)).toBeGreaterThanOrEqual(noticeAt + 40);
     } finally {
       project.cleanup();
     }
