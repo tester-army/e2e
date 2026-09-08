@@ -121,6 +121,26 @@ function matchesTags(
   return tags.some((tag) => options.tags.includes(tag));
 }
 
+/** Validates target IDs and selects targets once each, in config order. */
+export function selectTargets(
+  targets: readonly ResolvedTarget[],
+  targetIds: readonly string[] | undefined,
+): readonly ResolvedTarget[] {
+  if (targetIds === undefined || targetIds.length === 0) return targets;
+  const names = targets.map((target) => target.name);
+  const known = new Set(names);
+  for (const id of targetIds) {
+    if (!known.has(id)) {
+      throw new ConfigurationError(
+        'UNKNOWN_TARGET',
+        `unknown target ID "${id}"; the config declares ${names.map((name) => `"${name}"`).join(', ')}${didYouMean(id, names)}`,
+      );
+    }
+  }
+  const selected = new Set(targetIds);
+  return targets.filter((target) => selected.has(target.name));
+}
+
 /**
  * Expands the collection into test-target pairs and applies focus, tag,
  * platform, capability, session, and serial-closure rules.
@@ -132,21 +152,7 @@ export function select(
   flags: { passWithNoTests?: boolean } = {},
 ): Selection {
   const tagMode = filters.tagMode ?? 'any';
-  const targets =
-    filters.targetIds === undefined || filters.targetIds.length === 0
-      ? config.targets
-      : config.targets.filter((target) => filters.targetIds!.includes(target.name));
-  if (filters.targetIds !== undefined) {
-    const names = config.targets.map((target) => target.name);
-    for (const id of filters.targetIds) {
-      if (!names.includes(id)) {
-        throw new ConfigurationError(
-          'UNKNOWN_TARGET',
-          `unknown target ID "${id}"; the config declares ${names.map((name) => `"${name}"`).join(', ')}${didYouMean(id, names)}`,
-        );
-      }
-    }
-  }
+  const targets = selectTargets(config.targets, filters.targetIds);
 
   const focused = collection.tests.filter((test) => test.mode === 'only');
   if (focused.length > 0 && config.ci) {

@@ -16,7 +16,7 @@ npx --no-install e2e cache ls|clear|stats       # read or empty the trace cache
 | --- | --- |
 | `[files...]` | Files, directories, or quoted globs relative to the project root. They narrow the config `tests` glob, never bypass it. |
 | `--config <path>` | Explicit config file. Default: `e2e.config.ts` or `.mts` found upward from the working directory. |
-| `--target <ids>` | Comma-separated target names. |
+| `--target <ids>` | Comma-separated target names. Only selected targets start app commands and services; unknown names fail before startup. |
 | `--tag <tag>` | Repeatable tag filter; `--tag-mode all` requires every tag. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |

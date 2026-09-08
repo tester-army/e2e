@@ -10,7 +10,7 @@ import {
   type ResolvedTarget,
 } from '../config/resolve.ts';
 import { collect, type Collection } from '../collect/collect.ts';
-import { select, type Selection, type SelectionFilters } from '../collect/select.ts';
+import { select, selectTargets, type Selection, type SelectionFilters } from '../collect/select.ts';
 import {
   classifyError,
   combineExitCodes,
@@ -406,6 +406,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
   const executeRun = async (): Promise<void> => {
     const interrupted = interruptController.signal;
+    if (interrupted.aborted) return;
+    let targets: readonly ResolvedTarget[];
+    try {
+      targets = selectTargets(config.targets, options.targetIds);
+    } catch (cause) {
+      recordFailure(cause, 'collection');
+      return;
+    }
     // Each engine declares the app it drives: the dependency processes it
     // needs and the command that starts it. Declarations are deduplicated
     // across targets (two browsers on one dev server share one process), and
@@ -416,7 +424,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ci: isCiMode(env),
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
     };
-    const declared = declaredProcesses(config.targets);
+    const declared = declaredProcesses(targets);
     if (declared.services.length > 0) {
       const stack = new ServiceStack(declared.services, config.projectRoot, processHooks);
       services = stack;

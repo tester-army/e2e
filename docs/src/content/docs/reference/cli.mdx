@@ -158,7 +158,7 @@ platform, skipped, or is a setup test.
 | Flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`, as is a run that discovers no `e2e.config.ts` or `e2e.config.mts` at all; the message names the directory searched, points at `e2e init`, and calls out a look-alike such as `e2e.config.js` when one is present. |
-| `--target <ids>` | comma-separated list | every configured target | Selects targets by name. An unknown ID is `UNKNOWN_TARGET`. Empty entries are dropped. |
+| `--target <ids>` | comma-separated list | every configured target | Selects targets by name. Only selected targets start app commands and services. An unknown ID is `UNKNOWN_TARGET`, reported before any process starts. Empty entries are dropped. |
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it |
