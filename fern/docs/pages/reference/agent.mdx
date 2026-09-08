@@ -7,18 +7,8 @@ Every `agent` call is one bounded invocation: a fresh observation, an explicit
 deadline, a model-call budget, and no shared transcript between calls. Acquiring
 the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 
-<Callout intent="warning" title="Not implemented yet">
-The `act` options `schema` (structured output) and `vision` reject with
-`UNSUPPORTED_CAPABILITY`.
-</Callout>
-
 ```ts
 export interface Agent {
-  act<Schema extends StandardSchemaV1>(
-    instruction: string,
-    params: AgentParams | undefined,
-    options: AgentSchemaOptions<Schema>,
-  ): Promise<AgentResultWithData<StandardSchemaV1.InferOutput<Schema>>>;
   act(
     instruction: string,
     params?: AgentParams,
@@ -300,15 +290,10 @@ export interface VisionOption {
 
 export type VisionMode = boolean | 'fallback' | 'only';
 
-export interface AgentOptions extends VisionOption {
+export interface AgentOptions {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
-}
-
-export interface AgentSchemaOptions<Schema extends StandardSchemaV1>
-  extends AgentOptions {
-  schema: Schema;
 }
 
 export type AgentParam =
@@ -321,17 +306,13 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
 export interface AgentResult {
   readonly ok: true;
 }
-
-export interface AgentResultWithData<Output> extends AgentResult {
-  readonly data: Output;
-}
 ```
 
 Per-call budgets must be positive integers and can only lower the resolved
 configuration limits.
 
-`AgentOptions`, `AgentSchemaOptions`, `AgentParams`, `AgentResult`, and
-`AgentResultWithData` are consumed by `act`. Judgments return `void`;
+`AgentOptions`, `AgentParams`, and `AgentResult` are consumed by `act`;
+`act` takes no `schema` and no `vision`. Judgments return `void`;
 `extract` returns the validated value directly.
 
 ## AgentError

@@ -24,15 +24,13 @@ declare const asyncExpectation: AsyncExpectation;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
 
-const schemaOptions = {
-  schema: z.object({ total: z.number() }),
-};
-const schemaResult = await agent.act('read total', undefined, schemaOptions);
-schemaResult.data.total satisfies number;
-
 const plainResult = await agent.act('open billing');
-// @ts-expect-error data exists only when a schema is supplied
+// @ts-expect-error act returns no data; extract does
 plainResult.data;
+// @ts-expect-error act takes no schema; structured output is extract({ schema })
+await agent.act('read total', undefined, { schema: z.object({ total: z.number() }) });
+// @ts-expect-error act takes no vision option; assert, waitFor, and extract do
+await agent.act('open billing', undefined, { vision: true });
 
 test.describe('synchronous', () => {});
 // @ts-expect-error describe registration must be synchronous

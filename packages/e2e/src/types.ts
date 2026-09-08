@@ -140,23 +140,19 @@ export interface VisionOption {
   vision?: VisionMode;
 }
 
-export interface AgentOptions extends VisionOption {
+/**
+ * Per-call budgets for `act`. Structured output and vision are judgment-tier
+ * options: `extract` takes `schema`; `assert`, `waitFor`, and `extract`
+ * take `vision`.
+ */
+export interface AgentOptions {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
 }
 
-export interface AgentSchemaOptions<Schema extends StandardSchemaV1>
-  extends AgentOptions {
-  schema: Schema;
-}
-
 export interface AgentResult {
   readonly ok: true;
-}
-
-export interface AgentResultWithData<Output> extends AgentResult {
-  readonly data: Output;
 }
 
 export type AgentErrorCode =
@@ -184,12 +180,6 @@ export type AgentErrorCode =
   | 'CANCELLED';
 
 export interface Agent {
-  /** Plans a flow and validates its structured result with Standard Schema v1. */
-  act<Schema extends StandardSchemaV1>(
-    instruction: string,
-    params: AgentParams | undefined,
-    options: AgentSchemaOptions<Schema>,
-  ): Promise<AgentResultWithData<StandardSchemaV1.InferOutput<Schema>>>;
   /** Plans and executes a bounded multi-action flow. */
   act(
     instruction: string,

@@ -36,17 +36,21 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-/** Options the socket does not support yet fail loudly, like `schema` does. */
+/**
+ * The `act` type has no `schema` or `vision`; a caller outside the type
+ * checker who passes one still fails loudly instead of being silently ignored.
+ */
 export function rejectUnsupportedActOptions(options: AgentOptions | undefined): void {
   if (options === undefined) return;
+  const loose = options as { readonly schema?: unknown; readonly vision?: unknown };
   const unsupported = (name: string): never => {
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
       `agent.act ${name} is not part of this milestone`,
     );
   };
-  if ('schema' in options && options.schema !== undefined) unsupported('structured output (options.schema)');
-  if (options.vision !== undefined) unsupported('vision evidence (options.vision)');
+  if (loose.schema !== undefined) unsupported('structured output (options.schema)');
+  if (loose.vision !== undefined) unsupported('vision evidence (options.vision)');
 }
 
 /**

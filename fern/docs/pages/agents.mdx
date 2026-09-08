@@ -263,10 +263,8 @@ Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
 mechanical, scope `act` to the step that breaks, and give slow providers
 `timeout` room; latency is not a defect.
 
-<Callout intent="warning" title="Not implemented yet">
-`agent.act` structured output (`options.schema`) and per-call `vision` reject
-with `UNSUPPORTED_CAPABILITY` in this release.
-</Callout>
+`act` takes no `schema` and no `vision`: structured data comes from
+`agent.extract({ schema })`, and `vision` is an option of the judgments.
 
 ## Inspect a run
 

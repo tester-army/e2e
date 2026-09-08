@@ -162,8 +162,6 @@ npx --no-install e2e guide writing-tests  # one topic
 
 ## Current limitations
 
-- `agent.act` structured output (`options.schema`) and vision evidence
-  (`options.vision`) reject with `UNSUPPORTED_CAPABILITY`.
 - The HTML reporter and video artifacts are not available.
 - Reported steps carry no source locations.
 
