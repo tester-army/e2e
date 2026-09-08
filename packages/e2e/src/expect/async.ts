@@ -25,7 +25,7 @@ interface MatcherSpec {
   readonly observed: (sample: Sample) => string;
 }
 
-type StateKey = 'disabled' | 'checked' | 'selected' | 'expanded';
+type StateKey = 'disabled' | 'checked' | 'selected' | 'expanded' | 'focused';
 
 interface StateMatcherDef {
   readonly key: StateKey;
@@ -39,6 +39,7 @@ const STATE_MATCHERS = {
   toBeChecked: { key: 'checked', expected: true, describeExpected: 'checked' },
   toBeSelected: { key: 'selected', expected: true, describeExpected: 'selected' },
   toBeExpanded: { key: 'expanded', expected: true, describeExpected: 'expanded' },
+  toBeFocused: { key: 'focused', expected: true, describeExpected: 'focused' },
 } as const satisfies Record<string, StateMatcherDef>;
 
 interface TextMatcherDef {
@@ -219,6 +220,10 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.stateMatcher('toBeExpanded', options?.timeout);
   }
 
+  toBeFocused(options?: { timeout?: number }): Promise<void> {
+    return this.stateMatcher('toBeFocused', options?.timeout);
+  }
+
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
     return this.textMatcher('toHaveText', expected, options?.timeout);
   }
@@ -229,6 +234,44 @@ class AsyncExpectationImpl implements AsyncExpectation {
 
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
     return this.textMatcher('toHaveValue', expected, options?.timeout);
+  }
+
+  toHaveAttribute(
+    name: string,
+    valueOrOptions?: TextMatch | { timeout?: number },
+    options?: { timeout?: number },
+  ): Promise<void> {
+    let value: TextMatch | undefined;
+    let timeout: number | undefined;
+    if (typeof valueOrOptions === 'string' || valueOrOptions instanceof RegExp) {
+      value = valueOrOptions;
+      timeout = options?.timeout;
+    } else {
+      timeout = valueOrOptions?.timeout;
+    }
+    const pattern = value === undefined ? undefined : toTextPattern(value, { exact: true });
+    return this.poll(
+      {
+        name: 'toHaveAttribute',
+        predicate: (sample) => {
+          if (sample.node === null) return false;
+          const attribute = sample.node.attributes?.[name];
+          return attribute !== undefined && (pattern === undefined || matchesText(attribute, pattern));
+        },
+        describeExpected:
+          pattern === undefined
+            ? `attribute "${name}"`
+            : `attribute "${name}" ${describePattern(pattern)}`,
+        observed: (sample) => {
+          if (sample.node === null) return 'no node';
+          const attribute = sample.node.attributes?.[name];
+          return attribute === undefined
+            ? `attribute "${name}" absent`
+            : `attribute "${name}" ${JSON.stringify(attribute)}`;
+        },
+      },
+      timeout,
+    );
   }
 
   toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void> {

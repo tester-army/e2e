@@ -91,6 +91,8 @@ export interface WebExpectation {
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
   /** Waits for the current title to match. */
   toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for the target's `class` attribute to match: a string is the whole normalized class list, a RegExp is tested against it. */
+  toHaveClass(target: Locator, expected: TextMatch, options?: { timeout?: number }): Promise<void>;
 }
 
 export interface Web extends Expectable<WebExpectation> {
@@ -454,6 +456,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
   const matchers: FixtureOperations<WebExpectation> = {
     toHaveURL: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
     toHaveTitle: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
+    toHaveClass: { kind: 'assertion', timeout: false, label: (_target, expected) => String(expected) },
     get not() { return matchers; },
   };
   return context.fixture('web', context.expectable(web, () => context.fixture('expect', expectation, matchers)), {
@@ -486,12 +489,12 @@ interface ExpectationDeps {
   readonly context: EngineFixtureContext;
 }
 
-/** `expect(web)` matchers: URL and title polling against the assertion budget. */
+/** `expect(web)` matchers: URL, title, and class polling against the assertion budget. */
 function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpectation {
   const poll = async (
     api: string,
     label: string,
-    condition: () => Promise<boolean>,
+    condition: () => Promise<boolean | undefined>,
     observed: () => Promise<string>,
     timeout: number | undefined,
   ): Promise<void> => {
@@ -529,6 +532,35 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
         `title ${describePattern(pattern)}`,
         async () => matchesText(await deps.currentTitle(), pattern),
         async () => `title ${JSON.stringify(await deps.currentTitle())}`,
+        options?.timeout,
+      );
+    },
+    toHaveClass(target, expected, options) {
+      const pattern = toTextPattern(expected, { exact: true });
+      return poll(
+        'toHaveClass',
+        `class ${describePattern(pattern)}`,
+        async () => {
+          try {
+            const value = await target.getAttribute('class');
+            if (value === null) return false;
+            const normalized = value.trim().split(/\s+/).join(' ');
+            return matchesText(normalized, pattern);
+          } catch (error) {
+            if (error instanceof TestError) return undefined;
+            throw error;
+          }
+        },
+        async () => {
+          try {
+            const value = await target.getAttribute('class');
+            if (value === null) return 'no class attribute';
+            return `class ${JSON.stringify(value)}`;
+          } catch (error) {
+            if (error instanceof TestError) return 'no node';
+            throw error;
+          }
+        },
         options?.timeout,
       );
     },

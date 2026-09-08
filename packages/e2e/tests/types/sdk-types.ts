@@ -5,15 +5,24 @@
  */
 
 import { z } from 'zod';
-import { test, type Agent, type E2EConfig, type TraceCacheStore } from '../../src/index.ts';
+import {
+  test,
+  type Agent,
+  type AsyncExpectation,
+  type E2EConfig,
+  type TraceCacheStore,
+} from '../../src/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
+declare const asyncExpectation: AsyncExpectation;
 
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
 ({ cache: 'sometimes' }) satisfies E2EConfig;
+// @ts-expect-error attribute values must be text matches
+asyncExpectation.toHaveAttribute('x', 42);
 
 const schemaOptions = {
   schema: z.object({ total: z.number() }),

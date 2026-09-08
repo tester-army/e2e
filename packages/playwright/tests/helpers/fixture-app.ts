@@ -12,7 +12,11 @@ import type { AddressInfo } from 'node:net';
 const HOME = `<!doctype html>
 <html>
 <head><title>Fixture Home</title></head>
-<body><h1>Home</h1></body>
+<body>
+<h1>Home</h1>
+<input id="readonly" readonly>
+<div id="class-card" class="card active" data-extra="node-only">Card</div>
+</body>
 </html>`;
 
 const FORM = `<!doctype html>

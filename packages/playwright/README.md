@@ -55,8 +55,8 @@ engine: playwright({
 
 The engine contributes `web`: navigation, routes, cookies, dialogs, frames,
 downloads, keyboard and mouse, plus `expect(web).toHaveURL()` and
-`toHaveTitle()`. Import `test` from this package to have it typed; it is the
-same runtime `test` as `e2e`'s.
+`toHaveTitle()` and `toHaveClass()`. Import `test` from this package to have it
+typed; it is the same runtime `test` as `e2e`'s.
 
 ```ts
 import { test } from '@e2edev/playwright';

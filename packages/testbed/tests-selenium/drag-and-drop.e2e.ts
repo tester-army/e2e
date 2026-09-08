@@ -34,8 +34,7 @@ test.describe('drag and drop', { requires: ['web'] }, () => {
 
   test('the draggable image is a first-class element', async ({ web }) => {
     const logo = web.locator('#drag1');
-    // `draggable` is not an exposed attribute, so the read returns null even
-    // though the markup sets it — the same conflation as `readonly`.
+    // The element has no draggable attribute.
     expect(await logo.getAttribute('draggable')).toBeNull();
     expect(await logo.getAttribute('id')).toBe('drag1');
     const box = await logo.boundingBox();
