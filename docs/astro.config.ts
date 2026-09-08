@@ -78,7 +78,7 @@ export default defineConfig({
         },
         {
           label: 'Guides',
-          items: ['authentication', 'ci', 'coding-agents'],
+          items: ['authentication', 'ci', 'coding-agents', 'telemetry'],
         },
         {
           label: 'Extend',

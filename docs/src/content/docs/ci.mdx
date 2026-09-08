@@ -102,6 +102,11 @@ Override any of them when you mean it:
 npx --no-install e2e run --workers 4 --retries 0
 ```
 
+Anonymous usage [telemetry](/telemetry) behaves differently in CI too: runs are
+attributed to the CI vendor rather than to a machine, no preferences file is
+written on the runner, and no notice is printed. Add
+`E2E_TELEMETRY_DISABLED: '1'` to the job's `env` to send nothing from CI.
+
 ## Model credentials
 
 Deterministic tests need no model. For a suite that uses `agent`, pass the model

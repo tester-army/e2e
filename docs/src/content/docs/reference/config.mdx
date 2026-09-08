@@ -562,6 +562,8 @@ The runner reads a closed set. Diagnostics are `e2e run --debug`,
 | `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
 | `CI` | Switches CI defaults and rejects focused tests |
 | `E2E_DEBUG` | Comma-separated flags. `agent` streams every agent invocation phase, model selection, and locate outcome to stderr as it happens; `observations` also dumps every observation the model sees; `all` is both. A debugging aid, not part of the report |
+| `E2E_TELEMETRY_DISABLED` | Turns anonymous usage telemetry off, as does `DO_NOT_TRACK`; `e2e telemetry disable` saves the same choice. See [Telemetry](/telemetry) |
+| `E2E_TELEMETRY_DEBUG` | Prints every telemetry event to stderr instead of sending it |
 
 ### Resolution order
 

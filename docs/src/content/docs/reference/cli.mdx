@@ -307,6 +307,31 @@ and these commands read files only, so they exit 2 and say so rather than
 reporting an empty cache.
 </Aside>
 
+## e2e telemetry
+
+Shows whether anonymous usage telemetry is on, and switches it. The CLI sends
+one event per command and one per run, built from counts, versions, and closed
+vocabularies; [Telemetry](/telemetry) lists every property. Hosts embedding
+`@e2edev/e2e/run` send nothing.
+
+| Command | Effect |
+| --- | --- |
+| `e2e telemetry` | Prints `Status: enabled`, or `Status: disabled` with the reason: the variable that is set, the saved choice, or a preferences directory that cannot be written. |
+| `e2e telemetry disable` | Saves the opt-out to `~/.config/e2e/telemetry.json` (`$XDG_CONFIG_HOME/e2e/` when set, `%APPDATA%\e2e\` on Windows) and prints the status. |
+| `e2e telemetry enable` | Saves the opt-in and prints the status. A variable set in the environment still wins, and the status says so. |
+
+```bash
+npx --no-install e2e telemetry
+npx --no-install e2e telemetry disable
+E2E_TELEMETRY_DEBUG=1 npx --no-install e2e run
+```
+
+`E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` turn telemetry off for one
+shell or one CI job without touching the file. `E2E_TELEMETRY_DEBUG=1` prints
+every event to stderr as `[telemetry] {...}` and sends nothing. The first
+command on a machine prints a two-line notice on stderr, once; in CI nothing is
+printed and no file is written.
+
 ## Exit codes
 
 | Code | Meaning |
