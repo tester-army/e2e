@@ -32,7 +32,7 @@ import { renderJunitReport } from '../report/junit.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport, writeTextReport } from '../report/write.ts';
 import { ManagedProcess, ServiceStack } from './managed-process.ts';
-import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode } from './events.ts';
+import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus } from './events.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
@@ -136,7 +136,8 @@ export async function list(options: ListOptions = {}): Promise<{ pairs: ListedPa
 
 export interface RunOutcome {
   exitCode: RunExitCode;
-  status: 'passed' | 'failed' | 'error' | 'interrupted';
+  /** The same status `report.run.status` and the `run-finished` event carry. */
+  status: RunStatus;
   report: Report1Document;
   reportPath: string | undefined;
   /** Where the JUnit XML was written; undefined unless the `junit` reporter was selected. */
@@ -344,8 +345,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       );
     }
     const exitCode = currentExitCode();
-    const status = statusOf(exitCode);
     const report = buildRunReport(exitCode);
+    // Read back from the report rather than recomputed: the report derives
+    // `blocked` from the results, and the outcome and the event must agree
+    // with the file a host reads afterwards.
+    const status = report.run.status;
     setCredentialRegistry(undefined);
     emit({
       type: 'run-finished',
@@ -672,7 +676,8 @@ function plannedFiles(selection: Selection): { file: string; target: string; tes
   return [...files.values()];
 }
 
-function statusOf(exitCode: RunExitCode): RunOutcome['status'] {
+/** The exit-code status the report builder starts from; `blocked` is derived from the results there. */
+function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
   return exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
 }
 

@@ -18,6 +18,7 @@ export type {
   RunEventResult,
   RunEventSink,
   RunExitCode,
+  RunStatus,
 } from './events.ts';
 export type {
   ArtifactProducer,

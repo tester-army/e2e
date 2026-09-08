@@ -27,6 +27,14 @@ import { encodeResult, type WireResultRecord } from './worker/protocol.ts';
 export type RunExitCode = 0 | 1 | 2 | 3 | 4 | 130;
 
 /**
+ * The run's status as the report records it. `blocked` is derived from the
+ * results: the run did not pass and every non-passing result carries a
+ * blockable code, so nothing says the product misbehaved. The outcome, the
+ * `run-finished` event, and `report.json` carry the same value.
+ */
+export type RunStatus = 'passed' | 'failed' | 'blocked' | 'error' | 'interrupted';
+
+/**
  * `ResultRecord` minus the live resolved target (the wire encoding the worker
  * IPC already uses), plus the target's stable identity so a consumer can
  * attribute the result without a side lookup.
@@ -114,7 +122,7 @@ export type RunEventFact =
     }
   | {
       readonly type: 'run-finished';
-      readonly status: 'passed' | 'failed' | 'error' | 'interrupted';
+      readonly status: RunStatus;
       readonly exitCode: RunExitCode;
       readonly reportPath?: string;
       /** Where the `junit` reporter wrote its XML, once the file exists. */

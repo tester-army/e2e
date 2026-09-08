@@ -20,7 +20,7 @@ const outcome = await run({
   quiet: true,
 });
 
-outcome.status; // 'passed' | 'failed' | 'error' | 'interrupted'
+outcome.status; // 'passed' | 'failed' | 'blocked' | 'error' | 'interrupted', the same value as report.run.status
 outcome.report; // the full report-1 document, in memory
 ```
 
