@@ -17,7 +17,7 @@ export const POSTHOG_HOST = 'https://eu.i.posthog.com';
  * The project's ingestion key. Empty until one is configured; with no key,
  * events are built (and printed under `E2E_TELEMETRY_DEBUG`) but never sent.
  */
-export const POSTHOG_PROJECT_KEY = '';
+export const POSTHOG_PROJECT_KEY = 'phc_rT8hpREuSj5bRGPHP6KLKNuf4kfwhP4FEf6ahHHV2ZgH';
 
 /** One item of the batch, exactly as PostHog receives it; `distinct_id` is a property. */
 export interface PostHogEvent {
