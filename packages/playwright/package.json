@@ -48,7 +48,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "playwright": "1.61.1"
+    "playwright": "1.63.0"
   },
   "peerDependencies": {
     "@e2edev/e2e": ">=0.4.0 <1"
