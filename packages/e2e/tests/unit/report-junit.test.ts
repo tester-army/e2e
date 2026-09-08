@@ -1,97 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  Report1Document,
-  ReportAttempt,
-  ReportError,
-  ReportResult,
-  ReportSerialGroup,
-} from '../../src/report/build.ts';
+import type { Report1Document, ReportSerialGroup } from '../../src/report/build.ts';
 import { renderJunitReport } from '../../src/report/junit.ts';
-
-const AT = '2026-01-01T00:00:00.000Z';
-
-function error(overrides: Partial<ReportError> = {}): ReportError {
-  return {
-    category: 'test',
-    code: 'ASSERTION_FAILED',
-    message: 'expected "Sign in" to be visible',
-    retryable: false,
-    ...overrides,
-  };
-}
-
-function attempt(overrides: Partial<ReportAttempt> = {}): ReportAttempt {
-  return {
-    id: 'attempt-1',
-    index: 0,
-    status: 'passed',
-    startedAt: AT,
-    durationMs: 1234,
-    artifacts: [],
-    secondaryErrors: [],
-    cleanup: 'complete',
-    steps: [],
-    ...overrides,
-  };
-}
-
-function result(overrides: Partial<ReportResult> = {}): ReportResult {
-  return {
-    id: 'result-1',
-    testId: 'test-1',
-    kind: 'test',
-    declarationIndex: 0,
-    titlePath: ['auth', 'signs in'],
-    file: 'tests/auth.e2e.ts',
-    source: { file: 'tests/auth.e2e.ts', line: 3, column: 1 },
-    targetId: 'web',
-    platform: 'web',
-    status: 'passed',
-    attempts: [attempt()],
-    ...overrides,
-  };
-}
-
-function report(
-  overrides: {
-    results?: ReportResult[];
-    errors?: ReportError[];
-    serialGroups?: ReportSerialGroup[];
-  } = {},
-): Report1Document {
-  return {
-    schemaVersion: 'report-1',
-    run: {
-      id: 'run-1',
-      specVersion: '0.1',
-      runner: { name: 'e2e', version: '0.0.0' },
-      status: 'passed',
-      exitCode: 0,
-      startedAt: AT,
-      finishedAt: AT,
-      project: { id: 'project', configDigest: '0'.repeat(64) },
-      environment: { ci: false, trustNoticeShown: false, os: 'test', arch: 'x64', runtime: 'node' },
-      targets: [],
-      serialGroups: overrides.serialGroups ?? [],
-      results: overrides.results ?? [],
-      errors: overrides.errors ?? [],
-      summary: { discovered: 0, selected: 0, executed: 0, passed: 0, failed: 0, flaky: 0, skipped: 0 },
-      limits: {} as Report1Document['run']['limits'],
-      usage: {
-        discoveredResults: 0,
-        maxAgentContextBytes: 0,
-        maxLedgerBytes: 0,
-        maxObservationBytes: 0,
-        artifactBytes: 0,
-        downloads: 0,
-        events: 0,
-        modelTokens: 0,
-        maxModelCallsInStep: 0,
-        maxActionStepsInStep: 0,
-      },
-    },
-  };
-}
+import { REPORT_AT as AT, reportAttempt, reportDocument, reportError, reportResult } from '../helpers/report.ts';
 
 /** XML 1.0 `Char`, over UTF-16 code units: a surrogate counts only as a proper pair. */
 // oxlint-disable-next-line no-control-regex -- the allowed range is the point
@@ -146,13 +56,13 @@ function rootAttributes(xml: string): Record<string, string> {
 
 describe('renderJunitReport', () => {
   it('starts with the XML declaration and ends with a newline', () => {
-    const xml = render(report());
+    const xml = render(reportDocument());
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<testsuites ')).toBe(true);
     expect(xml.endsWith('</testsuites>\n')).toBe(true);
   });
 
   it('renders an empty run as a root with zero counts and no suites', () => {
-    const xml = render(report());
+    const xml = render(reportDocument());
     expect(rootAttributes(xml)).toEqual({
       name: 'e2e',
       tests: '0',
@@ -165,7 +75,7 @@ describe('renderJunitReport', () => {
   });
 
   it('renders a passed result as a bare testcase named by title path and target', () => {
-    const xml = render(report({ results: [result()] }));
+    const xml = render(reportDocument({ results: [reportResult()] }));
     expect(xml).toContain(
       '<testcase name="auth &gt; signs in [web]" classname="tests/auth.e2e.ts" time="1.234"/>',
     );
@@ -177,13 +87,13 @@ describe('renderJunitReport', () => {
 
   it('uses the final attempt for time and notes flaky passes in system-out', () => {
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({
+          reportResult({
             status: 'flaky',
             attempts: [
-              attempt({ index: 0, status: 'failed', durationMs: 5000, error: error() }),
-              attempt({ id: 'attempt-2', index: 1, durationMs: 800 }),
+              reportAttempt({ index: 0, status: 'failed', durationMs: 5000, error: reportError() }),
+              reportAttempt({ id: 'attempt-2', index: 1, durationMs: 800 }),
             ],
           }),
         ],
@@ -197,8 +107,8 @@ describe('renderJunitReport', () => {
 
   it('renders a test-category error as <failure> with code, message, and body', () => {
     const xml = render(
-      report({
-        results: [result({ status: 'failed', attempts: [attempt({ status: 'failed', error: error() })] })],
+      reportDocument({
+        results: [reportResult({ status: 'failed', attempts: [reportAttempt({ status: 'failed', error: reportError() })] })],
       }),
     );
     expect(xml).toContain(
@@ -209,24 +119,24 @@ describe('renderJunitReport', () => {
   });
 
   it('renders infrastructure and configuration errors as <error>', () => {
-    const infrastructure = error({
+    const infrastructure = reportError({
       category: 'infrastructure',
       code: 'DRIVER_CRASHED',
       message: 'gone',
       phase: 'launch',
     });
-    const configuration = error({ category: 'configuration', code: 'MODEL_UNAVAILABLE', message: 'no model' });
+    const configuration = reportError({ category: 'configuration', code: 'MODEL_UNAVAILABLE', message: 'no model' });
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({ status: 'failed', attempts: [attempt({ status: 'failed', error: infrastructure })] }),
-          result({
+          reportResult({ status: 'failed', attempts: [reportAttempt({ status: 'failed', error: infrastructure })] }),
+          reportResult({
             id: 'result-2',
             testId: 'test-2',
             declarationIndex: 1,
             titlePath: ['agent', 'plans'],
             status: 'failed',
-            attempts: [attempt({ status: 'failed', error: configuration })],
+            attempts: [reportAttempt({ status: 'failed', error: configuration })],
           }),
         ],
       }),
@@ -241,15 +151,15 @@ describe('renderJunitReport', () => {
 
   it('falls back to the result status when a failed result carries no error', () => {
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({ status: 'timed-out', attempts: [attempt({ status: 'timed-out' })] }),
-          result({
+          reportResult({ status: 'timed-out', attempts: [reportAttempt({ status: 'timed-out' })] }),
+          reportResult({
             id: 'result-2',
             testId: 'test-2',
             declarationIndex: 1,
             status: 'interrupted',
-            attempts: [attempt({ status: 'interrupted' })],
+            attempts: [reportAttempt({ status: 'interrupted' })],
           }),
         ],
       }),
@@ -260,9 +170,9 @@ describe('renderJunitReport', () => {
 
   it('renders skipped results with their reason and no attempt time', () => {
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({
+          reportResult({
             status: 'skipped',
             attempts: [],
             skip: { cause: 'filtered', reason: 'tag filter excluded it' },
@@ -277,11 +187,11 @@ describe('renderJunitReport', () => {
 
   it('groups results into one suite per file, in report order', () => {
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({ file: 'tests/a.e2e.ts' }),
-          result({ id: 'result-2', testId: 'test-2', file: 'tests/b.e2e.ts' }),
-          result({ id: 'result-3', testId: 'test-3', file: 'tests/a.e2e.ts', targetId: 'webkit' }),
+          reportResult({ file: 'tests/a.e2e.ts' }),
+          reportResult({ id: 'result-2', testId: 'test-2', file: 'tests/b.e2e.ts' }),
+          reportResult({ id: 'result-3', testId: 'test-3', file: 'tests/a.e2e.ts', targetId: 'webkit' }),
         ],
       }),
     );
@@ -295,15 +205,15 @@ describe('renderJunitReport', () => {
 
   it('escapes markup in attributes and text and strips control characters', () => {
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({
+          reportResult({
             titlePath: ['<b>bold</b> & "quoted"'],
             status: 'failed',
             attempts: [
-              attempt({
+              reportAttempt({
                 status: 'failed',
-                error: error({ message: 'line one\nline <two> & done' }),
+                error: reportError({ message: 'line one\nline <two> & done' }),
               }),
             ],
           }),
@@ -319,19 +229,19 @@ describe('renderJunitReport', () => {
   it('replaces XML-forbidden noncharacters and lone surrogates in text and attributes', () => {
     const lonePair = '\ud83d\ude00';
     const xml = render(
-      report({
+      reportDocument({
         results: [
-          result({
+          reportResult({
             titlePath: [`fffe\ufffe high\ud83d low\ude00 pair${lonePair}`],
             status: 'failed',
             attempts: [
-              attempt({
+              reportAttempt({
                 status: 'failed',
-                error: error({ message: `ffff\uffff end\udc00 start\udbff` }),
+                error: reportError({ message: `ffff\uffff end\udc00 start\udbff` }),
               }),
             ],
           }),
-          result({
+          reportResult({
             id: 'result-2',
             testId: 'test-2',
             declarationIndex: 1,
@@ -340,7 +250,7 @@ describe('renderJunitReport', () => {
             skip: { cause: 'filtered', reason: `reason\ufffe\ud800` },
           }),
         ],
-        errors: [error({ category: 'infrastructure', code: 'APP_UNREACHABLE', message: `run\uffff\udfff` })],
+        errors: [reportError({ category: 'infrastructure', code: 'APP_UNREACHABLE', message: `run\uffff\udfff` })],
       }),
     );
     expect(xml).not.toMatch(/[\ufffe\uffff]/);
@@ -360,9 +270,9 @@ describe('renderJunitReport', () => {
 
   it('adds a run suite with one <error> case per run-level error', () => {
     const xml = render(
-      report({
+      reportDocument({
         errors: [
-          error({
+          reportError({
             category: 'infrastructure',
             code: 'APP_UNREACHABLE',
             message: 'http://127.0.0.1:3000 did not answer',
@@ -396,7 +306,7 @@ describe('renderJunitReport', () => {
       status: 'failed',
       attempts: [
         {
-          ...attempt({ status: 'failed', durationMs: 3000 }),
+          ...reportAttempt({ status: 'failed', durationMs: 3000 }),
           members: [
             {
               id: 'member-1',
@@ -416,7 +326,7 @@ describe('renderJunitReport', () => {
               startedAt: AT,
               durationMs: 2000,
               steps: [],
-              error: error({ message: 'cart is empty' }),
+              error: reportError({ message: 'cart is empty' }),
               secondaryErrors: [],
             },
           ],
@@ -424,16 +334,16 @@ describe('renderJunitReport', () => {
       ],
     };
     const xml = render(
-      report({
+      reportDocument({
         serialGroups: [group],
         results: [
-          result({
+          reportResult({
             file: 'tests/checkout.e2e.ts',
             titlePath: ['checkout', 'adds'],
             serialGroupId: 'group-1',
             attempts: [],
           }),
-          result({
+          reportResult({
             id: 'result-2',
             testId: 'test-2',
             declarationIndex: 1,
