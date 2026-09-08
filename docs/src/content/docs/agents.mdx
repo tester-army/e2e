@@ -307,8 +307,11 @@ the provider metadata — including the AI Gateway's per-request cost.
 
 The trace records the model's view and nothing else. Observations are
 redacted before the model sees them, so the trace holds no secret the model
-did not; image evidence appears by byte size, never as pixels. It is a
-debugging aid, not part of the report, and `e2e init` ignores it.
+did not. Inline bytes and base64 in SDK image and file message parts appear
+as decoded byte counts, including media returned through structured tool
+outputs. URLs, references, and text are preserved. Encoded strings elsewhere,
+including arbitrary tool result JSON, remain in the trace. It is a debugging
+aid, not part of the report, and `e2e init` ignores it.
 
 The recorder is an AI SDK telemetry integration, so it also sees calls a
 custom executor makes through its own `ai` import. The reverse works too:

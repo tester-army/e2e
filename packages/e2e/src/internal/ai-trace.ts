@@ -368,7 +368,7 @@ export class AiTraceRecorder {
             id: response.id,
             modelId: response.modelId,
             timestamp: response.timestamp,
-            messages: response.messages,
+            messages: traceMessages(response.messages),
           },
           ...(event.providerMetadata === undefined ? {} : { providerMetadata: event.providerMetadata }),
         },
@@ -421,7 +421,7 @@ export class AiTraceRecorder {
       started_at: open.startedAt,
       duration_ms: open.responseTimeMs ?? Date.now() - open.startedMs,
       input: stringify({
-        prompt: open.prompt,
+        prompt: traceMessages(open.prompt),
         ...(open.tools === undefined ? {} : { tools: open.tools }),
         ...(open.toolChoice === undefined ? {} : { toolChoice: open.toolChoice }),
       }),
@@ -511,15 +511,86 @@ function truncate(text: string): string {
   return text.length <= MAX_LABEL_CHARS ? text : `${text.slice(0, MAX_LABEL_CHARS)}…`;
 }
 
-/**
- * JSON with binary payloads replaced by a size note. Image evidence travels
- * as bytes in vision calls; the trace records that pixels were sent and how
- * many, never the pixels, which keeps the file small and screenshot-free.
- */
+/** Copies SDK messages with inline media omitted, without inspecting user JSON. */
+function traceMessages(messages: readonly unknown[] | undefined): unknown[] | undefined {
+  return messages?.map((message) => {
+    const record = traceObject(message);
+    if (record === undefined || !['user', 'assistant', 'tool'].includes(String(record['role']))) return message;
+    return { ...record, content: traceContent(record['content']) };
+  });
+}
+
+/** Omits encoded media only in SDK content parts and structured tool outputs. */
+function traceContent(content: unknown): unknown {
+  if (!Array.isArray(content)) return content;
+  return content.map((part: unknown) => {
+    const record = traceObject(part);
+    if (record === undefined) return part;
+    switch (record['type']) {
+      case 'image':
+        return { ...record, image: omitInlineData(record['image']) };
+      case 'file':
+      case 'reasoning-file': {
+        const data = traceObject(record['data']);
+        if (data?.['type'] === 'data') {
+          return { ...record, data: { ...data, data: omitInlineData(data['data']) } };
+        }
+        if (data?.['type'] === 'url') {
+          return { ...record, data: { ...data, url: omitDataUrl(data['url']) } };
+        }
+        return { ...record, data: omitInlineData(record['data']) };
+      }
+      case 'image-data':
+      case 'file-data':
+        return { ...record, data: omitInlineData(record['data']) };
+      case 'image-url':
+      case 'file-url':
+        return { ...record, url: omitDataUrl(record['url']) };
+      case 'tool-result': {
+        const output = traceObject(record['output']);
+        return output?.['type'] === 'content'
+          ? { ...record, output: { ...output, value: traceContent(output['value']) } }
+          : part;
+      }
+      default:
+        return part;
+    }
+  });
+}
+
+/** The object fields needed to read an SDK content part. */
+function traceObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+/** Keeps remote URLs and references while omitting inline binary data without decoding it. */
+function omitInlineData(value: unknown): unknown {
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return binaryNote(value.byteLength);
+  if (value instanceof URL) return omitDataUrl(value);
+  if (typeof value !== 'string') return value;
+  const prefix = /^data:[^,]*;base64,/i.exec(value);
+  if (prefix === null && /^[a-z][a-z\d+.-]*:/i.test(value)) return value;
+  const encoded = (prefix === null ? value : value.slice(prefix[0].length)).replaceAll(/\s/g, '');
+  return binaryNote(Buffer.byteLength(encoded, 'base64'));
+}
+
+/** A base64 data URL contains inline bytes; other URL forms remain useful diagnostics. */
+function omitDataUrl(value: unknown): unknown {
+  const url = value instanceof URL ? value.href : value;
+  return typeof url === 'string' && /^data:[^,]*;base64,/i.test(url) ? omitInlineData(url) : value;
+}
+
+/** The existing devtools-compatible marker for omitted media. */
+function binaryNote(bytes: number): string {
+  return `[binary ${bytes} bytes omitted]`;
+}
+
+/** JSON with binary views omitted; arbitrary strings and raw tool JSON are preserved. */
 export function stringify(value: unknown): string {
   return JSON.stringify(value, (_key, current: unknown) => {
-    if (current instanceof ArrayBuffer) return `[binary ${current.byteLength} bytes omitted]`;
-    if (ArrayBuffer.isView(current)) return `[binary ${current.byteLength} bytes omitted]`;
+    if (current instanceof ArrayBuffer || ArrayBuffer.isView(current)) return binaryNote(current.byteLength);
     if (typeof current === 'bigint') return current.toString();
     return current;
   });

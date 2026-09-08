@@ -192,6 +192,10 @@ Never read `.e2e/ai-trace.json` directly; it is megabytes of resent context.
 Use `--no-cache` when the whole flow should be traced, since replayed steps
 make no model calls.
 
+The trace replaces inline bytes and base64 in SDK image and file message
+parts with decoded byte counts. URLs and text remain; encoded strings in
+arbitrary tool result JSON or other fields are preserved.
+
 ## Beyond the built-in agent
 
 - `createAgent({ tools: { seedCart } })` adds AI SDK tools wrapped with

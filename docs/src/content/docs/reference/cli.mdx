@@ -203,8 +203,10 @@ report: one run per agent step, named after the test and the step, with one
 entry per model round trip (an `act` turn, a `waitFor` poll, a repair round)
 carrying the exact prompt, tool definitions, response,
 usage, and provider metadata of every round trip. It is the model's view of
-the run and nothing more: observations are already redacted before they reach
-the model, and image evidence is recorded by size, never by pixels. Open it
+the run: observations are already redacted before they reach the model.
+Inline bytes and base64 in SDK image and file message parts are replaced
+with decoded byte counts. URLs and text remain readable. Encoded strings
+outside those parts, including arbitrary tool result JSON, are preserved. Open it
 with `npx unbox-ai .e2e/ai-trace.json`; see [Your own agent](/agents#inspect-a-run).
 
 ### Signals
