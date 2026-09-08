@@ -54,10 +54,9 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 ## Coding agents
 
 `e2e init` installs an agent skill into `.agents/skills/` and
-`.claude/skills/` and writes an `## e2e` section into the project's
-`AGENTS.md`. `npx skills add tester-army/e2e` installs the skill anywhere
-else, and `npx --no-install e2e guide` prints the same text. See
-[Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
+`.claude/skills/`, and `npx skills add tester-army/e2e` installs it
+anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
+See [Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
 
 ## Packages
 

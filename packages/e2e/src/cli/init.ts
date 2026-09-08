@@ -6,7 +6,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { esmPackageHint } from '../config/esm.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
-import { AGENTS_FILE, AGENTS_SECTION_COPIES, planAgentsSection } from './init/agents-md.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { addDependencies, detectPackageManager, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold } from './init/scaffold.ts';
@@ -31,8 +30,7 @@ const GITIGNORE_ENTRIES = [
  * Runs `e2e init`. Every prompt happens before the first write, existing
  * config and test files are never touched, and dependencies install only when
  * the user asks. The agent skill is offered once; later runs refresh the
- * copies that exist and never add new locations. The `## e2e` section of
- * `AGENTS.md` is written on the first run and refreshed when it drifts.
+ * copies that exist and never add new locations.
  */
 export async function init(cwd: string, options: InitOptions = {}): Promise<number> {
   clack.intro('e2e init');
@@ -99,7 +97,6 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     }
   }
   const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
-  const agentsSection = planAgentsSection(cwd);
 
   const scaffold = createScaffold(engine, ai);
   const { manifest, additions } = addDependencies(pkg.manifest, scaffold.dependencies);
@@ -115,7 +112,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     ...(exampleExists ? [] : [{ relative: examplePath, content: scaffold.example, existing: false }]),
   ];
 
-  if (files.length === 0 && skillInstalls.length === 0 && agentsSection === undefined && missingIgnore.length === 0) {
+  if (files.length === 0 && skillInstalls.length === 0 && missingIgnore.length === 0) {
     clack.outro('nothing to create; project already initialized');
     return 0;
   }
@@ -124,7 +121,6 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     const actions = [
       ...files.map((file) => `${file.existing ? 'update' : 'create'} ${file.relative}`),
       ...skillInstalls.map((install) => `${install.existing ? 'update' : 'create'} ${install.relative}/`),
-      ...(agentsSection === undefined ? [] : [`${agentsSection.existing ? 'update' : 'create'} ${AGENTS_FILE}`]),
       ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
     const proceed = await clack.confirm({ message: `${actions.join(', ')}?` });
@@ -154,14 +150,6 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   }
   if (skillDirs.length === 0) {
     clack.log.info('skipped the agent skill; agents can still print it with npx --no-install e2e guide');
-  }
-  if (agentsSection !== undefined) {
-    writeFileSync(path.join(cwd, AGENTS_FILE), agentsSection.content, 'utf8');
-    const verb = agentsSection.existing ? (agentsSection.refresh ? 'refreshed the e2e section of' : 'appended the e2e section to') : 'created';
-    clack.log.success(`${verb} ${AGENTS_FILE}`);
-    if (!agentsSection.refresh) {
-      clack.log.info(`copy the e2e section to ${AGENTS_SECTION_COPIES.join(' or ')} for agents that do not read ${AGENTS_FILE}`);
-    }
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';

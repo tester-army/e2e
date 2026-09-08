@@ -5,7 +5,6 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { init } from '../../src/cli/init.ts';
-import { AGENTS_SECTION } from '../../src/cli/init/agents-md.ts';
 import { readSkillFiles } from '../../src/cli/skill.ts';
 
 vi.mock('@clack/prompts', { spy: true });
@@ -62,8 +61,6 @@ describe('e2e init', () => {
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
     expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
-    expect(read('AGENTS.md')).toMatch(/^<!-- e2e:start -->\n## e2e\n/);
-    expect(read('AGENTS.md')).toMatch(/<!-- e2e:end -->\n$/);
     expect(clack.confirm).not.toHaveBeenCalled();
     expect(clack.select).not.toHaveBeenCalled();
     expect(clack.multiselect).not.toHaveBeenCalled();
@@ -277,49 +274,6 @@ describe('e2e init', () => {
     expect(output()).toContain('updated .agents/skills/e2e/');
   });
 
-  describe('AGENTS.md', () => {
-    it('creates the file with the e2e section and says where to copy it', async () => {
-      expect(await init(dir, { yes: true })).toBe(0);
-      const agents = read('AGENTS.md');
-      expect(agents).toBe(`<!-- e2e:start -->\n${AGENTS_SECTION}<!-- e2e:end -->\n`);
-      expect(agents).toContain('npx --no-install e2e run tests/<feature>.e2e.ts');
-      expect(agents).toContain('--reporter json');
-      expect(agents).toContain('.e2e/cache/');
-      expect(agents).toContain('npx --no-install e2e guide');
-      expect(output()).toContain('created AGENTS.md');
-      expect(output()).toContain('copy the e2e section to CLAUDE.md or .cursor/rules/e2e.mdc');
-    });
-
-    it.each(['# My app\n\nRun `pnpm dev`.\n', '# My app\n\nRun `pnpm dev`.'])('appends the section after existing text (%j)', async (existing) => {
-      writeFileSync(path.join(dir, 'AGENTS.md'), existing);
-      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-      expect(await init(dir)).toBe(0);
-      expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('update AGENTS.md') }));
-      expect(read('AGENTS.md')).toBe(`# My app\n\nRun \`pnpm dev\`.\n\n<!-- e2e:start -->\n${AGENTS_SECTION}<!-- e2e:end -->\n`);
-      expect(output()).toContain('appended the e2e section to AGENTS.md');
-    });
-
-    it('refreshes a stale section in place and leaves the rest of the file alone', async () => {
-      const before = '# My app\n\n<!-- e2e:start -->\n## e2e\n\nold text\n<!-- e2e:end -->\n\n## Deploy\n\nRun `pnpm deploy`.\n';
-      writeFileSync(path.join(dir, 'AGENTS.md'), before);
-      expect(await init(dir, { yes: true })).toBe(0);
-      expect(read('AGENTS.md')).toBe(`# My app\n\n<!-- e2e:start -->\n${AGENTS_SECTION}<!-- e2e:end -->\n\n## Deploy\n\nRun \`pnpm deploy\`.\n`);
-      expect(output()).toContain('refreshed the e2e section of AGENTS.md');
-      expect(output()).not.toContain('copy the e2e section');
-    });
-
-    it('leaves a current section untouched', async () => {
-      const before = `# My app\n\n<!-- e2e:start -->\n${AGENTS_SECTION}<!-- e2e:end -->\n`;
-      writeFileSync(path.join(dir, 'AGENTS.md'), before);
-      writeFileSync(path.join(dir, 'e2e.config.ts'), '// custom config\n');
-      await init(dir, { yes: true });
-      stdoutSpy.mockClear();
-      expect(await init(dir, { yes: true })).toBe(0);
-      expect(read('AGENTS.md')).toBe(before);
-      expect(output()).toContain('nothing to create; project already initialized');
-    });
-  });
-
   it('fails before any prompt or write when the package lacks its skill files', async () => {
     vi.mocked(readSkillFiles).mockReturnValueOnce([]);
     expect(await init(dir)).toBe(2);
@@ -345,7 +299,7 @@ describe('e2e init', () => {
     vi.mocked(clack.select).mockResolvedValueOnce('playwright');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
-    const files = ['package.json', 'e2e.config.ts', 'tests/example.e2e.ts', '.gitignore', '.agents/skills/e2e/SKILL.md', 'AGENTS.md'];
+    const files = ['package.json', 'e2e.config.ts', 'tests/example.e2e.ts', '.gitignore', '.agents/skills/e2e/SKILL.md'];
     const before = files.map(read);
     stdoutSpy.mockClear();
     await init(dir, { yes: true });

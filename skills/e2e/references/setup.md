@@ -32,13 +32,10 @@ directories.
 
 Init writes `package.json` (a private ESM package when missing; otherwise
 only the missing dev dependencies are added), `e2e.config.ts`,
-`tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/` output, the
-skill, and an `## e2e` section in `AGENTS.md` (created when missing,
-appended otherwise, between `<!-- e2e:start -->` and `<!-- e2e:end -->`
-markers). It prints where to copy that section for `CLAUDE.md` and
-`.cursor/rules/e2e.mdc`. Existing config and test files are never touched.
-Re-run it after an upgrade to refresh the skill and the marked section; it
-changes nothing else in an initialized project.
+`tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/` output, and the
+skill. Existing config and test files are never touched. Re-run it after an
+upgrade to refresh the skill; it changes nothing else in an initialized
+project.
 
 Without the wizard:
 

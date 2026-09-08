@@ -5,10 +5,9 @@ subtitle: What e2e gives Claude Code, Codex, Cursor, and friends, and how they s
 
 e2e ships no MCP server. A coding agent works with the same three things you
 do: the skill that teaches the API, the `e2e` CLI, and the JSON report a run
-writes. `e2e init` installs the first and describes the other two in an
-`## e2e` section of `AGENTS.md`.
+writes. `e2e init` installs the skill; the skill explains the other two.
 
-## What init installs
+## The skill
 
 ```bash
 npx --no-install e2e init
@@ -18,29 +17,28 @@ npx --no-install e2e init
 | --- | --- | --- |
 | `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, and `debugging.md` |
 | `.claude/skills/e2e/` | Claude Code | The same files |
-| `AGENTS.md` | Any agent that reads the project's instructions file | An `## e2e` section: where the tests live, how to run one file, how to read a failing run, what `.e2e/cache/` is, and a pointer at the skill |
 
-The skill is the long form. The `AGENTS.md` section is the short one, a dozen
-lines an agent can act on without opening another file. Both come from the
-installed `@e2edev/e2e` version, and re-running `init` after an upgrade
-refreshes both.
-
-The section sits between `<!-- e2e:start -->` and `<!-- e2e:end -->` markers.
-`init` creates `AGENTS.md` when the project has none and appends to it
-otherwise; a later run replaces only the text between the markers, so what you
-write above or below it stays.
-
-Agents that do not read `AGENTS.md` need a copy. `init` prints the two places
-that matter:
-
-- `CLAUDE.md`: either copy the section in, or make the file a symlink to
-  `AGENTS.md` so the two never drift.
-- `.cursor/rules/e2e.mdc`: paste the section as the rule body. A rule without
-  frontmatter applies to every request, which is what you want here.
+`SKILL.md` is the entry point: the mental model, a sample test, the rules,
+and the list of topics. An agent reads a topic file only when it needs it.
+The files come from the installed `@e2edev/e2e` version, and re-running `init`
+after an upgrade refreshes the copies the project already has.
 
 Without `init`, `npx skills add tester-army/e2e` installs the skill from the
 repository, and `npx --no-install e2e guide [topic]` prints it from the
 installed package for an agent that has neither.
+
+`init` does not touch `AGENTS.md`, `CLAUDE.md`, or Cursor rules. Agents that
+load skills on demand find the skill by its `description` in the frontmatter,
+which names `@e2edev/e2e` and the phrases "end-to-end", "browser", and
+"agentic UI tests". If your agent wants an always-on pointer instead, one line
+in the project's instructions file is enough:
+
+```md title="AGENTS.md"
+End-to-end tests use @e2edev/e2e; read .agents/skills/e2e/SKILL.md before writing or running one.
+```
+
+The same line works in `CLAUDE.md` (point it at `.claude/skills/e2e/SKILL.md`)
+and as the body of a Cursor rule.
 
 ## How an agent writes a test
 
@@ -65,7 +63,7 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent, credentia
 });
 ```
 
-The rules the fragment states, and the reason each is there:
+The rules the skill states, and the reason each is there:
 
 - `npx --no-install e2e`, never `npx e2e`. The bare form fetches whatever
   package is called `e2e` on npm when the runner is not installed locally.
@@ -155,15 +153,14 @@ For a coding agent this means three things.
 - `--no-cache` also makes `--ai-trace` complete, since replayed steps make no
   model calls to trace.
 
-## The acceptance test for this page
+## The bar the skill is written to
 
-An agent given only the `AGENTS.md` section, a project that `init` scaffolded,
-and a target it can reach should write a test that passes on its first run.
-That is the bar the section is written to, with the playground in this
-repository's testbed as the reference target. If your agent needs a second attempt, the section
-is missing something; the fix belongs in `packages/e2e/src/cli/init/agents-md.ts`
-in the e2e repository, not in your project's copy, so every project gets it
-on the next `init`.
+An agent given only the skill, a project that `init` scaffolded, and a target
+it can reach should write a test that passes on its first run, with the
+playground in this repository's testbed as the reference target. If your agent
+needs a second attempt, the skill is missing something; the fix belongs in
+`skills/e2e/` in the e2e repository, not in your project's copy, so every
+project gets it on the next `init`.
 
 <CardGroup cols={2}>
   <Card title="CLI reference" icon="terminal" href="/reference/cli">
