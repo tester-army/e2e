@@ -352,8 +352,9 @@ export class AgentError extends Error {
 | `screenshot` | `string \| undefined` | Artifact path, present only when evidence was captured and permitted |
 | `blocked` | `boolean` | True when the failure reports a blocked step (credentials, environment, or budget), not a product failure |
 
-Check `code` rather than using `instanceof`. Every code, its class, and its exit
-code are in [Errors](/reference/errors).
+Check `code` with `isAgentError(error)`, exported from `@e2edev/e2e`, rather
+than `instanceof`, which does not hold across the runner's module realms. Every
+code, its class, and its exit code are in [Errors](/reference/errors).
 
 <CardGroup cols={2}>
   <Card title="Agents" icon="robot" href="/agents" />

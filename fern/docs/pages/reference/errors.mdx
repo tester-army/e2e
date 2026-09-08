@@ -25,7 +25,22 @@ export class AgentError extends Error {
 }
 ```
 
-Check `code` rather than using `instanceof`.
+Test files load in their own module realm, so `instanceof AgentError` can be
+false for an error the runner threw. Use `isAgentError`, exported from
+`@e2edev/e2e`, which checks a cross-realm marker, and branch on `code`:
+
+```ts
+import { isAgentError } from '@e2edev/e2e';
+
+try {
+  await agent.act('upgrade the workspace to Pro');
+} catch (error) {
+  if (isAgentError(error) && error.code === 'STEP_TIMEOUT') {
+    // the step ran out of time; the message carries the last judgment
+  }
+  throw error;
+}
+```
 
 | Code | When it happens | Class | Exit |
 | --- | --- | --- | ---: |
