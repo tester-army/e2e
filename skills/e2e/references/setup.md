@@ -185,6 +185,7 @@ or read the address from the environment:
 | --- | --- |
 | `E2E_MODEL` | `provider/model-id` for `agent.*` steps when the config sets no model. Routed through the Vercel AI Gateway. |
 | `E2E_MODEL_API_KEY` | Credential for that model. `AI_GATEWAY_API_KEY` is the fallback. |
+| `E2E_MODEL_ENDPOINT` | Any OpenAI-compatible endpoint URL for that model; the gateway is the default. HTTPS unless loopback. `agent.model.endpoint` wins. |
 | `E2E_VISION_MODEL` | Model for calls with `vision`; falls back to the main model. |
 | `E2E_USER_<NAME>_USERNAME`, `E2E_USER_<NAME>_PASSWORD` | Override `credentials.<name>`. `<NAME>` is the credential name uppercased, other characters as `_`. |
 | `CI` | Turns on CI defaults: `retries: 1`, `workers: 1`, `test.only` rejected, cache read-only, `reuseExisting` ignored. |

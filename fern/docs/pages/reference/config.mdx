@@ -394,7 +394,7 @@ export interface ModelInstance {
 
 | `ModelConfig` key | Default | Rules |
 | --- | --- | --- |
-| `endpoint` | gateway default | Must be HTTPS unless the host is loopback |
+| `endpoint` | `E2E_MODEL_ENDPOINT`, else the gateway default | Absolute URL of any OpenAI-compatible endpoint. Must be HTTPS unless the host is loopback. The config value wins over the variable. |
 | `apiKeyEnv` | `'E2E_MODEL_API_KEY'` | Must match `/^[A-Za-z_][A-Za-z0-9_]*$/` |
 
 Each worker re-resolves the config module and constructs its own model instance,

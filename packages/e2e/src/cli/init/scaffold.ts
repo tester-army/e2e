@@ -3,6 +3,7 @@ import { getEnginePreset, type EngineId } from './engines.ts';
 
 const AGENT_IMPORT = "import { createAgent } from '@e2edev/e2e/agent';";
 const AGENT_CONFIG = `  // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
+  // E2E_MODEL_ENDPOINT points at another OpenAI-compatible endpoint (default: the AI Gateway).
   agent: createAgent({
     system: 'You are a thorough QA agent. Verify every outcome.',
   }),`;

@@ -14,6 +14,9 @@ const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
 /** Gateway-native credential variable, used when apiKeyEnv holds no value. */
 export const GATEWAY_API_KEY_ENV = 'AI_GATEWAY_API_KEY';
 
+/** Environment override for the model endpoint; `agent.model.endpoint` wins over it. */
+const MODEL_ENDPOINT_ENV = 'E2E_MODEL_ENDPOINT';
+
 /** A live AI SDK language model, as accepted by `generateText`. */
 export type SdkLanguageModel = Exclude<LanguageModel, string>;
 
@@ -339,26 +342,40 @@ function gatewayModel(
     kind: 'gateway',
     provider,
     id,
-    endpoint: validateEndpoint(endpoint, label),
+    endpoint: resolveEndpoint(endpoint, env, label),
     apiKeyEnv: keyEnv,
     apiKeySource,
     apiKey: apiKeySource === undefined ? undefined : env[apiKeySource],
   };
 }
 
-function validateEndpoint(endpoint: string | undefined, label: string): string | undefined {
-  if (endpoint === undefined) return undefined;
+/**
+ * The endpoint from config when set, else `E2E_MODEL_ENDPOINT`, else undefined
+ * for the gateway default. Diagnostics name whichever source supplied the value.
+ */
+function resolveEndpoint(
+  endpoint: string | undefined,
+  env: NodeJS.ProcessEnv,
+  label: string,
+): string | undefined {
+  if (endpoint !== undefined) return validateEndpoint(endpoint, `${label}.endpoint`);
+  const fromEnv = env[MODEL_ENDPOINT_ENV]?.trim();
+  if (fromEnv === undefined || fromEnv === '') return undefined;
+  return validateEndpoint(fromEnv, MODEL_ENDPOINT_ENV);
+}
+
+function validateEndpoint(endpoint: string, name: string): string {
   let parsed: URL;
   try {
     parsed = new URL(endpoint);
   } catch {
-    throw new ConfigurationError('INVALID_CONFIG', `invalid ${label}.endpoint "${endpoint}"`);
+    throw new ConfigurationError('INVALID_CONFIG', `invalid ${name} "${endpoint}"`);
   }
   if (parsed.protocol === 'https:') return parsed.href;
   if (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)) return parsed.href;
   throw new ConfigurationError(
     'INVALID_CONFIG',
-    `${label}.endpoint must use HTTPS unless it is a loopback host: ${endpoint}`,
+    `${name} must use HTTPS unless it is a loopback host: ${endpoint}`,
   );
 }
 

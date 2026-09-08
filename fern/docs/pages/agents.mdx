@@ -18,6 +18,17 @@ There is no default model. `createAgent()` reads `E2E_MODEL`, a
 E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e run
 ```
 
+The gateway is only the default endpoint. `E2E_MODEL_ENDPOINT` routes the same
+reference to any OpenAI-compatible endpoint, so a self-hosted or third-party
+gateway needs nothing in the config file:
+
+```bash
+E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_ENDPOINT=https://llm.example.com/v1 E2E_MODEL_API_KEY=... npx --no-install e2e run
+```
+
+The URL must be HTTPS unless the host is loopback. `agent.model.endpoint` in
+the config wins over the variable.
+
 To use a provider directly, pass a live AI SDK model instance. Any provider
 package works, including a local one:
 

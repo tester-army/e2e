@@ -242,6 +242,38 @@ describe('model resolution', () => {
     ).toMatchObject({ endpoint: 'https://gw.example/v1' });
   });
 
+  it('reads the endpoint from E2E_MODEL_ENDPOINT when config sets none', () => {
+    const env = {
+      ...BASE_ENV,
+      E2E_MODEL: 'openai/gpt-5.4-mini',
+      E2E_MODEL_ENDPOINT: ' https://llm.example/v1 ',
+    };
+    expect(resolve({}, env).agent.model).toMatchObject({ endpoint: 'https://llm.example/v1' });
+    expect(
+      resolve({ agent: { model: { provider: 'p', id: 'm' } } }, env).agent.model,
+    ).toMatchObject({ endpoint: 'https://llm.example/v1' });
+  });
+
+  it('prefers agent.model.endpoint over E2E_MODEL_ENDPOINT', () => {
+    const env = { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'https://env.example/v1' };
+    expect(
+      resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'https://gw.example/v1' } } }, env)
+        .agent.model,
+    ).toMatchObject({ endpoint: 'https://gw.example/v1' });
+  });
+
+  it('ignores a blank E2E_MODEL_ENDPOINT and validates a set one', () => {
+    expect(
+      resolve({ agent: { model: 'p/m' } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: '  ' }).agent.model,
+    ).toMatchObject({ endpoint: undefined });
+    expect(() =>
+      resolve({ agent: { model: 'p/m' } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'http://example.test/v1' }),
+    ).toThrow(/E2E_MODEL_ENDPOINT must use HTTPS/);
+    expect(() =>
+      resolve({ agent: { model: 'p/m' } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'not-a-url' }),
+    ).toThrow(/invalid E2E_MODEL_ENDPOINT/);
+  });
+
   it('rejects malformed keys and endpoints', () => {
     expect(() =>
       resolve({ agent: { model: { provider: 'p', id: 'm', apiKeyEnv: '9-bad name' } } }),
