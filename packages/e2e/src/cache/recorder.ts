@@ -26,6 +26,7 @@ import {
   MAX_TRACE_SUMMARY_CHARS,
   type ActionTrace,
   type RecordedAction,
+  type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
 
@@ -75,6 +76,8 @@ export class TraceRecorder {
    */
   finalize(conclusion: {
     readonly executor: { readonly name: string; readonly version?: string };
+    /** Test, target, and instruction digest the trace was recorded for. */
+    readonly recordedFor: TraceProvenance;
     readonly summary: string;
     readonly startPath?: string;
     readonly endPath?: string;
@@ -95,6 +98,15 @@ export class TraceRecorder {
       executor: {
         name: conclusion.executor.name,
         ...(conclusion.executor.version === undefined ? {} : { version: conclusion.executor.version }),
+      },
+      recordedFor: {
+        // Harness identity rather than screen content, so the redactor here is
+        // belt and braces: a title that happened to carry a registered secret
+        // is masked like any other recorded string, and provenance is not
+        // replay input, so masking it poisons nothing.
+        testId: bound(this.redact(conclusion.recordedFor.testId), MAX_TRACE_DESCRIPTOR_CHARS),
+        targetId: bound(this.redact(conclusion.recordedFor.targetId), MAX_TRACE_DESCRIPTOR_CHARS),
+        instructionDigest: conclusion.recordedFor.instructionDigest,
       },
       summary: summary.trim() === '' ? 'step passed' : summary,
       ...(startPath === undefined ? {} : { startPath }),

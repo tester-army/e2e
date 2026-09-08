@@ -6,7 +6,14 @@ import { boundedInt } from './validate.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import type { AgentConfig, E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
+import type {
+  AgentConfig,
+  E2EConfig,
+  ModelConfig,
+  ModelInstance,
+  ProviderOptions,
+  VisionMode,
+} from '../types.ts';
 
 /** Default environment variable holding the provider credential. */
 const DEFAULT_API_KEY_ENV = 'E2E_MODEL_API_KEY';
@@ -78,6 +85,12 @@ export interface ResolvedAgentConfig {
   readonly context: string | undefined;
   /** Default for the per-call `vision` option; a per-call value always wins. */
   readonly vision: VisionMode;
+  /**
+   * Provider options sent with every model call, judgments included. This is
+   * how a reasoning model's effort is lowered project-wide; an executor that
+   * carries its own options keeps them.
+   */
+  readonly providerOptions: ProviderOptions | undefined;
 }
 
 export interface ResolvedLimits {
@@ -100,6 +113,7 @@ const AGENT_KEYS = new Set([
   'maxObservationBytes',
   'context',
   'vision',
+  'providerOptions',
 ]);
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
@@ -188,7 +202,36 @@ export function resolveAgentConfig(
     maxObservationBytes,
     context,
     vision,
+    providerOptions: resolveProviderOptions(agent?.providerOptions),
   };
+}
+
+/**
+ * Validates `agent.providerOptions`: a record of provider names to option
+ * records, the shape the AI SDK reads. Option values are the provider's own
+ * business and pass through untouched.
+ */
+function resolveProviderOptions(value: unknown): ProviderOptions | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainObject(value)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'agent.providerOptions must be an object keyed by provider name',
+    );
+  }
+  for (const [provider, options] of Object.entries(value)) {
+    if (!isPlainObject(options)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `agent.providerOptions.${provider} must be an object of provider options`,
+      );
+    }
+  }
+  return value as ProviderOptions;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Resolves the `limits` block. The observation budget is attached by the caller. */

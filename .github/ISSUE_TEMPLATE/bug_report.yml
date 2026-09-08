@@ -1,0 +1,47 @@
+name: Bug report
+description: Something the runner, an engine, or the CLI does that it should not.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to [SECURITY.md](https://github.com/tester-army/e2e/blob/main/SECURITY.md), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, what you expected. Paste the error code if there was one (`POLICY_DENIED`, `MODEL_UNAVAILABLE`, ...).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A test file and the `e2e.config.ts` that show it. Deterministic (`screen`, `web`, `expect`) if at all possible; if an `agent.act` step is needed, say which model.
+      render: ts
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `npx --no-install e2e --version`, plus the engine package version and Node version.
+      placeholder: "@e2edev/e2e 0.5.0, @e2edev/playwright 0.5.0, node 26.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options:
+        - "@e2edev/playwright"
+        - "@e2edev/agent-device"
+        - custom engine
+        - not engine specific
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Report excerpt, `--debug` step table, `--ai-trace` findings from `unbox-ai`. Redact anything you would not paste in public.

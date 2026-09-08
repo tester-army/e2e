@@ -9,6 +9,7 @@
 
 import type { ModelMessage, ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
+import type { ProviderOptions } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -43,8 +44,11 @@ export interface CreateAgentOptions {
   readonly tools?: Readonly<Record<string, DefinedTool>>;
   /** Upper bound on model turns per step; defaults to the model-call budget. */
   readonly maxTurns?: number;
-  /** AI SDK provider options passed to every model call (e.g. a thinking level). */
-  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /**
+   * AI SDK provider options passed to every model call (e.g. a thinking
+   * level). Defaults to the config-resolved `agent.providerOptions`.
+   */
+  readonly providerOptions?: ProviderOptions;
 }
 
 /** Builds the default AI SDK step executor. */

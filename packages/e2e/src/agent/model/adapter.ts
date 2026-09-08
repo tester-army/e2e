@@ -1,6 +1,7 @@
 /** Model adapter contract. */
 
 import type { JSONSchema7 } from 'ai';
+import type { ProviderOptions } from '../../types.ts';
 import { AgentError } from '../error.ts';
 import type { ProtocolValidation } from '../protocol.ts';
 
@@ -54,6 +55,8 @@ export interface ModelCall<Value> {
   readonly validate: (value: unknown) => ProtocolValidation<Value>;
   readonly maxOutputTokens: number;
   readonly maxInputTokens: number;
+  /** Provider options from `agent.providerOptions`, passed through as-is. */
+  readonly providerOptions?: ProviderOptions | undefined;
   readonly signal: AbortSignal;
   readonly timeoutMs: number;
 }

@@ -34,6 +34,8 @@ export interface StagedTraceWrite {
 export interface AgentCacheContext {
   readonly mode: 'read-only' | 'read-write';
   readonly store: TraceCacheStore;
+  /** Test and target a write is recorded for, as `e2e cache ls` prints them. */
+  readonly identity: { readonly testId: string; readonly targetId: string };
   /** Whether this attempt may replay; writes are governed by `mode` alone. */
   readonly replayEligible: boolean;
   /**
@@ -118,6 +120,7 @@ export function createAgentCacheContext(options: {
   return {
     mode,
     store,
+    identity: { testId: options.testId, targetId: options.target.targetId },
     replayEligible: options.attemptIndex === 0,
     claimKeyHash: (kind, instruction, params) => {
       const signature = traceCallSignature(kind, instruction, params);

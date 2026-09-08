@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 20.19 or newer.
+- Node.js 22.12 or newer.
 - ES modules. The `package.json` nearest to the config and the tests must set
   `"type": "module"`. An `e2e.config.mts` is ESM on its own, but `.ts` tests
   still follow their package. In a CommonJS package either run
@@ -22,18 +22,20 @@ pnpm dlx @e2edev/e2e@beta init  # pnpm
 When `@e2edev/e2e` is already installed, run `npx --no-install e2e init`
 instead, so the installed version scaffolds.
 
-The wizard asks for the engine (None, Playwright, agent-device), whether to
-enable AI testing (adds `ai@^7.0.0` and `createAgent` to the config), which
-agent directories receive this skill (`.agents/skills/` and
-`.claude/skills/`), a confirmation of the files it will write, and whether to
-install. `--yes` skips every prompt (use it from scripts and from a shell
-without a TTY): AI on, no engine, no installation, skill in both
-directories.
+The wizard asks for the engine (Playwright by default; None and agent-device
+are the alternatives), whether to enable AI testing (adds `ai@^7.0.0` and
+`createAgent` to the config), which agent directories receive this skill
+(`.agents/skills/` and `.claude/skills/`), a confirmation of the files it
+will write, and whether to install. `--yes` skips every prompt (use it from
+scripts and from a shell without a TTY): Playwright, AI on, no installation,
+skill in both directories. The closing line prints the run command,
+`APP_URL=http://localhost:3000 npx --no-install e2e run` for Playwright, and
+suggests a `tsconfig.json` when the project has none.
 
 Init writes `package.json` (a private ESM package when missing; otherwise
-only the missing dev dependencies are added), `e2e.config.ts`,
-`tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/` output, and the
-skill. Existing config and test files are never touched. Re-run it after an
+only the missing dev dependencies and the `test:e2e` script are added),
+`e2e.config.ts`, `tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/`
+output, and the skill. Existing config and test files are never touched. Re-run it after an
 upgrade to refresh the skill; it changes nothing else in an initialized
 project.
 
@@ -87,7 +89,7 @@ export default {
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers. Use `1` for device targets. |
 | `reporters` | `['list']` | `list`, `json`, `junit`. `json` excludes `list`. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
-| `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. |
+| `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep, or `{ kinds, store }`. |

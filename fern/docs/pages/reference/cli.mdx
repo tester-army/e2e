@@ -1,17 +1,19 @@
 ---
 title: CLI
-subtitle: e2e init, e2e guide, and e2e run, flag by flag.
+subtitle: e2e init, e2e guide, e2e run, e2e list, and e2e cache, flag by flag.
 ---
 
 ```bash
 npx --no-install e2e init [directory]
 npx --no-install e2e guide [topic]
 npx --no-install e2e run [files...] [options]
+npx --no-install e2e list [files...] [options]
+npx --no-install e2e cache ls|clear|stats [--config <path>]
 npx --no-install e2e --help
 npx --no-install e2e --version
 ```
 
-The CLI needs Node.js 20.19 or newer and says so, naming both versions, before
+The CLI needs Node.js 22.12 or newer and says so, naming both versions, before
 it loads anything else on an older runtime.
 
 ## Help and version
@@ -34,8 +36,9 @@ Existing dependency versions and other package fields are preserved. With a
 `directory` argument the project is scaffolded there, the directory is created
 when missing, and the closing `next:` line starts with `cd` into it.
 
-For a new config, choose **None**, **Playwright**, or **agent-device**.
-Playwright adds `@e2edev/playwright`; agent-device adds `@e2edev/agent-device`.
+For a new config, choose **Playwright** (the default), **None**, or
+**agent-device**. Playwright adds `@e2edev/playwright`; agent-device adds
+`@e2edev/agent-device`.
 AI testing is enabled by default and adds `ai@^7.0.0` and `createAgent` in the
 config; you can decline it in the wizard. Next the wizard offers the agent
 skill (see [e2e guide](#e2e-guide)) for `.agents/skills/`, the directory
@@ -53,14 +56,14 @@ needs the Android SDK and an emulator. See [Device](/reference/device).
 | Argument or flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `[directory]` | path | the working directory | Where to scaffold; created when missing |
-| `-y`, `--yes` | boolean | `false` | Skips prompts; enables AI for a new config, with no engine or installation, and writes the skill to both agent directories |
+| `-y`, `--yes` | boolean | `false` | Skips prompts; a new config gets Playwright and AI, nothing is installed, and the skill is written to both agent directories |
 
 | Creates | Content |
 | --- | --- |
-| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies are added. The runner uses the current CLI's version range, engine packages use `beta`, and AI uses `^7.0.0` |
-| `e2e.config.ts` | Imports and target configuration match the selected engine and AI options. Playwright setup hands `APP_URL` (default `http://localhost:3000`) to `playwright({ url })`; the HTTP example reads it in the test itself; device setup pins an app without a URL |
-| `tests/example.e2e.ts` | An HTTP response check for the minimal setup, an app-open test asserting `toHaveURL('/')` for Playwright, or a deterministic Settings check for the selected device platform |
-| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, and `.e2e/logs/` when missing |
+| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies and scripts are added. The runner uses the current CLI's version range, engine packages use `0.x`, and AI uses `^7.0.0`. A `test:e2e` script runs `e2e run` unless the project already defines one |
+| `e2e.config.ts` | Imports and target configuration match the selected engine and AI options. Playwright setup hands `APP_URL` (default `http://localhost:3000`) to `playwright({ url })` and shows the `command` option in a comment for starting the dev server; the HTTP example reads `APP_URL` in the test itself; device setup pins an app without a URL. With AI, a comment shows `createAgent({ model })` for calling a provider directly |
+| `tests/example.e2e.ts` | For Playwright, an app-open test that visits `/` and asserts `web.locator('body')` is visible, so it passes against any page, plus a commented agent test; an HTTP response check for the minimal setup; a deterministic Settings check for the selected device platform |
+| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, and `.e2e/logs/` when missing. Adding `.e2e/cache/` prints a pointer to [Commit your traces](/reference/config#commit-your-traces), since committing replays is opt-in |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | The agent skill: `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic, in the directories selected in the wizard |
 
 ```bash
@@ -74,7 +77,10 @@ opt-in; converting also changes how the package's existing `.js` files run.
 The installer uses the project's `packageManager` field or lockfile, then the
 invoking package manager, falling back to npm. Declining installation still
 saves the dependencies to `package.json`, and the closing `next:` line starts
-with the install command. Device setup runs without `APP_URL`.
+with the install command, followed by the run command for the engine:
+`APP_URL=http://localhost:3000 npx --no-install e2e run` for Playwright.
+Device setup runs without `APP_URL`. When the project has no
+`tsconfig.json`, `init` prints a one-line suggestion to add one.
 
 Engine and AI choices apply only when creating a config. Re-running `init`
 keeps an existing `.ts` or `.mts` config and adds no optional packages for it.
@@ -108,7 +114,8 @@ skill's, so a coding agent working in a project without the skill files can
 read it from the CLI, and `e2e --help` points there.
 
 The same skill installs from the repository with
-`npx skills add tester-army/e2e`.
+`npx skills add tester-army/e2e`. [Coding agents](/coding-agents) covers how
+an agent uses it.
 
 ## e2e run
 
@@ -210,12 +217,91 @@ exits, and the runner writes a partial report with `status: interrupted` and
 exits 130. A second signal forces: every worker disposes its engine right
 away instead of finishing its test, and is killed once the cleanup budget is
 spent; the report is still written. A third signal exits on the spot, the last
-resort for a teardown that is itself stuck. This ladder belongs to the CLI;
+resort for a teardown that is itself stuck; before exiting it kills the process
+groups of every app command and service the run started, so no dev server or
+database container survives to fail the next run with `APP_ALREADY_RUNNING`. A
+process reused through `reuseExisting` was not started by the run and is left
+alone. This ladder belongs to the CLI;
 the [programmatic runner](/reference/embedding) never handles process signals.
 
 A worker whose runner disappears (killed, crashed) never runs on by itself: it
 disposes its engine and exits within the cleanup budget, so a device or a
 browser is not driven by a process nobody is listening to.
+
+## e2e list
+
+```bash
+e2e list [files...]
+```
+
+A dry run. `list` collects and selects tests exactly as `run` does, prints
+one line per test-target pair, and exits. Nothing starts: no app process, no
+engine, no worker, and nothing is written under `.e2e/`. Use it to check what
+a set of files, tags, and targets selects before paying for the run.
+
+The positional arguments and the selection flags are those of `run`:
+`--config`, `--target`, `--tag`, `--tag-mode`, and `--pass-with-no-tests`,
+with the same meaning. `--reporter` accepts `list` (the default) or `json`;
+`junit` exits 2. The same `NO_TESTS`, `UNKNOWN_TARGET`, and config errors
+apply, with the same exit codes.
+
+| Reporter | Writes |
+| --- | --- |
+| `list` | One line per pair, `file › title [target]`, in selection order, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`). A skipped test keeps its line with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
+| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `target`, `disposition` (`run` or `skip`), and `skipReason` when skipped. |
+
+Pairs that a tag, target, or platform filter removed are not listed; they are
+not part of the run either.
+
+```bash
+npx --no-install e2e list
+npx --no-install e2e list tests/signup.e2e.ts
+npx --no-install e2e list --tag smoke --target web
+npx --no-install e2e list --reporter json
+```
+
+## e2e cache
+
+Reads and empties the trace cache the runs write under `.e2e/cache/`. A cache
+entry is a file named after the digest of its key, so a directory listing says
+nothing about what is in it; these commands are the reader. All three resolve
+the store the same way a run does — through the discovered config or
+`--config <path>`, honoring `cache.dir` — and all three exit 0 on an empty or
+absent store, because a cache nobody has filled yet is not an error.
+
+| Command | Prints |
+| --- | --- |
+| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target, oldest first. |
+| `e2e cache stats` | The store directory, the number of readable entries, and their total size. |
+| `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
+
+```bash
+npx --no-install e2e cache ls
+npx --no-install e2e cache stats
+npx --no-install e2e cache clear
+npx --no-install e2e cache ls --config packages/web/e2e.config.ts
+```
+
+```text
+TEST                                 TARGET  INSTRUCTION   AGE  ACTIONS
+tests/billing.e2e.ts::upgrades       web     4f1c0a9d3b62  2h   4
+tests/signup.e2e.ts::signs up        web     9ab7715ce004  3d   7 (truncated)
+```
+
+The provenance comes from the entry itself, so an entry recorded before
+entries carried it prints `-` in those columns; it still replays.
+
+A file the store cannot read — truncated, over the 1 MiB entry ceiling, or
+from a newer schema — is not an entry: `ls` and `stats` count it separately on
+stderr, a run treats it as a miss, and `clear` removes it. Files the runner
+never wrote are left alone and named on stderr, so a `cache.dir` pointing at a
+directory that holds anything else cannot lose it.
+
+<Callout intent="info">
+A project that configures `cache.store` replaced the file store with its own,
+and these commands read files only, so they exit 2 and say so rather than
+reporting an empty cache.
+</Callout>
 
 ## Exit codes
 

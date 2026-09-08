@@ -54,6 +54,15 @@ export interface FakeCall {
   readonly lines: readonly string[];
   /** Image parts attached to the user message, in order. */
   readonly images: readonly FakeImage[];
+  /** Generation settings the adapter sent alongside the prompt. */
+  readonly settings: FakeSettings;
+}
+
+/** The call settings a provider reads off a generate request. */
+export interface FakeSettings {
+  readonly maxOutputTokens: number | undefined;
+  readonly temperature: number | undefined;
+  readonly providerOptions: unknown;
 }
 
 /** One attached image, as the adapter handed it to the provider. */
@@ -108,6 +117,9 @@ export function createFakeModel(
     async (options: {
       prompt: FakePrompt;
       responseFormat?: { type: string; name?: string; schema?: unknown } | undefined;
+      maxOutputTokens?: number | undefined;
+      temperature?: number | undefined;
+      providerOptions?: unknown;
     }) => {
       const system = promptText(options.prompt, 'system');
       const prompt = promptText(options.prompt, 'user');
@@ -122,6 +134,11 @@ export function createFakeModel(
         revision: promptRevision(prompt),
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
         images: promptImages(options.prompt),
+        settings: {
+          maxOutputTokens: options.maxOutputTokens,
+          temperature: options.temperature,
+          providerOptions: options.providerOptions,
+        },
       };
       fakeCalls.push(parsed);
       const raw = enforceRequestSchema(responder(parsed), options.responseFormat?.schema);
