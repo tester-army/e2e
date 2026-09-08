@@ -8,6 +8,7 @@ import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
+import { WorkerModels } from '../../src/run/worker-models.ts';
 
 /** Creates a locator fixture backed by one stable semantic node. */
 function createAttributeFixture(node: SemanticNode) {
@@ -37,6 +38,7 @@ function createAttributeFixture(node: SemanticNode) {
     priorSteps: () => steps.completed(),
     agentContext: undefined,
     saveSession: undefined,
+    models: new WorkerModels(config.agent, () => {}),
   });
   return fixtures.screen;
 }
