@@ -173,6 +173,8 @@ state is not on screen after the replay.
 - An entry is written only after a later verification step passes
   (`expect`, `locator.waitFor`, `agent.assert`, `agent.waitFor`). An `act`
   nothing checks is never replayed.
+- A step that records no actions creates no entry and skips the cache's
+  end-state observation.
 - `e2e init` gitignores `.e2e/cache/`; committing entries is opt-in. Remove
   that line to share replays with CI and teammates (CI stays `read-only`
   unless `cache: 'read-write'` is set explicitly).

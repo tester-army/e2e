@@ -474,6 +474,8 @@ The adaptive trace cache: each passing `agent.act()` step records the grammar
 actions it performed, and the next run replays them zero-turn — diverging to
 the live agent mid-step whenever the app no longer matches the recording.
 Judgments (`assert`, `waitFor`, `extract`) are never cached.
+A step that records no actions creates no entry and skips the cache's
+end-state observation.
 
 The cache is **on by default** (`read-write`; an unset mode becomes `read-only` in CI).
 Opt out per project with `cache: 'off'`, or per run with `e2e run --no-cache`

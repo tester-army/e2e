@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
+import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import {
   createProject,
   resultByTitle,
@@ -500,6 +501,43 @@ describe('trace cache: an engine-independent executor is not gated by the cache'
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  it('skips the end-state observation when the executor recorded no actions', async () => {
+    const project = createProject({ 'tests/tools.e2e.ts': TOOLS_ONLY_SUITE });
+    let executorFinished = false;
+    let observationsAfterStep = 0;
+    const { engine, operations } = createFakeEngine({
+      observe: () => {
+        if (executorFinished) observationsAfterStep += 1;
+      },
+    });
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: FAKE_APP_URL,
+        config: {
+          targets: [{ name: 'toy', platform: 'web', engine }],
+          cache: 'read-write',
+          artifacts: [],
+          agent: {
+            name: 'observation-only-executor',
+            async runStep(context) {
+              await context.observe();
+              executorFinished = true;
+              return { status: 'passed', summary: 'the screen already matches' };
+            },
+          },
+        },
+      });
+      expect(outcome.exitCode).toBe(0);
+      assertValidReport(outcome.report);
+      expect(operations.some((operation) => operation.method === 'observe')).toBe(true);
+      expect(executorFinished).toBe(true);
+      expect(observationsAfterStep).toBe(0);
+      expect(existsSync(cacheDir(project))).toBe(false);
+    } finally {
+      project.cleanup();
+    }
   });
 
   it('runs the executor with caching on, without an opened app, and stages nothing', async () => {

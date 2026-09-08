@@ -326,7 +326,7 @@ export class StepTraceSession {
    * a trace without its check would replay on mechanics alone.
    */
   private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
-    if (this.startNodes === undefined) return;
+    if (this.startNodes === undefined || recorder.recordedCount === 0) return;
     const endNodes = await probeScreen(this.host);
     if (endNodes === undefined) return;
     const endPath = await this.host.currentPath(endNodes);
