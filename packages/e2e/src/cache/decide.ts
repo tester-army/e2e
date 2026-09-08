@@ -26,14 +26,16 @@ function pathnameOf(path: string): string {
 
 /**
  * A path segment the app mints per record: a uuid, a hex or digit run of
- * eight or more, or a long mixed alphanumeric such as a short id or slug
- * suffix. Only such segments may differ between two paths of the same shape.
+ * eight or more, or a long random token (twelve or more url-safe characters
+ * carrying a digit or both letter cases, which a plain lowercase word such as
+ * `integrations` never does). Only such segments may differ between two
+ * paths of the same shape.
  */
 const MINTED_SEGMENT: readonly RegExp[] = [
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   /^[0-9a-f]{8,}$/i,
   /^\d{4,}$/,
-  /^(?=.*\d)(?=.*[a-z])[a-z0-9_-]{12,}$/i,
+  /^(?=.*(?:\d|[a-z][A-Za-z0-9_-]*[A-Z]|[A-Z][A-Za-z0-9_-]*[a-z]))[A-Za-z0-9_-]{12,}$/,
 ];
 
 /**

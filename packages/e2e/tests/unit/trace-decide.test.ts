@@ -17,6 +17,12 @@ describe('samePathShape', () => {
       samePathShape('/runs/3f2504e0-4f89-11d3-9a0c-0305e82c3301', '/runs/9c858901-8a57-4791-81fe-4c455b099bc9'),
     ).toBe(true);
     expect(samePathShape('/orders/48213', '/orders/48901')).toBe(true);
+    expect(samePathShape('/projects/h6oOdrnB-LwS', '/projects/abcdEFGHijkl')).toBe(true);
+  });
+
+  it('never takes a plain word for a minted id', () => {
+    expect(samePathShape('/projects/integrations', '/projects/testaccounts')).toBe(false);
+    expect(samePathShape('/projects/h6oOdrnB-LwS', '/projects/integrations')).toBe(false);
   });
 
   it('rejects a differing segment that is not minted on both sides', () => {
