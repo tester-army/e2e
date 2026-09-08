@@ -168,7 +168,7 @@ export function resolveAgentConfig(
 
   return {
     executor,
-    model: resolveModel(agent?.model, env),
+    model: resolveCanonicalModel(agent?.model, executor?.model, env),
     visionModel: resolveModel(agent?.visionModel, env, 'agent.visionModel', 'E2E_VISION_MODEL'),
     maxSteps,
     maxModelCalls,
@@ -234,6 +234,35 @@ export function isModelInstance(value: unknown): value is ModelInstance {
     typeof candidate['modelId'] === 'string' &&
     typeof candidate['doGenerate'] === 'function'
   );
+}
+
+/**
+ * The one model both tiers use. The model the executor brought
+ * (`createAgent({ model })`) is it; without one, `agent.model`, then
+ * `E2E_MODEL`. An `agent.model` naming a different model than the executor's
+ * is rejected: two configured models would split the tiers silently.
+ */
+function resolveCanonicalModel(
+  configured: string | ModelConfig | ModelInstance | undefined,
+  executorModel: ModelInstance | undefined,
+  env: NodeJS.ProcessEnv,
+): ResolvedModel | undefined {
+  if (executorModel === undefined) return resolveModel(configured, env);
+  const own: ResolvedModel = {
+    kind: 'instance',
+    provider: executorModel.provider,
+    id: executorModel.modelId,
+    model: asSdkLanguageModel(executorModel),
+  };
+  if (configured === undefined) return own;
+  const explicit = resolveModel(configured, env);
+  if (explicit !== undefined && (explicit.provider !== own.provider || explicit.id !== own.id)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `agent.model (${explicit.provider}/${explicit.id}) and the executor's own model (${own.provider}/${own.id}) differ; configure the model in one place`,
+    );
+  }
+  return own;
 }
 
 /**

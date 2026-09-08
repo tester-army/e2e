@@ -30,6 +30,19 @@ export default {
 } satisfies E2EConfig;
 ```
 
+The model `createAgent` receives is the one model for the whole `agent`
+fixture: it plans `agent.act` and it judges `agent.assert`, `agent.waitFor`,
+and `agent.extract`. It outranks `E2E_MODEL`. Configure the model in one
+place: an `agent.model` that names a different model than the executor's is
+`INVALID_CONFIG` at config resolution.
+
+The runner checks the model once per run, when the first test acquires the
+`agent` fixture. Adapter construction validates the provider and the credential
+without a model request, so a missing model or key is one run-level
+`MODEL_UNAVAILABLE` (exit 2) that stops the run, not one failed step per test.
+A custom executor with no model is exempt: its `act` steps need none, and a
+judgment call without a model still fails with `MODEL_UNAVAILABLE`.
+
 The `agent` key also accepts an options block when you have nothing to
 construct: `agent: { model: 'anthropic/claude-sonnet-4.5', context: '...' }`
 runs `createAgent()` with those settings. `context` is a sentence or two of

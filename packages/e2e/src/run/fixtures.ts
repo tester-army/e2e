@@ -4,7 +4,7 @@ import { createAgentFixture } from '../agent/index.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
-import { createModelAdapter } from '../agent/model/sdk.ts';
+import type { WorkerModels } from './worker-models.ts';
 import type { EngineFixtureContext } from '../engine/index.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
@@ -59,6 +59,8 @@ export interface AttemptEnvironment {
   readonly cache?: AgentCacheContext;
   /** `--debug` phase timings; absent when the caller collects none. */
   readonly debug?: DebugTrace;
+  /** The worker's model adapters, checked once on the first `agent` acquisition. */
+  readonly models: WorkerModels;
 }
 
 /** Secrets survive every fixture graph that shares the same live isolation. */
@@ -122,12 +124,14 @@ export function createFixtures(
 
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
-      agent ??= createAgentFixture({
+      if (agent !== undefined) return agent;
+      environment.models.preflight();
+      agent = createAgentFixture({
         engine,
         steps: environment.steps,
         executor: environment.config.agent.executor ?? lazyDefaultExecutor(),
         customExecutor: environment.config.agent.executor !== undefined,
-        models: createModelRouter(environment.config.agent, createModelAdapter),
+        models: createModelRouter(environment.config.agent, environment.models.build),
         config: environment.config,
         target: {
           name: environment.target.name,

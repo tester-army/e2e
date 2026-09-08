@@ -1,6 +1,8 @@
 import { APICallError } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
+import { createAgent } from '../../src/agent/default-agent.ts';
+import type { SdkLanguageModel } from '../../src/config/agent.ts';
 
 const ROOT = '/tmp/e2e-agent-config-project';
 const BASE_ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
@@ -125,6 +127,52 @@ describe('agent as the executor itself', () => {
     expect(() => resolve({ agent: { runStep: 'nope' } } as never)).toThrow(
       /unknown agent config key/,
     );
+  });
+});
+
+describe('one canonical model', () => {
+  const instance = (modelId: string) =>
+    ({
+      specificationVersion: 'v2',
+      provider: 'openai',
+      modelId,
+      supportedUrls: {},
+      doGenerate: () => Promise.reject(new Error('not called')),
+      doStream: () => Promise.reject(new Error('not called')),
+    }) as unknown as SdkLanguageModel;
+
+  it('uses the model createAgent brought for the judgment tier too', () => {
+    const model = instance('gpt-5.4-mini');
+    const config = resolve({ agent: createAgent({ model }) });
+    expect(config.agent.executor?.model).toBe(model);
+    expect(config.agent.model).toMatchObject({ kind: 'instance', provider: 'openai', id: 'gpt-5.4-mini' });
+  });
+
+  it('prefers the executor model over E2E_MODEL', () => {
+    const config = resolve(
+      { agent: createAgent({ model: instance('gpt-5.4-mini') }) },
+      { ...BASE_ENV, E2E_MODEL: 'anthropic/claude-sonnet-4.5' },
+    );
+    expect(config.agent.model).toMatchObject({ kind: 'instance', provider: 'openai', id: 'gpt-5.4-mini' });
+  });
+
+  it('accepts agent.model naming the same model as the executor', () => {
+    const model = instance('gpt-5.4-mini');
+    const config = resolve({ agent: { executor: createAgent({ model }), model: 'openai/gpt-5.4-mini' } });
+    expect(config.agent.model).toMatchObject({ kind: 'instance', model });
+  });
+
+  it('rejects agent.model and an executor model that differ', () => {
+    expect(() =>
+      resolve({ agent: { executor: createAgent({ model: instance('gpt-5.4-mini') }), model: 'openai/gpt-5.4' } }),
+    ).toThrow(/agent\.model \(openai\/gpt-5\.4\) and the executor's own model \(openai\/gpt-5\.4-mini\) differ/);
+    expect(() =>
+      resolve({ agent: { executor: createAgent({ model: instance('gpt-5.4-mini') }), model: instance('gpt-5.4') } }),
+    ).toThrow(/differ; configure the model in one place/);
+  });
+
+  it('leaves a custom executor without a model to E2E_MODEL', () => {
+    expect(resolve({ agent: brain() }).agent.model).toBeUndefined();
   });
 });
 

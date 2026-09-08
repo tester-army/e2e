@@ -49,7 +49,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
   if (model === undefined) {
     throw new AgentError(
       'MODEL_UNAVAILABLE',
-      'the agent fixture requires model configuration: set agent.model or E2E_MODEL',
+      'the agent fixture requires a model: pass one to createAgent({ model }), set agent.model, or set E2E_MODEL',
     );
   }
   const { endpoint, flavor } = validateModel(model);

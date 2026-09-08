@@ -100,6 +100,10 @@ export class TargetWorker {
               serialId: pair.test.serialId,
             }),
           onProgress: (testId, progress) => this.host.emit({ type: 'progress', testId, progress }),
+          onRunAbort: (runError) => {
+            this.interruptController.abort();
+            this.host.emit({ type: 'run-abort', error: runError.error });
+          },
         },
       });
       this.host.emit({ type: 'ready' });

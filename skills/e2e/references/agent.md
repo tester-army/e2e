@@ -38,8 +38,12 @@ E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e
 - `context` in the config and `agentContext` on a test or group add trusted
   project vocabulary to every prompt.
 - `visionModel` (or `E2E_VISION_MODEL`) serves the calls that send pixels.
-- Missing model or key: the `agent` fixture fails with `MODEL_UNAVAILABLE`
-  (exit 2) at first use.
+- The model passed to `createAgent({ model })` is the one model for every
+  `agent.*` call, `act` and the judgments alike, and outranks `E2E_MODEL`.
+  An `agent.model` naming a different model is `INVALID_CONFIG`.
+- Missing model or key: checked once per run when the first test acquires
+  the `agent` fixture. One run-level `MODEL_UNAVAILABLE` (exit 2) stops the
+  run; the remaining tests are skipped, not failed one by one.
 
 ## act: one goal
 

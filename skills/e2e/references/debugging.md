@@ -35,7 +35,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `ASSERTION_FAILED` | The expectation is wrong, or the state settles later than 5 s; for `agent.assert`, the judgment was false (explanation in the report) | Compare with the actual text in the report or screenshot; `{ timeout }` on the matcher; rewrite the question |
 | `ACTION_FAILED` | Element not actionable (covered, disabled, detached) or an operation timed out | Wait on the right condition with `expect` first; close overlays; check `actionTimeout` |
 | `TEST_TIMEOUT` | The attempt exceeded `timeout` (120 s) | Split the test, or raise `timeout` for slow flows and agent steps |
-| `MODEL_UNAVAILABLE` | No `E2E_MODEL`, no key, or an unknown provider | Export `E2E_MODEL=provider/model-id` and `E2E_MODEL_API_KEY`; confirm the model id |
+| `MODEL_UNAVAILABLE` | No model (`createAgent({ model })`, `agent.model`, or `E2E_MODEL`), no key, or an unknown provider. Reported once for the run under `run.errors`; the run stops | Export `E2E_MODEL=provider/model-id` and `E2E_MODEL_API_KEY`, or pass a model to `createAgent`; confirm the model id |
 | `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, or no credits after the transport retries | Check the key and the quota; retry; exit code 3 |
 | `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED` | The goal was too big or ambiguous, or the provider slow | Split the goal, use on-screen wording, add `context`, raise `timeout` and `actionTimeout`, `--debug` to read the transcript |
 | `POLICY_DENIED` | Navigation outside `allowedOrigins`; a `Secret` given to a sink that is not a password field; reading a secure field | Add the origin to `allowedOrigins`; fill secrets only into password inputs; assert the outcome instead of the value |

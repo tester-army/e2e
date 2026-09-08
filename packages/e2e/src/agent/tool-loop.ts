@@ -111,6 +111,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
   return {
     name: options.name,
     ...(options.version === undefined ? {} : { version: options.version }),
+    ...(options.model === undefined ? {} : { model: options.model }),
     async runStep(context: StepExecutorContext): Promise<StepVerdict> {
       // The AI SDK is an optional peer; load it before anything touches it —
       // including the context's gateway-model getter below.

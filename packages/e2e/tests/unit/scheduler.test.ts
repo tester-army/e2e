@@ -243,6 +243,7 @@ async function run(
       onResult: (result) => collected.results.push(result),
       onSerialGroup: (group) => collected.serialGroups.push(group),
       onRunError: (error) => collected.runErrors.push(error),
+      onRunAbort: (error) => collected.runErrors.push(error),
     },
   });
   return collected;

@@ -11,6 +11,8 @@ import type { FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
+import { createAgent } from '../../src/agent/default-agent.ts';
+import type { SdkLanguageModel } from '../../src/config/agent.ts';
 
 const SUITE = `import { test, credentials } from '@e2edev/e2e';
 
@@ -52,6 +54,27 @@ test('requires model configuration', async ({ app, agent }) => {
   await app.open();
   await agent.assert('anything');
 });
+
+test('would also need the model', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('anything');
+});
+
+test('would need it as well', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('anything');
+});
+`;
+
+const CANONICAL_SUITE = `import { test } from '@e2edev/e2e';
+
+test('judges with the model createAgent brought', async ({ app, agent }) => {
+  await app.open();
+  const data = await agent.extract('the counter value', {
+    schema: { '~standard': { version: 1, vendor: 'test', validate: (value) => ({ value }) } },
+  });
+  if (data.counter !== '0') throw new Error('unexpected counter ' + data.counter);
+});
 `;
 
 /** Scripted responder whose behavior is selected by the schema. */
@@ -74,6 +97,8 @@ describe('agent policy and error classification', () => {
   let unconfiguredProject: FixtureProject;
   let ghost: RunOutcome;
   let ghostProject: FixtureProject;
+  let canonical: RunOutcome;
+  let canonicalProject: FixtureProject;
 
   beforeAll(async () => {
     app = await startFixtureApp();
@@ -111,13 +136,37 @@ describe('agent policy and error classification', () => {
     );
     unconfigured = missing.outcome;
     unconfiguredProject = missing.project;
+
+    const oneModel = await runProject(
+      { 'tests/canonical.e2e.ts': CANONICAL_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agent: createAgent({
+            model: installFakeModel(() => ({ counter: '0' })) as unknown as SdkLanguageModel,
+          }),
+        },
+      },
+    );
+    canonical = oneModel.outcome;
+    canonicalProject = oneModel.project;
   }, 180_000);
 
   afterAll(async () => {
     project?.cleanup();
     ghostProject?.cleanup();
     unconfiguredProject?.cleanup();
+    canonicalProject?.cleanup();
     await app?.close();
+  });
+
+  it('judges with the model createAgent brought, with no agent.model or E2E_MODEL', () => {
+    expect(canonical.exitCode).toBe(0);
+    const result = resultByTitle(canonical, 'judges with the model createAgent brought');
+    expect(result.status).toBe('passed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.extract')!;
+    expect(step.model).toMatchObject({ provider: 'fake', model: 'scripted' });
   });
 
   it('fills a secret into a purpose-compatible secure field', () => {
@@ -154,13 +203,20 @@ describe('agent policy and error classification', () => {
     expect(step.metrics!.modelCalls).toBe(2);
   });
 
-  it('fails the first model call with MODEL_UNAVAILABLE when no model is configured', () => {
-    const result = resultByTitle(unconfigured, 'requires model configuration');
-    expect(result.status).toBe('failed');
-    const error = result.attempts.at(-1)!.error!;
-    expect(error.code).toBe('MODEL_UNAVAILABLE');
-    expect(error.category).toBe('configuration');
+  it('reports a missing model once for the run and stops, instead of once per test', () => {
+    const errors = unconfigured.report.run.errors;
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ code: 'MODEL_UNAVAILABLE', category: 'configuration' });
     expect(unconfigured.exitCode).toBe(2);
+    expect(unconfigured.status).toBe('error');
+    expect(unconfigured.results).toHaveLength(3);
+    const first = resultByTitle(unconfigured, 'requires model configuration');
+    expect(['MODEL_UNAVAILABLE', 'INTERRUPTED']).toContain(first.attempts.at(-1)!.error!.code);
+    for (const title of ['would also need the model', 'would need it as well']) {
+      const result = resultByTitle(unconfigured, title);
+      expect(result.status).toBe('skipped');
+      expect(result.attempts).toHaveLength(0);
+    }
   });
 });
 

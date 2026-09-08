@@ -162,6 +162,16 @@ export interface FatalMessage {
   readonly error: SerializedError;
 }
 
+/**
+ * The worker met a run-level configuration failure (an unusable model on
+ * the first `agent` acquisition) and asks the run to stop. The worker stays
+ * alive to finish reporting its unit as interrupted.
+ */
+export interface RunAbortMessage {
+  readonly type: 'run-abort';
+  readonly error: SerializedError;
+}
+
 export type WorkerToMain =
   | ReadyMessage
   | PairStartMessage
@@ -170,7 +180,8 @@ export type WorkerToMain =
   | SerialGroupMessage
   | UnitDoneMessage
   | ShutdownDoneMessage
-  | FatalMessage;
+  | FatalMessage
+  | RunAbortMessage;
 
 /** Strips the live target from a result for transport. */
 export function encodeResult(record: ResultRecord): WireResultRecord {

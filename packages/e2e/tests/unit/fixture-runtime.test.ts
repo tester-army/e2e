@@ -8,6 +8,7 @@ import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
+import { WorkerModels } from '../../src/run/worker-models.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
 import { defineTool, getToolContext } from '../../src/agent/tool.ts';
 import type { E2EConfig } from '../../src/types.ts';
@@ -26,6 +27,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: () => 'artifact' }, priorSteps: () => steps.completed(),
     agentContext: undefined, saveSession: undefined,
+    models: new WorkerModels(config.agent, () => {}),
   });
   return { fixtures, steps };
 }

@@ -41,6 +41,7 @@ import { runSerialUnit, type SerialHost, type SharedSerialSession } from './seri
 import { INTERRUPTED_BEFORE_START, pairResult, unstartedResult } from './units.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
+import { WorkerModels } from './worker-models.ts';
 import type { SetupFn } from '../types.ts';
 
 export interface ExecutionEvents {
@@ -50,6 +51,12 @@ export interface ExecutionEvents {
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
   onProgress?(testId: string, progress: StepProgress): void;
+  /**
+   * A run-level configuration failure met mid-run, such as an unusable model
+   * on the first `agent` acquisition. The run should stop; the error is
+   * recorded once for the run, not against the test that met it.
+   */
+  onRunAbort?(error: RunError): void;
 }
 
 export interface TargetExecutorOptions {
@@ -101,6 +108,7 @@ export class TargetExecutor implements SerialHost {
   readonly debug: DebugTrace;
 
   private readonly runErrors: RunError[] = [];
+  private readonly models: WorkerModels;
   private readonly sessionIdentity: SessionIdentity;
   /** Resolves once the engine's init hook completed for this worker. */
   private engineReady: Promise<void> | undefined;
@@ -110,6 +118,9 @@ export class TargetExecutor implements SerialHost {
     this.artifactsRoot = options.artifactsRoot;
     this.interruptSignal = options.interruptSignal;
     this.debug = options.debug ?? new DebugTrace(false);
+    this.models = new WorkerModels(options.config.agent, (error) => {
+      options.events?.onRunAbort?.({ error: serializeError(error) });
+    });
     this.realms = new RealmManager({
       targetName: options.target.name,
       platform: options.target.platform,
@@ -701,6 +712,7 @@ export class TargetExecutor implements SerialHost {
         saveSession,
         ...(cache === undefined ? {} : { cache }),
         debug: this.debug,
+        models: this.models,
       });
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');

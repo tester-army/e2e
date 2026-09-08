@@ -360,7 +360,7 @@ agent?: {
 
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
-| `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. |
+| `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
 | `visionModel` | `string \| ModelConfig \| ModelInstance` | `agent.model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
@@ -542,7 +542,7 @@ The runner reads a closed set. There are no verbosity variables; diagnostics are
 | Setting | Order |
 | --- | --- |
 | Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself (`url: process.env.APP_URL ?? ...`) |
-| Model | `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
+| Model | the model passed to `createAgent({ model })`, then `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls |
 | Vision model | `agent.visionModel`, then `E2E_VISION_MODEL`, then `agent.model` |
 | Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
@@ -550,7 +550,10 @@ The runner reads a closed set. There are no verbosity variables; diagnostics are
 "First non-empty" ignores values that are undefined or whitespace only. Naming
 `apiKeyEnv` replaces the default variable name rather than adding to it. A
 missing model credential is not a config error; it surfaces as
-`MODEL_UNAVAILABLE` when the `agent` fixture is acquired.
+`MODEL_UNAVAILABLE` when the `agent` fixture is first acquired. That check runs
+once per run and stops it (exit 2), so a suite without a model reports one
+run-level error rather than one blocked step per test. A custom executor with no
+model skips the check.
 
 An `E2E_USER_*` pair for a name that is not in the `credentials` block is
 ignored. The variable name is the credential name uppercased with every character

@@ -165,17 +165,33 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
+   * A worker's run-level configuration failure stops the run through the
+   * interrupt signal, recorded once: workers that meet the same failure in
+   * parallel report the one already on the way out. The work it cuts short is
+   * interrupted, but the run is not: its exit code is the error's, not 130.
+   */
+  let runAborted = false;
+  const abortRun = (runError: RunError): void => {
+    if (runAborted) return;
+    runAborted = true;
+    recordRunError(runError);
+    interruptController.abort();
+  };
+
+  /**
    * The exit code is a fold over run state — every result, every run error,
    * the interrupt — never threaded through by hand. A run error recorded
    * anywhere, including during teardown or the report write, reaches the exit
    * code the same way.
    */
   const currentExitCode = (): RunExitCode =>
-    combineExitCodes([
-      ...resultExitCodes(results),
-      ...runErrors.map((runError) => exitCodeForCategory(runError.error.category)),
-      ...(interruptController.signal.aborted ? [130] : []),
-    ]);
+    combineExitCodes(
+      [
+        ...resultExitCodes(results),
+        ...runErrors.map((runError) => exitCodeForCategory(runError.error.category)),
+        ...(interruptController.signal.aborted ? [130] : []),
+      ].filter((code) => code !== 130 || !runAborted),
+    );
 
   const buildRunReport = (exitCode: RunExitCode): Report1Document =>
     buildReport({
@@ -478,6 +494,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             emit({ type: 'serial-group', group });
           },
           onRunError: recordRunError,
+          onRunAbort: abortRun,
           onTestStart: (start, targetName) =>
             emit({ type: 'test-started', ...start, target: targetName }),
           onProgress: (testId, targetName, progress) =>

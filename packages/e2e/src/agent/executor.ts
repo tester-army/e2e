@@ -311,6 +311,13 @@ export interface StepExecutor {
    * truth, or one that must see every step run.
    */
   readonly cache?: 'inherit' | 'off';
+  /**
+   * The model this executor brought along, when it has one. Config resolution
+   * reads it as the run's model when `agent.model` is unset, so one
+   * `createAgent({ model })` drives both `act` and the judgment tier;
+   * `INVALID_CONFIG` when both are set and differ.
+   */
+  readonly model?: ModelInstance;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 

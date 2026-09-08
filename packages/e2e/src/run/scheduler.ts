@@ -38,6 +38,8 @@ export interface SchedulerEvents {
   onResult(result: ResultRecord): void;
   onSerialGroup(group: SerialGroupRecord): void;
   onRunError(error: RunError): void;
+  /** A worker asks the run to stop over a run-level configuration failure. */
+  onRunAbort(error: RunError): void;
   /** A worker began executing one test-target pair. */
   onTestStart?(start: PairStart, targetName: string): void;
   /** Live step progress of one running attempt. */
@@ -518,6 +520,10 @@ class Scheduler {
       case 'fatal': {
         this.options.events.onRunError({ error: message.error });
         worker.runner.kill();
+        break;
+      }
+      case 'run-abort': {
+        this.options.events.onRunAbort({ error: message.error });
         break;
       }
     }

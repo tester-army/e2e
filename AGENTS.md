@@ -177,8 +177,11 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   locate cache are both gone, for example). Verify against `src/` before
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
-- No implicit default model. Agent fixtures without model config fail with
-  `MODEL_UNAVAILABLE`. No implicit target either: `targets` is required and
+- No implicit default model. One canonical model: the one `createAgent({ model })`
+  brought, else `agent.model`, else `E2E_MODEL`, serves `act` and the judgment
+  calls alike; two that differ are `INVALID_CONFIG`. Without one, the first
+  `agent` acquisition in a run reports one run-level `MODEL_UNAVAILABLE` and
+  stops the run (exit 2). No implicit target either: `targets` is required and
   each names its engine.
 - Security invariants (fail closed when one cannot be enforced):
   - Secrets never reach model input, digests, logs, reports, or artifacts.
