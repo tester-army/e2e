@@ -287,8 +287,17 @@ function requireCollector(api: string): Collector {
   return collector;
 }
 
-/** The runner's own source root (`src/` or `dist/`), whose frames are never a test's location. */
-const RUNNER_ROOT = `${path.dirname(path.dirname(fileURLToPath(import.meta.url)))}${path.sep}`;
+/**
+ * The runner's own code roots, whose frames are never a test's location:
+ * `dist/` is what a shipped package executes, and its source maps point those
+ * frames back into `src/`. The package root alone is not the boundary: the
+ * package also holds files that can legitimately declare tests, such as this
+ * repo's own fixture projects under `tests/`.
+ */
+const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+const RUNNER_ROOTS = ['dist', 'src'].map(
+  (dir) => `${PACKAGE_ROOT}${path.sep}${dir}${path.sep}`,
+);
 
 function captureSource(): SourceLocation | undefined {
   const stack = new Error().stack;
@@ -297,8 +306,9 @@ function captureSource(): SourceLocation | undefined {
   for (const line of lines) {
     const match = /\(?(?:file:\/\/)?([^()\s]+?):(\d+):(\d+)\)?$/.exec(line.trim());
     if (match === null) continue;
-    const file = decodeURIComponent(match[1]!);
-    if (file.startsWith(RUNNER_ROOT) || file.startsWith('node:')) continue;
+    const file = decodeURIComponent(match[1]!.split('?')[0]!);
+    if (file.startsWith('node:')) continue;
+    if (RUNNER_ROOTS.some((root) => file.startsWith(root))) continue;
     return { file, line: Number(match[2]), column: Number(match[3]) };
   }
   return undefined;

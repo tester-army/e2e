@@ -167,7 +167,7 @@ describe('renderJunitReport', () => {
   it('renders a passed result as a bare testcase named by title path and target', () => {
     const xml = render(report({ results: [result()] }));
     expect(xml).toContain(
-      '<testcase name="auth &gt; signs in [web]" classname="tests/auth.e2e.ts" time="1.234"/>',
+      '<testcase name="auth &gt; signs in [web]" classname="tests/auth.e2e.ts" file="tests/auth.e2e.ts" line="3" time="1.234"/>',
     );
     expect(xml).toContain(
       '<testsuite name="tests/auth.e2e.ts" tests="1" failures="0" errors="0" skipped="0" time="1.234">',
@@ -429,6 +429,7 @@ describe('renderJunitReport', () => {
         results: [
           result({
             file: 'tests/checkout.e2e.ts',
+            source: { file: 'tests/checkout.e2e.ts', line: 5, column: 1 },
             titlePath: ['checkout', 'adds'],
             serialGroupId: 'group-1',
             attempts: [],
@@ -438,6 +439,7 @@ describe('renderJunitReport', () => {
             testId: 'test-2',
             declarationIndex: 1,
             file: 'tests/checkout.e2e.ts',
+            source: { file: 'tests/checkout.e2e.ts', line: 9, column: 1 },
             titlePath: ['checkout', 'pays'],
             serialGroupId: 'group-1',
             status: 'failed',
@@ -447,10 +449,10 @@ describe('renderJunitReport', () => {
       }),
     );
     expect(xml).toContain(
-      '<testcase name="checkout &gt; adds [web]" classname="tests/checkout.e2e.ts" time="1.000"/>',
+      '<testcase name="checkout &gt; adds [web]" classname="tests/checkout.e2e.ts" file="tests/checkout.e2e.ts" line="5" time="1.000"/>',
     );
     expect(xml).toContain(
-      '<testcase name="checkout &gt; pays [web]" classname="tests/checkout.e2e.ts" time="2.000">',
+      '<testcase name="checkout &gt; pays [web]" classname="tests/checkout.e2e.ts" file="tests/checkout.e2e.ts" line="9" time="2.000">',
     );
     expect(xml).toContain('<failure message="cart is empty" type="ASSERTION_FAILED">');
   });

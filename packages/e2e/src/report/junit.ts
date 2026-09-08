@@ -131,6 +131,8 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
   const open = `<testcase ${attributes({
     name: `${result.titlePath.join(' > ')} [${result.targetId}]`,
     classname: result.file,
+    file: result.source.file,
+    line: `${result.source.line}`,
     time: seconds(final.durationMs),
   })}`;
   switch (result.status) {
