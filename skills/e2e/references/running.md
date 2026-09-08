@@ -4,6 +4,7 @@
 
 ```bash
 npx --no-install e2e run [files...] [options]   # run tests
+npx --no-install e2e list [files...] [options]  # print what run would select, without running
 npx --no-install e2e init [--yes]               # scaffold a project, refresh the agent skill
 npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, debugging
 ```
@@ -30,6 +31,17 @@ npx --no-install e2e run tests/signup.e2e.ts
 npx --no-install e2e run tests/agent --tag smoke
 npx --no-install e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
 CI=1 npx --no-install e2e run   # reproduce the CI defaults locally
+```
+
+`list` takes the same files and the selection flags (`--config`, `--target`,
+`--tag`, `--tag-mode`, `--pass-with-no-tests`) and prints one line per
+test-target pair, `file › title [target]`, then exits without starting the
+app, an engine, or a worker. `--reporter json` prints `{ "pairs": [...] }`.
+Use it to check a filter before a run.
+
+```bash
+npx --no-install e2e list --tag smoke
+npx --no-install e2e list tests/signup.e2e.ts --reporter json
 ```
 
 A `package.json` script keeps it short: `"test:e2e": "e2e run"`, then

@@ -4,7 +4,8 @@ import { resolve as resolvePath } from 'node:path';
 import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
-import { run } from '../run/runner.ts';
+import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
+import { list, run, type ListedPair } from '../run/runner.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { SignalLadder } from './signals.ts';
@@ -54,6 +55,15 @@ function parseReporters(value: string): Reporter[] {
 
 const TAG_MODES = ['any', 'all'] as const;
 type TagMode = (typeof TAG_MODES)[number];
+
+const LIST_REPORTERS = ['list', 'json'] as const;
+type ListReporter = (typeof LIST_REPORTERS)[number];
+
+/** One `e2e list` line: `file › title [target]`, with the skip reason when there is one. */
+function formatListedPair(pair: ListedPair): string {
+  const line = `${pair.file} › ${pair.titlePath.join(' › ')} [${pair.target}]`;
+  return pair.disposition === 'skip' ? `${line} (skipped: ${pair.skipReason ?? 'skipped'})` : line;
+}
 
 /** The exit-code table of the CLI reference; the runner decides which one applies. */
 const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
@@ -110,6 +120,7 @@ function createProgram(): Command {
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
           'e2e run --tag smoke --reporter list,junit',
+          'e2e list --tag smoke',
           'e2e guide',
         ]),
         '',
@@ -246,6 +257,74 @@ function createProgram(): Command {
         } finally {
           release();
         }
+      },
+    );
+
+  program
+    .command('list')
+    .summary('print the tests a run would select, without running them')
+    .description(
+      'Collect and select tests exactly as run does, print one line per test and target (file › title [target]), and exit. Nothing starts: no app process, no engine, no worker. The same files, --tag, and --target flags narrow the selection.',
+    )
+    .argument('[files...]', 'test files, directories, or globs relative to the project root')
+    .optionsGroup('Selection:')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--target <ids>', 'comma-separated target names (default: all targets)', parseList)
+    .option('--tag <tag>', 'only tests with this tag; repeat to combine', (value: string, previous: string[] = []) => [
+      ...previous,
+      value,
+    ])
+    .addOption(new Option('--tag-mode <mode>', 'how repeated tags combine').choices(TAG_MODES).default('any'))
+    .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
+    .optionsGroup('Output:')
+    .addOption(
+      new Option('--reporter <id>', 'list prints one line per pair; json prints { pairs: [...] }')
+        .choices(LIST_REPORTERS)
+        .default('list'),
+    )
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples(['e2e list', 'e2e list tests/signup.e2e.ts', 'e2e list --tag smoke --target web', 'e2e list --reporter json']),
+        '',
+        docsLine('/reference/cli#e2e-list'),
+      ].join('\n'),
+    )
+    .action(
+      async (
+        files: string[],
+        options: {
+          config?: string;
+          target?: string[];
+          tag?: string[];
+          tagMode: TagMode;
+          passWithNoTests?: boolean;
+          reporter: ListReporter;
+        },
+      ) => {
+        let pairs: ListedPair[];
+        try {
+          ({ pairs } = await list({
+            files,
+            configPath: options.config,
+            targetIds: options.target,
+            tags: options.tag,
+            tagMode: options.tagMode,
+            passWithNoTests: options.passWithNoTests,
+          }));
+        } catch (cause) {
+          const error = classifyError(cause);
+          process.stderr.write(`${error.code}: ${error.message}\n`);
+          process.exitCode = exitCodeForCategory(error.category);
+          return;
+        }
+        process.stdout.write(
+          options.reporter === 'json'
+            ? `${JSON.stringify({ pairs }, null, 2)}\n`
+            : pairs.map((pair) => `${formatListedPair(pair)}\n`).join(''),
+        );
+        process.exitCode = 0;
       },
     );
 

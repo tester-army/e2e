@@ -2,13 +2,16 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RunOptions } from '../../src/run/runner.ts';
+import type { ListOptions, ListedPair, RunOptions } from '../../src/run/runner.ts';
+import { ConfigurationError } from '../../src/internal/errors.ts';
 
 const runMock = vi.hoisted(() => vi.fn());
+const listMock = vi.hoisted(() => vi.fn());
 const initMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/run/runner.ts', () => ({
   run: runMock,
+  list: listMock,
 }));
 vi.mock('../../src/cli/init.ts', () => ({
   init: initMock,
@@ -40,6 +43,8 @@ function written(spy: ReturnType<typeof vi.spyOn>): string {
 beforeEach(() => {
   runMock.mockReset();
   runMock.mockResolvedValue({ exitCode: 0 });
+  listMock.mockReset();
+  listMock.mockResolvedValue({ pairs: [] });
   initMock.mockReset();
   initMock.mockResolvedValue(0);
   process.exitCode = undefined;
@@ -188,6 +193,112 @@ describe('e2e run argument parsing', () => {
 
 });
 
+describe('e2e list', () => {
+  const pairs: ListedPair[] = [
+    { file: 'tests/a.e2e.ts', title: 'signs in', titlePath: ['signs in'], kind: 'test', target: 'web', disposition: 'run' },
+    {
+      file: 'tests/a.e2e.ts',
+      title: 'pays',
+      titlePath: ['billing', 'pays'],
+      kind: 'test',
+      target: 'web',
+      disposition: 'skip',
+      skipReason: 'not today',
+    },
+    { file: 'tests/b.e2e.ts', title: 'browses', titlePath: ['browses'], kind: 'test', target: 'webkit', disposition: 'run' },
+  ];
+
+  function lastListOptions(): ListOptions {
+    expect(listMock).toHaveBeenCalledTimes(1);
+    return listMock.mock.calls[0]?.[0] as ListOptions;
+  }
+
+  it('prints one line per pair and exits 0 without running', async () => {
+    listMock.mockResolvedValue({ pairs });
+    await invoke('list');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+    expect(written(stdoutSpy)).toBe(
+      [
+        'tests/a.e2e.ts › signs in [web]',
+        'tests/a.e2e.ts › billing › pays [web] (skipped: not today)',
+        'tests/b.e2e.ts › browses [webkit]',
+        '',
+      ].join('\n'),
+    );
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it('prints { pairs } with --reporter json', async () => {
+    listMock.mockResolvedValue({ pairs });
+    await invoke('list', '--reporter', 'json');
+    expect(process.exitCode).toBe(0);
+    expect(JSON.parse(written(stdoutSpy))).toEqual({ pairs });
+  });
+
+  it('passes the selection flags through and rejects the junit reporter', async () => {
+    await invoke(
+      'list',
+      'tests/a.e2e.ts',
+      '--config',
+      'custom.config.ts',
+      '--target',
+      'web, webkit',
+      '--tag',
+      'smoke',
+      '--tag',
+      'auth',
+      '--tag-mode',
+      'all',
+      '--pass-with-no-tests',
+    );
+    expect(lastListOptions()).toEqual({
+      files: ['tests/a.e2e.ts'],
+      configPath: 'custom.config.ts',
+      targetIds: ['web', 'webkit'],
+      tags: ['smoke', 'auth'],
+      tagMode: 'all',
+      passWithNoTests: true,
+    });
+    expect(written(stdoutSpy)).toBe('');
+
+    listMock.mockClear();
+    process.exitCode = undefined;
+    await invoke('list', '--reporter', 'junit');
+    expect(listMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toContain("option '--reporter <id>' argument 'junit' is invalid");
+  });
+
+  it('prints a collection failure as code and message with its exit code', async () => {
+    listMock.mockRejectedValue(new ConfigurationError('NO_TESTS', 'no tests matched'));
+    await invoke('list');
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).toBe('NO_TESTS: no tests matched\n');
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('is listed in the help with an example, and its own help groups the flags', async () => {
+    await invoke('--help');
+    expect(written(stdoutSpy)).toMatch(/^ {2}list \[options\] \[files\.\.\.\] {2,}print the tests a run would select/mu);
+    expect(written(stdoutSpy)).toContain('  $ e2e list --tag smoke\n');
+
+    process.exitCode = undefined;
+    stdoutSpy.mockClear();
+    await invoke('list', '--help');
+    const help = written(stdoutSpy);
+    expect(help).toContain('Usage: e2e list [options] [files...]');
+    const headings = [...help.matchAll(/^(\S[^\n]*):$/gmu)].map((match) => match[1]);
+    expect(headings).toEqual(['Arguments', 'Selection', 'Output', 'Options', 'Examples']);
+    const flags = [...help.matchAll(/^ {2}(-{1,2}[a-z-]+)/gmu)].map((match) => match[1]);
+    expect(flags).toEqual(['--config', '--target', '--tag', '--tag-mode', '--pass-with-no-tests', '--reporter', '-h']);
+    expect(help).toContain('  $ e2e list --reporter json\n');
+    expect(help).toContain('Docs: https://e2e.docs.buildwithfern.com/reference/cli#e2e-list\n');
+    expect(process.exitCode).toBe(0);
+    expect(listMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('e2e init argument parsing', () => {
   it('scaffolds the working directory by default and reports the terminal state', async () => {
     await invoke('init', '--yes');
@@ -231,7 +342,7 @@ describe('e2e --version and --help', () => {
   it('opens the help with the version, lists both commands with examples, and exits 0', async () => {
     await invoke('--help');
     const help = written(stdoutSpy);
-    expect(help.startsWith(`e2e v${packageVersion} · local-first agentic end-to-end testing\n`)).toBe(true);
+    expect(help.startsWith(`e2e v${packageVersion} · an open framework for agentic end-to-end testing\n`)).toBe(true);
     expect(help).toContain('Usage: e2e <command> [options]');
     expect(help).toMatch(/^ {2}init \[options\] \[directory\] {2,}scaffold/mu);
     expect(help).toMatch(/^ {2}run \[options\] \[files\.\.\.\] {2,}run the tests$/mu);
