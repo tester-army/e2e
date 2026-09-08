@@ -4,6 +4,7 @@ import type { LanguageModel } from 'ai';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import { boundedInt } from './validate.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { didYouMean } from '../internal/suggest.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
 import type { AgentConfig, E2EConfig, ModelConfig, ModelInstance, VisionMode } from '../types.ts';
 
@@ -35,6 +36,12 @@ export type ResolvedModel =
       /** Absolute endpoint override, or undefined for the gateway default. */
       readonly endpoint: string | undefined;
       readonly apiKeyEnv: string;
+      /**
+       * The variable the credential was read from: `apiKeyEnv`, else the
+       * gateway's own `AI_GATEWAY_API_KEY`. A name, never a value, so a
+       * rejected credential can be reported by where it came from.
+       */
+      readonly apiKeySource: string | undefined;
       /** Resolved credential; absence fails at the first model call, not here. */
       readonly apiKey: string | undefined;
     }
@@ -136,7 +143,10 @@ export function resolveAgentConfig(
     }
     for (const key of Object.keys(agent)) {
       if (!AGENT_KEYS.has(key)) {
-        throw new ConfigurationError('INVALID_CONFIG', `unknown agent config key "${key}"`);
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `unknown agent config key "${key}"${didYouMean(key, [...AGENT_KEYS])}`,
+        );
       }
     }
     if (agent.executor !== undefined) {
@@ -187,7 +197,10 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
     }
     for (const key of Object.keys(limits)) {
       if (!(key in LIMIT_BOUNDS)) {
-        throw new ConfigurationError('INVALID_CONFIG', `unknown limits key "${key}"`);
+        throw new ConfigurationError(
+          'INVALID_CONFIG',
+          `unknown limits key "${key}"${didYouMean(key, Object.keys(LIMIT_BOUNDS))}`,
+        );
       }
     }
   }
@@ -275,7 +288,10 @@ function resolveModel(
   }
   for (const key of Object.keys(model)) {
     if (!MODEL_KEYS.has(key)) {
-      throw new ConfigurationError('INVALID_CONFIG', `unknown ${label} key "${key}"`);
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown ${label} key "${key}"${didYouMean(key, [...MODEL_KEYS])}`,
+      );
     }
   }
   const provider = requireNonEmpty(model.provider, `${label}.provider`);
@@ -315,19 +331,19 @@ function gatewayModel(
   label: string,
 ): ResolvedModel {
   const keyEnv = validateApiKeyEnv(apiKeyEnv, label);
-  const apiKey = firstNonEmpty(env[keyEnv], env[GATEWAY_API_KEY_ENV]);
+  const apiKeySource = [keyEnv, GATEWAY_API_KEY_ENV].find((name) => {
+    const value = env[name];
+    return value !== undefined && value.trim() !== '';
+  });
   return {
     kind: 'gateway',
     provider,
     id,
     endpoint: validateEndpoint(endpoint, label),
     apiKeyEnv: keyEnv,
-    apiKey,
+    apiKeySource,
+    apiKey: apiKeySource === undefined ? undefined : env[apiKeySource],
   };
-}
-
-function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
-  return values.find((value) => value !== undefined && value.trim() !== '');
 }
 
 function validateEndpoint(endpoint: string | undefined, label: string): string | undefined {

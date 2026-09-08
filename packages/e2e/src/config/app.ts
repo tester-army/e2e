@@ -142,8 +142,8 @@ function validateCommand(command: CommandConfig, label: string, projectRoot: str
   if (typeof command.executable !== 'string' || command.executable.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
   }
-  positiveInt(command.startupTimeout, `${label}.startupTimeout`);
-  positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`);
+  positiveInt(command.startupTimeout, `${label}.startupTimeout`, 'milliseconds');
+  positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`, 'milliseconds');
   if (command.log !== undefined) {
     if (typeof command.log !== 'string' || command.log.trim() === '') {
       throw new ConfigurationError('INVALID_CONFIG', `${label}.log must be a non-empty path`);

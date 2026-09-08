@@ -1,7 +1,7 @@
 instances:
   - url: https://e2e.docs.buildwithfern.com
 
-title: e2e - the cross-platform agentic test runner
+title: e2e - an open framework for agentic end-to-end testing
 
 tabs:
   docs:

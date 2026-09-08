@@ -1,7 +1,7 @@
 {
   "name": "e2e-monorepo",
   "private": true,
-  "description": "Agentic end-to-end testing framework",
+  "description": "An open framework for agentic end-to-end testing",
   "keywords": [
     "e2e",
     "testing",

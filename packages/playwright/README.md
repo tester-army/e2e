@@ -1,6 +1,6 @@
 # @e2edev/playwright
 
-The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
+The browser engine for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2e), built on
 [Playwright](https://playwright.dev).
 
 `e2e` ships no engine of its own: every target names the engine that drives
@@ -55,8 +55,8 @@ engine: playwright({
 
 The engine contributes `web`: navigation, routes, cookies, dialogs, frames,
 downloads, keyboard and mouse, plus `expect(web).toHaveURL()` and
-`toHaveTitle()`. Import `test` from this package to have it typed; it is the
-same runtime `test` as `e2e`'s.
+`toHaveTitle()` and `toHaveClass()`. Import `test` from this package to have it
+typed; it is the same runtime `test` as `e2e`'s.
 
 ```ts
 import { test } from '@e2edev/playwright';
@@ -88,4 +88,4 @@ npx playwright install chromium --with-deps
 
 ## Documentation
 
-Full documentation lives at [e2e.dev](https://e2e.dev).
+Full documentation lives at [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).

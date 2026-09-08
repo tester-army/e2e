@@ -1,7 +1,7 @@
 /** Run orchestration: config, collection, selection, execution, reporting. */
 
 import path from 'node:path';
-import { discoverConfig, loadConfigModule } from '../config/load.ts';
+import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import {
   isCiMode,
   resolveConfig,
@@ -582,10 +582,13 @@ async function loadRunConfig(
     return resolveConfig(options.rawConfig, { projectRoot: cwd, env, cli });
   }
   const discovered = discoverConfig(cwd, options.configPath);
-  const raw = discovered.configPath === undefined ? {} : await loadConfigModule(discovered.configPath);
+  // A run with no config file has nothing to run against: `targets` is
+  // required, so resolving an empty config would only report that symptom.
+  if (discovered.configPath === undefined) throw missingConfigError(cwd);
+  const raw = await loadConfigModule(discovered.configPath);
   return resolveConfig(raw, {
     projectRoot: discovered.projectRoot,
-    ...(discovered.configPath !== undefined ? { configPath: discovered.configPath } : {}),
+    configPath: discovered.configPath,
     env,
     cli,
   });

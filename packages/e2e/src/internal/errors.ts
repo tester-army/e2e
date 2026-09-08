@@ -1,5 +1,6 @@
 /** Runner-owned error taxonomy and exit-code mapping. */
 
+import { stripVTControlCharacters } from 'node:util';
 import {
   ENGINE_ERROR_CODES,
   EngineError,
@@ -10,6 +11,51 @@ import {
 /** Message of an arbitrary thrown value, for diagnostics that must not throw. */
 export function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * Appends a remedy to a message: as a clause after a one-line message, on its
+ * own line after a multi-line one (a provider's paragraph, Node's own `Did you
+ * mean` line), so the hint never dangles off a sentence that already ended.
+ */
+export function withHint(message: string, hint: string): string {
+  if (hint === '') return message;
+  const base = message.trimEnd();
+  return `${base}${base.includes('\n') ? '\n' : '; '}${hint}`;
+}
+
+/** How deep a `cause` chain is followed when an error is described. */
+const MAX_CAUSE_DEPTH = 3;
+
+/**
+ * An error's message followed by its causes, innermost last: `fetch failed:
+ * connect ECONNREFUSED 127.0.0.1:3000`. Node and most libraries put the
+ * actionable detail in `cause`, which a bare `message` hides. An aggregate
+ * lists each member once, a cause with an empty message contributes its
+ * `code`, and a message already present is not repeated.
+ */
+export function messageWithCauses(error: Error): string {
+  const parts = [error.message];
+  let current: unknown = error.cause;
+  for (let depth = 0; current !== undefined && depth < MAX_CAUSE_DEPTH; depth += 1) {
+    const text = describeCause(current);
+    if (text !== '' && !parts.includes(text)) parts.push(text);
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return parts.join(': ');
+}
+
+function describeCause(cause: unknown): string {
+  if (cause instanceof AggregateError) {
+    const members = [...new Set(cause.errors.map(describeCause).filter((text) => text !== ''))];
+    if (members.length > 0) return members.join('; ');
+  }
+  if (cause instanceof Error) {
+    if (cause.message !== '') return cause.message;
+    const code = (cause as { code?: unknown }).code;
+    return typeof code === 'string' ? code : '';
+  }
+  return String(cause);
 }
 
 export type ErrorCategory =
@@ -239,7 +285,7 @@ export function classifyError(value: unknown): E2EError {
     return translateEngineError(value);
   }
   if (value instanceof Error) {
-    return new TestError('ERROR', value.message, { cause: value });
+    return new TestError('ERROR', messageWithCauses(value), { cause: value });
   }
   return new TestError('ERROR', String(value));
 }
@@ -270,9 +316,13 @@ const CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 const UTF8 = new TextEncoder();
 const UTF8_DECODER = new TextDecoder();
 
-/** Strips C0/C1 control characters except tab and newline. */
+/**
+ * Strips ANSI escape sequences, then C0/C1 control characters except tab and
+ * newline. Libraries color their own messages; left in, the color codes reach
+ * the report as literal text and the terminal as `\uFFFD[31m` noise.
+ */
 export function sanitizeText(text: string): string {
-  return text.replace(CONTROL_PATTERN, '\uFFFD');
+  return stripVTControlCharacters(text).replace(CONTROL_PATTERN, '\uFFFD');
 }
 
 /** Truncates a string so its UTF-8 encoding fits maxBytes without splitting a code point. */

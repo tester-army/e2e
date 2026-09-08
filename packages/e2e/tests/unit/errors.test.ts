@@ -6,7 +6,9 @@ import {
   E2EError,
   exitCodeForCategory,
   InfrastructureError,
+  messageWithCauses,
   sanitizeText,
+  withHint,
   serializeError,
   TestError,
   translateProvisioningError,
@@ -73,6 +75,25 @@ describe('classifyError', () => {
     expect(classifyError('string failure').category).toBe('test');
   });
 
+  it('appends the cause chain to a plain error, the way fetch reports a refused connection', () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:3000'), { code: 'ECONNREFUSED' });
+    expect(classifyError(new TypeError('fetch failed', { cause: refused })).message).toBe(
+      'fetch failed: connect ECONNREFUSED 127.0.0.1:3000',
+    );
+    // Node reports a dual-stack failure as an aggregate whose members carry the detail.
+    const aggregate = new AggregateError(
+      [Object.assign(new Error(''), { code: 'ECONNREFUSED' }), new Error('connect ECONNREFUSED ::1:3000')],
+      '',
+    );
+    expect(classifyError(new TypeError('fetch failed', { cause: aggregate })).message).toBe(
+      'fetch failed: ECONNREFUSED; connect ECONNREFUSED ::1:3000',
+    );
+    expect(messageWithCauses(new Error('same', { cause: new Error('same') }))).toBe('same');
+    expect(messageWithCauses(new Error('outer', { cause: 'text' }))).toBe('outer: text');
+    const deep = new Error('a', { cause: new Error('b', { cause: new Error('c', { cause: new Error('d', { cause: new Error('e') }) }) }) });
+    expect(messageWithCauses(deep)).toBe('a: b: c: d');
+  });
+
   it('applies the canonical driver mapping to EngineErrors from any surface', () => {
     const failure = classifyError(
       new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false }),
@@ -112,9 +133,11 @@ describe('serializeError', () => {
     });
   });
 
-  it('strips control characters from messages', () => {
-    const serialized = serializeError(new ConfigurationError('X', 'a\u0007b\u001bc'));
+  it('strips control characters and ANSI colors from messages', () => {
+    const serialized = serializeError(new ConfigurationError('X', 'a\u0007b\u0001c'));
     expect(serialized.message).toBe('a\uFFFDb\uFFFDc');
+    const colored = serializeError(new ConfigurationError('X', '\u001b[1m\u001b[31mUnauthenticated\u001b[0m request'));
+    expect(colored.message).toBe('Unauthenticated request');
   });
 });
 
@@ -131,6 +154,14 @@ describe('sanitizeText', () => {
   it('is repeatable across calls (no regexp state leaks)', () => {
     expect(sanitizeText('\u0001\u0001')).toBe('\uFFFD\uFFFD');
     expect(sanitizeText('\u0001x')).toBe('\uFFFDx');
+  });
+});
+
+describe('withHint', () => {
+  it('joins a clause to one line and starts a new line after a paragraph', () => {
+    expect(withHint('nope', 'try this')).toBe('nope; try this');
+    expect(withHint('first line\nsecond line\n\n', 'try this')).toBe('first line\nsecond line\ntry this');
+    expect(withHint('nope', '')).toBe('nope');
   });
 });
 

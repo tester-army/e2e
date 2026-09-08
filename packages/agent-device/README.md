@@ -1,6 +1,6 @@
 # @e2edev/agent-device
 
-The mobile engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
+The mobile engine for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2e), built on
 [agent-device](https://github.com/callstack/agent-device): iOS simulators and
 Android emulators through the same `@e2edev/e2e/engine` contract the browser engine
 implements. A test written against `screen`, `expect`, `app`, and `agent` runs
@@ -8,7 +8,7 @@ on a device target unchanged; nothing in `e2e` core knows this package exists.
 
 ## Install
 
-Run `npx @e2edev/e2e@beta init` and choose **agent-device** for a Settings
+Run `npx @e2edev/e2e init` and choose **agent-device** for a Settings
 example with optional AI testing. Init defaults to iOS on macOS and Android
 elsewhere; change the platform in `e2e.config.ts` when needed.
 Or add the packages to an existing project:
@@ -140,4 +140,4 @@ through a deterministic `screen` action in a setup step instead.
 
 ## Documentation
 
-Full documentation lives at [e2e.dev](https://e2e.dev).
+Full documentation lives at [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).

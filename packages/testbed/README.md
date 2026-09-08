@@ -127,17 +127,13 @@ the call site.
    inexpressible. Costs three deterministic tests (`skip`) and forces
    `web.evaluate` for the nested document. The locator AST already supports
    `frame` + `web-selector`; only the public surface is missing.
-2. **`getAttribute` reads a whitelist**, returning `null` for `readonly`,
-   `draggable`, `class`, `src` — indistinguishable from absent. There is no
-   `toHaveAttribute`/`toHaveClass` either, so attribute checks fall to
-   `web.evaluate`.
-3. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
+2. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
    cannot be opened at all (`skip`).
-4. **No page-level response/console feed.** "loaded with no 404s and no JS
+3. **No page-level response/console feed.** "loaded with no 404s and no JS
    errors" is reconstructed from `web.route` on the request side.
-5. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
+4. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
    `tabpanel`, so radio groups and selects need `web.locator`.
-6. **The reference engine is detected by anti-bot.** `/hobbit/login` redirects to
+5. **The reference engine is detected by anti-bot.** `/hobbit/login` redirects to
    a block page on load; the aspirational test is `skip`ped and the block pinned.
 
 ### Closed

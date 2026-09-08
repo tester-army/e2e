@@ -108,9 +108,13 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   let viewport = { width: 1, height: 1, scale: 1 };
 
   const unsupported = (what: string): never => {
+    const remedy =
+      engine === undefined
+        ? 'the target declares no engine; add one, such as playwright({ url }) from @e2edev/playwright or agentDevice({ platform, app }) from @e2edev/agent-device'
+        : `engine ${engine.name} does not implement it`;
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
-      `target "${targetName}" has no engine capability for ${what}`,
+      `target "${targetName}" has no engine capability for ${what}: ${remedy}`,
     );
   };
 

@@ -4,7 +4,7 @@ The `e2e` SDK, runner, and CLI for agentic end-to-end testing. Full
 documentation: [e2e.docs.buildwithfern.com](https://e2e.docs.buildwithfern.com).
 
 ```bash
-pnpm dlx @e2edev/e2e@beta init
+pnpm dlx @e2edev/e2e init
 ```
 
 ## Usage
@@ -166,7 +166,6 @@ npx --no-install e2e guide writing-tests  # one topic
   (`options.vision`) reject with `UNSUPPORTED_CAPABILITY`.
 - The HTML reporter and video artifacts are not available.
 - Reported steps carry no source locations.
-- iOS and Android need an engine package; none ships in this repo yet.
 
 ## Contributing
 

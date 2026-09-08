@@ -45,12 +45,9 @@ test.describe('demo page', { requires: ['web'] }, () => {
     // A read-only input is not disabled, so no state distinguishes it.
     expect(await readOnly.isEnabled()).toBe(true);
 
-    // `getAttribute` reads an *exposed* attribute only: the engine projects a
-    // whitelist (`type`, `id`, `name`, `placeholder`, `title`, `alt`, `value`,
-    // `href`, `role`, `autocomplete`, `aria-*`). `readonly` is not on it, so
-    // this returns `null` for an attribute that is present — indistinguishable
-    // from absent.
-    expect(await readOnly.getAttribute('readonly')).toBeNull();
+    // A read-only input keeps its attribute value as an empty string.
+    expect(await readOnly.getAttribute('readonly')).toBe('');
+    await expect(readOnly).toHaveAttribute('readonly');
     const trulyReadOnly = await web.evaluate(() => {
       const field = document.querySelector('#readOnlyText');
       return field instanceof HTMLInputElement && field.readOnly;

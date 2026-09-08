@@ -1,6 +1,6 @@
 # e2e
 
-An open, local-first framework for agentic end-to-end testing.
+An open framework for agentic end-to-end testing.
 
 Write tests in ordinary TypeScript. Describe the parts that are tedious to
 select in plain language, and keep deterministic control everywhere else.
@@ -16,8 +16,8 @@ test('user can sign up', async ({ app, agent }) => {
 ```
 
 ```bash
-pnpm add -D e2e@beta @e2edev/playwright@beta
-E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... pnpm e2e run
+pnpm add -D @e2edev/e2e @e2edev/playwright
+E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... npx --no-install e2e run
 ```
 
 Deterministic suites using `screen`, `app`, `web`, and `expect` need no model.
@@ -60,12 +60,12 @@ See [Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
 
 ## Packages
 
-- [`e2e`](./packages/e2e) — the SDK, runner, and CLI.
+- [`@e2edev/e2e`](./packages/e2e) — the SDK, runner, and CLI.
 - [`@e2edev/playwright`](./packages/playwright) — the browser engine, passed
   to a target as `engine: playwright()`.
-
-Both publish under the `beta` dist-tag while the surface stabilizes, so npm's
-`latest` is never moved.
+- [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
+  simulators and Android emulators; see the
+  [device reference](https://e2e.docs.buildwithfern.com/reference/device).
 
 ## Contributing
 

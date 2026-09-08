@@ -1,11 +1,12 @@
 /** e2e CLI. */
 
+import { resolve as resolvePath } from 'node:path';
 import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { run } from '../run/runner.ts';
 import { guide } from './guide.ts';
-import { init, type InitOptions } from './init.ts';
+import { init } from './init.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 
@@ -99,7 +100,7 @@ function createProgram(): Command {
       styleSubcommandTerm: pc.cyan,
       styleArgumentTerm: pc.cyan,
     })
-    .addHelpText('before', `${pc.bold(`e2e v${version}`)} ${pc.dim('·')} local-first agentic end-to-end testing\n`)
+    .addHelpText('before', `${pc.bold(`e2e v${version}`)} ${pc.dim('·')} an open framework for agentic end-to-end testing\n`)
     .addHelpText(
       'after',
       [
@@ -126,10 +127,19 @@ function createProgram(): Command {
     .description(
       'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, tests/example.e2e.ts, .gitignore entries, and the e2e skill for coding agents. Prompts for the engine, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills.',
     )
+    .argument('[directory]', 'project directory, created when missing (default: the current directory)')
     .option('-y, --yes', 'skip the prompts: AI on, no engine, no installation')
-    .addHelpText('after', ['', examples(['e2e init', 'e2e init --yes']), '', docsLine('/reference/cli')].join('\n'))
-    .action(async (options: InitOptions) => {
-      process.exitCode = await init(process.cwd(), options);
+    .addHelpText(
+      'after',
+      ['', examples(['e2e init', 'e2e init my-app', 'e2e init --yes']), '', docsLine('/reference/cli')].join('\n'),
+    )
+    .action(async (directory: string | undefined, options: { yes?: boolean }) => {
+      process.exitCode = await init(resolvePath(process.cwd(), directory ?? '.'), {
+        ...options,
+        ...(directory === undefined ? {} : { directory }),
+        // Prompts need a terminal on both ends; a pipe or a CI log has neither.
+        interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
+      });
     });
 
   program

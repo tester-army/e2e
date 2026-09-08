@@ -17,6 +17,15 @@ const PAGES: Record<string, string> = {
   <label for="email">Email</label>
   <input id="email" type="email" placeholder="you@example.test" autocomplete="username" />
 
+  <label for="readonly">Readonly</label>
+  <input id="readonly" readonly value="read-only value" />
+
+  <div id="class-card" class="card active" data-extra="node-only">Card</div>
+  <img id="fixture-image" src="/fixture.png" alt="Fixture" />
+
+  <label for="focus-target">Focus target</label>
+  <input id="focus-target" />
+
   <label for="password">Password</label>
   <input id="password" type="password" autocomplete="current-password" />
 

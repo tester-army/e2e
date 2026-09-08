@@ -183,6 +183,39 @@ describe('playwright engine lifecycle', () => {
     }
   });
 
+  it('keeps tree attributes bounded while node reads expose every attribute', async () => {
+    const engine = playwright();
+    try {
+      await boot(engine, app);
+      await engine.startAttempt!({ attemptId: 'attributes1', artifactsDir, signal: new AbortController().signal });
+      await engine.app!.navigate!(`${app.url}/`, operation('attributes1'));
+
+      const snapshot = await engine.observe!(operation('attributes1'));
+      const treeNodes = [...walk(snapshot.nodes[0]!)];
+      expect(treeNodes.some((node) => node.attributes?.class === 'card active')).toBe(false);
+      expect(treeNodes.some((node) => node.attributes?.readonly !== undefined)).toBe(false);
+      expect(treeNodes.some((node) => node.attributes?.['data-extra'] !== undefined)).toBe(false);
+
+      const [card] = await engine.locate!(
+        { kind: 'selector', selector: '#class-card' },
+        operation('attributes1'),
+      );
+      expect(card?.attributes).toMatchObject({
+        class: 'card active',
+        'data-extra': 'node-only',
+      });
+      expect(card?.attributes?.readonly).toBeUndefined();
+      const [readonly] = await engine.locate!(
+        { kind: 'selector', selector: '#readonly' },
+        operation('attributes1'),
+      );
+      expect(readonly?.attributes?.readonly).toBe('');
+    } finally {
+      await engine.endAttempt!(cleanup());
+      await engine.dispose!(cleanup());
+    }
+  });
+
   it('selects positionally among display-value matches and keeps composition honest', async () => {
     const engine = playwright();
     const shared: LocatorExpression = {

@@ -561,7 +561,9 @@ test('fails', async () => {
       expect(missing.outcome.report.run.errors.map((error) => [error.code, error.message])).toEqual([
         [
           'NO_TESTS',
-          'zero runnable ordinary test-target pairs (no test file matched: tests/agnet, tests/*.spec.ts); pass --pass-with-no-tests to allow this',
+          expect.stringMatching(
+            /^no test file matched tests\/agnet, tests\/\*\.spec\.ts; the config globs discovered tests\/.* and \d+ more; pass --pass-with-no-tests to allow this$/,
+          ),
         ],
       ]);
       missing.project.cleanup();

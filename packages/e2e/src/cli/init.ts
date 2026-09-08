@@ -2,17 +2,30 @@
 
 import * as clack from '@clack/prompts';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { esmPackageHint } from '../config/esm.ts';
+import { detectPackageManager } from '../internal/package-manager.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
-import { addDependencies, detectPackageManager, readPackage, serializePackage } from './init/package.ts';
+import { addDependencies, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 
 export interface InitOptions {
   yes?: boolean;
+  /**
+   * The directory argument as the user typed it, when `cwd` was chosen from
+   * one; the closing `next:` line then starts with `cd` into it.
+   */
+  directory?: string;
+  /**
+   * Whether prompts can be answered. The CLI passes its terminal state; a
+   * non-interactive run without `--yes` stops before asking anything, since
+   * a prompt nobody can answer would otherwise wait forever.
+   */
+  interactive?: boolean;
 }
 
 const GITIGNORE_ENTRIES = [
@@ -33,13 +46,24 @@ const GITIGNORE_ENTRIES = [
  * copies that exist and never add new locations.
  */
 export async function init(cwd: string, options: InitOptions = {}): Promise<number> {
-  clack.intro('e2e init');
+  clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
+
+  if (options.interactive === false && !options.yes) {
+    clack.log.error(
+      'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (no engine, AI on, no installation)',
+    );
+    return 2;
+  }
+  if (existsSync(cwd) && !statSync(cwd).isDirectory()) {
+    clack.log.error(`${options.directory ?? cwd} is a file, not a directory`);
+    return 2;
+  }
 
   let pkg: ReturnType<typeof readPackage>;
   try {
     pkg = readPackage(cwd);
-  } catch {
-    clack.log.error('invalid package.json; fix it before running e2e init');
+  } catch (cause) {
+    clack.log.error(`${path.join(cwd, 'package.json')} could not be read: ${describeManifestError(cause)}; fix it before running e2e init`);
     return 2;
   }
   const bundledSkill = readSkillFiles();
@@ -127,7 +151,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     if (clack.isCancel(proceed) || !proceed) return cancelled();
   }
 
-  const manager = detectPackageManager(cwd, manifest);
+  const manager = detectPackageManager(cwd, manifest.packageManager);
   let install = false;
   if (!options.yes) {
     const selected = await clack.confirm({ message: `Install dependencies with ${manager}?`, initialValue: true });
@@ -135,6 +159,8 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     install = selected;
   }
 
+  // The first write; a directory named on the command line comes into being here.
+  mkdirSync(cwd, { recursive: true });
   for (const file of files) {
     const absolute = path.join(cwd, file.relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
@@ -166,8 +192,23 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       return result.signal === 'SIGINT' ? 130 : 2;
     }
   }
-  clack.outro(`next: ${install ? '' : `${manager} install, then `}${scaffold.runCommand}`);
+  const next = [
+    options.directory === undefined ? undefined : `cd ${shellArgument(options.directory)}`,
+    install ? undefined : `${manager} install`,
+    scaffold.runCommand,
+  ].filter((step) => step !== undefined);
+  clack.outro(`next: ${next.join(', then ')}`);
   return 0;
+}
+
+/**
+ * A path as the user will paste it into their shell: bare while every character
+ * is safe, otherwise quoted for the platform (single quotes for POSIX shells,
+ * double quotes for cmd and PowerShell), so `apps/my web` stays one argument.
+ */
+function shellArgument(value: string): string {
+  if (/^[A-Za-z0-9_./@%+=:,-]+$/.test(value)) return value;
+  return os.platform() === 'win32' ? `"${value.replaceAll('"', '""')}"` : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 /** Cancellation is only reachable before the first write, so nothing needs undoing. */
