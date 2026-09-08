@@ -6,12 +6,12 @@ import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import { list, run, type ListedPair } from '../run/runner.ts';
+import { cache, type CacheCommand } from './cache.ts';
+import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
-
-const DOCS_URL = 'https://e2e.docs.buildwithfern.com';
 
 /**
  * Help text always carries color; commander strips it when the stream it
@@ -121,6 +121,7 @@ function createProgram(): Command {
           'e2e run tests/signup.e2e.ts --headed',
           'e2e run --tag smoke --reporter list,junit',
           'e2e list --tag smoke',
+          'e2e cache ls',
           'e2e guide',
         ]),
         '',
@@ -327,6 +328,36 @@ function createProgram(): Command {
         process.exitCode = 0;
       },
     );
+
+  const cacheCommand = program
+    .command('cache')
+    .summary('inspect, measure, and clear the trace cache')
+    .description(
+      'Read the trace cache the runs write under .e2e/cache: what a committed cache holds, how much room it takes, and how to empty it. Reads the same config as e2e run, so cache.dir and --config decide which store is meant.',
+    )
+    .addHelpText(
+      'after',
+      ['', examples(['e2e cache ls', 'e2e cache stats', 'e2e cache clear']), '', docsLine('/reference/cli#e2e-cache')].join('\n'),
+    );
+
+  const cacheSubcommand = (name: CacheCommand, summary: string, description: string): void => {
+    cacheCommand
+      .command(name)
+      .summary(summary)
+      .description(description)
+      .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+      .action(async (options: { config?: string }) => {
+        process.exitCode = await cache(name, options);
+      });
+  };
+
+  cacheSubcommand(
+    'ls',
+    'list the cached traces',
+    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
+  );
+  cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
+  cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
 
   return program;
 }

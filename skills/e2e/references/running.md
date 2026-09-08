@@ -7,6 +7,7 @@ npx --no-install e2e run [files...] [options]   # run tests
 npx --no-install e2e list [files...] [options]  # print what run would select, without running
 npx --no-install e2e init [--yes]               # scaffold a project, refresh the agent skill
 npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, debugging
+npx --no-install e2e cache ls|clear|stats       # read or empty the trace cache
 ```
 
 `run` flags:
@@ -46,6 +47,21 @@ npx --no-install e2e list tests/signup.e2e.ts --reporter json
 
 A `package.json` script keeps it short: `"test:e2e": "e2e run"`, then
 `pnpm test:e2e tests/signup.e2e.ts`.
+
+## The trace cache
+
+Entries live under `.e2e/cache/`, one file per key, named after the key
+digest. `cache` commands read the same config as `run`, so `--config` and
+`cache.dir` point them at the right store.
+
+| Command | Prints |
+| --- | --- |
+| `e2e cache ls` | One row per entry: test, target, instruction digest, age, action count. |
+| `e2e cache stats` | Directory, entry count, total size. |
+| `e2e cache clear` | Deletes the entries and the directory; files the runner never wrote stay. |
+
+Use `ls` to see what a committed cache would replay, and `clear` when a
+recorded flow is stale — `--no-cache` only skips the cache for one run.
 
 ## Output
 

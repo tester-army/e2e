@@ -3,8 +3,9 @@ import { getEnginePreset, type EngineId } from './engines.ts';
 
 const AGENT_IMPORT = "import { createAgent } from '@e2edev/e2e/agent';";
 const AGENT_CONFIG = `  // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
-  // A model passed here (createAgent({ model })) is the one model for every
-  // agent.* call, checked once when the first test acquires the agent fixture.
+  // To call a provider directly, pass an AI SDK model: createAgent({ model: openai('gpt-5.4-mini') }).
+  // That model is the one model for every agent.* call, checked once when the
+  // first test acquires the agent fixture.
   agent: createAgent({
     system: 'You are a thorough QA agent. Verify every outcome.',
   }),`;

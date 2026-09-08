@@ -1,0 +1,22 @@
+# Review routing. Order matters: the last matching pattern wins.
+
+*                         @okwasniewski @szymonrybczak
+
+# Public contract: emitted types, type assertions, wire schemas.
+/packages/e2e/src/types.ts        @okwasniewski
+/packages/e2e/src/engine/         @okwasniewski
+/packages/e2e/tests/types/        @okwasniewski
+/packages/e2e/schema/             @okwasniewski
+
+# Agent, secrets, navigation policy.
+/packages/e2e/src/agent/          @okwasniewski
+/packages/e2e/src/internal/urls.ts @okwasniewski
+/SECURITY.md                      @okwasniewski
+
+# Engines.
+/packages/playwright/             @okwasniewski @szymonrybczak
+/packages/agent-device/           @szymonrybczak @okwasniewski
+
+# Release and CI.
+/.github/                         @okwasniewski
+/.changeset/config.json           @okwasniewski

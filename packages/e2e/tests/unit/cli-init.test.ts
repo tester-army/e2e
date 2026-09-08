@@ -47,25 +47,42 @@ afterEach(() => {
 });
 
 describe('e2e init', () => {
-  it('adds the runner and AI with --yes and does not install or prompt', async () => {
+  it('adds the runner, Playwright, and AI with --yes and does not install or prompt', async () => {
     expect(await init(dir, { yes: true })).toBe(0);
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), ai: '^7.0.0' },
+      devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', ai: '^7.0.0' },
+      scripts: { 'test:e2e': 'e2e run' },
     });
-    expect(read('e2e.config.ts')).toContain('createAgent');
-    expect(read('e2e.config.ts')).not.toContain('playwright');
-    expect(read('tests/example.e2e.ts')).toContain("test('app responds'");
+    expect(read('e2e.config.ts')).toContain('agent: createAgent({');
+    expect(read('e2e.config.ts')).toContain('// To call a provider directly, pass an AI SDK model: createAgent({ model:');
+    expect(read('e2e.config.ts')).toContain("playwright({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
+    expect(read('e2e.config.ts')).toContain('// command: {');
+    expect(read('tests/example.e2e.ts')).toContain("test('app opens'");
+    expect(read('tests/example.e2e.ts')).toContain("await app.open('/');");
+    expect(read('tests/example.e2e.ts')).toContain("await expect(web.locator('body')).toBeVisible();");
+    expect(read('tests/example.e2e.ts')).toContain('// test(');
+    expect(read('tests/example.e2e.ts')).not.toContain('fetch(');
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
+    expect(read('.gitignore')).toContain('.e2e/cache/');
+    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.docs.buildwithfern.com/reference/config#commit-your-traces');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
     expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(clack.confirm).not.toHaveBeenCalled();
     expect(clack.select).not.toHaveBeenCalled();
     expect(clack.multiselect).not.toHaveBeenCalled();
     expect(spawnSync).not.toHaveBeenCalled();
+    expect(output()).toContain('add scripts: test:e2e (e2e run)');
+    expect(output()).toContain('no tsconfig.json');
     expect(output()).toContain('next: npm install, then APP_URL=http://localhost:3000 npx --no-install e2e run');
+  });
+
+  it('keeps quiet about tsconfig.json when the project has one', async () => {
+    writeFileSync(path.join(dir, 'tsconfig.json'), '{}\n');
+    expect(await init(dir, { yes: true })).toBe(0);
+    expect(output()).not.toContain('tsconfig.json');
   });
 
   it.each([
@@ -109,9 +126,10 @@ describe('e2e init', () => {
 
     expect(await init(dir)).toBe(0);
     expect(clack.select).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      initialValue: 'playwright',
       options: [
-        expect.objectContaining({ value: 'none' }),
         expect.objectContaining({ value: 'playwright' }),
+        expect.objectContaining({ value: 'none' }),
         expect.objectContaining({ value: 'agent-device' }),
       ],
     }));
@@ -163,7 +181,10 @@ describe('e2e init', () => {
   it.each([undefined, 'commonjs', 'module'])(
     'preserves existing dependency versions and type %s',
     async (type) => {
-      const manifest = `${JSON.stringify({ name: 'existing-app', type, dependencies: { '@e2edev/e2e': 'workspace:*', ai: '^7.0.12' } }, null, 4)}\n`;
+      const manifest = `${JSON.stringify({
+        name: 'existing-app', type, scripts: { 'test:e2e': 'e2e run --workers 1' },
+        dependencies: { '@e2edev/e2e': 'workspace:*', '@e2edev/playwright': 'workspace:*', ai: '^7.0.12' },
+      }, null, 4)}\n`;
       writeFileSync(path.join(dir, 'package.json'), manifest);
       for (let run = 0; run < 2; run += 1) {
         stdoutSpy.mockClear();
@@ -187,6 +208,7 @@ describe('e2e init', () => {
     await init(dir);
     expect(JSON.parse(read('package.json'))).toEqual({
       ...manifest,
+      scripts: { dev: 'vite', 'test:e2e': 'e2e run' },
       devDependencies: { ...manifest.devDependencies, '@e2edev/e2e': expect.any(String) },
     });
     expect(read('package.json')).toContain('\r\n    "name"');
@@ -277,6 +299,7 @@ describe('e2e init', () => {
     await init(dir, { yes: true });
     expect(read(config)).toBe('// custom config\n');
     expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['@e2edev/e2e']);
+    expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': 'e2e run' });
     if (config.endsWith('.mts')) expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(false);
   });
 
@@ -290,6 +313,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
     expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/logs/\n`);
+    expect(output()).not.toContain('commit-your-traces');
   });
 
   it('installs the skill where selected, then refreshes only those copies', async () => {

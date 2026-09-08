@@ -22,18 +22,20 @@ pnpm dlx @e2edev/e2e@beta init  # pnpm
 When `@e2edev/e2e` is already installed, run `npx --no-install e2e init`
 instead, so the installed version scaffolds.
 
-The wizard asks for the engine (None, Playwright, agent-device), whether to
-enable AI testing (adds `ai@^7.0.0` and `createAgent` to the config), which
-agent directories receive this skill (`.agents/skills/` and
-`.claude/skills/`), a confirmation of the files it will write, and whether to
-install. `--yes` skips every prompt (use it from scripts and from a shell
-without a TTY): AI on, no engine, no installation, skill in both
-directories.
+The wizard asks for the engine (Playwright by default; None and agent-device
+are the alternatives), whether to enable AI testing (adds `ai@^7.0.0` and
+`createAgent` to the config), which agent directories receive this skill
+(`.agents/skills/` and `.claude/skills/`), a confirmation of the files it
+will write, and whether to install. `--yes` skips every prompt (use it from
+scripts and from a shell without a TTY): Playwright, AI on, no installation,
+skill in both directories. The closing line prints the run command,
+`APP_URL=http://localhost:3000 npx --no-install e2e run` for Playwright, and
+suggests a `tsconfig.json` when the project has none.
 
 Init writes `package.json` (a private ESM package when missing; otherwise
-only the missing dev dependencies are added), `e2e.config.ts`,
-`tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/` output, and the
-skill. Existing config and test files are never touched. Re-run it after an
+only the missing dev dependencies and the `test:e2e` script are added),
+`e2e.config.ts`, `tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/`
+output, and the skill. Existing config and test files are never touched. Re-run it after an
 upgrade to refresh the skill; it changes nothing else in an initialized
 project.
 

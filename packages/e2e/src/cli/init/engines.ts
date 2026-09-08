@@ -14,10 +14,47 @@ export interface EnginePreset {
   readonly runCommand: string;
 }
 
+/** Engines version independently of the runner and pin the runner through their own peer range. */
+const ENGINE_RANGE = '0.x';
+
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
 export function getEnginePresets() {
   const ios = os.platform() === 'darwin';
   return [
+    {
+      id: 'playwright',
+      label: 'Playwright',
+      hint: 'browser testing',
+      dependencies: { '@e2edev/playwright': ENGINE_RANGE },
+      imports: ["import { playwright } from '@e2edev/playwright';"],
+      config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
+  targets: [{
+    name: 'web',
+    platform: 'web',
+    engine: playwright({
+      url: process.env.APP_URL ?? 'http://localhost:3000',
+      // Let the runner start the dev server and wait for url to answer:
+      // command: { executable: 'npm', args: ['run', 'dev'] },
+    }),
+  }],`,
+      example: `import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test('app opens', async ({ app, web }) => {
+  await app.open('/');
+  await expect(web.locator('body')).toBeVisible();
+});
+`,
+      aiExample: `
+// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
+// test('the agent drives a flow', async ({ app, agent }) => {
+//   await app.open('/');
+//   await agent.act('one goal in plain language');
+//   await agent.assert('one question about the screen');
+// });
+`,
+      runCommand: 'APP_URL=http://localhost:3000 npx --no-install e2e run',
+    },
     {
       id: 'none',
       label: 'None',
@@ -36,36 +73,10 @@ test('app responds', async () => {
       runCommand: 'APP_URL=http://localhost:3000 npx --no-install e2e run',
     },
     {
-      id: 'playwright',
-      label: 'Playwright',
-      hint: 'browser testing',
-      dependencies: { '@e2edev/playwright': 'beta' },
-      imports: ["import { playwright } from '@e2edev/playwright';"],
-      config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],`,
-      example: `import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
-
-test('app opens', async ({ app, web }) => {
-  await app.open();
-  await expect(web).toHaveURL('/');
-});
-`,
-      aiExample: `
-// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
-// test('the agent drives a flow', async ({ app, agent }) => {
-//   await app.open();
-//   await agent.act('one goal in plain language');
-//   await agent.assert('one question about the screen');
-// });
-`,
-      runCommand: 'APP_URL=http://localhost:3000 npx --no-install e2e run',
-    },
-    {
       id: 'agent-device',
       label: 'agent-device',
       hint: 'mobile testing: iOS and Android',
-      dependencies: { '@e2edev/agent-device': 'beta' },
+      dependencies: { '@e2edev/agent-device': ENGINE_RANGE },
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
         ? `  // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
@@ -102,7 +113,7 @@ test('Settings opens', async ({ screen }) => {
 }
 
 export type EngineId = ReturnType<typeof getEnginePresets>[number]['id'];
-export const DEFAULT_ENGINE_ID = 'none' satisfies EngineId;
+export const DEFAULT_ENGINE_ID = 'playwright' satisfies EngineId;
 
 /** Resolves a preset with the common shape used by scaffold generation. */
 export function getEnginePreset(id: EngineId): EnginePreset {
