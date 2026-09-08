@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ListOptions, ListedPair, RunOptions } from '../../src/run/runner.ts';
 import { ConfigurationError } from '../../src/internal/errors.ts';
+import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 
 const runMock = vi.hoisted(() => vi.fn());
 const listMock = vi.hoisted(() => vi.fn());
@@ -463,5 +465,140 @@ describe('e2e guide', () => {
     expect(help).toContain('Docs: https://e2e-docs.vercel.app/reference/cli#e2e-guide\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('e2e telemetry', () => {
+  const TELEMETRY_KEYS = ['E2E_TELEMETRY_DISABLED', 'E2E_TELEMETRY_DEBUG', 'DO_NOT_TRACK', 'CI', 'XDG_CONFIG_HOME', 'APPDATA'] as const;
+  let configHome: string;
+  let saved: Partial<Record<(typeof TELEMETRY_KEYS)[number], string | undefined>>;
+
+  /** Every `[telemetry] {...}` line the debug mode printed to stderr. */
+  function printedEvents(): { event: string; properties: Record<string, unknown> }[] {
+    return written(stderrSpy)
+      .split('\n')
+      .filter((line) => line.startsWith('[telemetry] '))
+      .map((line) => JSON.parse(line.slice('[telemetry] '.length)) as { event: string; properties: Record<string, unknown> });
+  }
+
+  beforeEach(() => {
+    configHome = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-telemetry-'));
+    saved = Object.fromEntries(TELEMETRY_KEYS.map((key) => [key, process.env[key]]));
+    // The suite-wide opt-out is lifted; debug mode prints instead of sending.
+    delete process.env['E2E_TELEMETRY_DISABLED'];
+    delete process.env['DO_NOT_TRACK'];
+    delete process.env['CI'];
+    process.env['E2E_TELEMETRY_DEBUG'] = '1';
+    process.env['XDG_CONFIG_HOME'] = configHome;
+    process.env['APPDATA'] = configHome;
+  });
+
+  afterEach(() => {
+    for (const key of TELEMETRY_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    rmSync(configHome, { recursive: true, force: true });
+  });
+
+  it('reports enabled by default and points at the docs', async () => {
+    await invoke('telemetry');
+    const out = written(stdoutSpy);
+    expect(out).toContain('Status: enabled\n');
+    expect(out).toContain('Details: https://e2e-docs.vercel.app/telemetry\n');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('disable saves the choice, status names it, and enable restores it', async () => {
+    const file = path.join(configHome, 'e2e', 'telemetry.json');
+    await invoke('telemetry', 'disable');
+    expect(written(stdoutSpy)).toContain(`telemetry disabled; saved to ${file}\n`);
+    expect(written(stdoutSpy)).toContain('Status: disabled (switched off with e2e telemetry disable)\n');
+    expect(written(stdoutSpy)).toContain('Nothing is sent from this machine.\n');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ enabled: false });
+    expect(process.exitCode).toBe(0);
+
+    stdoutSpy.mockClear();
+    await invoke('telemetry');
+    expect(written(stdoutSpy)).toContain('Status: disabled (switched off with e2e telemetry disable)\n');
+
+    stdoutSpy.mockClear();
+    await invoke('telemetry', 'enable');
+    expect(written(stdoutSpy)).toContain(`telemetry enabled; saved to ${file}\n`);
+    expect(written(stdoutSpy)).toContain('Status: enabled\n');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ enabled: true });
+  });
+
+  it('an environment opt-out wins over the saved choice', async () => {
+    process.env['E2E_TELEMETRY_DISABLED'] = '1';
+    await invoke('telemetry', 'enable');
+    expect(written(stdoutSpy)).toContain('Status: disabled (E2E_TELEMETRY_DISABLED is set)\n');
+    expect(printedEvents()).toEqual([]);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('rejects an unknown action with exit code 2', async () => {
+    await invoke('telemetry', 'nope');
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toContain('Allowed choices are status, enable, disable');
+  });
+
+  it('prints the notice once before the first command and a session event per command', async () => {
+    await invoke('list');
+    await invoke('list', '--tag', 'smoke');
+    const notices = written(stderrSpy).split('e2e collects anonymous usage telemetry').length - 1;
+    expect(notices).toBe(1);
+    expect(written(stderrSpy)).toContain('e2e telemetry disable');
+    const events = printedEvents();
+    expect(events.map((event) => event.event)).toEqual(['e2e_cli_session', 'e2e_cli_session']);
+    expect(events[0]!.properties['command']).toBe('list');
+    expect(events[0]!.properties['flags']).toEqual([]);
+    expect(events[1]!.properties['flags']).toEqual(['--tag']);
+    expect(JSON.stringify(events)).not.toContain('smoke');
+    expect(events[0]!.properties['$lib']).toBe('e2e');
+    expect(events[0]!.properties['distinct_id']).toMatch(/^[a-f0-9]{32}$/u);
+  });
+
+  it('does not print the notice before e2e telemetry itself', async () => {
+    await invoke('telemetry');
+    expect(written(stderrSpy)).not.toContain('e2e collects anonymous usage telemetry');
+    expect(printedEvents().map((event) => event.properties['command'])).toEqual(['telemetry']);
+  });
+
+  it('records the run event from the report the run returned, with the flag names only', async () => {
+    runMock.mockResolvedValue({ exitCode: 1, report: sampleReport() });
+    await invoke('run', '--workers', '3', '--headed', 'tests/secret.e2e.ts');
+    const events = printedEvents();
+    expect(events.map((event) => event.event)).toEqual(['e2e_cli_session', 'e2e_run_completed']);
+    const run = events[1]!;
+    expect(run.properties['flags']).toEqual(['--headed', '--workers']);
+    expect(run.properties['status']).toBe('failed');
+    expect(run.properties['tests_executed']).toBe(2);
+    expect(run.properties['engines']).toEqual(['other', 'playwright@0.6.1']);
+    const payload = JSON.stringify(run);
+    for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
+    expect(payload).not.toContain('"3"');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('records nothing for a run that produced no report', async () => {
+    await invoke('run');
+    expect(printedEvents().map((event) => event.event)).toEqual(['e2e_cli_session']);
+  });
+
+  it('is listed in the help with its actions', async () => {
+    await invoke('--help');
+    expect(written(stdoutSpy)).toMatch(/^ {2}telemetry \[action\] {2,}show, enable, or disable anonymous usage telemetry$/mu);
+    expect(written(stdoutSpy)).toContain('  $ e2e telemetry disable\n');
+
+    process.exitCode = undefined;
+    stdoutSpy.mockClear();
+    await invoke('telemetry', '--help');
+    const help = written(stdoutSpy);
+    expect(help).toContain('Usage: e2e telemetry [options] [action]');
+    expect(help).toContain('E2E_TELEMETRY_DEBUG=1');
+    expect(help).toContain('  $ E2E_TELEMETRY_DEBUG=1 e2e run\n');
+    expect(help).toContain('Docs: https://e2e-docs.vercel.app/telemetry\n');
+    expect(process.exitCode).toBe(0);
   });
 });

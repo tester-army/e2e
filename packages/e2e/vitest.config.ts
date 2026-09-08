@@ -6,11 +6,18 @@ import { defineConfig } from 'vitest/config';
  * bounded: oversubscribing CPUs starves them into timeouts that are
  * indistinguishable from product failures.
  */
+/**
+ * Telemetry stays off for every test and every CLI the tests spawn, which
+ * inherit the environment. The telemetry suite opts back in per instance.
+ */
+const env = { E2E_TELEMETRY_DISABLED: '1' };
+
 export default defineConfig({
   test: {
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: 'forks',
+    env,
     projects: [
       {
         test: {
@@ -19,6 +26,7 @@ export default defineConfig({
           testTimeout: 30_000,
           hookTimeout: 30_000,
           pool: 'forks',
+          env,
         },
       },
       {
@@ -28,6 +36,7 @@ export default defineConfig({
           testTimeout: 30_000,
           hookTimeout: 30_000,
           pool: 'forks',
+          env,
           // Bounded rather than serial: these files own real browsers, app
           // processes, and worker processes, and starving them of CPU produces
           // timeouts indistinguishable from product failures. Vitest 4 requires

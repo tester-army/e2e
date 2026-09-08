@@ -1,17 +1,20 @@
 /** e2e CLI. */
 
 import { resolve as resolvePath } from 'node:path';
-import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
+import { Argument, Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import { list, run, type ListedPair } from '../run/runner.ts';
+import { cliSessionEvent, runCompletedEvent } from '../telemetry/events.ts';
+import { Telemetry } from '../telemetry/telemetry.ts';
 import { cache, type CacheCommand } from './cache.ts';
 import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
+import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
 
 /**
  * Help text always carries color; commander strips it when the stream it
@@ -91,9 +94,26 @@ function docsLine(path = ''): string {
   return `Docs: ${pc.underline(`${DOCS_URL}${path}`)}`;
 }
 
+/** `run`, `cache ls`: the command path below the root, as the session event names it. */
+function commandPath(command: Command): string {
+  const names: string[] = [];
+  for (let current: Command | null = command; current !== null && current.parent !== null; current = current.parent) {
+    names.unshift(current.name());
+  }
+  return names.join(' ');
+}
+
+/** The long names of the flags given on the command line: a closed set, never their values. */
+function usedFlags(command: Command): string[] {
+  return command.options
+    .flatMap((option) =>
+      option.long !== undefined && command.getOptionValueSource(option.attributeName()) === 'cli' ? [option.long] : [],
+    )
+    .toSorted();
+}
+
 /** Builds the commander program. */
-function createProgram(): Command {
-  const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
+function createProgram(version: string, telemetry: Telemetry): Command {
   const program = new Command('e2e');
   // The help option, the error hint, and the help styles are copied into each
   // subcommand as it is created, so they are set before any `.command()`.
@@ -123,6 +143,7 @@ function createProgram(): Command {
           'e2e list --tag smoke',
           'e2e cache ls',
           'e2e guide',
+          'e2e telemetry disable',
         ]),
         '',
         `Run ${pc.cyan('e2e <command> --help')} for the flags of one command.`,
@@ -132,6 +153,14 @@ function createProgram(): Command {
   // Commander would exit(1) on a usage error itself; the exit-code table reserves 1
   // for product failures and 2 for CLI errors, so exits are decided in main.
   program.exitOverride();
+  // Every command that runs is one session event. The notice precedes the
+  // first of them on a machine, except `telemetry` itself: that is where
+  // someone who read the notice goes to act on it.
+  program.hook('preAction', (_program, actionCommand) => {
+    const command = commandPath(actionCommand);
+    if (command !== 'telemetry') telemetry.notice();
+    telemetry.record(cliSessionEvent(command, usedFlags(actionCommand)));
+  });
 
   program
     .command('init')
@@ -232,6 +261,7 @@ function createProgram(): Command {
           debug?: boolean;
           aiTrace?: boolean;
         },
+        command: Command,
       ) => {
         const signals = new SignalLadder();
         const release = signals.arm();
@@ -255,6 +285,10 @@ function createProgram(): Command {
             forceSignal: signals.forceSignal,
           });
           process.exitCode = outcome.exitCode;
+          // The run event is the report's own numbers; a run that produced no report sends none.
+          if (outcome.report !== undefined) {
+            telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
+          }
         } finally {
           release();
         }
@@ -359,12 +393,34 @@ function createProgram(): Command {
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
 
+  program
+    .command('telemetry')
+    .summary('show, enable, or disable anonymous usage telemetry')
+    .description(
+      'Print whether anonymous usage telemetry is on, and why not when it is off, or switch it. enable and disable save the choice to the preferences file; E2E_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 in the environment overrides it, and E2E_TELEMETRY_DEBUG=1 prints every event to stderr instead of sending it.',
+    )
+    .addArgument(new Argument('[action]', 'status, enable, or disable').choices(TELEMETRY_ACTIONS).default('status'))
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples(['e2e telemetry', 'e2e telemetry disable', 'E2E_TELEMETRY_DEBUG=1 e2e run']),
+        '',
+        docsLine('/telemetry'),
+      ].join('\n'),
+    )
+    .action((action: TelemetryAction) => {
+      process.exitCode = telemetryCommand(action, telemetry);
+    });
+
   return program;
 }
 
 /** CLI entry invoked by the bin wrapper. */
 export async function main(argv: readonly string[]): Promise<void> {
-  const program = createProgram();
+  const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
+  const telemetry = new Telemetry({ version });
+  const program = createProgram(version, telemetry);
   try {
     await program.parseAsync([...argv]);
   } catch (cause) {
@@ -372,9 +428,12 @@ export async function main(argv: readonly string[]): Promise<void> {
       // Commander has already written its diagnostic. `--help` and
       // `--version` exit 0; every usage error is a CLI error: exit 2.
       process.exitCode = cause.exitCode === 0 ? 0 : 2;
-      return;
+    } else {
+      process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+      process.exitCode = 2;
     }
-    process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
-    process.exitCode = 2;
+  } finally {
+    // One bounded request; the deadline, not the network, decides when the CLI is done.
+    await telemetry.flush();
   }
 }

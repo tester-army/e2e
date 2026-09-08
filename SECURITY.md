@@ -61,10 +61,32 @@ redirect or open windows off-origin as one the agent may follow there.
 
 ## Telemetry and outbound traffic
 
-The framework sends nothing home. There is no usage telemetry, no crash
-reporting, and no update check. The complete list of outbound connections a
-run can make:
+The CLI sends anonymous usage telemetry, on by default. One `e2e_cli_session`
+event per command carries the command name, the names of the flags given, the
+e2e, Node, and OS versions, the CPU count and memory class, and whether the
+shell is a container, a CI vendor, or a coding agent. One `e2e_run_completed`
+event per run carries the report's numbers: status, exit code, duration, test
+and step counts, engine names and versions, platforms, cache replay counts,
+model provider and public model id, token totals, and the runner's error codes.
+Events are attributed to a random per-machine id and a hashed project id (the
+SHA-256 of the repository's root commit); in CI the vendor's name stands in for
+the machine, and without git there is no project id. Test titles, file paths,
+URLs, instructions, observations, messages, stack traces, environment
+variables, and credentials are never sent, and an engine, platform, model id,
+or error code the runner does not know is reported as `other`. Every property
+is listed at [e2e-docs.vercel.app/telemetry](https://e2e-docs.vercel.app/telemetry),
+and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
 
+Opt out with `e2e telemetry disable`, `E2E_TELEMETRY_DISABLED=1`, or
+`DO_NOT_TRACK=1`. A host embedding the runner through `@e2edev/e2e/run` sends
+nothing: telemetry is a CLI concern. Telemetry falls under the disclosure
+policy above.
+
+There is no crash reporting and no update check. The complete list of
+outbound connections a run can make:
+
+- one telemetry request per CLI invocation to `eu.i.posthog.com`, unless
+  opted out
 - the model endpoint named by `E2E_MODEL` (agent steps only; deterministic
   suites make no model calls, and cached steps replay without one)
 - `readyUrl` probes against the app the runner starts
