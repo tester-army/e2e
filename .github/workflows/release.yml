@@ -44,7 +44,7 @@ jobs:
       # Opens or updates a release PR while changesets are pending; publishes
       # once that PR is merged and no changesets remain.
       - name: Create release PR or publish
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           version: pnpm run version-packages
           publish: pnpm run release
