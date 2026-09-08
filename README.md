@@ -65,6 +65,9 @@ anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
 - [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
   simulators and Android emulators; see the
   [device reference](https://e2e.docs.buildwithfern.com/reference/device).
+- [`@e2edev/cua`](./packages/cua) — the desktop engine for macOS, Windows, and
+  Linux apps through [Cua Driver](https://github.com/trycua/cua/tree/main/libs/cua-driver);
+  see the [desktop reference](https://e2e.docs.buildwithfern.com/reference/desktop).
 
 ## Contributing
 

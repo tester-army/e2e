@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @e2edev/e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build",
+    "build": "pnpm --filter @e2edev/e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build && pnpm --filter @e2edev/cua run build",
     "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "docs:check": "fern check",
@@ -21,7 +21,7 @@
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run build && changeset publish --tag beta",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm run build && pnpm --filter @e2edev/e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test",
+    "test": "pnpm run build && pnpm --filter @e2edev/e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/cua run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
     "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",

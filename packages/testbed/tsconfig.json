@@ -11,6 +11,7 @@
   "include": [
     "e2e.bench.config.ts",
     "e2e.config.ts",
+    "e2e.desktop.config.ts",
     "e2e.device.config.ts",
     "e2e.public.config.ts",
     "e2e.reminders.config.ts",
@@ -18,6 +19,7 @@
     "e2e.tester-army.config.ts",
     "fixtures/**/*.ts",
     "tests-bench/**/*.ts",
+    "tests-desktop/**/*.ts",
     "tests-device/**/*.ts",
     "tests-public/**/*.ts",
     "tests-reminders/**/*.ts",

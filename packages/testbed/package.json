@@ -21,12 +21,14 @@
     "demo:host": "pnpm run bench:build && node host-demo.mjs",
     "test:reminders": "node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.reminders.config.ts",
     "test:stress": "node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
-    "test:device:cached": "pnpm run test:device && pnpm run test:device && node scripts/assert-cache-replay.mjs"
+    "test:device:cached": "pnpm run test:device && pnpm run test:device && node scripts/assert-cache-replay.mjs",
+    "test:desktop": "node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.desktop.config.ts"
   },
   "dependencies": {
     "@e2edev/agent-device": "workspace:*",
-    "@e2edev/playwright": "workspace:*",
+    "@e2edev/cua": "workspace:*",
     "@e2edev/e2e": "workspace:*",
+    "@e2edev/playwright": "workspace:*",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"

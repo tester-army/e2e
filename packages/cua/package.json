@@ -1,0 +1,71 @@
+{
+  "name": "@e2edev/cua",
+  "version": "0.1.0",
+  "description": "Cua Driver desktop engine (macOS, Windows, Linux) for e2e agentic end-to-end testing",
+  "keywords": [
+    "e2e",
+    "testing",
+    "agentic",
+    "end-to-end",
+    "cua",
+    "computer-use",
+    "desktop",
+    "accessibility",
+    "engine"
+  ],
+  "license": "MIT",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/cua"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/cua#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "restricted",
+    "provenance": false,
+    "tag": "beta"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:desktop": "E2E_CUA_DESKTOP=1 vitest run tests/integration"
+  },
+  "dependencies": {
+    "@trycua/cua-driver": "0.24.0",
+    "pngjs": "7.0.0"
+  },
+  "peerDependencies": {
+    "@e2edev/e2e": ">=0.4.0 <1"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/pngjs": "6.0.5",
+    "@e2edev/e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

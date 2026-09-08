@@ -9,6 +9,7 @@ This project is a pnpm monorepo containing:
 - `packages/e2e` — the published `@e2edev/e2e` package (SDK, runner, CLI, engine contract)
 - `packages/playwright` — the published `@e2edev/playwright` browser engine
 - `packages/agent-device` — the published `@e2edev/agent-device` mobile engine
+- `packages/cua` — the published `@e2edev/cua` desktop engine (macOS, Windows, Linux via Cua Driver)
 - `packages/testbed` — private dogfood suite that consumes the built packages
 - `fern/` — the docs site
 
@@ -68,8 +69,8 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `@e2edev/e2e`, `@e2edev/playwright`, or
-`@e2edev/agent-device`, add a changeset:
+If your change affects `@e2edev/e2e`, `@e2edev/playwright`,
+`@e2edev/agent-device`, or `@e2edev/cua`, add a changeset:
 
 ```sh
 pnpm changeset

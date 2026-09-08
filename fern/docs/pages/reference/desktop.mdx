@@ -1,0 +1,144 @@
+---
+title: desktop
+subtitle: The desktop fixture and engine options @e2edev/cua contributes for macOS, Windows, and Linux app targets.
+---
+
+`@e2edev/cua` is the desktop engine: native, Electron, and Tauri apps on
+macOS, Windows, and Linux through
+[Cua Driver](https://github.com/trycua/cua/tree/main/libs/cua-driver), against
+the same `@e2edev/e2e/engine` contract the browser engine implements. `agent`,
+`app`, `screen`, and `expect` work as they do everywhere; this page covers what
+is specific to a desktop target. Import `test` from the package to have
+`desktop` typed; declare `requires: ['desktop']` in portable suites.
+
+## Engine
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { cua } from '@e2edev/cua';
+
+export default {
+  targets: [{ name: 'mac', platform: 'macos', engine: cua({ app: 'com.apple.TextEdit' }) }],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+The engine launches the app fresh at the start of every attempt, observes one
+of its windows, and force-quits it when the attempt ends, so every test starts
+from the app's launch state. Options:
+
+| Option | Meaning |
+| --- | --- |
+| `app` | Bundle identifier (`com.apple.TextEdit`) or display name (`TextEdit`) of the app launched per attempt. A bundle id is unambiguous and preferred. |
+| `args` | Extra command-line arguments for the launch. |
+| `urls` | Files or URLs the app opens on launch. |
+| `window` | Which window the target observes, by title: a string the title must contain or a regular expression. The first window on screen otherwise. |
+| `identity` | Stable identity keying the trace cache; defaults to `app`. |
+| `environment` | Report label; a local desktop defaults to `test`. |
+| `maxElements`, `maxDepth` | Caps on the accessibility walk per observation; the driver's defaults otherwise. |
+
+`platform` on the target is free text on a desktop target: use `macos`,
+`windows`, or `linux` so `platforms: [...]` on a test can pick one.
+
+## Permissions
+
+Cua Driver reads the window through the operating system's accessibility API
+and acts through it. On macOS the process that runs the tests needs
+**Accessibility** for observations and actions and **Screen Recording** for
+screenshots and observation pixels. macOS attributes a grant to the responsible
+process: a terminal, an IDE, or a CI agent, never to `node` itself or to this
+package. Grant both in System Settings › Privacy & Security to the app you run
+`e2e run` from, or from a terminal that already has them.
+
+`init` checks once per worker. Without Accessibility the run fails before any
+test with `DESKTOP_PERMISSION_REQUIRED`. Without Screen Recording the run
+proceeds: observations carry the tree without pixels and `app.screenshot()`
+fails with the remedy in its message.
+
+On GitHub-hosted macOS runners both grants are pre-installed for the shell that
+runs a step. Hosted Windows runners run jobs in an interactive session, which
+UI Automation needs. Linux needs an X server (`xvfb-run`) and the AT-SPI bus
+(`at-spi2-core`).
+
+## What the engine declares
+
+| Member | Body |
+| --- | --- |
+| `observe` | The accessibility tree of the observed window: roles mapped onto the shared vocabulary (`AXButton`, UIA `Button`, and AT-SPI `push button` all read as `button`), names, values, states, bounds in window points, plus redacted pixels when asked and Screen Recording is granted. |
+| `locate` | `getByRole`, `getByLabel`, `getByText`, `getByDisplayValue`, `getByTestId` (the platform identifier: `AXIdentifier`, `AutomationId`) and `screen.locator(selector)`. |
+| `perform` | `tap`, `doubleTap`, `fill`, `clear`, `press`, `check`/`uncheck`, `selectOption` (pop-up buttons, by label), `hover`, `dragTo`, node `swipe`, `focus` on fields. `longPress`, `scrollIntoView`, `setInputFiles`, and `selectOption` by index are `UNSUPPORTED_CAPABILITY`. |
+| `swipe` | A wheel gesture at the window's centre. |
+| `app.restart` | Quits and relaunches the app. There is no `navigate`, `back`, or `clearState`. |
+| `artifacts.screenshot` | The window's pixels with every secure field painted over; withheld when a secure field cannot be masked. |
+| `url` | `app://desktop/<app>/<window title>`, the anchor the trace cache records steps against. |
+
+Secure text fields (`AXSecureTextField`, password entries) never carry their
+value in the tree, and their bounds are masked in every image the engine emits.
+
+Every action addresses its node by the driver's per-snapshot element token, so
+a node from an older observation fails with `NODE_STALE` and the runner
+re-observes; an action the driver delivered only partly fails with
+`ACTION_MAY_HAVE_COMMITTED` and is never repeated blindly.
+
+## Selectors
+
+`screen.locator(selector)` and `desktop.locator(selector)` take `key=value`
+terms separated by spaces, quoted when a value has spaces or quotes:
+
+```ts
+desktop.locator('role=AXPopUpButton label="Font"');
+screen.locator('id=SaveButton');
+screen.locator('role=button enabled=false');
+```
+
+Terms: `role` (platform role or mapped role), `label`, `text`, `value`, `id`
+(the platform identifier), `enabled`, `selected`, `focused`, `checked`,
+`index` and `token` (the driver's own element handles). Every observed node
+with an identifier also carries `selector: 'id=<identifier>'` as its
+structural hint.
+
+## The desktop fixture
+
+```ts
+import { expect } from '@e2edev/e2e';
+import { test } from '@e2edev/cua';
+
+test('a new document takes text', async ({ app, screen, desktop }) => {
+  await app.open();
+  await desktop.menu(['File', 'New']);
+  await screen.getByRole('textbox').first().fill('Hello from e2e');
+  await expect(screen.getByRole('textbox').first()).toHaveValue('Hello from e2e');
+  await desktop.hotkey('Meta+s');
+  expect((await desktop.window()).title).toBeTruthy();
+});
+```
+
+| Method | Meaning |
+| --- | --- |
+| `locator(selector)` | A locator from a Cua selector, for nodes the closed `screen` vocabulary cannot name. |
+| `menu(path)` | Invokes one menu-bar path, outermost first. |
+| `hotkey(chord)` | Sends one key chord to the window: `'Meta+n'`, `'Shift+Tab'`, `'Escape'`. |
+| `window()` | The observed window's title and bounds on the desktop. |
+
+Each call is recorded as a `desktop.<method>` step bounded by the action
+timeout.
+
+## Keys
+
+`press` and `hotkey` take the same names the browser engine does: `Enter`,
+`Escape`, `Tab`, `Backspace`, `Delete`, `ArrowUp`…`ArrowRight`, `Home`, `End`,
+`PageUp`, `PageDown`, `F1`…`F12`, single characters, and chords joined with
+`+` using `Meta` (the Command key), `Control`, `Alt`, `Shift`. A name the
+driver cannot press fails with `UNSUPPORTED_CAPABILITY`.
+
+## Limits
+
+- One window per target. An app that opens a new main window mid-test is
+  followed once; a second window is addressed with `window`.
+- Electron, Chromium, Flutter, and Qt apps expose a full tree only once
+  accessibility is enabled for them (`app.setAccessibilitySupportEnabled(true)`
+  in Electron, `--force-renderer-accessibility` in Chromium,
+  `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` in Qt on Linux).
+- Cua Driver is pinned to an exact version; its tool contract changes often.
+- The engine has no state capture: sign in through the app itself, or launch
+  with `args`/`urls` that select a prepared profile.
