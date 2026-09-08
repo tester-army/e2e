@@ -3,5 +3,5 @@
 "@e2edev/playwright": minor
 ---
 
-Add focused and attribute locator assertions.
-Expose arbitrary locator attributes and add class assertions.
+Add `toBeFocused` and `toHaveAttribute` locator matchers, and make `getAttribute` read any attribute present on the element.
+Add `expect(web).toHaveClass(target, expected)` to the web fixture.

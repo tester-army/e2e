@@ -34,8 +34,7 @@ test.describe('drag and drop', { requires: ['web'] }, () => {
 
   test('the draggable image is a first-class element', async ({ web }) => {
     const logo = web.locator('#drag1');
-    // The element has no draggable attribute.
-    expect(await logo.getAttribute('draggable')).toBeNull();
+    expect(await logo.getAttribute('draggable')).toBe('true');
     expect(await logo.getAttribute('id')).toBe('drag1');
     const box = await logo.boundingBox();
     expect(box === null).toBe(false);
