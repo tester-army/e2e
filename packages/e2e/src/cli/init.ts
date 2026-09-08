@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { esmPackageHint } from '../config/esm.ts';
 import { detectPackageManager } from '../internal/package-manager.ts';
+import { DOCS_URL } from './docs-url.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { addDependencies, describeManifestError, readPackage, serializePackage } from './init/package.ts';
@@ -28,10 +29,12 @@ export interface InitOptions {
   interactive?: boolean;
 }
 
+const CACHE_IGNORE_ENTRY = '.e2e/cache/';
+
 const GITIGNORE_ENTRIES = [
   'node_modules/',
   '.e2e/artifacts/',
-  '.e2e/cache/',
+  CACHE_IGNORE_ENTRY,
   '.e2e/sessions/',
   '.e2e/report.json',
   '.e2e/ai-trace.json',
@@ -181,6 +184,9 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
     writeFileSync(gitignorePath, `${existingIgnore}${prefix}${missingIgnore.join('\n')}\n`, 'utf8');
     clack.log.success(`updated .gitignore (${missingIgnore.length} entries)`);
+    if (missingIgnore.includes(CACHE_IGNORE_ENTRY)) {
+      clack.log.info(`${CACHE_IGNORE_ENTRY} is ignored; committing agent.act replays is opt-in, see ${DOCS_URL}/reference/config#commit-your-traces`);
+    }
   }
 
   if (install) {

@@ -508,6 +508,23 @@ nothing else. Every agent step's report records how the cache participated
 (`step.cache`: `self-finalized`, `agent-concluded`, or `missed`, with a
 reason).
 
+### Commit your traces
+
+Committing cache entries is opt-in. `e2e init` adds `.e2e/cache/` to
+`.gitignore`, so out of the box every machine records its own entries and CI
+starts with none: an unset mode is `read-only` there, and with nothing to read
+every `agent.act()` runs live.
+
+To share replays, remove the `.e2e/cache/` line from `.gitignore` and commit
+the directory. Entries a passing local run wrote then replay in CI and on every
+teammate's machine. CI stays `read-only` unless you set `cache: 'read-write'`
+explicitly, which is the right call only when CI restores the directory from
+its own cache service rather than from git.
+
+Treat committed entries as test data: review them in the same pull request as
+the test change that re-recorded them, and delete the directory when a flow
+changes so much that the next passing run should record it from scratch.
+
 ## limits
 
 Resolved limits are immutable for a run. Per-call options may only lower them.

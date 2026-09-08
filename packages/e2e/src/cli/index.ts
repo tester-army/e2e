@@ -5,12 +5,11 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { run } from '../run/runner.ts';
+import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
-
-const DOCS_URL = 'https://e2e.docs.buildwithfern.com';
 
 /**
  * Help text always carries color; commander strips it when the stream it
