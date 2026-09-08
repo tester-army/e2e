@@ -17,7 +17,8 @@ export interface ArtifactRecord {
   sha256?: string;
   /** The configured `ArtifactStore`'s reference for this artifact, when one accepted it. */
   ref?: string;
-  redaction: 'none' | 'complete';
+  /** Mirrors report-1; `complete` is the only value the runner writes today. */
+  redaction: 'complete' | 'not-required' | 'incomplete';
   producer: ArtifactProducer;
 }
 
