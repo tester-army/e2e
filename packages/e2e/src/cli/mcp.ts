@@ -8,11 +8,14 @@
 
 import { createWriteStream } from 'node:fs';
 import type { Writable } from 'node:stream';
+import { isCiMode } from '../config/resolve.ts';
 import { errorMessage, exitCodeForCategory, classifyError } from '../internal/errors.ts';
 import { serveMcp } from '../mcp/server.ts';
 
 export interface McpCommandOptions {
   config?: string | undefined;
+  target?: string | undefined;
+  headless?: boolean | undefined;
 }
 
 /** Diverts every later `process.stdout` write to stderr and returns a stream still bound to fd 1. */
@@ -35,6 +38,8 @@ export async function mcp(version: string, options: McpCommandOptions): Promise<
     return await serveMcp({
       cwd: process.cwd(),
       configPath: options.config,
+      target: options.target,
+      headed: options.headless !== true && !isCiMode(process.env),
       env: process.env,
       version,
       stdin: process.stdin,

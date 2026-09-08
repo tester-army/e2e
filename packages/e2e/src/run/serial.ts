@@ -63,7 +63,7 @@ export interface SerialHost {
   readonly interruptSignal: AbortSignal;
   readonly realms: RealmManager;
   launchSession(
-    pair: TestTargetPair,
+    sessionName: string | undefined,
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
@@ -218,7 +218,7 @@ async function runSerialAttempt(
   let shared: SharedSerialSession;
   try {
     shared = {
-      session: await host.launchSession(first, attemptId, artifacts.dir, host.interruptSignal),
+      session: await host.launchSession(first.options.session, attemptId, artifacts.dir, host.interruptSignal),
       attemptId,
       artifactSegments,
       priorSteps: [],

@@ -59,8 +59,10 @@ anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
 See [Coding agents](https://e2e.docs.buildwithfern.com/coding-agents).
 
 `e2e mcp` serves the project to a coding agent over MCP: it lists and runs
-the tests and digests a failed run without leaving the conversation. `e2e
-init` registers it for Claude Code and Cursor.
+the tests, digests a failed run, and opens a live session on the app with
+the same tools the testing agent has, so the agent can look at the real
+screen and check a locator before writing the test. `e2e init` registers it
+for Claude Code and Cursor.
 
 ## Packages
 

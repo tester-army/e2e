@@ -167,19 +167,21 @@ function createProgram(): Command {
     .command('mcp')
     .summary('serve the project to a coding agent over MCP')
     .description(
-      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: list_tests, run_tests, and read_report for the project, and the e2e guide as resources. Register it with the client, e.g. claude mcp add e2e -- npx --no-install e2e mcp.',
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: list_tests, run_tests, and read_report for the project, plus a live session on one target with the same tools the testing agent gets (observe, tap, type, press, select, scroll, navigate, type_secret), locate, and screenshot. Register it with the client, e.g. claude mcp add e2e -- npx --no-install e2e mcp.',
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
+    .option('--headless', 'hide the UI during live sessions (default: headed outside CI)')
     .addHelpText(
       'after',
       [
         '',
-        examples(['e2e mcp', 'claude mcp add e2e -- npx --no-install e2e mcp']),
+        examples(['e2e mcp', 'e2e mcp --target web --headless', 'claude mcp add e2e -- npx --no-install e2e mcp']),
         '',
         docsLine('/reference/mcp'),
       ].join('\n'),
     )
-    .action(async (options: { config?: string }) => {
+    .action(async (options: { config?: string; target?: string; headless?: boolean }) => {
       process.exitCode = await mcp(version, options);
     });
 

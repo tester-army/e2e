@@ -4,14 +4,19 @@ subtitle: Serve the project to a coding agent over the Model Context Protocol.
 ---
 
 ```bash
-npx --no-install e2e mcp [--config <path>]
+npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
 `e2e mcp` is an MCP server over stdio for a coding agent such as Claude Code
-or Cursor. It lists the tests, runs a selection exactly like `e2e run`, and
-digests a finished run, so the agent writes a test, runs it, and reads the
-failures without leaving the conversation. The agent skill is served as
-resources beside the tools.
+or Cursor. It serves two kinds of tools. The project tools list the tests,
+run a selection exactly like `e2e run`, and digest a finished run. The
+session tools open a live attempt on one target and hand the agent the same
+vocabulary the testing agent gets on that engine: observe, tap, type, press,
+select, scroll, navigate, and the project's own `defineTool` values, plus
+`locate` to try a semantic locator before writing it and a masked
+`screenshot`. The agent explores the live app, checks the exact accessible
+names and locators, writes deterministic tests, runs them, and reads the
+failures, without leaving the conversation.
 
 ## Setup
 
@@ -36,18 +41,20 @@ Every client that reads a project-level MCP config takes the same entry:
 | Flag | Behavior |
 | --- | --- |
 | `--config <path>` | Config file (default: the nearest `e2e.config.ts`). The config is loaded again on every call, so an edit applies without restarting the server. |
+| `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; with several targets and no name the call fails with `TARGET_REQUIRED`. |
+| `--headless` | Hide the browser or simulator during sessions. Sessions are headed by default outside CI, so the developer can watch. |
 
 Everything the server prints for the operator goes to stderr, prefixed
 `e2e mcp:`; stdout carries only the protocol. A config module or a library
 that writes to stdout is redirected to stderr for the life of the process.
 
-## Tools
+## Project tools
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
 | `list_tests` | `files`, `tags`, `target` (all optional) | The pairs `e2e list` prints, grouped per file: title path, target, and the skip reason when a pair is skipped. An empty selection is the runner's `NO_TESTS` error, which names what matched nothing. Boots no engine. |
-| `run_tests` | `files`, `tags`, `tagMode`, `target`, `headed`, `noCache`, `retries`, `workers` | Runs the selection through the same runner as `e2e run`, streaming one progress line per test, and returns the digest below. One run at a time (`RUN_IN_PROGRESS`); cancelling the request interrupts the run like Ctrl-C. |
-| `read_report` | `path` (optional) | The digest of `.e2e/report.json`, or of the given report. `REPORT_NOT_FOUND` before the first run. |
+| `run_tests` | `files`, `tags`, `tagMode`, `target`, `headed`, `noCache`, `retries`, `workers` | Runs the selection through the same runner as `e2e run`, streaming one progress line per test, and returns the digest below. An open session is closed first. One run at a time (`RUN_IN_PROGRESS`); cancelling the request interrupts the run like Ctrl-C. |
+| `read_report` | `path` (optional) | The digest of `.e2e/report.json`, or of the given report. |
 
 The digest is markdown: the run status and exit code, the counts, run-level
 errors, then each failed test with its title path, `file:line`, the last
@@ -55,6 +62,36 @@ attempt's error code, category, and message, the failing steps with their
 own source line and error, the agent's explanation and model usage for agent
 steps, and the absolute paths of the attempt's artifacts. A passing run is
 three lines.
+
+## Session tools
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `open_session` | `target` (optional) | Grades and prepares the engine, starts the app command the engine declares, boots the engine, starts one attempt, opens the app URL when the engine can navigate, and returns the session summary and the first observation. |
+| `observe` | none | A fresh observation: one node per line as `#id role "name" ...`, the current path, and the revision. |
+| `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | As the testing agent's tools: a node id from the newest observation, plus the value, key, direction, URL, or credential name | The action's summary and the updated screen. Verbs the engine cannot honor are not offered; `type_secret` is offered when the config declares `credentials`, and fills the named credential's password without the plaintext ever reaching the agent. |
+| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which (role, name, text, states), and the `screen.*` call to write. Zero or several matches name the error a test would get (`LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`) and how to narrow. |
+| `screenshot` | none | The masked viewport as an image, or the reason it is withheld. |
+| `close_session` | none | Ends the attempt, disposes the engine, and stops the app processes the session started; reports cleanup failures. |
+
+Project tools passed to `createAgent({ tools })` are served under their own
+names, scoped to the target's platform, and run through the same accounting
+as in a test step (`mutates` is honored).
+
+A session is one attempt on one target, and one at a time: a second
+`open_session` fails with `SESSION_OPEN`, a session tool without a session
+with `NO_SESSION` (naming why the previous one ended). A session closes on
+`close_session`, when `run_tests` starts, after 30 idle minutes, after 4
+hours, when the client disconnects, and on SIGINT or SIGTERM, so no browser
+or simulator is left behind.
+
+Sessions enforce what tests enforce. Navigation stays inside the engine's
+allowed origins (`POLICY_DENIED` otherwise). Node ids are valid only against
+the newest observation; a stale id fails with `LOCATOR_NOT_FOUND` instead of
+acting on the wrong node. Secrets fill only through `type_secret`, and once a
+secret is on screen every later `screenshot` is withheld (`PIXEL_TAINTED`).
+Nothing a session does is recorded as a test result or into the trace
+cache; its artifacts land under `.e2e/artifacts/<target>/sessions/`.
 
 ## Resources
 

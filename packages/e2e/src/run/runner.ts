@@ -7,31 +7,27 @@ import {
   resolveConfig,
   type CliOverrides,
   type ResolvedConfig,
-  type ResolvedTarget,
 } from '../config/resolve.ts';
 import { collect, type Collection } from '../collect/collect.ts';
 import { select, type Selection, type SelectionFilters } from '../collect/select.ts';
 import {
   classifyError,
   combineExitCodes,
-  ConfigurationError,
   E2EError,
   errorMessage,
   exitCodeForCategory,
   serializeError,
-  translateProvisioningError,
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import { buildReport, describeTarget, type Report1Document, type TargetProvenance } from '../report/build.ts';
+import { buildReport, type Report1Document, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { renderJunitReport } from '../report/junit.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport, writeTextReport } from '../report/write.ts';
-import { ManagedProcess, ServiceStack } from './managed-process.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode } from './events.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
@@ -40,7 +36,7 @@ import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
 import type { E2EConfig } from '../types.ts';
-import { declaredProcesses } from './declared-processes.ts';
+import { prepareEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -175,10 +171,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const results: ResultRecord[] = [];
   const serialGroups: SerialGroupRecord[] = [];
   const targetProvenance = new Map<string, TargetProvenance>();
-  /** Dependency processes declared by the targets' engines, deduplicated, started before any app command. */
-  let services: ServiceStack | undefined;
-  /** App processes started for this run, one per distinct declared command. */
-  const appProcesses: ManagedProcess[] = [];
+  /** The services and app commands the targets' engines declared, once started. */
+  let processes: AppProcesses | undefined;
   let sessionStore: SessionStore | undefined;
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
@@ -399,19 +393,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ci: isCiMode(env),
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
     };
-    const declared = declaredProcesses(config.targets);
-    if (declared.services.length > 0) {
-      const stack = new ServiceStack(declared.services, config.projectRoot, processHooks);
-      services = stack;
-      await debug.time('app.services.start', () => stack.start(interrupted));
-      if (interrupted.aborted) return;
-    }
-    for (const { label, command, readyUrl } of declared.commands) {
-      const app = new ManagedProcess(label, command, config.projectRoot, { readyUrl }, processHooks);
-      appProcesses.push(app);
-      await debug.time(`app.start(${label})`, () => app.start(interrupted));
-      if (interrupted.aborted) return;
-    }
+    processes = await startDeclaredProcesses(config.targets, config.projectRoot, processHooks, interrupted, debug);
     // A run cancelled before any test could start collects nothing: the
     // interrupt alone decides the outcome.
     if (interrupted.aborted) return;
@@ -578,8 +560,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // teardown command is a cleanup error of the run, not a crash.
     for (const teardown of [
       () => sessionStore?.cleanup(),
-      ...appProcesses.map((app) => () => app.stop()),
-      () => services?.stop((cause) => recordFailure(cause, 'cleanup')),
+      () => processes?.stop((cause) => recordFailure(cause, 'cleanup')),
     ]) {
       try {
         await teardown();
@@ -590,36 +571,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     return await finish();
   } finally {
     for (const release of bridges) release();
-  }
-}
-
-/**
- * Runs each target's `prepare` hook in turn. Sequential on purpose: two
- * engines provisioning the same toolchain would race, and the notices of
- * one download read better than two interleaved.
- */
-async function prepareEngines(
-  targets: readonly ResolvedTarget[],
-  scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
-  notice: (target: string, message: string) => void,
-): Promise<void> {
-  for (const target of targets) {
-    const engine = target.engine;
-    if (engine?.prepare === undefined) continue;
-    if (scope.signal.aborted) return;
-    try {
-      // The same `env` the workers are started with: what prepare provisions
-      // must be where a worker's launch will look for it.
-      await engine.prepare({
-        runId: scope.runId,
-        targetName: target.name,
-        env: scope.env,
-        signal: scope.signal,
-        log: (line) => notice(target.name, line),
-      });
-    } catch (cause) {
-      throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
-    }
   }
 }
 
@@ -677,25 +628,6 @@ function plannedFiles(selection: Selection): { file: string; target: string; tes
 
 function statusOf(exitCode: RunExitCode): RunOutcome['status'] {
   return exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
-}
-
-/**
- * Grades one target from its engine declaration and validates the configured
- * artifacts against it; returns the report provenance.
- */
-function validateEngine(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
-  const provenance = describeTarget(target);
-  // The default artifact set is best-effort: an engine without evidence
-  // capture simply records none. Asking for one explicitly is a contract.
-  for (const artifact of config.artifactsExplicit ? config.artifacts : []) {
-    if (!provenance.artifactCapabilities.includes(artifact)) {
-      throw new ConfigurationError(
-        'UNSUPPORTED_ARTIFACT',
-        `target "${target.name}" (engine ${provenance.engine.name}) does not support the configured "${artifact}" artifact`,
-      );
-    }
-  }
-  return provenance;
 }
 
 function resultExitCodes(results: readonly ResultRecord[]): number[] {

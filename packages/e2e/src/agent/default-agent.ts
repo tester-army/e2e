@@ -9,7 +9,6 @@
 
 import type { ModelMessage, ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
-import type { ProviderOptions } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -44,20 +43,27 @@ export interface CreateAgentOptions {
   readonly tools?: Readonly<Record<string, DefinedTool>>;
   /** Upper bound on model turns per step; defaults to the model-call budget. */
   readonly maxTurns?: number;
-  /**
-   * AI SDK provider options passed to every model call (e.g. a thinking
-   * level). Defaults to the config-resolved `agent.providerOptions`.
-   */
-  readonly providerOptions?: ProviderOptions;
+  /** AI SDK provider options passed to every model call (e.g. a thinking level). */
+  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+}
+
+/**
+ * The default executor, plus the project tools it was built with. The tools
+ * are exposed so a host that offers the same hands to another agent (the
+ * `e2e mcp` dev-loop session) serves exactly the vocabulary a test run would.
+ */
+export interface DefaultAgent extends StepExecutor {
+  /** The `defineTool` values passed to `createAgent`, keyed by tool name. */
+  readonly tools: Readonly<Record<string, DefinedTool>>;
 }
 
 /** Builds the default AI SDK step executor. */
-export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
+export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
   const userTools = validateUserTools(options.tools);
   const system = [BASE_RULES, options.system]
     .filter((part): part is string => part !== undefined && part.trim() !== '')
     .join('\n\n');
-  return createToolLoopExecutor({
+  const executor = createToolLoopExecutor({
     name: 'e2e-default-agent',
     version: '2',
     ...(options.model === undefined ? {} : { model: options.model }),
@@ -89,6 +95,29 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       return parts.join('\n\n');
     },
   });
+  return { ...executor, tools: userTools };
+}
+
+/**
+ * The project tools an executor was built with, when it is a `createAgent`
+ * executor. Any other executor (a custom brain) declares none this way.
+ */
+export function executorTools(executor: StepExecutor | undefined): Readonly<Record<string, DefinedTool>> {
+  const tools = (executor as Partial<DefaultAgent> | undefined)?.tools;
+  if (tools === undefined || typeof tools !== 'object') return {};
+  return Object.fromEntries(Object.entries(tools).filter(([, tool]) => isDefinedTool(tool)));
+}
+
+/**
+ * Wraps project tools so they run the same accounting pipeline as the
+ * grammar, keyed by the platform they apply to, for a host outside the model
+ * loop. Failures propagate: the host decides how to report them.
+ */
+export function projectToolsFor(
+  context: StepExecutorContext,
+  tools: Readonly<Record<string, DefinedTool>>,
+): ToolSet {
+  return wrapUserTools(context, { concluding: () => false, reportHardStop: () => undefined, guard: (body) => body() }, tools, { rethrow: true });
 }
 
 /**
@@ -224,6 +253,7 @@ function wrapUserTools(
   context: StepExecutorContext,
   helpers: ToolLoopHelpers,
   tools: Readonly<Record<string, DefinedTool>>,
+  wrapOptions: { readonly rethrow?: boolean } = {},
 ): ToolSet {
   const wrapped: Record<string, ToolSet[string]> = {};
   for (const [name, defined] of Object.entries(tools)) {
@@ -249,6 +279,7 @@ function wrapUserTools(
             })),
           );
         } catch (cause) {
+          if (wrapOptions.rethrow === true) throw cause;
           if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
             helpers.reportHardStop(cause);
             return `HARD STOP (${cause.code}): ${cause.message}`;

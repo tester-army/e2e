@@ -117,13 +117,16 @@ an agent uses it.
 ## e2e mcp
 
 ```bash
-npx --no-install e2e mcp [--config <path>]
+npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
 Serves the project to a coding agent over the Model Context Protocol on
-stdio: `list_tests`, `run_tests`, and `read_report`, plus the e2e guide as
-resources. `e2e init` registers the server for Claude Code and Cursor. The
-tools and the flags are on the [MCP server](/reference/mcp) page.
+stdio: `list_tests`, `run_tests`, and `read_report` for the project, and a
+live session on one target with the tools the testing agent gets (`observe`,
+`tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret`), plus
+`locate` and `screenshot`. `e2e init` registers the server for Claude Code
+and Cursor. The tools, the session rules, and the flags are on the
+[MCP server](/reference/mcp) page.
 
 ## e2e run
 

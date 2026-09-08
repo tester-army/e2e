@@ -444,7 +444,7 @@ export class TargetExecutor implements SerialHost {
 
   /** Starts one attempt on the engine, restores a configured session, and starts tracing. */
   async launchSession(
-    pair: TestTargetPair,
+    sessionName: string | undefined,
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
@@ -456,7 +456,7 @@ export class TargetExecutor implements SerialHost {
     // Session restore rides the engine's neutral state capability. Checked
     // before any per-attempt isolation opens, so a misconfigured session never
     // orphans a started attempt.
-    if (pair.options.session !== undefined && engine?.state === undefined) {
+    if (sessionName !== undefined && engine?.state === undefined) {
       throw new ConfigurationError(
         'UNSUPPORTED_CAPABILITY',
         `target "${this.target.name}" has no engine state capability for session restore`,
@@ -476,8 +476,8 @@ export class TargetExecutor implements SerialHost {
           ),
         );
       }
-      if (pair.options.session !== undefined) {
-        const state = await this.options.sessionStore.load(pair.options.session, this.sessionIdentity);
+      if (sessionName !== undefined) {
+        const state = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
         await launch('restoring the session', (launchSignal) =>
           session.restoreState!(state, launchOp(launchSignal)),
         );
@@ -666,7 +666,7 @@ export class TargetExecutor implements SerialHost {
     try {
       const session =
         shared?.session ??
-        (await this.launchSession(pair, attemptId, artifacts.dir, attemptAbort.signal));
+        (await this.launchSession(pair.options.session, attemptId, artifacts.dir, attemptAbort.signal));
       openSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);

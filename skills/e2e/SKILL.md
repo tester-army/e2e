@@ -61,7 +61,7 @@ one. Without them, the installed CLI prints the same text:
 | `agent` | [references/agent.md](references/agent.md) | Adding `agent.*` steps, picking a model, cost and budgets, the trace cache |
 | `running` | [references/running.md](references/running.md) | CLI flags, reporters, `.e2e/report.json`, exit codes, CI |
 | `debugging` | [references/debugging.md](references/debugging.md) | A run failed: error codes and their fixes, `--headed`, `--debug`, `--ai-trace` |
-| `mcp` | [references/mcp.md](references/mcp.md) | Working through the `e2e mcp` server from a coding agent: listing and running tests, reading a failed run |
+| `mcp` | [references/mcp.md](references/mcp.md) | Driving the live app from a coding agent over MCP: `e2e mcp`, its tools, and the explore-then-write loop |
 
 ## Workflow
 
@@ -70,8 +70,10 @@ one. Without them, the installed CLI prints the same text:
    there: follow `setup`.
 2. Learn the screens you will drive before writing a test: routes, labels,
    roles, button text. Semantic locators need the accessible names the app
-   renders, so read the templates or components, or open the page with
-   `--headed`.
+   renders, so read the templates or components, open the page with
+   `--headed`, or drive the live app through the `e2e mcp` server when it is
+   registered (topic `mcp`): `open_session`, `observe`, and `locate` show the
+   exact names and check a locator before you write it.
 3. Write `tests/<feature>.e2e.ts`. Deterministic steps first. One `agent.act`
    per goal where the flow varies, and an `expect` on its outcome right after.
 4. Run one file: `npx --no-install e2e run tests/<feature>.e2e.ts`. Agent

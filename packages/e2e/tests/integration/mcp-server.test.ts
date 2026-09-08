@@ -1,8 +1,9 @@
 /**
  * `e2e mcp` end to end: the built CLI serving a fixture project over stdio to
- * a real MCP client. Covers the project tools, the guide resources, and
- * stdout hygiene: a config that prints to stdout must not corrupt the
- * protocol.
+ * a real MCP client. Covers the project tools, a live session driven through
+ * the grammar tools, the secret and pixel invariants, a second session after
+ * the first closed, and stdout hygiene: a config that prints to stdout must
+ * not corrupt the protocol.
  */
 
 import path from 'node:path';
@@ -24,6 +25,7 @@ console.log('config loaded');
 
 export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
+  credentials: { admin: { username: 'admin', password: 'admin-pass' } },
   workers: 1,
 } satisfies E2EConfig;
 `;
@@ -48,6 +50,7 @@ test('expects a count that never comes', async ({ app, screen }) => {
 interface ToolText {
   readonly text: string;
   readonly isError: boolean;
+  readonly images: number;
 }
 
 describe('e2e mcp', { timeout: 120_000 }, () => {
@@ -65,7 +68,16 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     return {
       text: result.content.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n'),
       isError: result.isError === true,
+      images: result.content.filter((part) => part.type === 'image').length,
     };
+  };
+
+  /** The node id of the first observation line matching `pattern`. */
+  const nodeId = (text: string, pattern: RegExp): string => {
+    const line = text.split('\n').find((candidate) => pattern.test(candidate));
+    const match = line === undefined ? null : /#(n\d+)/.exec(line);
+    if (match === null) throw new Error(`no node matches ${pattern} in:\n${text}`);
+    return match[1]!;
   };
 
   beforeAll(async () => {
@@ -77,7 +89,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     });
     transport = new StdioClientTransport({
       command: process.execPath,
-      args: [CLI, 'mcp'],
+      args: [CLI, 'mcp', '--headless'],
       cwd: project.dir,
       env: { ...(process.env as Record<string, string>), APP_URL: app.url, CI: '' },
       stderr: 'pipe',
@@ -95,18 +107,38 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     await app?.close();
   });
 
-  it('lists the project tools and the guide resources', async () => {
+  it('lists the project tools, the grammar the engine honors, and the guide resources', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['list_tests', 'run_tests', 'read_report']);
-    expect(tools.find((tool) => tool.name === 'list_tests')?.annotations).toMatchObject({ readOnlyHint: true });
-    expect(tools.find((tool) => tool.name === 'run_tests')?.inputSchema).toMatchObject({ type: 'object' });
+    const names = tools.map((tool) => tool.name);
+    expect(names).toEqual([
+      'list_tests',
+      'run_tests',
+      'read_report',
+      'open_session',
+      'observe',
+      'tap',
+      'type',
+      'press',
+      'select',
+      'scroll',
+      'navigate',
+      'type_secret',
+      'locate',
+      'screenshot',
+      'close_session',
+    ]);
+    const tap = tools.find((tool) => tool.name === 'tap')!;
+    expect(tap.description).toBe('Tap or click one node.');
+    expect(tap.inputSchema).toMatchObject({ type: 'object', required: ['target'] });
+    expect(tools.find((tool) => tool.name === 'observe')?.annotations).toMatchObject({ readOnlyHint: true });
+    expect(tools.find((tool) => tool.name === 'type_secret')?.description).toContain('"admin" (password)');
 
     const { resources } = await client.listResources();
     expect(resources.map((resource) => resource.uri)).toEqual(
       expect.arrayContaining(['e2e://guide', 'e2e://report/latest', 'e2e://guide/mcp', 'e2e://guide/writing-tests']),
     );
     const guide = await client.readResource({ uri: 'e2e://guide/mcp' });
-    expect((guide.contents[0] as { text: string }).text).toContain('# Working through the MCP server');
+    expect((guide.contents[0] as { text: string }).text).toContain('# Driving the app over MCP');
   });
 
   it('lists the tests per file with their dispositions', async () => {
@@ -124,19 +156,86 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(none.text).toContain('tests/nope.e2e.ts');
   });
 
-  it('reports a missing report as an error the agent can act on', async () => {
-    const result = await call('read_report');
+  it('refuses session tools before a session is open', async () => {
+    const result = await call('observe');
     expect(result.isError).toBe(true);
-    expect(result.text).toContain('REPORT_NOT_FOUND');
-    expect(result.text).toContain('run_tests');
+    expect(result.text).toContain('NO_SESSION');
   });
 
-  it('runs a passing selection and digests it', async () => {
+  it('opens a session, locates, acts, fills a secret, and withholds pixels afterwards', async () => {
+    const opened = await call('open_session');
+    expect(opened.isError, opened.text).toBe(false);
+    expect(opened.text).toContain('open on target "web" (platform web, engine playwright');
+    expect(opened.text).toContain(`App: ${app.url}/`);
+    expect(opened.text).toContain('Credentials: "admin" (username "admin")');
+    expect(opened.text).toMatch(/Current screen \(revision b\d+\) at \/:/);
+    expect(opened.text).toContain('button "Increment"');
+
+    const unique = await call('locate', { role: 'button', name: 'Increment' });
+    expect(unique.text).toContain('1 node matches');
+    expect(unique.text).toContain('Use: screen.getByRole("button", { name: "Increment" })');
+    const ambiguous = await call('locate', { text: 'Duplicated' });
+    expect(ambiguous.text).toContain('2 nodes match');
+    expect(ambiguous.text).toContain('LOCATOR_AMBIGUOUS');
+    const missing = await call('locate', { label: 'Nowhere' });
+    expect(missing.text).toContain('0 nodes match');
+    expect(missing.text).toContain('LOCATOR_NOT_FOUND');
+
+    const observed = await call('observe');
+    const tapped = await call('tap', { target: nodeId(observed.text, /button "Increment"/) });
+    expect(tapped.isError, tapped.text).toBe(false);
+    expect(tapped.text).toMatch(/^Tapped #n\d+\.\n\nUpdated screen/);
+    expect(tapped.text).toMatch(/status "Counter" text="1"/);
+
+    const stale = await call('tap', { target: 'n9999' });
+    expect(stale.isError).toBe(true);
+    expect(stale.text).toContain('LOCATOR_NOT_FOUND');
+
+    const before = await call('screenshot');
+    expect(before.isError, before.text).toBe(false);
+    expect(before.images).toBe(1);
+
+    const filled = await call('type_secret', { target: nodeId(tapped.text, /textbox "Password"/), name: 'admin' });
+    expect(filled.isError, filled.text).toBe(false);
+    expect(filled.text).toContain('Filled secret "admin"');
+    expect(filled.text).not.toContain('admin-pass');
+
+    const after = await call('screenshot');
+    expect(after.images).toBe(0);
+    expect(after.text).toContain('Screenshot withheld: PIXEL_TAINTED');
+
+    const denied = await call('navigate', { url: 'https://example.com/' });
+    expect(denied.isError).toBe(true);
+    expect(denied.text).toContain('POLICY_DENIED');
+
+    const again = await call('open_session');
+    expect(again.isError).toBe(true);
+    expect(again.text).toContain('SESSION_OPEN');
+
+    const closed = await call('close_session');
+    expect(closed.isError, closed.text).toBe(false);
+    expect(closed.text).toMatch(/^Session \S+ closed \(closed by the agent\); \d+ tool calls ran\./);
+    expect(closed.text).not.toContain('Cleanup:');
+
+    const gone = await call('observe');
+    expect(gone.isError).toBe(true);
+    expect(gone.text).toContain('the previous session ended: closed by the agent');
+  });
+
+  it('opens a second session after the first closed, and run_tests closes it', async () => {
+    const reopened = await call('open_session', { target: 'web' });
+    expect(reopened.isError, reopened.text).toBe(false);
+    expect(reopened.text).toContain('button "Increment"');
+
     const run = await call('run_tests', { files: ['tests/counter.e2e.ts'] });
     expect(run.isError, run.text).toBe(false);
     expect(run.text).toContain('# Run passed (exit 0)');
     expect(run.text).toContain('1 executed, 1 passed, 0 failed');
     expect(run.text).toContain(`Report: ${path.join(project.dir, '.e2e', 'report.json')}`);
+
+    const afterRun = await call('observe');
+    expect(afterRun.isError).toBe(true);
+    expect(afterRun.text).toContain('run_tests started');
   });
 
   it('digests a failing run and reads the same digest back from disk', async () => {

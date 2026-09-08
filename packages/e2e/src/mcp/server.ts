@@ -1,8 +1,8 @@
 /**
- * The `e2e mcp` server: the project tools (list, run, read the report) and
- * the skill as resources, served over one stdio transport to a coding agent.
- * Streams are injected, so the CLI hands it the process's and a test hands
- * it pipes.
+ * The `e2e mcp` server: the project tools (list, run, read the report), the
+ * live-session tools, and the skill as resources, served over one stdio
+ * transport to a coding agent. Streams are injected, so the CLI hands it the
+ * process's and a test hands it pipes.
  */
 
 import type { Readable, Writable } from 'node:stream';
@@ -11,12 +11,15 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { readGuide, skillTopics } from '../cli/skill.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
-import { listTests, readReport, runTests } from './project.ts';
-import { errorResult, textResult, type McpToolResult, type McpToolSpec } from './tools.ts';
+import { listTests, loadProjectConfig, readReport, runTests } from './project.ts';
+import { SessionHost, type McpToolResult, type McpToolSpec, errorResult, textResult } from './session.ts';
 
 export interface ServeOptions {
   readonly cwd: string;
   readonly configPath?: string | undefined;
+  /** The target every session opens on; otherwise a call names one, or the only one is used. */
+  readonly target?: string | undefined;
+  readonly headed: boolean;
   readonly env: NodeJS.ProcessEnv;
   readonly version: string;
   readonly stdin: Readable;
@@ -29,7 +32,8 @@ export interface ServeOptions {
 }
 
 const INSTRUCTIONS = `e2e is a local-first end-to-end test runner; this server serves one project (its e2e.config.ts).
-Tools: list_tests, run_tests, read_report. Write deterministic tests (tests/*.e2e.ts), run them with run_tests, and read the digest of the failures. Resources e2e://guide and e2e://guide/{topic} hold the writing guide.`;
+Project tools: list_tests, run_tests, read_report. Live-app tools: open_session, then observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and close_session.
+Explore the live app with a session to learn accessible names and node ids, verify locators with locate, then write deterministic tests (tests/*.e2e.ts) and run them with run_tests. Resources e2e://guide and e2e://guide/{topic} hold the writing guide.`;
 
 type LogLevel = 'info' | 'warning' | 'error';
 
@@ -44,6 +48,22 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     options.log(`[${level}] ${message}`);
     if (server.isConnected()) void server.sendLoggingMessage({ level, logger: 'e2e', data: message }).catch(() => undefined);
   };
+
+  let startupConfig;
+  try {
+    startupConfig = await loadProjectConfig(project);
+  } catch (cause) {
+    startupConfig = undefined;
+    log('warning', `config not loaded at startup: ${errorMessage(cause)}; tools load it again on each call`);
+  }
+  const host = new SessionHost({
+    config: startupConfig,
+    loadConfig: () => loadProjectConfig(project),
+    env: options.env,
+    headed: options.headed,
+    defaultTarget: options.target,
+    log,
+  });
 
   let running = false;
   const specs: McpToolSpec[] = [
@@ -62,7 +82,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     {
       name: 'run_tests',
       description:
-        'Run the tests (all, or a selection by files, tags, and target) exactly like `e2e run`, and return a digest of the report: failures with code, message, source line, failing step, and artifact paths. One run at a time; cancelling the call interrupts the run.',
+        'Run the tests (all, or a selection by files, tags, and target) exactly like `e2e run`, and return a digest of the report: failures with code, message, source line, failing step, and artifact paths. Closes an open live session first. One run at a time; cancelling the call interrupts the run.',
       inputSchema: z.object({
         files: z.array(z.string().min(1)).optional().describe('Test files, directories, or globs relative to the project root'),
         tags: z.array(z.string().min(1)).optional(),
@@ -78,6 +98,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
         if (running) return errorResult(new ConfigurationError('RUN_IN_PROGRESS', 'a run is already in progress; wait for it to finish'));
         running = true;
         try {
+          if (host.isOpen) log('info', await host.close('run_tests started'));
           const outcome = await runTests(project, args as Parameters<typeof runTests>[1], {
             progress: (message) => extra.progress(message),
             signal: extra.signal,
@@ -98,6 +119,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
       readOnly: true,
       call: (args) => guarded(() => readReport(project, args as Parameters<typeof readReport>[1])),
     },
+    ...host.toolSpecs(),
   ];
 
   for (const spec of specs) {
@@ -132,7 +154,13 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
   await server.connect(transport);
   log('info', `e2e mcp ${options.version} serving ${project.cwd}`);
   await closed;
-  await server.close().catch((cause: unknown) => options.log(`server close failed: ${errorMessage(cause)}`));
+  try {
+    const summary = await host.close('server shutdown');
+    if (host.isOpen || summary !== 'No session is open.') options.log(summary);
+  } catch (cause) {
+    options.log(`session teardown failed: ${errorMessage(cause)}`);
+  }
+  await server.close().catch(() => undefined);
   return 0;
 }
 
