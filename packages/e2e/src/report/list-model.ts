@@ -52,9 +52,9 @@ export interface RunningTest {
   executing: boolean;
   current: CurrentStep | undefined;
   /**
-   * Finished agent steps, oldest first. Shown under the test in the live
-   * window while it runs, nested under its line in the file block once it is
-   * done.
+   * Finished agent steps across every attempt, oldest first. Shown under the
+   * test in the live window while it runs, nested under its line in the file
+   * block once it is done.
    */
   readonly steps: FinishedStep[];
 }

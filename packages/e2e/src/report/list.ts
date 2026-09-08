@@ -289,7 +289,10 @@ export class ListReporter {
   /**
    * A worker began one test-target pair: show it in the live window. A serial
    * member replaces the previous member of its group, which has finished
-   * executing even though its result only arrives with the whole group.
+   * executing even though its result only arrives with the whole group. A
+   * serial group retries as a whole, so a member starts once per group
+   * attempt; its steps from earlier attempts stay with it, as an ordinary
+   * test's do.
    */
   private testStarted(event: RunEventOf<'test-started'>): void {
     if (event.serialId !== undefined) {
@@ -297,14 +300,15 @@ export class ListReporter {
         if (test.serialId === event.serialId && test.group.target === event.target) test.executing = false;
       }
     }
-    this.pairs.set(pairKey(event.testId, event.target), {
+    const key = pairKey(event.testId, event.target);
+    this.pairs.set(key, {
       group: this.group(event.file, event.target),
       serialId: event.serialId,
       title: bounded(event.title),
       startedMs: Date.now(),
       executing: true,
       current: undefined,
-      steps: [],
+      steps: this.pairs.get(key)?.steps ?? [],
     });
     this.window.redraw();
   }

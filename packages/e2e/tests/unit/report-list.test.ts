@@ -684,6 +684,35 @@ describe('ListReporter', () => {
       expect(lines.join('\n')).toContain('Tests  1 passed (1)');
     });
 
+    it('keeps a serial member\u2019s steps from earlier group attempts when it starts again', () => {
+      const lines: string[] = [];
+      const output = { write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')), raw: () => {} };
+      const reporter = plainReporter(output, true);
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      const end = (status: 'passed' | 'failed') =>
+        reporter.handle({
+          type: 'step',
+          testId: 'm1',
+          target: 'chromium',
+          progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'fill the form', status, durationMs: 4_200, modelCalls: 3 },
+        });
+      reporter.handle(testStarted('m1', 'step 1', 'chromium', 'tests/case.e2e.ts', 'wizard'));
+      end('failed');
+      reporter.handle(testStarted('m1', 'step 1', 'chromium', 'tests/case.e2e.ts', 'wizard'));
+      end('passed');
+      reporter.handle(serialGroup('g1', [
+        { members: [serialMember('m1', { status: 'failed', durationMs: 200 })], error: { code: 'E', category: 'test', message: 'boom' } as never },
+        { members: [serialMember('m1', { durationMs: 100 })] },
+      ]));
+      reporter.handle(finished(result({ status: 'flaky', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })));
+      expect(lines).toEqual([
+        ' ✓ |chromium| tests/case.e2e.ts (1 test | 1 flaky) 300ms',
+        '   ✓ wizard > step 1 (flaky) 300ms',
+        '     × agent.act "fill the form" 4.20s · 3 model calls failed',
+        '     ✓ agent.act "fill the form" 4.20s · 3 model calls',
+      ]);
+    });
+
     it('shows one serial member at a time in the live window and follows each member\u2019s steps', () => {
       const chunks: string[] = [];
       const output = { write: (line: string) => chunks.push(`${line}\n`), raw: (text: string) => chunks.push(text) };
