@@ -1,7 +1,9 @@
 ---
 title: Writing tests
-subtitle: Goals, checks, extraction, and the deterministic APIs.
+description: Goals, checks, extraction, and the deterministic APIs.
 ---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 A test is a TypeScript function that mixes two kinds of calls: agent calls
 state goals and ask questions, deterministic calls pin down the parts that
@@ -43,10 +45,10 @@ await agent.act('Sign in', {
 });
 ```
 
-<Tip title="Write instructions like you would say them out loud">
+<Aside type="tip" title="Write instructions like you would say them out loud">
 Name the visible affordances and prefer the exact wording on screen. One goal
 per call. The flow inside it is the model's job; the order of goals is yours.
-</Tip>
+</Aside>
 
 Every planned step ends in a ternary verdict: **passed**, **failed**, or
 **blocked**, meaning something prevented a product verdict. Blocked carries an error
@@ -90,10 +92,10 @@ const data = await agent.extract('every todo title and how many remain', {
 expect(data.titles).toContain('Buy milk');
 ```
 
-<Callout intent="warning" title="Assert on meaning, not on wording">
+<Aside type="caution" title="Assert on meaning, not on wording">
 Different models phrase things differently. `expect(x.plan).toContain('Pro')`
 survives a model swap; `toBe('Pro plan')` does not.
-</Callout>
+</Aside>
 
 ### What the model sees
 
@@ -166,11 +168,7 @@ state, run in order on one worker, and retry as a whole.
 
 ## Next
 
-<CardGroup cols={2}>
-  <Card title="Your own agent" icon="robot" href="/agents">
-    Models, project tools, and custom executors.
-  </Card>
-  <Card title="Authentication" icon="key" href="/authentication">
-    Sessions and secrets.
-  </Card>
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Your own agent" href="/agents" description="Models, project tools, and custom executors." />
+  <LinkCard title="Authentication" href="/authentication" description="Sessions and secrets." />
+</CardGrid>

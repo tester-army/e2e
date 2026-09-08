@@ -9,7 +9,7 @@
     "packages/e2e/tests/types/sdk-types.ts"
   ],
   "ignorePatterns": [
-    "fern/**",
+    "docs/**",
     "**/next-env.d.ts",
     "**/.e2e/**",
     "packages/e2e/tests/tmp-projects/**"

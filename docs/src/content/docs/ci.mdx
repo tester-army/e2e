@@ -1,7 +1,9 @@
 ---
 title: Continuous integration
-subtitle: One workflow, plus the defaults the runner changes on its own.
+description: One workflow, plus the defaults the runner changes on its own.
 ---
+
+import { Aside, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
 
 ```yaml title=".github/workflows/e2e.yml"
 name: e2e
@@ -66,10 +68,10 @@ jobs:
           retention-days: 7
 ```
 
-<Callout intent="note">
+<Aside type="note">
 Actions are pinned to commit SHAs, not tags. A tag is mutable, and a workflow
 with repository secrets is the wrong place to run code that can change under you.
-</Callout>
+</Aside>
 
 `--no-install` makes `npx` fail rather than silently fetch a mutable version from
 the registry. With `--frozen-lockfile`, the runner, the engine, and the browser
@@ -125,16 +127,20 @@ but not identical - the same instruction can take a different, equally valid pat
 Gating merges on that makes the model a shared dependency of every pull request.
 
 <Steps>
-  <Step title="Split the config">
-    A separate `e2e.agent.config.ts` with its own `tests` glob and a larger
-    `timeout`, since every planned step includes model round trips.
-  </Step>
-  <Step title="Split the workflow">
-    Run it on `workflow_dispatch` or `schedule`, never on `pull_request`.
-  </Step>
-  <Step title="Keep it out of required checks">
-    Branch protection requires the deterministic job only.
-  </Step>
+
+1. **Split the config**
+
+   A separate `e2e.agent.config.ts` with its own `tests` glob and a larger
+   `timeout`, since every planned step includes model round trips.
+
+2. **Split the workflow**
+
+   Run it on `workflow_dispatch` or `schedule`, never on `pull_request`.
+
+3. **Keep it out of required checks**
+
+   Branch protection requires the deterministic job only.
+
 </Steps>
 
 ```yaml title="Nightly agentic run"
@@ -151,17 +157,13 @@ about the class of failure, remember what each code means: 1 is a real test
 failure, 2 is configuration or policy, 3 is infrastructure, 130 is a
 cancellation.
 
-<Callout intent="warning">
+<Aside type="caution">
 Do not retry the whole job on exit code 2. Configuration and collection errors
 are deterministic, so a re-run burns minutes and produces the same red. Exit 3 is
 the only code where a job-level retry is a reasonable reflex.
-</Callout>
+</Aside>
 
-<CardGroup cols={2}>
-  <Card title="CLI reference" icon="terminal" href="/reference/cli">
-    Flags, artifacts, the report, and every exit code.
-  </Card>
-  <Card title="Errors reference" icon="stethoscope" href="/reference/errors">
-    Every error code and what owns it.
-  </Card>
-</CardGroup>
+<CardGrid>
+  <LinkCard title="CLI reference" href="/reference/cli" description="Flags, artifacts, the report, and every exit code." />
+  <LinkCard title="Errors reference" href="/reference/errors" description="Every error code and what owns it." />
+</CardGrid>

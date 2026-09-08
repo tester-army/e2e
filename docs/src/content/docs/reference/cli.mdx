@@ -1,7 +1,9 @@
 ---
 title: CLI
-subtitle: e2e init, e2e guide, e2e run, e2e list, and e2e cache, flag by flag.
+description: e2e init, e2e guide, e2e run, e2e list, and e2e cache, flag by flag.
 ---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 ```bash
 npx --no-install e2e init [directory]
@@ -299,11 +301,11 @@ stderr, a run treats it as a miss, and `clear` removes it. Files the runner
 never wrote are left alone and named on stderr, so a `cache.dir` pointing at a
 directory that holds anything else cannot lose it.
 
-<Callout intent="info">
+<Aside type="note">
 A project that configures `cache.store` replaced the file store with its own,
 and these commands read files only, so they exit 2 and say so rather than
 reporting an empty cache.
-</Callout>
+</Aside>
 
 ## Exit codes
 
@@ -346,9 +348,9 @@ variable the runner read it from (`E2E_MODEL_API_KEY`, `AI_GATEWAY_API_KEY`,
 or the one `agent.model.apiKeyEnv` names), and color codes in provider
 messages are stripped before they reach the terminal or the report.
 
-<CardGroup cols={2}>
-  <Card title="Quickstart" icon="play" href="/quickstart" />
-  <Card title="Continuous integration" icon="infinity" href="/ci" />
-  <Card title="Config" icon="gear" href="/reference/config" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Quickstart" href="/quickstart" />
+  <LinkCard title="Continuous integration" href="/ci" />
+  <LinkCard title="Config" href="/reference/config" />
+  <LinkCard title="Errors" href="/reference/errors" />
+</CardGrid>

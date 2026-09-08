@@ -1,7 +1,9 @@
 ---
-title: e2e
-subtitle: End-to-end tests in plain TypeScript, driven by an agent you define.
+title: Introduction
+description: End-to-end tests in plain TypeScript, driven by an agent you define.
 ---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 You write tests in simple TypeScript, and you define the agent that executes
 them. e2e ships no intelligence of its own: the runner owns safety, budgets,
@@ -38,20 +40,12 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 screen. When a step or a check is too important to leave to a model, `screen`
 and `expect` do exactly what they say, for free.
 
-<CardGroup cols={2}>
-  <Card title="Quickstart" icon="bolt" href="/quickstart">
-    Install, define your agent, run a test.
-  </Card>
-  <Card title="Writing tests" icon="pen" href="/writing-tests">
-    Goals, checks, extraction, and the deterministic APIs.
-  </Card>
-  <Card title="Your own agent" icon="robot" href="/agents">
-    Models, project tools, and custom executors.
-  </Card>
-  <Card title="Reference" icon="code" href="/reference/test">
-    Every function, option, and error code.
-  </Card>
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Quickstart" href="/quickstart" description="Install, define your agent, run a test." />
+  <LinkCard title="Writing tests" href="/writing-tests" description="Goals, checks, extraction, and the deterministic APIs." />
+  <LinkCard title="Your own agent" href="/agents" description="Models, project tools, and custom executors." />
+  <LinkCard title="Reference" href="/reference/test" description="Every function, option, and error code." />
+</CardGrid>
 
 ## What you get
 
@@ -72,10 +66,10 @@ rather than as a failing test, so red keeps meaning "the product misbehaved".
 `agent.act` and the model sees its name only; the runner fills the field
 itself.
 
-<Callout intent="note" title="Two engines">
+<Aside type="note" title="Two engines">
 This release ships `@e2edev/playwright` for browsers and
 [`@e2edev/agent-device`](/reference/device) for iOS simulators and Android
 emulators. The API and the runner are platform-neutral: the same test runs on
 both, and a surface neither covers plugs in as a
 [engine](/writing-an-engine) of its own.
-</Callout>
+</Aside>

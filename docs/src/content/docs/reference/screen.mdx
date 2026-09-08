@@ -1,7 +1,9 @@
 ---
 title: screen and Locator
-subtitle: Queries, refinement, actions, and reads.
+description: Queries, refinement, actions, and reads.
 ---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 `screen` builds lazy queries. A `Locator` is a query expression, not a node:
 nothing resolves until an action, read, or assertion runs. `Locator extends
@@ -102,7 +104,7 @@ const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
 await row.getByRole('button', { name: 'Void' }).tap();
 ```
 
-<Callout intent="info">
+<Aside type="note">
 In the `@e2edev/playwright` engine a `getByDisplayValue` locator supports
 `filter`, `first`, `last`, `nth`, actions, and assertions like any other query.
 Two compositions stay unsupported and fail with `UNSUPPORTED_CAPABILITY`: using
@@ -110,7 +112,7 @@ it as the scope of a child query (`getByDisplayValue(v).getByRole(...)`) and
 passing it as a `has` filter. Playwright has no selector for a control's current
 value, so the engine reads the candidates and filters afterwards; those two
 shapes would need the value check inside Playwright's own locator chain.
-</Callout>
+</Aside>
 
 ## screen.swipe
 
@@ -309,9 +311,9 @@ See [Hidden duplicates](#hidden-duplicates).
 `SelectOption`: a bare string is the option label. The object form is mutually
 exclusive, `label` or `index`, never both.
 
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen" href="/writing-tests" />
-  <Card title="expect" icon="check" href="/reference/expect" />
-  <Card title="app and web" icon="globe" href="/reference/app-web" />
-  <Card title="agent" icon="robot" href="/reference/agent" />
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Writing tests" href="/writing-tests" />
+  <LinkCard title="expect" href="/reference/expect" />
+  <LinkCard title="app and web" href="/reference/app-web" />
+  <LinkCard title="agent" href="/reference/agent" />
+</CardGrid>

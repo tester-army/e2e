@@ -1,5 +1,10 @@
 node_modules/
 dist/
+# Astro writes generated types here while building the docs site; the Vercel
+# adapter and CLI write the build output and the project link here.
+.astro/
+.vercel/
+.env.local
 *.tsbuildinfo
 .e2e/artifacts/
 # Committing cache entries is opt-in: `e2e init` ignores `.e2e/cache/` and a
@@ -13,3 +18,5 @@ dist/
 packages/e2e/tests/tmp-projects/
 # The e2e package ships the repository skill (skills/e2e); the build copies it here.
 packages/e2e/skills/
+.vercel
+.env*

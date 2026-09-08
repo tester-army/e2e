@@ -1,7 +1,9 @@
 ---
 title: Errors
-subtitle: Every code you can see, its class, and its exit code.
+description: Every code you can see, its class, and its exit code.
 ---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 Every error carries a class. The class determines the exit code; the code
 identifies the cause. A model never selects either.
@@ -139,9 +141,9 @@ infrastructure failure and forty test failures exits 3.
 A setup assertion failure is a test failure and skips its dependents. Missing
 setup infrastructure keeps its own configuration or infrastructure class.
 
-<CardGroup cols={2}>
-  <Card title="CLI exit codes" icon="wrench" href="/reference/cli" />
-  <Card title="CLI" icon="rectangle-terminal" href="/reference/cli" />
-  <Card title="agent" icon="robot" href="/reference/agent" />
-  <Card title="Config" icon="gear" href="/reference/config" />
-</CardGroup>
+<CardGrid>
+  <LinkCard title="CLI exit codes" href="/reference/cli" />
+  <LinkCard title="CLI" href="/reference/cli" />
+  <LinkCard title="agent" href="/reference/agent" />
+  <LinkCard title="Config" href="/reference/config" />
+</CardGrid>

@@ -1,7 +1,9 @@
 ---
 title: expect
-subtitle: "Locator assertions, fixture assertions, and plain value matchers."
+description: "Locator assertions, fixture assertions, and plain value matchers."
 ---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 `expect` dispatches on its argument.
 
@@ -154,9 +156,9 @@ expect(items.length).toBeGreaterThan(0);
 expect(payload).toEqual({ ok: true });
 ```
 
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen" href="/writing-tests" />
-  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
-  <Card title="app and web" icon="globe" href="/reference/app-web" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Writing tests" href="/writing-tests" />
+  <LinkCard title="screen and Locator" href="/reference/screen" />
+  <LinkCard title="app and web" href="/reference/app-web" />
+  <LinkCard title="Errors" href="/reference/errors" />
+</CardGrid>

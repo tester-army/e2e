@@ -18,7 +18,7 @@ There is no separate spec. The code is the contract, pinned in three places:
   wire change edits the schema, both fixtures, and the producer in one review.
 - Security invariants are the list under Gotchas below, enforced by tests in
   `tests/integration/agent-policy.test.ts` and the secret-ledger unit tests.
-- Behavior changes update the matching `fern/docs/pages/*.mdx` page in the same
+- Behavior changes update the matching `docs/src/content/docs/**/*.mdx` page in the same
   change, including "not implemented yet" callouts, and `skills/e2e/` when the
   changed surface is described there.
 
@@ -49,7 +49,8 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   are exported there, and there is no `@e2edev/e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
-- `fern/` (docs site).
+- `docs/` (the Starlight docs site; pages live in `docs/src/content/docs/`,
+  navigation and theme in `docs/astro.config.ts` and `docs/src/styles/custom.css`).
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add tester-army/e2e` only looks in well-known
@@ -172,7 +173,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 
 ## Gotchas
 
-- Status prose drifts. `packages/e2e/README.md` and the fern pages can claim
+- Status prose drifts. `packages/e2e/README.md` and the docs pages can claim
   things that have since landed or been removed (the located verbs and the
   locate cache are both gone, for example). Verify against `src/` before
   repeating or relying on any "not implemented yet" list — and fix the prose

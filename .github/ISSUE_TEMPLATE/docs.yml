@@ -6,7 +6,7 @@ body:
     id: where
     attributes:
       label: Page
-      description: URL on e2e.docs.buildwithfern.com, or the path under `fern/docs/pages/`, `skills/e2e/`, or a README.
+      description: URL of the docs page, or the path under `docs/src/content/docs/`, `skills/e2e/`, or a README.
     validations:
       required: true
   - type: textarea

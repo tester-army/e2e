@@ -42,7 +42,7 @@ This project is a pnpm monorepo containing:
 - `packages/playwright`: the published `@e2edev/playwright` browser engine
 - `packages/agent-device`: the published `@e2edev/agent-device` mobile engine
 - `packages/testbed`: private dogfood suite that consumes the built packages
-- `fern/`: the docs site
+- `docs/`: the docs site, built with [Starlight](https://starlight.astro.build)
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
 
 Install dependencies from the root:
@@ -71,12 +71,12 @@ pnpm --filter @e2edev/playwright exec playwright install chromium
 ```
 
 Docs are part of the change, not a follow-up. A behavior change updates its
-page under `fern/docs/pages/` in the same review, and `skills/e2e/` when the
+page under `docs/src/content/docs/` in the same review, and `skills/e2e/` when the
 skill describes that surface.
 
 ```sh
 pnpm docs:dev     # local preview
-pnpm docs:check   # validate configuration and pages
+pnpm docs:check   # build the site and validate every link and anchor
 ```
 
 ### Commit message convention

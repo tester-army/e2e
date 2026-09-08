@@ -1,7 +1,9 @@
 ---
 title: test
-subtitle: Tests, setup tests, groups, hooks, options, and fixtures.
+description: Tests, setup tests, groups, hooks, options, and fixtures.
 ---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 `test` is the only registration surface. Every member registers synchronously
 while the test file is imported.
@@ -36,7 +38,7 @@ throws `COLLECTION_ERROR`.
 | Member | Signature | Notes |
 | --- | --- | --- |
 | `test` | `test(title: string, fn: TestFn): TestCase` | Returns an opaque handle. Discovery follows registration order; exporting the handle changes nothing. |
-| `test` | `test(title: string, options: TestOptions, fn: TestFn): TestCase` | See [TestOptions](#testoptions). |
+| `test` | `test(title: string, options: TestOptions, fn: TestFn): TestCase` | See [Options](#options). |
 | `test.skip` | `skip(title: string, fn: TestFn): TestCase` | Body never runs. Reported as skipped, does not affect the exit code. For a reason, use `test(title, { skip: 'reason' }, fn)`. |
 | `test.only` | `only(title: string, fn: TestFn): TestCase` | Other ordinary tests are reported as `filtered`. In CI the run fails with `ONLY_IN_CI`, exit code 2. |
 | `test.setup` | `setup(title: string, options: SetupOptions, fn: SetupFn): TestCase` | `options.sessions` is required. Must be top-level, not inside `test.describe`. |
@@ -226,9 +228,9 @@ export interface TestCase {
 }
 ```
 
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen" href="/writing-tests" />
-  <Card title="expect" icon="check" href="/reference/expect" />
-  <Card title="Authentication" icon="key" href="/authentication" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Writing tests" href="/writing-tests" />
+  <LinkCard title="expect" href="/reference/expect" />
+  <LinkCard title="Authentication" href="/authentication" />
+  <LinkCard title="Errors" href="/reference/errors" />
+</CardGrid>

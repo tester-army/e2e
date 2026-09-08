@@ -1,7 +1,9 @@
 ---
 title: app and web
-subtitle: Portable app lifecycle, plus the web fixture the playwright engine contributes.
+description: Portable app lifecycle, plus the web fixture the playwright engine contributes.
 ---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 `app` is the portable surface: every method exists on every platform. `web` is
 the fixture `@e2edev/playwright` contributes for browser-only work; import
@@ -39,10 +41,10 @@ await app.open('/settings/billing');
 const shot = await app.screenshot('after-checkout');
 ```
 
-<Callout intent="warning">
+<Aside type="caution">
 `clearState` inside a serial group destroys the shared state the group depends
 on. Use it in `beforeEach` of an ordinary group instead.
-</Callout>
+</Aside>
 
 Pixel evidence is suppressed for the rest of an attempt once any `Secret` has
 been filled.
@@ -298,9 +300,9 @@ export type JsonValue =
   | readonly JsonValue[];
 ```
 
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen" href="/writing-tests" />
-  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
-  <Card title="Config" icon="gear" href="/reference/config" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>
+<CardGrid>
+  <LinkCard title="Writing tests" href="/writing-tests" />
+  <LinkCard title="screen and Locator" href="/reference/screen" />
+  <LinkCard title="Config" href="/reference/config" />
+  <LinkCard title="Errors" href="/reference/errors" />
+</CardGrid>

@@ -1,14 +1,18 @@
 ---
 title: Authentication
-subtitle: Sign in once, then reuse that state everywhere else.
+description: Sign in once, then reuse that state everywhere else.
 ---
+
+import { Aside, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
 
 Signing in through the UI in every test is slow, and it is usually the flakiest
 code in a suite. e2e splits it in two: a setup test produces named state, and
 ordinary tests declare which state they want.
 
-<CodeBlocks>
-```ts title="tests/auth.setup.e2e.ts"
+<Tabs>
+  <TabItem label="tests/auth.setup.e2e.ts">
+
+```ts
 import { test } from '@e2edev/playwright';
 import { expect, credentials } from '@e2edev/e2e';
 
@@ -26,7 +30,11 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
   await session.save('admin');
 });
 ```
-```ts title="tests/dashboard.e2e.ts"
+
+  </TabItem>
+  <TabItem label="tests/dashboard.e2e.ts">
+
+```ts
 import { test } from '@e2edev/playwright';
 import { expect } from '@e2edev/e2e';
 
@@ -39,7 +47,9 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen,
   );
 });
 ```
-</CodeBlocks>
+
+  </TabItem>
+</Tabs>
 
 The consumer never mentions a file, an import, or an order. It names a session
 and the runner wires it up. Selecting `tests/dashboard.e2e.ts` on its own still
@@ -58,11 +68,11 @@ Setup tests run before any ordinary test for the same target. If a setup fails,
 its dependents are skipped with cause `setup-failed` and unrelated tests keep
 going.
 
-<Callout intent="note" title="Assert that you are actually signed in">
+<Aside type="note" title="Assert that you are actually signed in">
 `session.save()` captures whatever state exists. If the sign-in silently failed,
 you would persist an anonymous session and every dependent test would fail
 somewhere confusing. Assert the post-login URL and a greeting first, as above.
-</Callout>
+</Aside>
 
 A session holds cookies, local storage, and IndexedDB. It does not hold server
 or database state. Restoring replaces client state rather than merging it, and
@@ -118,17 +128,25 @@ admin.password; // Secret - opaque, with no plaintext accessor
 A `Secret` has no `.value` and no way to widen it back to a string. Exactly two
 sinks accept one:
 
-<CodeBlocks>
-```ts title="Deterministic"
+<Tabs>
+  <TabItem label="Deterministic">
+
+```ts
 await screen.getByLabel('Password').fill(admin.password);
 ```
-```ts title="Agentic"
+
+  </TabItem>
+  <TabItem label="Agentic">
+
+```ts
 await agent.act('Sign in', {
   username: admin.username,
   password: admin.password,
 });
 ```
-</CodeBlocks>
+
+  </TabItem>
+</Tabs>
 
 Anywhere else is a type error or a `POLICY_DENIED` failure. That is what makes
 the blast radius knowable: there is no generic "give me the string" path to
@@ -164,23 +182,19 @@ while the password stays resolved host-side: the model sees only the secret's
 name and purpose, plans the flow, and the runner fills the field itself, through
 the same authorization policy as `locator.fill`.
 
-<Callout intent="note" title="Prefer the deterministic path for setup tests">
+<Aside type="note" title="Prefer the deterministic path for setup tests">
 A login form is the most addressable screen in your app, so filling it with
 `screen.getByLabel(...)` costs no model calls and cannot vary. Reach for
 `agent.act` when the sign-in flow itself is what varies: an IdP redirect, a
 consent screen, a first-run wizard.
-</Callout>
+</Aside>
 
 One more consequence worth knowing: once a secret is filled, `agent.assert`
 stops attaching screenshot evidence for the rest of that attempt, because a page
 is free to mirror a typed value anywhere on screen. Fill secrets in a setup test
 and consume the session elsewhere to keep full evidence in the tests that matter.
 
-<CardGroup cols={2}>
-  <Card title="app and web reference" icon="globe" href="/reference/app-web">
-    Cookies, routes, dialogs, frames, and downloads.
-  </Card>
-  <Card title="Config reference" icon="sliders" href="/reference/config">
-    The `credentials` block and every other key.
-  </Card>
-</CardGroup>
+<CardGrid>
+  <LinkCard title="app and web reference" href="/reference/app-web" description="Cookies, routes, dialogs, frames, and downloads." />
+  <LinkCard title="Config reference" href="/reference/config" description="The <code>credentials</code> block and every other key." />
+</CardGrid>

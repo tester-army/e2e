@@ -3,12 +3,14 @@ name: docs
 on:
   pull_request:
     paths:
-      - 'fern/**'
+      - 'docs/**'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/docs.yml'
   push:
     branches: [main]
     paths:
-      - 'fern/**'
+      - 'docs/**'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/docs.yml'
 
 permissions:
@@ -19,7 +21,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,22 +31,8 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Validate docs configuration
-        run: pnpm run docs:check
-
-  publish:
-    if: github.event_name == 'push'
-    needs: check
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Publish docs
-        env:
-          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
-        run: pnpm run docs:publish
+      # Vercel builds and hosts the site (production from main, a preview per
+      # pull request). This job is the check: the build fails on an invalid
+      # page, a broken internal link, or a missing anchor.
+      - name: Build docs
+        run: pnpm run docs:build
