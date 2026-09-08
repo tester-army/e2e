@@ -8,6 +8,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+# The repository's own runs are not usage: the CLI sends no telemetry from CI here.
+env:
+  E2E_TELEMETRY_DISABLED: '1'
+
 permissions:
   contents: read
 
