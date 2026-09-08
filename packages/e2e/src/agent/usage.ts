@@ -1,5 +1,5 @@
 /** Shared token and cost accounting for executor loops and judgment calls. */
-import type { StepModelInfo } from '../run/steps.ts';
+import type { StepEvent, StepModelInfo } from '../run/steps.ts';
 
 type Provenance = Pick<StepModelInfo, 'provider' | 'model' | 'endpoint' | 'adapterVersion' | 'policyVersion'>;
 
@@ -60,6 +60,19 @@ export class ModelUsage {
       ...(typeof this.estimatedCostUsd === 'number' ? { estimatedCostUsd: this.estimatedCostUsd } : {}),
     };
   }
+}
+
+/**
+ * The per-call token split for a model event, each side present only when
+ * the provider reported it as a representable count.
+ */
+export function tokenFields(usage: Usage = {}): Pick<StepEvent, 'inputTokens' | 'outputTokens'> {
+  const inputTokens = tokenCount(usage.inputTokens);
+  const outputTokens = tokenCount(usage.outputTokens);
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+  };
 }
 
 /** Rejects counters that cannot be represented in the report schema. */

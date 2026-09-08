@@ -379,6 +379,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     projectRoot: config.projectRoot,
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
+    ...(config.agent.model === undefined
+      ? {}
+      : { model: `${config.agent.model.provider}/${config.agent.model.id}` }),
   });
 
   const executeRun = async (): Promise<void> => {

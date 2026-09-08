@@ -61,7 +61,7 @@ import {
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { ModelUsage } from './usage.ts';
+import { ModelUsage, tokenFields } from './usage.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 
 /** Everything one dispatched step is, resolved before the step opens. */
@@ -559,6 +559,7 @@ class ActDispatch {
       status: 'passed',
       name: 'executor',
       count: tokens,
+      ...tokenFields(usage),
     });
     this.runtime.debug?.record('agent.model', Math.max(0, Math.round(usage?.durationMs ?? 0)));
     if (this.metrics.modelCalls > this.maxModelCalls) {

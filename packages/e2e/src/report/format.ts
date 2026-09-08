@@ -34,6 +34,28 @@ export function ellipsize(text: string, max: number): string {
   return chars.length <= max ? text : `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
 }
 
+/** Terminals that bundle Nerd Font symbols as a built-in fallback font, by `TERM_PROGRAM`. */
+const NERD_FONT_TERMINALS = new Set(['wezterm', 'ghostty', 'warpterminal']);
+/**
+ * Variables those terminals export and multiplexers pass through. tmux and
+ * screen overwrite `TERM_PROGRAM` with their own name, so it alone misses the
+ * common case of a Nerd Font terminal hosting a tmux session.
+ */
+const NERD_FONT_TERMINAL_MARKERS = ['GHOSTTY_RESOURCES_DIR', 'WEZTERM_EXECUTABLE', 'WEZTERM_PANE'];
+const NERD_FONT_BUNDLE_IDS = new Set(['com.mitchellh.ghostty', 'com.github.wez.wezterm', 'dev.warp.warp-stable']);
+
+/**
+ * Whether the terminal renders Nerd Font glyphs. No terminal reports its font,
+ * so terminals known to ship the symbols qualify, recognized through a
+ * multiplexer by the variables they leave behind, and everything else gets
+ * plain fallbacks.
+ */
+export function detectNerdFont(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (NERD_FONT_TERMINALS.has((env.TERM_PROGRAM ?? '').trim().toLowerCase())) return true;
+  if (NERD_FONT_TERMINAL_MARKERS.some((name) => (env[name] ?? '').trim() !== '')) return true;
+  return NERD_FONT_BUNDLE_IDS.has((env['__CFBundleIdentifier'] ?? '').trim());
+}
+
 /** The terminal width; a pty without a size reports 0, which counts as unknown. */
 export function terminalColumns(): number {
   return process.stdout.columns || 80;
@@ -78,7 +100,7 @@ export function padTitle(pc: Colors, title: string): string {
  */
 export function rule(text: string, align: 'center' | 'right'): { before: string; after: string } {
   const columns = terminalColumns();
-  const width = stripVTControlCharacters(text).length;
+  const width = visibleWidth(text);
   const after = align === 'center' ? Math.max(0, Math.ceil((columns - width) / 2)) : 1;
   const before = Math.max(0, columns - width - after);
   return { before: LONG_DASH.repeat(before), after: LONG_DASH.repeat(after) };
@@ -171,9 +193,20 @@ export function sumUsage(items: readonly { readonly usage: AiUsage }[]): AiUsage
   return total;
 }
 
-/** One dim `ai …` segment, or undefined when no model was used. */
-export function aiSegment(usage: AiUsage): string | undefined {
+/** Tokens and cost, `12.4k tokens · $0.01`, or undefined when no model was used. */
+export function usageText(usage: AiUsage): string | undefined {
   if (usage.calls === 0) return undefined;
   const cost = usage.costUsd === undefined ? '' : ` · ${formatCost(usage.costUsd)}`;
-  return `ai ${formatTokens(usage.tokens)} tokens${cost}`;
+  return `${formatTokens(usage.tokens)} tokens${cost}`;
+}
+
+/** `usageText` labeled `ai …` for lines where nothing else names it. */
+export function aiSegment(usage: AiUsage): string | undefined {
+  const text = usageText(usage);
+  return text === undefined ? undefined : `ai ${text}`;
+}
+
+/** Printed width of a line, ANSI sequences excluded. */
+export function visibleWidth(text: string): number {
+  return [...stripVTControlCharacters(text)].length;
 }

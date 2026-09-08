@@ -44,6 +44,8 @@ export type RunEventFact =
       readonly projectRoot: string;
       readonly ci: boolean;
       readonly targets: readonly string[];
+      /** The configured agent model as `provider/model-id`; absent when none is configured. */
+      readonly model?: string;
     }
   | {
       /**

@@ -12,12 +12,13 @@ import { packageVersion } from '../internal/package-version.ts';
 import { collapseText } from '../internal/text.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../run/events.ts';
 import type { AttemptRecord, ResultStatus, SerialGroupRecord } from '../run/records.ts';
-import type { StepEvent } from '../run/steps.ts';
+import type { StepEvent, StepKind } from '../run/steps.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
   addUsage,
   aiSegment,
   bounded,
+  detectNerdFont,
   ellipsize,
   emptyCounters,
   emptyUsage,
@@ -34,6 +35,8 @@ import {
   tally,
   terminalColumns,
   terminalRows,
+  usageText,
+  visibleWidth,
   type AiUsage,
   type Colors,
   type Counters,
@@ -42,6 +45,8 @@ import { LiveWindow } from './live-window.ts';
 
 /** Step labels stay one glanceable line; the report holds the full text. */
 const MAX_STEP_LABEL_BYTES = 72;
+/** A finished step line keeps at least this much of its label when the terminal is narrow. */
+const MIN_STEP_LABEL_CHARS = 24;
 
 const F_POINTER = '❯';
 const F_CHECK = '✓';
@@ -51,9 +56,55 @@ const F_RIGHT = '→';
 const F_DOWN_RIGHT = '↳';
 const F_TREE_MIDDLE = '├──';
 const F_TREE_END = '└──';
+/** A finished model turn in the live window. */
+const F_MODEL = '•';
+/**
+ * A tool call the model made, in the live window: the Nerd Font wrench
+ * (private use U+F0AD). Unicode has no text-presentation wrench, and the emoji
+ * one renders in color everywhere, so terminals without a Nerd Font get a
+ * blank marker and the row stands apart by indentation alone.
+ */
+const F_TOOL_NERD = '\uf0ad';
+const F_TOOL_PLAIN = ' ';
+const F_INPUT = '↑';
+const F_OUTPUT = '↓';
+/**
+ * Spinner for the live row: an asterisk blooming and folding back. Centered
+ * dingbats, unlike six-dot braille, which sits in the top-left of its cell.
+ */
+const SPINNER_FRAMES = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'];
+/** One animation frame; the live window repaints at this cadence. */
+const FRAME_MS = 80;
+/** Frames each spinner glyph holds; the bloom reads better slower than the shimmer. */
+const SPINNER_HOLD_FRAMES = 2;
+/** Frames the shimmer rests after each sweep across the status word. */
+const SHIMMER_REST_FRAMES = 6;
+
+/**
+ * A bright highlight sweeping over `word` one character per frame, resting a
+ * few frames between sweeps: the status word reads as alive without moving.
+ */
+function shimmer(pc: Colors, word: string, frame: number): string {
+  const chars = [...word];
+  const head = frame % (chars.length + SHIMMER_REST_FRAMES);
+  return chars
+    .map((char, index) => {
+      const distance = Math.abs(index - head);
+      if (distance === 0) return pc.bold(pc.white(char));
+      if (distance === 1) return pc.white(char);
+      return pc.dim(char);
+    })
+    .join('');
+}
 
 /** Indentation under a badge line, matching vitest's banner padding. */
 const BADGE_PADDING = '      ';
+/** Indentation of a test line under its file line. */
+const TEST_INDENT = '   ';
+/** Indentation of a finished agent step under its test line in a file block. */
+const STEP_INDENT = '     ';
+/** Indentation of a running test's detail (steps, calls) under its row in the live window. */
+const WINDOW_DETAIL_INDENT = '       ';
 
 /**
  * Badge backgrounds, assigned to targets in declaration order. Bright variants
@@ -67,8 +118,18 @@ const BADGE_COLORS = ['bgYellowBright', 'bgCyanBright', 'bgGreenBright', 'bgMage
  * blank lines, the `… more running` marker, and a margin above the prompt.
  */
 const WINDOW_CHROME_ROWS = 6;
-/** Rows one running test takes before its calls: the test line and its current step. */
-const WINDOW_ROWS_PER_TEST = 2;
+/**
+ * Rows reserved for the running area from the first paint: one file row, one
+ * test row, its current step, the calls the window shows, the turn in flight,
+ * and a few finished steps. The area never shrinks during the run, so the
+ * summary below it stays put instead of jumping as calls come and go.
+ */
+const WINDOW_RESERVED_ROWS = 14;
+/**
+ * Most recent calls of a step the live window shows; older ones fold into the
+ * `… earlier calls` marker so a tall terminal does not fill with model turns.
+ */
+const MAX_WINDOW_EVENTS = 6;
 /** Indentation of the `→ first error line` under a failed test in a file block. */
 const ERROR_GLANCE_INDENT = 7;
 
@@ -83,30 +144,61 @@ export interface ListReporterOptions {
   live?: boolean;
   /** Emit ANSI colors; defaults to picocolors' detection (TTY, CI, FORCE_COLOR). */
   colors?: boolean;
-}
-
-/** One-line, quoted step label bounded for the live view. */
-function stepLabel(label: string): string {
-  const flat = collapseText(label);
-  const shown = truncateUtf8(flat, MAX_STEP_LABEL_BYTES);
-  return `"${shown}${shown === flat ? '' : '…'}"`;
+  /** Use Nerd Font glyphs; defaults to `detectNerdFont` (terminals known to bundle them). */
+  nerdFont?: boolean;
 }
 
 /**
- * Live tail for one step event. Model and engine calls are the ones worth a
- * glance (`tool:` prefixes come from executor tool accounting); polls and
- * policy decisions stay quiet.
+ * One-line, quoted step label bounded for the live view; `maxChars` clips it
+ * further so a finished step line fits the terminal instead of wrapping.
  */
-function eventTail(event: StepEvent): string | undefined {
+function stepLabel(label: string, maxChars = Number.POSITIVE_INFINITY): string {
+  const flat = collapseText(label);
+  const bytesBounded = truncateUtf8(flat, MAX_STEP_LABEL_BYTES);
+  const shown = ellipsize(bytesBounded, Math.max(MIN_STEP_LABEL_CHARS, maxChars));
+  const clipped = shown !== bytesBounded || bytesBounded !== flat;
+  return `"${shown}${clipped && !shown.endsWith('…') ? '…' : ''}"`;
+}
+
+/** Kinds of step events the live window shows; the rest stay quiet. */
+type ShownEventKind = 'model' | 'engine';
+
+/**
+ * `(↑in ↓out)` for one model call, the total when only that is known, or
+ * nothing when the provider reported no usage.
+ */
+function tokenSplit(event: StepEvent): string {
+  if (event.inputTokens !== undefined && event.outputTokens !== undefined) {
+    return ` (${F_INPUT}${formatTokens(event.inputTokens)} ${F_OUTPUT}${formatTokens(event.outputTokens)})`;
+  }
+  return event.count !== undefined && event.count > 0 ? ` (${formatTokens(event.count)} tokens)` : '';
+}
+
+/**
+ * Live tail for one step event. Model turns and tool calls are the ones worth
+ * a glance (`tool:` prefixes come from executor tool accounting); polls and
+ * policy decisions stay quiet. A tool call reads as the act it performed when
+ * the engine described it, else as the tool name.
+ */
+function eventTail(
+  pc: Colors,
+  toolGlyph: string,
+  event: StepEvent,
+): { kind: ShownEventKind; text: string } | undefined {
   if (event.kind === 'model') {
-    const tokens =
-      event.count !== undefined && event.count > 0 ? ` · ${formatTokens(event.count)} tokens` : '';
-    return `model turn ${formatTime(event.durationMs)}${tokens}`;
+    return {
+      kind: 'model',
+      text: pc.dim(`${F_MODEL} Thinking (${formatTime(event.durationMs)})${tokenSplit(event)}`),
+    };
   }
   if (event.kind === 'engine') {
     const name = sanitizeText(event.name ?? 'engine').replace(/^tool:/, '');
-    const failed = event.status === 'passed' ? '' : ` ${F_CROSS}`;
-    return `${truncateUtf8(name, 40)} ${formatTime(event.durationMs)}${failed}`;
+    const act = event.detail === undefined ? name : sanitizeText(collapseText(event.detail));
+    const failed = event.status === 'passed' ? '' : ` ${pc.red(F_CROSS)}`;
+    return {
+      kind: 'engine',
+      text: `${pc.dim(`${toolGlyph} ${truncateUtf8(act, 60)} (${formatTime(event.durationMs)})`)}${failed}`,
+    };
   }
   return undefined;
 }
@@ -163,10 +255,22 @@ interface RunningTest {
   readonly startedMs: number;
   /** Current step, `api "label"`, while one is executing. */
   step: string | undefined;
-  /** Model and engine calls of the current step, oldest first. */
+  /** Kind of the current step; only an agent step has model turns to wait on. */
+  stepKind: StepKind | undefined;
+  /**
+   * Rendered model turns and tool calls of the current step in causal order:
+   * each turn before the tool calls it made. The executor reports a turn only
+   * after its tools ran, so the turn's row is inserted ahead of them.
+   */
   events: string[];
-  /** Whether this pair's story streams permanently above the window. */
-  streaming: boolean;
+  /** Index in `events` where the tool calls of the turn still in flight begin. */
+  turnStart: number;
+  /**
+   * Finished agent steps, rendered without indentation, oldest first. Shown
+   * under the test in the live window while it runs and nested under its line
+   * in the file block once it is done; the same array travels into `TestLine`.
+   */
+  readonly steps: string[];
 }
 
 /** One finished pair, held until its file's block prints. */
@@ -179,6 +283,8 @@ interface TestLine {
   readonly usage: AiUsage;
   readonly firstErrorLine: string | undefined;
   readonly skipReason: string | undefined;
+  /** Finished agent steps to nest under the line, rendered without indentation. */
+  readonly steps: readonly string[];
 }
 
 /**
@@ -192,8 +298,6 @@ interface FileGroup {
   /** Reportable pairs the plan announced; undefined until the plan arrives. */
   planned: number | undefined;
   readonly lines: TestLine[];
-  /** A pair of this file streamed its steps permanently, so list every test. */
-  streamed: boolean;
   printed: boolean;
 }
 
@@ -217,6 +321,8 @@ const DEFAULT_OUTPUT: ListReporterOutput = {
  */
 export class ListReporter {
   private readonly pc: Colors;
+  /** Marker before a tool call in the live window: the wrench, or blank without a Nerd Font. */
+  private readonly toolGlyph: string;
   private readonly window: LiveWindow;
   private readonly separator: string;
   private projectRoot: string | undefined;
@@ -228,6 +334,16 @@ export class ListReporter {
   private readonly groups = new Map<string, FileGroup>();
   /** Pairs executing right now, keyed by `pairKey`, in start order. */
   private readonly running = new Map<string, RunningTest>();
+  /**
+   * Finished agent steps of pairs whose result is still to come, keyed by
+   * `pairKey`. Outlives `running` because a serial member leaves it before
+   * its result arrives.
+   */
+  private readonly stepsOf = new Map<string, string[]>();
+  /** Whether a live window paints; without one, finished steps stream permanently. */
+  private readonly live: boolean;
+  /** High-water mark of the running area's rows; the window pads up to it. */
+  private reservedRows = WINDOW_RESERVED_ROWS;
   private readonly failures: Failure[] = [];
   /**
    * Serial groups whose members' results are still to come, by group id. The
@@ -245,7 +361,9 @@ export class ListReporter {
     options: ListReporterOptions = {},
   ) {
     const live = (options.live ?? process.stdout.isTTY === true) && output.raw !== undefined;
+    this.live = live;
     this.pc = picocolors.createColors(options.colors ?? (live || picocolors.isColorSupported));
+    this.toolGlyph = (options.nerdFont ?? detectNerdFont()) ? F_TOOL_NERD : F_TOOL_PLAIN;
     this.separator = this.pc.dim(' > ');
     this.window = new LiveWindow(live ? output.raw?.bind(output) : undefined, () => this.renderWindow());
   }
@@ -316,7 +434,7 @@ export class ListReporter {
     const key = `${target}\u0000${file}`;
     let group = this.groups.get(key);
     if (group === undefined) {
-      group = { file, target, planned: undefined, lines: [], streamed: false, printed: false };
+      group = { file, target, planned: undefined, lines: [], printed: false };
       this.groups.set(key, group);
     }
     return group;
@@ -335,6 +453,9 @@ export class ListReporter {
     const details = [`run ${event.runId}`, `targets: ${event.targets.join(', ')}`];
     if (event.ci) details.push('CI');
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
+    if (event.model !== undefined) {
+      this.output.write(BADGE_PADDING + pc.dim(`model ${bounded(event.model)}`));
+    }
     this.output.write('');
     this.window.start();
   }
@@ -370,27 +491,30 @@ export class ListReporter {
         }
       }
     }
-    this.running.set(pairKey(event.testId, event.target), {
+    const key = pairKey(event.testId, event.target);
+    const steps: string[] = [];
+    this.stepsOf.set(key, steps);
+    this.running.set(key, {
       group: this.group(event.file, event.target),
       serialId: event.serialId,
       title: bounded(event.title),
       startedMs: Date.now(),
       step: undefined,
+      stepKind: undefined,
       events: [],
-      streaming: false,
+      turnStart: 0,
+      steps,
     });
     this.window.redraw();
   }
 
   /**
-   * Streams step progress of a running pair. With a single test running, its
-   * agent steps print permanently and chronologically under a header naming
-   * the file and test - the scrollback of a long agentic run reads without
-   * `--debug`. Deterministic steps are fast and many, so they only ever show
-   * in the live window. With parallel tests the stream would interleave, so
-   * each pair instead shows its current step and latest calls transiently in
-   * the live window, and finished agent steps print with the test they
-   * belong to.
+   * Tracks step progress of a running pair. With a live window the pair's
+   * finished agent steps accumulate under its row there and print once, nested
+   * under its line, when the file block prints - so every name appears exactly
+   * once in the scrollback. Without a window (CI logs) nothing is transient, so
+   * each finished agent step prints at once, prefixed with its test. Deterministic
+   * steps are fast and many, so they only ever show in the live window.
    */
   private step(event: RunEventOf<'step'>): void {
     const { pc } = this;
@@ -400,27 +524,27 @@ export class ListReporter {
     switch (progress.phase) {
       case 'start': {
         running.step = `${progress.api} ${stepLabel(progress.label)}`;
+        running.stepKind = progress.kind;
         running.events = [];
-        if (progress.kind === 'agent' && this.running.size === 1 && !running.streaming) {
-          running.streaming = true;
-          const { group } = running;
-          group.streamed = true;
-          this.print(
-            ` ${pc.yellow(F_POINTER)} ${this.badge(group.target)} ${pc.dim(bounded(group.file))}${this.separator}${running.title}`,
-          );
-        }
+        running.turnStart = 0;
         this.window.redraw();
         break;
       }
       case 'event': {
-        const tail = eventTail(progress.event);
+        const tail = eventTail(pc, this.toolGlyph, progress.event);
         if (running.step === undefined || tail === undefined) break;
-        running.events.push(tail);
+        if (tail.kind === 'model') {
+          running.events.splice(running.turnStart, 0, tail.text);
+          running.turnStart = running.events.length;
+        } else {
+          running.events.push(tail.text);
+        }
         this.window.redraw();
         break;
       }
       case 'end': {
         running.step = undefined;
+        running.stepKind = undefined;
         running.events = [];
         if (progress.kind !== 'agent') {
           this.window.redraw();
@@ -432,11 +556,20 @@ export class ListReporter {
             ? ` · ${progress.modelCalls} model call${progress.modelCalls === 1 ? '' : 's'}`
             : '';
         const outcome = progress.status === 'passed' ? '' : ` ${progress.status}`;
-        const context = running.streaming ? '' : `${pc.dim(running.title)}${this.separator}`;
-        this.print(
-          `   ${glyph} ${context}${pc.dim(progress.api)} ${stepLabel(progress.label)} ` +
-            pc.dim(`${formatTime(progress.durationMs)}${calls}${outcome}`),
-        );
+        const context = this.live ? '' : `${pc.dim(running.title)}${this.separator}`;
+        const head = `${glyph} ${context}${pc.dim(progress.api)} `;
+        const tail = pc.dim(`${formatTime(progress.durationMs)}${calls}${outcome}`);
+        // Clip the label so the line stays one row at its deepest indent, the
+        // live window's; wrapping breaks the tree.
+        const room =
+          terminalColumns() - WINDOW_DETAIL_INDENT.length - visibleWidth(head) - visibleWidth(tail) - 4;
+        const line = `${head}${stepLabel(progress.label, room)} ${tail}`;
+        if (this.live) {
+          running.steps.push(line);
+          this.window.redraw();
+        } else {
+          this.print(`${TEST_INDENT}${line}`);
+        }
         break;
       }
     }
@@ -465,12 +598,15 @@ export class ListReporter {
     // Unselected pairs are report-only: they never print and the plan never
     // counted them.
     if (!result.selected) return;
-    this.running.delete(pairKey(result.test.id, result.target.name));
+    const key = pairKey(result.test.id, result.target.name);
+    this.running.delete(key);
+    const steps = this.stepsOf.get(key) ?? [];
+    this.stepsOf.delete(key);
     const group = this.group(result.test.file, result.target.name);
     const { durationMs, usage, error } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
     const title = bounded(result.test.titlePath.join(' > '));
-    group.lines.push({
+    const line: TestLine = {
       title,
       declarationIndex: result.test.declarationIndex,
       status: result.status,
@@ -478,7 +614,9 @@ export class ListReporter {
       usage,
       firstErrorLine: error === undefined ? undefined : bounded(error.message).split('\n')[0],
       skipReason: result.skip === undefined ? undefined : bounded(result.skip.reason),
-    });
+      steps,
+    };
+    group.lines.push(line);
     if (statusBucket(result.status) === 'failed') {
       this.failures.push({ group, title, status: result.status, error });
     }
@@ -506,8 +644,9 @@ export class ListReporter {
 
   /**
    * Prints one file's block: the file line with its counts, then - when the
-   * file failed, had a flaky pass, streamed its steps, or is the run's only
-   * file - one line per test, as vitest lists tests for a failed module.
+   * file failed, had a flaky pass, or is the run's only file - one line per
+   * test with its finished agent steps nested, as vitest lists tests for a
+   * failed module.
    */
   private printGroup(group: FileGroup): void {
     if (group.printed) return;
@@ -539,15 +678,12 @@ export class ListReporter {
     if (durationMs > 0) parts.push(pc.dim(formatTime(durationMs)));
     if (ai !== undefined) parts.push(pc.dim(ai));
     this.print(parts.join(' '));
-    const verbose =
-      counts.failed > 0 ||
-      counts.flaky > 0 ||
-      group.streamed ||
-      this.groups.size === 1;
+    const verbose = counts.failed > 0 || counts.flaky > 0 || this.groups.size === 1;
     if (!verbose) return;
     const ordered = group.lines.toSorted((a, b) => a.declarationIndex - b.declarationIndex);
     for (const line of ordered) {
       for (const rendered of this.testLine(line)) this.print(rendered);
+      for (const step of line.steps) this.print(`${STEP_INDENT}${step}`);
     }
   }
 
@@ -595,7 +731,7 @@ export class ListReporter {
       padTitle(pc, 'Test Files') + (files.total === 0 ? pc.dim('no test files') : stateString(pc, files)),
       padTitle(pc, 'Tests') + (tests.total === 0 ? pc.dim('no tests executed') : stateString(pc, tests)),
     ];
-    const ai = aiSegment(this.runUsage);
+    const ai = usageText(this.runUsage);
     if (ai !== undefined) rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls`);
     if (this.errors.length > 0) {
       const count = this.errors.length;
@@ -607,11 +743,71 @@ export class ListReporter {
   }
 
   /**
-   * The live window: running files and tests, then the summary. The block
-   * must fit the screen, because repainting more rows than the terminal has
-   * breaks the cursor-up erase: rows left after the summary go to the running
-   * tests, each test's calls share what remains once every test has its own
-   * line, and tests that still do not fit fold into one `more running` marker.
+   * The current step of a running pair and, for an agent step, its calls and
+   * the turn in flight, at most `budget` rows. Older calls fold into one
+   * marker. No clock here: the test row above carries the one clock, so the
+   * eye has a single moving number per running test.
+   */
+  private stepRows(test: RunningTest, maxEvents: number, budget: number, now: number): string[] {
+    const { pc } = this;
+    if (test.step === undefined) return [];
+    const rows = [pc.dim(`${F_DOWN_RIGHT} ${test.step}`)];
+    if (test.stepKind !== 'agent') return rows.slice(0, budget);
+    const overflow = test.events.length - maxEvents;
+    if (overflow > 0) {
+      rows.push(`  ${pc.dim(`… ${overflow} earlier call${overflow === 1 ? '' : 's'}`)}`);
+    }
+    for (const tail of overflow > 0 ? test.events.slice(overflow) : test.events) {
+      rows.push(`  ${tail}`);
+    }
+    rows.push(`  ${this.waitingRow(now)}`);
+    return rows.slice(0, budget);
+  }
+
+  /** The one ticking clock of a running test, on its row. */
+  private clock(elapsedMs: number): string {
+    return this.pc.bold(this.pc.yellow(formatTime(Math.max(0, elapsedMs))));
+  }
+
+  /**
+   * Everything under a running test's row: its finished steps, then the
+   * current step. The current step has priority; finished steps take the rows
+   * left and the oldest fold into one marker.
+   */
+  private detailRows(test: RunningTest, maxEvents: number, budget: number, now: number): string[] {
+    const { pc } = this;
+    const current = this.stepRows(test, maxEvents, budget, now);
+    const room = budget - current.length;
+    let finished: string[] = [];
+    if (room > 0) {
+      const overflow = test.steps.length - room;
+      finished =
+        overflow > 0
+          ? [pc.dim(`… ${overflow + 1} earlier step${overflow + 1 === 1 ? '' : 's'}`), ...test.steps.slice(overflow + 1)]
+          : [...test.steps];
+    }
+    return [...finished, ...current].map((row) => `${WINDOW_DETAIL_INDENT}${row}`);
+  }
+
+  /**
+   * The model turn in flight: a spinner and a shimmering `Thinking`. Tool
+   * calls take milliseconds and are reported before their turn, so between
+   * events the model is always the one working.
+   */
+  private waitingRow(now: number): string {
+    const { pc } = this;
+    const frame = Math.floor(now / FRAME_MS);
+    const spinner = pc.cyan(SPINNER_FRAMES[Math.floor(frame / SPINNER_HOLD_FRAMES) % SPINNER_FRAMES.length]!);
+    return `${spinner} ${shimmer(pc, 'Thinking', frame)}`;
+  }
+
+  /**
+   * The live window: running files and tests with their steps, then the
+   * summary. The block must fit the screen, because repainting more rows than
+   * the terminal has breaks the cursor-up erase: rows left after the summary
+   * go to the running tests, each test's detail shares what remains once every
+   * test has its own row, and tests that still do not fit fold into one
+   * `more running` marker.
    */
   private renderWindow(): string[] {
     const { pc } = this;
@@ -624,8 +820,11 @@ export class ListReporter {
     }
     const summary = this.summaryRows();
     let budget = terminalRows() - summary.length - WINDOW_CHROME_ROWS;
-    const spare = budget - active.size - this.running.size * WINDOW_ROWS_PER_TEST;
-    const maxEvents = Math.max(0, Math.floor(spare / Math.max(1, this.running.size)));
+    const perTest = Math.max(
+      0,
+      Math.floor((budget - active.size - this.running.size) / Math.max(1, this.running.size)),
+    );
+    const maxEvents = Math.min(MAX_WINDOW_EVENTS, perTest);
     const lines = [''];
     let hidden = 0;
     for (const [group, tests] of active) {
@@ -644,26 +843,19 @@ export class ListReporter {
           return;
         }
         const glyph = index === tests.length - 1 ? F_TREE_END : F_TREE_MIDDLE;
-        const elapsed = pc.bold(pc.yellow(formatTime(Math.max(0, now - test.startedMs))));
-        lines.push(`${pc.bold(pc.yellow(`   ${glyph} `))}${test.title} ${elapsed}`);
+        lines.push(`${pc.bold(pc.yellow(`   ${glyph} `))}${test.title} ${this.clock(now - test.startedMs)}`);
         budget -= 1;
-        if (test.step === undefined) return;
-        const detail = [`       ${pc.dim(`${F_DOWN_RIGHT} ${test.step}`)}`];
-        const overflow = test.events.length - maxEvents;
-        if (overflow > 0) {
-          detail.push(`         ${pc.dim(`… ${overflow} earlier call${overflow === 1 ? '' : 's'}`)}`);
-        }
-        for (const tail of overflow > 0 ? test.events.slice(overflow) : test.events) {
-          detail.push(`         ${pc.dim(tail)}`);
-        }
-        const shown = detail.slice(0, budget);
-        lines.push(...shown);
-        budget -= shown.length;
+        const detail = this.detailRows(test, maxEvents, Math.min(perTest, budget), now);
+        lines.push(...detail);
+        budget -= detail.length;
       });
     }
     if (hidden > 0) lines.push(pc.dim(`   … ${hidden} more running`));
-    if (active.size > 0) lines.push('');
-    lines.push(...summary, '');
+    // Pad the running area to its reserved height so the summary does not move.
+    const available = terminalRows() - summary.length - WINDOW_CHROME_ROWS + 1;
+    this.reservedRows = Math.min(available, Math.max(this.reservedRows, lines.length));
+    while (lines.length < this.reservedRows) lines.push('');
+    lines.push('', ...summary, '');
     return lines;
   }
 

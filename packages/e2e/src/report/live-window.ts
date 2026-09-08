@@ -8,7 +8,8 @@
 import { terminalColumns, terminalRows } from './format.ts';
 
 const ESC = '\u001b';
-const REPAINT_INTERVAL_MS = 200;
+/** Matches the reporter's animation frame, so spinners advance every repaint. */
+const REPAINT_INTERVAL_MS = 80;
 /** Synchronized-output markers: terminals that support them repaint atomically. */
 const SYNC_START = `${ESC}[?2026h`;
 const SYNC_END = `${ESC}[?2026l`;

@@ -29,6 +29,12 @@ export interface StepEvent {
   status: 'passed' | 'failed' | 'cancelled';
   name?: string;
   count?: number;
+  /**
+   * Prompt and completion tokens of one model call, when the provider
+   * reported both; `count` is their sum. Lets a live reporter show the split.
+   */
+  inputTokens?: number;
+  outputTokens?: number;
   bytes?: number;
   decision?: 'allowed' | 'denied';
   code?: string;

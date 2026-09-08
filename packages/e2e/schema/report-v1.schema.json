@@ -160,6 +160,8 @@
         "status": { "enum": ["passed", "failed", "cancelled"] },
         "name": { "type": "string", "maxLength": 256 },
         "count": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
         "bytes": { "type": "integer", "minimum": 0 },
         "decision": { "enum": ["allowed", "denied"] },
         "code": { "type": "string", "maxLength": 128 },
