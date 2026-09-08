@@ -78,6 +78,7 @@
           "reference/agent",
           "reference/config",
           "reference/cli",
+          "reference/mcp",
           "reference/reporters",
           "reference/environment",
           "reference/errors",

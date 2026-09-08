@@ -10,7 +10,6 @@
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 
 import type { SdkLanguageModel } from '../config/agent.ts';
-import type { ProviderOptions } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -58,11 +57,8 @@ export interface CreateAgentOptions {
   readonly tools?: Readonly<Record<string, DefinedTool>>;
   /** Upper bound on model turns per step; defaults to the model-call budget. */
   readonly maxTurns?: number;
-  /**
-   * AI SDK provider options passed to every model call (e.g. a thinking
-   * level). Defaults to the config-resolved `agent.providerOptions`.
-   */
-  readonly providerOptions?: ProviderOptions;
+  /** AI SDK provider options passed to every model call (e.g. a thinking level). */
+  readonly providerOptions?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 }
 
 /** Cross-realm identity marker for executors `createAgent` built. */
@@ -128,6 +124,26 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
 }
 
 /**
+ * The project tools an executor was built with, when it came from
+ * `createAgent`. Any other executor (a custom brain) declares none this way.
+ */
+export function executorTools(executor: StepExecutor | undefined): Readonly<Record<string, DefinedTool>> {
+  return isDefaultAgent(executor) ? (executor.options.tools ?? {}) : {};
+}
+
+/**
+ * Wraps project tools so they run the same accounting pipeline as the
+ * grammar, keyed by the platform they apply to, for a host outside the model
+ * loop. Failures propagate: the host decides how to report them.
+ */
+export function projectToolsFor(
+  context: StepExecutorContext,
+  tools: Readonly<Record<string, DefinedTool>>,
+): ToolSet {
+  return wrapUserTools(context, { concluding: () => false, reportHardStop: () => undefined, guard: (body) => body() }, tools, { rethrow: true });
+}
+
+/**
  * The mid-step hand-off notice: prose summaries and a reason
  * token, replacing any ordinary prior-run hint. The agent continues from live
  * state; redoing a replayed action would double-commit a mutation.
@@ -188,6 +204,7 @@ function wrapUserTools(
   context: StepExecutorContext,
   helpers: ToolLoopHelpers,
   tools: Readonly<Record<string, DefinedTool>>,
+  wrapOptions: { readonly rethrow?: boolean } = {},
 ): ToolSet {
   const wrapped: Record<string, ToolSet[string]> = {};
   for (const [name, defined] of Object.entries(tools)) {
@@ -217,6 +234,7 @@ function wrapUserTools(
           // structured results are the tool's own contract and pass through.
           return typeof result === 'string' ? boundToolOutput(result).text : result;
         } catch (cause) {
+          if (wrapOptions.rethrow === true) throw cause;
           if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
             helpers.reportHardStop(cause);
             return `HARD STOP (${cause.code}): ${cause.message}`;

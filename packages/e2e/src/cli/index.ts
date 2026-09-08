@@ -13,6 +13,7 @@ import { cache, type CacheCommand } from './cache.ts';
 import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
+import { mcp } from './mcp.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
@@ -198,6 +199,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e list --tag smoke',
           'e2e cache ls',
           'e2e guide',
+          'e2e mcp',
           'e2e telemetry disable',
         ]),
         '',
@@ -248,6 +250,28 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .addHelpText('after', ['', examples(['e2e guide', 'e2e guide writing-tests']), '', docsLine('/reference/cli#e2e-guide')].join('\n'))
     .action((topic: string | undefined) => {
       process.exitCode = guide(topic);
+    });
+
+  program
+    .command('mcp')
+    .summary('serve the project to a coding agent over MCP')
+    .description(
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: a live session on one target with the same tools the testing agent gets (observe, tap, type, press, select, scroll, navigate, type_secret), plus locate and screenshot, so the agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add e2e -- npx --no-install e2e mcp.',
+    )
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
+    .option('--headless', 'hide the UI during live sessions (default: headed outside CI)')
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples(['e2e mcp', 'e2e mcp --target web --headless', 'claude mcp add e2e -- npx --no-install e2e mcp']),
+        '',
+        docsLine('/reference/mcp'),
+      ].join('\n'),
+    )
+    .action(async (options: { config?: string; target?: string; headless?: boolean }) => {
+      process.exitCode = await mcp(version, options);
     });
 
   program

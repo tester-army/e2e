@@ -16,7 +16,6 @@ import { select, selectTargets, type Selection, type SelectionFilters } from '..
 import {
   classifyError,
   combineExitCodes,
-  ConfigurationError,
   InfrastructureError,
   E2EError,
   errorMessage,
@@ -29,7 +28,7 @@ import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import { buildReport, describeTarget, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
+import { buildReport, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { jsonReporter } from '../report/json.ts';
 import { junitReporter } from '../report/junit.ts';
@@ -48,6 +47,7 @@ import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
+import { validateEngine } from './provision.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -834,25 +834,6 @@ function plannedFiles(selection: Selection): { file: string; target: string; tes
 /** The exit-code status the report builder starts from; `blocked` is derived from the results there. */
 function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
   return exitCode === 0 ? 'passed' : exitCode === 1 ? 'failed' : exitCode === 130 ? 'interrupted' : 'error';
-}
-
-/**
- * Grades one target from its engine declaration and validates the configured
- * artifacts against it; returns the report provenance.
- */
-function validateEngine(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
-  const provenance = describeTarget(target);
-  // A best-effort kind is captured when the engine can; a required one is a
-  // contract the engine must be able to honour before any test starts.
-  for (const [artifact, policy] of config.artifacts) {
-    if (policy === 'required' && !provenance.artifactCapabilities.includes(artifact)) {
-      throw new ConfigurationError(
-        'UNSUPPORTED_ARTIFACT',
-        `target "${target.name}" (engine ${provenance.engine.name}) does not support the configured "${artifact}" artifact`,
-      );
-    }
-  }
-  return provenance;
 }
 
 function resultExitCodes(results: readonly ResultRecord[]): number[] {

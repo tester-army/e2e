@@ -83,6 +83,10 @@ These appear in terminal output and in the report as plain string codes.
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, or unparseable | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
+| `TARGET_REQUIRED` | `e2e mcp`: the config declares several targets and neither `--target` nor `open_session` named one | configuration | 2 |
+| `NO_SESSION` | `e2e mcp`: a session tool was called before `open_session`, or after the session ended; the message names why it ended | configuration | 2 |
+| `SESSION_OPEN` | `e2e mcp`: `open_session` while a session is already open; use it or `close_session` first | configuration | 2 |
+| `UNKNOWN_TOPIC` | `e2e mcp`: an `e2e://guide/{topic}` resource named a topic the skill does not have; the message lists them | configuration | 2 |
 | `UNSUPPORTED_ARTIFACT` | A configured artifact kind the target's engine cannot produce. `video` is not implemented by any first-party engine. | configuration | 2 |
 | `UNSUPPORTED_CAPABILITY` | A fixture, action, or tier the target's engine does not declare: a contributed fixture it does not contribute, `screen` without `locate`, state restore without `state`, screenshots without `artifacts` | configuration | 2 |
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. The message names the cause: no file matched the `tests` globs (with look-alike files), a positional matched nothing, a file registered no tests, or filters excluded everything. Suppress with `--pass-with-no-tests`. | configuration | 2 |

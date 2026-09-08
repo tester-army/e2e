@@ -1,11 +1,12 @@
 ---
 title: CLI
-description: e2e init, e2e guide, e2e run, e2e explore, e2e list, and e2e cache, flag by flag.
+description: e2e init, e2e guide, e2e run, e2e explore, e2e list, e2e cache, and e2e mcp, flag by flag.
 ---
 
 ```bash
 npx --no-install e2e init [directory]
 npx --no-install e2e guide [topic]
+npx --no-install e2e mcp [options]
 npx --no-install e2e run [files...] [options]
 npx --no-install e2e explore [goal] [options]
 npx --no-install e2e list [files...] [options]
@@ -110,7 +111,7 @@ npx --no-install e2e guide setup      # one topic
 Prints the skill that `init` installs: how to add e2e to a project, write
 tests, use agent steps, run the CLI, and read a failing run. `guide` alone
 prints the overview, which lists the topics; `guide <topic>` prints one of
-`setup`, `writing-tests`, `agent`, `running`, or `debugging`. An unknown
+`setup`, `writing-tests`, `agent`, `running`, `debugging`, or `mcp`. An unknown
 topic exits 2 and names the valid ones. The text is the same as the installed
 skill's, so a coding agent working in a project without the skill files can
 read it from the CLI, and `e2e --help` points there.
@@ -118,6 +119,20 @@ read it from the CLI, and `e2e --help` points there.
 The same skill installs from the repository with
 `npx skills add tester-army/e2e`. [Coding agents](/coding-agents) covers how
 an agent uses it.
+
+## e2e mcp
+
+```bash
+npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
+```
+
+Serves the project's live app to a coding agent over the Model Context
+Protocol on stdio: a session on one target with the tools the testing agent
+gets (`observe`, `tap`, `type`, `press`, `select`, `scroll`, `navigate`,
+`type_secret`), plus `locate` and `screenshot`, so the agent looks at the
+real screen and checks a locator before writing a test. `e2e init` registers
+the server for Claude Code and Cursor. The tools, the session rules, and the
+flags are on the [MCP server](/reference/mcp) page.
 
 ## e2e run
 

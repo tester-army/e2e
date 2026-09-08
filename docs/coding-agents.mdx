@@ -3,9 +3,12 @@ title: Coding agents
 description: What e2e gives Claude Code, Codex, Cursor, and friends, and how they should use it.
 ---
 
-e2e ships no MCP server. A coding agent works with the same three things you
-do: the skill that teaches the API, the `e2e` CLI, and the JSON report a run
-writes. `e2e init` installs the skill; the skill explains the other two.
+A coding agent works with the same three things you do: the skill that
+teaches the API, the `e2e` CLI, and the JSON report a run writes. One more is
+its own: `e2e mcp`, a live session on the app with the tools the testing
+agent has, so the agent can look at a screen before writing a test. `e2e
+init` installs the skill and registers the server; the skill explains the
+rest.
 
 ## The skill
 
@@ -15,7 +18,7 @@ npx --no-install e2e init
 
 | Path | Read by | Content |
 | --- | --- | --- |
-| `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, and `debugging.md` |
+| `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, `debugging.md`, and `mcp.md` |
 | `.claude/skills/e2e/` | Claude Code | The same files |
 
 `SKILL.md` is the entry point: the mental model, a sample test, the rules,
@@ -39,6 +42,21 @@ End-to-end tests use @e2edev/e2e; read .agents/skills/e2e/SKILL.md before writin
 
 The same line works in `CLAUDE.md` (point it at `.claude/skills/e2e/SKILL.md`)
 and as the body of a Cursor rule.
+
+## How an agent looks at the app
+
+Semantic locators need the accessible names the app renders, and an agent
+that guesses them writes tests that fail on the first run. `e2e mcp` removes
+the guessing: it serves a live session on one target over MCP, with the same
+`observe`, `tap`, `type`, `press`, `select`, `scroll`, and `navigate` tools
+the testing agent has, plus `locate`, which tries a `screen.*` locator against
+the live screen and prints the call to write when exactly one node matches.
+
+`init` registers the server in `.mcp.json` for Claude Code and
+`.cursor/mcp.json` for Cursor; by hand, `claude mcp add e2e -- npx --no-install e2e mcp`.
+The tools, the session rules, and the flags are on the
+[MCP server](/reference/mcp) page. Running tests and reading a failed run
+stay on the CLI, which the agent already has.
 
 ## How an agent writes a test
 
@@ -167,7 +185,10 @@ project gets it on the next `init`.
 
 <CardGroup cols={2}>
   <Card title="CLI reference" href="/reference/cli">
-    init, guide, and run, flag by flag.
+    init, guide, run, and mcp, flag by flag.
+  </Card>
+  <Card title="MCP server" href="/reference/mcp">
+    A live session on the app for a coding agent.
   </Card>
   <Card title="Your own agent" href="/agents">
     The agent behind agent.act, and the trace cache in detail.

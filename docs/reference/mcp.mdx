@@ -1,0 +1,124 @@
+---
+title: MCP server (e2e mcp)
+description: Give a coding agent a live session on the app, with the testing agent's tools.
+---
+
+```bash
+npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
+```
+
+`e2e mcp` is an MCP server over stdio for a coding agent such as Claude Code
+or Cursor. It opens a live attempt on one target and hands the agent the
+vocabulary the testing agent gets on that engine: observe, tap, type, press,
+select, scroll, navigate, `type_secret`, and the project's own `defineTool`
+values, plus `locate` to try a semantic locator before writing it and a
+masked `screenshot`. The agent explores the real app, checks the exact
+accessible names and locators, then writes deterministic tests and runs them
+with `e2e run` from its shell. The agent skill is served as resources.
+
+## Setup
+
+The server ships with `@e2edev/e2e`; nothing else is installed. `e2e init`
+offers to register it in `.mcp.json` (Claude Code) and `.cursor/mcp.json`
+(Cursor); a later `init` refreshes the files that exist. By hand:
+
+```bash
+claude mcp add e2e -- npx --no-install e2e mcp
+```
+
+Every client that reads a project-level MCP config takes the same entry:
+
+```json
+{
+  "mcpServers": {
+    "e2e": { "command": "npx", "args": ["--no-install", "e2e", "mcp"] }
+  }
+}
+```
+
+The client starts the server in the project directory (Claude Code uses the
+directory that holds `.mcp.json`, Cursor the workspace root), and the server
+finds the config the way `e2e run` does: the nearest `e2e.config.ts` or
+`e2e.config.mts`, searching upward to the repository root. In a monorepo whose
+config lives in a subfolder, add `--config path/to/e2e.config.ts` to the args.
+
+| Flag | Behavior |
+| --- | --- |
+| `--config <path>` | Config file (default: the nearest `e2e.config.ts`). The config is loaded again on every `open_session`, so an edit applies without restarting the server. |
+| `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; with several targets and no name the call fails with `TARGET_REQUIRED`. |
+| `--headless` | Hide the browser or simulator during sessions. Sessions are headed by default outside CI, so the developer can watch. |
+
+Everything the server prints for the operator goes to stderr, prefixed
+`e2e mcp:`; stdout carries only the protocol. A config module or a library
+that writes to stdout is redirected to stderr for the life of the process.
+
+## Tools
+
+The grammar tools come from the engines the config declares, so a project
+serves what its targets can do:
+
+| Config target | Grammar tools offered |
+| --- | --- |
+| `playwright(...)` | `observe`, `tap`, `type`, `press`, `select`, `scroll`, `navigate` |
+| `agentDevice(...)` | `observe`, `tap`, `type`, `press`, `select`, `scroll`; no `navigate`, the engine declares no URL navigation |
+| Several targets | The union; a session on a target that lacks a verb refuses it with `UNSUPPORTED_CAPABILITY` |
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `open_session` | `target` (optional) | Grades and prepares the engine, starts the app command the engine declares, boots the engine, starts one attempt, opens the app URL when the engine can navigate, and returns the session summary and the first observation. |
+| `observe` | none | A fresh observation: one node per line as `#id role "name" ...`, the current path, and the revision. |
+| `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | As the testing agent's tools: a node id from the newest observation, plus the value, key, direction, URL, or credential name | The action's summary and what changed on screen since the last observation. `type_secret` is offered when the config declares `credentials`, and fills the named credential's password without the plaintext ever reaching the agent. |
+| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which (role, name, text, states), and the `screen.*` call to write. Zero or several matches name the error a test would get (`LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`) and how to narrow. |
+| `screenshot` | none | The masked viewport as an image, or the reason it is withheld. |
+| `close_session` | none | Ends the attempt, disposes the engine, and stops the app processes the session started; reports cleanup failures. |
+
+Project tools passed to `createAgent({ tools })` are served under their own
+names, scoped to the platforms of the targets a session can open, and run
+through the same accounting as in a test step (`mutates` is honored). A
+mobile project that passes `agentDeviceTools(...)` therefore also serves
+`open_app`, `swipe`, `type_text`, and `alert`. A project tool named like a
+built-in tool is not served; the server logs which.
+
+A session is one attempt on one target, and one at a time: a second
+`open_session` fails with `SESSION_OPEN`, a session tool without a session
+with `NO_SESSION` (naming why the previous one ended). A session closes on
+`close_session`, after 30 idle minutes, after 4 hours, when the client
+disconnects, and on SIGINT or SIGTERM, so no browser or simulator is left
+behind. An `open_session` that fails partway tears down what it started.
+
+Sessions enforce what tests enforce. Navigation stays inside the engine's
+allowed origins (`POLICY_DENIED` otherwise). Node ids are valid only against
+the newest observation; a stale id fails with `LOCATOR_NOT_FOUND` instead of
+acting on the wrong node. Secrets fill only through `type_secret`, and once a
+secret is on screen every later `screenshot` is withheld (`PIXEL_TAINTED`).
+Nothing a session does is recorded as a test result or into the trace
+cache; its artifacts land under `.e2e/artifacts/<target>/sessions/`.
+
+## Resources
+
+| URI | Content |
+| --- | --- |
+| `e2e://guide` | The agent skill's overview, the text `e2e guide` prints. |
+| `e2e://guide/{topic}` | One topic: `setup`, `writing-tests`, `agent`, `running`, `explore`, `debugging`, `mcp`. |
+
+## Exit codes
+
+`e2e mcp` exits 0 when the client disconnects or a signal ends it, and 2
+when the command line is invalid. Config and engine failures never end the
+server: they come back as tool errors the agent can act on, with the same
+codes the CLI prints.
+
+<CardGroup cols={2}>
+  <Card title="Coding agents" href="/coding-agents">
+    What e2e gives an agent, and how it should use it.
+  </Card>
+  <Card title="CLI" href="/reference/cli">
+    Every command, flag by flag.
+  </Card>
+  <Card title="Errors" href="/reference/errors">
+    Every error code and its fix.
+  </Card>
+  <Card title="agent" href="/reference/agent">
+    The agent fixture and createAgent.
+  </Card>
+</CardGroup>
