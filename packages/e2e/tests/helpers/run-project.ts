@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { playwright } from '@e2edev/playwright';
-import type { RunOptions, RunOutcome } from '../../src/run/runner.ts';
+import type { ListOptions, ListedPair, RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
 export type { RunOptions, RunOutcome };
@@ -14,7 +14,7 @@ export type { RunOptions, RunOutcome };
 // self-reference share the same registry instance. The specifier is kept
 // non-literal so typechecking does not require a prior build.
 const builtRunnerModule = '../../dist/run/runner.js';
-const { run } = (await import(builtRunnerModule)) as typeof import('../../src/run/runner.ts');
+const { list, run } = (await import(builtRunnerModule)) as typeof import('../../src/run/runner.ts');
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
@@ -86,6 +86,21 @@ export async function runExisting(
     quiet: true,
     ...options.runOptions,
   });
+}
+
+/** Lists a fixture project's selection without running it; the project is left for the caller to clean up. */
+export async function listProject(
+  files: Readonly<Record<string, string>>,
+  options: RunProjectOptions & { listOptions?: Partial<ListOptions> },
+): Promise<{ pairs: ListedPair[]; project: FixtureProject }> {
+  const project = createProject(files);
+  const { pairs } = await list({
+    cwd: project.dir,
+    rawConfig: { targets: defaultTargets(options.appUrl), ...options.config },
+    env: { ...process.env, APP_URL: options.appUrl, CI: '' },
+    ...options.listOptions,
+  });
+  return { pairs, project };
 }
 
 /** Default file-backed config used by worker-path integration tests. */

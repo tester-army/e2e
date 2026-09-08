@@ -108,7 +108,8 @@ skill's, so a coding agent working in a project without the skill files can
 read it from the CLI, and `e2e --help` points there.
 
 The same skill installs from the repository with
-`npx skills add tester-army/e2e`.
+`npx skills add tester-army/e2e`. [Coding agents](/coding-agents) covers how
+an agent uses it.
 
 ## e2e run
 
@@ -216,6 +217,38 @@ the [programmatic runner](/reference/embedding) never handles process signals.
 A worker whose runner disappears (killed, crashed) never runs on by itself: it
 disposes its engine and exits within the cleanup budget, so a device or a
 browser is not driven by a process nobody is listening to.
+
+## e2e list
+
+```bash
+e2e list [files...]
+```
+
+A dry run. `list` collects and selects tests exactly as `run` does, prints
+one line per test-target pair, and exits. Nothing starts: no app process, no
+engine, no worker, and nothing is written under `.e2e/`. Use it to check what
+a set of files, tags, and targets selects before paying for the run.
+
+The positional arguments and the selection flags are those of `run`:
+`--config`, `--target`, `--tag`, `--tag-mode`, and `--pass-with-no-tests`,
+with the same meaning. `--reporter` accepts `list` (the default) or `json`;
+`junit` exits 2. The same `NO_TESTS`, `UNKNOWN_TARGET`, and config errors
+apply, with the same exit codes.
+
+| Reporter | Writes |
+| --- | --- |
+| `list` | One line per pair, `file › title [target]`, in selection order, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`). A skipped test keeps its line with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
+| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `target`, `disposition` (`run` or `skip`), and `skipReason` when skipped. |
+
+Pairs that a tag, target, or platform filter removed are not listed; they are
+not part of the run either.
+
+```bash
+npx --no-install e2e list
+npx --no-install e2e list tests/signup.e2e.ts
+npx --no-install e2e list --tag smoke --target web
+npx --no-install e2e list --reporter json
+```
 
 ## Exit codes
 
