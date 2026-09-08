@@ -7,7 +7,7 @@
  * agent-device's commands. The runner owns everything else.
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { createAgentDeviceClient } from 'agent-device';
@@ -602,15 +602,18 @@ export class AgentDeviceSurface {
     return relative;
   }
 
-  /** Raw device pixels; the caller owns redaction. */
+  /** Raw device pixels; cleanup follows the capture even when its caller abandons it. */
   private async rawScreenshot(signal?: AbortSignal): Promise<Uint8Array> {
-    const file = path.join(tmpdir(), `e2e-agent-device-${process.pid}-${Date.now()}.png`);
-    try {
-      const shot = await this.command('screenshot', (client) => client.capture.screenshot({ path: file }), signal);
-      return new Uint8Array(readFileSync(shot.path ?? file));
-    } finally {
-      rmSync(file, { force: true });
-    }
+    return this.command('screenshot', async (client) => {
+      const directory = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-'));
+      const file = path.join(directory, 'screenshot.png');
+      try {
+        const shot = await client.capture.screenshot({ path: file });
+        return new Uint8Array(readFileSync(shot.path ?? file));
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }, signal);
   }
 
   /**

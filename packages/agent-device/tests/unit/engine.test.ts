@@ -497,9 +497,12 @@ describe('app hooks, swipe, url, artifacts', () => {
   it('numbers screenshots per attempt, masks secure fields in them, and refuses an unmaskable one', async () => {
     const h = harness();
     const image = { width: 390, height: 844, channels: 3 as const, pixels: new Uint8Array(390 * 844 * 3).fill(200) };
+    const temporaryFiles: string[] = [];
     h.fake.respond('capture.screenshot', (args) => {
-      writeFileSync((args as { path: string }).path, encodePng(image));
-      return { path: (args as { path: string }).path };
+      const file = (args as { path: string }).path;
+      temporaryFiles.push(file);
+      writeFileSync(file, encodePng(image));
+      return { path: file };
     });
     await openAttempt(h);
     expect(await h.engine.artifacts!.screenshot('first shot', operation())).toBe('screenshots/001-first_shot.png');
@@ -518,6 +521,77 @@ describe('app hooks, swipe, url, artifacts', () => {
     }));
     await expect(h.engine.artifacts!.screenshot('leak', operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
     expect(existsSync(path.join(artifactsDir, 'screenshots', '002-leak.png'))).toBe(false);
+    expect(new Set(temporaryFiles).size).toBe(temporaryFiles.length);
+    for (const file of temporaryFiles) {
+      expect(existsSync(file)).toBe(false);
+      expect(existsSync(path.dirname(file))).toBe(false);
+    }
+  });
+
+  it.each(['capture', 'read'])('removes temporary screenshots after a %s failure', async (failure) => {
+    const h = harness();
+    let file: string | undefined;
+    h.fake.respond('capture.screenshot', (args) => {
+      file = (args as { path: string }).path;
+      writeFileSync(file, new Uint8Array([1, 2, 3]));
+      if (failure === 'capture') throw new AppError('COMMAND_FAILED', 'capture failed after writing');
+      return { path: path.join(path.dirname(file), 'missing.png') };
+    });
+    await openAttempt(h);
+    try {
+      await expect(h.engine.artifacts!.screenshot('failed', operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+      expect(file).toBeDefined();
+      expect(existsSync(file!)).toBe(false);
+      expect(existsSync(path.dirname(file!))).toBe(false);
+    } finally {
+      if (file !== undefined) rmSync(file, { force: true });
+    }
+  });
+
+  it.each(['success', 'failure'])('cleans up a screenshot that finishes with %s after cancellation', async (outcome) => {
+    const h = harness();
+    let finishCapture: (() => void) | undefined;
+    const started = new Promise<string>((captureStarted) => {
+      h.fake.respond('capture.screenshot', (args) => new Promise((resolve, reject) => {
+        const file = (args as { path: string }).path;
+        finishCapture = () => {
+          finishCapture = undefined;
+          writeFileSync(file, new Uint8Array([1, 2, 3]));
+          if (outcome === 'failure') reject(new AppError('COMMAND_FAILED', 'late capture failure'));
+          else resolve({ path: file });
+        };
+        captureStarted(file);
+      }));
+    });
+    await openAttempt(h);
+    const controller = new AbortController();
+    const pending = h.engine.artifacts!.screenshot('cancelled', operation(controller.signal));
+    const file = await started;
+    try {
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+      expect(finishCapture).toBeTypeOf('function');
+      await h.engine.endAttempt!(cleanup());
+
+      let opened = false;
+      let temporaryFilesRemoved = false;
+      h.fake.respond('apps.open', () => {
+        opened = true;
+        temporaryFilesRemoved = !existsSync(file) && !existsSync(path.dirname(file));
+        return { appName: 'Settings', appBundleId: 'com.apple.Preferences' };
+      });
+      const next = h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(opened).toBe(false);
+      finishCapture!();
+      await next;
+      expect(opened).toBe(true);
+      expect(temporaryFilesRemoved).toBe(true);
+      expect(existsSync(path.join(artifactsDir, 'screenshots'))).toBe(false);
+    } finally {
+      finishCapture?.();
+      rmSync(file, { force: true });
+    }
   });
 
   it('waits for an abandoned command to settle before the next attempt opens anything', async () => {

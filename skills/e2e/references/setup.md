@@ -218,6 +218,9 @@ export default {
   attempt. `appPath` installs a `.app` or `.apk` once per worker; without
   `app`, the installed bundle is the one opened.
 - `workers: 1`: workers share one simulator.
+- Cancelled device commands keep running; the next attempt waits for them.
+  Raw screenshot files are removed when capture finishes, including after
+  cancellation.
 - `screen`, `expect`, `app`, and `agent` work unchanged. Import `test` from
   `@e2edev/agent-device` to type the `device` fixture (`setAppearance`,
   `setNetwork`, `setPermission`, `installApp`, `locator('role=... id=...')`,

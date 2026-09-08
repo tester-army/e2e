@@ -72,7 +72,9 @@ targets with `workers: 1`: workers share one simulator.
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
 Rectangle masking uses pngjs for image decoding and encoding and paints
-secure regions opaque black.
+secure regions opaque black. Each raw screenshot uses its own temporary
+directory, removed after capture finishes even if the caller has already
+timed out or cancelled. The next attempt waits for this cleanup too.
 
 ## Trace cache on a device
 
