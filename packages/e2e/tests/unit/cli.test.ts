@@ -231,7 +231,7 @@ describe('e2e --version and --help', () => {
   it('opens the help with the version, lists both commands with examples, and exits 0', async () => {
     await invoke('--help');
     const help = written(stdoutSpy);
-    expect(help.startsWith(`e2e v${packageVersion} · local-first agentic end-to-end testing\n`)).toBe(true);
+    expect(help.startsWith(`e2e v${packageVersion} · an open framework for agentic end-to-end testing\n`)).toBe(true);
     expect(help).toContain('Usage: e2e <command> [options]');
     expect(help).toMatch(/^ {2}init \[options\] \[directory\] {2,}scaffold/mu);
     expect(help).toMatch(/^ {2}run \[options\] \[files\.\.\.\] {2,}run the tests$/mu);
