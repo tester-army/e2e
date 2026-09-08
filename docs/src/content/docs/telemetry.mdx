@@ -64,7 +64,7 @@ Every event carries these properties:
 | --- | --- |
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_flaky`, `tests_skipped` | The summary counts |
-| `targets`, `platforms`, `engines` | How many targets, on which platforms (`web`, `ios`, or `android`), with which engines and versions (`playwright@0.6.1`). An engine or platform this repository does not publish is reported as `other` |
+| `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions, as your config declares them: `web`, `ios`, `playwright@0.6.1`, or your own engine's name and version. A name that is not a plain token of letters, digits, dots, dashes, and underscores is reported as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the trace cache served the agent steps, and how many used pixel evidence |
 | `model_provider`, `model_id`, `model_calls`, `model_tokens`, `estimated_cost_usd` | The provider and public model id of the first model-backed step (a fine-tuned or routed id is reported as `other`), and the run's totals |
@@ -75,10 +75,10 @@ Every event carries these properties:
 
 Test titles, file paths, URLs, origins, instructions, observations, page
 content, screenshots, error messages, stack traces, environment variables,
-credentials, or the contents of any file. The event builders read counts and
-closed vocabularies out of the report and nothing else, and the unit tests
-assert that a report full of recognizable strings yields a payload with none of
-them.
+credentials, or the contents of any file. The event builders read counts,
+versions, and the short names your config declares for engines, platforms, and
+models out of the report and nothing else, and the unit tests assert that a
+report full of recognizable strings yields a payload with none of them.
 
 ## In CI
 

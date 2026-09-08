@@ -431,8 +431,8 @@ describe('telemetry events', () => {
       tests_flaky: 0,
       tests_skipped: 1,
       targets: 2,
-      platforms: ['other', 'web'],
-      engines: ['other', 'playwright@0.6.1'],
+      platforms: ['vision-pro', 'web'],
+      engines: ['homegrown@9.9.9', 'playwright@0.6.1'],
       steps_total: 5,
       steps_agent: 2,
       steps_locator: 1,
@@ -456,6 +456,16 @@ describe('telemetry events', () => {
     });
   });
 
+  it('folds an engine name or platform that is not a plain token into other', () => {
+    const report = sampleReport();
+    const homegrown = report.run.targets[1]!;
+    (homegrown as { platform: string }).platform = 'Vision Pro (beta)';
+    (homegrown as { engine: { name: string } }).engine.name = 'acme/engine';
+    const { properties } = runCompletedEvent(report, []);
+    expect(properties['platforms']).toEqual(['other', 'web']);
+    expect(properties['engines']).toEqual(['other', 'playwright@0.6.1']);
+  });
+
   it('folds a fine-tuned or routed model id into other', () => {
     const report = sampleReport();
     const [first] = report.run.results[0]!.attempts[0]!.steps;
@@ -463,7 +473,7 @@ describe('telemetry events', () => {
     expect(runCompletedEvent(report, []).properties['model_id']).toBe('other');
   });
 
-  it('copies no title, file, origin, engine name, or message out of the report', () => {
+  it('copies no title, file, origin, or message out of the report', () => {
     const payload = JSON.stringify(runCompletedEvent(sampleReport(), ['--headed']));
     for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
   });

@@ -4,9 +4,9 @@
  * attempt mixes agent, locator, and assertion steps with cache, model,
  * vision, and error detail, a serial group with a member step, and a
  * run-level error. Every string a project would recognize — the title, the
- * file, the origin, the engine, the messages — is deliberately distinctive
- * and listed in SAMPLE_REPORT_SECRETS, so a test can prove none reaches a
- * payload.
+ * file, the origin, the messages — is deliberately distinctive and listed in
+ * SAMPLE_REPORT_SECRETS, so a test can prove none reaches a payload. The
+ * engine name and the platform are declared names and reach it as they are.
  */
 
 import { ENGINE_SPI_VERSION } from '../../src/engine/contract.ts';
@@ -49,7 +49,7 @@ export function sampleReport(): Report1Document {
         id: 'headset',
         index: 1,
         platform: 'vision-pro',
-        engine: { name: 'acme-engine', version: '9.9.9', spiVersion: ENGINE_SPI_VERSION },
+        engine: { name: 'homegrown', version: '9.9.9', spiVersion: ENGINE_SPI_VERSION },
       }),
     ],
     serialGroups: [

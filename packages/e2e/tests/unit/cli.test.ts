@@ -568,7 +568,7 @@ describe('e2e telemetry', () => {
     expect(run.properties['flags']).toEqual(['--headed', '--workers']);
     expect(run.properties['status']).toBe('failed');
     expect(run.properties['tests_executed']).toBe(2);
-    expect(run.properties['engines']).toEqual(['other', 'playwright@0.6.1']);
+    expect(run.properties['engines']).toEqual(['homegrown@9.9.9', 'playwright@0.6.1']);
     const payload = JSON.stringify(run);
     for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
     expect(payload).not.toContain('"3"');

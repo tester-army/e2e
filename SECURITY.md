@@ -73,9 +73,10 @@ SHA-256 of the repository's root commit); in CI the vendor's name stands in for
 the machine, and without git, or with a shallow checkout, there is no project
 id. Test titles, file paths,
 URLs, instructions, observations, messages, stack traces, environment
-variables, and credentials are never sent; an engine, platform, or model id the
-runner does not know is reported as `other`, and an error code that is not an
-upper-case token as `OTHER`. Every property
+variables, and credentials are never sent. Engine names, platforms, and model
+ids are sent as your config declares them when they are plain tokens and as
+`other` otherwise; an error code that is not an upper-case token is `OTHER`.
+Every property
 is listed at [e2e-docs.vercel.app/telemetry](https://e2e-docs.vercel.app/telemetry),
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
 

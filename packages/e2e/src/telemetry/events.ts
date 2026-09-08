@@ -1,12 +1,12 @@
 /**
  * The events e2e sends, built from facts the CLI already holds. Every
- * property is a closed enumeration, a count, a duration, or a version. The
- * builders copy no title, file, URL, instruction, message, or stack out of
- * the report, and they fold what a project chose for itself — an engine
- * name, a platform, a model id — into `other`, so a project's own words stay
- * home. An error code passes when it has the shape every runner code has, an
- * upper-case token, and folds to `OTHER` otherwise. The unit tests hold the
- * payload to that promise.
+ * property is a count, a duration, a version, or a short token. The builders
+ * copy no title, file, URL, instruction, message, or stack out of the report.
+ * The names a project declares for its engines, platforms, and model pass
+ * through when they are plain tokens, so a homegrown engine counts as itself;
+ * a name shaped like a path, a URL, or a sentence folds to `other`, and an
+ * error code that is not an upper-case token, the shape of every runner
+ * code, folds to `OTHER`. The unit tests hold the payload to that promise.
  */
 
 import type { Report1Document, ReportError, ReportStep } from '../report/build.ts';
@@ -25,32 +25,30 @@ export const EVENT_CLI_SESSION = 'e2e_cli_session';
 /** One per `e2e run`, from the report the run wrote. */
 export const EVENT_RUN_COMPLETED = 'e2e_run_completed';
 
-/** Engines this repository publishes, and `none` for a target without one; any other name is a project's own. */
-const FIRST_PARTY_ENGINES: ReadonlySet<string> = new Set(['playwright', 'agent-device', 'none']);
-/** The platforms those engines drive; any other platform is a project's own. */
-const KNOWN_PLATFORMS: ReadonlySet<string> = new Set(['web', 'ios', 'android']);
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
+/**
+ * The shape of a name worth sending as it is: an engine name, a platform, or
+ * a public model id is a short token. A path, a URL, a sentence, or a
+ * fine-tuned or routed model id is not, and folds to `other`.
+ */
+const PLAIN_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 /** The shape of every runner error code. A code shaped otherwise is a project's own and folds to `OTHER`. */
 const ERROR_CODE = /^[A-Z][A-Z0-9_]{2,63}$/u;
-/** Public model ids: no slashes, colons, or spaces, which fine-tunes and routes carry. */
-const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const MAX_ERROR_CODES = 20;
 
 export function cliSessionEvent(command: string, flags: readonly string[]): TelemetryEvent {
   return { name: EVENT_CLI_SESSION, properties: { command, flags: [...flags] } };
 }
 
-function fold(value: string, known: ReadonlySet<string>): string {
-  return known.has(value) ? value : 'other';
+function plainToken(value: string): string {
+  return PLAIN_TOKEN.test(value) ? value : 'other';
 }
 
+/** `playwright@0.6.1`, and a project's own engine the same way; a name that is not a plain token is `other` alone. */
 function engineLabel(engine: { readonly name: string; readonly version: string }): string {
-  if (!FIRST_PARTY_ENGINES.has(engine.name)) return 'other';
-  return `${engine.name}@${SEMVER.test(engine.version) ? engine.version : 'unversioned'}`;
-}
-
-function publicModelId(model: string): string {
-  return MODEL_ID.test(model) ? model : 'other';
+  const name = plainToken(engine.name);
+  if (name === 'other') return name;
+  return `${name}@${SEMVER.test(engine.version) ? engine.version : 'unversioned'}`;
 }
 
 function unique(values: readonly string[]): string[] {
@@ -115,7 +113,7 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
       targets: run.targets.length,
-      platforms: unique(run.targets.map((target) => fold(target.platform, KNOWN_PLATFORMS))),
+      platforms: unique(run.targets.map((target) => plainToken(target.platform))),
       engines: unique(run.targets.map((target) => engineLabel(target.engine))),
       steps_total: steps.length,
       ...Object.fromEntries(
@@ -126,7 +124,7 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
       model_provider: first?.provider ?? null,
-      model_id: first === undefined ? null : publicModelId(first.model),
+      model_id: first === undefined ? null : plainToken(first.model),
       model_calls: models.reduce((total, model) => total + model.calls, 0),
       model_tokens: run.usage.modelTokens,
       estimated_cost_usd: run.usage.estimatedCostUsd ?? null,
