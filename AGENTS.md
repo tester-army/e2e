@@ -208,7 +208,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     nothing here sandboxes them. Untrusted PR code belongs in an external
     sandbox with no secrets or write tokens.
 
-- CI (`.github/workflows/spec.yml`) runs Node 26 and pins actions by SHA; keep
+- CI (`.github/workflows/spec.yml`) runs lint, typecheck, and the testbed on Node 26 and `pnpm test` on Node 22, 24, and 26, and pins actions by SHA; keep
   new actions SHA-pinned.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.

@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 20.19 or newer.
+- Node.js 22.12 or newer.
 - ES modules. The `package.json` nearest to the config and the tests must set
   `"type": "module"`. An `e2e.config.mts` is ESM on its own, but `.ts` tests
   still follow their package. In a CommonJS package either run
