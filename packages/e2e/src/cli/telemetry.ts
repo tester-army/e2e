@@ -35,11 +35,7 @@ export function telemetry(action: TelemetryAction, instance: Telemetry): number 
   const disabledBy = instance.disabledBy;
   if (disabledBy === undefined) {
     out(`Status: ${picocolors.green('enabled')}`);
-    out(
-      instance.configured
-        ? 'Anonymous usage data is sent: the command, the versions, the OS, and run counts. Never test names, app data, or credentials.'
-        : 'This build has no telemetry destination configured, so nothing is sent.',
-    );
+    out('Anonymous usage data is sent: the command, the versions, the OS, and run counts. Never test names, app data, or credentials.');
   } else {
     out(`Status: ${picocolors.red('disabled')} (${REASONS[disabledBy]})`);
     out('Nothing is sent from this machine.');

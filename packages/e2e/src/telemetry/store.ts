@@ -6,16 +6,20 @@
  * notice was shown when. Nothing in it names the person or the machine: the
  * id and the salt are random bytes, generated here and never derived.
  *
- * The store fails closed. When the directory cannot be created or the file
- * cannot be written, there is no store, and telemetry treats the absence as an
- * opt-out rather than sending events it could neither attribute nor
- * de-duplicate.
+ * The store fails closed. `open` completes the file in one write when the id
+ * or the salt is missing, and when that write cannot happen there is no
+ * store: telemetry treats the absence as an opt-out rather than sending
+ * events it could neither attribute nor de-duplicate. After `open`, only the
+ * user's own choice and the notice mark write, so an ordinary command never
+ * rewrites the file while another process may be saving a choice to it.
  */
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { writeFileAtomicSync } from '../internal/atomic-write.ts';
+import { envValue } from '../internal/env.ts';
 
 interface Preferences {
   enabled?: boolean;
@@ -25,6 +29,9 @@ interface Preferences {
   notifiedAt?: string;
   noticeVersion?: number;
 }
+
+/** What an open store holds: the ids are always there. */
+type Identified = Preferences & { anonymousId: string; salt: string };
 
 const FILE_NAME = 'telemetry.json';
 const HEX = /^[a-f0-9]{16,128}$/u;
@@ -40,15 +47,11 @@ export function telemetryConfigDir(
   platform: NodeJS.Platform = process.platform,
 ): string {
   if (platform === 'win32') {
-    const appData = nonEmpty(env['APPDATA']) ?? path.join(os.homedir(), 'AppData', 'Roaming');
+    const appData = envValue(env, 'APPDATA') ?? path.join(os.homedir(), 'AppData', 'Roaming');
     return path.join(appData, 'e2e');
   }
-  const configHome = nonEmpty(env['XDG_CONFIG_HOME']) ?? path.join(os.homedir(), '.config');
+  const configHome = envValue(env, 'XDG_CONFIG_HOME') ?? path.join(os.homedir(), '.config');
   return path.join(configHome, 'e2e');
-}
-
-function nonEmpty(value: string | undefined): string | undefined {
-  return value !== undefined && value.trim() !== '' ? value : undefined;
 }
 
 /** Keeps only the fields this version knows, each with the type it expects. */
@@ -66,44 +69,52 @@ function sanitize(value: unknown): Preferences {
   return preferences;
 }
 
+/** The file's preferences, or undefined when it is missing or not JSON. */
+function readPreferences(filePath: string): Preferences | undefined {
+  try {
+    return sanitize(JSON.parse(readFileSync(filePath, 'utf8')));
+  } catch {
+    return undefined;
+  }
+}
+
+function randomHex(): string {
+  return randomBytes(16).toString('hex');
+}
+
 export class TelemetryStore {
   /** The preferences file, for messages that tell the user where a choice was saved. */
   readonly path: string;
-  private preferences: Preferences;
-  private writeFailed = false;
-  /** False only during `open`, when a write failure must surface. */
-  private opened = false;
+  private preferences: Identified;
 
-  private constructor(filePath: string, preferences: Preferences) {
+  private constructor(filePath: string, preferences: Identified) {
     this.path = filePath;
     this.preferences = preferences;
   }
 
   /**
-   * Opens the store in `directory`, creating the directory and the file when
-   * they are missing. A file that is not JSON is started over: a torn write
-   * must not turn into a permanent opt-in or opt-out either way. Returns
-   * undefined when the file cannot exist, which the caller reads as off.
+   * Opens the store in `directory`. A complete file is only read, so a
+   * read-only preferences file keeps working. A missing file, a file that is
+   * not JSON, or one without an id or a salt is completed in one write that
+   * also creates the directory; a torn write must not turn into a permanent
+   * opt-in or opt-out either way. Returns undefined when that write fails,
+   * which the caller reads as off.
    */
   static open(directory: string): TelemetryStore | undefined {
     const filePath = preferencesPath(directory);
-    let preferences: Preferences | undefined;
+    const read = readPreferences(filePath);
+    const store = new TelemetryStore(filePath, {
+      ...read,
+      anonymousId: read?.anonymousId ?? randomHex(),
+      salt: read?.salt ?? randomHex(),
+    });
+    if (read !== undefined && read.anonymousId !== undefined && read.salt !== undefined) return store;
     try {
-      preferences = sanitize(JSON.parse(readFileSync(filePath, 'utf8')));
+      mkdirSync(directory, { recursive: true });
     } catch {
-      preferences = undefined;
+      return undefined;
     }
-    const store = new TelemetryStore(filePath, preferences ?? {});
-    if (preferences === undefined) {
-      try {
-        mkdirSync(directory, { recursive: true });
-        store.write();
-      } catch {
-        return undefined;
-      }
-    }
-    store.opened = true;
-    return store;
+    return store.write() ? store : undefined;
   }
 
   /** The user's choice; unset means participating. */
@@ -111,29 +122,34 @@ export class TelemetryStore {
     return this.preferences.enabled !== false;
   }
 
-  /** Saves the choice; false when it stayed in memory because the file could not be written. */
-  saveEnabled(value: boolean): boolean {
-    this.preferences.enabled = value;
-    this.write();
-    return !this.writeFailed;
-  }
-
-  /** The random per-machine id, generated on first use and kept. */
+  /** The random per-machine id every event from this machine is attributed to. */
   get anonymousId(): string {
-    if (this.preferences.anonymousId === undefined) {
-      this.preferences.anonymousId = randomBytes(16).toString('hex');
-      this.write();
-    }
     return this.preferences.anonymousId;
   }
 
   /** The local salt that keeps a hashed project path unrecoverable; never leaves the machine. */
   get pathSalt(): string {
-    if (this.preferences.salt === undefined) {
-      this.preferences.salt = randomBytes(16).toString('hex');
-      this.write();
-    }
     return this.preferences.salt;
+  }
+
+  /** Saves the choice; false when the file could not be written and the choice stayed in memory. */
+  saveEnabled(value: boolean): boolean {
+    this.preferences.enabled = value;
+    return this.write();
+  }
+
+  /**
+   * Re-reads the file, so a choice another process saved since `open` is
+   * seen before anything is sent. An unreadable file changes nothing.
+   */
+  reload(): void {
+    const read = readPreferences(this.path);
+    if (read === undefined) return;
+    this.preferences = {
+      ...read,
+      anonymousId: read.anonymousId ?? this.preferences.anonymousId,
+      salt: read.salt ?? this.preferences.salt,
+    };
   }
 
   /** Whether this version of the notice has been shown. */
@@ -141,27 +157,19 @@ export class TelemetryStore {
     return this.preferences.notifiedAt !== undefined && (this.preferences.noticeVersion ?? 0) >= version;
   }
 
+  /** Records that the notice was shown; a failed write only means it may show once more. */
   markNotified(version: number, at: string): void {
     this.preferences.notifiedAt = at;
     this.preferences.noticeVersion = version;
     this.write();
   }
 
-  /**
-   * Persists through a temporary file and a rename, so a crash cannot leave
-   * half a file behind. `open` lets the failure propagate, since a store that
-   * cannot exist is no store; later, the choice lives on in this process and
-   * `saveEnabled` tells the caller it did not reach the file.
-   */
-  private write(): void {
-    const temporary = `${this.path}.${process.pid}.tmp`;
+  private write(): boolean {
     try {
-      writeFileSync(temporary, `${JSON.stringify(this.preferences, null, 2)}\n`, { mode: 0o600 });
-      renameSync(temporary, this.path);
-      this.writeFailed = false;
-    } catch (cause) {
-      this.writeFailed = true;
-      if (!this.opened) throw cause;
+      writeFileAtomicSync(this.path, `${JSON.stringify(this.preferences, null, 2)}\n`, { mode: 0o600 });
+      return true;
+    } catch {
+      return false;
     }
   }
 }

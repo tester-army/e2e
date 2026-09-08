@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,15 +8,16 @@ import {
   EVENT_RUN_COMPLETED,
   runCompletedEvent,
 } from '../../src/telemetry/events.ts';
+import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
 import { preferencesPath, TelemetryStore, telemetryConfigDir } from '../../src/telemetry/store.ts';
-import {
-  NOTICE_VERSION,
-  Telemetry,
-  type TelemetryOptions,
-} from '../../src/telemetry/telemetry.ts';
+import { NOTICE_VERSION, Telemetry, type TelemetryOptions } from '../../src/telemetry/telemetry.ts';
 import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 
 const temporaries: string[] = [];
+const restores: (() => void)[] = [];
+
+/** Root ignores file modes and Windows has none to speak of, so a read-only directory proves nothing there. */
+const cannotRevokeWrite = process.platform === 'win32' || process.getuid?.() === 0;
 
 function tempDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-telemetry-'));
@@ -31,7 +32,14 @@ function unwritableDir(): string {
   return path.join(blocker, 'e2e');
 }
 
+/** Takes write permission away from `dir` until the test ends. */
+function makeReadOnly(dir: string): void {
+  chmodSync(dir, 0o500);
+  restores.push(() => chmodSync(dir, 0o700));
+}
+
 afterEach(() => {
+  for (const restore of restores.splice(0)) restore();
   for (const dir of temporaries.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -47,10 +55,11 @@ interface SentBatch {
   };
 }
 
-/** A fetch that records every request and answers with `status`. */
+/** A fetch that records every request and answers with `status`; like the real one, it refuses an aborted signal. */
 function recordingFetch(status = 200): { calls: SentBatch[]; fetch: typeof fetch } {
   const calls: SentBatch[] = [];
   const impl = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (init?.signal?.aborted) throw init.signal.reason;
     calls.push({ url: String(input), body: JSON.parse(String(init?.body)) as SentBatch['body'] });
     return new Response(null, { status });
   }) as typeof fetch;
@@ -66,7 +75,6 @@ function create(overrides: Partial<TelemetryOptions> = {}) {
     env: {},
     cwd: tempDir(),
     configDir,
-    destination: { host: 'https://telemetry.test', apiKey: 'phc_test' },
     fetch: sent.fetch,
     write: (text) => void output.push(text),
     ...overrides,
@@ -75,21 +83,21 @@ function create(overrides: Partial<TelemetryOptions> = {}) {
 }
 
 describe('telemetry store', () => {
-  it('creates the file on open and keeps the generated id and salt across opens', () => {
+  it('writes a complete file on open and keeps the id and salt across opens', () => {
     const dir = tempDir();
-    const store = TelemetryStore.open(dir);
-    expect(store).toBeDefined();
-    expect(existsSync(preferencesPath(dir))).toBe(true);
-    expect(store!.enabled).toBe(true);
-    const id = store!.anonymousId;
-    const salt = store!.pathSalt;
-    expect(id).toMatch(/^[a-f0-9]{32}$/u);
-    expect(salt).toMatch(/^[a-f0-9]{32}$/u);
-    expect(id).not.toBe(salt);
+    const store = TelemetryStore.open(dir)!;
+    expect(store.enabled).toBe(true);
+    expect(store.anonymousId).toMatch(/^[a-f0-9]{32}$/u);
+    expect(store.pathSalt).toMatch(/^[a-f0-9]{32}$/u);
+    expect(store.anonymousId).not.toBe(store.pathSalt);
+    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toEqual({
+      anonymousId: store.anonymousId,
+      salt: store.pathSalt,
+    });
 
     const reopened = TelemetryStore.open(dir)!;
-    expect(reopened.anonymousId).toBe(id);
-    expect(reopened.pathSalt).toBe(salt);
+    expect(reopened.anonymousId).toBe(store.anonymousId);
+    expect(reopened.pathSalt).toBe(store.pathSalt);
     expect(reopened.saveEnabled(false)).toBe(true);
     expect(TelemetryStore.open(dir)!.enabled).toBe(false);
   });
@@ -99,7 +107,10 @@ describe('telemetry store', () => {
     writeFileSync(preferencesPath(dir), '{not json');
     const store = TelemetryStore.open(dir)!;
     expect(store.enabled).toBe(true);
-    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toEqual({});
+    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toEqual({
+      anonymousId: store.anonymousId,
+      salt: store.pathSalt,
+    });
   });
 
   it('drops fields it does not know or that have the wrong shape', () => {
@@ -117,6 +128,38 @@ describe('telemetry store', () => {
 
   it('is absent when the directory cannot be created', () => {
     expect(TelemetryStore.open(unwritableDir())).toBeUndefined();
+  });
+
+  it.skipIf(cannotRevokeWrite)('is absent when the file lacks its ids and the directory cannot be written', () => {
+    const dir = tempDir();
+    writeFileSync(preferencesPath(dir), JSON.stringify({ enabled: true }));
+    makeReadOnly(dir);
+    expect(TelemetryStore.open(dir)).toBeUndefined();
+  });
+
+  it.skipIf(cannotRevokeWrite)('reads a complete file in a directory that cannot be written', () => {
+    const dir = tempDir();
+    const first = TelemetryStore.open(dir)!;
+    makeReadOnly(dir);
+    const second = TelemetryStore.open(dir)!;
+    expect(second.enabled).toBe(true);
+    expect(second.anonymousId).toBe(first.anonymousId);
+    // A choice that cannot reach the file says so.
+    expect(second.saveEnabled(false)).toBe(false);
+  });
+
+  it('keeps an opt-out another process saved after this one opened the store', () => {
+    const dir = tempDir();
+    const running = TelemetryStore.open(dir)!;
+    const disabler = TelemetryStore.open(dir)!;
+    expect(disabler.saveEnabled(false)).toBe(true);
+    // Reading the ids writes nothing, so the file still says off.
+    expect(running.anonymousId).toBe(disabler.anonymousId);
+    expect(running.pathSalt).toBe(disabler.pathSalt);
+    expect(TelemetryStore.open(dir)!.enabled).toBe(false);
+    expect(running.enabled).toBe(true);
+    running.reload();
+    expect(running.enabled).toBe(false);
   });
 
   it('remembers the notice per version', () => {
@@ -141,7 +184,6 @@ describe('Telemetry', () => {
     const { telemetry, output, sent, configDir } = create();
     expect(telemetry.enabled).toBe(true);
     expect(telemetry.disabledBy).toBeUndefined();
-    expect(telemetry.configured).toBe(true);
 
     telemetry.notice();
     telemetry.notice();
@@ -157,8 +199,8 @@ describe('Telemetry', () => {
 
     expect(sent.calls).toHaveLength(1);
     const [call] = sent.calls;
-    expect(call!.url).toBe('https://telemetry.test/batch/');
-    expect(call!.body.api_key).toBe('phc_test');
+    expect(call!.url).toBe(`${POSTHOG_HOST}/batch/`);
+    expect(call!.body.api_key).toBe(POSTHOG_PROJECT_KEY);
     expect(call!.body.batch).toHaveLength(1);
     const [item] = call!.body.batch;
     expect(item!.event).toBe(EVENT_CLI_SESSION);
@@ -263,6 +305,16 @@ describe('Telemetry', () => {
     expect(sent.calls).toEqual([]);
   });
 
+  it('drops the batch when another process saved an opt-out while the command ran', async () => {
+    const configDir = tempDir();
+    const running = create({ configDir });
+    running.telemetry.record(cliSessionEvent('run', []));
+    const other = create({ configDir });
+    expect(other.telemetry.setEnabled(false)).toBe(preferencesPath(configDir));
+    await running.telemetry.flush();
+    expect(running.sent.calls).toEqual([]);
+  });
+
   it('treats an unwritable preferences directory as off', async () => {
     const { telemetry, output, sent } = create({ configDir: unwritableDir() });
     expect(telemetry.disabledBy).toBe('store');
@@ -312,15 +364,6 @@ describe('Telemetry', () => {
     expect(printed.properties['command']).toBe('cache ls');
   });
 
-  it('sends nothing when the build has no destination key', async () => {
-    const { telemetry, sent } = create({ destination: { host: 'https://telemetry.test', apiKey: '' } });
-    expect(telemetry.configured).toBe(false);
-    expect(telemetry.enabled).toBe(true);
-    telemetry.record(cliSessionEvent('run', []));
-    await telemetry.flush();
-    expect(sent.calls).toEqual([]);
-  });
-
   it('gives up at the flush deadline and swallows transport failures', async () => {
     const hanging = ((_input: string | URL | Request, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
@@ -345,6 +388,21 @@ describe('Telemetry', () => {
     refused.telemetry.record(cliSessionEvent('run', []));
     await expect(refused.telemetry.flush()).resolves.toBeUndefined();
     expect(rejected.calls).toHaveLength(1);
+  });
+
+  it('holds the project lookup to the same deadline as the request', async () => {
+    const stuck = create({ projectId: () => new Promise<string | undefined>(() => undefined) });
+    stuck.telemetry.record(cliSessionEvent('run', []));
+    const started = Date.now();
+    await stuck.telemetry.flush(50);
+    expect(Date.now() - started).toBeLessThan(1_500);
+    // The lookup used the whole budget, so the request had none left: a lost batch, not a late command.
+    expect(stuck.sent.calls).toEqual([]);
+
+    const prompt = create({ projectId: async () => 'f'.repeat(64) });
+    prompt.telemetry.record(cliSessionEvent('run', []));
+    await prompt.telemetry.flush();
+    expect(prompt.sent.calls[0]!.body.batch[0]!.properties['project_id']).toBe('f'.repeat(64));
   });
 });
 

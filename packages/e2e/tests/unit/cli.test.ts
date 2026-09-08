@@ -44,7 +44,7 @@ function written(spy: ReturnType<typeof vi.spyOn>): string {
 
 beforeEach(() => {
   runMock.mockReset();
-  runMock.mockResolvedValue({ exitCode: 0 });
+  runMock.mockResolvedValue({ exitCode: 0, report: sampleReport() });
   listMock.mockReset();
   listMock.mockResolvedValue({ pairs: [] });
   initMock.mockReset();
@@ -183,7 +183,7 @@ describe('e2e run argument parsing', () => {
   });
 
   it('propagates the run outcome exit code', async () => {
-    runMock.mockResolvedValue({ exitCode: 3 });
+    runMock.mockResolvedValue({ exitCode: 3, report: sampleReport() });
     await invoke('run');
     expect(process.exitCode).toBe(3);
   });
@@ -469,9 +469,7 @@ describe('e2e guide', () => {
 });
 
 describe('e2e telemetry', () => {
-  const TELEMETRY_KEYS = ['E2E_TELEMETRY_DISABLED', 'E2E_TELEMETRY_DEBUG', 'DO_NOT_TRACK', 'CI', 'XDG_CONFIG_HOME', 'APPDATA'] as const;
   let configHome: string;
-  let saved: Partial<Record<(typeof TELEMETRY_KEYS)[number], string | undefined>>;
 
   /** Every `[telemetry] {...}` line the debug mode printed to stderr. */
   function printedEvents(): { event: string; properties: Record<string, unknown> }[] {
@@ -483,21 +481,17 @@ describe('e2e telemetry', () => {
 
   beforeEach(() => {
     configHome = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-telemetry-'));
-    saved = Object.fromEntries(TELEMETRY_KEYS.map((key) => [key, process.env[key]]));
     // The suite-wide opt-out is lifted; debug mode prints instead of sending.
-    delete process.env['E2E_TELEMETRY_DISABLED'];
-    delete process.env['DO_NOT_TRACK'];
-    delete process.env['CI'];
-    process.env['E2E_TELEMETRY_DEBUG'] = '1';
-    process.env['XDG_CONFIG_HOME'] = configHome;
-    process.env['APPDATA'] = configHome;
+    vi.stubEnv('E2E_TELEMETRY_DISABLED', undefined);
+    vi.stubEnv('DO_NOT_TRACK', undefined);
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('E2E_TELEMETRY_DEBUG', '1');
+    vi.stubEnv('XDG_CONFIG_HOME', configHome);
+    vi.stubEnv('APPDATA', configHome);
   });
 
   afterEach(() => {
-    for (const key of TELEMETRY_KEYS) {
-      if (saved[key] === undefined) delete process.env[key];
-      else process.env[key] = saved[key];
-    }
+    vi.unstubAllEnvs();
     rmSync(configHome, { recursive: true, force: true });
   });
 
@@ -579,11 +573,6 @@ describe('e2e telemetry', () => {
     for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
     expect(payload).not.toContain('"3"');
     expect(process.exitCode).toBe(1);
-  });
-
-  it('records nothing for a run that produced no report', async () => {
-    await invoke('run');
-    expect(printedEvents().map((event) => event.event)).toEqual(['e2e_cli_session']);
   });
 
   it('is listed in the help with its actions', async () => {

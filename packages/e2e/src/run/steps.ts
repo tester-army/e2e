@@ -8,14 +8,10 @@ import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 
-export type StepKind =
-  | 'agent'
-  | 'locator'
-  | 'assertion'
-  | 'screen'
-  | 'app'
-  | 'session'
-  | 'resource';
+/** The closed step kind set; the type is derived from it, so the two cannot drift. */
+export const STEP_KINDS = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource'] as const;
+
+export type StepKind = (typeof STEP_KINDS)[number];
 
 /**
  * Child event of one public step: polls, model calls, policy decisions.

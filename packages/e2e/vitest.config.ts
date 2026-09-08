@@ -1,17 +1,17 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Unit tests are pure and run fully in parallel. Integration tests own real
- * browsers, app processes, and worker processes, so their concurrency is
- * bounded: oversubscribing CPUs starves them into timeouts that are
- * indistinguishable from product failures.
- */
-/**
  * Telemetry stays off for every test and every CLI the tests spawn, which
  * inherit the environment. The telemetry suite opts back in per instance.
  */
 const env = { E2E_TELEMETRY_DISABLED: '1' };
 
+/**
+ * Unit tests are pure and run fully in parallel. Integration tests own real
+ * browsers, app processes, and worker processes, so their concurrency is
+ * bounded: oversubscribing CPUs starves them into timeouts that are
+ * indistinguishable from product failures.
+ */
 export default defineConfig({
   test: {
     testTimeout: 30_000,

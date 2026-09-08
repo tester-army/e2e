@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { envFlag } from '../internal/env.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { didYouMean } from '../internal/suggest.ts';
@@ -169,10 +170,7 @@ function unknownTopLevelKeyHint(key: string): string {
 
 /** True when CI mode is active. */
 export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env['CI'];
-  if (raw === undefined) return false;
-  const value = raw.trim().toLowerCase();
-  return value !== '' && value !== '0' && value !== 'false';
+  return envFlag(env, 'CI');
 }
 
 /** Resolves a raw config object plus environment into an immutable resolved config. */

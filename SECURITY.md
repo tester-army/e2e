@@ -70,10 +70,12 @@ and step counts, engine names and versions, platforms, cache replay counts,
 model provider and public model id, token totals, and the runner's error codes.
 Events are attributed to a random per-machine id and a hashed project id (the
 SHA-256 of the repository's root commit); in CI the vendor's name stands in for
-the machine, and without git there is no project id. Test titles, file paths,
+the machine, and without git, or with a shallow checkout, there is no project
+id. Test titles, file paths,
 URLs, instructions, observations, messages, stack traces, environment
-variables, and credentials are never sent, and an engine, platform, model id,
-or error code the runner does not know is reported as `other`. Every property
+variables, and credentials are never sent; an engine, platform, or model id the
+runner does not know is reported as `other`, and an error code that is not an
+upper-case token as `OTHER`. Every property
 is listed at [e2e-docs.vercel.app/telemetry](https://e2e-docs.vercel.app/telemetry),
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
 

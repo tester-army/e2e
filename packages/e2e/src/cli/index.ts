@@ -285,10 +285,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             forceSignal: signals.forceSignal,
           });
           process.exitCode = outcome.exitCode;
-          // The run event is the report's own numbers; a run that produced no report sends none.
-          if (outcome.report !== undefined) {
-            telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
-          }
+          // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
+          telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
         } finally {
           release();
         }

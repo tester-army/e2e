@@ -21,7 +21,8 @@ export DO_NOT_TRACK=1                    # the cross-tool convention
 
 `npx --no-install e2e telemetry` prints the status and, when it is off, why.
 `enable` reverses a saved `disable`; a variable set in the environment still
-wins.
+wins. A `disable` takes effect at once, even for a command already running in
+another terminal: every command reads the file again before it sends.
 
 ## See what would be sent
 
@@ -34,15 +35,16 @@ see there is the exact payload.
 
 ## What is sent
 
-Two events, sent together in one request when the command ends. The request
-aborts after two seconds, so telemetry never holds a command up for longer.
+Two events, sent together in one request when the command ends. Everything
+telemetry does after the command, the project lookup included, shares one
+two-second deadline, so it never holds a command up for longer.
 
 Every event carries these properties:
 
 | Property | Value |
 | --- | --- |
 | `distinct_id` | A random id generated on this machine and kept in the preferences file. In CI, `ci:<vendor>` instead, so a fleet of runners does not count as a crowd of users |
-| `project_id` | SHA-256 of the repository's root commit, which every clone shares and no one can compute without the repository. Outside git, the project path hashed with a random local salt; in CI without git, none |
+| `project_id` | SHA-256 of the repository's root commit, which every clone shares and no one can compute without the repository. A shallow clone, such as a CI checkout with `fetch-depth: 1`, has no root to offer and counts as outside git. Outside git, the project path hashed with a random local salt; in CI, where there is no salt, none |
 | `session_id` | A random id for this one invocation |
 | `os`, `os_release`, `arch`, `cpu_count`, `memory_gb`, `docker`, `wsl`, `tty` | The machine class |
 | `ci`, `ci_name` | Whether `CI` is set, and the vendor when one announces itself (`github-actions`, `gitlab`, `circleci`, ...) |
@@ -62,12 +64,12 @@ Every event carries these properties:
 | --- | --- |
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_flaky`, `tests_skipped` | The summary counts |
-| `targets`, `platforms`, `engines` | How many targets, on which platforms (`web`, `ios`, `android`, ...), with which engines and versions (`playwright@0.6.1`). An engine or platform this repository does not publish is reported as `other` |
+| `targets`, `platforms`, `engines` | How many targets, on which platforms (`web`, `ios`, or `android`), with which engines and versions (`playwright@0.6.1`). An engine or platform this repository does not publish is reported as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the trace cache served the agent steps, and how many used pixel evidence |
 | `model_provider`, `model_id`, `model_calls`, `model_tokens`, `estimated_cost_usd` | The provider and public model id of the first model-backed step (a fine-tuned or routed id is reported as `other`), and the run's totals |
 | `artifact_bytes` | Size of the artifacts the run wrote |
-| `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...). A code outside the runner's vocabulary is reported as `OTHER` |
+| `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...). A code that is not an upper-case token, the shape of every runner code, is reported as `OTHER` |
 
 ## What is never sent
 

@@ -3,13 +3,14 @@
  * property is a closed enumeration, a count, a duration, or a version. The
  * builders copy no title, file, URL, instruction, message, or stack out of
  * the report, and they fold what a project chose for itself — an engine
- * name, a platform, a model id, an error code outside the runner's
- * vocabulary — into `other`, so a project's own words stay home. The unit
- * tests hold the payload to that promise.
+ * name, a platform, a model id — into `other`, so a project's own words stay
+ * home. An error code passes when it has the shape every runner code has, an
+ * upper-case token, and folds to `OTHER` otherwise. The unit tests hold the
+ * payload to that promise.
  */
 
-import type { Report1Document, ReportStep } from '../report/build.ts';
-import type { StepKind } from '../run/steps.ts';
+import type { Report1Document, ReportError, ReportStep } from '../report/build.ts';
+import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 
 export interface TelemetryEvent {
@@ -24,12 +25,12 @@ export const EVENT_CLI_SESSION = 'e2e_cli_session';
 /** One per `e2e run`, from the report the run wrote. */
 export const EVENT_RUN_COMPLETED = 'e2e_run_completed';
 
-/** Engines this repository publishes; any other name is a project's own. */
-const FIRST_PARTY_ENGINES: ReadonlySet<string> = new Set(['playwright', 'agent-device', 'cua', 'none']);
-const KNOWN_PLATFORMS: ReadonlySet<string> = new Set(['web', 'ios', 'android', 'macos', 'windows', 'linux']);
-const STEP_KINDS: readonly StepKind[] = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource'];
+/** Engines this repository publishes, and `none` for a target without one; any other name is a project's own. */
+const FIRST_PARTY_ENGINES: ReadonlySet<string> = new Set(['playwright', 'agent-device', 'none']);
+/** The platforms those engines drive; any other platform is a project's own. */
+const KNOWN_PLATFORMS: ReadonlySet<string> = new Set(['web', 'ios', 'android']);
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
-/** The runner's error codes are SCREAMING_SNAKE tokens; anything else is a project's. */
+/** The shape of every runner error code. A code shaped otherwise is a project's own and folds to `OTHER`. */
 const ERROR_CODE = /^[A-Z][A-Z0-9_]{2,63}$/u;
 /** Public model ids: no slashes, colons, or spaces, which fine-tunes and routes carry. */
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
@@ -48,43 +49,39 @@ function engineLabel(engine: { readonly name: string; readonly version: string }
   return `${engine.name}@${SEMVER.test(engine.version) ? engine.version : 'unversioned'}`;
 }
 
+function publicModelId(model: string): string {
+  return MODEL_ID.test(model) ? model : 'other';
+}
+
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)].toSorted();
 }
 
-/** Every step the run recorded, across plain results and serial groups. */
-function* steps(report: Report1Document): Generator<ReportStep> {
-  for (const result of report.run.results) {
-    for (const attempt of result.attempts) yield* attempt.steps;
-  }
+/** What carries steps and errors: a plain attempt, a serial attempt, or one of its members. */
+interface ReportScope {
+  readonly steps?: readonly ReportStep[];
+  readonly error?: ReportError | undefined;
+  readonly secondaryErrors: readonly ReportError[];
+}
+
+/** Every scope the run recorded, across plain results and serial groups. */
+function* scopes(report: Report1Document): Generator<ReportScope> {
+  for (const result of report.run.results) yield* result.attempts;
   for (const group of report.run.serialGroups) {
     for (const attempt of group.attempts) {
-      for (const member of attempt.members) yield* member.steps;
+      yield attempt;
+      yield* attempt.members;
     }
   }
 }
 
-/** Every error code the run recorded, at the run, attempt, member, and step level. */
-function* errorCodes(report: Report1Document): Generator<string> {
-  for (const error of report.run.errors) yield error.code;
-  for (const result of report.run.results) {
-    for (const attempt of result.attempts) {
-      if (attempt.error !== undefined) yield attempt.error.code;
-      for (const error of attempt.secondaryErrors) yield error.code;
-      for (const step of attempt.steps) if (step.error !== undefined) yield step.error.code;
-    }
-  }
-  for (const group of report.run.serialGroups) {
-    for (const attempt of group.attempts) {
-      if (attempt.error !== undefined) yield attempt.error.code;
-      for (const error of attempt.secondaryErrors) yield error.code;
-      for (const member of attempt.members) {
-        if (member.error !== undefined) yield member.error.code;
-        for (const error of member.secondaryErrors) yield error.code;
-        for (const step of member.steps) if (step.error !== undefined) yield step.error.code;
-      }
-    }
-  }
+/** The scope's own errors, then its steps'. */
+function errorsOf(scope: ReportScope): ReportError[] {
+  return [
+    ...(scope.error === undefined ? [] : [scope.error]),
+    ...scope.secondaryErrors,
+    ...(scope.steps ?? []).flatMap((step) => (step.error === undefined ? [] : [step.error])),
+  ];
 }
 
 function durationMs(startedAt: string, finishedAt: string): number | null {
@@ -94,34 +91,13 @@ function durationMs(startedAt: string, finishedAt: string): number | null {
 
 export function runCompletedEvent(report: Report1Document, flags: readonly string[]): TelemetryEvent {
   const { run } = report;
-  const stepCounts: Record<string, number> = {};
-  for (const kind of STEP_KINDS) stepCounts[`steps_${kind}`] = 0;
-  let stepsTotal = 0;
-  let replayed = 0;
-  let partial = 0;
-  let missed = 0;
-  let vision = 0;
-  let modelCalls = 0;
-  let modelProvider: string | null = null;
-  let modelId: string | null = null;
-  for (const step of steps(report)) {
-    stepsTotal += 1;
-    const key = `steps_${step.kind}`;
-    stepCounts[key] = (stepCounts[key] ?? 0) + 1;
-    if (step.cache !== undefined) {
-      if (step.cache.mode === 'self-finalized') replayed += 1;
-      else if (step.cache.mode === 'agent-concluded') partial += 1;
-      else missed += 1;
-    }
-    if (step.visionInput === true) vision += 1;
-    if (step.model !== undefined) {
-      modelCalls += step.model.calls;
-      modelProvider ??= step.model.provider;
-      modelId ??= MODEL_ID.test(step.model.model) ? step.model.model : 'other';
-    }
-  }
-
-  const codes = unique([...errorCodes(report)].map((code) => (ERROR_CODE.test(code) ? code : 'OTHER')));
+  const recorded = [...scopes(report)];
+  const steps = recorded.flatMap((scope) => scope.steps ?? []);
+  const models = steps.flatMap((step) => (step.model === undefined ? [] : [step.model]));
+  const first = models[0];
+  const codes = unique(
+    [...run.errors, ...recorded.flatMap(errorsOf)].map((error) => (ERROR_CODE.test(error.code) ? error.code : 'OTHER')),
+  );
 
   return {
     name: EVENT_RUN_COMPLETED,
@@ -141,15 +117,17 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       targets: run.targets.length,
       platforms: unique(run.targets.map((target) => fold(target.platform, KNOWN_PLATFORMS))),
       engines: unique(run.targets.map((target) => engineLabel(target.engine))),
-      steps_total: stepsTotal,
-      ...stepCounts,
-      agent_steps_replayed: replayed,
-      agent_steps_partial: partial,
-      agent_steps_missed: missed,
-      agent_steps_vision: vision,
-      model_provider: modelProvider,
-      model_id: modelId,
-      model_calls: modelCalls,
+      steps_total: steps.length,
+      ...Object.fromEntries(
+        STEP_KINDS.map((kind): [string, number] => [`steps_${kind}`, steps.filter((step) => step.kind === kind).length]),
+      ),
+      agent_steps_replayed: steps.filter((step) => step.cache?.mode === 'self-finalized').length,
+      agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
+      agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
+      agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
+      model_provider: first?.provider ?? null,
+      model_id: first === undefined ? null : publicModelId(first.model),
+      model_calls: models.reduce((total, model) => total + model.calls, 0),
       model_tokens: run.usage.modelTokens,
       estimated_cost_usd: run.usage.estimatedCostUsd ?? null,
       artifact_bytes: run.usage.artifactBytes,

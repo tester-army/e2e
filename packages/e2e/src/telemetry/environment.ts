@@ -9,6 +9,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { isCiMode } from '../config/resolve.ts';
+import { envValue } from '../internal/env.ts';
 import { detectPackageManager } from '../internal/package-manager.ts';
 
 export interface TelemetryEnvironment {
@@ -74,23 +75,14 @@ const CODING_AGENTS: readonly (readonly [variable: string, name: string])[] = [
   ['AI_AGENT', 'other'],
 ];
 
-function isSet(value: string | undefined): boolean {
-  return value !== undefined && value.trim() !== '';
+/** The name paired with the first marker variable that is set. */
+function firstMarker(env: NodeJS.ProcessEnv, markers: readonly (readonly [string, string])[]): string | undefined {
+  return markers.find(([variable]) => envValue(env, variable) !== undefined)?.[1];
 }
 
 /** The first vendor whose marker is set; `unknown` when only `CI` is. */
 export function ciName(env: NodeJS.ProcessEnv): string | null {
-  for (const [variable, name] of CI_VENDORS) {
-    if (isSet(env[variable])) return name;
-  }
-  return isCiMode(env) ? 'unknown' : null;
-}
-
-function codingAgent(env: NodeJS.ProcessEnv): string | null {
-  for (const [variable, name] of CODING_AGENTS) {
-    if (isSet(env[variable])) return name;
-  }
-  return null;
+  return firstMarker(env, CI_VENDORS) ?? (isCiMode(env) ? 'unknown' : null);
 }
 
 function inDocker(): boolean {
@@ -103,7 +95,7 @@ function inDocker(): boolean {
 }
 
 function inWsl(env: NodeJS.ProcessEnv, release: string): boolean {
-  return isSet(env['WSL_DISTRO_NAME']) || release.toLowerCase().includes('microsoft');
+  return envValue(env, 'WSL_DISTRO_NAME') !== undefined || release.toLowerCase().includes('microsoft');
 }
 
 export function collectEnvironment(options: {
@@ -124,7 +116,7 @@ export function collectEnvironment(options: {
     tty: process.stdout.isTTY === true,
     ci: isCiMode(env),
     ci_name: ciName(env),
-    coding_agent: codingAgent(env),
+    coding_agent: firstMarker(env, CODING_AGENTS) ?? null,
     node_version: process.versions.node,
     package_manager: detectPackageManager(options.cwd, undefined, env),
     e2e_version: options.version,

@@ -3,16 +3,18 @@
  *
  * One instance lives for one CLI invocation. Commands hand it events; at the
  * end of the invocation `flush` sends them in a single bounded request, so a
- * command never waits on the network for more than the flush budget and never
+ * command never waits on telemetry for more than the flush budget and never
  * fails because of it. Telemetry is a CLI concern only: a host embedding the
  * runner through `@e2edev/e2e/run` never constructs this class, and its runs
  * send nothing.
  *
  * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, an
  * `e2e telemetry disable`, or a preferences directory that cannot be written
- * each stop events from being queued, and `flush` checks again before sending.
- * `E2E_TELEMETRY_DEBUG` prints every event to stderr instead of sending it, so
- * anyone can read exactly what would have left the machine.
+ * each stop events from being queued, and `flush` reads the preferences file
+ * again before sending, so a choice saved from another terminal while the
+ * command ran wins too. `E2E_TELEMETRY_DEBUG` prints every event to stderr
+ * instead of sending it, so anyone can read exactly what would have left the
+ * machine.
  *
  * Identity is deliberately weak: a random per-machine id from the preferences
  * file, a random per-invocation session id, and a hashed project id. In CI
@@ -24,16 +26,17 @@ import { randomBytes } from 'node:crypto';
 import picocolors from 'picocolors';
 import { DOCS_URL } from '../cli/docs-url.ts';
 import { isCiMode } from '../config/resolve.ts';
+import { envFlag } from '../internal/env.ts';
 import { timestamp } from '../internal/ids.ts';
-import { ciName, collectEnvironment, type TelemetryEnvironment } from './environment.ts';
+import { ciName, collectEnvironment } from './environment.ts';
 import type { TelemetryEvent } from './events.ts';
-import { POSTHOG_HOST, POSTHOG_PROJECT_KEY, postBatch, type PostHogEvent } from './posthog.ts';
+import { postBatch, type PostHogEvent } from './posthog.ts';
 import { anonymousProjectId } from './project.ts';
 import { preferencesPath, TelemetryStore, telemetryConfigDir } from './store.ts';
 
 /** Bumped when what is collected changes enough that the notice must show again. */
 export const NOTICE_VERSION = 1;
-/** The longest a flush may hold the process; the request aborts at the deadline. */
+/** The longest a flush may hold the process; the project lookup and the request share it. */
 const DEFAULT_FLUSH_MS = 2_000;
 
 export type TelemetryDisabledBy = 'E2E_TELEMETRY_DISABLED' | 'DO_NOT_TRACK' | 'preference' | 'store';
@@ -46,17 +49,11 @@ export interface TelemetryOptions {
   readonly cwd?: string;
   /** Where the preferences file lives; the platform default when absent. */
   readonly configDir?: string;
-  readonly destination?: { readonly host: string; readonly apiKey: string };
   readonly fetch?: typeof fetch;
   /** Where the notice and the debug output go; stderr when absent. */
   readonly write?: (text: string) => void;
-}
-
-/** True for a set variable that is not empty, `0`, or `false`, as `CI` is read. */
-function flagSet(value: string | undefined): boolean {
-  if (value === undefined) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized !== '' && normalized !== '0' && normalized !== 'false';
+  /** Resolves the anonymous project id; git and the salted path when absent. */
+  readonly projectId?: typeof anonymousProjectId;
 }
 
 /** The one-time notice: what is collected, and the two ways out. */
@@ -69,6 +66,13 @@ function noticeText(): string {
   ].join('\n');
 }
 
+/** Resolves to undefined when the signal aborts; whatever loses a race against it is abandoned. */
+function aborted(signal: AbortSignal): Promise<undefined> {
+  return new Promise((resolve) => {
+    signal.addEventListener('abort', () => resolve(undefined), { once: true });
+  });
+}
+
 export class Telemetry {
   /** Random per-invocation id, so one invocation's events can be grouped. */
   readonly sessionId = randomBytes(16).toString('hex');
@@ -77,14 +81,13 @@ export class Telemetry {
   private readonly env: NodeJS.ProcessEnv;
   private readonly cwd: string;
   private readonly configDir: string;
-  private readonly destination: { readonly host: string; readonly apiKey: string };
   private readonly fetchImpl: typeof fetch;
   private readonly write: (text: string) => void;
+  private readonly projectId: typeof anonymousProjectId;
   private readonly ci: boolean;
-  /** `null` until first needed: `--version` and `--help` never touch the disk. */
-  private store: TelemetryStore | undefined | null = null;
+  /** The store once `store()` opened it, whether or not the file could exist. */
+  private opened: { readonly store: TelemetryStore | undefined } | undefined;
   private readonly queue: TelemetryEvent[] = [];
-  private environment: TelemetryEnvironment | undefined;
   private project: Promise<string | undefined> | undefined;
 
   constructor(options: TelemetryOptions) {
@@ -92,18 +95,24 @@ export class Telemetry {
     this.env = options.env ?? process.env;
     this.cwd = options.cwd ?? process.cwd();
     this.configDir = options.configDir ?? telemetryConfigDir(this.env);
-    this.destination = options.destination ?? { host: POSTHOG_HOST, apiKey: POSTHOG_PROJECT_KEY };
     this.fetchImpl = options.fetch ?? fetch;
     this.write = options.write ?? ((text) => void process.stderr.write(text));
+    this.projectId = options.projectId ?? anonymousProjectId;
     this.ci = isCiMode(this.env);
+  }
+
+  /** Opened on first use, so `--version` and `--help` never touch the disk; undefined when the file cannot exist. */
+  private store(): TelemetryStore | undefined {
+    this.opened ??= { store: TelemetryStore.open(this.configDir) };
+    return this.opened.store;
   }
 
   /** Why telemetry is off, or undefined when it is on. */
   get disabledBy(): TelemetryDisabledBy | undefined {
-    if (flagSet(this.env['E2E_TELEMETRY_DISABLED'])) return 'E2E_TELEMETRY_DISABLED';
-    if (flagSet(this.env['DO_NOT_TRACK'])) return 'DO_NOT_TRACK';
+    if (envFlag(this.env, 'E2E_TELEMETRY_DISABLED')) return 'E2E_TELEMETRY_DISABLED';
+    if (envFlag(this.env, 'DO_NOT_TRACK')) return 'DO_NOT_TRACK';
     if (this.ci) return undefined;
-    const store = this.openStore();
+    const store: TelemetryStore | undefined = this.store();
     if (store === undefined) return 'store';
     return store.enabled ? undefined : 'preference';
   }
@@ -114,12 +123,7 @@ export class Telemetry {
 
   /** `E2E_TELEMETRY_DEBUG`: print every event, send nothing. */
   get debug(): boolean {
-    return flagSet(this.env['E2E_TELEMETRY_DEBUG']);
-  }
-
-  /** Whether this build knows where to send; without a key nothing leaves. */
-  get configured(): boolean {
-    return this.destination.apiKey !== '';
+    return envFlag(this.env, 'E2E_TELEMETRY_DEBUG');
   }
 
   /** The preferences file, whether or not it exists yet. */
@@ -133,7 +137,7 @@ export class Telemetry {
    * because there is no store to attribute events with.
    */
   setEnabled(value: boolean): string | undefined {
-    const store = this.openStore();
+    const store: TelemetryStore | undefined = this.store();
     if (store === undefined) return undefined;
     return store.saveEnabled(value) ? store.path : undefined;
   }
@@ -145,7 +149,7 @@ export class Telemetry {
    */
   notice(): void {
     if (this.ci || !this.enabled) return;
-    const store = this.openStore();
+    const store: TelemetryStore | undefined = this.store();
     if (store === undefined || store.wasNotified(NOTICE_VERSION)) return;
     store.markNotified(NOTICE_VERSION, timestamp());
     this.write(noticeText());
@@ -156,29 +160,37 @@ export class Telemetry {
     if (!this.enabled) return;
     this.queue.push(event);
     // Git is asked for the project id now, while the command runs, so the
-    // flush at the end waits on the network alone.
-    this.project ??= this.resolveProject();
+    // flush at the end waits on the network alone. In CI there is no store,
+    // so a path outside git has nothing to salt it and yields no id.
+    const store: TelemetryStore | undefined = this.ci ? undefined : this.store();
+    this.project ??= this.projectId(this.cwd, store?.pathSalt);
   }
 
   /**
-   * Sends everything queued in one request, or prints it under debug. The
-   * request aborts at `maxWaitMs`; a lost batch is the accepted cost of a
-   * command that never waits on telemetry.
+   * Sends everything queued in one request, or prints it under debug. One
+   * deadline covers the project lookup still running and the request; a
+   * lost batch is the accepted cost of a command that never waits on
+   * telemetry.
    */
   async flush(maxWaitMs: number = DEFAULT_FLUSH_MS): Promise<void> {
     const events = this.queue.splice(0);
-    if (events.length === 0 || !this.enabled) return;
-    if (!this.debug && !this.configured) return;
-    this.environment ??= collectEnvironment({ env: this.env, cwd: this.cwd, version: this.version });
-    const project = await (this.project ??= this.resolveProject());
-    const distinctId = this.distinctId();
+    if (events.length === 0) return;
+    // A choice saved from another process while this command ran wins over the snapshot taken at its start.
+    const store: TelemetryStore | undefined = this.ci ? undefined : this.store();
+    store?.reload();
+    if (!this.enabled) return;
+    const deadline = AbortSignal.timeout(maxWaitMs);
+    const project = await Promise.race([this.project, aborted(deadline)]);
+    // Outside CI, `enabled` has just vouched for the store; no store means a CI run, attributed to the vendor.
+    const distinctId = store === undefined ? `ci:${ciName(this.env) ?? 'unknown'}` : store.anonymousId;
+    const environment = collectEnvironment({ env: this.env, cwd: this.cwd, version: this.version });
     // The debug output and the request body are the same objects, so what
     // `E2E_TELEMETRY_DEBUG` shows is what would have been sent, key for key.
     const items: PostHogEvent[] = events.map((event) => ({
       event: event.name,
       timestamp: event.at ?? timestamp(),
       properties: {
-        ...this.environment,
+        ...environment,
         ...event.properties,
         distinct_id: distinctId,
         project_id: project ?? null,
@@ -193,28 +205,6 @@ export class Telemetry {
       for (const item of items) this.write(`[telemetry] ${JSON.stringify(item)}\n`);
       return;
     }
-    await postBatch(items, {
-      host: this.destination.host,
-      apiKey: this.destination.apiKey,
-      timeoutMs: maxWaitMs,
-      fetch: this.fetchImpl,
-    });
-  }
-
-  /** The CI vendor for a CI run, otherwise the machine's random id. */
-  private distinctId(): string {
-    if (this.ci) return `ci:${ciName(this.env) ?? 'unknown'}`;
-    return this.openStore()?.anonymousId ?? 'unknown';
-  }
-
-  private resolveProject(): Promise<string | undefined> {
-    // In CI there is no store, so a path outside git has nothing to salt it and yields no id.
-    const store = this.ci ? undefined : this.openStore();
-    return anonymousProjectId(this.cwd, store?.pathSalt);
-  }
-
-  private openStore(): TelemetryStore | undefined {
-    if (this.store === null) this.store = TelemetryStore.open(this.configDir);
-    return this.store;
+    await postBatch(items, { signal: deadline, fetch: this.fetchImpl });
   }
 }
