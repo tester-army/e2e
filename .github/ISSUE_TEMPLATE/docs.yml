@@ -1,0 +1,22 @@
+name: Docs
+description: A guide page, reference page, README, or the agent skill is wrong, stale, or missing.
+labels: [docs]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Page
+      description: URL on e2e.docs.buildwithfern.com, or the path under `fern/docs/pages/`, `skills/e2e/`, or a README.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong
+      description: Quote the text. If it claims something the code does not do (or the other way round), point at the code.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested wording

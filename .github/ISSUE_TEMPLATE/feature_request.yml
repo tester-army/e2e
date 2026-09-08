@@ -1,0 +1,35 @@
+name: Feature request
+description: A change to the SDK, config, CLI, engine contract, or report.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to test and where the current API stops you. A test file that does not compile or cannot be written is the best form.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: How the test file would look with the change. Sketch the types if it touches `@e2edev/e2e` exports.
+      render: ts
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      multiple: true
+      options:
+        - public types (SDK)
+        - config keys
+        - CLI flags
+        - engine contract (`@e2edev/e2e/engine`)
+        - report or cache format
+        - docs only
+  - type: checkboxes
+    id: breaking
+    attributes:
+      label: Compatibility
+      options:
+        - label: This changes or removes something that exists today (see the stability policy in CONTRIBUTING.md).
