@@ -113,6 +113,34 @@ describe('describeAnchors', () => {
     expect(describeAnchors(nodes([]), nodes([idOnly]), options)).toEqual([{ role: 'generic', testId: 'spinner' }]);
   });
 
+  it('skips text that cannot read the same twice while a stable anchor remains', () => {
+    const end = nodes([
+      heading,
+      node('k', { text: 'sk_b1bccf4e03c5_...' }),
+      node('c', { text: '6 days 23 hours remaining' }),
+      node('d', { text: 'Added Sep 8, 2026' }),
+      node('i', { text: '2026-09-08' }),
+      node('w', { text: '17:42' }),
+      node('n', { text: 'Release pipeline' }),
+    ]);
+    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ text: 'Release pipeline' }]);
+  });
+
+  it('keeps volatile anchors when nothing stable appeared, so the replay hands off rather than passing blind', () => {
+    const end = nodes([heading, node('k', { text: 'sk_b1bccf4e03c5_...' })]);
+    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ text: 'sk_b1bccf4e03c5_...' }]);
+  });
+
+  it('does not mistake counts, versions, or short ids for volatile text', () => {
+    const end = nodes([
+      heading,
+      node('a', { text: '3 / 30 steps' }),
+      node('b', { text: 'v2.2.1' }),
+      node('c', { text: 'E2E workspace 00d8365e' }),
+    ]);
+    expect(describeAnchors(nodes([heading]), end, options)).toHaveLength(3);
+  });
+
   it('is empty when nothing appeared', () => {
     expect(describeAnchors(nodes([heading, emptyMarker]), nodes([heading, emptyMarker]), options)).toEqual([]);
   });

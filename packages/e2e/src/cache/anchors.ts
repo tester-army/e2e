@@ -66,7 +66,31 @@ export function describeAnchors(
     seen.add(key);
     (node.children === undefined || node.children.length === 0 ? leaves : containers).push(descriptor);
   }
-  return [...leaves, ...containers].slice(0, MAX_TRACE_ANCHORS);
+  const all = [...leaves, ...containers];
+  const stable = all.filter((anchor) => !isVolatileAnchor(anchor));
+  return (stable.length > 0 ? stable : all).slice(0, MAX_TRACE_ANCHORS);
+}
+
+/**
+ * Text that cannot read the same on the next run: a minted key prefix or id,
+ * a countdown or age, a date, a clock time. An anchor made of it hands every
+ * replay off, so it is skipped while some stable anchor exists; with nothing
+ * else, the volatile ones stay, because a replay that always hands off is
+ * still safer than one that passes on mechanics alone.
+ */
+const VOLATILE_TEXT: readonly RegExp[] = [
+  /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/,
+  /\b\d+\s*(?:s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?\b/i,
+  /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{4})?\b/i,
+  /\b\d{4}-\d{2}-\d{2}\b/,
+  /\b\d{1,2}:\d{2}(?::\d{2})?\b/,
+];
+
+function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
+  return [anchor.text, anchor.name].some(
+    (value) => value !== undefined && VOLATILE_TEXT.some((pattern) => pattern.test(value)),
+  );
 }
 
 /**

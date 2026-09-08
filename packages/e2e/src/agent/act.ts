@@ -60,6 +60,7 @@ import {
 } from './observation.ts';
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
+import { describePosition } from '../cache/relocate.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { ModelUsage, tokenFields } from './usage.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
@@ -875,9 +876,22 @@ class ActDispatch {
       const latest = this.latest;
       const within =
         latest === undefined ? undefined : containerKey(node.ref.id, latest.nodes, latest.parents, this.redact);
+      // When the description still matches several controls, the position among
+      // them is recorded too; a replay that finds the same number picks the same one.
+      const position =
+        latest === undefined
+          ? undefined
+          : describePosition(node, within, latest.nodes, {
+              redact: this.redact,
+              testIdAttribute: this.runtime.config.testIdAttribute,
+            });
       try {
         const action = await perform(node);
-        return within === undefined ? action : { ...action, within };
+        return {
+          ...action,
+          ...(within === undefined ? {} : { within }),
+          ...(position === undefined ? {} : { position }),
+        };
       } catch (cause) {
         if (cause instanceof EngineError && cause.code === 'NODE_STALE') {
           throw new AgentError(

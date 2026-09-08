@@ -15,6 +15,7 @@ import {
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
   type TraceTargetDescriptor,
+  type TracePosition,
 } from '../cache/trace.ts';
 import { sanitizeText } from '../internal/errors.ts';
 import { normalizeText } from '../internal/text.ts';
@@ -22,13 +23,19 @@ import type { ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
-  | { readonly name: 'tap'; readonly node: SemanticNode; readonly within?: string }
-  | { readonly name: 'type'; readonly node: SemanticNode; readonly value: string; readonly within?: string }
-  | { readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string; readonly within?: string }
-  | { readonly name: 'press'; readonly node: SemanticNode; readonly key: string; readonly within?: string }
-  | { readonly name: 'select'; readonly node: SemanticNode; readonly value: string; readonly within?: string }
-  | { readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode; readonly within?: string }
+  | ({ readonly name: 'tap'; readonly node: SemanticNode } & Placement)
+  | ({ readonly name: 'type'; readonly node: SemanticNode; readonly value: string } & Placement)
+  | ({ readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string } & Placement)
+  | ({ readonly name: 'press'; readonly node: SemanticNode; readonly key: string } & Placement)
+  | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
+  | ({ readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode } & Placement)
   | { readonly name: 'navigate'; readonly url: string };
+
+/** Where the node sat when it was acted on: its container's key and its place among identical twins. */
+interface Placement {
+  readonly within?: string;
+  readonly position?: TracePosition;
+}
 
 /** Roles whose first text names the thing a control belongs to: a row's key, a list item's title. */
 const CONTAINER_ROLES: ReadonlySet<string> = new Set(['row', 'listitem', 'article', 'group', 'region', 'dialog', 'tabpanel']);
@@ -112,9 +119,16 @@ export function describeAction(
 ): DescribedAction {
   const node = 'node' in action ? action.node : undefined;
   const within = 'within' in action ? action.within : undefined;
+  const position = 'position' in action ? action.position : undefined;
   const described = node === undefined ? undefined : describeTarget(node, redact, testIdAttribute);
   const target =
-    described === undefined || within === undefined ? described : { ...described, within: bound(within, MAX_WITHIN_CHARS) };
+    described === undefined
+      ? undefined
+      : {
+          ...described,
+          ...(within === undefined ? {} : { within: bound(within, MAX_WITHIN_CHARS) }),
+          ...(position === undefined ? {} : { position }),
+        };
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redact(sanitizeText(value)));
   const prose = (() => {
@@ -177,7 +191,10 @@ export function describeTarget(
 
 function describeForSummary(target: TraceTargetDescriptor | undefined): string {
   const where = describeWhere(target);
-  return target?.within === undefined ? where : `${where} in ${JSON.stringify(bound(target.within, 40))}`;
+  const placed = target?.within === undefined ? where : `${where} in ${JSON.stringify(bound(target.within, 40))}`;
+  return target?.position === undefined
+    ? placed
+    : `${placed} (${target.position.index + 1} of ${target.position.of})`;
 }
 
 function describeWhere(target: TraceTargetDescriptor | undefined): string {

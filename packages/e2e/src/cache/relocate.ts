@@ -17,7 +17,7 @@
 
 import type { SemanticNode } from '../engine/surface.ts';
 import { containerKey, describeTarget, parentsOf } from '../agent/actions.ts';
-import type { TraceTargetDescriptor } from './trace.ts';
+import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
 
 /**
  * Version of the replay/relocation policy, part of every cache key. Bumping
@@ -141,12 +141,37 @@ export function describeNodes(
  * tier (`descriptorTiers`), each exactly-one-or-diverge. Ambiguity at any
  * tier diverges immediately: two candidates sharing the matched identity
  * cannot be told apart by waiting, and acting on either would be a guess.
+ * The one exception is a recorded `position`: the recording itself found the
+ * same twins and noted which one it acted on, so the same count of twins
+ * resolves to the same one; any other count diverges as before.
  */
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, SemanticNode>,
   options: DescriptorMatchOptions,
 ): RelocationResult {
+  const matches = matchingIds(descriptor, nodes, options);
+  if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
+  if (matches.length === 1) return { kind: 'found', id: matches[0]! };
+  const { position } = descriptor;
+  const positioned = position !== undefined && position.of === matches.length ? matches[position.index] : undefined;
+  return positioned === undefined
+    ? { kind: 'failed', failure: 'target-ambiguous' }
+    : { kind: 'found', id: positioned };
+}
+
+/**
+ * The ids a descriptor matches in a fresh observation, in document order: the
+ * strictest tier (`descriptorTiers`) that matches anything decides, so a
+ * churned test id still falls back to the semantic fields. Empty when nothing
+ * matches. The recorder uses the same projection to notice, before it writes a
+ * target, that the description alone would not tell the target from its twins.
+ */
+function matchingIds(
+  descriptor: TraceTargetDescriptor,
+  nodes: ReadonlyMap<string, SemanticNode>,
+  options: DescriptorMatchOptions,
+): readonly string[] {
   const candidates = describeNodes(nodes, options);
   // A recorded container key must hold: the same "Delete" in another row is
   // a different control. Checked against the tree the candidates came from,
@@ -161,21 +186,38 @@ export function relocateDescriptor(
           );
         })();
   for (const tier of descriptorTiers(descriptor)) {
-    const result = matchTier(tier, keyed);
-    if (result.kind === 'found' || result.failure === 'target-ambiguous') return result;
+    const matches = tierMatches(tier, keyed);
+    if (matches.length > 0) return matches;
   }
-  return { kind: 'failed', failure: 'target-not-found' };
+  return [];
 }
 
-function matchTier(tier: TraceTargetDescriptor, candidates: readonly DescribedNode[]): RelocationResult {
+function tierMatches(tier: TraceTargetDescriptor, candidates: readonly DescribedNode[]): string[] {
   const fields = tier.testId === undefined && tier.name === undefined ? IDENTITY_FIELDS_WITH_TEXT : IDENTITY_FIELDS;
-  const matches: string[] = [];
-  for (const candidate of candidates) {
-    if (!fieldsEqual(tier, candidate.descriptor, fields)) continue;
-    matches.push(candidate.id);
-    if (matches.length > 1) return { kind: 'failed', failure: 'target-ambiguous' };
-  }
-  const only = matches[0];
-  if (only === undefined) return { kind: 'failed', failure: 'target-not-found' };
-  return { kind: 'found', id: only };
+  return candidates
+    .filter((candidate) => fieldsEqual(tier, candidate.descriptor, fields))
+    .map((candidate) => candidate.id);
+}
+
+/** Beyond this many twins a description is not a control set but a list; a position there would be noise. */
+const MAX_POSITIONED_TWINS = 1000;
+
+/**
+ * Where `node` stands among the controls its own description matches on the
+ * screen it was acted on, or undefined when the description already names it
+ * alone. Recorded with the target so a replay can tell one "Set up" button per
+ * card apart without an app change; a distinct label makes it unnecessary.
+ */
+export function describePosition(
+  node: SemanticNode,
+  within: string | undefined,
+  nodes: ReadonlyMap<string, SemanticNode>,
+  options: DescriptorMatchOptions,
+): TracePosition | undefined {
+  const described = describeTarget(node, options.redact, options.testIdAttribute);
+  if (described === undefined) return undefined;
+  const ids = matchingIds(within === undefined ? described : { ...described, within }, nodes, options);
+  if (ids.length < 2 || ids.length > MAX_POSITIONED_TWINS) return undefined;
+  const index = ids.indexOf(node.ref.id);
+  return index === -1 ? undefined : { index, of: ids.length };
 }

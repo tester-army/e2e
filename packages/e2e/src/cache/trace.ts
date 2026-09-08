@@ -77,6 +77,15 @@ export interface TraceProvenance {
  * is still checked before use. The structural `selector` is captured as
  * provenance for tuned replay policies; the conservative policy ignores it.
  */
+/** A target's place, in document order, among the controls its recorded fields also matched. */
+export interface TracePosition {
+  readonly index: number;
+  readonly of: number;
+}
+
+/** Most twins a positional recording distinguishes between; beyond it a list is data, not a control set. */
+const MAX_TRACE_POSITION_OF = 1000;
+
 export interface TraceTargetDescriptor {
   readonly role?: string;
   readonly name?: string;
@@ -87,6 +96,13 @@ export interface TraceTargetDescriptor {
   readonly inputPurpose?: string;
   /** Key of the container the target sat in (a row's first cell); relocation requires the same. */
   readonly within?: string;
+  /**
+   * Set only when the other fields matched several controls on the recording
+   * screen (one unlabeled "Set up" per card): which of them the target was.
+   * Replay honors it only when the live screen shows exactly as many, so a
+   * twin that appeared or vanished still diverges instead of guessing.
+   */
+  readonly position?: TracePosition;
 }
 
 interface ActionBase {
@@ -382,7 +398,7 @@ function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
     return undefined;
   }
   const raw = document as Record<string, unknown>;
-  const descriptor: Record<string, string> = {};
+  const descriptor: Record<string, string | TracePosition> = {};
   for (const field of DESCRIPTOR_FIELDS) {
     const value = raw[field];
     if (value === undefined) continue;
@@ -390,7 +406,22 @@ function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
     if (value !== '') descriptor[field] = value;
   }
   if (Object.keys(descriptor).length === 0) return undefined;
+  if (raw['position'] !== undefined) {
+    const position = readPosition(raw['position']);
+    if (position === undefined) return undefined;
+    descriptor['position'] = position;
+  }
   return descriptor as TraceTargetDescriptor;
+}
+
+/** A well-formed position: two safe integers with the index inside the count. */
+function readPosition(document: unknown): TracePosition | undefined {
+  if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
+  const { index, of } = document as Record<string, unknown>;
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(of)) return undefined;
+  if ((of as number) < 2 || (of as number) > MAX_TRACE_POSITION_OF) return undefined;
+  if ((index as number) < 0 || (index as number) >= (of as number)) return undefined;
+  return { index: index as number, of: of as number };
 }
 
 function readProvenance(document: unknown): TraceProvenance | undefined {
