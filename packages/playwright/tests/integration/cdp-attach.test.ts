@@ -7,7 +7,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
@@ -29,8 +29,17 @@ interface RemoteChrome {
   readonly endpoint: string;
   readonly proc: ChildProcess;
   readonly userDataDir: string;
+  readonly closed: Promise<void>;
 }
 
+/** Waits for Chrome and its stdio to close before removing the profile it writes. */
+async function closeRemoteChrome(chrome: Omit<RemoteChrome, 'endpoint'>): Promise<void> {
+  if (chrome.proc.exitCode === null && chrome.proc.signalCode === null) chrome.proc.kill('SIGKILL');
+  await chrome.closed;
+  rmSync(chrome.userDataDir, { recursive: true, force: true });
+}
+
+/** Launches the remote host and releases its resources if it never becomes ready. */
 async function launchRemoteChrome(): Promise<RemoteChrome> {
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'e2e-cdp-host-'));
   // The sandbox flags are what a containerized CI runner needs to start Chrome
@@ -41,13 +50,18 @@ async function launchRemoteChrome(): Promise<RemoteChrome> {
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-gpu',
+    // Match Playwright's extension defaults: this blank host needs no extension workers.
+    '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
     `--user-data-dir=${userDataDir}`,
     'about:blank',
   ]);
-  const endpoint = await new Promise<string>((resolve, reject) => {
+  const closed = new Promise<void>((resolve) => proc.once('close', () => resolve()));
+  const remote = { proc, userDataDir, closed };
+  const ready = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Chrome never printed a CDP endpoint')), 30_000);
     let buffered = '';
     proc.stderr?.on('data', (chunk: Buffer) => {
@@ -57,6 +71,10 @@ async function launchRemoteChrome(): Promise<RemoteChrome> {
         clearTimeout(timer);
         resolve(match[1]!);
       }
+    });
+    proc.once('error', (cause) => {
+      clearTimeout(timer);
+      reject(cause);
     });
     proc.once('exit', (code, signal) => {
       clearTimeout(timer);
@@ -68,7 +86,13 @@ async function launchRemoteChrome(): Promise<RemoteChrome> {
       );
     });
   });
-  return { endpoint, proc, userDataDir };
+  try {
+    const endpoint = await ready;
+    return { endpoint, ...remote };
+  } catch (cause) {
+    await closeRemoteChrome(remote);
+    throw cause;
+  }
 }
 
 describe('playwright engine over CDP', () => {
@@ -85,10 +109,7 @@ describe('playwright engine over CDP', () => {
   afterAll(async () => {
     // beforeAll may have failed part-way; tear down only what exists.
     await app?.close();
-    if (chrome !== undefined) {
-      if (chrome.proc.exitCode === null) chrome.proc.kill('SIGKILL');
-      rmSync(chrome.userDataDir, { recursive: true, force: true });
-    }
+    if (chrome !== undefined) await closeRemoteChrome(chrome);
     if (artifactsDir !== undefined) rmSync(artifactsDir, { recursive: true, force: true });
   });
 
@@ -161,8 +182,8 @@ describe('playwright engine over CDP', () => {
 
       // The host's session goes away: kill the remote and stand up a fresh one
       // at a new endpoint, the way a per-run cloud session is re-provisioned.
-      chrome.proc.kill('SIGKILL');
-      await new Promise<void>((done) => chrome.proc.once('exit', () => done()));
+      await closeRemoteChrome(chrome);
+      expect(existsSync(chrome.userDataDir)).toBe(false);
       const replacement = await launchRemoteChrome();
       current = replacement;
       chrome = replacement;
