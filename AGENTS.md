@@ -209,7 +209,9 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     sandbox with no secrets or write tokens.
 
 - CI (`.github/workflows/spec.yml`) runs lint, typecheck, and the testbed on Node 26 and `pnpm test` on Node 22, 24, and 26, and pins actions by SHA; keep
-  new actions SHA-pinned.
+  new actions SHA-pinned. Every workflow runs on Blacksmith
+  (`runs-on: blacksmith-4vcpu-ubuntu-2404`), like the tester-army repos; keep
+  new jobs on that label.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
 - PR titles and bodies follow the `writing-pr` skill

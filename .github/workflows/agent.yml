@@ -33,7 +33,7 @@ jobs:
   # skipping steps inside the matrix keeps unselected suites out of the run
   # entirely, so the checks list shows what actually ran.
   plan:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
@@ -63,7 +63,7 @@ jobs:
 
   agent:
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       # One suite failing must not hide the other's result.
       fail-fast: false
