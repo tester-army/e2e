@@ -132,8 +132,10 @@ The reading order the skill teaches: `run.errors[]` first, because a run-level
 failure such as `APP_UNREACHABLE` means no test result is meaningful. Then the
 `error` of the last attempt of each failed result, and the `artifacts[]`
 beside it; the screenshot usually says more than the message. `steps[]` shows
-how far the test got. For an agent step that went wrong, `--debug` adds the
-transcript as an artifact, and `--ai-trace` writes a trace the `unbox-ai` CLI
+how far the test got. On an engine that can record, `--video` records every
+attempt and the failure recap names the file to watch. For an agent step that
+went wrong, `--debug` adds the transcript as an artifact, and `--ai-trace`
+writes a trace the `unbox-ai` CLI
 summarizes. Nothing should read `.e2e/ai-trace.json` directly; it is
 megabytes of resent context.
 

@@ -86,7 +86,7 @@ const seedCart = defineTool(
 );
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   agent: createAgent({ tools: { seedCart } }),
 } satisfies E2EConfig;
 ```

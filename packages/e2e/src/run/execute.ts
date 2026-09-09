@@ -1,5 +1,6 @@
 /** Test-target execution engine. */
 
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { TargetSession, OperationContext } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
@@ -71,7 +72,7 @@ export interface TargetExecutorOptions {
   /**
    * Whether this executor runs in a process of its own that ends with its
    * work. Only then can an interrupted test body be abandoned mid-flight:
-   * the process takes it down. In the host's own process (a `rawConfig`
+   * the process takes it down. In the runner's own process (a `rawConfig`
    * run) the body would keep executing after the run resolved, so there the
    * interrupt waits for it to reach a harness call or its timeout.
    */
@@ -82,6 +83,16 @@ export interface TargetExecutorOptions {
 }
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
+
+/**
+ * The slice of an attempt record a session close reads and writes: the
+ * verdict the caller has already reached, and the cleanup outcome the close
+ * reports.
+ */
+export interface ClosingRecord {
+  readonly status: AttemptRecord['status'];
+  cleanup: AttemptRecord['cleanup'];
+}
 
 /** Signal for operations that only end when they finish, such as cleanup. */
 const NEVER_ABORTS = new AbortController().signal;
@@ -496,14 +507,23 @@ export class TargetExecutor implements SerialHost {
           session.restoreState!(state, launchOp(launchSignal)),
         );
       }
-      if (this.config.artifacts.includes('trace') && session.artifacts.startTrace !== undefined) {
-        // An explicitly configured trace is a contract; the default set is best-effort.
-        const starting = launch('starting the trace', (launchSignal) =>
-          session.artifacts.startTrace!(launchOp(launchSignal)),
-        );
-        if (this.config.artifactsExplicit) await starting;
+      // A recording the run asked for starts here, when the engine has it. A
+      // required kind's failure fails the launch; a best-effort kind's is
+      // swallowed. Video before trace: a surface that records both through
+      // one screencast sizes it for whichever came first, and the recording
+      // is the one a person watches.
+      const startRecording = async (
+        kind: 'trace' | 'video',
+        start: ((operation: OperationContext) => Promise<void>) | undefined,
+      ): Promise<void> => {
+        const policy = this.config.artifacts.get(kind);
+        if (policy === undefined || start === undefined) return;
+        const starting = launch(`starting the ${kind}`, (launchSignal) => start(launchOp(launchSignal)));
+        if (policy === 'required') await starting;
         else await starting.catch(() => undefined);
-      }
+      };
+      await startRecording('video', session.artifacts.startVideo);
+      await startRecording('trace', session.artifacts.startTrace);
     } catch (cause) {
       // The attempt's isolation is open, or a timed-out startAttempt may still
       // open it: end it within the cleanup budget, or the retry opens a second
@@ -525,36 +545,71 @@ export class TargetExecutor implements SerialHost {
     );
   }
 
-  /** Finalizes trace and ends the attempt with a fresh cleanup budget. */
+  /**
+   * Finalizes the recordings, then ends the attempt with a fresh cleanup
+   * budget. The caller has classified the attempt by now: `record.status`
+   * decides whether a `retain: 'on-failure'` video is kept.
+   */
   async closeSession(
     session: TargetSession,
     attemptId: string,
-    record: { cleanup: 'complete' | 'failed' | 'forced' },
+    record: ClosingRecord,
     artifactSink: ArtifactSink,
     secondaryErrors: SerializedError[],
   ): Promise<void> {
-    if (this.config.artifacts.includes('trace') && session.artifacts.stopTrace !== undefined) {
-      try {
-        const tracePath = await this.lifecycle(
-          'stopping the trace',
-          this.config.cleanupTimeout,
-          'CLEANUP_TIMEOUT',
-          NEVER_ABORTS,
-          (signal) => session.artifacts.stopTrace!(this.op(attemptId, this.config.cleanupTimeout, signal)),
-        );
-        artifactSink.register('trace', tracePath);
-      } catch (cause) {
-        // Best-effort for the default artifact set; a configured trace that
-        // cannot be finalized is a cleanup failure the report must show.
-        if (this.config.artifactsExplicit) {
-          record.cleanup = 'failed';
-          secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+    const { stopVideo, stopTrace } = session.artifacts;
+    if (stopVideo !== undefined) {
+      await this.stopRecording('video', attemptId, record, secondaryErrors, async (operation) => {
+        const segments = await stopVideo(operation);
+        if (this.config.videoRetain === 'on-failure' && record.status === 'passed') {
+          // Recorded so a failure could be watched; a pass has nothing to show.
+          await Promise.all(
+            segments.map((segment) => rm(path.join(artifactSink.dir, segment.path), { force: true })),
+          );
+          return;
         }
-      }
+        for (const segment of segments) {
+          artifactSink.register('video', segment.path, { startedAt: segment.startedAt });
+        }
+      });
+    }
+    if (stopTrace !== undefined) {
+      await this.stopRecording('trace', attemptId, record, secondaryErrors, async (operation) => {
+        artifactSink.register('trace', await stopTrace(operation));
+      });
     }
     try {
       await this.debug.time('session.close', () => this.endAttempt(session, attemptId));
     } catch (cause) {
+      record.cleanup = 'failed';
+      secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+    }
+  }
+
+  /**
+   * Stops one recording the run asked for, within the cleanup budget. A
+   * required kind that cannot be finalized is a cleanup failure the report
+   * must show; a best-effort kind fails quietly.
+   */
+  private async stopRecording(
+    kind: 'trace' | 'video',
+    attemptId: string,
+    record: ClosingRecord,
+    secondaryErrors: SerializedError[],
+    stop: (operation: OperationContext) => Promise<void>,
+  ): Promise<void> {
+    const policy = this.config.artifacts.get(kind);
+    if (policy === undefined) return;
+    try {
+      await this.lifecycle(
+        `stopping the ${kind}`,
+        this.config.cleanupTimeout,
+        'CLEANUP_TIMEOUT',
+        NEVER_ABORTS,
+        (signal) => stop(this.op(attemptId, this.config.cleanupTimeout, signal)),
+      );
+    } catch (cause) {
+      if (policy !== 'required') return;
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
     }
@@ -785,6 +840,15 @@ export class TargetExecutor implements SerialHost {
     } finally {
       attemptEnd.abort();
       this.interruptSignal.removeEventListener('abort', onInterrupt);
+      // The verdict is reached before the session closes: nothing after this
+      // point changes it, and the close reads it to decide what the attempt's
+      // recording is worth.
+      if (failure === undefined) {
+        record.status = 'passed';
+      } else {
+        record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
+        record.error = serializeError(failure, { phase: failurePhase ?? phase });
+      }
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
@@ -794,13 +858,6 @@ export class TargetExecutor implements SerialHost {
     await artifacts.settle();
     record.durationMs = Date.now() - startedMs;
     record.steps = [...steps.all()];
-
-    if (failure === undefined) {
-      record.status = 'passed';
-    } else {
-      record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
-      record.error = serializeError(failure, { phase: failurePhase ?? phase });
-    }
 
     if (cache !== undefined && record.status !== 'interrupted') {
       // Settled only after the status is classified: an interrupted attempt

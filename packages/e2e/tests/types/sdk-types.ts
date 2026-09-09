@@ -8,24 +8,36 @@ import { z } from 'zod';
 import {
   test,
   type Agent,
+  type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
   type Screen,
   type TraceCacheStore,
 } from '../../src/index.ts';
+import type { EngineHandle } from '../../src/engine/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
+declare const artifactStore: ArtifactStore;
 declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
+declare const engine: EngineHandle;
 
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 ({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
-// @ts-expect-error a target's name defaults to its platform; the platform has no default
-({ targets: [{ name: 'ios' }] }) satisfies E2EConfig;
+// A target inherits its platform from the engine; the resolver rejects one with neither.
+({ targets: [{ engine }] }) satisfies E2EConfig;
+({ targets: [{ name: 'phone', engine }] }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
 ({ cache: 'sometimes' }) satisfies E2EConfig;
+({ artifacts: ['screenshot', 'trace', 'video'] }) satisfies E2EConfig;
+({ artifacts: { kinds: ['video'], store: artifactStore, video: { retain: 'on-failure' } } }) satisfies E2EConfig;
+// @ts-expect-error artifact kinds are a closed union
+({ artifacts: ['gif'] }) satisfies E2EConfig;
+// @ts-expect-error video retention is a closed union
+({ artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
+({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
 screen.getByRole('button', { name: 'Save', visible: true });
@@ -46,6 +58,11 @@ await agent.act('open billing', { plan: 'pro' }, {});
 await agent.act('read total', { schema: z.object({ total: z.number() }) });
 // @ts-expect-error act takes no vision option; assert, waitFor, and extract do
 await agent.act('open billing', { vision: true });
+await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+// @ts-expect-error the wait interval is `interval`, in milliseconds
+await agent.waitFor('the page settles', { intervalMs: 500 });
+// @ts-expect-error extract has a fixed budget: one extraction plus one repair round
+await agent.extract('read total', { schema: z.object({ total: z.number() }), maxModelCalls: 1 });
 
 test.describe('synchronous', () => {});
 // @ts-expect-error describe registration must be synchronous

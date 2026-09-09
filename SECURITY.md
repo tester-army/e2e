@@ -81,9 +81,8 @@ is listed at [e2e-docs.vercel.app/telemetry](https://e2e-docs.vercel.app/telemet
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
 
 Opt out with `e2e telemetry disable`, `E2E_TELEMETRY_DISABLED=1`, or
-`DO_NOT_TRACK=1`. A host embedding the runner through `@e2edev/e2e/run` sends
-nothing: telemetry is a CLI concern. Telemetry falls under the disclosure
-policy above.
+`DO_NOT_TRACK=1`. Telemetry is a CLI concern; the runner itself sends nothing.
+Telemetry falls under the disclosure policy above.
 
 There is no crash reporting and no update check. The complete list of
 outbound connections a run can make:

@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -66,6 +66,39 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     expect(record.path).toBe('web/test-1/attempt-0/shot.png');
     expect(record.size).toBe(png.byteLength);
     expect(record.sha256).toBe(put.sha256);
+  });
+
+  it('carries a video segment start time to the record and the store, and marks it unredacted', async () => {
+    const store = capturing();
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: root(),
+      segments: ['web', 'test-1', 'attempt-0'],
+      attemptId: 'att-1',
+      store,
+      identity: { runId: 'run-9', testId: 'test-1' },
+    });
+    mkdirSync(path.join(artifacts.dir, 'video'));
+    writeFileSync(path.join(artifacts.dir, 'video', 'video.webm'), Buffer.from('not really webm'));
+    const startedAt = '2026-09-09T10:00:00.000Z';
+    artifacts.sink.register('video', 'video/video.webm', { startedAt });
+    await artifacts.settle();
+
+    expect(store.puts).toHaveLength(1);
+    expect(store.puts[0]).toMatchObject({ kind: 'video', mediaType: 'video/webm', startedAt });
+    expect(artifacts.records[0]).toMatchObject({
+      kind: 'video',
+      mediaType: 'video/webm',
+      startedAt,
+      redaction: 'incomplete',
+      path: 'web/test-1/attempt-0/video/video.webm',
+    });
+    // Other kinds carry no start time and stay vouched for.
+    writeFileSync(path.join(artifacts.dir, 'shot.png'), 'x');
+    artifacts.sink.register('screenshot', 'shot.png');
+    await artifacts.settle();
+    expect(artifacts.records[1]).toMatchObject({ redaction: 'complete' });
+    expect(artifacts.records[1]!.startedAt).toBeUndefined();
+    expect(store.puts[1]!.startedAt).toBeUndefined();
   });
 
   it('hands the store the report-owning attempt id while artifact ids still mint from the member', async () => {

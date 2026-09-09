@@ -173,6 +173,12 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
           startTrace: guard('traces', engine.artifacts.startTrace),
           stopTrace: guard('traces', engine.artifacts.stopTrace),
         }),
+    ...(engine?.artifacts?.startVideo === undefined || engine.artifacts.stopVideo === undefined
+      ? {}
+      : {
+          startVideo: guard('video recording', engine.artifacts.startVideo),
+          stopVideo: guard('video recording', engine.artifacts.stopVideo),
+        }),
   };
 
   let ended = false;

@@ -73,7 +73,7 @@ Observations are free; a judgment is only spent when the screen changes:
 
 ```ts
 await agent.waitFor('the export finishes and a download link appears', {
-  intervalMs: 500,
+  interval: 500,
   timeout: 120_000,
 });
 ```

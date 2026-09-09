@@ -42,7 +42,7 @@ pnpm --filter @e2edev/e2e build            # the testbed runs the built runner
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
 pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, not in CI
+E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, weekly schedule only
 pnpm --filter @e2edev/testbed app     # run the playground manually
 ```
 
@@ -51,7 +51,8 @@ artifacts under `.e2e/artifacts/`.
 
 ## Agentic suite
 
-`test:agent` spends real model calls, so it is opt-in and never runs in CI. It
+`test:agent` spends real model calls, so it never gates a PR: it runs on the
+weekly `.github/workflows/agent.yml` schedule, by manual dispatch, or by hand. It
 pins `google/gemini-3-flash` and honours `E2E_MODEL` so the same suite can be
 replayed across providers:
 

@@ -28,6 +28,11 @@ export interface CurrentStep {
    * `startedAt` still carries the moment the request went out.
    */
   readonly events: ShownEvent[];
+  /**
+   * True while the trace cache has the step, replaying its recorded actions:
+   * no model is in the loop, so the wait between events is on the app.
+   */
+  replaying: boolean;
 }
 
 /** One finished agent step of a pair, as the `end` progress reported it. */

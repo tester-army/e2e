@@ -152,7 +152,15 @@ export type StepProgress =
       readonly durationMs: number;
       readonly modelCalls: number;
     }
-  | { readonly phase: 'event'; readonly api: string; readonly event: StepEvent };
+  | { readonly phase: 'event'; readonly api: string; readonly event: StepEvent }
+  /**
+   * The trace cache took the step (`active`), or handed it to the model after
+   * a replay that could not finish it; a step the replay finishes ends while
+   * the cache has it. While the cache has the step, recorded actions execute
+   * with no model in the loop, so the wait between events is on the app
+   * settling, not on a model turn.
+   */
+  | { readonly phase: 'replay'; readonly api: string; readonly active: boolean };
 
 /** Per-step options for `StepRecorder.run`. */
 export interface StepRunOptions {
@@ -288,6 +296,18 @@ export class StepRecorder {
     if (current.events.length >= this.maxEventsPerStep) return;
     current.events.push(event);
     this.onProgress?.({ phase: 'event', api: current.api, event });
+  }
+
+  /**
+   * Tells reporters the trace cache has the running step (`true`), or has
+   * handed it to the model (`false`). Nothing is recorded: the step's `cache`
+   * detail says how the replay went. Outside a running step this is a no-op,
+   * as `recordEvent` is.
+   */
+  replaying(active: boolean): void {
+    const current = this.current();
+    if (current === undefined) return;
+    this.onProgress?.({ phase: 'replay', api: current.api, active });
   }
 
   /** Merges agent metrics, provenance, and judgment detail into the running step. */

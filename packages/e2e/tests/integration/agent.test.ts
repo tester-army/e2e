@@ -20,7 +20,7 @@ test('judgments and polling', async ({ app, agent, screen }) => {
   await app.open();
   await expect(screen.getByRole('status')).toHaveText('0');
   await agent.assert('the Home heading is visible');
-  await agent.waitFor('the Late arrival button exists', { intervalMs: 100 });
+  await agent.waitFor('the Late arrival button exists', { interval: 100 });
 });
 
 test('structured extraction', async ({ app, agent }) => {
@@ -59,7 +59,7 @@ test('waits without re-judging a page that has not changed', async ({
   // Budget for several judgments on purpose: the point is that a static page
   // never spends the second one.
   await agent.waitFor('a checkout button is on the About page', {
-    intervalMs: 100,
+    interval: 100,
     timeout: 3000,
     maxModelCalls: 4,
   });

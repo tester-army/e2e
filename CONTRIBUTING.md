@@ -42,6 +42,7 @@ This project is a pnpm monorepo containing:
 - `packages/playwright`: the published `@e2edev/playwright` browser engine
 - `packages/agent-device`: the published `@e2edev/agent-device` mobile engine
 - `packages/testbed`: private dogfood suite that consumes the built packages
+- `packages/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `docs/`: the docs site, built with [Starlight](https://starlight.astro.build)
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
 
@@ -107,9 +108,10 @@ If your change affects `@e2edev/e2e`, `@e2edev/playwright`, or
 pnpm changeset
 ```
 
-Changes limited to the testbed, docs, or CI don't need one. `@e2edev/testbed` is
-private and skipped entirely (`privatePackages: false`), so it never gets a
-version bump, a changelog, or a git tag. Never hand-edit a package `version` or
+Changes limited to the testbed, the web benchmark, docs, or CI don't need one.
+`@e2edev/testbed` and `@e2edev/web-benchmark` are private and skipped entirely
+(`privatePackages: false`), so they never get a version bump, a changelog, or a
+git tag. Never hand-edit a package `version` or
 `CHANGELOG.md`; `changesets/action` owns both.
 
 ## Releases

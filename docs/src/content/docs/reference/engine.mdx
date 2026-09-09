@@ -19,7 +19,8 @@ empty `version`, a `spiVersion` other than `1`, an unknown top-level key,
 `perform`, `locate`, or `swipe` without `observe`, a `state`, `artifacts`, or
 `app` manifest that is not an object, carries an unknown key, or has a
 non-function member (`state` needs both `capture` and `restore`; `artifacts`
-needs `screenshot`, and `startTrace`/`stopTrace` come together), or a fixture
+needs `screenshot`, and `startTrace`/`stopTrace` come together, as do
+`startVideo`/`stopVideo`), or a fixture
 name that is not a lower-camel identifier or shadows a universal fixture
 (`agent`, `app`, `screen`, `platform`, `session`). Every function on the handle
 is bound to the spec it came from, so a class instance is as valid a body as an
@@ -32,6 +33,7 @@ export interface Engine {
   readonly name: string;
   readonly version: string;
   readonly spiVersion: 1;
+  readonly platform?: Platform;
   readonly workers?: number;
 
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
@@ -69,7 +71,7 @@ allows; an engine without such a bound omits it.
 | `swipe` | - | `observe` | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
-| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']` |
+| `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']`, `artifacts: ['video']` and `--video` |
 | `app` | - | - | `app.open()` and the agent's `navigate` verb (`navigate`), `app.back()` (`back`), `app.restart()`, `app.clearState()` |
 | `url` | - | - | trace start anchors, the secret-fill origin check |
 
@@ -305,12 +307,37 @@ export interface EngineArtifacts {
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   startTrace?(context: OperationContext): Promise<void>;
   stopTrace?(context: OperationContext): Promise<string>;
+  startVideo?(context: OperationContext): Promise<void>;
+  stopVideo?(context: OperationContext): Promise<readonly VideoSegment[]>;
+}
+
+export interface VideoSegment {
+  /** Relative to the attempt artifact directory. */
+  readonly path: string;
+  /** When the segment started recording, as an ISO timestamp; its first frame is at or just after it. */
+  readonly startedAt: string;
 }
 ```
 
 Every returned path is relative to the `artifactsDir` the engine received in
 `startAttempt`. `screenshot` masks secure fields at the source. `startTrace`
-and `stopTrace` are declared together or not at all.
+and `stopTrace` are declared together or not at all, and so are `startVideo`
+and `stopVideo`.
+
+The harness starts the video, then the trace, right after `startAttempt` (and
+after a session restore), under the launch budget, and stops them before
+`endAttempt`, under the cleanup budget. The video comes first because a
+surface that records both through one screencast sizes it for whichever
+client came first, and the recording is the one a person watches: the browser
+engine opens the attempt's page when the video starts, so the trace that
+follows records its frames at the recording's size. `stopVideo` returns every
+segment written, in order, each with the instant it started recording, so a
+consumer can place the report's step timestamps on it. A surface whose
+recording is bound to a page returns one segment per page the attempt showed
+(a restart or a state reset opens a new one), and an attempt that never showed
+anything returns none. Recordings are the one
+artifact the harness cannot vouch for: it records them with
+`redaction: 'incomplete'`, since a screencast masks nothing.
 
 ## Contributed fixtures
 

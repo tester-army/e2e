@@ -41,10 +41,6 @@
     "./engine": {
       "types": "./dist/engine/index.d.ts",
       "default": "./dist/engine/index.js"
-    },
-    "./run": {
-      "types": "./dist/run/public.d.ts",
-      "default": "./dist/run/public.js"
     }
   },
   "bin": {

@@ -113,16 +113,19 @@ function serialGroup(
 }
 
 function runStarted(
-  overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string } = {},
+  overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string; visionModel?: string } = {},
 ): RunEventFact {
+  const projectRoot = overrides.projectRoot ?? '/project';
   return {
     type: 'run-started',
     runId: 'run-1',
     projectId: 'project',
-    projectRoot: overrides.projectRoot ?? '/project',
+    projectRoot,
+    artifactsRoot: `${projectRoot}/.e2e/artifacts`,
     ci: overrides.ci ?? false,
     targets: overrides.targets ?? ['chromium'],
     ...(overrides.model === undefined ? {} : { model: overrides.model }),
+    ...(overrides.visionModel === undefined ? {} : { visionModel: overrides.visionModel }),
   };
 }
 
@@ -222,6 +225,12 @@ describe('ListReporter', () => {
     const bare = capture();
     plainReporter(bare.output).handle(runStarted());
     expect(bare.lines.some((line) => line.includes('model'))).toBe(false);
+  });
+
+  it('names a separate vision model next to the text model', () => {
+    const { lines, output } = capture();
+    plainReporter(output).handle(runStarted({ model: 'openai/gpt-5.6-luna-fast', visionModel: 'google/gemini-3-flash' }));
+    expect(lines[3]).toBe('      model openai/gpt-5.6-luna-fast · vision google/gemini-3-flash');
   });
 
   it('omits the CI marker outside CI', () => {
@@ -450,6 +459,37 @@ describe('ListReporter', () => {
       expect(text.indexOf(' Failed Tests 2 ')).toBeLessThan(text.indexOf('Test Files'));
     });
 
+    it('names the recording a failed attempt kept, relative to the project', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const failed = failedAttempt('boom');
+      failed.artifacts = [
+        {
+          id: 'attempt-1:artifact:0',
+          kind: 'video',
+          mediaType: 'video/webm',
+          path: 'chromium/a/attempt-0/video/video.webm',
+          startedAt: new Date(0).toISOString(),
+          redaction: 'incomplete',
+          producer: { kind: 'attempt' },
+        },
+        {
+          id: 'attempt-1:artifact:1',
+          kind: 'trace',
+          mediaType: 'application/zip',
+          path: 'chromium/a/attempt-0/trace/trace.zip',
+          redaction: 'complete',
+          producer: { kind: 'attempt' },
+        },
+      ];
+      reporter.handle(finished(result({ status: 'failed', id: 'a', file: 'tests/a.e2e.ts', title: ['first'], attempts: [failed] })));
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '/project/.e2e/report.json' }));
+      expect(lines).toContain(' ❯ video .e2e/artifacts/chromium/a/attempt-0/video/video.webm');
+      expect(lines.some((line) => line.includes('trace.zip'))).toBe(false);
+    });
+
     it('names the status when a failure recorded no error', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
@@ -625,9 +665,10 @@ describe('ListReporter', () => {
       }
     });
 
-    it('reports model usage per file and for the run', () => {
+    it('reports model usage per file and for the run, naming the configured model', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
       reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
       const step = {
         id: 's',
@@ -644,8 +685,56 @@ describe('ListReporter', () => {
       } as unknown as AttemptRecord['steps'][number];
       reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
       reporter.handle(runFinished({ reportPath: 'r.json' }));
-      expect(lines[0]).toBe(' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms ai 12.4k tokens · $0.0123');
-      expect(lines[1]).toBe('   ✓ suite > case 120ms ai 12.4k tokens · $0.0123');
+      expect(lines).toContain(' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms ai 12.4k tokens · $0.0123');
+      expect(lines).toContain('   ✓ suite > case 120ms ai 12.4k tokens · $0.0123');
+      expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls · openai/gpt-5.6-luna-fast');
+    });
+
+    it('names both models on the AI row when vision calls go to a separate model', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast', visionModel: 'google/gemini-3-flash' }));
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const step = {
+        id: 's',
+        index: 0,
+        kind: 'agent',
+        api: 'agent.act',
+        label: 'do it',
+        status: 'passed',
+        startedAt: new Date(0).toISOString(),
+        durationMs: 10,
+        events: [],
+        artifacts: [],
+        model: { calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
+      } as unknown as AttemptRecord['steps'][number];
+      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines).toContain(
+        '         AI  12.4k tokens · $0.0123 · 3 model calls · openai/gpt-5.6-luna-fast · vision google/gemini-3-flash',
+      );
+    });
+
+    it('leaves the model off the AI row when none is configured', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const step = {
+        id: 's',
+        index: 0,
+        kind: 'agent',
+        api: 'agent.act',
+        label: 'do it',
+        status: 'passed',
+        startedAt: new Date(0).toISOString(),
+        durationMs: 10,
+        events: [],
+        artifacts: [],
+        model: { calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
+      } as unknown as AttemptRecord['steps'][number];
+      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
       expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls');
     });
 
@@ -805,6 +894,33 @@ describe('ListReporter', () => {
       reporter.handle(serialGroup('g2', [{ members: [serialMember('m1', { status: 'skipped', durationMs: 0 })], error: launchError }], { status: 'failed' }));
       reporter.handle(finished(result({ status: 'failed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g2' })));
       expect(lines).toContain('     → no browser');
+    });
+
+    it('names the group recording under a failed member, since members carry no attempts', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+      const group = serialGroup(
+        'g3',
+        [{ members: [serialMember('m1'), serialMember('m2', { status: 'failed', error: memberError })], error: memberError }],
+        { status: 'failed' },
+      );
+      if (group.type !== 'serial-group') throw new Error('serial group event expected');
+      group.group.attempts[0]!.artifacts.push({
+        id: 'group-attempt-0:artifact:0',
+        kind: 'video',
+        mediaType: 'video/webm',
+        path: 'chromium/wizard/attempt-0/video/video.webm',
+        startedAt: new Date(0).toISOString(),
+        redaction: 'incomplete',
+        producer: { kind: 'attempt' },
+      });
+      reporter.handle(group);
+      reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g3' })));
+      reporter.handle(finished(result({ status: 'failed', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g3' })));
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+      expect(lines).toContain(' ❯ video .e2e/artifacts/chromium/wizard/attempt-0/video/video.webm');
     });
 
     it('tolerates a group that arrives after its members, printing what it has', () => {
@@ -1113,6 +1229,24 @@ describe('ListReporter', () => {
       expect(chunks.at(-1)!.replace(ANSI_PATTERN, '')).toMatch(
         /› tap button "Pay" \(27ms\)\n {9}• Thinking \(9\.00s\) \(↑6 ↓127\)\n {9}[·✢✳✶✻✽] Thinking\n/,
       );
+    });
+
+    it('shows the trace cache replaying instead of a model turn, and the model again once it hands off', () => {
+      const { chunks, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(testStarted('t1', 'checkout', 'chromium'));
+      const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', target: 'chromium', progress } as never);
+      step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
+      step({ phase: 'replay', api: 'agent.act', active: true });
+      step({ phase: 'event', api: 'agent.act', event: { kind: 'engine', name: 'tap', detail: 'tap button "Pay"', durationMs: 27, status: 'passed' } });
+      const replaying = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+      expect(replaying).toMatch(/↳ agent\.act "pay"\n {9}› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Replaying\n/);
+      expect(replaying).not.toContain('Thinking');
+      step({ phase: 'replay', api: 'agent.act', active: false });
+      const handedOff = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+      expect(handedOff).toMatch(/› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/);
+      expect(handedOff).not.toContain('Replaying');
     });
 
     it('shows no wait row for a deterministic step and keeps the one clock on the test row', () => {

@@ -10,9 +10,10 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @e2edev/e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build",
-    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check",
+    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "docs:build": "pnpm --filter @e2edev/docs run build",
+    "docs:check-errors": "node scripts/check-error-codes.ts",
     "docs:check": "pnpm --filter @e2edev/docs run check",
     "docs:dev": "pnpm --filter @e2edev/docs run dev",
     "lint": "oxlint",
@@ -23,6 +24,7 @@
     "typecheck": "pnpm run build && pnpm -r run typecheck",
     "test": "pnpm run build && pnpm --filter @e2edev/e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
+    "test:web-benchmark": "pnpm run build && pnpm --filter @e2edev/web-benchmark test",
     "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
     "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",
     "test:device": "pnpm run build && pnpm --filter @e2edev/testbed test:device"

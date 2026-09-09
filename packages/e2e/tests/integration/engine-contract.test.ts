@@ -5,7 +5,8 @@
  * capability gating - can never silently regress.
  */
 
-import { rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   engineFailure,
@@ -50,7 +51,7 @@ const WAIT_TEST = `import { test } from '@e2edev/e2e';
 
 test('waits for a condition', async ({ app, agent }) => {
   await app.open('/');
-  await agent.waitFor('the Submit button is enabled', { intervalMs: 100, timeout: 1500 });
+  await agent.waitFor('the Submit button is enabled', { interval: 100, timeout: 1500 });
 });
 `;
 
@@ -808,6 +809,95 @@ test('swipes without a swipe capability', async ({ screen }) => {
       expect(swipes.status).toBe('failed');
       expect(swipes.attempts[0]!.error?.code).toBe('UNSUPPORTED_CAPABILITY');
       expect(swipes.attempts[0]!.error?.message).toContain('swipe');
+      project.cleanup();
+    },
+    60_000,
+  );
+});
+
+describe('video artifacts', () => {
+  const FAILING_TEST = `import { test } from '@e2edev/e2e';
+
+test('fails on purpose', async ({ app }) => {
+  await app.open('/');
+  throw new Error('nope');
+});
+`;
+
+  /** The video artifacts of a result's first attempt. */
+  const videosOf = (outcome: Awaited<ReturnType<typeof runProject>>['outcome'], title: string) =>
+    resultByTitle(outcome, title).attempts[0]!.artifacts.filter((artifact) => artifact.kind === 'video');
+
+  /** A config with the default artifact kinds, so `--video` adds to a best-effort set. */
+  const defaultKindsConfig = (fake: FakeEngineHandle): E2EConfig =>
+    ({ specVersion: '0.1', targets: [{ name: 'fake', platform: 'web', engine: fake.engine }] }) as E2EConfig;
+
+  it(
+    'is a contract even without explicit kinds: --video on an engine that cannot record is UNSUPPORTED_ARTIFACT',
+    async () => {
+      const fake = createFakeEngine({ artifacts: true });
+      const { outcome, project } = await runProject(
+        { 'tests/video.e2e.ts': PASSING_TEST },
+        { appUrl: APP_URL, config: defaultKindsConfig(fake), runOptions: { video: true } },
+      );
+      expect(outcome.status).toBe('error');
+      expect(fake.stats().attemptsStarted).toBe(0);
+      expect(outcome.report.run.errors.some((error) => error.code === 'UNSUPPORTED_ARTIFACT')).toBe(true);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'records every attempt for --video: the segment is an artifact with its start time, marked unredacted',
+    async () => {
+      const fake = createFakeEngine({ video: true });
+      const { outcome, project } = await runProject(
+        { 'tests/video.e2e.ts': PASSING_TEST },
+        // Default kinds stay best-effort: the fake has no trace, and the run does not mind.
+        { appUrl: APP_URL, config: defaultKindsConfig(fake), runOptions: { video: true } },
+      );
+      expect(outcome.status).toBe('passed');
+      assertValidReport(outcome.report);
+      const videos = videosOf(outcome, 'taps a node');
+      expect(videos).toHaveLength(1);
+      const video = videos[0]!;
+      expect(video).toMatchObject({ mediaType: 'video/webm', redaction: 'incomplete', producer: { kind: 'attempt' } });
+      expect(video.path).toMatch(/\/attempt-0\/video\/fake\.webm$/);
+      expect(video.size).toBe(8);
+      expect(Number.isNaN(Date.parse(video.startedAt!))).toBe(false);
+      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', video.path!))).toBe(true);
+      expect(fake.operations.map((op) => op.method)).toEqual(
+        expect.arrayContaining(['artifacts.startVideo', 'artifacts.stopVideo']),
+      );
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'keeps only failed attempts with retain: on-failure',
+    async () => {
+      const fake = createFakeEngine({ video: true });
+      const { outcome, project } = await runProject(
+        { 'tests/pass.e2e.ts': PASSING_TEST, 'tests/fail.e2e.ts': FAILING_TEST },
+        {
+          appUrl: APP_URL,
+          config: fakeConfig(fake, { artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } }),
+        },
+      );
+      expect(outcome.status).toBe('failed');
+      expect(videosOf(outcome, 'taps a node')).toEqual([]);
+      const passedDir = path.join(project.dir, '.e2e', 'artifacts', 'fake');
+      expect(readdirSync(passedDir).some((entry) => entry.includes('pass'))).toBe(true);
+      const kept = videosOf(outcome, 'fails on purpose');
+      expect(kept).toHaveLength(1);
+      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
+      // The passing attempt's recording was written, then removed with its verdict.
+      const passedVideos = readdirSync(passedDir, { recursive: true })
+        .map(String)
+        .filter((entry) => entry.endsWith('fake.webm') && entry.includes('pass'));
+      expect(passedVideos).toEqual([]);
       project.cleanup();
     },
     60_000,

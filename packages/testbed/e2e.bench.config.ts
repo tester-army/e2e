@@ -29,7 +29,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://localhost:4273',
         command: { executable: 'pnpm', args: ['run', 'bench:serve'] },

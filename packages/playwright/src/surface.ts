@@ -3,8 +3,8 @@
  * attempt, and the page every engine member delegates to. This is the closure
  * state behind `playwright()`; the engine hooks in `engine.ts` and the `web`
  * fixture in `web.ts` are thin delegates onto it. Action dispatch lives in
- * `actions.ts` and tree capture in `observation.ts`; this file owns lifecycle,
- * location, navigation, artifacts, and state.
+ * `actions.ts`, tree capture in `observation.ts`, and the recording in
+ * `video.ts`; this file owns lifecycle, location, navigation, artifacts, and state.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -30,6 +30,7 @@ import {
   type OperationContext,
   type ScrollDirection,
   type SemanticNode,
+  type VideoSegment,
 } from '@e2edev/e2e/engine';
 import { matchesText } from '@e2edev/e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
@@ -54,6 +55,7 @@ import {
   translatePwError,
   type ActionTarget,
 } from './support.ts';
+import { VideoRecorder } from './video.ts';
 
 /**
  * Safety valve on nodes in one observation. The contract has no way to report
@@ -168,6 +170,8 @@ export class PlaywrightSurface {
   private tracing = false;
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
   private traceSegments = 0;
+  /** The attempt's recording; every hook is a no-op without one. */
+  private readonly video: VideoRecorder;
   /**
    * Attempt-scoped network routes. Registered on the
    * context, not a page, so they cover every page the attempt opens - the
@@ -182,6 +186,7 @@ export class PlaywrightSurface {
     this.browserName = options.browser ?? 'chromium';
     this.connect = options.connect;
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
+    this.video = new VideoRecorder(this.viewport);
   }
 
   // --- lifecycle ---
@@ -287,6 +292,7 @@ export class PlaywrightSurface {
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     this.traceSegments = 0;
+    this.video.reset(context.artifactsDir);
     this.routes.length = 0;
     this.dialogs.reset();
     await this.openContext(undefined, context.signal);
@@ -317,6 +323,9 @@ export class PlaywrightSurface {
     this.context = null;
     this.page = null;
     if (context === null) return;
+    // The harness stops the video before the attempt ends; a segment still
+    // recording here belongs to an attempt cut short, and is kept as far as it got.
+    if (this.video.isRecording) await withinCleanupBudget(this.video.pageClosing(), budget);
     if (this.tracing) {
       this.tracing = false;
       await withinCleanupBudget(context.tracing.stop(), budget);
@@ -406,6 +415,7 @@ export class PlaywrightSurface {
     const context = this.requireContext();
     if (this.page === null || this.page.isClosed()) {
       this.page = await context.newPage();
+      await this.video.pageOpened(this.page);
     }
     return this.page;
   }
@@ -423,27 +433,46 @@ export class PlaywrightSurface {
    */
   private async replaceContext(storageState: StorageState | undefined): Promise<void> {
     const context = this.requireContext();
-    const resumeTrace = this.tracing;
     // The old context is released from the surface before anything awaits, so
     // a trace segment or close that fails cannot leave the surface pointing at
-    // a context it meant to replace. A segment that cannot be written is
-    // best-effort: the final trace still records from the new context.
+    // a context it meant to replace.
     this.context = null;
     this.page = null;
-    this.tracing = false;
     this.refs.clear();
-    if (resumeTrace) {
-      this.traceSegments += 1;
-      await context.tracing
-        .stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute })
-        .catch(() => undefined);
-    }
+    const resumeTrace = await this.closeTraceSegment(context);
+    // A screencast is the old page's: its segment closes here, while the page
+    // can still flush it, and the next page the new context opens starts the
+    // following one.
+    await this.video.pageClosing();
     await context.close();
     await this.openContext(storageState);
-    if (resumeTrace) {
-      await this.requireContext().tracing.start(TRACE_OPTIONS);
-      this.tracing = true;
-    }
+    // The recording's next segment opens the new context's page before the
+    // trace resumes, for the same reason `startVideo` opens the first one.
+    if (this.video.isArmed) await this.ensurePage();
+    if (resumeTrace) await this.resumeTrace();
+  }
+
+  /**
+   * Closes the active trace as its own segment (`trace/trace-part<n>.zip`)
+   * and reports whether one was active. `tracing` is cleared before anything
+   * awaits, so a segment that fails to write cannot leave the surface
+   * believing a trace still records; the segment itself is best-effort, the
+   * final trace still records from where tracing resumes.
+   */
+  private async closeTraceSegment(context: BrowserContext): Promise<boolean> {
+    if (!this.tracing) return false;
+    this.tracing = false;
+    this.traceSegments += 1;
+    await context.tracing
+      .stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute })
+      .catch(() => undefined);
+    return true;
+  }
+
+  /** Resumes tracing on the current context after `closeTraceSegment`. */
+  private async resumeTrace(): Promise<void> {
+    await this.requireContext().tracing.start(TRACE_OPTIONS);
+    this.tracing = true;
   }
 
   private requireBaseUrl(): string {
@@ -495,9 +524,18 @@ export class PlaywrightSurface {
     return this.guard(operation, 'restart', async () => {
       const baseUrl = this.requireBaseUrl();
       const context = this.requireContext();
+      // The recording's segment ends before its page closes: Playwright writes
+      // nothing for a screencast whose page went away first. Under a recording
+      // the trace closes as a segment too: a trace attaches its own 800-pixel
+      // screencast to every page the moment it opens, and a page's first
+      // client sizes its screencast, so the recording must be that client on
+      // the new page, as it is at `startVideo`.
+      await this.video.pageClosing();
+      const resumeTrace = this.video.isArmed ? await this.closeTraceSegment(context) : false;
       for (const page of context.pages()) await page.close();
       this.page = null;
       const page = await this.ensurePage();
+      if (resumeTrace) await this.resumeTrace();
       await page.goto(baseUrl, { waitUntil: 'load', timeout: operation.timeoutMs });
     });
   }
@@ -666,6 +704,28 @@ export class PlaywrightSurface {
       this.tracing = false;
       return relative;
     });
+  }
+
+  // --- video ---
+
+  /**
+   * Arms the attempt's recording, opening the attempt's page if it has none
+   * yet. Eager on purpose: a page has one screencast, sized by its first
+   * client, and a trace started afterwards (the harness starts the video
+   * first) then records its frames at the recording's size rather than the
+   * recording inheriting the trace's 800-pixel cap. Pages a replaced context
+   * opens later resume in `ensurePage`.
+   */
+  startVideo(operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'video', async () => {
+      const page = await this.ensurePage();
+      await this.video.arm(page);
+    });
+  }
+
+  /** Finishes the recording and returns every segment this attempt wrote, in order. */
+  stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
+    return this.guard(operation, 'video', () => this.video.stop());
   }
 
   // --- state ---

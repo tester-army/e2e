@@ -80,6 +80,7 @@
         "size": { "type": "integer", "minimum": 0 },
         "sha256": { "$ref": "#/$defs/sha256" },
         "ref": { "type": "string", "minLength": 1 },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
         "redaction": { "enum": ["complete", "not-required", "incomplete"] },
         "producer": {
           "oneOf": [
@@ -105,21 +106,7 @@
       "allOf": [
         {
           "if": { "properties": { "redaction": { "const": "incomplete" } } },
-          "then": {
-            "properties": {
-              "path": false,
-              "size": false,
-              "sha256": false
-            }
-          },
-          "else": {
-            "properties": {
-              "path": { "$ref": "#/$defs/relativePath" },
-              "size": { "type": "integer", "minimum": 0 },
-              "sha256": { "$ref": "#/$defs/sha256" }
-            },
-            "required": ["path", "size", "sha256"]
-          }
+          "else": { "required": ["path", "size", "sha256"] }
         }
       ]
     },
@@ -483,7 +470,7 @@
         "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "artifactCapabilities": {
           "type": "array",
-          "items": { "enum": ["screenshot", "trace"] },
+          "items": { "enum": ["screenshot", "trace", "video"] },
           "uniqueItems": true
         },
         "stateCapability": { "type": "boolean" },

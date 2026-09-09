@@ -37,12 +37,18 @@ import {
 } from './replay.ts';
 
 /**
- * The replay host plus the one session-level probe replay itself never needs:
- * the current location path, read at both ends of the step for the trace's
- * start-path precondition and end-path postcondition.
+ * The replay host plus what replay itself never needs: the current location
+ * path, read at both ends of the step for the trace's start-path precondition
+ * and end-path postcondition, and the step's live progress.
  */
 export interface StepCacheHost extends ReplayHost {
   currentPath(observation?: ObservedNodes): Promise<string | undefined>;
+  /**
+   * Tells the step's live progress the cache has the step (`true`) or has
+   * handed it to the model (`false`), so a reporter can show the cache at
+   * work instead of a model turn.
+   */
+  replaying(active: boolean): void;
 }
 
 /** What the session needs from the dispatch beyond the host itself. */
@@ -63,9 +69,10 @@ export type StepOutcome = 'passed' | 'failed' | 'cancelled';
 
 type HandOffReason = ReplayedPrefix['stopReason'];
 
+/** One store read: a validated entry, or why none was read. */
 type EntryRead =
   | { readonly status: 'hit'; readonly entry: TraceEntry }
-  | { readonly status: 'miss'; readonly reason: 'no-entry' | 'invalid-entry' };
+  | { readonly status: 'miss'; readonly reason: 'retry' | 'no-entry' | 'invalid-entry' };
 
 /** Margin added to a recorded step's duration when replay waits for its end state. */
 const END_WAIT_MARGIN_MS = 10_000;
@@ -148,58 +155,35 @@ export class StepTraceSession {
   }
 
   /**
-   * Opens the step: captures the write-side preconditions — the start path
-   * and, when this step may write, the baseline screen — then attempts a
-   * zero-turn replay. Returns the self-finalized verdict on a full replay
-   * whose postcondition holds; undefined dispatches the executor — after a
-   * miss from the top, after a divergence mid-step with `replayedPrefix` set.
-   * Every failure to replay is a miss, never an error; only runtime hard stops
-   * propagate.
+   * Opens the step: reads the cache entry, captures the write-side
+   * preconditions — the start path and, when this step may write, the
+   * baseline screen — then attempts a zero-turn replay of a hit. Returns the
+   * self-finalized verdict on a full replay whose postcondition holds;
+   * undefined dispatches the executor — after a miss from the top, after a
+   * divergence mid-step with `replayedPrefix` set. Every failure to replay is
+   * a miss, never an error; only runtime hard stops propagate.
    */
   async begin(): Promise<StepVerdict | undefined> {
     this.startedMs = Date.now();
-    // Captured before any action for the write's start-path precondition, and
-    // doubling as the replay decision's current path.
-    if (this.recorder !== undefined) this.startNodes = await probeScreen(this.host);
-    this.startPath = await this.host.currentPath(this.startNodes);
-    if (!this.cache.replayEligible) {
-      // A retry records like any step but never replays; the report says so
-      // instead of looking like a step that ran with caching off.
-      this.info = this.missed('retry', 0);
-      return undefined;
-    }
-
-    const read = await this.readEntry();
+    // A retry records like any step but never replays; the report says so
+    // instead of looking like a step that ran with caching off.
+    const read: EntryRead = this.cache.replayEligible
+      ? await this.readEntry()
+      : { status: 'miss', reason: 'retry' };
     if (read.status === 'miss') {
+      await this.captureStart();
       this.info = this.missed(read.reason, 0);
       return undefined;
     }
-    const trace = read.entry.payload;
-    const decision = decideTraceReplay(read.entry, this.startPath);
-    if (decision.action === 'miss') {
-      this.info = this.missed(decision.reason, trace.actions.length);
-      return undefined;
-    }
-
-    const outcome = await replayTrace(this.host, trace);
-    this.consumedReplay = true;
-    // Actions that all ran prove the clicks happened; only the postcondition
-    // proves the save took. A flow whose destination changed, or whose effect
-    // is not on screen again, hands off like any other divergence.
-    const stopReason: HandOffReason | undefined = outcome.completed
-      ? (await this.endStateMatches(trace))
-        ? undefined
-        : 'end-mismatch'
-      : (outcome.stopReason ?? 'action-failed');
-    if (stopReason === undefined) return this.selfFinalize(trace, outcome);
-    if (outcome.executed === 0) {
-      // A prefix that performed nothing is a miss with a name, not a hand-off:
-      // the executor starts from the top and owes the notice nothing.
-      this.info = this.missed(stopReason, outcome.total);
-      return undefined;
-    }
-    this.handOff(outcome, stopReason);
-    return undefined;
+    // With an entry in hand the step is the cache's from its first moment: the
+    // baseline probe doubles as the replay's start-path check, and a step the
+    // replay finishes stays the cache's through its verdict and the re-stage,
+    // so a reporter never shows a model turn that is not coming. Only a replay
+    // that cannot finish the step hands it to the model.
+    this.host.replaying(true);
+    const verdict = await this.replayEntry(read.entry);
+    if (verdict === undefined) this.host.replaying(false);
+    return verdict;
   }
 
   /**
@@ -253,6 +237,49 @@ export class StepTraceSession {
     if (read.status === 'invalid') return { status: 'miss', reason: 'invalid-entry' };
     const entry = readTraceEntry(read.entry);
     return entry === undefined ? { status: 'miss', reason: 'invalid-entry' } : { status: 'hit', entry };
+  }
+
+  /**
+   * The write-side preconditions, captured before any action: the start path,
+   * doubling as the replay decision's current path, and the baseline screen
+   * when this step may write.
+   */
+  private async captureStart(): Promise<void> {
+    if (this.recorder !== undefined) this.startNodes = await probeScreen(this.host);
+    this.startPath = await this.host.currentPath(this.startNodes);
+  }
+
+  /**
+   * Replays one hit: decides it against the start path, runs the recorded
+   * actions, then checks the postcondition. Actions that all ran prove the
+   * clicks happened; only the postcondition proves the save took. A flow whose
+   * destination changed, or whose effect is not on screen again, hands off
+   * like any other divergence.
+   */
+  private async replayEntry(entry: TraceEntry): Promise<StepVerdict | undefined> {
+    await this.captureStart();
+    const trace = entry.payload;
+    const decision = decideTraceReplay(entry, this.startPath);
+    if (decision.action === 'miss') {
+      this.info = this.missed(decision.reason, trace.actions.length);
+      return undefined;
+    }
+    const outcome = await replayTrace(this.host, trace);
+    this.consumedReplay = true;
+    const stopReason: HandOffReason | undefined = outcome.completed
+      ? (await this.endStateMatches(trace))
+        ? undefined
+        : 'end-mismatch'
+      : (outcome.stopReason ?? 'action-failed');
+    if (stopReason === undefined) return this.selfFinalize(trace, outcome);
+    if (outcome.executed === 0) {
+      // A prefix that performed nothing is a miss with a name, not a hand-off:
+      // the executor starts from the top and owes the notice nothing.
+      this.info = this.missed(stopReason, outcome.total);
+      return undefined;
+    }
+    this.handOff(outcome, stopReason);
+    return undefined;
   }
 
   /**

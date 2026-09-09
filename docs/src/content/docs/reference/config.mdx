@@ -18,7 +18,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
     },
   ],
@@ -55,6 +54,7 @@ the module type of `.ts` test files or helpers.
 
 | Key | Type | Default | Valid range |
 | --- | --- | --- | --- |
+| `specVersion` | `'0.1'` | `'0.1'` | the one value this runner implements; anything else is `INVALID_CONFIG` |
 | `projectId` | `string` | nearest `package.json` name, else a generated ID | 1-256 characters |
 | `targets` | `readonly Target[]` | required | non-empty; each engine declares [the app under test](#the-app-under-test) |
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
@@ -65,19 +65,22 @@ the module type of `.ts` test files or helpers.
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024; a target never runs more than the `workers` its engine declares |
-| `artifacts` | kinds array or `{ kinds?, store? }` | `['screenshot', 'trace']` | those two kinds; `store` is an [`ArtifactStore`](#artifacts) |
+| `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | `screenshot`, `trace`, and the opt-in `video`; `store` is an [`ArtifactStore`](#artifacts); `video` holds the [recording options](#video) |
 | `reporters` | `readonly ('list' \| 'json' \| 'junit')[]` | `['list']` | those three IDs; `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml` |
 | `screen` | object | see [screen](#screen) | - |
-| `agent` | object | see [agent](#agent) | - |
+| `agent` | object or `StepExecutor` | see [agent](#agent) | - |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | - |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
 
 Every numeric value must be a safe integer.
 
-`artifacts` accepts `screenshot` and `trace` only; `video` is not a
-configurable artifact kind. A configured kind the target's engine cannot
-produce fails before collection with `UNSUPPORTED_ARTIFACT`.
+`artifacts` accepts `screenshot`, `trace`, and `video`. The default set is
+screenshot and trace, captured best-effort: an engine without evidence capture
+records none. A configured kind the target's engine cannot produce fails
+before collection with `UNSUPPORTED_ARTIFACT`. `video` is never in the default
+set, so asking for it (in the config or with `--video`) is always that kind of
+contract.
 
 ### artifacts
 
@@ -86,14 +89,15 @@ The object form adds a **store**, the cloud seam for evidence the way
 
 ```ts
 artifacts: {
-  kinds: ['screenshot', 'trace'],
+  kinds: ['screenshot', 'trace', 'video'],
   store: {
     async put(artifact) {
-      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?
+      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?, .startedAt?
       const key = await bucket.upload(artifact.path, artifact.bytes);
       return { ref: key };
     },
   },
+  video: { retain: 'on-failure' },
 },
 ```
 
@@ -101,10 +105,40 @@ A host store receives every artifact the moment it is complete on disk — as
 produced, not after the run — and returns its own reference, which the report
 records as the artifact's `ref` beside the local path. A failed `put` never
 fails the run; the record simply carries no `ref`. Like every live value, a
-store never crosses a process boundary, so it runs in-process
-(`rawConfig`).
+store never crosses a process boundary: each worker constructs its own when
+it loads the config module.
 Every run writes `.e2e/report.json` regardless of the selected reporters; the
 `junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
+
+### video
+
+With `video` among the kinds, or `e2e run --video`, every attempt records the
+surface it drives: a browser engine writes a WebM screencast of its page at the
+attempt's viewport size; a device engine records the device screen (MP4, with
+taps shown). The file lands
+under the attempt's artifact directory as `video/video.webm` (or `.mp4`) and is
+recorded in `report.json` as an artifact of kind `video` whose `startedAt` is
+when the recording started, so `step.startedAt - artifact.startedAt` is a
+step's offset into the video. The failure recap of the list reporter names the
+file under each failed test. A screencast belongs to one page, so an attempt
+that opened a new one mid-way (an `app.restart()`, a state reset) writes one
+segment per page: `video/video.webm`, then `video/video-part2.webm`, and so on.
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `retain` | `'all' \| 'on-failure'` | `'all'` | `on-failure` deletes the recording of every attempt that passed once its verdict is known, so a CI run records everything and keeps only what needs watching |
+
+Recording is opt-in because it costs an encoder per page and about a megabit
+per second of disk. With video on, the Playwright trace's screenshots are
+captured at the video's size instead of Playwright's 800-pixel default, so the
+trace grows too. Nothing about it enters the trace cache identity: turning
+video on or off never invalidates cached replays.
+
+A recording masks nothing. Secure fields render their own dots, but anything
+else the screen showed is in the frames, which is why a video artifact is
+recorded with `redaction: 'incomplete'` where screenshots and traces say
+`complete`. Treat recordings of authenticated flows as you would a screen
+share.
 
 ## The app under test
 
@@ -148,7 +182,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
@@ -265,7 +298,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://localhost:3000',
         services: [
@@ -300,15 +332,17 @@ export default {
 
 ## targets
 
-A target's `name` defaults to its `platform`, so one target per platform needs
-none; two targets on the same platform name themselves. Names are unique and
-limited to ASCII letters, digits, `_`, `-`, and `.`. An empty `targets` array
-is an error.
+A target's `platform` comes from its engine (`web` for playwright, the device
+platform for agent-device), and its `name` defaults to the platform, so
+`{ engine: playwright({ url }) }` is a complete target. Set `platform` on a
+target without an engine, or whose engine declares none; two targets on one
+platform name themselves. Names are unique and limited to ASCII letters,
+digits, `_`, `-`, and `.`. An empty `targets` array is an error.
 
 ```ts
 export interface Target {
-  name?: string; // defaults to platform
-  platform: Platform;
+  name?: string;         // defaults to platform
+  platform?: Platform;   // defaults to the engine's
   engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
 }
 ```
@@ -326,7 +360,7 @@ instead of replacing them.
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `name` | `string` | `platform` | Stable ID used by `--target`, reports, sessions, and artifact paths; unique across targets |
-| `platform` | `Platform` | - | Any label; `platforms: [...]` on a test filters against it |
+| `platform` | `Platform` | the engine's | The label `platforms: [...]` on a test filters against. Set it for a target without an engine; a value that disagrees with the engine's is `INVALID_CONFIG` |
 | `engine` | `EngineHandle` | none | `playwright({ url?, command?, browser?, viewport?, connect? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP); `agentDevice({ platform, app?, appPath? })` from `@e2edev/agent-device` for an [iOS or Android device](/reference/device); any [`defineEngine`](/writing-an-engine) handle otherwise |
 
 The app URL, browser choice, and viewport are options of the playwright
@@ -335,8 +369,8 @@ engine, not of the runner. Two browsers on one app each name it:
 ```ts
 const app = { url: 'http://localhost:3000' };
 targets: [
-  { name: 'chromium', platform: 'web', engine: playwright(app) },
-  { name: 'webkit-mobile', platform: 'web', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+  { name: 'chromium', engine: playwright(app) },
+  { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
 ],
 ```
 
@@ -355,7 +389,8 @@ screen?: {
 ## agent
 
 ```ts
-agent?: {
+agent?: StepExecutor | {
+  executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
   visionModel?: string | ModelConfig | ModelInstance;
   maxSteps?: number;
@@ -367,13 +402,19 @@ agent?: {
 };
 ```
 
+The block takes three shapes: an options object, an options object with an
+`executor`, or the executor itself (`agent: createAgent({ model })`). The bare
+form is shorthand for `{ executor }`; every other key then takes its default.
+An unknown key is `INVALID_CONFIG` with the nearest valid name.
+
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
+| `executor` | `StepExecutor` | the built-in AI SDK executor | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Anything else is `INVALID_CONFIG`. Like a model instance it never crosses a process boundary; workers rebuild it from the config module. See [Your own agent](/agents). |
 | `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
 | `visionModel` | `string \| ModelConfig \| ModelInstance` | `agent.model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
-| `maxObservationBytes` | `number` | `1048576` | integer 1024-16777216 | Observation payload ceiling. Not a `limits` key. |
+| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike; the per-call token limit clamps it lower on a dense screen. Not a `limits` key. |
 | `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
 | `vision` | `boolean \| 'fallback' \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option. `'fallback'` behaves like `false` for `assert`, `waitFor`, and `extract`; `'only'` sends pixels instead of the tree. A per-call value wins. |
 | `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call of both `act` and the judgments, e.g. `{ openai: { reasoningEffort: 'low' } }`. Values pass through unchecked; a non-object provider entry is `INVALID_CONFIG`. `createAgent({ providerOptions })` overrides it for `act`. |
@@ -462,7 +503,7 @@ An unconfigured name, or a call outside an active runner, throws
 
 ```ts title="e2e.config.ts"
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
   credentials: {
     member: { username: 'member@example.test', password: 'local-dev-only' },
     admin: {
@@ -572,8 +613,10 @@ enforcement site for it, so a configured limit is never a silent no-op.
 
 ## Environment variables
 
-The runner reads a closed set. Diagnostics are `e2e run --debug` and
-`e2e run --ai-trace`.
+The runner reads a closed set, listed with every other variable it consults on
+the [Environment variables](/reference/environment) page. Diagnostics are
+`e2e run --debug` and `e2e run --ai-trace`. The ones that change what a config
+resolves to:
 
 | Variable | Effect |
 | --- | --- |
@@ -581,11 +624,10 @@ The runner reads a closed set. Diagnostics are `e2e run --debug` and
 | `E2E_VISION_MODEL` | `provider/model-id` fallback when `agent.visionModel` is unset |
 | `E2E_MODEL_API_KEY` | Default provider credential |
 | `AI_GATEWAY_API_KEY` | Gateway credential, used when the named key variable holds no value |
+| `E2E_MODEL_ENDPOINT` | Gateway endpoint when `agent.model.endpoint` is unset |
 | `E2E_USER_<NAME>_USERNAME` | Overrides `credentials.<name>.username` |
 | `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
 | `CI` | Switches CI defaults and rejects focused tests |
-| `E2E_TELEMETRY_DISABLED` | Turns anonymous usage telemetry off, as does `DO_NOT_TRACK`; `e2e telemetry disable` saves the same choice. See [Telemetry](/telemetry) |
-| `E2E_TELEMETRY_DEBUG` | Prints every telemetry event to stderr instead of sending it |
 
 ### Resolution order
 
@@ -595,6 +637,7 @@ The runner reads a closed set. Diagnostics are `e2e run --debug` and
 | Model | the model passed to `createAgent({ model })`, then `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls |
 | Vision model | `agent.visionModel`, then `E2E_VISION_MODEL`, then `agent.model` |
 | Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
+| Model endpoint | `agent.model.endpoint`, then `E2E_MODEL_ENDPOINT`, then the gateway default |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
 "First non-empty" ignores values that are undefined or whitespace only. Naming

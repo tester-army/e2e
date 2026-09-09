@@ -6,8 +6,22 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { ArtifactStore } from '../types.ts';
-import type { ArtifactSink } from './fixtures.ts';
+import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
+
+/**
+ * How much of each kind the runner masked. Screenshots and traces mask secure
+ * fields at the source. A recording masks nothing: a secure field renders its
+ * own dots, but anything else the screen showed is in the frames, so a video
+ * is the one kind the runner cannot vouch for.
+ */
+const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord['redaction']>> = {
+  screenshot: 'complete',
+  trace: 'complete',
+  video: 'incomplete',
+  download: 'complete',
+  log: 'complete',
+};
 
 export interface AttemptArtifacts {
   /** Absolute attempt artifact directory, created eagerly. */
@@ -57,15 +71,17 @@ export function createAttemptArtifacts(options: {
 
   const sink: ArtifactSink = {
     dir,
-    register: (kind, relativePath) => {
+    register: (kind, relativePath, registration?: ArtifactRegistration) => {
       const id = `${options.attemptId}:artifact:${records.length}`;
       const absolute = path.join(dir, relativePath);
       const stepId = options.currentStepId?.();
+      const startedAt = registration?.startedAt;
       const record: ArtifactRecord = {
         id,
         kind,
         mediaType: mediaTypeFor(relativePath),
-        redaction: 'complete',
+        ...(startedAt === undefined ? {} : { startedAt }),
+        redaction: REDACTION_BY_KIND[kind],
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       };
       records.push(record);
@@ -104,6 +120,7 @@ export function createAttemptArtifacts(options: {
               testId: options.identity?.testId ?? '',
               attemptId: options.identity?.attemptId ?? options.attemptId,
               ...(stepId === undefined ? {} : { stepId }),
+              ...(startedAt === undefined ? {} : { startedAt }),
             });
             if (typeof ref === 'string' && ref !== '') record.ref = ref;
           } catch {
@@ -144,6 +161,7 @@ function mediaTypeFor(relativePath: string): string {
   if (relativePath.endsWith('.png')) return 'image/png';
   if (relativePath.endsWith('.zip')) return 'application/zip';
   if (relativePath.endsWith('.webm')) return 'video/webm';
+  if (relativePath.endsWith('.mp4')) return 'video/mp4';
   if (relativePath.endsWith('.txt')) return 'text/plain';
   return 'application/octet-stream';
 }

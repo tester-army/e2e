@@ -23,7 +23,7 @@ export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-reminders',
   tests: 'tests-reminders/**/*.e2e.ts',
-  targets: [{ name: 'ios-simulator', platform: 'ios', engine: device }],
+  targets: [{ name: 'ios-simulator', engine: device }],
   timeout: 900_000,
   actionTimeout: 90_000,
   workers: 1,

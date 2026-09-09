@@ -11,6 +11,7 @@
 
 import { isVisionMode } from '../config/agent.ts';
 import { TestError } from '../internal/errors.ts';
+import { rejectUnknownOptions } from '../internal/options.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
@@ -44,6 +45,10 @@ const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
 /** One judgment plus one repair round for a response that missed the grammar. */
 const ASSERT_MODEL_CALLS = 2;
+
+const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision'] as const;
+const EXTRACT_KEYS = ['schema', 'timeout', 'vision'] as const;
+const ASSERT_KEYS = ['timeout', 'screenshot', 'vision'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -106,7 +111,8 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     act: (instruction, options, ...legacy: readonly unknown[]) =>
       runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
-      const intervalMs = validateInterval(options?.intervalMs);
+      rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
+      const intervalMs = validateInterval(options?.interval);
       return step(
         {
           api: 'agent.waitFor',
@@ -140,14 +146,15 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     },
 
     extract(instruction, options) {
-      requireStandardSchema(options.schema);
+      rejectUnknownOptions('agent.extract', options, EXTRACT_KEYS);
+      requireStandardSchema(options?.schema);
       const schema = options.schema;
       return step(
         {
           api: 'agent.extract',
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, stepTimeout),
-          maxModelCalls: resolveBoundedBudget(options.maxModelCalls, EXTRACT_MODEL_CALLS, 'maxModelCalls'),
+          maxModelCalls: EXTRACT_MODEL_CALLS,
           vision: resolveVision(options.vision),
         },
         instruction,
@@ -190,6 +197,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     },
 
     assert(assertion, options) {
+      rejectUnknownOptions('agent.assert', options, ASSERT_KEYS);
       // A custom executor judges assertions through the socket: swapping
       // brains swaps all the thinking. The built-in path keeps the optimized
       // judgment tier below: one call, plus one repair round for a response
@@ -265,7 +273,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * screen actually changes, which is also what makes a condition that came true two
  * seconds ago cost two seconds rather than a full interval.
  *
- * `intervalMs` stays the rate limit it always was: at most one judgment per
+ * `interval` stays the rate limit it always was: at most one judgment per
  * interval, so a screen that changes continuously — a spinner, a countdown —
  * cannot spend the budget in a second.
  *
@@ -328,7 +336,7 @@ function validateInterval(intervalMs: number | undefined): number {
   if (!Number.isInteger(value) || value < 100 || value > 60_000) {
     throw new TestError(
       'INVALID_ARGUMENT',
-      `intervalMs must be an integer from 100 through 60000, got ${String(intervalMs)}`,
+      `interval must be an integer from 100 through 60000, got ${String(intervalMs)}`,
     );
   }
   return value;

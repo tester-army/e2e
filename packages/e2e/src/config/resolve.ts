@@ -13,11 +13,14 @@ import type {
   ArtifactsConfig,
   ArtifactStore,
   CacheMode,
+  ConfiguredArtifactKind,
   E2EConfig,
   ModelInstance,
   Platform,
   SecretProvider,
+  Target,
   TraceCacheStore,
+  VideoArtifactConfig,
 } from '../types.ts';
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import {
@@ -50,6 +53,16 @@ export interface ResolvedCredential {
   readonly allowedOrigins: readonly string[] | undefined;
 }
 
+/**
+ * How firmly the run asks for one artifact kind. The default set (screenshot
+ * and trace) is `best-effort`: an engine without evidence capture records
+ * none, and a recording that cannot be finalized is dropped quietly. A kind
+ * named in the config, or added by `--video`, is `required`: an engine that
+ * cannot produce it fails the run before any test starts, and a recording
+ * that cannot be finalized is a cleanup failure the report shows.
+ */
+type ArtifactPolicy = 'best-effort' | 'required';
+
 export interface ResolvedConfig {
   readonly specVersion: '0.1';
   readonly projectId: string;
@@ -65,11 +78,12 @@ export interface ResolvedConfig {
   readonly cleanupTimeout: number;
   readonly retries: number;
   readonly workers: number;
-  readonly artifacts: readonly ('trace' | 'screenshot')[];
-  /** True when artifact kinds were set in config, so an engine that cannot produce one is an error. */
-  readonly artifactsExplicit: boolean;
+  /** Every artifact kind the run captures, in config order, with how firmly it is asked for. */
+  readonly artifacts: ReadonlyMap<ConfiguredArtifactKind, ArtifactPolicy>;
   /** Host store every produced artifact is handed to; undefined keeps files local only. */
   readonly artifactStore: ArtifactStore | undefined;
+  /** Which attempts keep their video: every one, or only those that did not pass. */
+  readonly videoRetain: 'all' | 'on-failure';
   readonly reporters: readonly ('list' | 'json' | 'junit')[];
   readonly testIdAttribute: string;
   readonly agent: ResolvedAgentConfig;
@@ -103,6 +117,8 @@ export interface CliOverrides {
   reporters?: readonly ('list' | 'json' | 'junit')[];
   /** Trace cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
+  /** `--video`: adds the `video` artifact kind to whatever the config asks for. */
+  video?: boolean;
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -146,7 +162,7 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   baseUrl: APP_BELONGS_TO_ENGINE,
   webServer: 'the runner starts the app from the engine options: playwright({ url, command: { executable, args } })',
   use: 'browser and app options are engine options: engine: playwright({ ... })',
-  projects: 'one target per browser or device: targets: [{ name, platform, engine }]',
+  projects: 'one target per browser or device: targets: [{ engine }]',
 };
 
 /** Keys authors put on a target that belong to its engine. */
@@ -225,7 +241,7 @@ export function resolveConfig(
     boundedInt(raw.workers, 'workers', 1, 1024) ??
     (ci ? 1 : Math.max(1, Math.floor(os.availableParallelism() / 2)));
 
-  const { artifacts, artifactsExplicit, artifactStore } = resolveArtifactsConfig(raw);
+  const { artifacts, artifactStore, videoRetain } = resolveArtifactsConfig(raw, cli);
   const reporters = cli.reporters ?? raw.reporters ?? (['list'] as const);
   if (!Array.isArray(reporters)) {
     throw new ConfigurationError('INVALID_CONFIG', 'reporters must be an array of reporter ids');
@@ -271,8 +287,8 @@ export function resolveConfig(
     retries,
     workers,
     artifacts,
-    artifactsExplicit,
     artifactStore,
+    videoRetain,
     reporters,
     testIdAttribute,
     agent,
@@ -356,28 +372,38 @@ function resolveCacheConfig(
   };
 }
 
-const ARTIFACT_KINDS = ['screenshot', 'trace'] as const;
-const ARTIFACTS_KEYS = new Set(['kinds', 'store']);
+/** The default artifact set. `video` is opt-in and never part of it. */
+const DEFAULT_ARTIFACT_KINDS = ['screenshot', 'trace'] as const;
+const ARTIFACT_KINDS: readonly ConfiguredArtifactKind[] = ['screenshot', 'trace', 'video'];
+const ARTIFACTS_KEYS = new Set(['kinds', 'store', 'video']);
+const VIDEO_KEYS = new Set(['retain']);
+const VIDEO_RETAIN_VALUES = ['all', 'on-failure'] as const;
 
 /**
- * Resolves the `artifacts` key: a bare array of kinds, or `{ kinds, store }`
- * where `store` is the host seam every produced artifact is handed to
- *. Kinds default to screenshot and trace; a store is a
- * live value validated structurally, like `cache.store`.
+ * Resolves the `artifacts` key: a bare array of kinds, or `{ kinds, store,
+ * video }` where `store` is the host seam every produced artifact is handed
+ * to and `video` holds the recording options. Named kinds are required; the
+ * default set (screenshot and trace) is best-effort; `--video` adds video as
+ * a required kind on top of either. A store is a live value validated
+ * structurally, like `cache.store`.
  */
-function resolveArtifactsConfig(raw: E2EConfig): {
-  artifacts: readonly ('trace' | 'screenshot')[];
-  artifactsExplicit: boolean;
+function resolveArtifactsConfig(
+  raw: E2EConfig,
+  cli: CliOverrides,
+): {
+  artifacts: ReadonlyMap<ConfiguredArtifactKind, ArtifactPolicy>;
   artifactStore: ArtifactStore | undefined;
+  videoRetain: 'all' | 'on-failure';
 } {
   const value: unknown = raw.artifacts;
   let kinds: unknown = value;
   let store: ArtifactStore | undefined;
+  let video: unknown;
   if (value !== undefined && !Array.isArray(value)) {
     if (!isArtifactsObject(value)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        'artifacts must be an array of artifact kinds or { kinds, store }',
+        'artifacts must be an array of artifact kinds or { kinds, store, video }',
       );
     }
     for (const key of Object.keys(value)) {
@@ -390,6 +416,7 @@ function resolveArtifactsConfig(raw: E2EConfig): {
     }
     kinds = value.kinds;
     store = value.store;
+    video = value.video;
     if (store !== undefined && !isArtifactStore(store)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
@@ -397,8 +424,7 @@ function resolveArtifactsConfig(raw: E2EConfig): {
       );
     }
   }
-  const explicit = kinds !== undefined;
-  const resolved = (kinds ?? ARTIFACT_KINDS) as readonly unknown[];
+  const resolved = (kinds ?? DEFAULT_ARTIFACT_KINDS) as readonly unknown[];
   if (!Array.isArray(resolved)) {
     throw new ConfigurationError('INVALID_CONFIG', 'artifacts kinds must be an array of artifact kinds');
   }
@@ -407,11 +433,38 @@ function resolveArtifactsConfig(raw: E2EConfig): {
       throw new ConfigurationError('INVALID_CONFIG', `unknown artifact kind "${String(artifact)}"`);
     }
   }
-  return {
-    artifacts: resolved as readonly ('trace' | 'screenshot')[],
-    artifactsExplicit: explicit,
-    artifactStore: store,
-  };
+  // Video is never in the default set, so its presence is always a request,
+  // whether the config named it or `--video` added it. Copied, never pushed:
+  // `resolved` may be the default constant or the caller's own array.
+  const policy: ArtifactPolicy = kinds === undefined ? 'best-effort' : 'required';
+  const artifacts = new Map((resolved as readonly ConfiguredArtifactKind[]).map((kind) => [kind, policy] as const));
+  if (cli.video === true) artifacts.set('video', 'required');
+  return { artifacts, artifactStore: store, videoRetain: resolveVideoRetain(video) };
+}
+
+/** Validates the `artifacts.video` block; absent means every attempt keeps its recording. */
+function resolveVideoRetain(value: unknown): 'all' | 'on-failure' {
+  if (value === undefined) return 'all';
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'artifacts.video must be an object');
+  }
+  for (const key of Object.keys(value)) {
+    if (!VIDEO_KEYS.has(key)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown artifacts.video config key "${key}"${didYouMean(key, [...VIDEO_KEYS])}`,
+      );
+    }
+  }
+  const retain = (value as VideoArtifactConfig).retain;
+  if (retain === undefined) return 'all';
+  if (!(VIDEO_RETAIN_VALUES as readonly unknown[]).includes(retain)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `artifacts.video.retain must be one of ${VIDEO_RETAIN_VALUES.join(', ')}, got ${JSON.stringify(retain)}`,
+    );
+  }
+  return retain;
 }
 
 /** The `{ kinds, store }` form, as opposed to the bare kinds array. */
@@ -444,7 +497,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     throw new ConfigurationError(
       'INVALID_CONFIG',
       'targets is required: declare at least one target and the engine that drives it, ' +
-        'e.g. targets: [{ platform, engine }]',
+        'e.g. targets: [{ engine }]',
     );
   }
   if (!Array.isArray(raw.targets) || raw.targets.length === 0) {
@@ -462,14 +515,19 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
           : didYouMean(key, [...TARGET_KEYS]);
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `${where} has unknown key "${key}"; a target is { name?, platform, engine? }${hint}`,
+          `${where} has unknown key "${key}"; a target is { name?, platform?, engine? }${hint}`,
         );
       }
     }
-    if (typeof target.platform !== 'string' || target.platform.trim() === '') {
-      throw new ConfigurationError('INVALID_CONFIG', `${where} requires a non-empty platform`);
+    if (target.engine !== undefined && !isEngineHandle(target.engine)) {
+      const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${where} engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
+      );
     }
-    const name = target.name === undefined ? target.platform : target.name;
+    const platform = resolvePlatform(target, where);
+    const name = target.name === undefined ? platform : target.name;
     if (typeof name !== 'string' || !TARGET_NAME_PATTERN.test(name)) {
       const source = target.name === undefined ? ' (defaulted from the platform)' : '';
       throw new ConfigurationError(
@@ -486,21 +544,44 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     }
     seen.add(name);
     if (target.name === undefined) defaulted.add(name);
-    if (target.engine !== undefined && !isEngineHandle(target.engine)) {
-      const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `target "${name}" engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
-      );
-    }
     return {
       name,
       index,
-      platform: target.platform,
+      platform,
       engine: target.engine,
       app: resolveTargetApp(name, target.engine, projectRoot),
     };
   });
+}
+
+/**
+ * The target's platform: its own label, else the engine's declaration. Tool
+ * packs are offered by the engine's platform while tests filter by the
+ * target's, so a target that names one while its engine declares another is a
+ * mistake, not an override.
+ */
+function resolvePlatform(target: Target, where: string): Platform {
+  const declared = target.platform;
+  if (declared !== undefined && (typeof declared !== 'string' || declared.trim() === '')) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} platform must be a non-empty string`);
+  }
+  const inherited = target.engine?.platform;
+  if (declared !== undefined && inherited !== undefined && declared !== inherited) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} declares platform "${declared}" but its engine ${target.engine?.name} drives "${inherited}"; drop the target's platform or make them agree`,
+    );
+  }
+  const platform = declared ?? inherited;
+  if (platform === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} needs a platform: ${
+        target.engine === undefined ? 'it has no engine to inherit one from' : `engine ${target.engine.name} declares none`
+      }; set platform on the target`,
+    );
+  }
+  return platform;
 }
 
 function normalizeTests(tests: E2EConfig['tests']): readonly string[] {
@@ -599,9 +680,12 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   };
   // An artifact store is a live value: only the kinds are configuration, so
   // the array and object forms digest identically and a host store never
-  // enters the digest.
-  if (isArtifactsObject(raw.artifacts)) {
-    sanitized['artifacts'] = raw.artifacts.kinds ?? [...ARTIFACT_KINDS];
+  // enters the digest. Nor does video: recording a run must never invalidate
+  // the traces it would otherwise replay, so the digest reads the same kinds
+  // with or without it and ignores the `video` options block.
+  if (raw.artifacts !== undefined) {
+    const kinds = isArtifactsObject(raw.artifacts) ? raw.artifacts.kinds : raw.artifacts;
+    sanitized['artifacts'] = (kinds ?? [...DEFAULT_ARTIFACT_KINDS]).filter((kind) => kind !== 'video');
   }
   if (raw.credentials !== undefined) {
     sanitized['credentials'] = Object.fromEntries(
@@ -620,8 +704,10 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   if (raw.targets !== undefined) {
     sanitized['targets'] = raw.targets.map((target) => {
       // An engine handle holds live functions; its digest identity is the
-      // declaration - name, version, contract version, capability set, and
-      // what it declares about the app under test.
+      // declaration - name, version, contract version, the platform it
+      // drives (a named target inherits it, so two workers whose engines
+      // declare different platforms must not agree on the digest), capability
+      // set, and what it declares about the app under test.
       if (isEngineHandle(target.engine)) {
         const { engine, ...rest } = target;
         return {
@@ -630,6 +716,7 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
             name: engine.name,
             ...(engine.version === undefined ? {} : { version: engine.version }),
             spiVersion: engine.spiVersion,
+            ...(engine.platform === undefined ? {} : { platform: engine.platform }),
             ...(engine.workers === undefined ? {} : { workers: engine.workers }),
             capabilities: [...engine.capabilities].toSorted(),
             app: digestAppDeclaration(engine.app ?? {}),

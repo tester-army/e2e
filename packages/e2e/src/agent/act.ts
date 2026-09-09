@@ -57,6 +57,7 @@ import {
   settleObservation,
   type AgentObservation,
 } from './observation.ts';
+import { observationByteBudget } from './observation-budget.ts';
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
@@ -425,6 +426,7 @@ class ActDispatch {
       redact: this.redact,
       testIdAttribute: this.runtime.config.testIdAttribute,
       currentPath: (nodes) => this.currentPath(nodes !== undefined && nodes === this.latest?.nodes ? this.latest : undefined),
+      replaying: (active) => this.runtime.steps.replaying(active),
     };
   }
 
@@ -807,9 +809,26 @@ class ActDispatch {
     });
     return prepareObservation(raw, {
       redact: this.runtime.redact,
-      maxBytes: this.runtime.config.agent.maxObservationBytes,
+      maxBytes: this.observationByteBudget(pixels),
       testIdAttribute: this.runtime.config.testIdAttribute,
     });
+  }
+
+  /**
+   * Bytes one act observation may contribute to a model turn, clamped like a
+   * judgment's. The loop's history grows past what any one observation costs,
+   * so the fixed part counted here is what every turn resends: the project
+   * context and the prior-step ledger.
+   */
+  private observationByteBudget(pixels: boolean): number {
+    const { config } = this.runtime;
+    return observationByteBudget(
+      {
+        maxObservationBytes: config.agent.maxObservationBytes,
+        maxModelTokensPerCall: config.limits.maxModelTokensPerCall,
+      },
+      { fixedBytes: this.metrics.contextBytes + this.metrics.ledgerBytes, pixels },
+    );
   }
 
   /** Resolves an executor target against the newest observation. */

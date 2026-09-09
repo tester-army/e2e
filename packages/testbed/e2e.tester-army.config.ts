@@ -19,7 +19,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'https://tester.army',
         allowedOrigins: ['https://tester.army', 'https://www.tester.army', 'https://auth.tester.army'],

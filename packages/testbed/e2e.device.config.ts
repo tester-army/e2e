@@ -33,8 +33,8 @@ export default {
   projectId: 'dev.e2e.testbed-device',
   tests: 'tests-device/**/*.e2e.ts',
   targets: [
-    { name: 'ios-simulator', platform: 'ios', engine: ios },
-    { name: 'android-emulator', platform: 'android', engine: android },
+    { name: 'ios-simulator', engine: ios },
+    { name: 'android-emulator', engine: android },
   ],
   timeout: 300_000,
   actionTimeout: 90_000,

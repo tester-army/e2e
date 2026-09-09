@@ -20,7 +20,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({ url: 'https://seleniumbase.io', allowedOrigins: ['https://seleniumbase.io'] }),
     },
   ],

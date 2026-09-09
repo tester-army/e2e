@@ -118,8 +118,12 @@ const AGENT_KEYS = new Set([
 
 const MODEL_KEYS = new Set(['provider', 'id', 'endpoint', 'apiKeyEnv']);
 
-/** Default observation byte budget, shared with the report's pre-config fallback limits. */
-export const DEFAULT_OBSERVATION_BYTES = 1_048_576;
+/**
+ * Default observation byte budget, shared with the report's pre-config fallback
+ * limits. A quarter mebibyte of tree is already tens of thousands of tokens on
+ * every act turn; the per-call token ceiling clamps a dense screen below it.
+ */
+export const DEFAULT_OBSERVATION_BYTES = 262_144;
 
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

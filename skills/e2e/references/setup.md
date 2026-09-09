@@ -62,7 +62,6 @@ export default {
   tests: 'tests/**/*.e2e.ts',
   targets: [
     {
-      platform: 'web', // also the target name, unless name is set
       engine: playwright({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
@@ -91,7 +90,7 @@ export default {
 | `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. A model passed to `createAgent({ model })` is the one model for `act` and the judgments, over `E2E_MODEL`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
-| `artifacts` | `['screenshot', 'trace']` | Kinds to keep, or `{ kinds, store }`. |
+| `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
 | `projectId` | the package name | Report and cache identity. |
 
 ## The app under test
@@ -118,8 +117,8 @@ Two browsers are two targets sharing one app declaration:
 const app = { url: 'http://127.0.0.1:3000' };
 export default {
   targets: [
-    { name: 'chromium', platform: 'web', engine: playwright(app) },
-    { name: 'mobile-webkit', platform: 'web', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'chromium', engine: playwright(app) },
+    { name: 'mobile-webkit', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
   ],
 } satisfies E2EConfig;
 ```
@@ -208,7 +207,7 @@ import { agentDeviceTools } from '@e2edev/agent-device/tools';
 const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
 
 export default {
-  targets: [{ platform: 'ios', engine: iphone }],
+  targets: [{ engine: iphone }],
   workers: 1,
   agent: createAgent({ tools: agentDeviceTools(iphone) }),
 } satisfies E2EConfig;

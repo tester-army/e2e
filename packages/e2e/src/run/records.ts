@@ -17,7 +17,20 @@ export interface ArtifactRecord {
   sha256?: string;
   /** The configured `ArtifactStore`'s reference for this artifact, when one accepted it. */
   ref?: string;
-  /** Mirrors report-1; `complete` is the only value the runner writes today. */
+  /**
+   * When a time-based artifact began recording: a video segment's first frame
+   * is at or just after this instant, so `step.startedAt - artifact.startedAt`
+   * is the step's offset into it.
+   */
+  startedAt?: string;
+  /**
+   * Mirrors report-1: how much of the file the runner masked. Screenshots and
+   * traces are `complete`; a video is `incomplete`, since a recording masks
+   * nothing (a secure field renders its own dots, but anything else the
+   * screen showed is in the frames), and is kept as it is. report-1 also
+   * admits an `incomplete` artifact without a `path`, one its producer
+   * withheld; this runner never writes one.
+   */
   redaction: 'complete' | 'not-required' | 'incomplete';
   producer: ArtifactProducer;
 }

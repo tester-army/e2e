@@ -48,7 +48,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: APP_URL,
         command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4310' } },

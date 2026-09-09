@@ -61,6 +61,9 @@ describe('defineEngine', () => {
       defineEngine(observingEngine({ artifacts: { screenshot: async () => 'x', video: 1 } as never })),
     ).toThrow(/artifacts has unknown key "video"/);
     expect(() =>
+      defineEngine(observingEngine({ artifacts: { screenshot: async () => 'x', startVideo: async () => undefined } })),
+    ).toThrow(/artifacts.startVideo and stopVideo must be declared together/);
+    expect(() =>
       defineEngine(observingEngine({ state: { capture: async () => ({}) } as never })),
     ).toThrow(/state.restore must be a function/);
     // An array has no unknown keys, so it must be refused by shape, not by key.
@@ -253,6 +256,12 @@ describe('createEngineSession pixels-only observation', () => {
 describe('engine targets in config', () => {
   const ROOT = '/tmp/e2e-engine-config';
 
+  it('rejects an empty platform declaration', () => {
+    expect(() => defineEngine({ name: 'x', version: '1', spiVersion: 1, platform: ' ' })).toThrow(
+      'platform must be a non-empty string when declared',
+    );
+  });
+
   it('resolves an engine target on any platform without an app url', () => {
     const engine = defineEngine(observingEngine());
     const config = resolveConfig(
@@ -274,13 +283,12 @@ describe('engine targets in config', () => {
     ).toThrow(/defineEngine/);
   });
 
-  it('rejects the retired video artifact kind', () => {
-    expect(() =>
-      resolveConfig(
-        { targets: [{ name: 'ios', platform: 'ios' }], artifacts: ['video'] as never },
-        { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
-      ),
-    ).toThrow(/unknown artifact kind "video"/);
+  it('accepts the video artifact kind on a target without an engine; the runner grades it later', () => {
+    const config = resolveConfig(
+      { targets: [{ name: 'ios', platform: 'ios' }], artifacts: ['video'] },
+      { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
+    );
+    expect([...config.artifacts]).toEqual([['video', 'required']]);
   });
 
   it('accepts agent options alongside an executor', () => {

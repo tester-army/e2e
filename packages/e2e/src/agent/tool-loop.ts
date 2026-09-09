@@ -16,7 +16,7 @@ import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
 import { withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
-import { credentialHint } from './model/sdk.ts';
+import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -147,6 +147,8 @@ class LoopRun {
   private noticedGuardReason: string | undefined;
   private noticedLowClock = false;
   private readonly transcript: string[] = [];
+  /** Model turns that ran; the transcript array mirrors it but is debug-only. */
+  private turnsUsed = 0;
   private readonly maxTurns: number;
   /** Remaining step time under which the loop forces a verdict. */
   private readonly clockWindDownMs: number;
@@ -182,6 +184,7 @@ class LoopRun {
       tools,
       toolChoice: 'required',
       ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
+      maxRetries: TRANSPORT_RETRIES,
       stopWhen: [
         () => this.conclusion.concluded() || this.hardStop !== undefined,
         this.ai.stepCountIs(this.maxTurns),
@@ -198,6 +201,9 @@ class LoopRun {
       await loop.generate({
         prompt,
         abortSignal: this.context.signal,
+        // The whole loop, retries included, ends with the step's clock; the
+        // judgment adapter bounds its calls the same way.
+        timeout: Math.max(1, this.context.budgets.remainingMs()),
         onStepStart: tracker.onStepStart,
         onStepEnd: (step) => {
           this.recordTurn(step);
@@ -211,6 +217,9 @@ class LoopRun {
       }
       if (this.hardStop !== undefined) throw this.hardStop;
       if (isAgentError(cause)) throw cause;
+      if (isAbort(cause)) {
+        throw new AgentError('STEP_TIMEOUT', 'model call exceeded the remaining step timeout', { cause });
+      }
       throw new AgentError(
         'MODEL_PROVIDER_FAILED',
         withHint(
@@ -229,7 +238,7 @@ class LoopRun {
     }
     return {
       status: 'failed',
-      summary: `the agent used ${this.maxTurns} turn(s) without calling complete_step`,
+      summary: `the agent used ${this.turnsUsed} of ${this.maxTurns} turn(s) without calling complete_step`,
       errorCode: 'STEP_NO_CONCLUSION',
     };
   }
@@ -363,7 +372,8 @@ class LoopRun {
 
   /** Serializes one turn into the step transcript. */
   private recordTurn(step: StepResult<ToolSet>): void {
-    const turn = this.transcript.length + 1;
+    this.turnsUsed += 1;
+    const turn = this.turnsUsed;
     const lines: string[] = [`--- turn ${turn} ---`];
     if (step.text.trim() !== '') lines.push(`assistant: ${truncate(step.text, 1_000)}`);
     for (const call of step.toolCalls) {

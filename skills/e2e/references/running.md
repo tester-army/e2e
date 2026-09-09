@@ -27,6 +27,7 @@ npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: sta
 | `--pass-with-no-tests` | Exit 0 when nothing matches instead of `NO_TESTS`. |
 | `--debug` | Phase timings and an agent step table on stderr; step transcripts saved as artifacts. |
 | `--ai-trace` | Record every model call to `.e2e/ai-trace.json`. |
+| `--video` | Record every attempt (WebM on a browser engine, MP4 on a device engine) under its artifact directory; the failure recap names the file. Fails with `UNSUPPORTED_ARTIFACT` when the engine cannot record. |
 
 ```bash
 npx --no-install e2e run tests/signup.e2e.ts
@@ -77,9 +78,9 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.
 - `json`: the report document on stdout.
-- Artifacts (screenshots, Playwright traces, `--debug` transcripts,
-  downloads) live under `.e2e/artifacts/`; every path is recorded in the
-  report.
+- Artifacts (screenshots, Playwright traces, `--video` recordings, `--debug`
+  transcripts, downloads) live under `.e2e/artifacts/`; every path is
+  recorded in the report.
 
 ## Exit codes
 

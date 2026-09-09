@@ -10,9 +10,11 @@
  * model-facing vocabulary is an agent-side `defineTool`; a target with no
  * engine at all is valid and simply runs everything opaque.
  *
- * Core knows this contract and never an engine's internals: no platform noun
- * appears here. A document engine, a simulator engine, and a desktop engine
- * fill in the same members with different bodies.
+ * Core knows this contract and never an engine's internals. The one platform
+ * noun here is `platform`, the label an engine declares it drives and its
+ * target inherits; no member's shape depends on it. A document engine, a
+ * simulator engine, and a desktop engine fill in the same members with
+ * different bodies.
  *
  * `defineEngine` is the loud manifest: capability detection happens here,
  * synchronously, at config load - a malformed engine fails the run instead
@@ -41,6 +43,7 @@ import type {
   Expectable,
   Locator,
   Momentum,
+  Platform,
   Screen,
   ScrollDirection,
   ServiceConfig,
@@ -282,6 +285,28 @@ export interface EngineArtifacts {
   startTrace?(context: OperationContext): Promise<void>;
   /** Stops the trace and returns its relative path. */
   stopTrace?(context: OperationContext): Promise<string>;
+  /**
+   * Starts recording the surface for the attempt. Declared together with
+   * `stopVideo`. A surface that has nothing to show yet (no page open) may
+   * defer the actual capture to the moment it does; the segments returned by
+   * `stopVideo` say when each one began.
+   */
+  startVideo?(context: OperationContext): Promise<void>;
+  /**
+   * Stops recording and returns every segment written, in order. One segment
+   * is the common case; a surface whose recording is bound to a page returns
+   * one per page the attempt showed (a restart or a state reset opens a new
+   * one). An attempt that never showed anything returns none.
+   */
+  stopVideo?(context: OperationContext): Promise<readonly VideoSegment[]>;
+}
+
+/** One recorded video file of an attempt. */
+export interface VideoSegment {
+  /** Path relative to the attempt artifact directory. */
+  readonly path: string;
+  /** When the segment started recording, as an ISO timestamp; its first frame is at or just after it. */
+  readonly startedAt: string;
 }
 
 /**
@@ -432,6 +457,12 @@ export interface Engine {
    */
   readonly spiVersion: EngineSpiVersion;
   /**
+   * Platform this engine drives (`web`, `ios`, `android`, or a label of the
+   * engine's own). A target inherits it; a target that names a platform of
+   * its own must agree with it.
+   */
+  readonly platform?: Platform;
+  /**
    * The most workers this engine can serve at once for one target: one per
    * surface it drives concurrently (a device pool's size; 1 for a single
    * simulator). The scheduler never runs more workers for the target, whatever
@@ -535,6 +566,7 @@ const KNOWN_KEYS = [
   'name',
   'version',
   'spiVersion',
+  'platform',
   'workers',
   'observe',
   'locate',
@@ -555,7 +587,7 @@ const KNOWN_KEYS = [
 /** Keys of the nested manifests, closed like the top level. */
 const NESTED_KEYS = {
   state: ['capture', 'restore'],
-  artifacts: ['screenshot', 'startTrace', 'stopTrace'],
+  artifacts: ['screenshot', 'startTrace', 'stopTrace', 'startVideo', 'stopVideo'],
   app: ['navigate', 'back', 'restart', 'clearState'],
 } as const;
 
@@ -666,6 +698,9 @@ export function defineEngine(spec: Engine): EngineHandle {
       `declares spiVersion ${String(spec.spiVersion)}; this runner supports ${ENGINE_SPI_VERSION}`,
     );
   }
+  if (spec.platform !== undefined && (typeof spec.platform !== 'string' || spec.platform.trim() === '')) {
+    throw invalid(name, 'platform must be a non-empty string when declared');
+  }
   // A literal's unknown key is a misspelling or a misplaced tool; a class
   // instance's own fields are its state, so only literals are checked.
   if (Object.getPrototypeOf(spec) === Object.prototype) {
@@ -707,6 +742,7 @@ export function defineEngine(spec: Engine): EngineHandle {
     name,
     version: spec.version,
     spiVersion: spec.spiVersion,
+    platform: spec.platform,
     workers: spec.workers,
   });
   for (const member of FUNCTION_MEMBERS) {
@@ -748,6 +784,9 @@ export function defineEngine(spec: Engine): EngineHandle {
     const artifacts = nestedManifest(name, 'artifacts', spec.artifacts, ['screenshot']);
     if ((artifacts['startTrace'] === undefined) !== (artifacts['stopTrace'] === undefined)) {
       throw invalid(name, 'artifacts.startTrace and stopTrace must be declared together');
+    }
+    if ((artifacts['startVideo'] === undefined) !== (artifacts['stopVideo'] === undefined)) {
+      throw invalid(name, 'artifacts.startVideo and stopVideo must be declared together');
     }
     handle['artifacts'] = artifacts;
     capabilities.add('artifacts');

@@ -56,6 +56,7 @@ function makeHost(
     redact: (text) => text,
     testIdAttribute: 'data-testid',
     currentPath: async () => paths.shift(),
+    replaying: () => undefined,
   };
 }
 
@@ -394,6 +395,45 @@ describe('StepTraceSession', () => {
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', verdict?.summary);
     expect(context.staged[0]?.trace.summary).toBe('opened the customers page');
+  });
+
+  it('takes the step for the live progress on a hit, before the start-path probe, and hands it over only when the model must finish it', async () => {
+    const log: string[] = [];
+    const paths: (string | undefined)[] = [];
+    const host: StepCacheHost = {
+      ...makeHost([]),
+      currentPath: async () => {
+        log.push('path');
+        return paths.shift();
+      },
+      replaying: (active) => log.push(active ? 'cache' : 'model'),
+    };
+    const begin = async (context: AgentCacheContext, ...nextPaths: string[]) => {
+      log.length = 0;
+      paths.push(...nextPaths);
+      const session = makeSession(context, host);
+      const verdict = await session.begin();
+      return { session, verdict };
+    };
+
+    // A replay that finishes the step keeps it: the step ends as the cache's.
+    const finished = await begin(entryContext({ endPath: '/customers' }), '/pricing', '/customers');
+    expect(finished.verdict?.status).toBe('passed');
+    expect(log).toEqual(['cache', 'path', 'path']);
+
+    // A hit the decision refuses hands over without replaying.
+    const refused = await begin(entryContext({ truncated: true }), '/pricing');
+    expect(refused.session.cacheInfo).toMatchObject({ mode: 'missed', reason: 'truncated' });
+    expect(log).toEqual(['cache', 'path', 'model']);
+
+    // A replay that diverges hands over after its actions ran.
+    const diverged = await begin(entryContext({ endPath: '/customers' }), '/pricing', '/moved-away');
+    expect(diverged.session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(log).toEqual(['cache', 'path', 'path', 'model']);
+
+    // A miss from the store never takes it.
+    await begin(noEntry, '/pricing');
+    expect(log).toEqual(['path']);
   });
 });
 

@@ -5,6 +5,24 @@
     "status": "passed",
     "exitCode": 4,
     "targets": [],
-    "results": []
+    "results": [
+      {
+        "attempts": [
+          {
+            "artifacts": [
+              {
+                "id": "no-file",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

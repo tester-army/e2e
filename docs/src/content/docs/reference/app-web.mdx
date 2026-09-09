@@ -152,7 +152,8 @@ value must be `JsonValue`; anything else, including a non-finite number, throws
 
 Exceptions thrown by the evaluated code, including rejected promises, fail the
 test with `EVALUATE_FAILED` and preserve the exception's message. Invalid source
-syntax is also a test failure. Playwright timeouts remain `OPERATION_TIMEOUT`;
+syntax is also a test failure. A Playwright timeout is the engine's
+`OPERATION_TIMEOUT`, reported to the test as `ACTION_FAILED`;
 page or browser closure, crashes, protocol failures, and lost execution contexts
 remain infrastructure failures (`ENGINE_FAILURE`). The classification does not
 depend on the text of a page exception.

@@ -33,7 +33,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://127.0.0.1:4272',
         command: { executable: 'node', args: ['app/server.mjs'], env: { PORT: '4272' } },

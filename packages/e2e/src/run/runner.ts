@@ -41,6 +41,7 @@ import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
 import type { E2EConfig } from '../types.ts';
+import type { ResolvedModel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
 
 export interface RunOptions {
@@ -63,13 +64,21 @@ export interface RunOptions {
   /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
-   * A config value instead of a discovered file — the embedding-host entry
-   * point (see the embedding guide). May hold live values (executors, driver
-   * handles, model instances, cache stores, secret providers), which cannot
-   * cross a process boundary, so the run executes in-process on one worker.
+   * Records a video of every attempt (`--video`), on top of the configured
+   * artifact kinds. The engine must be able to record; one that cannot fails
+   * the run with `UNSUPPORTED_ARTIFACT` before any test starts.
+   */
+  video?: boolean | undefined;
+  /**
+   * A config value instead of a discovered file, for the test harness. May
+   * hold live values (executors, engine handles, model instances, cache
+   * stores, secret providers), which cannot cross a process boundary, so the
+   * run executes in-process on one worker.
    */
   rawConfig?: E2EConfig | undefined;
+  /** The environment the run resolves against, instead of `process.env`. */
   env?: NodeJS.ProcessEnv | undefined;
+  /** Suppresses the list reporter. */
   quiet?: boolean | undefined;
   /** Cancellation: the running test ends, its teardown runs, the run finishes as `interrupted`. */
   interruptSignal?: AbortSignal | undefined;
@@ -80,7 +89,7 @@ export interface RunOptions {
    * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
    */
   forceSignal?: AbortSignal | undefined;
-  /** Structured, JSON-serializable run events for embedding hosts. */
+  /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
 }
 
@@ -190,6 +199,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.workers !== undefined) cli.workers = options.workers;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
+  if (options.video === true) cli.video = true;
 
   // Config resolves before anything is emitted, and its failure is kept rather
   // than thrown: the reporter set is config truth (CLI overrides merge during
@@ -201,9 +211,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     (cause: unknown) => ({ config: undefined, error: classifyError(cause) }),
   );
 
-  // The event stream is the run's single spine: the list reporter is just one
-  // sink on it, beside the host's, so the CLI and a host can never see
-  // different stories.
+  // The event stream is the run's single spine: the list reporter is one sink
+  // on it, beside any other, so every consumer sees the same story.
   const reporters = loaded.config?.reporters ?? options.reporters ?? ['list'];
   const emit = createRunEventEmitter([
     options.quiet === true || !reporters.includes('list') ? undefined : new ListReporter().handle,
@@ -404,11 +413,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     runId,
     projectId: config.projectId,
     projectRoot: config.projectRoot,
+    artifactsRoot: resolveArtifactsRoot(config, options.artifactsDir),
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
-    ...(config.agent.model === undefined
-      ? {}
-      : { model: `${config.agent.model.provider}/${config.agent.model.id}` }),
+    ...(config.agent.model === undefined ? {} : { model: modelName(config.agent.model) }),
+    ...(config.agent.visionModel === undefined ? {} : { visionModel: modelName(config.agent.visionModel) }),
   });
 
   const executeRun = async (): Promise<void> => {
@@ -480,7 +489,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // how many worker slots to provision and the scheduler what to dispatch.
     const plans = buildWorkPlans(selection, collection, config.projectRoot);
     // Workers re-load the config module themselves, so a file-backed config
-    // runs across processes. A programmatic `rawConfig` cannot cross a process
+    // runs across processes. A supplied `rawConfig` cannot cross a process
     // boundary (it may hold live engine handles), so it runs in-process
     // against one worker.
     const runWorkers = config.configPath === undefined ? 1 : config.workers;
@@ -703,6 +712,11 @@ async function prepareEngines(
   }
 }
 
+/** A configured model as `run-started` and the reporter name it. */
+function modelName(model: ResolvedModel): string {
+  return `${model.provider}/${model.id}`;
+}
+
 function selectionFilters(options: ListOptions): SelectionFilters {
   return {
     ...(options.tags !== undefined ? { tags: options.tags } : {}),
@@ -766,10 +780,10 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
  */
 function validateEngine(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
   const provenance = describeTarget(target);
-  // The default artifact set is best-effort: an engine without evidence
-  // capture simply records none. Asking for one explicitly is a contract.
-  for (const artifact of config.artifactsExplicit ? config.artifacts : []) {
-    if (!provenance.artifactCapabilities.includes(artifact)) {
+  // A best-effort kind is captured when the engine can; a required one is a
+  // contract the engine must be able to honour before any test starts.
+  for (const [artifact, policy] of config.artifacts) {
+    if (policy === 'required' && !provenance.artifactCapabilities.includes(artifact)) {
       throw new ConfigurationError(
         'UNSUPPORTED_ARTIFACT',
         `target "${target.name}" (engine ${provenance.engine.name}) does not support the configured "${artifact}" artifact`,

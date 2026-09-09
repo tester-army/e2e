@@ -38,7 +38,6 @@ import {
 } from './phases.ts';
 import { projectPriorSteps, serializeLedger, type LedgerContext } from './ledger.ts';
 import {
-  imageTokenUpperBound,
   ModelOutputInvalidError,
   tokenUpperBound,
   type ModelAdapter,
@@ -46,6 +45,7 @@ import {
 } from './model/adapter.ts';
 import type { ModelRouter } from './model/router.ts';
 import { pixelsForModel, prepareObservation, type AgentObservation } from './observation.ts';
+import { observationByteBudget } from './observation-budget.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
 
@@ -109,29 +109,6 @@ export interface InvocationOptions {
  * hidden reasoning before the answer, so the cap has to leave room for both.
  */
 const MAX_OUTPUT_TOKENS = 8192;
-
-/**
- * Headroom reserved for the method instruction and parameters, in the
- * byte-scaled units `tokenUpperBound` works in.
- */
-const INSTRUCTION_RESERVE = 4_096;
-
-/**
- * Headroom reserved for one attached screenshot on a vision call, in the same
- * units.
- *
- * The exact cost is only known once the observation reports its viewport, which
- * is after the observation budget has to be fixed, so this reserves for the
- * largest viewport worth planning for. It is derived through the same function
- * the adapter bills with, rather than guessed, so the two cannot drift: a
- * hard-coded 4,096 was already short of a 1440p capture at 4,784.
- *
- * Reserving too much only costs observation bytes when the per-call token ceiling
- * binds, and there a truncated tree the model can see is better than the
- * adapter's pre-flight rejecting the call outright. A viewport beyond this is
- * still safe for that reason: the pre-flight computes the real figure.
- */
-const PIXEL_RESERVE = imageTokenUpperBound({ width: 2_560, height: 1_440 });
 
 /** Model-call accounting plus observation/ledger metrics for one invocation. */
 export class Invocation {
@@ -297,27 +274,20 @@ export class Invocation {
     );
   }
 
-  /**
-   * Bytes one observation may contribute to a request.
-   *
-   * `agent.maxObservationBytes` is the configured ceiling, but the per-call
-   * token limit binds first on a large screen. Deriving the budget from what the
-   * rest of the request actually costs makes a big screen truncate visibly rather
-   * than fail the adapter's pre-flight check.
-   */
+  /** Bytes one observation may contribute to a request; see `observationByteBudget`. */
   private observationByteBudget(): number {
     const { config } = this.runtime;
     // Nothing of the tree reaches the request, so the per-call token ceiling
     // does not bind it. The configured ceiling still bounds the walk, and a
     // fuller node map means a better hit-test for the point that comes back.
     if (this.treeWithheld) return config.agent.maxObservationBytes;
-    const overhead =
-      this.systemBytes +
-      this.ledger.bytes +
-      INSTRUCTION_RESERVE +
-      (this.pixelTier ? PIXEL_RESERVE : 0);
-    const withinTokenCeiling = Math.max(1_024, config.limits.maxModelTokensPerCall - overhead);
-    return Math.min(config.agent.maxObservationBytes, withinTokenCeiling);
+    return observationByteBudget(
+      {
+        maxObservationBytes: config.agent.maxObservationBytes,
+        maxModelTokensPerCall: config.limits.maxModelTokensPerCall,
+      },
+      { fixedBytes: this.systemBytes + this.ledger.bytes, pixels: this.pixelTier },
+    );
   }
 
   /**

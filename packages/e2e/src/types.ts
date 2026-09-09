@@ -142,6 +142,31 @@ export interface VisionOption {
   vision?: VisionMode;
 }
 
+/** `assert` options: one judgment plus one repair round, within `timeout`. */
+export interface AssertOptions extends VisionOption {
+  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  timeout?: number;
+  /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
+  screenshot?: boolean;
+}
+
+/** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
+export interface WaitForOptions extends VisionOption {
+  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  timeout?: number;
+  /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
+  interval?: number;
+  /** Judgment budget; defaults to `agent.maxModelCalls` and can only lower it. */
+  maxModelCalls?: number;
+}
+
+/** `extract` options: one extraction plus one repair round, validated against `schema`. */
+export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption {
+  schema: Schema;
+  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  timeout?: number;
+}
+
 /**
  * One `act` call: the values the instruction refers to and the step's
  * budgets. Structured output and vision are judgment-tier options:
@@ -201,23 +226,14 @@ export interface Agent {
   /** Plans and executes a bounded multi-action flow; resolves with what the step did. */
   act(instruction: string, options?: ActOptions): Promise<ActResult>;
   /** Polls a natural-language condition until true or timed out. */
-  waitFor(
-    condition: string,
-    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
-  ): Promise<void>;
+  waitFor(condition: string, options?: WaitForOptions): Promise<void>;
   /** Extracts and validates structured screen data. */
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: ExtractOptions<Schema>,
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
-  /** Judges a natural-language assertion against fresh observations. */
-  assert(
-    assertion: string,
-    options?: VisionOption & {
-      timeout?: number;
-      screenshot?: boolean;
-    },
-  ): Promise<void>;
+  /** Judges a natural-language assertion against a fresh observation. */
+  assert(assertion: string, options?: AssertOptions): Promise<void>;
 }
 
 export type Role =
@@ -282,6 +298,11 @@ export interface ActionOptions {
   timeout?: number;
 }
 
+/** `longPress` options: the hold time in milliseconds, 100 through 10000, default 500. */
+export interface LongPressOptions extends ActionOptions {
+  duration?: number;
+}
+
 export interface SwipeOptions {
   direction: ScrollDirection;
   momentum?: Momentum;
@@ -324,7 +345,7 @@ export interface Locator extends Screen {
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
-  longPress(options?: ActionOptions & { durationMs?: number }): Promise<void>;
+  longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */
   fill(value: string | Secret, options?: ActionOptions): Promise<void>;
   /** Clears exactly one input. */
@@ -607,7 +628,11 @@ export interface ServiceConfig extends CommandConfig {
 export interface Target {
   /** Label in reports and for `--target`; defaults to the platform. */
   name?: string;
-  platform: Platform;
+  /**
+   * Platform label, inherited from the engine when omitted. Required for a
+   * target without an engine; when both name one, they must agree.
+   */
+  platform?: Platform;
   engine?: EngineHandle;
 }
 
@@ -670,6 +695,11 @@ export interface StoredArtifact {
   readonly attemptId: string;
   /** The step that produced it, when one was running. */
   readonly stepId?: string;
+  /**
+   * When a time-based artifact began recording (a video segment), so a host
+   * can align step timestamps with it without reading the report.
+   */
+  readonly startedAt?: string;
 }
 
 /**
@@ -686,12 +716,32 @@ export interface ArtifactStore {
   put(artifact: StoredArtifact): Promise<{ readonly ref: string }>;
 }
 
+/**
+ * Artifact kinds a config may ask for. `video` is never in the default set:
+ * asking for it, in the config or with `--video`, is always a contract, and
+ * it never enters the config digest, so recording a run cannot invalidate
+ * its cached traces.
+ */
+export type ConfiguredArtifactKind = 'trace' | 'screenshot' | 'video';
+
+/** Options of the `video` artifact. */
+export interface VideoArtifactConfig {
+  /**
+   * Which attempts keep their recording: every attempt (`all`, the default),
+   * or only the ones that did not pass (`on-failure`), so a CI run records
+   * everything and keeps only what needs watching.
+   */
+  retain?: 'all' | 'on-failure';
+}
+
 /** Artifact configuration: which kinds to capture, and where they go. */
 export interface ArtifactsConfig {
   /** Kinds to capture; defaults to screenshot and trace. */
-  kinds?: readonly ('trace' | 'screenshot')[];
+  kinds?: readonly ConfiguredArtifactKind[];
   /** Host store every produced artifact is handed to; undefined keeps files local only. */
   store?: ArtifactStore;
+  /** Options of the `video` kind; ignored unless `video` is among the kinds. */
+  video?: VideoArtifactConfig;
 }
 
 /**
@@ -734,8 +784,8 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   retries?: number;
   workers?: number;
-  /** Artifact kinds, or `{ kinds, store }` to also hand every artifact to a host store. */
-  artifacts?: readonly ('trace' | 'screenshot')[] | ArtifactsConfig;
+  /** Artifact kinds, or `{ kinds, store, video }` to also hand every artifact to a host store. */
+  artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
   /** Output renderers; `junit` writes `.e2e/junit.xml`, `json` prints the report and excludes `list`. */
   reporters?: readonly ('list' | 'json' | 'junit')[];
   screen?: {
