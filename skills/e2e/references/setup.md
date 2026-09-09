@@ -217,7 +217,10 @@ export default {
 - `app` is a bundle id, package name, or display name opened fresh per
   attempt. `appPath` installs a `.app` or `.apk` once per worker; without
   `app`, the installed bundle is the one opened.
-- `workers: 1`: workers share one simulator.
+- `workers: 1` with a single `device`: workers would share one simulator.
+  To run on several at once, pass a pool, `device: ['iPhone 17', 'iPhone 17
+  Pro']`, and set `workers` to its length; each worker slot drives one entry
+  and the test files spread across them.
 - Cancelled device commands keep running; the next attempt waits for them.
   Raw screenshot files are removed when capture finishes, including after
   cancellation.

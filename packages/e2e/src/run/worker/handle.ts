@@ -26,16 +26,16 @@ function resolveEntry(): { path: string; execArgv: string[] } {
 }
 
 /** Run-wide settings every child-process worker boots with. */
-export type ChildProcessSpawnOptions = Omit<WorkerBootstrap, 'targetName'> & {
+export type ChildProcessSpawnOptions = Omit<WorkerBootstrap, 'targetName' | 'workerSlot'> & {
   readonly env: NodeJS.ProcessEnv;
 };
 
 /** Creates the spawn factory the scheduler uses for child-process execution. */
 export function childProcessSpawner(options: ChildProcessSpawnOptions): SpawnUnitRunner {
   const { env, ...bootstrap } = options;
-  return (targetName, events) =>
+  return (targetName, workerSlot, events) =>
     new ChildProcessRunner(
-      { ...bootstrap, targetName },
+      { ...bootstrap, targetName, workerSlot },
       { projectRoot: bootstrap.projectRoot, env },
       events,
     );

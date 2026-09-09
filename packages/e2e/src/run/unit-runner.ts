@@ -30,4 +30,9 @@ export interface UnitRunner {
 }
 
 /** Creates a runner for one target. Run-wide settings are closed over. */
-export type SpawnUnitRunner = (targetName: string, events: UnitRunnerEvents) => UnitRunner;
+/**
+ * Starts one worker for a target. `workerSlot` is the worker's 0-based slot
+ * among that target's live workers, the lowest one free at spawn time, so an
+ * engine can hand each slot its own device.
+ */
+export type SpawnUnitRunner = (targetName: string, workerSlot: number, events: UnitRunnerEvents) => UnitRunner;

@@ -55,6 +55,7 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
       app: { allowedOrigins: [] },
       testIdAttribute: 'data-testid',
       headed: true,
+      workerSlot: 0,
       signal: new AbortController().signal,
     });
     await engine.startAttempt!({ attemptId: 'sim-1', artifactsDir, signal: new AbortController().signal });

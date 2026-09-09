@@ -47,6 +47,8 @@ export interface WorkerBootstrap {
    */
   readonly cli: CliOverrides;
   readonly targetName: string;
+  /** This worker's slot among the target's workers; see `EngineInitInfo.workerSlot`. */
+  readonly workerSlot: number;
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly headed: boolean;

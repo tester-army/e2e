@@ -68,6 +68,7 @@ async function boot(engine: EngineHandle, app: FixtureApp): Promise<void> {
     app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
     testIdAttribute: 'data-testid',
     headed: false,
+    workerSlot: 0,
     signal: new AbortController().signal,
   });
 }

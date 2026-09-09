@@ -80,11 +80,17 @@ export interface AgentDeviceOptions {
   readonly identity?: string | undefined;
   /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
   readonly environment?: 'test' | 'staging' | 'production' | undefined;
-  /** Simulator or emulator to use, by name or id; agent-device picks a booted one otherwise. */
-  readonly device?: string | undefined;
   /**
-   * agent-device session name; defaults to `e2e-<target name>`. One run per
-   * session at a time: concurrent runs on the same session interleave taps.
+   * Simulator or emulator to use, by name or id; agent-device picks a booted
+   * one otherwise. A list is a pool: worker slot `n` drives the `n`th entry,
+   * so `workers: pool.length` runs the target's files across every device at
+   * once, and a slot beyond the pool fails that worker's init.
+   */
+  readonly device?: string | readonly string[] | undefined;
+  /**
+   * agent-device session name; defaults to `e2e-<target name>`, with
+   * `-<worker slot>` appended when `device` is a pool. One run per session at
+   * a time: concurrent runs on the same session interleave taps.
    */
   readonly session?: string | undefined;
   /**
@@ -177,6 +183,8 @@ export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private testIdAttribute = 'data-testid';
   private attempt: Attempt | undefined;
+  /** The device this worker drives: the `device` option, or the pool entry for the worker slot. */
+  private device: string | undefined;
   private generation = new Map<string, NodeBinding>();
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
@@ -254,16 +262,33 @@ export class AgentDeviceSurface {
     }
   }
 
+  /** Resolves `device` for a worker slot; a pool needs an entry for every slot the run can reach. */
+  private deviceForSlot(workerSlot: number): string | undefined {
+    const option = this.options.device;
+    if (option === undefined || typeof option === 'string') return option;
+    const device = option[workerSlot];
+    if (device === undefined) {
+      throw new EngineError(
+        'ENGINE_FAILURE',
+        `worker slot ${workerSlot} has no device: the pool names ${option.length}; set workers to ${option.length} for this target or add a device`,
+        { retryable: false },
+      );
+    }
+    return device;
+  }
+
   async init(info: EngineInitInfo): Promise<void> {
     this.testIdAttribute = info.testIdAttribute;
     this.projectRoot = info.projectRoot;
-    this.client ??= this.createClient(this.options.session ?? `e2e-${info.targetName}`);
+    this.device = this.deviceForSlot(info.workerSlot);
+    const session = this.options.session ?? `e2e-${info.targetName}`;
+    this.client ??= this.createClient(Array.isArray(this.options.device) ? `${session}-${info.workerSlot}` : session);
     await this.command(
       'boot',
       (client) =>
         client.devices.boot({
           platform: this.options.platform,
-          ...(this.options.device === undefined ? {} : { device: this.options.device }),
+          ...(this.device === undefined ? {} : { device: this.device }),
         }),
       info.signal,
     );
@@ -315,7 +340,7 @@ export class AgentDeviceSurface {
         client.apps.open({
           app,
           platform: this.options.platform,
-          ...(this.options.device === undefined ? {} : { device: this.options.device }),
+          ...(this.device === undefined ? {} : { device: this.device }),
           ...(relaunch ? { relaunch: true } : {}),
         }),
       signal,
@@ -334,7 +359,7 @@ export class AgentDeviceSurface {
     const resolved = path.resolve(this.projectRoot, appPath);
     const selection = {
       platform: this.options.platform,
-      ...(this.options.device === undefined ? {} : { device: this.options.device }),
+      ...(this.device === undefined ? {} : { device: this.device }),
     };
     const app = options.app ?? (options.reinstall === true ? this.pinnedApp : undefined);
     if (options.reinstall === true && app === undefined) {

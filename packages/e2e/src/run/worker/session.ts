@@ -43,6 +43,8 @@ export interface TargetWorkerDeps {
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly headed: boolean;
+  /** See `TargetExecutorOptions.workerSlot`. */
+  readonly workerSlot: number;
   /** Whether the worker has a process of its own; see `TargetExecutorOptions.isolated`. */
   readonly isolated: boolean;
   readonly resolvePairs: ResolveUnitPairs;
@@ -85,6 +87,7 @@ export class TargetWorker {
         artifactsRoot: deps.artifactsRoot,
         sessionStore: deps.sessionStore,
         headed: deps.headed,
+        workerSlot: deps.workerSlot,
         isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),

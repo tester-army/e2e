@@ -112,7 +112,7 @@ interface FakeBehaviour {
 }
 
 class FakeFleet {
-  readonly spawned: { targetName: string }[] = [];
+  readonly spawned: { targetName: string; workerSlot: number }[] = [];
   readonly unitsByWorker: RunUnitMessage[][] = [];
   /** Control messages every worker received, in order. */
   readonly controlMessages: MainToWorker['type'][] = [];
@@ -121,9 +121,9 @@ class FakeFleet {
 
   constructor(private readonly behaviour: FakeBehaviour = {}) {}
 
-  readonly spawn: SpawnUnitRunner = (targetName, events) => {
+  readonly spawn: SpawnUnitRunner = (targetName, workerSlot, events) => {
     const index = this.spawned.length;
-    this.spawned.push({ targetName });
+    this.spawned.push({ targetName, workerSlot });
     this.unitsByWorker.push([]);
     this.live += 1;
     this.peakLive = Math.max(this.peakLive, this.live);
@@ -279,6 +279,26 @@ describe('scheduler capacity', () => {
     expect(fleet.peakLive).toBeLessThanOrEqual(2);
     // A discarded worker is replaced, so more than the cap is spawned overall.
     expect(fleet.spawned.length).toBeGreaterThan(2);
+  });
+
+  it('hands each worker the lowest free slot of its target and reuses a slot once its worker exited', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) =>
+      makePair(makeTest(`tests/${name}.e2e.ts`, name), target),
+    );
+    const files = pairs.map((pair) => pair.test.file);
+    const status = Object.fromEntries(
+      pairs.map((pair) => [pair.test.id, 'failed' as const]),
+    );
+    const fleet = new FakeFleet({ status });
+
+    await run(makeSelection([{ target, pairs }]), makeCollection(files, pairs), fleet, { workers: 2 });
+
+    // Two slots exist for a cap of two, however many replacement workers were spawned.
+    const slots = fleet.spawned.map((worker) => worker.workerSlot);
+    expect(fleet.spawned.length).toBeGreaterThan(2);
+    expect(new Set(slots)).toEqual(new Set([0, 1]));
+    expect(slots[0]).toBe(0);
   });
 
   it('spawns no worker for a unit that dissolves into skips', async () => {

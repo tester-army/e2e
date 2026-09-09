@@ -86,6 +86,8 @@ interface TargetState {
   readonly target: ResolvedTarget;
   readonly setupQueue: WorkUnit[];
   readonly fileQueue: WorkUnit[];
+  /** Worker slots in use, held until the worker's exit is observed. */
+  readonly slots: Set<number>;
   /** session name -> id of the setup test that failed to produce it */
   readonly failedSessions: Map<string, string>;
   initFailures: number;
@@ -113,11 +115,12 @@ class SchedulerWorker {
 
   constructor(
     readonly targetName: string,
+    readonly workerSlot: number,
     spawn: SpawnUnitRunner,
     onMessage: (worker: SchedulerWorker, message: WorkerToMain) => void,
     onExit: (worker: SchedulerWorker, detail: string) => void,
   ) {
-    this.runner = spawn(targetName, {
+    this.runner = spawn(targetName, workerSlot, {
       onMessage: (message) => onMessage(this, message),
       onExit: (detail) => {
         this.clearKillTimer();
@@ -198,6 +201,7 @@ class Scheduler {
         target: plan.target,
         setupQueue: [...plan.setupUnits],
         fileQueue: [...plan.fileUnits],
+        slots: new Set(),
         failedSessions: new Map(),
         initFailures: 0,
         failed: false,
@@ -409,8 +413,13 @@ class Scheduler {
   }
 
   private spawn(targetName: string): SchedulerWorker {
+    const slots = this.targets.get(targetName)?.slots;
+    let workerSlot = 0;
+    while (slots?.has(workerSlot) === true) workerSlot += 1;
+    slots?.add(workerSlot);
     const worker = new SchedulerWorker(
       targetName,
+      workerSlot,
       this.options.spawn,
       (target, message) => this.onMessage(target, message),
       (target, detail) => this.onExit(target, detail),
@@ -439,6 +448,7 @@ class Scheduler {
   private forget(worker: SchedulerWorker): void {
     const index = this.workers.indexOf(worker);
     if (index !== -1) this.workers.splice(index, 1);
+    this.targets.get(worker.targetName)?.slots.delete(worker.workerSlot);
   }
 
   private targetState(worker: SchedulerWorker): TargetState {

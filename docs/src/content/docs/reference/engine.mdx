@@ -103,6 +103,8 @@ export interface EngineInitInfo {
   readonly app: { readonly baseUrl?: string; readonly allowedOrigins: readonly string[] };
   readonly testIdAttribute: string;
   readonly headed: boolean;
+  /** 0-based slot among the target's workers; the lowest one free at spawn. */
+  readonly workerSlot: number;
   readonly signal: AbortSignal;
 }
 

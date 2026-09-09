@@ -66,6 +66,8 @@ export interface TargetExecutorOptions {
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
+  /** This worker's slot among the target's workers; see `EngineInitInfo.workerSlot`. */
+  readonly workerSlot: number;
   /**
    * Whether this executor runs in a process of its own that ends with its
    * work. Only then can an interrupted test body be abandoned mid-flight:
@@ -207,6 +209,7 @@ export class TargetExecutor implements SerialHost {
             }),
             testIdAttribute: this.config.testIdAttribute,
             headed: this.options.headed,
+            workerSlot: this.options.workerSlot,
             signal,
           }),
       ),

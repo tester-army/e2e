@@ -46,7 +46,7 @@ a deterministic check that names a platform label is scoped with
 | `platform` | `'ios' \| 'android'` | required | Which device family the target boots. |
 | `app` | `string` | none | App opened fresh at the start of every attempt: a bundle id, a package name, or a display name. Declares `app.restart()` and `app.clearState()`. |
 | `appPath` | `string` | none | An iOS `.app` bundle or Android `.apk`, resolved against the project root, installed once per worker after boot and before the first attempt. Without `app`, the installed bundle id or package is the app opened per attempt. |
-| `device` | `string` | a booted device | Simulator or emulator name or id. |
+| `device` | `string \| string[]` | a booted device | Simulator or emulator name or id. A list is a pool: worker slot `n` drives the `n`th entry, and the session becomes `e2e-<target>-<n>`. |
 | `session` | `string` | `e2e-<target name>` | agent-device session. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
 
@@ -59,8 +59,24 @@ abort signal, so a cancelled or timed-out command is abandoned by its caller
 but keeps running on the device; the next attempt waits for every abandoned
 command to settle before it opens anything, within the launch timeout. Each
 attempt relaunches `app` when one is pinned; without it the surface observes whatever is in the
-foreground and the model opens apps with the `open_app` tool. Run device
-targets with `workers: 1`: workers share one simulator.
+foreground and the model opens apps with the `open_app` tool. With a single
+`device` (or none), run the target with `workers: 1`: several workers would
+share one simulator and interleave taps. To use several devices, pass a pool
+and set `workers` to its size; the scheduler spreads the target's test files
+across the slots and each slot boots and drives its own entry.
+
+```ts
+const iphones = agentDevice({
+  platform: 'ios',
+  app: 'com.example.app',
+  device: ['iPhone 17', 'iPhone 17 Pro'],
+});
+
+export default {
+  targets: [{ name: 'ios', platform: 'ios', engine: iphones }],
+  workers: 2,
+} satisfies E2EConfig;
+```
 
 ### Capabilities
 

@@ -348,6 +348,13 @@ export interface EngineInitInfo {
   readonly testIdAttribute: string;
   /** Whether the run asked for a visible surface (`--headed`). */
   readonly headed: boolean;
+  /**
+   * This worker's 0-based slot among the target's workers: the lowest slot
+   * free when the worker was spawned, so a replacement worker takes over the
+   * slot of the one that exited. An engine with several devices hands each
+   * slot its own; `config.workers` bounds the slots a target can reach.
+   */
+  readonly workerSlot: number;
   /** Aborts on interrupt and when init exceeds the launch timeout; init must stop promptly. */
   readonly signal: AbortSignal;
 }

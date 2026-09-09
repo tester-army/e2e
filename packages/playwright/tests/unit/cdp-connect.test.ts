@@ -17,6 +17,7 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
     app: { baseUrl: 'http://localhost/', allowedOrigins: ['http://localhost'] },
     testIdAttribute: 'data-testid',
     headed: false,
+    workerSlot: 0,
     signal,
   };
 }

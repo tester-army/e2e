@@ -131,6 +131,7 @@ describe('playwright engine over CDP', () => {
       app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
       testIdAttribute: 'data-testid',
       headed: false,
+      workerSlot: 0,
       signal: new AbortController().signal,
     });
     expect(resolved).toBe(1);
@@ -172,6 +173,7 @@ describe('playwright engine over CDP', () => {
       app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
       testIdAttribute: 'data-testid',
       headed: false,
+      workerSlot: 0,
       signal: new AbortController().signal,
     });
     try {
@@ -225,6 +227,7 @@ describe('playwright engine over CDP', () => {
       app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
       testIdAttribute: 'data-testid',
       headed: false,
+      workerSlot: 0,
     };
     await expect(engine.init!({ ...info, signal: controller.signal })).rejects.toMatchObject({
       code: 'CANCELLED',

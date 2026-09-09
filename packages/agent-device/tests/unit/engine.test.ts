@@ -29,7 +29,7 @@ function cleanup() {
   return { signal: new AbortController().signal, timeoutMs: 5_000 };
 }
 
-async function boot(engine: EngineHandle, targetName = 'ios-simulator'): Promise<void> {
+async function boot(engine: EngineHandle, targetName = 'ios-simulator', workerSlot = 0): Promise<void> {
   await engine.init!({
     runId: 'run-1',
     targetName,
@@ -37,6 +37,7 @@ async function boot(engine: EngineHandle, targetName = 'ios-simulator'): Promise
     app: { allowedOrigins: [] },
     testIdAttribute: 'data-testid',
     headed: false,
+    workerSlot,
     signal: new AbortController().signal,
   });
 }
@@ -151,6 +152,28 @@ describe('lifecycle', () => {
     expect(h.sessions).toEqual(['qa-run']);
     expect(h.fake.methods()).toEqual(['devices.boot']);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
+  });
+
+  it('hands each worker slot its own device from a pool, under a slot-suffixed session', async () => {
+    const pool = ['iPhone 17', 'iPhone 17 Pro'] as const;
+    const first = harness({ device: pool });
+    await boot(first.engine, 'ios', 0);
+    expect(first.sessions).toEqual(['e2e-ios-0']);
+    expect(first.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 17' });
+    await first.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    expect(first.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17', relaunch: true });
+
+    const second = harness({ device: pool, session: 'qa' });
+    await boot(second.engine, 'ios', 1);
+    expect(second.sessions).toEqual(['qa-1']);
+    expect(second.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
+
+    const third = harness({ device: pool });
+    await expect(boot(third.engine, 'ios', 2)).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('worker slot 2 has no device'),
+    });
+    expect(third.fake.methods()).toEqual([]);
   });
 
   it('takes undefined for every optional option, so env-driven configs need no conditional spreads', async () => {

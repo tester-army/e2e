@@ -16,7 +16,7 @@ describe('web.evaluate error boundaries', () => {
 
   beforeAll(async () => {
     await surface.init({ runId: 'evaluate', targetName: 'web', projectRoot: process.cwd(),
-      app: { allowedOrigins: [] }, testIdAttribute: 'data-testid', headed: false, signal });
+      app: { allowedOrigins: [] }, testIdAttribute: 'data-testid', headed: false, workerSlot: 0, signal });
   });
 
   beforeEach(async () => {

@@ -35,6 +35,7 @@ class InProcessRunner implements UnitRunner {
 
   constructor(
     private readonly targetName: string,
+    private readonly workerSlot: number,
     private readonly events: UnitRunnerEvents,
     private readonly options: InProcessRunnerOptions,
   ) {
@@ -120,6 +121,7 @@ class InProcessRunner implements UnitRunner {
       runId: this.options.runId,
       artifactsRoot: this.options.artifactsRoot,
       headed: this.options.headed,
+      workerSlot: this.workerSlot,
       isolated: false,
       debug: this.options.debug,
       resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit),
@@ -149,5 +151,5 @@ async function resolveFromSelection(
 
 /** Creates the spawn factory the scheduler uses for in-process execution. */
 export function inProcessSpawner(options: InProcessRunnerOptions): SpawnUnitRunner {
-  return (targetName, events) => new InProcessRunner(targetName, events, options);
+  return (targetName, workerSlot, events) => new InProcessRunner(targetName, workerSlot, events, options);
 }
