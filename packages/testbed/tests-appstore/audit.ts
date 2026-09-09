@@ -105,7 +105,14 @@ export function merge(findings: readonly Finding[], check: string, cleanSummary:
   return {
     ...worst,
     check,
-    summary: flagged.length === 0 ? cleanSummary : flagged.map((finding) => finding.summary).join(' '),
+    // An unverified worst finding keeps its own account: the clean summary
+    // would claim a check that could not be read explains itself.
+    summary:
+      flagged.length > 0
+        ? flagged.map((finding) => finding.summary).join(' ')
+        : worst.verdict === 'unverified'
+          ? worst.summary
+          : cleanSummary,
     evidence: findings.flatMap((finding) => finding.evidence),
     screenshots: findings.flatMap((finding) => finding.screenshots),
   };

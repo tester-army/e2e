@@ -3,8 +3,9 @@
  * the verdicts the checks recorded in `.e2e/appstore/findings.jsonl`, joined
  * with the runner's JSON report for coverage (which checks ran to a verdict,
  * which stalled). Writes `.e2e/appstore/report.md` and prints a summary.
- * Exits 1 when a rejection-level violation was found or a check did not
- * reach a verdict, so the readiness call is the process exit code.
+ * Exits 1 when a rejection-level violation was found, a check did not reach
+ * a verdict, or the runner itself did not pass (or left no report), so the
+ * readiness call is the process exit code.
  *
  * Usage: node scripts/appstore-report.mjs [report.json] [findings.jsonl]
  */
@@ -74,11 +75,17 @@ const appName = ordered[0]?.app ?? process.env.E2E_APP ?? process.env.E2E_APP_PA
 const runLine = report
   ? `Run ${report.run.id} on ${report.run.startedAt}, runner ${report.run.runner.name} ${report.run.runner.version}, status ${report.run.status}.`
   : 'No runner report found; findings only.';
+// A runner that did not pass, or wrote no report, is not a clean audit even
+// when every recorded finding is clean: a stale or missing report must not
+// read as readiness.
+const runFailed = report === null || report.run.status !== 'passed';
 const verdictLine =
   counts['rejection violation'] > 0
     ? `**Not ready for review:** ${counts['rejection violation']} rejection risk(s).`
     : incomplete.length > 0
       ? `**Audit incomplete:** ${incomplete.length} check(s) did not reach a verdict.`
+      : runFailed
+        ? `**Audit incomplete:** ${report === null ? 'no runner report was written' : `the runner reported status ${report.run.status}`}.`
       : counts.unverified > 0
         ? `**No rejection risk found**, ${counts.unverified} check(s) need a second pass.`
         : '**No rejection risk found.**';
@@ -142,4 +149,4 @@ for (const finding of ordered.filter((f) => bucket(f) !== 'compliant' && bucket(
 }
 for (const entry of incomplete) console.log(`  ⛔ ${entry.title}: ${entry.error || 'no verdict'}`);
 
-process.exit(counts['rejection violation'] > 0 || incomplete.length > 0 ? 1 : 0);
+process.exit(runFailed || counts['rejection violation'] > 0 || incomplete.length > 0 ? 1 : 0);
