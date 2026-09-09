@@ -649,8 +649,10 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   if (raw.targets !== undefined) {
     sanitized['targets'] = raw.targets.map((target) => {
       // An engine handle holds live functions; its digest identity is the
-      // declaration - name, version, contract version, capability set, and
-      // what it declares about the app under test.
+      // declaration - name, version, contract version, the platform it
+      // drives (a named target inherits it, so two workers whose engines
+      // declare different platforms must not agree on the digest), capability
+      // set, and what it declares about the app under test.
       if (isEngineHandle(target.engine)) {
         const { engine, ...rest } = target;
         return {
@@ -659,6 +661,7 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
             name: engine.name,
             ...(engine.version === undefined ? {} : { version: engine.version }),
             spiVersion: engine.spiVersion,
+            ...(engine.platform === undefined ? {} : { platform: engine.platform }),
             capabilities: [...engine.capabilities].toSorted(),
             app: digestAppDeclaration(engine.app ?? {}),
           },

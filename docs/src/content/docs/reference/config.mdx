@@ -301,9 +301,9 @@ export default {
 A target's `platform` comes from its engine (`web` for playwright, the device
 platform for agent-device), and its `name` defaults to the platform, so
 `{ engine: playwright({ url }) }` is a complete target. Set `platform` on a
-target without an engine; two targets on one platform name themselves. Names
-are unique and limited to ASCII letters, digits, `_`, `-`, and `.`. An empty
-`targets` array is an error.
+target without an engine, or whose engine declares none; two targets on one
+platform name themselves. Names are unique and limited to ASCII letters,
+digits, `_`, `-`, and `.`. An empty `targets` array is an error.
 
 ```ts
 export interface Target {

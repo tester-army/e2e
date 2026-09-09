@@ -10,9 +10,11 @@
  * model-facing vocabulary is an agent-side `defineTool`; a target with no
  * engine at all is valid and simply runs everything opaque.
  *
- * Core knows this contract and never an engine's internals: no platform noun
- * appears here. A document engine, a simulator engine, and a desktop engine
- * fill in the same members with different bodies.
+ * Core knows this contract and never an engine's internals. The one platform
+ * noun here is `platform`, the label an engine declares it drives and its
+ * target inherits; no member's shape depends on it. A document engine, a
+ * simulator engine, and a desktop engine fill in the same members with
+ * different bodies.
  *
  * `defineEngine` is the loud manifest: capability detection happens here,
  * synchronously, at config load - a malformed engine fails the run instead

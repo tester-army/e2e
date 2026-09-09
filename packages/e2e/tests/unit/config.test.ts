@@ -359,6 +359,15 @@ describe('resolveConfig', () => {
     );
   });
 
+  it('digests the platform an engine declares, which a named target inherits', () => {
+    const driving = (platform: string) =>
+      defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, platform, observe: async () => ({ nodes: [] }) });
+    const digest = (platform: string) =>
+      resolve({ targets: [{ name: 'app', engine: driving(platform) }] }).configDigest;
+    expect(digest('web')).toBe(digest('web'));
+    expect(digest('web')).not.toBe(digest('ios'));
+  });
+
   describe('command.log', () => {
     const APP_URL = 'http://localhost:3000';
 
