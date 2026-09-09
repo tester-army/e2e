@@ -7,7 +7,7 @@
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { isSecret } from '../locator/screen.ts';
-import type { AgentErrorCode, AgentOptions, AgentParams, JsonValue, Secret } from '../types.ts';
+import type { ActOptions, AgentErrorCode, AgentParams, JsonValue, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE } from './error.ts';
 import { BLOCKABLE_CODES, type StepVerdict } from './executor.ts';
 
@@ -40,7 +40,7 @@ export function validateInstruction(instruction: string, api: string): string {
  * The `act` type has no `schema` or `vision`; a caller outside the type
  * checker who passes one still fails loudly instead of being silently ignored.
  */
-export function rejectUnsupportedActOptions(options: AgentOptions | undefined): void {
+export function rejectUnsupportedActOptions(options: ActOptions | undefined): void {
   if (options === undefined) return;
   const loose = options as { readonly schema?: unknown; readonly vision?: unknown };
   const unsupported = (name: string): never => {

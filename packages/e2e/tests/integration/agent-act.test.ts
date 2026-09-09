@@ -36,7 +36,7 @@ const BUDGET_SUITE = `import { test } from '@e2edev/e2e';
 
 test('executor overruns the action budget', async ({ app, agent }) => {
   await app.open();
-  await agent.act('keep clicking forever', undefined, { maxSteps: 2 });
+  await agent.act('keep clicking forever', { maxSteps: 2 });
 });
 `;
 
@@ -44,7 +44,7 @@ const HANG_SUITE = `import { test } from '@e2edev/e2e';
 
 test('executor hangs past the step timeout', async ({ app, agent }) => {
   await app.open();
-  await agent.act('do something eventually', undefined, { timeout: 500 });
+  await agent.act('do something eventually', { timeout: 500 });
 });
 `;
 
@@ -52,7 +52,7 @@ const HANGING_PAGE_SUITE = `import { test } from '@e2edev/e2e';
 
 test('a page that never settles costs one action timeout', async ({ app, agent }) => {
   await app.open();
-  await agent.act('open the hanging page', undefined, { timeout: 60_000 });
+  await agent.act('open the hanging page', { timeout: 60_000 });
 });
 `;
 
@@ -60,7 +60,7 @@ const OVERSPEND_SUITE = `import { test } from '@e2edev/e2e';
 
 test('executor overspends the model-call budget', async ({ app, agent }) => {
   await app.open();
-  await agent.act('think very hard', undefined, { maxModelCalls: 2 });
+  await agent.act('think very hard', { maxModelCalls: 2 });
 });
 `;
 
@@ -68,7 +68,7 @@ const INHERIT_SUITE = `import { test } from '@e2edev/e2e';
 
 test('failed verdict inherits the runtime code', async ({ app, agent }) => {
   await app.open();
-  await agent.act('tap twice', undefined, { maxSteps: 1 });
+  await agent.act('tap twice', { maxSteps: 1 });
 });
 `;
 
@@ -524,8 +524,7 @@ const SECRET_SUITE = `import { test, credentials, expect } from '@e2edev/e2e';
 test('executor fills a declared secret', async ({ app, agent, screen }) => {
   await app.open();
   await agent.act('sign in with the given credentials', {
-    username: 'admin',
-    password: credentials.user('admin').password,
+    params: { username: 'admin', password: credentials.user('admin').password },
   });
   // Secure fields refuse value reads by design; visibility is the most a
   // deterministic assertion may observe. The executor verified the fill.

@@ -102,8 +102,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     });
 
   const agent: Agent = {
-    act: ((instruction: string, params?: Parameters<Agent['act']>[1], options?: Parameters<Agent['act']>[2]) =>
-      runActStep(runtime, instruction, params, options)) as Agent['act'],
+    act: (instruction, options) => runActStep(runtime, instruction, options),
     waitFor(condition, options) {
       const intervalMs = validateInterval(options?.intervalMs);
       return step(

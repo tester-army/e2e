@@ -51,17 +51,20 @@ E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e
 import { credentials } from '@e2edev/e2e';
 
 await agent.act('add a todo named "Buy milk" and mark it done');
-await agent.act('invite {email} as an editor', { email: 'ada@example.test' });
+await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
 
 const member = credentials.user('member');
 await agent.act('sign in with the given credentials', {
-  username: member.username,
-  password: member.password, // a Secret: the model sees its name, the runner fills the field
+  params: {
+    username: member.username,
+    password: member.password, // a Secret: the model sees its name, the runner fills the field
+  },
 });
 ```
 
-`act(instruction, params?, options?)` plans and performs a multi-action flow
-and ends in a verdict. Passed returns `{ ok: true }`. Failed or blocked
+`act(instruction, options?)` plans and performs a multi-action flow and ends
+in a verdict. Passed resolves with what the step did: `summary`, `modelCalls`,
+`actions`, and `cache` (how the trace cache took part). Failed or blocked
 throws an `AgentError` whose `code` says why: `ACTION_FAILED` for a plain
 failure, `STEP_BUDGET_EXHAUSTED` or `STEP_TIMEOUT` when the budget or the
 clock ran out, and a blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`,
@@ -69,10 +72,11 @@ clock ran out, and a blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`,
 `AUTOMATION_UNSUPPORTED`) when something outside the product prevented a
 verdict.
 
-Options: `timeout` (default the test timeout), `maxSteps` (default 25
-actions), `maxModelCalls` (default 25). Per-call values can only lower the
-configured limits. `schema` and `vision` on `act` are not implemented and
-reject with `UNSUPPORTED_CAPABILITY`.
+Options: `params` (the values the instruction refers to; a `Secret` is filled
+by the runner), `timeout` (default the test timeout), `maxSteps` (default 25
+actions), `maxModelCalls` (default 25). Per-call budgets can only lower the
+configured limits. `act` takes no `schema` and no `vision`: structured output
+is `extract({ schema })`, and `vision` belongs to the judgments.
 
 ## assert, waitFor, extract: one question
 

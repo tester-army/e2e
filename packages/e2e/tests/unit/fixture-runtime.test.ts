@@ -172,7 +172,7 @@ describe('project tool dispatch', () => {
       } }, { mutates: true }),
     } });
     const { fixtures, steps } = runtime(empty(), { agent: { executor, model } });
-    await expect(fixtures.agent.act('perform one mutation', undefined, { maxSteps: 1 })).rejects.toMatchObject({ code: 'STEP_BUDGET_EXHAUSTED' });
+    await expect(fixtures.agent.act('perform one mutation', { maxSteps: 1 })).rejects.toMatchObject({ code: 'STEP_BUDGET_EXHAUSTED' });
     expect(started).toBe(1);
     expect(steps.all()[0]?.metrics?.actionSteps).toBe(1);
     expect(steps.all()[0]?.events.filter((event) => event.name === 'tool:mutate')).toHaveLength(1);

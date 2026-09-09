@@ -15,9 +15,7 @@ test('missing credentials conclude blocked, not failed', async ({ web, agent }) 
 
 test('a capability gap concludes honestly', async ({ web, agent }) => {
   await web.goto('/');
-  await agent.act(
-    'archive the first expense by dragging it into the archive zone',
-    undefined,
-    { maxModelCalls: 10 },
-  );
+  await agent.act('archive the first expense by dragging it into the archive zone', {
+    maxModelCalls: 10,
+  });
 });

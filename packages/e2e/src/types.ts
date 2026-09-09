@@ -10,10 +10,12 @@ import type {
   testCaseBrand,
 } from './internal/brands.ts';
 import type { StepExecutor } from './agent/executor.ts';
+import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
+export type { StepCacheInfo } from './run/steps.ts';
 export type {
   ActionTrace,
   RecordedAction,
@@ -141,18 +143,34 @@ export interface VisionOption {
 }
 
 /**
- * Per-call budgets for `act`. Structured output and vision are judgment-tier
- * options: `extract` takes `schema`; `assert`, `waitFor`, and `extract`
- * take `vision`.
+ * One `act` call: the values the instruction refers to and the step's
+ * budgets. Structured output and vision are judgment-tier options:
+ * `extract` takes `schema`; `assert`, `waitFor`, and `extract` take `vision`.
  */
-export interface AgentOptions {
+export interface ActOptions {
+  /**
+   * JSON-safe values the instruction refers to, at most 64 KiB and 32 levels
+   * deep. A `Secret` reaches the model by name only; the runner fills it.
+   */
+  params?: AgentParams;
+  /** Step deadline in milliseconds; defaults to the test timeout. */
   timeout?: number;
+  /** Action budget; defaults to `agent.maxSteps` and can only lower it. */
   maxSteps?: number;
+  /** Model-call budget; defaults to `agent.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
 }
 
-export interface AgentResult {
-  readonly ok: true;
+/** What one passing `act` step did, as the report records it. */
+export interface ActResult {
+  /** The executor's one-line account of the step, or the replay's when the cache finished it. */
+  readonly summary: string;
+  /** How the trace cache took part; absent when caching is off for the step. */
+  readonly cache?: StepCacheInfo;
+  /** Model calls the step spent; 0 when a cached replay finished it. */
+  readonly modelCalls: number;
+  /** Grammar actions and mutating tool calls the step performed. */
+  readonly actions: number;
 }
 
 export type AgentErrorCode =
@@ -180,12 +198,8 @@ export type AgentErrorCode =
   | 'CANCELLED';
 
 export interface Agent {
-  /** Plans and executes a bounded multi-action flow. */
-  act(
-    instruction: string,
-    params?: AgentParams,
-    options?: AgentOptions,
-  ): Promise<AgentResult>;
+  /** Plans and executes a bounded multi-action flow; resolves with what the step did. */
+  act(instruction: string, options?: ActOptions): Promise<ActResult>;
   /** Polls a natural-language condition until true or timed out. */
   waitFor(
     condition: string,

@@ -50,29 +50,25 @@ test timeout.
 ## agent.act
 
 ```ts
-act(
-  instruction: string,
-  params?: AgentParams,
-  options?: AgentOptions,
-): Promise<AgentResult>;
+act(instruction: string, options?: ActOptions): Promise<ActResult>;
 ```
 
 Plans and executes one bounded multi-action flow. The harness owns the step
 (observations, actions, budgets, origin policy, recording) and hands only the
 thinking to the configured step executor. The call ends in an explicit verdict:
-a passing one returns `{ ok: true }`; a failing or blocked one throws an
-`AgentError` whose `code` and `blocked` flag say why.
+a passing one resolves with an `ActResult`, what the step did; a failing or
+blocked one throws an `AgentError` whose `code` and `blocked` flag say why.
 
 | Name | Type | Default | Valid |
 | --- | --- | --- | --- |
 | `instruction` | `string` | - | 1 through 8192 UTF-8 bytes after NFC |
-| `params` | `AgentParams` | `undefined` | JSON-safe values plus `Secret`, at most 64 KiB and 32 levels deep |
+| `options.params` | `AgentParams` | `undefined` | JSON-safe values plus `Secret`, at most 64 KiB and 32 levels deep |
 | `options.timeout` | `number` | `config.timeout` | positive safe integer |
 | `options.maxSteps` | `number` | `config.agent.maxSteps` | positive integer, at most the resolved limit |
 | `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
 
-Values come from your code through `params`, never from the model. A `Secret`
-in `params` is projected before the model sees anything: the model receives the
+Values come from your code through `options.params`, never from the model. A
+`Secret` in `params` is projected before the model sees anything: the model receives the
 secret's name and purpose, and the harness fills the value host-side, subject
 to the same authorization as `locator.fill`: the credential must be
 registered, the current origin must be allowed by both the target's allowed
@@ -81,14 +77,19 @@ origins (the engine's `allowedOrigins` declaration) and the credential's own
 input whose purpose equals the secret's purpose.
 
 ```ts
-await agent.act('invite {email} as an editor', { email: 'ada@example.test' });
+await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
 
 const member = credentials.user('member');
-await agent.act('Sign in', {
-  username: member.username,
-  password: member.password,
+const { summary, cache } = await agent.act('Sign in', {
+  params: { username: member.username, password: member.password },
 });
 ```
+
+The result carries the executor's `summary`, the `modelCalls` and `actions`
+the step spent, and `cache`: how the trace cache took part (`self-finalized`
+when a recorded flow replayed the whole step with no model call,
+`agent-concluded` when a replay handed off mid-step, `missed` otherwise;
+absent when caching is off).
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code such as `AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
@@ -292,10 +293,18 @@ export interface VisionOption {
 
 export type VisionMode = boolean | 'fallback' | 'only';
 
-export interface AgentOptions {
+export interface ActOptions {
+  params?: AgentParams;
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
+}
+
+export interface ActResult {
+  readonly summary: string;
+  readonly cache?: StepCacheInfo;
+  readonly modelCalls: number;
+  readonly actions: number;
 }
 
 export type AgentParam =
@@ -304,17 +313,13 @@ export type AgentParam =
   | readonly AgentParam[]
   | { readonly [key: string]: AgentParam };
 export type AgentParams = Readonly<Record<string, AgentParam>>;
-
-export interface AgentResult {
-  readonly ok: true;
-}
 ```
 
 Per-call budgets must be positive integers and can only lower the resolved
 configuration limits.
 
-`AgentOptions`, `AgentParams`, and `AgentResult` are consumed by `act`;
-`act` takes no `schema` and no `vision`. Judgments return `void`;
+`ActOptions`, `AgentParams`, and `ActResult` belong to `act`; `act` takes no
+`schema` and no `vision`. Judgments return `void`;
 `extract` returns the validated value directly.
 
 ## AgentError

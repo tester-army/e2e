@@ -140,8 +140,7 @@ await screen.getByLabel('Password').fill(admin.password);
 
 ```ts
 await agent.act('Sign in', {
-  username: admin.username,
-  password: admin.password,
+  params: { username: admin.username, password: admin.password },
 });
 ```
 
