@@ -2,6 +2,7 @@
 
 import path from 'node:path';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
+import type { EnginePrepareResult } from '../engine/index.ts';
 import {
   isCiMode,
   resolveConfig,
@@ -15,6 +16,7 @@ import {
   classifyError,
   combineExitCodes,
   ConfigurationError,
+  InfrastructureError,
   E2EError,
   errorMessage,
   exitCodeForCategory,
@@ -485,7 +487,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // The work units, built once: the same plans tell each engine's `prepare`
     // how many worker slots to provision and the scheduler what to dispatch.
-    const plans = buildWorkPlans(selection, collection, config.projectRoot);
+    let plans = buildWorkPlans(selection, collection, config.projectRoot);
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A supplied `rawConfig` cannot cross a process
     // boundary (it may hold live engine handles), so it runs in-process
@@ -499,7 +501,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // stream as `notice` events under it, so the reporter prints them instead
     // of a worker's stderr fighting the live status block.
     try {
-      await debug.time('engine.prepare', () =>
+      plans = await debug.time('engine.prepare', () =>
         prepareEngines(plans, runWorkers, { runId, env, signal: interrupted }, emit),
       );
     } catch (cause) {
@@ -681,22 +683,27 @@ async function prepareEngines(
   runWorkers: number,
   scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
   emit: (fact: RunEventFact) => void,
-): Promise<void> {
+): Promise<TargetWorkPlan[]> {
+  const prepared: TargetWorkPlan[] = [];
   for (const plan of plans) {
     const { target } = plan;
     const engine = target.engine;
-    if (engine?.prepare === undefined) continue;
-    if (scope.signal.aborted) return;
+    if (engine?.prepare === undefined || scope.signal.aborted) {
+      prepared.push(plan);
+      continue;
+    }
     const step: SetupStep = { kind: 'prepare', target: target.name, engine: engine.name };
     emit({ type: 'setup', step, state: 'started' });
     const startedMs = Date.now();
+    const slots = plannedSlots(plan, runWorkers);
+    let result: void | EnginePrepareResult;
     try {
       // The same `env` the workers are started with: what prepare provisions
       // must be where a worker's launch will look for it.
-      await engine.prepare({
+      result = await engine.prepare({
         runId: scope.runId,
         targetName: target.name,
-        slots: plannedSlots(plan, runWorkers),
+        slots,
         env: scope.env,
         signal: scope.signal,
         log: (line) => emit({ type: 'notice', target: target.name, message: line }),
@@ -704,10 +711,33 @@ async function prepareEngines(
     } catch (cause) {
       throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
     }
+    prepared.push(withPreparedWorkers(plan, engine.name, slots, result));
     if (!scope.signal.aborted) {
       emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });
     }
   }
+  return prepared;
+}
+
+/**
+ * Applies the worker cap `prepare` reported to the plan. The engine may only
+ * narrow what the run planned: a cap outside `1..slots` is an engine defect.
+ */
+function withPreparedWorkers(
+  plan: TargetWorkPlan,
+  engineName: string,
+  slots: number,
+  result: void | EnginePrepareResult,
+): TargetWorkPlan {
+  const workers = result?.workers;
+  if (workers === undefined) return plan;
+  if (!Number.isSafeInteger(workers) || workers < 1 || workers > Math.max(1, slots)) {
+    throw new InfrastructureError(
+      'ENGINE_FAILURE',
+      `engine ${engineName} reported ${String(workers)} workers from prepare for target "${plan.target.name}"; it was asked to provision ${slots}`,
+    );
+  }
+  return { ...plan, workers };
 }
 
 /** A configured model as `run-started` and the reporter name it. */

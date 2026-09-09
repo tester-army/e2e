@@ -46,7 +46,7 @@ export interface Engine {
   readonly app?: EngineApp;
   url?(context: OperationContext): Promise<string>;
 
-  prepare?(info: EnginePrepareInfo): Promise<void>;
+  prepare?(info: EnginePrepareInfo): Promise<void | EnginePrepareResult>;
   init?(info: EngineInitInfo): Promise<void>;
   startAttempt?(context: EngineAttemptContext): Promise<void>;
   endAttempt?(context: EngineCleanupContext): Promise<void>;
@@ -95,6 +95,11 @@ what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
 | `dispose(context)` | worker shutdown, whether or not `init` ran | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure is a run error |
 
 ```ts
+/** `workers` lowers the target's cap for this run to what prepare provisioned, `1` to `info.slots`. */
+export interface EnginePrepareResult {
+  readonly workers?: number;
+}
+
 export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;

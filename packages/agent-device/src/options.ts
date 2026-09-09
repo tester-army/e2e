@@ -43,10 +43,12 @@ export interface AgentDeviceOptions {
   /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
   readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /**
-   * Simulator or emulator to use, by name or id; agent-device picks a booted
-   * one otherwise. A list is a pool: the engine declares one worker per
-   * entry and worker slot `n` drives the `n`th, so `workers` at or above the
-   * pool size runs the target's files across every device at once.
+   * Simulator or emulator to use, by name or UDID. A list is a pool: the
+   * engine declares one worker per entry and worker slot `n` drives the
+   * `n`th, so `workers` at or above the pool size runs the target's files
+   * across every device at once. Omitted, the pool is every booted device of
+   * the platform at `prepare`, as many as the run has slots; with none booted,
+   * agent-device boots one.
    */
   readonly device?: string | readonly string[] | undefined;
   /**

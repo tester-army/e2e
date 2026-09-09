@@ -216,11 +216,12 @@ export default {
 - `app` is a bundle id, package name, or display name opened fresh per
   attempt. `appPath` installs a `.app` or `.apk` once per worker; without
   `app`, the installed bundle is the one opened.
-- The engine declares one worker per device, so a single `device` target
-  runs one worker whatever `workers` says. To run on several at once, pass a
-  pool, `device: ['iPhone 17', 'iPhone 17 Pro']`; each worker slot drives one
-  entry and the test files spread across them. Devices boot in `prepare`,
-  before the run's clock starts.
+- One worker per device. With no `device`, every booted simulator or
+  emulator of the platform is the pool, as many as `workers` allows, so
+  booting four simulators runs the files four at a time with no config. A
+  single `device` runs one worker whatever `workers` says; a list,
+  `device: ['iPhone 17', 'iPhone 17 Pro']`, is an explicit pool. Devices boot
+  in `prepare`, before the run's clock starts.
 - Cancelled device commands keep running; the next attempt waits for them.
   Raw screenshot files are removed when capture finishes, including after
   cancellation.

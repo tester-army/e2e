@@ -22,7 +22,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     version: ownVersion(),
     spiVersion: 1,
     platform: surface.options.platform,
-    workers: surface.pool.size,
+    ...(surface.pool.size === undefined ? {} : { workers: surface.pool.size }),
     prepare: (info) => surface.pool.prepare(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),

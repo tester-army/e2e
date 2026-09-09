@@ -15,7 +15,7 @@ import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
-import { buildWorkPlans } from '../../src/run/units.ts';
+import { buildWorkPlans, type TargetWorkPlan } from '../../src/run/units.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
 import type { MainToWorker, RunUnitMessage } from '../../src/run/worker/protocol.ts';
 
@@ -242,6 +242,8 @@ async function run(
   fleet: FakeFleet,
   overrides: {
     workers?: number;
+    /** Worker cap `prepare` reported per target name, applied to the plans. */
+    preparedWorkers?: Record<string, number>;
     interruptSignal?: AbortSignal;
     forceSignal?: AbortSignal;
     interruptGraceMs?: number;
@@ -250,7 +252,10 @@ async function run(
 ): Promise<Collected> {
   const collected: Collected = { results: [], serialGroups: [], runErrors: [] };
   await runUnits({
-    plans: buildWorkPlans(selection, collection, '/project'),
+    plans: buildWorkPlans(selection, collection, '/project').map((plan): TargetWorkPlan => {
+      const workers = overrides.preparedWorkers?.[plan.target.name];
+      return workers === undefined ? plan : { ...plan, workers };
+    }),
     workers: overrides.workers ?? 2,
     interruptGraceMs: overrides.interruptGraceMs ?? 1_000,
     interruptSignal: overrides.interruptSignal ?? new AbortController().signal,
@@ -351,6 +356,22 @@ describe('scheduler capacity', () => {
     expect(fleet.spawned.length).toBe(4);
     expect(fleet.spawned.map((worker) => worker.workerSlot)).toEqual([0, 0, 0, 0]);
     expect(fleet.peakLiveByTarget.get('ios')).toBe(1);
+  });
+
+  it('caps a target at the workers its engine reported from prepare, under the run cap', async () => {
+    const target = makeTarget('ios', 0);
+    const pairs = ['a', 'b', 'c', 'd'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const files = pairs.map((pair) => pair.test.file);
+    const fleet = new FakeFleet();
+
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(files, pairs), fleet, {
+      workers: 4,
+      preparedWorkers: { ios: 2 },
+    });
+
+    expect(collected.results).toHaveLength(4);
+    expect(fleet.peakLive).toBe(2);
+    expect(new Set(fleet.spawned.map((worker) => worker.workerSlot))).toEqual(new Set([0, 1]));
   });
 
   it('spawns no worker for a unit that dissolves into skips', async () => {

@@ -333,6 +333,16 @@ export interface EngineApp extends EngineAppDeclaration {
  * Facts handed to `prepare`, once per run and target in the runner process,
  * before any worker exists.
  */
+/**
+ * What `prepare` learned that the run must honour. `workers` replaces the
+ * engine's declared cap for this target and run: the surfaces the engine
+ * actually provisioned, `1` to `info.slots`. Declared `workers` stays the
+ * static answer for engines that know it up front.
+ */
+export interface EnginePrepareResult {
+  readonly workers?: number;
+}
+
 export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;
@@ -531,9 +541,11 @@ export interface Engine {
    * starts: `plan` is emitted, the report's `startedAt` taken, and the app
    * started only once every target is prepared, so a download is never part
    * of a run's duration. Failure is infrastructure and ends the run before
-   * any test executes.
+   * any test executes. The result may lower the target's worker cap for this
+   * run, for an engine that only learns its capacity here (a device pool
+   * discovered from the booted devices).
    */
-  prepare?(info: EnginePrepareInfo): Promise<void>;
+  prepare?(info: EnginePrepareInfo): Promise<void | EnginePrepareResult>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held

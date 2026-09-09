@@ -34,6 +34,8 @@ export interface TargetWorkPlan {
   readonly fileUnits: readonly WorkUnit[];
   /** Non-run ordinary pairs the scheduler reports without dispatching. */
   readonly immediate: readonly TestTargetPair[];
+  /** Worker cap the engine reported from `prepare`, over its declared `workers`. */
+  readonly workers?: number;
 }
 
 /** Builds per-target work plans from a selection, preserving report order. */

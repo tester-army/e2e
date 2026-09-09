@@ -82,6 +82,8 @@ export async function runUnits(options: RunUnitsOptions): Promise<void> {
 
 interface TargetState {
   readonly target: ResolvedTarget;
+  /** Worker cap `prepare` reported for this run, when it did. */
+  readonly workers: number | undefined;
   readonly setupQueue: WorkUnit[];
   readonly fileQueue: WorkUnit[];
   /** session name -> id of the setup test that failed to produce it */
@@ -190,6 +192,7 @@ class Scheduler {
     for (const plan of this.options.plans) {
       this.targets.set(plan.target.name, {
         target: plan.target,
+        workers: plan.workers,
         setupQueue: [...plan.setupUnits],
         fileQueue: [...plan.fileUnits],
         failedSessions: new Map(),
@@ -380,7 +383,7 @@ class Scheduler {
    * it is gone.
    */
   private hasCapacity(state: TargetState): boolean {
-    const capacity = state.target.engine?.workers ?? this.options.workers;
+    const capacity = state.workers ?? state.target.engine?.workers ?? this.options.workers;
     return this.workersOf(state.target.name).length < capacity;
   }
 

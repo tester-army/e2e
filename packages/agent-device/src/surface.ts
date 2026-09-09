@@ -223,14 +223,14 @@ export class AgentDeviceSurface {
   }
 
   /** The device selection this worker's commands take. */
-  private selection(): { platform: AgentDevicePlatform; device?: string } {
+  private selection(): { platform: AgentDevicePlatform; device?: string; udid?: string } {
     return deviceSelection(this.options.platform, this.device);
   }
 
   async init(info: EngineInitInfo): Promise<void> {
     this.testIdAttribute = info.testIdAttribute;
     this.projectRoot = info.projectRoot;
-    this.device = this.pool.device(info.workerSlot);
+    this.device = this.pool.device(info.targetName, info.workerSlot);
     this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot));
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
     if (this.options.appPath === undefined) return;
