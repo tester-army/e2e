@@ -210,12 +210,14 @@ function formatNode(
 /**
  * What the screen looks like, independent of which observation looked at it.
  *
- * Two things are dropped. Node ids, because they are minted per observation, so
- * two looks at a screen that has not moved would never render identically. And
- * the focus state, because focus moves on its own — the platform settling it
- * after load, a script claiming it, a widget stealing it — without the screen
- * having changed in any way a judgment could answer differently about. Leaving
- * it in meant a genuinely static screen could still spend a second model call.
+ * Three things are dropped. Node ids, because an engine may mint them per
+ * observation, so two looks at a screen that has not moved would never render
+ * identically. The focus state, because focus moves on its own — the platform
+ * settling it after load, a script claiming it, a widget stealing it — without
+ * the screen having changed in any way a judgment could answer differently
+ * about. And clock-like values, because a ticking clock or countdown would
+ * make every screen look changed: it would end the wait for an action's
+ * effect on the first tick and keep a settle from ever seeing two looks agree.
  *
  * Lives next to `formatNode` so the line grammar keeps one owner.
  */
@@ -225,8 +227,12 @@ export function observationShape(observation: AgentObservation): string {
     .replaceAll(/ \[([^\]]*)\]/g, (_match, states: string) => {
       const stable = states.split(' ').filter((state) => state !== 'focused');
       return stable.length === 0 ? '' : ` [${stable.join(' ')}]`;
-    });
+    })
+    .replaceAll(CLOCK_PATTERN, '<time>');
 }
+
+/** `12:05`, `0:59`, `23:59:59`: a value that changes on its own once a second or minute. */
+const CLOCK_PATTERN = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
 
 /** Poll interval and ceiling for shape-stability settling. */
 const SETTLE_POLL_MS = 75;

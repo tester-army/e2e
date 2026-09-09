@@ -196,6 +196,14 @@ describe('observationShape', () => {
     expect(shapeOf('#n1 button "Save" [disabled]')).not.toBe(shapeOf('#n1 button "Save"'));
   });
 
+  it('ignores clock-like values, which tick without the page changing', () => {
+    // A timer would end the wait for an action's effect on its first tick and
+    // keep a settle from ever seeing two looks agree.
+    expect(shapeOf('#n1 status "Elapsed 00:12"')).toBe(shapeOf('#n1 status "Elapsed 00:13"'));
+    expect(shapeOf('#n1 text "12:05:59"')).toBe(shapeOf('#n1 text "12:06:00"'));
+    expect(shapeOf('#n1 status "Items 12"')).not.toBe(shapeOf('#n1 status "Items 13"'));
+  });
+
   it('notices changed text and changed structure', () => {
     expect(shapeOf('#n1 status "Loading"')).not.toBe(shapeOf('#n1 status "Ready"'));
     expect(shapeOf('#n1 list\n  #n2 listitem "A"')).not.toBe(
