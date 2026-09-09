@@ -54,22 +54,24 @@ const textbox: LocatorExpression = {
 };
 
 describe('projectExpression', () => {
-  it('projects an exact label query onto substring candidates with a name predicate, and composes strictly', () => {
+  it('projects an exact label query onto labelable candidates with a label predicate, and composes loosely', () => {
     const label: LocatorExpression = {
       kind: 'query',
       query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true } },
     };
     const projected = projectExpression(page, label);
     expect(projected.name).toEqual({ kind: 'string', value: 'Display name', exact: true });
-    expect(chainOf(projected.locator)).toEqual(['label(Display name)']);
-    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([
-      'label(Display name,exact)',
+    expect(chainOf(projected.locator)).toEqual([
+      'locator(input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
     ]);
-    // A position waits for the name predicate; a scope uses the strict locator.
-    const first = projectExpression(page, { kind: 'index', source: label, index: 'first' });
+    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual(['label(Display name)']);
+    // A position waits for the predicate and also narrows the composable locator.
+    const firstLabel: LocatorExpression = { kind: 'index', source: label, index: 'first' };
+    const first = projectExpression(page, firstLabel);
     expect(first.steps).toEqual([{ kind: 'index', index: 'first' }]);
-    const scoped = projectExpression(page, { ...textbox, scope: label } as LocatorExpression);
-    expect(chainOf(scoped.locator)).toEqual(['label(Display name,exact)', 'role(textbox)']);
+    expect(first.composable === null ? null : chainOf(first.composable)).toEqual(['label(Display name)', 'first']);
+    const scoped = projectExpression(page, { ...textbox, scope: firstLabel } as LocatorExpression);
+    expect(chainOf(scoped.locator)).toEqual(['label(Display name)', 'first', 'role(textbox)']);
     // A substring label query keeps Playwright's own matching.
     const loose = projectExpression(page, {
       kind: 'query',

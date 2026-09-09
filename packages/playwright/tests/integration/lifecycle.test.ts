@@ -357,6 +357,17 @@ describe('playwright engine lifecycle', () => {
       const required = await engine.locate!(query('label', 'Display name', false), operation('v1'));
       expect(required).toHaveLength(1);
       expect(required[0]?.name).toBe('Display name');
+      // Hidden text between visible fragments is skipped too, and CSS-hidden text stays out.
+      const infix = await engine.locate!(query('label', 'Team name', false), operation('v1'));
+      expect(infix.map((node) => node.name)).toEqual(['Team name']);
+      const mixed = await engine.locate!(query('label', 'Mixed', false), operation('v1'));
+      expect(mixed.map((node) => node.name)).toEqual(['Mixed']);
+      // Any associated label matches, as getByLabel promises: an overridden one and a second one.
+      expect(await engine.locate!(query('label', 'Visible label', false), operation('v1'))).toHaveLength(1);
+      expect(await engine.locate!(query('label', 'Second label', false), operation('v1'))).toHaveLength(1);
+      expect(await engine.locate!(query('label', 'First label', false), operation('v1'))).toHaveLength(1);
+      // The marker is still on the screen a person reads: the label's own text keeps it.
+      expect(await engine.locate!(query('text', 'Display name*', false), operation('v1'))).toHaveLength(1);
 
       // aria-hidden is invisible to Playwright's own filter; the node's hidden state still excludes it.
       expect(await engine.locate!(query('text', 'Decorative twin', false), operation('v1'))).toHaveLength(2);
