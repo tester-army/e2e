@@ -1,9 +1,11 @@
 /**
  * Shared vocabulary of the App Store readiness suite. A check is one
  * `judge` call: screenshot the screen, ask the model for a verdict against
- * the rubric in its context, and hand the finding to `conclude`, which
- * appends it to `.e2e/appstore/findings.jsonl` and fails the test only for
- * a rejection-level violation. `scripts/appstore-report.mjs` renders the file.
+ * the rubric in its context, and hand the finding to the test's `conclude`,
+ * which appends it to `.e2e/appstore/findings.jsonl` under the test's title
+ * and fails the test only for a rejection-level violation.
+ * `scripts/appstore-report.mjs` renders the file, matching findings to
+ * runner results by that title.
  */
 
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
@@ -13,13 +15,13 @@ import { z } from 'zod';
 import type { Agent, App, VisionMode } from '@e2edev/e2e';
 import type { Device } from '@e2edev/agent-device';
 
-export { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/agent-device';
 
 const TESTBED_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FINDINGS_FILE = resolve(TESTBED_ROOT, '.e2e', 'appstore', 'findings.jsonl');
 
 /** The rubric (`context/guidelines.md`) as test options; `extract` reads the test's `agentContext`. */
-export const RUBRIC = {
+const RUBRIC = {
   agentContext: readFileSync(resolve(TESTBED_ROOT, 'tests-appstore', 'context', 'guidelines.md'), 'utf8'),
 } as const;
 
@@ -78,6 +80,22 @@ export interface Fixtures {
   readonly device: Device;
 }
 
+/** Records findings under the enclosing test's title; throws on a rejection-level violation. */
+export type Conclude = (...findings: readonly Finding[]) => void;
+
+/**
+ * One audit test. The title is what the report matches findings to, so the
+ * `conclude` handed to the body stamps it on every finding it records; two
+ * checks under one guideline stay distinguishable in the coverage table.
+ */
+export function audit(
+  title: string,
+  tags: readonly string[],
+  body: (fx: Fixtures, conclude: Conclude) => Promise<void>,
+): void {
+  test(title, { ...RUBRIC, tags }, (fx) => body(fx, (...findings) => conclude(title, ...findings)));
+}
+
 /** Screenshots the current screen and asks the model for a verdict on one check. */
 export async function judge(
   { agent, app, device }: Fixtures,
@@ -118,11 +136,11 @@ export function merge(findings: readonly Finding[], check: string, cleanSummary:
   };
 }
 
-/** Records every finding, then fails the test on the first rejection-level violation. */
-export function conclude(...findings: readonly Finding[]): void {
+/** Records every finding under the test's title, then fails the test on the first rejection-level violation. */
+function conclude(title: string, ...findings: readonly Finding[]): void {
   mkdirSync(dirname(FINDINGS_FILE), { recursive: true });
   for (const finding of findings) {
-    appendFileSync(FINDINGS_FILE, `${JSON.stringify({ ...finding, recordedAt: new Date().toISOString() })}\n`);
+    appendFileSync(FINDINGS_FILE, `${JSON.stringify({ ...finding, test: title, recordedAt: new Date().toISOString() })}\n`);
   }
   const rejection = findings.find((f) => f.verdict === 'violation' && f.guideline.severity === 'rejection');
   if (rejection === undefined) return;

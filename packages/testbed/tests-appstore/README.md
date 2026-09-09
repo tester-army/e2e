@@ -33,7 +33,7 @@ check did not reach a verdict.
 | 2.1 App Completeness | Every top-level screen loads with finished content, no placeholder or beta copy | Enumerates navigation destinations, opens each, judges the screen |
 | 2.1 App Completeness | Launches and explains itself with no network | `device.setNetwork('offline')`, relaunch, judge the state |
 | 5.1.1(i) Privacy Policies | Privacy policy reachable in-app | Looks in settings, profile, about, help, sign-in, paywall |
-| 5.1.1(iv) Access | Works with every permission denied | Denies camera, photos, location, contacts, notifications and more, relaunches, uses the app |
+| 5.1.1(iv) Access | Works with the tested permissions denied | Denies camera, microphone, photos, contacts, location, notifications, and calendar, relaunches, uses the app |
 | 5.1.1(ii) Permission strings | Prompts explain why access is needed | Resets permissions, triggers prompts, reads the purpose text, dismisses |
 | 4.8 Login Services | Sign in with Apple next to third-party login | Opens the sign-in screen and reads the providers |
 | 5.1.1(v) Account Sign-In | Usable without an account (advisory) | Same screen |
@@ -75,11 +75,16 @@ Each test is navigate, judge, conclude:
 2. `judge` screenshots the screen and asks `agent.extract` for
    `{ verdict, summary, evidence }` against the rubric in the test's context.
    The question names what is compliant, a violation, or not applicable.
-3. `conclude` appends the findings to `.e2e/appstore/findings.jsonl` and
-   throws on a rejection-level violation.
+3. `conclude`, handed to the body by `audit(title, tags, body)`, appends the
+   findings to `.e2e/appstore/findings.jsonl` under the test's title and
+   throws on a rejection-level violation. The report matches findings to
+   runner results by that title, so two checks under one guideline stay
+   apart, and resolves each screenshot to the last attempt's artifact path.
 
 The tour and the permission-prompt loop call `judge` once per screen and
-fold the results with `merge`, which keeps the worst verdict.
+fold the results with `merge`, which keeps the worst verdict. The tour
+confirms each destination was reached before judging it, and files the ones
+past its cap of six as `unverified` rather than not at all.
 
 ## Not covered
 

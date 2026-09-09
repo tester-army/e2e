@@ -4,12 +4,12 @@
  * design checks are advisory and never fail the run.
  */
 
-import { GUIDELINES, RUBRIC, conclude, judge, test } from './audit.ts';
+import { GUIDELINES, audit, judge } from './audit.ts';
 
-test(
+audit(
   '3.1.1 and 3.1.2: digital goods use in-app purchase and subscriptions disclose their terms',
-  { ...RUBRIC, tags: ['guideline:3.1.1', 'guideline:3.1.2'] },
-  async (fx) => {
+  ['guideline:3.1.1', 'guideline:3.1.2'],
+  async (fx, conclude) => {
     await fx.agent.act(
       'find where the app sells anything: Upgrade, Premium, Pro, Plus, Subscribe, Store, Shop, coins, credits, or a paywall; open it and stop before any purchase sheet appears; if nothing is for sale, stop where you are',
     );
@@ -30,7 +30,7 @@ test(
   },
 );
 
-test('1.2 user-generated content can be reported and its authors blocked', { ...RUBRIC, tags: ['guideline:1.2'] }, async (fx) => {
+audit('1.2 user-generated content can be reported and its authors blocked', ['guideline:1.2'], async (fx, conclude) => {
   await fx.agent.act(
     'find content posted by other users: a feed, comments, reviews, chat, or community section; open one post or another user\'s profile and reveal its actions (the "..." or more button, a long press, or the share menu) and stop; if the app shows nothing posted by other users, stop where you are',
   );
@@ -44,7 +44,7 @@ test('1.2 user-generated content can be reported and its authors blocked', { ...
   );
 });
 
-test('4.2 is a real app, not a wrapped website or static brochure', { ...RUBRIC, tags: ['guideline:4.2'] }, async (fx) => {
+audit('4.2 is a real app, not a wrapped website or static brochure', ['guideline:4.2'], async (fx, conclude) => {
   conclude(
     await judge(
       fx,
@@ -56,7 +56,7 @@ test('4.2 is a real app, not a wrapped website or static brochure', { ...RUBRIC,
   );
 });
 
-test('4.0 stays legible in dark mode', { ...RUBRIC, tags: ['guideline:4.0'] }, async (fx) => {
+audit('4.0 stays legible in dark mode', ['guideline:4.0'], async (fx, conclude) => {
   try {
     await fx.device.setAppearance('dark');
     await fx.app.restart();
@@ -70,6 +70,9 @@ test('4.0 stays legible in dark mode', { ...RUBRIC, tags: ['guideline:4.0'] }, a
       ),
     );
   } finally {
+    // The setup relaunched to apply dark mode at launch; the teardown
+    // relaunches the same way so the next check starts light for real.
     await fx.device.setAppearance('light');
+    await fx.app.restart();
   }
 });

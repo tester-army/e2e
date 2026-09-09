@@ -40,8 +40,9 @@ Play, Windows, or other non-Apple platforms are irrelevant information under
 
 Applies only when a third-party login (Google, Facebook, X, Microsoft, and
 similar) is offered. Then Sign in with Apple, or another service that limits
-data to name and email and lets users hide their email, must be offered too.
-Email-and-password only, or the developer's own account system, is not
+data to name and email, lets users hide their email, and does not collect
+interactions with the app for advertising without consent, must be offered
+too. Email-and-password only, or the developer's own account system, is not
 applicable.
 
 ## 3.1.1 In-App Purchase and 3.1.2 Subscriptions
@@ -49,7 +50,15 @@ applicable.
 Digital goods consumed in the app (subscriptions, premium features, coins,
 content unlocks) must go through in-app purchase. Physical goods and
 services used outside the app may use other payment methods and are not
-applicable. Copy steering users to buy elsewhere or noting cheaper prices
+applicable. 3.1.3 lists exceptions that are compliant without in-app
+purchase: reader apps (magazines, newspapers, books, audio, music, video)
+letting users access content bought elsewhere; multiplatform services whose
+content or subscriptions were acquired on another platform, as long as they
+are also sold in-app; enterprise apps sold directly to organizations;
+person-to-person services delivered live one-to-one; and free stand-alone
+companions to a paid web tool. Judge one of those as compliant, or
+unverified when the category cannot be told from the screen, never as a
+violation. Copy steering users to buy elsewhere or noting cheaper prices
 elsewhere is a violation outside the storefronts where Apple has granted an
 external-link entitlement; report it and let the developer confirm their
 entitlement. A subscription paywall must show the price, the billing period,
@@ -58,10 +67,13 @@ the Privacy Policy. The full paywall checklist follows below.
 
 ## 1.2 User-Generated Content
 
-Applies when content posted by other users is shown: feeds, comments,
-reviews, chat, public profiles, shared media. Then the app must offer a way
-to report objectionable content and a way to block abusive users, reachable
-from the content itself.
+Applies when the app lets users post or share content, or shows content
+posted by other users: feeds, comments, reviews, chat, public profiles, shared
+media, even when the current feed is empty. Then the app must filter
+objectionable material, offer a way to report content with timely responses,
+offer a way to block abusive users, and publish contact information; the
+controls may live in a menu or settings screen rather than on each piece of
+content. Missing any of the four is a violation.
 
 ## 4.2 Minimum Functionality and 4.0 Design
 

@@ -60,15 +60,27 @@ const coverage = results.map((result) => {
   const title = result.titlePath.at(-1);
   const reachedVerdict = findingsForTest(title).length > 0;
   const error = attempt?.error?.message ?? '';
-  const stalled = !reachedVerdict && result.status !== 'passed';
+  // A test that passed without recording a verdict audited nothing.
+  const stalled = !reachedVerdict;
   if (stalled) incomplete.push({ title, error });
   return { title, status: result.status, durationMs: attempt?.durationMs ?? 0, stalled, error };
 });
 
-/** Findings a test produced: matched by the guideline ids in the test title. */
+/** Findings a test produced: `conclude` stamps the test's title on each one. */
 function findingsForTest(title) {
-  const ids = title.match(/\d+(?:\.\d+)*(?:\([a-z]+\))?/g) ?? [];
-  return ordered.filter((finding) => ids.some((id) => finding.guideline.id.startsWith(id)));
+  return ordered.filter((finding) => finding.test === title);
+}
+
+/**
+ * The runner's path for a finding's screenshot. `app.screenshot` returns a
+ * name relative to the attempt (`screenshots/001-x.png`), which repeats
+ * across retries; the report's artifact record for the test's last attempt
+ * carries the path that resolves.
+ */
+function qualifiedScreenshot(finding, shot) {
+  const result = results.find((entry) => entry.titlePath.at(-1) === finding.test);
+  const artifacts = result?.attempts?.at(-1)?.artifacts ?? [];
+  return artifacts.find((artifact) => typeof artifact.path === 'string' && artifact.path.endsWith(shot))?.path ?? shot;
 }
 
 const appName = ordered[0]?.app ?? process.env.E2E_APP ?? process.env.E2E_APP_PATH ?? 'unknown app';
@@ -122,7 +134,7 @@ for (const finding of ordered) {
     lines.push('');
   }
   if (finding.screenshots.length > 0) {
-    lines.push(`Screenshots: ${finding.screenshots.map((shot) => `\`${shot}\``).join(', ')}`, '');
+    lines.push(`Screenshots: ${finding.screenshots.map((shot) => `\`${qualifiedScreenshot(finding, shot)}\``).join(', ')}`, '');
   }
   lines.push(`Reference: <${finding.guideline.url}>`, '');
 }

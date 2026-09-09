@@ -5,12 +5,12 @@
  */
 
 import type { DevicePermission } from '@e2edev/agent-device';
-import { GUIDELINES, RUBRIC, conclude, judge, merge, test } from './audit.ts';
+import { GUIDELINES, audit, judge, merge } from './audit.ts';
 
 const PERMISSIONS: readonly DevicePermission[] = ['camera', 'microphone', 'photos', 'contacts', 'location', 'notifications', 'calendar'];
 const MAX_PROMPTS = 3;
 
-test('5.1.1(i) a privacy policy is reachable from inside the app', { ...RUBRIC, tags: ['guideline:5.1.1'] }, async (fx) => {
+audit('5.1.1(i) a privacy policy is reachable from inside the app', ['guideline:5.1.1'], async (fx, conclude) => {
   await fx.agent.act(
     'find the Privacy Policy: check settings, profile or account, about, help or legal, the sign-in screen, and the paywall if there is one; open it once found and stop; if none of those places has it, stop where you are',
   );
@@ -24,7 +24,7 @@ test('5.1.1(i) a privacy policy is reachable from inside the app', { ...RUBRIC, 
   );
 });
 
-test('5.1.1(iv) stays usable with every permission denied', { ...RUBRIC, tags: ['guideline:5.1.1'] }, async (fx) => {
+audit('5.1.1(iv) stays usable with the tested permissions denied', ['guideline:5.1.1'], async (fx, conclude) => {
   try {
     for (const permission of PERMISSIONS) await fx.device.setPermission(permission, 'deny');
     await fx.app.restart();
@@ -44,7 +44,7 @@ test('5.1.1(iv) stays usable with every permission denied', { ...RUBRIC, tags: [
   }
 });
 
-test('5.1.1(ii) permission prompts say why the app needs the access', { ...RUBRIC, tags: ['guideline:5.1.1'] }, async (fx) => {
+audit('5.1.1(ii) permission prompts say why the app needs the access', ['guideline:5.1.1'], async (fx, conclude) => {
   for (const permission of PERMISSIONS) await fx.device.setPermission(permission, 'reset');
   await fx.app.restart();
 
@@ -75,10 +75,10 @@ test('5.1.1(ii) permission prompts say why the app needs the access', { ...RUBRI
   );
 });
 
-test(
+audit(
   '4.8 and 5.1.1(v): login services, guest access, and account deletion',
-  { ...RUBRIC, tags: ['guideline:4.8', 'guideline:5.1.1'] },
-  async (fx) => {
+  ['guideline:4.8', 'guideline:5.1.1'],
+  async (fx, conclude) => {
     await fx.agent.act(
       'find the sign-in or create-account screen: look for Sign in, Log in, Sign up, Account, or Profile; open it and stop; if the app shows you are already signed in, open the profile or account screen instead; if the app has no accounts at all, stop where you are',
     );
@@ -86,7 +86,7 @@ test(
       fx,
       GUIDELINES.loginServices,
       'Sign in with Apple offered next to third-party login',
-      "which login options are offered? not-applicable when there is no sign-in, or only email and password or the developer's own accounts; compliant when a third-party provider (Google, Facebook, X, Microsoft) is offered alongside Sign in with Apple; violation when a third-party provider is offered without it",
+      "which login options are offered? not-applicable when there is no sign-in, or only email and password or the developer's own accounts; compliant when a third-party provider (Google, Facebook, X, Microsoft) is offered alongside Sign in with Apple, or alongside another service that limits data to name and email, lets users hide their email, and does not collect app interactions for advertising without consent; violation when a third-party provider is offered without such an option",
     );
     const loginGate = await judge(
       fx,

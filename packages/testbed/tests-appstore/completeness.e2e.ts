@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { GUIDELINES, RUBRIC, conclude, judge, merge, test } from './audit.ts';
+import { GUIDELINES, audit, judge, merge, type Finding } from './audit.ts';
 
 const MAX_SCREENS = 6;
 
@@ -19,17 +19,53 @@ const navigation = z.object({
 const FINISHED =
   'is this screen finished? Loaded content, no placeholder copy (lorem ipsum, TODO, "Label"), no broken images or empty containers, no beta, demo, or test-build wording';
 
-test('2.1 every top-level screen loads with finished content', { ...RUBRIC, tags: ['guideline:2.1'] }, async (fx) => {
+audit('2.1 every top-level screen loads with finished content', ['guideline:2.1'], async (fx, conclude) => {
   const home = await fx.agent.extract('the title of this screen and its top-level navigation destinations', { schema: navigation });
-  const screens = [await judge(fx, GUIDELINES.completeness, 'Launch screen is finished', FINISHED)];
+  const launch = await judge(fx, GUIDELINES.completeness, 'Launch screen is finished', FINISHED);
+  const screens = [launch];
+  // A finding that stands in for evidence the tour could not collect.
+  const unverified = (check: string, summary: string, screenshots: readonly string[] = []): Finding => ({
+    ...launch,
+    check,
+    verdict: 'unverified',
+    summary,
+    evidence: [],
+    screenshots,
+  });
   for (const name of home.destinations.slice(0, MAX_SCREENS)) {
     await fx.agent.act(`open the "${name}" section; go back to "${home.screenTitle}" first if you are not there`);
+    // The tour judges whatever is on screen, so first make sure it is the
+    // named section: a wrong tap would otherwise file the home screen, or an
+    // unrelated one, under this destination's name.
+    const reached = await fx.agent.assert(`the "${name}" section is showing`).then(
+      () => true,
+      () => false,
+    );
+    if (!reached) {
+      screens.push(
+        unverified(`${name} screen is finished`, `could not confirm the "${name}" section was reached from "${home.screenTitle}"`, [
+          await fx.app.screenshot(`unreached-${name}`),
+        ]),
+      );
+      continue;
+    }
     screens.push(await judge(fx, GUIDELINES.completeness, `${name} screen is finished`, FINISHED));
+  }
+  // Destinations past the cap were never opened; the merged verdict must not
+  // read as complete coverage.
+  const skipped = home.destinations.slice(MAX_SCREENS);
+  if (skipped.length > 0) {
+    screens.push(
+      unverified(
+        'Destinations beyond the audit cap',
+        `${skipped.length} top-level destination(s) not opened (cap ${MAX_SCREENS}): ${skipped.join(', ')}`,
+      ),
+    );
   }
   conclude(merge(screens, 'Every top-level screen loads with finished content', `${screens.length} screens audited`));
 });
 
-test('2.1 launches and explains itself with no network', { ...RUBRIC, tags: ['guideline:2.1'] }, async (fx) => {
+audit('2.1 launches and explains itself with no network', ['guideline:2.1'], async (fx, conclude) => {
   try {
     await fx.device.setNetwork('offline');
     await fx.app.restart();
