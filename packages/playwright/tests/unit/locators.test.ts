@@ -62,7 +62,7 @@ describe('projectExpression', () => {
     const projected = projectExpression(page, label);
     expect(projected.name).toEqual({ kind: 'string', value: 'Display name', exact: true });
     expect(chainOf(projected.locator)).toEqual([
-      'locator(input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
+      'locator(button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
     ]);
     expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual(['label(Display name)']);
     // A position waits for the predicate and also narrows the composable locator.

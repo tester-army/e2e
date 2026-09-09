@@ -102,6 +102,10 @@ const TWINS = `<!doctype html>
 <label for="two-labels">First label</label>
 <label for="two-labels">Second label</label>
 <input id="two-labels">
+<label for="labeled-button">Run the check</label>
+<button id="labeled-button">Go</button>
+<label for="score">Score</label>
+<meter id="score" value="0.5"></meter>
 <p>Decorative twin</p>
 <div data-testid="memory-panel" aria-hidden="true"><span>Open</span></div>
 <div data-testid="memory-panel"><span>Open</span></div>

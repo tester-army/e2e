@@ -350,8 +350,9 @@ describe('playwright engine lifecycle', () => {
         expect(shown[0]?.rect?.width ?? 0).toBeGreaterThan(0);
       }
 
-      // A role query already skips display:none; visible leaves it alone.
-      expect(await engine.locate!(query('role', 'button', true), operation('v1'))).toHaveLength(1);
+      // A role query already skips display:none; visible leaves it alone: the twin's shown
+      // button and the labeled button below, never the hidden twin.
+      expect(await engine.locate!(query('role', 'button', true), operation('v1'))).toHaveLength(2);
 
       // A required-field marker is aria-hidden: the label names the field without it.
       const required = await engine.locate!(query('label', 'Display name', false), operation('v1'));
@@ -366,6 +367,10 @@ describe('playwright engine lifecycle', () => {
       expect(await engine.locate!(query('label', 'Visible label', false), operation('v1'))).toHaveLength(1);
       expect(await engine.locate!(query('label', 'Second label', false), operation('v1'))).toHaveLength(1);
       expect(await engine.locate!(query('label', 'First label', false), operation('v1'))).toHaveLength(1);
+      // Every labelable element carries its labels: a button and a meter too, not only text fields.
+      const labeledButton = await engine.locate!(query('label', 'Run the check', false), operation('v1'));
+      expect(labeledButton.map((node) => node.role)).toEqual(['button']);
+      expect(await engine.locate!(query('label', 'Score', false), operation('v1'))).toHaveLength(1);
       // The marker is still on the screen a person reads: the label's own text keeps it.
       expect(await engine.locate!(query('text', 'Display name*', false), operation('v1'))).toHaveLength(1);
 

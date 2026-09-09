@@ -135,7 +135,7 @@ export interface ProjectedLocator {
  * the surface keeps those whose labels match.
  */
 const LABELABLE_SELECTOR =
-  'input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby]';
+  'button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby]';
 
 function positioned(locator: PwLocator, index: 'first' | 'last' | number): PwLocator {
   return index === 'first' ? locator.first() : index === 'last' ? locator.last() : locator.nth(index);

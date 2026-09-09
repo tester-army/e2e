@@ -293,6 +293,12 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
 
   const NAME_OPAQUE_TAGS: ReadonlySet<string> = new Set(['TEXTAREA', 'SELECT', 'INPUT', 'SCRIPT', 'STYLE']);
 
+  /** The `<label>` elements associated with a labelable element (button, input, meter, output, progress, select, textarea). */
+  const associatedLabels = (el: Element): readonly HTMLLabelElement[] => {
+    const labels = (el as Element & { labels?: NodeListOf<HTMLLabelElement> | null }).labels;
+    return labels === undefined || labels === null ? [] : Array.from(labels);
+  };
+
   /** The label sources an exact label query may match; see `RawNodeData.labels`. */
   const labelsOf = (el: Element): string[] | null => {
     const labels: string[] = [];
@@ -306,15 +312,9 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         if (text !== '') labels.push(text);
       }
     }
-    if (
-      el instanceof HTMLInputElement ||
-      el instanceof HTMLTextAreaElement ||
-      el instanceof HTMLSelectElement
-    ) {
-      for (const label of Array.from((el as HTMLInputElement).labels ?? [])) {
-        const text = nameTextOf(label);
-        if (text !== '') labels.push(text);
-      }
+    for (const label of associatedLabels(el)) {
+      const text = nameTextOf(label);
+      if (text !== '') labels.push(text);
     }
     return labels.length === 0 ? null : labels;
   };
@@ -342,19 +342,13 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         .filter((part) => part.trim() !== '');
       if (parts.length > 0) return parts.join(' ').trim();
     }
-    if (
-      el instanceof HTMLInputElement ||
-      el instanceof HTMLTextAreaElement ||
-      el instanceof HTMLSelectElement
-    ) {
-      const labels = (el as HTMLInputElement).labels;
-      if (labels !== null && labels.length > 0) {
-        const joined = Array.from(labels)
-          .map((label) => nameTextOf(label))
-          .join(' ')
-          .trim();
-        if (joined !== '') return joined;
-      }
+    const labels = associatedLabels(el);
+    if (labels.length > 0) {
+      const joined = labels
+        .map((label) => nameTextOf(label))
+        .join(' ')
+        .trim();
+      if (joined !== '') return joined;
     }
     if (el instanceof HTMLImageElement) {
       const alt = el.getAttribute('alt');
