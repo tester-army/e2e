@@ -56,6 +56,10 @@ Options:
 | `session` | agent-device session name; defaults to `e2e-<target name>`. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 
+Every optional value also accepts `undefined`, so a config passes
+`device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`
+straight through, with no conditional spread.
+
 ## What the engine declares
 
 - **Observation**: the accessibility tree, projected onto the role vocabulary
