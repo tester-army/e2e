@@ -52,22 +52,22 @@ With a key, the row is the run's URL.
 | `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
 
 `TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
-The key `testerarmy auth` saved is used for tester.army only; another host
-needs the variable, so a config that redirects the reporter never carries your
-key with it.
+It must be `https` unless it is a loopback host, and the key `testerarmy auth`
+saved is used for tester.army only; another host needs the variable, so a
+config that redirects the reporter never carries your key with it.
 
 ## What is uploaded
 
 The report-1 document the run wrote to `.e2e/report.json`, exactly as written,
-and every artifact it names that exists on disk: screenshots, traces, and
-`--video` recordings. Artifacts travel by content digest, so bytes TesterArmy
+and every artifact it names that exists on disk: screenshots, traces, and, on
+an engine that records, `--video` recordings. Artifacts travel by content digest, so bytes TesterArmy
 already holds for your team are not sent again, and a retried upload of the
 same run is idempotent because the run id is the report's own.
 
-In CI the reporter also sends where the run came from: the commit, the branch,
-the pull request, and a link to the job, read from GitHub Actions, GitLab CI,
-CircleCI, Buildkite, or Vercel. report-1 itself records only that the run was
-in CI.
+In CI the reporter also sends where the run came from: the commit, the branch
+(none on a tag build), the pull request, and, where the provider exposes one,
+a link to the job, read from GitHub Actions, GitLab CI, CircleCI, Buildkite,
+or Vercel. report-1 itself records only that the run was in CI.
 
 A Playwright trace records what the page showed, including the text a test
 typed into fields. Upload to a project whose members may see that.

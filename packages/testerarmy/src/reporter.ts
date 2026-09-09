@@ -1,5 +1,7 @@
+import { createReadStream } from 'node:fs';
 import { access, readFile } from 'node:fs/promises';
 import os from 'node:os';
+import { Readable } from 'node:stream';
 import type { Reporter } from '@e2edev/e2e';
 import { DEFAULT_API_KEY_ENV, uploadRun } from './upload.ts';
 
@@ -52,6 +54,8 @@ export function testerarmy(options: TesterArmyOptions = {}): Reporter {
           homeDir: os.homedir(),
           fileExists: (file) => access(file).then(() => true, () => false),
           readFile: (file) => readFile(file),
+          openFile: (file, abort) =>
+            Readable.toWeb(createReadStream(file, { signal: abort })) as ReadableStream<Uint8Array>,
         },
       ),
   };

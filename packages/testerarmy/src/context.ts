@@ -38,16 +38,24 @@ export function detectContext(env: NodeJS.ProcessEnv): RunContext {
     const raw = value(name);
     return raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : undefined;
   };
+  /** The number at the end of a pull request URL, the way CircleCI exposes one. */
+  const pullFromUrl = (name: string): number | undefined => {
+    const first = value(name)?.split(',')[0]?.trim();
+    const tail = first === undefined ? undefined : /\/(\d+)\/?$/.exec(first)?.[1];
+    return tail === undefined ? undefined : Number(tail);
+  };
   const facts = ((): ProviderFacts | undefined => {
     if (value('GITHUB_ACTIONS') !== undefined) {
       const server = value('GITHUB_SERVER_URL');
       const repository = value('GITHUB_REPOSITORY');
       const runId = value('GITHUB_RUN_ID');
       const pull = /^refs\/pull\/(\d+)\//.exec(value('GITHUB_REF') ?? '')?.[1];
+      // A tag build's ref name is the tag, not a branch.
+      const onTag = value('GITHUB_REF_TYPE') === 'tag';
       return {
         provider: 'github-actions',
         sha: value('GITHUB_SHA'),
-        branch: value('GITHUB_HEAD_REF') ?? value('GITHUB_REF_NAME'),
+        branch: value('GITHUB_HEAD_REF') ?? (onTag ? undefined : value('GITHUB_REF_NAME')),
         pullRequest: pull === undefined ? undefined : Number(pull),
         url:
           server !== undefined && repository !== undefined && runId !== undefined
@@ -59,7 +67,7 @@ export function detectContext(env: NodeJS.ProcessEnv): RunContext {
       return {
         provider: 'gitlab-ci',
         sha: value('CI_COMMIT_SHA'),
-        branch: value('CI_COMMIT_REF_NAME'),
+        branch: value('CI_COMMIT_TAG') === undefined ? value('CI_COMMIT_REF_NAME') : undefined,
         pullRequest: number('CI_MERGE_REQUEST_IID'),
         url: value('CI_JOB_URL'),
       };
@@ -68,8 +76,10 @@ export function detectContext(env: NodeJS.ProcessEnv): RunContext {
       return {
         provider: 'circleci',
         sha: value('CIRCLE_SHA1'),
-        branch: value('CIRCLE_BRANCH'),
-        pullRequest: number('CIRCLE_PR_NUMBER'),
+        branch: value('CIRCLE_TAG') === undefined ? value('CIRCLE_BRANCH') : undefined,
+        // CIRCLE_PR_NUMBER exists only for forked pull requests; CIRCLE_PULL_REQUEST(S) is a URL (list).
+        pullRequest:
+          number('CIRCLE_PR_NUMBER') ?? pullFromUrl('CIRCLE_PULL_REQUEST') ?? pullFromUrl('CIRCLE_PULL_REQUESTS'),
         url: value('CIRCLE_BUILD_URL'),
       };
     }
@@ -77,7 +87,7 @@ export function detectContext(env: NodeJS.ProcessEnv): RunContext {
       return {
         provider: 'buildkite',
         sha: value('BUILDKITE_COMMIT'),
-        branch: value('BUILDKITE_BRANCH'),
+        branch: value('BUILDKITE_TAG') === undefined ? value('BUILDKITE_BRANCH') : undefined,
         pullRequest: number('BUILDKITE_PULL_REQUEST'),
         url: value('BUILDKITE_BUILD_URL'),
       };

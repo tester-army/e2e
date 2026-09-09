@@ -18,7 +18,8 @@
  * The key comes from the environment, or from the file `testerarmy auth`
  * writes, so a laptop that already talks to TesterArmy uploads with no setup.
  * The variables are the ones the `testerarmy` CLI reads, so one shell
- * configures both tools.
+ * configures both tools. The key only ever travels over HTTPS, except to a
+ * loopback host during development.
  */
 
 import path from 'node:path';
@@ -46,6 +47,8 @@ export interface UploadDeps {
   readonly homeDir: string;
   readonly fileExists: (file: string) => Promise<boolean>;
   readonly readFile: (file: string) => Promise<Uint8Array>;
+  /** Opens a file as a stream the request body consumes, so a recording is never held in memory whole. */
+  readonly openFile: (file: string, signal: AbortSignal) => ReadableStream<Uint8Array>;
 }
 
 /** An artifact the report names and the disk has: what the server may ask for. */
@@ -75,6 +78,7 @@ export async function uploadRun(
   deps: UploadDeps,
 ): Promise<ReporterSummary> {
   const baseUrl = (envValue(deps.env, BASE_URL_ENV) ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+  assertEncryptedHost(baseUrl);
   // The saved key was issued by tester.army and goes nowhere else: a config
   // that points the reporter at another host must also name a key for it.
   const apiKey =
@@ -136,13 +140,15 @@ export async function uploadRun(
     return { artifact, upload };
   });
   await inBatches(pending, UPLOAD_CONCURRENCY, async ({ artifact, upload }) => {
-    const bytes = await deps.readFile(artifact.file);
+    // Streamed, with the length the report recorded: storage needs the length
+    // up front, and four recordings in flight must not mean four in memory.
     const response = await deps.fetch(upload.url, {
       method: 'PUT',
-      headers: upload.headers,
-      body: bytes,
+      headers: { ...upload.headers, 'content-length': String(artifact.size) },
+      body: deps.openFile(artifact.file, signal),
+      duplex: 'half',
       signal,
-    });
+    } as RequestInit);
     if (!response.ok) {
       throw new Error(
         `TesterArmy storage responded ${response.status} while uploading ${path.basename(artifact.file)}`,
@@ -213,6 +219,17 @@ function parseCreateRunResponse(value: unknown): CreateRunResponse {
 async function inBatches<T>(items: readonly T[], size: number, work: (item: T) => Promise<void>): Promise<void> {
   for (let start = 0; start < items.length; start += size) {
     await Promise.all(items.slice(start, start + size).map(work));
+  }
+}
+
+/** Refuses to send a key in clear text: `http:` is for a loopback host only. */
+function assertEncryptedHost(baseUrl: string): void {
+  const url = new URL(baseUrl);
+  const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+  if (url.protocol !== 'https:' && !loopback) {
+    throw new Error(
+      `${BASE_URL_ENV} must be https (got ${url.protocol}//${url.host}); the API key never travels in clear text`,
+    );
   }
 }
 

@@ -5,7 +5,9 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { access, readFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -27,7 +29,13 @@ function fakeFetch(script: Record<string, (call: Call) => Response>): { fetch: t
     const method = init?.method ?? 'GET';
     const headers = Object.fromEntries(new Headers(init?.headers).entries());
     const raw = init?.body;
-    const body = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    // A streamed body is drained here, the way storage would.
+    const body =
+      typeof raw === 'string'
+        ? JSON.parse(raw)
+        : raw instanceof ReadableStream
+          ? new Uint8Array(await new Response(raw).arrayBuffer())
+          : raw;
     const call: Call = { url, method, headers, body };
     calls.push(call);
     if (init?.signal?.aborted) throw init.signal.reason ?? new Error('aborted');
@@ -71,6 +79,7 @@ describe('uploadRun', () => {
       homeDir: path.join(dir, 'home'),
       fileExists: (file) => access(file).then(() => true, () => false),
       readFile: (file) => readFile(file),
+      openFile: (file, signal) => Readable.toWeb(createReadStream(file, { signal })) as ReadableStream<Uint8Array>,
     };
   });
 
@@ -133,8 +142,8 @@ describe('uploadRun', () => {
     });
     expect((create.body as { artifacts: unknown[] }).artifacts).toHaveLength(2);
     const bytes = calls[1]!;
-    // Exactly the headers the server named, nothing else: the URL is signed for them.
-    expect(bytes.headers).toEqual({ 'content-type': 'application/zip', 'x-amz-checksum-sha256': 'u7s=' });
+    // The headers the server named plus the length storage needs up front, nothing else.
+    expect(bytes.headers).toEqual({ 'content-type': 'application/zip', 'x-amz-checksum-sha256': 'u7s=', 'content-length': '9' });
     expect(Buffer.from(bytes.body as Uint8Array).toString()).toBe('zip-bytes');
   });
 
@@ -261,6 +270,26 @@ describe('uploadRun', () => {
     await expect(uploadRun(run, new AbortController().signal, options, { ...deps, fetch: noUrl.fetch })).rejects.toThrow(
       'TesterArmy answered the run without its url',
     );
+  });
+
+  it('refuses to send the key over plain http to anything but a loopback host', async () => {
+    const { fetch, calls } = fakeFetch({});
+    await expect(
+      uploadRun(finished(report([])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, {
+        ...deps,
+        fetch,
+        env: { TESTERARMY_API_KEY: 'k', TESTERARMY_BASE_URL: 'http://staging.example' },
+      }),
+    ).rejects.toThrow('TESTERARMY_BASE_URL must be https');
+    expect(calls).toEqual([]);
+
+    const local = fakeFetch({ 'PUT *': () => json(200, { url: 'u', uploads: [] }), 'POST *': () => json(200, { url: 'u' }) });
+    await uploadRun(finished(report([])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, {
+      ...deps,
+      fetch: local.fetch,
+      env: { TESTERARMY_API_KEY: 'k', TESTERARMY_BASE_URL: 'http://localhost:3000' },
+    });
+    expect(local.calls[0]!.url.startsWith('http://localhost:3000/')).toBe(true);
   });
 
   it('stops at once when the signal is already aborted', async () => {

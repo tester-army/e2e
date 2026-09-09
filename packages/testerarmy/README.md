@@ -42,8 +42,8 @@ needs the variable.
 ## What is uploaded
 
 The report-1 document `e2e` writes to `.e2e/report.json`, and every artifact it
-names that exists on disk: screenshots, Playwright traces, and `--video`
-recordings that are on disk. Artifacts travel by content digest, so bytes
+names that exists on disk: screenshots, Playwright traces, and, on an engine
+that records, `--video` recordings. Artifacts travel by content digest, so bytes
 TesterArmy already holds are not sent again. A Playwright trace records what the page showed,
 including fields a test filled; upload only to a project whose members may see
 that. The reporter runs after the summary, within the runner's reporter
