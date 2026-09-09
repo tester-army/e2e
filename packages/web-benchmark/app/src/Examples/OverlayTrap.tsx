@@ -29,11 +29,14 @@ export default function OverlayTrap() {
   }, []);
 
   /**
-   * Fires only when the overlay is gone and the banner is accepted; while the
-   * overlay is up this handler is unreachable because the overlay covers it.
+   * Fires only once the banner is accepted and the overlay has been dismissed.
+   * While the overlay is up it covers this button, so pointer clicks never
+   * arrive; the state check closes the other routes (a click that lands before
+   * the overlay appears, or a keyboard activation), so being fast is not a way
+   * past the trap.
    */
   const handleContinue = () => {
-    if (!cookiesAccepted) {
+    if (!cookiesAccepted || !overlayDismissed) {
       return;
     }
     setDone(true);

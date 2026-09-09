@@ -15,7 +15,6 @@ const ACCESS_CODE = "SHADOW-42";
  */
 export default function ShadowDomForm() {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const closedErrorRef = useRef<HTMLParagraphElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState(false);
 
@@ -25,7 +24,7 @@ export default function ShadowDomForm() {
       return;
     }
     if (!host.shadowRoot) {
-      buildShadowForm(host, closedErrorRef);
+      buildShadowForm(host);
     }
 
     /**
@@ -36,17 +35,10 @@ export default function ShadowDomForm() {
       const value = (event as CustomEvent<string>).detail;
       if (value.trim() === ACCESS_CODE) {
         setError(null);
-        if (closedErrorRef.current) {
-          closedErrorRef.current.textContent = "";
-        }
         setUnlocked(true);
         return;
       }
-      const message = "Wrong access code";
-      setError(message);
-      if (closedErrorRef.current) {
-        closedErrorRef.current.textContent = message;
-      }
+      setError("Wrong access code");
     };
 
     host.addEventListener("shadow-submit", handleShadowSubmit);
@@ -82,14 +74,11 @@ export default function ShadowDomForm() {
 
 /**
  * Attaches an open shadow root to the host, then builds a wrapper element
- * with a CLOSED shadow root containing the hint, input, error slot, and
- * submit button. The closed root reference is never exposed; only the error
- * paragraph is kept on a ref so validation can re-render its text node.
+ * with a CLOSED shadow root containing the hint, input, and submit button. The
+ * closed root reference is never exposed; validation feedback renders in the
+ * light DOM below the host.
  */
-function buildShadowForm(
-  host: HTMLDivElement,
-  closedErrorRef: { current: HTMLParagraphElement | null },
-) {
+function buildShadowForm(host: HTMLDivElement) {
   const openRoot = host.attachShadow({ mode: "open" });
   const wrapper = document.createElement("div");
   openRoot.appendChild(wrapper);
@@ -106,10 +95,6 @@ function buildShadowForm(
   const input = document.createElement("input");
   input.placeholder = "Access code";
   input.style.cssText = "border:1px solid #ccc;border-radius:8px;padding:10px 12px;font-size:16px;";
-
-  const errorText = document.createElement("p");
-  errorText.style.cssText = "color:#c00;font-size:14px;margin:0;";
-  closedErrorRef.current = errorText;
 
   const button = document.createElement("button");
   button.type = "button";
@@ -129,7 +114,6 @@ function buildShadowForm(
 
   inner.appendChild(hint);
   inner.appendChild(input);
-  inner.appendChild(errorText);
   inner.appendChild(button);
   closedRoot.appendChild(inner);
 }

@@ -42,7 +42,7 @@ pnpm --filter @e2edev/e2e build            # the testbed runs the built runner
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
 pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, not in CI
+E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, weekly schedule only
 pnpm --filter @e2edev/testbed app     # run the playground manually
 ```
 

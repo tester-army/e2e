@@ -1,21 +1,38 @@
 "use client";
 
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 const DIALOG_DELAY_MS = 900;
 
 export default function DeferredDialog() {
   const [status, setStatus] = useState<"idle" | "pending" | "cancelled" | "done">("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Leaving the page while a confirmation is pending must not pop it over the
+  // next page.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Opens the confirm on a timer instead of synchronously in the click
    * handler, so the click settles before any dialog exists. A driver that
    * only checks for dialogs during the triggering action misses it; the
-   * dialog must be caught when it surfaces moments later.
+   * dialog must be caught when it surfaces moments later. A second click while
+   * one confirmation is pending is ignored, so one interaction never queues
+   * two dialogs.
    */
   const handleSubmit = () => {
+    if (status === "pending") {
+      return;
+    }
     setStatus("pending");
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
       const confirmed = window.confirm("Really submit the report?");
       setStatus(confirmed ? "done" : "cancelled");
     }, DIALOG_DELAY_MS);

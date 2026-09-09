@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 
 const PRODUCTS = [
   "Trail Backpack",
@@ -12,6 +12,14 @@ const PRODUCTS = [
 
 export default function FilterDeepLink() {
   const [query, setQuery] = useState("");
+
+  // A shared link carries the filter, so opening ?q=mug must show the filtered view.
+  useEffect(() => {
+    const shared = new URLSearchParams(window.location.search).get("q");
+    if (shared) {
+      setQuery(shared);
+    }
+  }, []);
 
   /**
    * Mirrors the filter into the URL the way real dashboards do, so the only

@@ -14,6 +14,26 @@ function normalizeText(text: string): string {
 }
 
 /**
+ * Flattens the editor into its non-whitespace characters in document order,
+ * each tagged with whether a bold element wraps it. Checking bold per
+ * character, rather than per element, is what rejects a selection that bolds
+ * "lease approved" or splits a word across two bold runs.
+ */
+function boldCharacters(editor: HTMLElement): { char: string; bold: boolean }[] {
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  const characters: { char: string; bold: boolean }[] = [];
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const bold = (node.parentElement?.closest("b, strong") ?? null) !== null;
+    for (const char of node.textContent ?? "") {
+      if (/\S/.test(char)) {
+        characters.push({ char: char.toLowerCase(), bold });
+      }
+    }
+  }
+  return characters;
+}
+
+/**
  * Rich text scenario: the check passes only when the document text is exactly
  * REQUIRED_TEXT and bold formatting wraps the word "approved" but never
  * "release" - so the agent must apply bold to a precise selection.
@@ -36,7 +56,7 @@ export default function RichTextEditor() {
 
   /**
    * Reads the live editor DOM and verifies both conditions: exact normalized
-   * text, and bold elements covering "approved" without touching "release".
+   * text, and bold covering every character of "approved" and nothing else.
    */
   const handleCheck = () => {
     const editor = editorRef.current;
@@ -47,11 +67,10 @@ export default function RichTextEditor() {
       setError(`Text must be exactly "${REQUIRED_TEXT}"`);
       return;
     }
-    const boldElements = Array.from(editor.querySelectorAll("b, strong"));
-    const boldTexts = boldElements.map((element) => normalizeText(element.textContent ?? ""));
-    const approvedIsBold = boldTexts.some((text) => text.includes(BOLD_WORD));
-    const releaseIsBold = boldTexts.some((text) => text.includes("release"));
-    if (!approvedIsBold || releaseIsBold) {
+    const characters = boldCharacters(editor);
+    const boldFrom = REQUIRED_TEXT.replace(/\s/g, "").indexOf(BOLD_WORD);
+    const boldIsExact = characters.every(({ bold }, index) => bold === index >= boldFrom);
+    if (!boldIsExact) {
       setError(`Only the word ${BOLD_WORD} must be bold`);
       return;
     }

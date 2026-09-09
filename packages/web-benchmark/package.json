@@ -9,9 +9,9 @@
     "build": "next build app",
     "start": "next start app --port 4280",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && e2e run",
-    "test:headed": "pnpm run build && e2e run --headed",
-    "test:agent": "pnpm run build && e2e run --config e2e.agent.config.ts"
+    "test": "pnpm run build && node node_modules/@e2edev/e2e/dist/cli/bin.js run",
+    "test:headed": "pnpm run build && node node_modules/@e2edev/e2e/dist/cli/bin.js run --headed",
+    "test:agent": "pnpm run build && node node_modules/@e2edev/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
   },
   "dependencies": {
     "@e2edev/e2e": "workspace:*",
