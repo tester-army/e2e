@@ -43,6 +43,17 @@ const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
 const MAX_SCROLL_TIMES = 5;
 
+/**
+ * Keys whose whole effect is where the focus or the caret sits, which the
+ * tree does not record. An unchanged screen after one of these is the normal
+ * outcome, not a control that did nothing.
+ */
+const FOCUS_ONLY_KEYS = /^(?:(?:Shift|Control|Alt|Meta)\+)*(?:Tab|Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/i;
+
+function movesFocusOnly(key: string): boolean {
+  return FOCUS_ONLY_KEYS.test(key.trim());
+}
+
 /** The model-pickable codes a blocked verdict accepts; derived, never restated. */
 const MODEL_BLOCKABLE_CODES = MODEL_ERROR_CODES.filter((code) => BLOCKABLE_CODES.has(code));
 
@@ -235,7 +246,7 @@ export function createGrammarTools(
       description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
       inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
       execute: ({ target: id, key }) =>
-        acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key)),
+        acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key), !movesFocusOnly(key)),
     });
   }
   if (verbs.has('select')) {

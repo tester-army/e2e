@@ -89,12 +89,22 @@ const MAX_TARGETED_ACTION_MS = 15_000;
 const MAX_STALE_RELOCATIONS = 2;
 
 /**
- * The change wait after a scroll. A scroll moves nothing the tree records,
- * so most scrolls change no shape at all and the wait is pure cost; a
- * windowed list or a lazy feed renders its next rows within a few hundred
- * milliseconds, which is what this covers.
+ * The change wait after a scroll or a mutating project tool. A scroll moves
+ * nothing the tree records and a tool usually changes state the screen shows
+ * only after a reload, so most of these change no shape at all and a long
+ * wait is pure cost; a windowed list rendering its next rows, or a tool the
+ * page reacts to, does so within a few hundred milliseconds.
  */
-const SCROLL_CHANGE_WAIT_MS = 500;
+const BRIEF_CHANGE_WAIT_MS = 500;
+
+/**
+ * Observations kept for resolving an id the newest one no longer carries.
+ * A turn that batches actions addresses the screen it saw, while every
+ * action's own look re-observes; on an engine that mints ids per observation
+ * (a device), each look renumbers the tree. A few looks back is as far as one
+ * turn can reach.
+ */
+const MAX_RECENT_OBSERVATIONS = 8;
 
 /**
  * How far one grammar scroll moves. The engine's default flick is half the
@@ -221,6 +231,8 @@ class ActDispatch {
     ledgerBytes: 0,
   };
   private latest: AgentObservation | undefined;
+  /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
+  private readonly recent: AgentObservation[] = [];
   private explanation: string | undefined;
   /** First budget/timeout/cancel failure; runtime truth outranks the verdict. */
   private hardStop: AgentError | undefined;
@@ -648,11 +660,15 @@ class ActDispatch {
         this.reserveAction();
         this.stepCache?.recordGap(call.name);
       }
-      return instrumentPhase(
+      const value = await instrumentPhase(
         this.runtime,
         { api: this.spec.api, kind: 'engine', phase: 'agent.action', name: `tool:${call.name}` },
         body,
       );
+      // A tool the page reacts to at once is read after the reaction; one
+      // whose effect shows only after a reload costs the brief wait, not two seconds.
+      if (call.mutates) this.armChange(BRIEF_CHANGE_WAIT_MS);
+      return value;
     };
     return call.mutates ? this.serialized(run) : run();
   }
@@ -864,9 +880,27 @@ class ActDispatch {
           : this.captureObservation(capturePixels),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
-    this.latest = observation;
+    this.publish(observation);
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     return observation;
+  }
+
+  /** Makes an observation the newest and remembers it among the recent ones. */
+  private publish(observation: AgentObservation): void {
+    this.latest = observation;
+    this.recent.push(observation);
+    if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
+  }
+
+  /**
+   * Arms the change wait: the next settled observation waits for the screen
+   * to leave the newest observation's shape, for the default two seconds or
+   * the given brief window.
+   */
+  private armChange(waitMs?: number): void {
+    if (this.latest === undefined) return;
+    this.pendingChange = observationShape(this.latest);
+    this.pendingChangeWaitMs = waitMs;
   }
 
   /** One raw observation capture: retried at the engine, then redacted and bounded. */
@@ -902,7 +936,14 @@ class ActDispatch {
     );
   }
 
-  /** Resolves an executor target against the newest observation. */
+  /**
+   * Resolves an executor target against the newest observation. An id the
+   * newest observation no longer carries, but a recent one did, is re-found
+   * in the newest one by its descriptor: a turn that batches actions keeps
+   * addressing the screen it saw while each action's own look re-observes,
+   * and an engine that mints ids per observation renumbers the tree between
+   * them. Exactly one match, or the id counts as gone.
+   */
   private resolveTarget(target: ExecutorTarget): SemanticNode {
     if (typeof target?.id !== 'string' || target.id === '') {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
@@ -915,7 +956,7 @@ class ActDispatch {
         'no observation has been captured yet; observe before acting',
       );
     }
-    const node = latest.nodes.get(id);
+    const node = latest.nodes.get(id) ?? this.refound(id, latest);
     if (node === undefined) {
       throw new AgentError(
         'LOCATOR_NOT_FOUND',
@@ -923,6 +964,22 @@ class ActDispatch {
       );
     }
     return node;
+  }
+
+  /** The newest node matching the descriptor of what `id` named in a recent observation, if exactly one. */
+  private refound(id: string, latest: AgentObservation): SemanticNode | undefined {
+    let earlier: SemanticNode | undefined;
+    for (let index = this.recent.length - 1; index >= 0 && earlier === undefined; index -= 1) {
+      earlier = this.recent[index]!.nodes.get(id);
+    }
+    if (earlier === undefined) return undefined;
+    const descriptor = describeTarget(earlier, this.redact, this.runtime.config.testIdAttribute);
+    if (descriptor === undefined) return undefined;
+    const relocated = relocateDescriptor(descriptor, latest.nodes, {
+      redact: this.redact,
+      testIdAttribute: this.runtime.config.testIdAttribute,
+    });
+    return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
   }
 
   /**
@@ -956,10 +1013,7 @@ class ActDispatch {
     // the screen to leave the shape this action was resolved against. A secret
     // fill leaves no visible trace and arms nothing; a scroll waits briefly for
     // rows a windowed or lazy list renders.
-    if (name !== 'typeSecret' && this.latest !== undefined) {
-      this.pendingChange = observationShape(this.latest);
-      this.pendingChangeWaitMs = name === 'scroll' ? SCROLL_CHANGE_WAIT_MS : undefined;
-    }
+    if (name !== 'typeSecret') this.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
     if (this.stepCache === undefined) return;
     // A typed value the step derived at run time is this run's data, not the
     // flow's: it is recorded as a gap so replay hands over before it rather
@@ -1042,7 +1096,7 @@ class ActDispatch {
       () => this.captureObservation(false),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
-    this.latest = observation;
+    this.publish(observation);
     this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     const relocated = relocateDescriptor(descriptor, observation.nodes, options);
     if (relocated.kind !== 'found') return undefined;
@@ -1089,7 +1143,7 @@ class ActDispatch {
       const plaintext = await authorizeSecretFill(
         {
           session: this.session,
-          operation: () => this.operation(),
+          operation: () => this.actionOperation(),
           recordPolicy: (policy, decision, code) => this.recordPolicy(policy, decision, code),
         },
         this.runtime,

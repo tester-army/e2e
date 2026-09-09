@@ -872,4 +872,38 @@ describe('a targeted action re-finds a node that went stale', () => {
       await app.close();
     }
   }, 120_000);
+
+  it('lets batched actions keep addressing the screen the turn saw after the rows remounted between them', async () => {
+    const app = await startFixtureApp();
+    const model = installFakeLoopModel((call) => {
+      if (call.turn === 1) {
+        // Three taps in one turn, all by the opening screen's id. The first
+        // tap remounts the rows, so by the second the id names an element
+        // that no longer exists; the newest screen lists the button anew.
+        const target = nodeIdFor(call.prompt, /button "Tap me"/);
+        return [
+          { toolName: 'tap', input: { target } },
+          { toolName: 'tap', input: { target } },
+          { toolName: 'tap', input: { target } },
+        ];
+      }
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'tapped three times' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/churn.e2e.ts': CHURN_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'default agent taps a control that remounts under it');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+      expect(step.metrics!.actionSteps).toBe(3);
+      expect(step.metrics!.modelCalls).toBe(2);
+      for (const text of loopCalls[1]!.toolResults) expect(text).not.toContain('failed');
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
 });
