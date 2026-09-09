@@ -54,7 +54,7 @@ that preserves per-connection order) and an ISO `at` timestamp.
 
 ```ts
 type RunEventFact =
-  | { type: 'run-started'; runId; projectId; projectRoot; ci; targets; model? }
+  | { type: 'run-started'; runId; projectId; projectRoot; ci; targets; model?; visionModel? }
   | { type: 'plan'; total; files: { file; target; tests }[] }
   | { type: 'notice'; target; message }
   | { type: 'setup'; step: SetupStep; state: 'started' }

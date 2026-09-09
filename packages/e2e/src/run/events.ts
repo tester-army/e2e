@@ -66,6 +66,11 @@ export type RunEventFact =
       readonly targets: readonly string[];
       /** The configured agent model as `provider/model-id`; absent when none is configured. */
       readonly model?: string;
+      /**
+       * The model calls with `vision` use, as `provider/model-id`; absent when
+       * `agent.visionModel` is unset and pixels go to `model`.
+       */
+      readonly visionModel?: string;
     }
   | {
       /**

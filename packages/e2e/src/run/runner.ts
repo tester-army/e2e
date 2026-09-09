@@ -40,6 +40,7 @@ import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
 import type { E2EConfig } from '../types.ts';
+import type { ResolvedModel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
 
 export interface RunOptions {
@@ -405,9 +406,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     projectRoot: config.projectRoot,
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
-    ...(config.agent.model === undefined
-      ? {}
-      : { model: `${config.agent.model.provider}/${config.agent.model.id}` }),
+    ...(config.agent.model === undefined ? {} : { model: modelName(config.agent.model) }),
+    ...(config.agent.visionModel === undefined ? {} : { visionModel: modelName(config.agent.visionModel) }),
   });
 
   const executeRun = async (): Promise<void> => {
@@ -702,6 +702,11 @@ async function prepareEngines(
       emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });
     }
   }
+}
+
+/** A configured model as `run-started` and the reporter name it. */
+function modelName(model: ResolvedModel): string {
+  return `${model.provider}/${model.id}`;
 }
 
 function selectionFilters(options: ListOptions): SelectionFilters {

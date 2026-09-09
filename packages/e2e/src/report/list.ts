@@ -183,8 +183,13 @@ export class ListReporter {
   private startupMs = 0;
   /** Run-wide model usage, summed from every reported result and serial group. */
   private readonly runUsage = emptyUsage();
-  /** The configured agent model, repeated in the summary once the header has scrolled away. */
-  private model: string | undefined;
+  /**
+   * The configured models as the summary names them, `provider/id` plus
+   * `vision provider/id` when pixels go to a separate model: `runUsage` sums
+   * both, so the row names both. Repeated in the summary because the header
+   * has scrolled away by the time a long run ends.
+   */
+  private models: string | undefined;
 
   constructor(
     private readonly output: ListReporterOutput = DEFAULT_OUTPUT,
@@ -288,8 +293,9 @@ export class ListReporter {
     if (event.ci) details.push('CI');
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {
-      this.model = bounded(event.model);
-      this.output.write(BADGE_PADDING + pc.dim(`model ${this.model}`));
+      const vision = event.visionModel === undefined ? '' : ` · vision ${bounded(event.visionModel)}`;
+      this.models = `${bounded(event.model)}${vision}`;
+      this.output.write(BADGE_PADDING + pc.dim(`model ${this.models}`));
     }
     this.output.write('');
     this.window.start();
@@ -595,8 +601,8 @@ export class ListReporter {
     ];
     const ai = usageText(this.runUsage);
     if (ai !== undefined) {
-      const model = this.model === undefined ? '' : ` · ${this.model}`;
-      rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls${model}`);
+      const models = this.models === undefined ? '' : ` · ${this.models}`;
+      rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls${models}`);
     }
     if (this.errors.length > 0) {
       const count = this.errors.length;
