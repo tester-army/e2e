@@ -484,7 +484,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     try {
       await debug.time('engine.prepare', () =>
         prepareEngines(
-          selection.perTarget.map(({ target }) => target),
+          selection.perTarget.map(({ target, pairs }) => ({
+            target,
+            // What the scheduler can start for the target: the run cap (one
+            // worker for an in-process run), the engine's own bound, and the
+            // files selected, whichever is smallest.
+            workers: Math.min(
+              config.configPath === undefined ? 1 : config.workers,
+              target.engine?.workers ?? Number.POSITIVE_INFINITY,
+              Math.max(1, new Set(pairs.map((pair) => pair.test.file)).size),
+            ),
+          })),
           { runId, env, signal: interrupted },
           emit,
         ),
@@ -674,11 +684,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
  * read better than two interleaved.
  */
 async function prepareEngines(
-  targets: readonly ResolvedTarget[],
+  targets: readonly { target: ResolvedTarget; workers: number }[],
   scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
   emit: (fact: RunEventFact) => void,
 ): Promise<void> {
-  for (const target of targets) {
+  for (const { target, workers } of targets) {
     const engine = target.engine;
     if (engine?.prepare === undefined) continue;
     if (scope.signal.aborted) return;
@@ -691,6 +701,7 @@ async function prepareEngines(
       await engine.prepare({
         runId: scope.runId,
         targetName: target.name,
+        workers,
         env: scope.env,
         signal: scope.signal,
         log: (line) => emit({ type: 'notice', target: target.name, message: line }),

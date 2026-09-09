@@ -311,6 +311,13 @@ export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;
   /**
+   * The most workers the run will start for this target: the run's worker
+   * cap, the engine's declared `workers`, and the number of files selected
+   * for the target, whichever is smallest. Provision for exactly these slots
+   * (boot that many devices of a pool); `init` then finds them ready.
+   */
+  readonly workers: number;
+  /**
    * The run's environment: what every worker is started with. A host may hand
    * the run an environment other than the runner process's own, so anything
    * provisioned here that a worker later looks up by environment (a browser
@@ -422,6 +429,14 @@ export interface Engine {
    * changed required semantics do.
    */
   readonly spiVersion: EngineSpiVersion;
+  /**
+   * The most workers this engine can serve at once for one target: one per
+   * surface it drives concurrently (a device pool's size; 1 for a single
+   * simulator). The scheduler never runs more workers for the target, whatever
+   * `config.workers` allows, so a device target shares a run with browser
+   * targets without being over-subscribed. Omit when there is no such bound.
+   */
+  readonly workers?: number;
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   /**
@@ -518,6 +533,7 @@ const KNOWN_KEYS = [
   'name',
   'version',
   'spiVersion',
+  'workers',
   'observe',
   'locate',
   'perform',
@@ -663,6 +679,9 @@ export function defineEngine(spec: Engine): EngineHandle {
       throw invalid(name, `${member} must be a function`);
     }
   }
+  if (spec.workers !== undefined && (!Number.isSafeInteger(spec.workers) || spec.workers < 1)) {
+    throw invalid(name, 'workers must be a positive safe integer: the most workers the engine serves per target');
+  }
 
   const capabilities = new Set<EngineCapability>();
   if (spec.observe !== undefined) capabilities.add('observation');
@@ -682,7 +701,12 @@ export function defineEngine(spec: Engine): EngineHandle {
     throw invalid(name, 'declares swipe without observe');
   }
 
-  const handle: Record<string, unknown> = { name, version: spec.version, spiVersion: spec.spiVersion };
+  const handle: Record<string, unknown> = {
+    name,
+    version: spec.version,
+    spiVersion: spec.spiVersion,
+    ...(spec.workers === undefined ? {} : { workers: spec.workers }),
+  };
   for (const member of FUNCTION_MEMBERS) {
     const fn = spec[member];
     if (fn !== undefined) handle[member] = fn.bind(spec);

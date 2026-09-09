@@ -12,6 +12,7 @@ import type {
   TestTargetPair,
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
+import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
@@ -38,14 +39,19 @@ const EMPTY_APP: ResolvedTarget['app'] = {
   readyUrl: undefined,
   services: [],
 };
-function makeTarget(name: string, index: number): ResolvedTarget {
+function makeTarget(name: string, index: number, engine?: EngineHandle): ResolvedTarget {
   return {
     name,
     index,
     platform: 'web',
-    engine: undefined,
+    engine,
     app: EMPTY_APP,
   };
+}
+
+/** An engine that serves at most `workers` workers per target, like a device pool of that size. */
+function boundedEngine(workers: number): EngineHandle {
+  return defineEngine({ name: 'pool', version: '1.0.0', spiVersion: 1, workers });
 }
 
 function makeTest(file: string, title: string, overrides: Partial<CollectedTest> = {}): CollectedTest {
@@ -118,6 +124,9 @@ class FakeFleet {
   readonly controlMessages: MainToWorker['type'][] = [];
   live = 0;
   peakLive = 0;
+  private readonly liveByTarget = new Map<string, number>();
+  /** The most workers alive at once per target. */
+  readonly peakLiveByTarget = new Map<string, number>();
 
   constructor(private readonly behaviour: FakeBehaviour = {}) {}
 
@@ -127,11 +136,15 @@ class FakeFleet {
     this.unitsByWorker.push([]);
     this.live += 1;
     this.peakLive = Math.max(this.peakLive, this.live);
+    const liveForTarget = (this.liveByTarget.get(targetName) ?? 0) + 1;
+    this.liveByTarget.set(targetName, liveForTarget);
+    this.peakLiveByTarget.set(targetName, Math.max(this.peakLiveByTarget.get(targetName) ?? 0, liveForTarget));
     return new FakeRunner(index, targetName, events, this, this.behaviour);
   };
 
-  onExit(): void {
+  onExit(targetName: string): void {
     this.live -= 1;
+    this.liveByTarget.set(targetName, (this.liveByTarget.get(targetName) ?? 1) - 1);
   }
 }
 
@@ -210,7 +223,7 @@ class FakeRunner implements UnitRunner {
   private end(detail: string): void {
     if (this.exited) return;
     this.exited = true;
-    this.fleet.onExit();
+    this.fleet.onExit(this.targetName);
     this.events.onExit(detail);
     this.finish();
   }
@@ -299,6 +312,46 @@ describe('scheduler capacity', () => {
     expect(fleet.spawned.length).toBeGreaterThan(2);
     expect(new Set(slots)).toEqual(new Set([0, 1]));
     expect(slots[0]).toBe(0);
+  });
+
+  it('caps a target at the workers its engine declares and hands the rest of the run cap to other targets', async () => {
+    const ios = makeTarget('ios', 0, boundedEngine(2));
+    const web = makeTarget('web', 1);
+    const files = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `tests/${name}.e2e.ts`);
+    const tests = files.map((file) => makeTest(file, 'case'));
+    const iosPairs = tests.map((test) => makePair(test, ios));
+    const webPairs = tests.map((test) => makePair(test, web));
+    const fleet = new FakeFleet();
+
+    const collected = await run(
+      makeSelection([{ target: ios, pairs: iosPairs }, { target: web, pairs: webPairs }]),
+      makeCollection(files, iosPairs),
+      fleet,
+      { workers: 4 },
+    );
+
+    expect(collected.results).toHaveLength(12);
+    expect(fleet.peakLive).toBeLessThanOrEqual(4);
+    // Two slots for ios, however many the run allows; every ios worker kept passing, so none was replaced.
+    expect(fleet.spawned.filter((worker) => worker.targetName === 'ios').map((worker) => worker.workerSlot)).toEqual([0, 1]);
+    expect(fleet.peakLiveByTarget.get('ios')).toBe(2);
+    // The capacity ios left unused went to web at once instead of waiting for ios to run dry.
+    expect(fleet.spawned.slice(0, 4).map((worker) => worker.targetName)).toEqual(['ios', 'ios', 'web', 'web']);
+  });
+
+  it('replaces a discarded worker of a capped target only once its exit freed the slot', async () => {
+    const target = makeTarget('ios', 0, boundedEngine(1));
+    const pairs = ['a', 'b', 'c', 'd'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const files = pairs.map((pair) => pair.test.file);
+    const status = Object.fromEntries(pairs.map((pair) => [pair.test.id, 'failed' as const]));
+    const fleet = new FakeFleet({ status });
+
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(files, pairs), fleet, { workers: 3 });
+
+    expect(collected.results).toHaveLength(4);
+    expect(fleet.spawned.length).toBe(4);
+    expect(fleet.spawned.map((worker) => worker.workerSlot)).toEqual([0, 0, 0, 0]);
+    expect(fleet.peakLiveByTarget.get('ios')).toBe(1);
   });
 
   it('spawns no worker for a unit that dissolves into skips', async () => {

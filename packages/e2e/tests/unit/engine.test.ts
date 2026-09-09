@@ -70,6 +70,14 @@ describe('defineEngine', () => {
     );
   });
 
+  it('copies a declared workers bound and rejects one that is not a positive integer', () => {
+    expect(defineEngine(observingEngine({ workers: 2 })).workers).toBe(2);
+    expect(defineEngine(observingEngine()).workers).toBeUndefined();
+    for (const workers of [0, -1, 1.5, Number.NaN, '2' as never]) {
+      expect(() => defineEngine(observingEngine({ workers }))).toThrow(/workers must be a positive safe integer/);
+    }
+  });
+
   it('requires a version: provenance and the trace cache key depend on it', () => {
     expect(() => defineEngine({ ...observingEngine(), version: '' })).toThrow(/version/);
     expect(() =>
@@ -94,6 +102,7 @@ describe('defineEngine', () => {
     await handle.prepare?.({
       runId: 'run',
       targetName: 'toy',
+      workers: 1,
       env: {},
       signal: new AbortController().signal,
       log: () => {},
