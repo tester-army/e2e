@@ -113,7 +113,7 @@ already occupy the action queue.
 
 The opening prompt carries the instruction, the params, the ledger of
 completed steps, and the whole screen once. Every action result and every
-`observe` after that reports only what changed since the screen the model last
+`observe` after that reports what changed since the screen the model last
 received: lines that appeared, lines that changed with what they read before,
 lines that went away. Node ids are stable for as long as an element exists, so
 a line the model saw earlier still names the same element and a change update
