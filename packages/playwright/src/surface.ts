@@ -433,34 +433,46 @@ export class PlaywrightSurface {
    */
   private async replaceContext(storageState: StorageState | undefined): Promise<void> {
     const context = this.requireContext();
-    const resumeTrace = this.tracing;
     // The old context is released from the surface before anything awaits, so
     // a trace segment or close that fails cannot leave the surface pointing at
-    // a context it meant to replace. A segment that cannot be written is
-    // best-effort: the final trace still records from the new context.
+    // a context it meant to replace.
     this.context = null;
     this.page = null;
-    this.tracing = false;
     this.refs.clear();
+    const resumeTrace = await this.closeTraceSegment(context);
     // A screencast is the old page's: its segment closes here, while the page
     // can still flush it, and the next page the new context opens starts the
     // following one.
     await this.video.pageClosing();
-    if (resumeTrace) {
-      this.traceSegments += 1;
-      await context.tracing
-        .stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute })
-        .catch(() => undefined);
-    }
     await context.close();
     await this.openContext(storageState);
     // The recording's next segment opens the new context's page before the
     // trace resumes, for the same reason `startVideo` opens the first one.
     if (this.video.isArmed) await this.ensurePage();
-    if (resumeTrace) {
-      await this.requireContext().tracing.start(TRACE_OPTIONS);
-      this.tracing = true;
-    }
+    if (resumeTrace) await this.resumeTrace();
+  }
+
+  /**
+   * Closes the active trace as its own segment (`trace/trace-part<n>.zip`)
+   * and reports whether one was active. `tracing` is cleared before anything
+   * awaits, so a segment that fails to write cannot leave the surface
+   * believing a trace still records; the segment itself is best-effort, the
+   * final trace still records from where tracing resumes.
+   */
+  private async closeTraceSegment(context: BrowserContext): Promise<boolean> {
+    if (!this.tracing) return false;
+    this.tracing = false;
+    this.traceSegments += 1;
+    await context.tracing
+      .stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute })
+      .catch(() => undefined);
+    return true;
+  }
+
+  /** Resumes tracing on the current context after `closeTraceSegment`. */
+  private async resumeTrace(): Promise<void> {
+    await this.requireContext().tracing.start(TRACE_OPTIONS);
+    this.tracing = true;
   }
 
   private requireBaseUrl(): string {
@@ -513,11 +525,17 @@ export class PlaywrightSurface {
       const baseUrl = this.requireBaseUrl();
       const context = this.requireContext();
       // The recording's segment ends before its page closes: Playwright writes
-      // nothing for a screencast whose page went away first.
+      // nothing for a screencast whose page went away first. Under a recording
+      // the trace closes as a segment too: a trace attaches its own 800-pixel
+      // screencast to every page the moment it opens, and a page's first
+      // client sizes its screencast, so the recording must be that client on
+      // the new page, as it is at `startVideo`.
       await this.video.pageClosing();
+      const resumeTrace = this.video.isArmed ? await this.closeTraceSegment(context) : false;
       for (const page of context.pages()) await page.close();
       this.page = null;
       const page = await this.ensurePage();
+      if (resumeTrace) await this.resumeTrace();
       await page.goto(baseUrl, { waitUntil: 'load', timeout: operation.timeoutMs });
     });
   }

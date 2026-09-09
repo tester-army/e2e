@@ -8,6 +8,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type {
   EngineCleanupContext,
@@ -43,6 +44,48 @@ function* walk(node: SemanticNode): Generator<SemanticNode> {
 }
 
 /** Runs one attempt on a booted engine and always tears it down. */
+/**
+ * Decodes a recording inside the page and reads its last frame: the frame's
+ * size, how much of it is the grey a screencast pads a smaller frame with,
+ * and how much of it is content.
+ */
+async function lastFrame(
+  page: Page,
+  webm: Buffer,
+): Promise<{ width: number; height: number; padded: number; inked: number }> {
+  return page.evaluate(async (bytes) => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.src = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'video/webm' }));
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error('the recording did not decode'));
+    });
+    await video.play();
+    await new Promise<void>((resolve) => {
+      video.onended = () => resolve();
+      setTimeout(resolve, 5_000);
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(video, 0, 0);
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let padded = 0;
+    let inked = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]!;
+      const g = data[i + 1]!;
+      const b = data[i + 2]!;
+      if (r === g && g === b && r > 120 && r < 136) padded += 1;
+      else if (r < 200 || g < 200 || b < 200) inked += 1;
+    }
+    const total = data.length / 4;
+    return { width: canvas.width, height: canvas.height, padded: padded / total, inked: inked / total };
+  }, [...webm]);
+}
+
 async function withAttempt(
   engine: EngineHandle,
   app: FixtureApp,
@@ -621,32 +664,44 @@ describe('playwright engine lifecycle', () => {
     }
   });
 
-  it('records a video per page: a restart and a state reset each continue in a new segment', async () => {
+  it('records a video per page at the viewport size: a restart and a state reset each continue in a new segment', async () => {
     const engine = playwright();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     const nodesOf = (snapshot: { nodes: readonly SemanticNode[] }) => snapshot.nodes.flatMap((node) => [...walk(node)]);
+    // Frames reach the recorder asynchronously: a page must live a moment
+    // past its last paint for that paint to be in its segment.
+    const settle = () => surfaceOf(engine)!.page().waitForTimeout(400);
     try {
       await withAttempt(engine, app, videoDir, 'v1', async () => {
         await engine.app!.navigate!(`${app.url}/form`, operation('v1'));
+        // Video before trace, as the harness orders them: a page's first
+        // screencast client sizes it, and the trace's would cap it at 800px.
         await engine.artifacts!.startVideo!(operation('v1'));
+        await engine.artifacts!.startTrace!(operation('v1'));
         const page = surfaceOf(engine)!.page();
+        const viewport = page.viewportSize()!;
         // Observations, actions, and captures run as they would without a recording.
         const observed = nodesOf(await engine.observe!(operation('v1'), { pixels: true }));
         const textbox = observed.find((node) => node.role === 'textbox' && node.name === 'First');
         await engine.perform!(textbox!.ref, { kind: 'fill', value: 'recorded', sensitive: false }, operation('v1'));
         await engine.artifacts!.screenshot('shot', operation('v1'));
+        await settle();
         // A restart closes the page and opens another: the recording continues in a second segment.
         await engine.app!.restart!(operation('v1'));
         expect(surfaceOf(engine)!.page()).not.toBe(page);
+        await settle();
         // A state reset recreates the context; the recording continues in a third.
         await engine.app!.clearState!(operation('v1'));
         await engine.app!.navigate!(`${app.url}/`, operation('v1'));
+        await settle();
         const segments = await engine.artifacts!.stopVideo!(operation('v1'));
+        expect(await engine.artifacts!.stopTrace!(operation('v1'))).toBe('trace/trace.zip');
         expect(segments.map((segment) => segment.path)).toEqual([
           'video/video.webm',
           'video/video-part2.webm',
           'video/video-part3.webm',
         ]);
+        const viewer = surfaceOf(engine)!.page();
         for (const segment of segments) {
           const absolute = path.join(videoDir, segment.path);
           expect(existsSync(absolute), segment.path).toBe(true);
@@ -654,6 +709,13 @@ describe('playwright engine lifecycle', () => {
           // Every WebM file opens with the EBML magic.
           expect(readFileSync(absolute).subarray(0, 4).toString('hex')).toBe('1a45dfa3');
           expect(Number.isNaN(Date.parse(segment.startedAt))).toBe(false);
+          // Every segment shows the page at the attempt's viewport size: no
+          // grey padding from a screencast another client sized smaller, and
+          // some ink, so the page painted into it.
+          const frame = await lastFrame(viewer, readFileSync(absolute));
+          expect({ width: frame.width, height: frame.height }, segment.path).toEqual(viewport);
+          expect(frame.padded, `${segment.path} padded`).toBeLessThan(0.01);
+          expect(frame.inked, `${segment.path} inked`).toBeGreaterThan(0.0005);
         }
       });
     } finally {
