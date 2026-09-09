@@ -91,6 +91,8 @@ const TWINS = `<!doctype html>
   <button>Save</button>
 </section>
 <p aria-hidden="true">Decorative twin</p>
+<label for="required-name">Display name<span aria-hidden="true">*</span></label>
+<input id="required-name">
 <p>Decorative twin</p>
 <div data-testid="memory-panel" aria-hidden="true"><span>Open</span></div>
 <div data-testid="memory-panel"><span>Open</span></div>

@@ -353,6 +353,11 @@ describe('playwright engine lifecycle', () => {
       // A role query already skips display:none; visible leaves it alone.
       expect(await engine.locate!(query('role', 'button', true), operation('v1'))).toHaveLength(1);
 
+      // A required-field marker is aria-hidden: the label names the field without it.
+      const required = await engine.locate!(query('label', 'Display name', false), operation('v1'));
+      expect(required).toHaveLength(1);
+      expect(required[0]?.name).toBe('Display name');
+
       // aria-hidden is invisible to Playwright's own filter; the node's hidden state still excludes it.
       expect(await engine.locate!(query('text', 'Decorative twin', false), operation('v1'))).toHaveLength(2);
       const decorative = await engine.locate!(query('text', 'Decorative twin', true), operation('v1'));

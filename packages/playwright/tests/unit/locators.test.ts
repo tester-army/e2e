@@ -19,6 +19,8 @@ function fakeLocator(chain: readonly string[]): PwLocator {
     chain,
     locator: (selector: string) => fakeLocator([...chain, `locator(${selector})`]),
     getByRole: (role: string) => fakeLocator([...chain, `role(${role})`]),
+    getByLabel: (text: string | RegExp, options?: { exact?: boolean }) =>
+      fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
     filter: (options: { hasText?: string | RegExp; has?: PwLocator }) =>
       fakeLocator([
         ...chain,
@@ -52,6 +54,30 @@ const textbox: LocatorExpression = {
 };
 
 describe('projectExpression', () => {
+  it('projects an exact label query onto substring candidates with a name predicate, and composes strictly', () => {
+    const label: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true } },
+    };
+    const projected = projectExpression(page, label);
+    expect(projected.name).toEqual({ kind: 'string', value: 'Display name', exact: true });
+    expect(chainOf(projected.locator)).toEqual(['label(Display name)']);
+    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([
+      'label(Display name,exact)',
+    ]);
+    // A position waits for the name predicate; a scope uses the strict locator.
+    const first = projectExpression(page, { kind: 'index', source: label, index: 'first' });
+    expect(first.steps).toEqual([{ kind: 'index', index: 'first' }]);
+    const scoped = projectExpression(page, { ...textbox, scope: label } as LocatorExpression);
+    expect(chainOf(scoped.locator)).toEqual(['label(Display name,exact)', 'role(textbox)']);
+    // A substring label query keeps Playwright's own matching.
+    const loose = projectExpression(page, {
+      kind: 'query',
+      query: { kind: 'label', value: { kind: 'string', value: 'Display', exact: false } },
+    });
+    expect(loose.name).toBeNull();
+  });
+
   it('composes positions natively for every query but displayValue', () => {
     const projected = projectExpression(page, { kind: 'index', source: textbox, index: 1 });
     expect(chainOf(projected.locator)).toEqual(['role(textbox)', 'nth(1)']);

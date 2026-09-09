@@ -248,9 +248,18 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     }
   });
 
+  /**
+   * Rendered text for a name: what innerText shows, minus anything marked
+   * aria-hidden, which the accessible name computation drops and a screen
+   * reader never speaks (a required-field marker, a decorative icon's glyph).
+   * A subtree without aria-hidden keeps innerText's layout-aware result.
+   */
   const textOf = (el: Element): string => {
-    if (el instanceof HTMLElement) return el.innerText;
-    return el.textContent ?? '';
+    if (!(el instanceof HTMLElement)) return el.textContent ?? '';
+    if (el.querySelector('[aria-hidden="true"]') === null) return el.innerText;
+    const clone = el.cloneNode(true) as HTMLElement;
+    for (const hidden of Array.from(clone.querySelectorAll('[aria-hidden="true"]'))) hidden.remove();
+    return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
   };
 
   /** Text owned directly by an element, excluding descendant elements. */

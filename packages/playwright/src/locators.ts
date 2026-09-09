@@ -97,6 +97,20 @@ export interface ProjectedLocator {
   /** Non-null when the terminal query filters by display value. */
   readonly displayValue: TextPattern | null;
   /**
+   * Non-null when the terminal query is an exact label query: `locator` holds
+   * Playwright's substring candidates and the surface keeps those whose
+   * engine-computed name equals the pattern. Playwright names a field by its
+   * label's full text, aria-hidden included, so a required-field marker would
+   * otherwise make `getByLabel('Display name')` miss `Display name*`.
+   */
+  readonly name: TextPattern | null;
+  /**
+   * The strict Playwright locator to compose with as a scope or `has` filter,
+   * for a projection whose own predicate lives outside Playwright's chain.
+   * Null for a display-value projection, which has no such equivalent.
+   */
+  readonly composable: PwLocator | null;
+  /**
    * Steps to apply to the value-filtered matches, innermost first. Always
    * empty when `displayValue` is null, because the projection then composes
    * positions and filters natively onto the locator.
@@ -133,11 +147,18 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
     case 'query': {
       const inner =
         expression.scope === undefined ? scope : requireComposable(project(scope, expression.scope));
+      const { query } = expression;
+      const exactLabel = query.kind === 'label' && patternExact(query.value);
+      const locator = exactLabel
+        ? inner.getByLabel(patternToPw(query.value), { exact: false })
+        : visibleQueryToPw(inner, query);
       return {
-        locator: visibleQueryToPw(inner, expression.query),
-        displayValue: expression.query.kind === 'displayValue' ? expression.query.value : null,
+        locator,
+        displayValue: query.kind === 'displayValue' ? query.value : null,
+        name: exactLabel ? query.value : null,
+        composable: exactLabel ? visibleQueryToPw(inner, query) : null,
         steps: [],
-        visible: expression.query.visible === true,
+        visible: query.visible === true,
       };
     }
     case 'filter': {
@@ -150,11 +171,16 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
       if (source.steps.length > 0) {
         return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
       }
-      return { locator: source.locator.filter(options), displayValue: source.displayValue, steps: [], visible: source.visible };
+      return {
+        ...source,
+        locator: source.locator.filter(options),
+        composable: source.composable === null ? null : source.composable.filter(options),
+        steps: [],
+      };
     }
     case 'index': {
       const source = project(scope, expression.source);
-      if (source.displayValue !== null) {
+      if (source.displayValue !== null || source.name !== null) {
         return { ...source, steps: [...source.steps, { kind: 'index', index: expression.index }] };
       }
       const locator =
@@ -163,10 +189,17 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
           : expression.index === 'last'
             ? source.locator.last()
             : source.locator.nth(expression.index);
-      return { locator, displayValue: null, steps: [], visible: false };
+      return { locator, displayValue: null, name: null, composable: null, steps: [], visible: false };
     }
     case 'selector':
-      return { locator: scope.locator(expression.selector), displayValue: null, steps: [], visible: false };
+      return {
+        locator: scope.locator(expression.selector),
+        displayValue: null,
+        name: null,
+        composable: null,
+        steps: [],
+        visible: false,
+      };
     case 'frame':
       return project(scope.frameLocator(expression.selector), expression.source);
   }
@@ -184,6 +217,7 @@ export function projectExpression(page: Page, expression: LocatorExpression): Pr
  * that chain.
  */
 function requireComposable(projected: ProjectedLocator): PwLocator {
+  if (projected.composable !== null) return projected.composable;
   if (projected.displayValue !== null) {
     throw new EngineError('UNSUPPORTED_CAPABILITY', DISPLAY_VALUE_COMPOSITION_MESSAGE, {
       retryable: false,
