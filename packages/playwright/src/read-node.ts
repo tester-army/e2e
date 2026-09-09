@@ -611,7 +611,8 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
 
     let name = accessibleName(el);
     if (projection.nameLimit !== null && name !== null) name = name.slice(0, projection.nameLimit);
-    const labels = secure ? null : labelsOf(el);
+    // A secure field withholds its value, never its labels: a password field is still found by its label.
+    const labels = labelsOf(el);
     const isDocumentRoot = projection.documentRoot && tag === 'html';
     if (isDocumentRoot) name = el.ownerDocument.title;
 
