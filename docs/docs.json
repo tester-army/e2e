@@ -28,7 +28,7 @@
   },
   "styling": {
     "codeblocks": {
-      "theme": "ayu-dark"
+      "theme": "catppuccin-mocha"
     },
     "eyebrows": "breadcrumbs"
   },
