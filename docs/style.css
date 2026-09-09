@@ -67,3 +67,11 @@ kbd,
 samp {
   font-family: 'Geist Mono', ui-monospace, monospace;
 }
+
+/* The assistant panel takes the table-of-contents column. Without a cap the
+   content column grows into that space (816px to 1120px at 1920 wide) and every
+   line rewraps; with it, only the panel moves. */
+#content-area {
+  max-width: 816px;
+  margin-right: auto;
+}

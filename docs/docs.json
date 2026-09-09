@@ -15,14 +15,21 @@
   },
   "favicon": "/favicon.ico",
   "fonts": {
-    "heading": { "family": "Geist", "weight": 500 },
-    "body": { "family": "Geist" }
+    "heading": {
+      "family": "Geist",
+      "weight": 500
+    },
+    "body": {
+      "family": "Geist"
+    }
   },
   "appearance": {
     "default": "system"
   },
   "styling": {
-    "codeblocks": "dark",
+    "codeblocks": {
+      "theme": "ayu-dark"
+    },
     "eyebrows": "breadcrumbs"
   },
   "navbar": {
@@ -35,15 +42,27 @@
     "groups": [
       {
         "group": "Get started",
-        "pages": ["index", "quickstart", "writing-tests", "agents"]
+        "pages": [
+          "index",
+          "quickstart",
+          "writing-tests",
+          "agents"
+        ]
       },
       {
         "group": "Guides",
-        "pages": ["authentication", "ci", "coding-agents", "telemetry"]
+        "pages": [
+          "authentication",
+          "ci",
+          "coding-agents",
+          "telemetry"
+        ]
       },
       {
         "group": "Extend",
-        "pages": ["writing-an-engine"]
+        "pages": [
+          "writing-an-engine"
+        ]
       },
       {
         "group": "Reference",
@@ -70,14 +89,41 @@
     }
   },
   "redirects": [
-    { "source": "/introduction", "destination": "/" },
-    { "source": "/web", "destination": "/reference/app-web" },
-    { "source": "/running-tests", "destination": "/reference/cli" },
-    { "source": "/configuration", "destination": "/reference/config" },
-    { "source": "/from-playwright", "destination": "/writing-tests" },
-    { "source": "/troubleshooting", "destination": "/reference/errors" },
-    { "source": "/writing-a-driver", "destination": "/writing-an-engine" },
-    { "source": "/writing-a-backend", "destination": "/writing-an-engine" },
-    { "source": "/reference/backend", "destination": "/reference/engine" }
+    {
+      "source": "/introduction",
+      "destination": "/"
+    },
+    {
+      "source": "/web",
+      "destination": "/reference/app-web"
+    },
+    {
+      "source": "/running-tests",
+      "destination": "/reference/cli"
+    },
+    {
+      "source": "/configuration",
+      "destination": "/reference/config"
+    },
+    {
+      "source": "/from-playwright",
+      "destination": "/writing-tests"
+    },
+    {
+      "source": "/troubleshooting",
+      "destination": "/reference/errors"
+    },
+    {
+      "source": "/writing-a-driver",
+      "destination": "/writing-an-engine"
+    },
+    {
+      "source": "/writing-a-backend",
+      "destination": "/writing-an-engine"
+    },
+    {
+      "source": "/reference/backend",
+      "destination": "/reference/engine"
+    }
   ]
 }
