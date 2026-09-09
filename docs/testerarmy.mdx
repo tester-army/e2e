@@ -52,7 +52,7 @@ With a key, the row is the run's URL.
 | `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
 
 `TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
-It must be `https` unless it is a loopback host, and the key `testerarmy auth`
+It must be `https` unless the host is `localhost`, `127.0.0.1`, or `[::1]`, and the key `testerarmy auth`
 saved is used for tester.army only; another host needs the variable, so a
 config that redirects the reporter never carries your key with it.
 

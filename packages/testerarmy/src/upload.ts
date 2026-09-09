@@ -78,7 +78,6 @@ export async function uploadRun(
   deps: UploadDeps,
 ): Promise<ReporterSummary> {
   const baseUrl = (envValue(deps.env, BASE_URL_ENV) ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
-  assertEncryptedHost(baseUrl);
   // The saved key was issued by tester.army and goes nowhere else: a config
   // that points the reporter at another host must also name a key for it.
   const apiKey =
@@ -92,6 +91,8 @@ export async function uploadRun(
       },
     ];
   }
+  // Only a key about to be sent is worth protecting; without one nothing leaves.
+  assertEncryptedHost(baseUrl);
   const runPath = `/api/v1/e2e/runs/${encodeURIComponent(run.report.run.id)}`;
   const request = async (method: 'PUT' | 'POST', route: string, body: unknown): Promise<unknown> => {
     const response = await deps.fetch(`${baseUrl}${route}`, {
@@ -222,7 +223,7 @@ async function inBatches<T>(items: readonly T[], size: number, work: (item: T) =
   }
 }
 
-/** Refuses to send a key in clear text: `http:` is for a loopback host only. */
+/** Refuses to send a key in clear text: `http:` is for `localhost`, `127.0.0.1`, or `[::1]` only. */
 function assertEncryptedHost(baseUrl: string): void {
   const url = new URL(baseUrl);
   const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';

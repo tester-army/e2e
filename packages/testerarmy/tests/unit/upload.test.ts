@@ -283,6 +283,14 @@ describe('uploadRun', () => {
     ).rejects.toThrow('TESTERARMY_BASE_URL must be https');
     expect(calls).toEqual([]);
 
+    // Without a key nothing would be sent, so the host is not even judged.
+    const keyless = await uploadRun(finished(report([])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, {
+      ...deps,
+      fetch,
+      env: { TESTERARMY_BASE_URL: 'http://staging.example' },
+    });
+    expect(keyless[0]?.text).toContain('not uploaded');
+
     const local = fakeFetch({ 'PUT *': () => json(200, { url: 'u', uploads: [] }), 'POST *': () => json(200, { url: 'u' }) });
     await uploadRun(finished(report([])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, {
       ...deps,
