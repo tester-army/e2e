@@ -17,7 +17,7 @@ const mathBrain: StepExecutor = {
   version: '1',
   async runStep(context) {
     const model = createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
-      process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+      process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
     );
     let verdict: StepVerdict | undefined;
     const compute = (name: string, body: () => number) =>
@@ -62,7 +62,7 @@ const mathBrain: StepExecutor = {
           ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
           ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
           provider: 'gateway',
-          modelId: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+          modelId: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
         }),
     });
     return (

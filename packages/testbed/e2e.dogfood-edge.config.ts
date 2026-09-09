@@ -25,6 +25,6 @@ export default {
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
-    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
   },
 } satisfies E2EConfig;

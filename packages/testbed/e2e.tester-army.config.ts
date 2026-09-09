@@ -28,7 +28,7 @@ export default {
   timeout: 600_000,
   actionTimeout: 90_000,
   agent: {
-    model: process.env.E2E_MODEL ?? 'anthropic/claude-haiku-4.5',
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
     maxSteps: 40,
     maxModelCalls: 40,
     context: [

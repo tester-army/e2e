@@ -38,7 +38,7 @@ export default {
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
-    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
   },
   // The bench exists to exercise the trace cache: run once to record, again
   // to replay. `E2E_CACHE=off` benchmarks the uncached baseline.

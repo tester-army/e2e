@@ -53,7 +53,7 @@ artifacts under `.e2e/artifacts/`.
 
 `test:agent` spends real model calls, so it never gates a PR: it runs on the
 weekly `.github/workflows/agent.yml` schedule, by manual dispatch, or by hand. It
-pins `google/gemini-3-flash` and honours `E2E_MODEL` so the same suite can be
+pins `openai/gpt-5.6-luna-fast` and honours `E2E_MODEL` so the same suite can be
 replayed across providers:
 
 ```bash
@@ -92,7 +92,7 @@ want to keep or compare.
 
 `test:device` runs against a real iOS simulator with real model calls, so it is
 opt-in and never runs in CI. It needs Xcode with a booted simulator (check with
-`npx agent-device doctor`) and pins `openai/gpt-5.6-luna`; `E2E_MODEL`
+`npx agent-device doctor`) and pins `openai/gpt-5.6-luna-fast`; `E2E_MODEL`
 overrides it. Run one device suite at a time: workers share the pinned
 agent-device session.
 

@@ -42,7 +42,7 @@ export default {
   agent: {
     executor: createAgent({ tools: agentDeviceTools(ios, android) }),
     model: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
-      process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna',
+      process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
     ),
     maxModelCalls: 40,
     context: [
