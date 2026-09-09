@@ -60,6 +60,8 @@ test('actions and state', async ({ app, screen, web }) => {
   await expect(screen.getByLabel('Plan')).toHaveValue('pro');
   await screen.getByLabel('Plan').selectOption({ index: 2 });
   await expect(screen.getByLabel('Plan')).toHaveValue('team');
+  await screen.getByLabel('Plan').selectOption({ value: 'free' });
+  await expect(screen.getByLabel('Plan')).toHaveValue('free');
 
   await screen.getByRole('button', { name: 'Menu' }).tap();
   await expect(screen.getByRole('button', { name: 'Menu' })).toBeExpanded();

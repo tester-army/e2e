@@ -196,6 +196,7 @@ deadline, and performs one operation. Default timeout `config.actionTimeout`,
 await screen.getByLabel('Email').fill('ada@example.test');
 await screen.getByRole('checkbox', { name: 'Remember me' }).check();
 await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
+await screen.getByLabel('Plan').selectOption({ value: 'pro' });
 await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
 ```
 
@@ -290,8 +291,9 @@ export interface SwipeOptions {
 
 export type SelectOption =
   | string
-  | { label: string; index?: never }
-  | { label?: never; index: number };
+  | { label: string; value?: never; index?: never }
+  | { value: string; label?: never; index?: never }
+  | { index: number; label?: never; value?: never };
 
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
@@ -317,8 +319,9 @@ engine. `visible` applies the same rule to the other query kinds, so
 `getByText` or `getByLabel` can drop a hidden twin too. See
 [Hidden duplicates](#hidden-duplicates).
 
-`SelectOption`: a bare string is the option label. The object form is mutually
-exclusive, `label` or `index`, never both.
+`SelectOption`: a bare string is the option label. The object form names one of
+`label`, `value` (the option's `value` attribute, what the form submits), or
+`index`, never two.
 
 <CardGrid>
   <LinkCard title="Writing tests" href="/writing-tests" />

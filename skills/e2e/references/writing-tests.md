@@ -149,7 +149,7 @@ Each action resolves one node, waits for it to be actionable within
 
 `tap()` (alias `click()`), `doubleTap()`, `longPress({ durationMs? })`,
 `fill(value | Secret)`, `clear()`, `press(key)`, `check()`, `uncheck()`,
-`selectOption(label | { label } | { index })`, `focus()`, `hover()`,
+`selectOption(label | { label } | { value } | { index })`, `focus()`, `hover()`,
 `setInputFiles(paths)` (relative to the project root), `dragTo(locator)`,
 `scrollIntoView()`, `swipe({ direction, momentum? })`.
 

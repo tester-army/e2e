@@ -273,10 +273,12 @@ export interface SwipeOptions {
   momentum?: Momentum;
 }
 
+/** One option of a select: its label (a bare string too), its `value` attribute, or its zero-based index. */
 export type SelectOption =
   | string
-  | { label: string; index?: never }
-  | { label?: never; index: number };
+  | { label: string; value?: never; index?: never }
+  | { value: string; label?: never; index?: never }
+  | { index: number; label?: never; value?: never };
 
 export interface Screen {
   /** Creates a lazy role query. */

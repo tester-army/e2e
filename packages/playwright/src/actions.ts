@@ -66,6 +66,8 @@ export async function dispatchLocatorAction(
         await locator.selectOption({ label: value }, { timeout });
       } else if (value.index !== undefined) {
         await locator.selectOption({ index: value.index }, { timeout });
+      } else if (value.value !== undefined) {
+        await locator.selectOption({ value: value.value }, { timeout });
       } else {
         await locator.selectOption({ label: value.label }, { timeout });
       }

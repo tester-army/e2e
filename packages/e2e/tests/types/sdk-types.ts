@@ -29,6 +29,9 @@ declare const screen: Screen;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
 screen.getByRole('button', { name: 'Save', visible: true });
+void screen.getByLabel('Plan').selectOption({ value: 'pro' });
+// @ts-expect-error one of label, value, or index, never two
+void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
 // @ts-expect-error role queries never match hidden nodes; visible is the one visibility knob
 screen.getByRole('button', { hidden: true });
 
