@@ -7,7 +7,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro build"
+    "check": "astro build",
+    "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "dependencies": {
     "@astrojs/starlight": "0.42.0",
@@ -17,6 +18,12 @@
     "astro": "7.3.1",
     "sharp": "0.35.4",
     "starlight-links-validator": "0.26.0"
+  },
+  "devDependencies": {
+    "@e2edev/e2e": "workspace:*",
+    "@e2edev/playwright": "workspace:*",
+    "@types/node": "26.4.1",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=22.12.0"
