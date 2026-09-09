@@ -12,8 +12,7 @@ test('act signs in with the benchmark account', async ({ app, agent, screen }) =
   const account = credentials.user('benchmark');
   await app.open('/e/login-form');
   await agent.act('log in with the given credentials', {
-    email: account.username,
-    password: account.password,
+    params: { email: account.username, password: account.password },
   });
   await expect(screen.getByTestId('success-message')).toHaveText('Logged in successfully');
 });
