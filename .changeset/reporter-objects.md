@@ -8,7 +8,8 @@ an optional `onEvent` that sees every run event as the `list` reporter does,
 and an optional `onRunFinished` that receives the finished run (the report-1
 document, `projectRoot`, `reportPath`, `artifactsRoot`, `aiTracePath`) once
 the summary has printed, awaited for up to a minute and abandoned by a forced
-interrupt; the summary rows it resolves with print under the `list` summary. A
+interrupt, with an `AbortSignal` that says so; the summary rows it resolves
+with print under the `list` summary. A
 reporter can never change the run's status or exit code: a failure, a timeout,
 or a malformed result is one line on stderr. That now holds for `junit` too:
 `junit.xml` is written after `report.json`, a write that fails is a stderr

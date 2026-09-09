@@ -40,7 +40,7 @@ export default {
 interface Reporter {
   readonly name: string;
   onEvent?(event: RunEvent): void;
-  onRunFinished?(run: FinishedRun): Promise<ReporterSummary | void>;
+  onRunFinished?(run: FinishedRun, signal: AbortSignal): Promise<ReporterSummary | void>;
 }
 
 interface FinishedRun {
@@ -89,14 +89,16 @@ type RunEventFact =
   | { type: 'serial-group'; group: SerialGroupRecord }
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
-  | { type: 'run-finished'; status; exitCode; reportPath?; junitPath?; aiTracePath? };
+  | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
 `run-started` comes first and `run-finished` last. `test-finished` carries
 the full result record, including every attempt's artifacts, so a reporter
 that uploads evidence as it lands has what it needs before the run is over.
-Redaction happens before events are built; secret values never appear in the
-stream.
+The values the runner handles as secrets (filled credentials, provider keys)
+are redacted before events are built. An error message is only sanitized of
+control characters: what a test puts in one is the test's own, so a reporter
+treats error text as untrusted, the way the terminal does.
 
 `onEvent` must not block and must not throw: a throw quarantines the reporter
 for the rest of the run, and the run is never affected. Work that takes time
@@ -117,6 +119,12 @@ abandons them at once. Nothing a reporter does can change the run's status,
 its exit code, or its report: a `junit.xml` that could not be written is a
 stderr line, not a run error.
 
+The second argument of `onRunFinished` is an `AbortSignal` that aborts when
+the budget runs out or the run is forced to stop. Hand it to every request
+and timer: an abandoned reporter that ignores it keeps running in the
+runner's process, and any handle it holds open keeps the CLI alive after the
+run has ended.
+
 The rows a reporter resolves with print under the `list` summary in the same
 layout as `Report`; the `json` reporter does not carry them:
 
@@ -132,9 +140,11 @@ layout as `Report`; the `json` reporter does not carry them:
 ```
 
 Artifact paths in the report are POSIX paths relative to `artifactsRoot`;
-`path.join(run.artifactsRoot, artifact.path)` is the file. `size` and
-`sha256` are recorded for every artifact, so a reporter can skip bytes the
-other side already has.
+`path.join(run.artifactsRoot, artifact.path)` is the file. `path`, `size`, and
+`sha256` are all optional on an artifact record: an artifact whose file never
+appeared, or that a redaction withheld, is recorded without them, so a reporter
+checks for `path` before reading and can use `sha256` to skip bytes the other
+side already has.
 
 ## What `--reporter` does to reporter objects
 

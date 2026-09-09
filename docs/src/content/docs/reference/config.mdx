@@ -109,8 +109,9 @@ store never crosses a process boundary: each worker constructs its own when
 it loads the config module.
 Every run writes `.e2e/report.json` regardless of the selected reporters; the
 `junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
-A [reporter object](/reference/reporters) in `reporters` receives that report,
-with the artifact locations, once the run is over.
+A [reporter object](/reference/reporters) in `reporters` with an
+`onRunFinished` handler receives that report, with the artifact locations,
+once the run is over.
 
 ### video
 

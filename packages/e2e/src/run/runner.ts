@@ -41,7 +41,7 @@ import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
-import { withAbort, withTimeout } from '../internal/time.ts';
+import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
 import type { ResolvedModel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
@@ -349,12 +349,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
   const finish = async (): Promise<RunOutcome> => {
     const aiTracePath = loaded.config === undefined ? undefined : await writeAiTrace(loaded.config);
+    // One document: what is written is what the reporters and the outcome
+    // see, so a reporter uploading `report` ships the file byte for byte.
+    // Only a failed write, itself a run error, forces a rebuild that records it.
+    const document = buildRunReport(currentExitCode());
+    const recorded = runErrors.length;
     const reportPath =
-      loaded.config === undefined
-        ? undefined
-        : await writeCanonicalReport(loaded.config, buildRunReport(currentExitCode()));
+      loaded.config === undefined ? undefined : await writeCanonicalReport(loaded.config, document);
     const exitCode = currentExitCode();
-    const report = buildRunReport(exitCode);
+    const report = runErrors.length === recorded ? document : buildRunReport(exitCode);
     // Read back from the report rather than recomputed: the report derives
     // `blocked` from the results, and the outcome and the event must agree
     // with the file a host reads afterwards.
@@ -367,10 +370,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ...(reportPath === undefined ? {} : { reportPath }),
       ...(aiTracePath === undefined ? {} : { aiTracePath }),
     });
-    // `onRunFinished` runs last, after the summary the stream just rendered,
-    // so nothing reading the terminal waits on a slow reporter; the rows they
-    // resolve with print under the summary. A config that never loaded still
-    // has the built-in reporters, resolved against the working directory.
+    if (debug.enabled) {
+      process.stderr.write(debug.summary());
+      process.stderr.write(agentStepTable(results, serialGroups));
+    }
+    // `onRunFinished` runs last, after everything the terminal shows, so
+    // nothing reading it waits on a slow reporter; the rows they resolve with
+    // print under the summary. A config that never loaded still has the
+    // built-in reporters, resolved against the working directory.
     const rows = await runReporters(
       activeReporters,
       {
@@ -389,10 +396,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       forceController.signal,
     );
     listReporter?.rows(rows);
-    if (debug.enabled) {
-      process.stderr.write(debug.summary());
-      process.stderr.write(agentStepTable(results, serialGroups));
-    }
     return { exitCode, status, report, reportPath, aiTracePath, results };
   };
 
@@ -815,8 +818,10 @@ class ReporterAbandoned extends Error {}
 /**
  * Awaits every reporter's `onRunFinished` at once, each within `timeoutMs`
  * and until a forced interrupt, and collects the summary rows they resolve
- * with. A reporter that throws, runs out of time, or returns something other
- * than rows is one line on stderr; it can never change the run's outcome.
+ * with. Each reporter gets a signal that aborts on either, so a well-behaved
+ * one cancels its own work and leaves no handle holding the process. A
+ * reporter that throws, runs out of time, or returns something other than
+ * rows is one line on stderr; it can never change the run's outcome.
  */
 async function runReporters(
   reporters: readonly Reporter[],
@@ -830,24 +835,37 @@ async function runReporters(
   const budget = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
   const outcomes = await Promise.all(
     reporters.map(async (reporter): Promise<ReporterSummary> => {
-      if (reporter.onRunFinished === undefined) return [];
+      const { onRunFinished } = reporter;
+      if (onRunFinished === undefined) return [];
+      const abandon = new AbortController();
+      const timer = setTimeout(
+        () => abandon.abort(new ReporterAbandoned(`did not finish within ${budget}`)),
+        timeoutMs,
+      );
+      const onForce = (): void => abandon.abort(new ReporterAbandoned('abandoned: the run was forced to stop'));
+      if (force.aborted) onForce();
+      else force.addEventListener('abort', onForce, { once: true });
       try {
         const result = await withAbort(
-          withTimeout(
-            Promise.resolve(reporter.onRunFinished(finished)),
-            timeoutMs,
-            () => new ReporterAbandoned(`did not finish within ${budget}`),
-          ),
-          force,
-          () => new ReporterAbandoned('abandoned: the run was forced to stop'),
+          () => Promise.resolve(onRunFinished.call(reporter, finished, abandon.signal)),
+          abandon.signal,
+          () => abandon.signal.reason as ReporterAbandoned,
         );
-        const rows = Array.isArray(result) ? result.filter(isSummaryRow) : [];
-        const dropped = (Array.isArray(result) ? result.length : 0) - rows.length;
+        if (result === undefined) return [];
+        if (!Array.isArray(result)) {
+          warn(reporter, 'returned something other than summary rows; dropped');
+          return [];
+        }
+        const rows = result.filter(isSummaryRow);
+        const dropped = result.length - rows.length;
         if (dropped > 0) warn(reporter, `returned ${dropped} row(s) without a label and text; dropped`);
         return rows;
       } catch (cause) {
         warn(reporter, cause instanceof ReporterAbandoned ? cause.message : `failed: ${errorMessage(cause)}`);
         return [];
+      } finally {
+        clearTimeout(timer);
+        force.removeEventListener('abort', onForce);
       }
     }),
   );

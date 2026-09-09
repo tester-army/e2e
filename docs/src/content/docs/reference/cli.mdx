@@ -234,7 +234,7 @@ regardless of the selected reporters. The three ids name
 own on: `junit` writes `junit.xml` beside the report from that same document
 once the summary has printed, and a `junit.xml` that could not be written is a
 line on stderr, never a run error. A reporter can never change run status; the
-rows it returns print under the summary.
+rows it returns print under the `list` summary.
 
 With `--ai-trace`, the run also writes `.e2e/ai-trace.json` next to the
 report: one run per agent step, named after the test and the step, with one

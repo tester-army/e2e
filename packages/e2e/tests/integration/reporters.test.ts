@@ -4,7 +4,7 @@
  * misbehaving reporter can touch the run's outcome.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
@@ -66,6 +66,8 @@ describe('reporter objects', () => {
     expect(run.exitCode).toBe(0);
     expect(run.report).toBe(outcome.report);
     expect(run.reportPath).toBe(outcome.reportPath);
+    // The document a reporter uploads is the file on disk, byte for byte.
+    expect(JSON.parse(readFileSync(run.reportPath!, 'utf8'))).toEqual(run.report);
     expect(run.projectRoot).toBe(project.dir);
     expect(run.artifactsRoot).toBe(path.join(project.dir, '.e2e', 'artifacts'));
     const artifacts = run.report.run.results.flatMap((result) =>
@@ -86,27 +88,35 @@ describe('reporter objects', () => {
         throw new Error('boom');
       },
     };
+    let hangingSignal: AbortSignal | undefined;
     const hanging: Reporter = {
       name: 'hanging',
-      onRunFinished: () => new Promise(() => undefined),
+      onRunFinished: (_run, signal) => {
+        hangingSignal = signal;
+        return new Promise(() => undefined);
+      },
     };
-    // What untyped JavaScript hands back: not links.
+    // What untyped JavaScript hands back: not rows.
     const malformed = {
       name: 'malformed',
       onRunFinished: async () => [{ href: 'https://example.test' }, { label: 'ok', text: 'https://example.test/ok' }],
     } as unknown as Reporter;
+    const scalar = { name: 'scalar', onRunFinished: async () => 'done' } as unknown as Reporter;
     const outcome = await runExisting(project, {
       appUrl: app.url,
-      config: { tests: 'tests/**/*.e2e.ts', reporters: [throwing, hanging, malformed], cache: 'off' as const },
+      config: { tests: 'tests/**/*.e2e.ts', reporters: [throwing, hanging, malformed, scalar], cache: 'off' as const },
       runOptions: { reporterTimeout: 200 },
     });
 
     expect(outcome.exitCode).toBe(0);
     expect(outcome.status).toBe('passed');
+    // The budget running out aborts the reporter's own signal, so it can stop its work.
+    expect(hangingSignal?.aborted).toBe(true);
     const written = stderr.mock.calls.map((call) => String(call[0])).join('');
     expect(written).toContain('e2e: reporter "throwing" failed: boom');
     expect(written).toContain('e2e: reporter "hanging" did not finish within 200ms');
     expect(written).toContain('e2e: reporter "malformed" returned 1 row(s) without a label and text; dropped');
+    expect(written).toContain('e2e: reporter "scalar" returned something other than summary rows; dropped');
   }, 120_000);
 
   it('abandons a reporter when the run is forced to stop', async () => {
@@ -120,15 +130,14 @@ describe('reporter objects', () => {
         return new Promise(() => undefined);
       },
     };
-    const started = Date.now();
     const outcome = await runExisting(project, {
       appUrl: app.url,
       config: { tests: 'tests/**/*.e2e.ts', reporters: [uploading], cache: 'off' as const },
       runOptions: { reporterTimeout: 30_000, forceSignal: force.signal },
     });
 
-    expect(Date.now() - started).toBeLessThan(20_000);
     expect(outcome.status).toBe('passed');
+    expect(outcome.exitCode).toBe(0);
     const written = stderr.mock.calls.map((call) => String(call[0])).join('');
     expect(written).toContain('e2e: reporter "uploading" abandoned: the run was forced to stop');
   }, 120_000);

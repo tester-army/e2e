@@ -809,7 +809,9 @@ export type ReporterSummary = readonly { readonly label: string; readonly text: 
  * happens, exactly what the `list` reporter renders, and must not block: a
  * throw quarantines it for the rest of the run. `onRunFinished` runs once
  * `report.json` is written and the summary has printed; it is awaited within
- * a fixed budget, and the rows it resolves with print under the summary. A
+ * a fixed budget, and the rows it resolves with print under the summary. Its
+ * `signal` aborts when that budget runs out or the run is forced to stop, so
+ * a reporter hands it to its requests and leaves nothing running behind. A
  * reporter can never change the run's status or exit code: a failure or a
  * timeout is one line on stderr. Like every live value, a reporter never
  * crosses a process boundary; workers construct their own copy when they
@@ -819,7 +821,7 @@ export type ReporterSummary = readonly { readonly label: string; readonly text: 
 export interface Reporter {
   readonly name: string;
   onEvent?(event: RunEvent): void;
-  onRunFinished?(run: FinishedRun): Promise<ReporterSummary | void>;
+  onRunFinished?(run: FinishedRun, signal: AbortSignal): Promise<ReporterSummary | void>;
 }
 
 export interface E2EConfig {
