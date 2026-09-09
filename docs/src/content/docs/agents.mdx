@@ -117,25 +117,36 @@ completed steps, and the whole screen once. Every action result and every
 received: lines that appeared, lines that changed with what they read before,
 lines that went away. Node ids are stable for as long as an element exists, so
 a line the model saw earlier still names the same element and a change update
-is a complete picture, not a hint. A screen that changed mostly goes out whole
-again, and older full screens are elided from the transcript once two newer
-ones supersede them, which keeps the conversation prefix stable for prompt
-caching.
+is a complete picture, not a hint. A node that only moved to another depth is
+not reported, and a screen cut at the observation byte limit reports no
+removals, since the nodes past the limit were left out rather than gone. A
+screen that changed mostly goes out whole again, and the full screen it
+replaced is elided from the transcript, which keeps the conversation prefix
+stable for prompt caching.
 
 An action result is read after the action's effect. The runner waits, bounded
 to two seconds, for the screen to leave the shape the action was resolved
 against, so a tap on a link reports the page it opened rather than the page it
 left, and a control that did nothing is reported as having no visible effect
-instead of returning a stale screen. The model may batch several actions in
-one turn; they run in order and each reports its own changes. A failed action
-returns the failure together with the current screen, so a stale id costs no
-extra turn, and a targeted action waits at most 15 seconds for its node to
-become actionable, so a tap blocked by a consent banner or a modal reports the
-element in the way instead of spending the whole `actionTimeout` on it. A node
-the engine reports stale is re-found by its descriptor in a fresh capture and
-the action retried, up to twice, so a list that remounts its rows under the
-pointer costs no model turn. The `scroll` tool takes `times` to move several
-screens in one call; each screen is one recorded action.
+instead of returning a stale screen. Clock-like text is ignored when comparing
+shapes, so a ticking timer neither ends the wait nor keeps a screen from
+settling. A scroll or a mutating project tool waits half a second instead,
+long enough for a windowed list to render its next rows; a secret fill, which
+leaves no visible trace, waits for nothing. The model may batch several
+actions in one turn; they run in order and each reports its own changes, and
+an id from the screen the turn saw still resolves when a look in between
+renumbered the tree, as an engine that mints ids per observation does, by
+re-finding the node's descriptor in the newest screen. A failed action returns
+the failure together with the current screen, so a stale id costs no extra
+turn, and a targeted action, its secret authorization included, waits at most
+15 seconds for its node to become actionable, so a tap blocked by a consent
+banner or a modal reports the element in the way instead of spending the whole
+`actionTimeout` on it. A node the engine reports stale is re-found by its
+descriptor in a fresh capture and the action retried, up to twice, so a list
+that remounts its rows under the pointer costs no model turn. Three failed
+actions in a row earn a notice to change approach; five force the conclusion.
+The `scroll` tool takes `times` to move several screens in one call; each
+screen is one recorded action.
 
 ## Two layers
 
