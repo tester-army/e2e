@@ -203,6 +203,37 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
 
+  packages/web-benchmark:
+    dependencies:
+      '@e2edev/e2e':
+        specifier: workspace:*
+        version: link:../e2e
+      '@e2edev/playwright':
+        specifier: workspace:*
+        version: link:../playwright
+      next:
+        specifier: 16.3.4
+        version: 16.3.4(@types/node@26.4.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
 packages:
 
   '@ai-sdk/devtools@1.0.15':

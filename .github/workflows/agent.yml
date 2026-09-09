@@ -15,7 +15,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, agent, dogfood]
+        options: [all, agent, dogfood, web-benchmark]
       model:
         description: 'Override E2E_MODEL (provider/model-id)'
         required: false
@@ -47,12 +47,14 @@ jobs:
           # Empty on schedule, which means every suite.
           SUITE: ${{ inputs.suite }}
         run: |
-          # Both suites run against local deterministic apps, so a failure
-          # is ours: the playground (act flows + judgments) and the dogfood
-          # expense app (custom executor tools through the config).
+          # Every suite runs against a local deterministic app, so a failure
+          # is ours: the playground (act flows + judgments), the dogfood
+          # expense app (custom executor tools through the config), and the
+          # web benchmark (act against deliberately hard surfaces).
           all='[
-            {"suite":"agent","script":"test:agent","optional":false},
-            {"suite":"dogfood","script":"test:dogfood","optional":false}
+            {"suite":"agent","dir":"packages/testbed","script":"test:agent","optional":false},
+            {"suite":"dogfood","dir":"packages/testbed","script":"test:dogfood","optional":false},
+            {"suite":"web-benchmark","dir":"packages/web-benchmark","script":"test:agent","optional":false}
           ]'
           if [ -z "$SUITE" ] || [ "$SUITE" = all ]; then
             selected=$(echo "$all" | jq -c .)
@@ -97,7 +99,7 @@ jobs:
         run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
       - name: Build
         run: pnpm run build
-      - name: Run ${{ matrix.script }}
+      - name: Run ${{ matrix.suite }}
         continue-on-error: ${{ matrix.optional }}
         env:
           E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
@@ -111,12 +113,12 @@ jobs:
           if [ -n "$MODEL_INPUT" ]; then
             export E2E_MODEL="$MODEL_INPUT"
           fi
-          pnpm --filter @e2edev/testbed run ${{ matrix.script }}
+          pnpm --dir "${{ matrix.dir }}" run ${{ matrix.script }}
       # The JSON report is the only durable evidence of a model-dependent run.
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-report-${{ matrix.suite }}
-          path: packages/testbed/.e2e/report.json
+          path: ${{ matrix.dir }}/.e2e/report.json
           if-no-files-found: warn

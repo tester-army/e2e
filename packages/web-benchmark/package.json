@@ -1,0 +1,29 @@
+{
+  "name": "@e2edev/web-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Benchmark app of hard web surfaces, with the e2e suites written against them",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev app --port 4280",
+    "build": "next build app",
+    "start": "next start app --port 4280",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && e2e run",
+    "test:headed": "pnpm run build && e2e run --headed",
+    "test:agent": "pnpm run build && e2e run --config e2e.agent.config.ts"
+  },
+  "dependencies": {
+    "@e2edev/e2e": "workspace:*",
+    "@e2edev/playwright": "workspace:*",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "typescript": "7.0.2"
+  }
+}

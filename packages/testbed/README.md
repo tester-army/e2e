@@ -51,7 +51,8 @@ artifacts under `.e2e/artifacts/`.
 
 ## Agentic suite
 
-`test:agent` spends real model calls, so it is opt-in and never runs in CI. It
+`test:agent` spends real model calls, so it never gates a PR: it runs on the
+weekly `.github/workflows/agent.yml` schedule, by manual dispatch, or by hand. It
 pins `google/gemini-3-flash` and honours `E2E_MODEL` so the same suite can be
 replayed across providers:
 

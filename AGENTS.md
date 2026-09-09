@@ -49,6 +49,12 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   are exported there, and there is no `@e2edev/e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
+- `packages/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
+  self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
+  dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
+  benchmark, plus the e2e suites written against them (`tests/` gates PRs,
+  `tests-agent/` is opt-in). Scenario files are copies: keep diffs against
+  the source minimal so scenarios port both ways, and never fix a planted bug.
 - `docs/` (the Starlight docs site; pages live in `docs/src/content/docs/`,
   navigation and theme in `docs/astro.config.ts` and `docs/src/styles/custom.css`).
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
@@ -67,6 +73,7 @@ Build first — nearly everything downstream consumes `dist`.
 pnpm check          # lint -> check:dead-code -> typecheck -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
+pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios
 ```
 
 Focused work:
@@ -213,7 +220,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     nothing here sandboxes them. Untrusted PR code belongs in an external
     sandbox with no secrets or write tokens.
 
-- CI (`.github/workflows/spec.yml`) runs lint, typecheck, and the testbed on Node 26 and `pnpm test` on Node 22, 24, and 26, and pins actions by SHA; keep
+- CI (`.github/workflows/spec.yml`) runs lint, typecheck, the testbed, and the web benchmark on Node 26 and `pnpm test` on Node 22, 24, and 26, and pins actions by SHA; keep
   new actions SHA-pinned. Every workflow runs on Blacksmith
   (`runs-on: blacksmith-4vcpu-ubuntu-2404`), like the tester-army repos; keep
   new jobs on that label.

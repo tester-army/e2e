@@ -6,6 +6,10 @@
     "packages/testbed/tests*/**/*.ts",
     "packages/testbed/dogfood/server.mjs",
     "packages/testbed/bench/app/**/*.{ts,tsx}",
+    "packages/web-benchmark/e2e.config.ts",
+    "packages/web-benchmark/e2e.*.config.ts",
+    "packages/web-benchmark/tests*/**/*.ts",
+    "packages/web-benchmark/app/src/app/**/*.{ts,tsx}",
     "packages/e2e/tests/types/sdk-types.ts"
   ],
   "ignorePatterns": [

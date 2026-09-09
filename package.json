@@ -23,6 +23,7 @@
     "typecheck": "pnpm run build && pnpm -r run typecheck",
     "test": "pnpm run build && pnpm --filter @e2edev/e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
+    "test:web-benchmark": "pnpm run build && pnpm --filter @e2edev/web-benchmark test",
     "test:public": "pnpm run build && pnpm --filter @e2edev/testbed test:public",
     "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",
     "test:device": "pnpm run build && pnpm --filter @e2edev/testbed test:device"
