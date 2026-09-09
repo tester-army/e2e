@@ -555,7 +555,7 @@ class ActDispatch {
     if (usage?.modelId !== undefined) this.modelId = usage.modelId;
     this.runtime.steps.recordEvent({
       kind: 'model',
-      startedAt: timestamp(),
+      startedAt: usage?.startedAt ?? timestamp(),
       durationMs: Math.max(0, Math.round(usage?.durationMs ?? 0)),
       status: 'passed',
       name: 'executor',

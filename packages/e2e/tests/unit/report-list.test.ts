@@ -1109,9 +1109,9 @@ describe('ListReporter', () => {
         /\n ❯ \|chromium\| tests\/flow\.e2e\.ts 0\/1\n   └── checkout \d+m?s\n {7}✓ agent\.act "add to cart" 4\.20s · 3 model calls\n {7}↳ agent\.act "pay"\n {9}› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/,
       );
       step({ phase: 'event', api: 'agent.act', event: { kind: 'model', durationMs: 9_000, count: 133, inputTokens: 6, outputTokens: 127 } });
-      // The turn is reported after its tools ran; it is shown before them, as it happened.
+      // Stream order: the executor reports the turn once its tools ran.
       expect(chunks.at(-1)!.replace(ANSI_PATTERN, '')).toMatch(
-        /• Thinking \(9\.00s\) \(↑6 ↓127\)\n {9}› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/,
+        /› tap button "Pay" \(27ms\)\n {9}• Thinking \(9\.00s\) \(↑6 ↓127\)\n {9}[·✢✳✶✻✽] Thinking\n/,
       );
     });
 

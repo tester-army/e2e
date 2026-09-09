@@ -171,6 +171,13 @@ export interface ExecutorActions {
 export interface ExecutorModelCall {
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  /**
+   * ISO 8601 instant the request went out. The `model` step event takes it
+   * as `startedAt`, so a tool-using loop that reports a turn after its tools
+   * ran still lands the turn ahead of them in time order. Omitted, the
+   * harness stamps the moment of the report.
+   */
+  readonly startedAt?: string;
   readonly durationMs?: number;
   readonly provider?: string;
   readonly modelId?: string;
