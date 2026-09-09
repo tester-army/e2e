@@ -33,5 +33,10 @@ describe('detectContext', () => {
     expect(detectContext({ CIRCLECI: 'true', CIRCLE_SHA1: 's' })).toEqual({ git: { sha: 's' }, ci: { provider: 'circleci' } });
     // A provider without a commit still names itself.
     expect(detectContext({ GITHUB_ACTIONS: 'true' })).toEqual({ ci: { provider: 'github-actions' } });
+    // A push, not a pull request: the branch is the ref name and there is no number.
+    expect(detectContext({ GITHUB_ACTIONS: 'true', GITHUB_SHA: 's', GITHUB_REF: 'refs/heads/main', GITHUB_REF_NAME: 'main' })).toEqual({
+      git: { sha: 's', branch: 'main' },
+      ci: { provider: 'github-actions' },
+    });
   });
 });

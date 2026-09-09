@@ -36,17 +36,19 @@ config works on a laptop without an account and in CI with the secret.
 | `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
 
 `TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
+The key `testerarmy auth` saved is used for tester.army only; another host
+needs the variable.
 
 ## What is uploaded
 
 The report-1 document `e2e` writes to `.e2e/report.json`, and every artifact it
 names that exists on disk: screenshots, Playwright traces, and `--video`
-recordings. Artifacts travel by content digest, so bytes TesterArmy already
-holds are not sent again. A Playwright trace records what the page showed,
+recordings that are on disk. Artifacts travel by content digest, so bytes
+TesterArmy already holds are not sent again. A Playwright trace records what the page showed,
 including fields a test filled; upload only to a project whose members may see
-that. The reporter runs after the summary, within the runner's one-minute
-reporter budget, and never changes the run's exit code: a failed upload is one
-line on stderr.
+that. The reporter runs after the summary, within the runner's reporter
+budget, and never changes the run's exit code: a failed upload is one line on
+stderr.
 
 ## License
 

@@ -21,7 +21,7 @@ import { playwright } from '@e2edev/playwright';
 import { testerarmy } from '@e2edev/testerarmy';
 
 export default {
-  targets: [{ engine: playwright({ url: 'localhost:3000' }) }],
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
   reporters: ['list', testerarmy()],
 } satisfies E2EConfig;
 ```
@@ -52,6 +52,9 @@ With a key, the row is the run's URL.
 | `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
 
 `TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
+The key `testerarmy auth` saved is used for tester.army only; another host
+needs the variable, so a config that redirects the reporter never carries your
+key with it.
 
 ## What is uploaded
 

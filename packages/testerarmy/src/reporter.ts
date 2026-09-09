@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import type { Reporter } from '@e2edev/e2e';
 import { DEFAULT_API_KEY_ENV, uploadRun } from './upload.ts';
@@ -46,7 +46,13 @@ export function testerarmy(options: TesterArmyOptions = {}): Reporter {
         run,
         signal,
         { apiKeyEnv, ...(options.project === undefined ? {} : { project: options.project }) },
-        { fetch: globalThis.fetch, env: process.env, homeDir: os.homedir(), readFile: (file) => readFile(file) },
+        {
+          fetch: globalThis.fetch,
+          env: process.env,
+          homeDir: os.homedir(),
+          fileExists: (file) => access(file).then(() => true, () => false),
+          readFile: (file) => readFile(file),
+        },
       ),
   };
 }

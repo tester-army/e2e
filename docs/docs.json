@@ -55,6 +55,7 @@
           "authentication",
           "ci",
           "coding-agents",
+          "testerarmy",
           "telemetry"
         ]
       },
