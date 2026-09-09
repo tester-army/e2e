@@ -5,7 +5,7 @@ import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
-import type { AgentErrorCode } from '../types.ts';
+import type { AgentErrorCode, ConfiguredArtifactKind } from '../types.ts';
 import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
@@ -38,7 +38,7 @@ export interface ReportSource {
 export interface TargetProvenance {
   engine: { name: string; version: string; spiVersion: EngineSpiVersion };
   capabilities: string[];
-  artifactCapabilities: ('screenshot' | 'trace')[];
+  artifactCapabilities: ConfiguredArtifactKind[];
   stateCapability: boolean;
 }
 
@@ -53,6 +53,7 @@ export function describeTarget(target: ResolvedTarget): TargetProvenance {
   if (engine?.artifacts !== undefined) {
     artifactCapabilities.push('screenshot');
     if (engine.artifacts.startTrace !== undefined) artifactCapabilities.push('trace');
+    if (engine.artifacts.startVideo !== undefined) artifactCapabilities.push('video');
   }
   return {
     engine: {

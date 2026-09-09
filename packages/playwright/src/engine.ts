@@ -74,6 +74,8 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       screenshot: (label, operation) => surface.screenshot(label, operation),
       startTrace: (operation) => surface.startTrace(operation),
       stopTrace: (operation) => surface.stopTrace(operation),
+      startVideo: (operation) => surface.startVideo(operation),
+      stopVideo: (operation) => surface.stopVideo(operation),
     },
     state: {
       capture: (operation) => surface.captureState(operation),

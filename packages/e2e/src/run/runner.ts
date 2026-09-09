@@ -63,6 +63,12 @@ export interface RunOptions {
   /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
+   * Records a video of every attempt (`--video`), on top of the configured
+   * artifact kinds. The engine must be able to record; one that cannot fails
+   * the run with `UNSUPPORTED_ARTIFACT` before any test starts.
+   */
+  video?: boolean | undefined;
+  /**
    * A config value instead of a discovered file, for the test harness. May
    * hold live values (executors, engine handles, model instances, cache
    * stores, secret providers), which cannot cross a process boundary, so the
@@ -192,6 +198,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.workers !== undefined) cli.workers = options.workers;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
+  if (options.video === true) cli.video = true;
 
   // Config resolves before anything is emitted, and its failure is kept rather
   // than thrown: the reporter set is config truth (CLI overrides merge during
@@ -405,6 +412,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     runId,
     projectId: config.projectId,
     projectRoot: config.projectRoot,
+    artifactsRoot: resolveArtifactsRoot(config, options.artifactsDir),
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
     ...(config.agent.model === undefined ? {} : { model: modelName(config.agent.model) }),
@@ -773,10 +781,10 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
  */
 function validateEngine(target: ResolvedTarget, config: ResolvedConfig): TargetProvenance {
   const provenance = describeTarget(target);
-  // The default artifact set is best-effort: an engine without evidence
-  // capture simply records none. Asking for one explicitly is a contract.
-  for (const artifact of config.artifactsExplicit ? config.artifacts : []) {
-    if (!provenance.artifactCapabilities.includes(artifact)) {
+  // A best-effort kind is captured when the engine can; a required one is a
+  // contract the engine must be able to honour before any test starts.
+  for (const [artifact, policy] of config.artifacts) {
+    if (policy === 'required' && !provenance.artifactCapabilities.includes(artifact)) {
       throw new ConfigurationError(
         'UNSUPPORTED_ARTIFACT',
         `target "${target.name}" (engine ${provenance.engine.name}) does not support the configured "${artifact}" artifact`,

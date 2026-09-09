@@ -284,6 +284,28 @@ export interface EngineArtifacts {
   startTrace?(context: OperationContext): Promise<void>;
   /** Stops the trace and returns its relative path. */
   stopTrace?(context: OperationContext): Promise<string>;
+  /**
+   * Starts recording the surface for the attempt. Declared together with
+   * `stopVideo`. A surface that has nothing to show yet (no page open) may
+   * defer the actual capture to the moment it does; the segments returned by
+   * `stopVideo` say when each one began.
+   */
+  startVideo?(context: OperationContext): Promise<void>;
+  /**
+   * Stops recording and returns every segment written, in order. One segment
+   * is the common case; a surface that had to recreate its context mid-attempt
+   * (a restart, a state reset) returns one per context. An attempt that never
+   * showed anything returns none.
+   */
+  stopVideo?(context: OperationContext): Promise<readonly VideoSegment[]>;
+}
+
+/** One recorded video file of an attempt. */
+export interface VideoSegment {
+  /** Path relative to the attempt artifact directory. */
+  readonly path: string;
+  /** When the segment's first frame was captured, as an ISO timestamp. */
+  readonly startedAt: string;
 }
 
 /**
@@ -540,7 +562,7 @@ const KNOWN_KEYS = [
 /** Keys of the nested manifests, closed like the top level. */
 const NESTED_KEYS = {
   state: ['capture', 'restore'],
-  artifacts: ['screenshot', 'startTrace', 'stopTrace'],
+  artifacts: ['screenshot', 'startTrace', 'stopTrace', 'startVideo', 'stopVideo'],
   app: ['navigate', 'back', 'restart', 'clearState'],
 } as const;
 
@@ -733,6 +755,9 @@ export function defineEngine(spec: Engine): EngineHandle {
     const artifacts = nestedManifest(name, 'artifacts', spec.artifacts, ['screenshot']);
     if ((artifacts['startTrace'] === undefined) !== (artifacts['stopTrace'] === undefined)) {
       throw invalid(name, 'artifacts.startTrace and stopTrace must be declared together');
+    }
+    if ((artifacts['startVideo'] === undefined) !== (artifacts['stopVideo'] === undefined)) {
+      throw invalid(name, 'artifacts.startVideo and stopVideo must be declared together');
     }
     handle['artifacts'] = artifacts;
     capabilities.add('artifacts');

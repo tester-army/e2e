@@ -109,7 +109,7 @@ never silently.
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
 | `swipe(direction, momentum, context)` | - (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
-| `artifacts.{screenshot,startTrace?,stopTrace?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']` |
+| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']`, `artifacts: ['video']` / `--video` |
 | `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?,services?}` | - | declares the app under test: navigation policy, cache and session identity, the report's target record, and the app process the runner starts ([reference](/reference/config#the-app-under-test)) |
 | `app.{navigate?,back?,restart?,clearState?}` | - | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `url(context)` | - | trace start anchors, the secret-fill origin check |

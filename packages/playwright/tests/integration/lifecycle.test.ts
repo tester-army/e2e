@@ -16,7 +16,8 @@ import type {
   OperationContext,
   SemanticNode,
 } from '@e2edev/e2e/engine';
-import { playwright } from '../../src/index.ts';
+import { withCursorHidden } from '../../src/cursor-overlay.ts';
+import { playwright, surfaceOf } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
 
@@ -618,6 +619,75 @@ describe('playwright engine lifecycle', () => {
       });
     } finally {
       rmSync(traceDir, { recursive: true, force: true });
+    }
+  });
+
+  it('records a video per context, with a pointer that never enters observations or captures', async () => {
+    const engine = playwright();
+    const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
+    const nodesOf = (snapshot: { nodes: readonly SemanticNode[] }) => snapshot.nodes.flatMap((node) => [...walk(node)]);
+    try {
+      await withAttempt(engine, app, videoDir, 'v1', async () => {
+        await engine.app!.navigate!(`${app.url}/form`, operation('v1'));
+        const plain = nodesOf(await engine.observe!(operation('v1')));
+        await engine.artifacts!.startVideo!(operation('v1'));
+        // The pointer is in the page now, but the tree is exactly what it was.
+        const observed = nodesOf(await engine.observe!(operation('v1'), { pixels: true }));
+        expect(observed.length).toBe(plain.length);
+        const page = surfaceOf(engine)!.page();
+        const hostVisible = () =>
+          page.evaluate(() => {
+            const host = document.getElementById('__e2e_cursor_overlay__');
+            return host !== null && host.style.display !== 'none';
+          });
+        expect(await hostVisible()).toBe(true);
+        // A pointer action glides the pointer to its target before dispatching.
+        const textbox = observed.find((node) => node.role === 'textbox' && node.name === 'First');
+        await engine.perform!(textbox!.ref, { kind: 'fill', value: 'recorded', sensitive: false }, operation('v1'));
+        expect(await hostVisible()).toBe(true);
+        // Captures hide it for exactly their duration.
+        await withCursorHidden(page, async () => {
+          expect(await hostVisible()).toBe(false);
+        });
+        expect(await hostVisible()).toBe(true);
+        await engine.artifacts!.screenshot('shot', operation('v1'));
+        expect(await hostVisible()).toBe(true);
+        // A state reset recreates the context; the recording continues in a new segment.
+        await engine.app!.clearState!(operation('v1'));
+        await engine.app!.navigate!(`${app.url}/`, operation('v1'));
+        const segments = await engine.artifacts!.stopVideo!(operation('v1'));
+        expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm', 'video/video-part2.webm']);
+        for (const segment of segments) {
+          const absolute = path.join(videoDir, segment.path);
+          expect(existsSync(absolute), segment.path).toBe(true);
+          expect(statSync(absolute).size).toBeGreaterThan(0);
+          // Every WebM file opens with the EBML magic.
+          expect(readFileSync(absolute).subarray(0, 4).toString('hex')).toBe('1a45dfa3');
+          expect(Number.isNaN(Date.parse(segment.startedAt))).toBe(false);
+        }
+      });
+    } finally {
+      rmSync(videoDir, { recursive: true, force: true });
+    }
+  });
+
+  it('opens the attempt page when the video starts, so a trace started after it records at the video size', async () => {
+    const engine = playwright();
+    const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
+    try {
+      await withAttempt(engine, app, videoDir, 'v2', async () => {
+        await engine.artifacts!.startVideo!(operation('v2'));
+        // The page exists before any navigation: the recording owns its screencast.
+        expect(surfaceOf(engine)!.page().url()).toBe('about:blank');
+        await engine.artifacts!.startTrace!(operation('v2'));
+        await engine.app!.navigate!(`${app.url}/`, operation('v2'));
+        const segments = await engine.artifacts!.stopVideo!(operation('v2'));
+        expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm']);
+        expect(await engine.artifacts!.stopTrace!(operation('v2'))).toBe('trace/trace.zip');
+        expect(statSync(path.join(videoDir, 'video/video.webm')).size).toBeGreaterThan(0);
+      });
+    } finally {
+      rmSync(videoDir, { recursive: true, force: true });
     }
   });
 

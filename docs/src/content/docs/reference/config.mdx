@@ -65,7 +65,7 @@ the module type of `.ts` test files or helpers.
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024 |
-| `artifacts` | kinds array or `{ kinds?, store? }` | `['screenshot', 'trace']` | those two kinds; `store` is an [`ArtifactStore`](#artifacts) |
+| `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | `screenshot`, `trace`, and the opt-in `video`; `store` is an [`ArtifactStore`](#artifacts); `video` holds the [recording options](#video) |
 | `reporters` | `readonly ('list' \| 'json' \| 'junit')[]` | `['list']` | those three IDs; `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml` |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object or `StepExecutor` | see [agent](#agent) | - |
@@ -75,9 +75,12 @@ the module type of `.ts` test files or helpers.
 
 Every numeric value must be a safe integer.
 
-`artifacts` accepts `screenshot` and `trace` only; `video` is not a
-configurable artifact kind. A configured kind the target's engine cannot
-produce fails before collection with `UNSUPPORTED_ARTIFACT`.
+`artifacts` accepts `screenshot`, `trace`, and `video`. The default set is
+screenshot and trace, captured best-effort: an engine without evidence capture
+records none. A configured kind the target's engine cannot produce fails
+before collection with `UNSUPPORTED_ARTIFACT`. `video` is never in the default
+set, so asking for it (in the config or with `--video`) is always that kind of
+contract.
 
 ### artifacts
 
@@ -86,14 +89,15 @@ The object form adds a **store**, the cloud seam for evidence the way
 
 ```ts
 artifacts: {
-  kinds: ['screenshot', 'trace'],
+  kinds: ['screenshot', 'trace', 'video'],
   store: {
     async put(artifact) {
-      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?
+      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?, .startedAt?
       const key = await bucket.upload(artifact.path, artifact.bytes);
       return { ref: key };
     },
   },
+  video: { retain: 'on-failure' },
 },
 ```
 
@@ -105,6 +109,37 @@ store never crosses a process boundary: each worker constructs its own when
 it loads the config module.
 Every run writes `.e2e/report.json` regardless of the selected reporters; the
 `junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
+
+### video
+
+With `video` among the kinds, or `e2e run --video`, every attempt records the
+surface it drives: a browser engine writes a WebM screencast of its page at the
+attempt's viewport size, with a pointer drawn into the frames that glides to
+each target and pulses on a tap, so a recording shows what acted and where; a
+device engine records the device screen (MP4, with taps shown). The file lands
+under the attempt's artifact directory as `video/video.webm` (or `.mp4`) and is
+recorded in `report.json` as an artifact of kind `video` whose `startedAt` is
+the recording's first frame, so `step.startedAt - artifact.startedAt` is a
+step's offset into the video. The failure recap of the list reporter names the
+file under each failed test. An attempt that recreated its context mid-way (an
+`app.restart()`, a state reset) writes one segment per context:
+`video/video.webm`, then `video/video-part2.webm`, and so on.
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `retain` | `'all' \| 'on-failure'` | `'all'` | `on-failure` deletes the recording of every attempt that passed once its verdict is known, so a CI run records everything and keeps only what needs watching |
+
+Recording is opt-in because it costs an encoder per page and about a megabit
+per second of disk. With video on, the Playwright trace's screenshots are
+captured at the video's size instead of Playwright's 800-pixel default, so the
+trace grows too. Nothing about it enters the trace cache identity: turning
+video on or off never invalidates cached replays.
+
+A recording masks nothing. Secure fields render their own dots, but anything
+else the screen showed is in the frames, which is why a video artifact is
+recorded with `redaction: 'incomplete'` where screenshots and traces say
+`complete`. Treat recordings of authenticated flows as you would a screen
+share.
 
 ## The app under test
 

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import {
   test,
   type Agent,
+  type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
   type Screen,
@@ -17,6 +18,7 @@ import type { EngineHandle } from '../../src/engine/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
+declare const artifactStore: ArtifactStore;
 declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
@@ -29,6 +31,13 @@ declare const engine: EngineHandle;
 ({ targets: [{ name: 'phone', engine }] }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
 ({ cache: 'sometimes' }) satisfies E2EConfig;
+({ artifacts: ['screenshot', 'trace', 'video'] }) satisfies E2EConfig;
+({ artifacts: { kinds: ['video'], store: artifactStore, video: { retain: 'on-failure' } } }) satisfies E2EConfig;
+// @ts-expect-error artifact kinds are a closed union
+({ artifacts: ['gif'] }) satisfies E2EConfig;
+// @ts-expect-error video retention is a closed union
+({ artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
+({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
 screen.getByRole('button', { name: 'Save', visible: true });

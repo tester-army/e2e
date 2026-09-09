@@ -3,8 +3,8 @@
  * attempt, and the page every engine member delegates to. This is the closure
  * state behind `playwright()`; the engine hooks in `engine.ts` and the `web`
  * fixture in `web.ts` are thin delegates onto it. Action dispatch lives in
- * `actions.ts` and tree capture in `observation.ts`; this file owns lifecycle,
- * location, navigation, artifacts, and state.
+ * `actions.ts`, tree capture in `observation.ts`, and the recording in
+ * `video.ts`; this file owns lifecycle, location, navigation, artifacts, and state.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -30,6 +30,7 @@ import {
   type OperationContext,
   type ScrollDirection,
   type SemanticNode,
+  type VideoSegment,
 } from '@e2edev/e2e/engine';
 import { matchesText } from '@e2edev/e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
@@ -54,6 +55,7 @@ import {
   translatePwError,
   type ActionTarget,
 } from './support.ts';
+import { VideoRecorder } from './video.ts';
 
 /**
  * Safety valve on nodes in one observation. The contract has no way to report
@@ -168,6 +170,8 @@ export class PlaywrightSurface {
   private tracing = false;
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
   private traceSegments = 0;
+  /** The attempt's recording and the pointer it shows; every hook is a no-op without one. */
+  private readonly video: VideoRecorder;
   /**
    * Attempt-scoped network routes. Registered on the
    * context, not a page, so they cover every page the attempt opens - the
@@ -182,6 +186,7 @@ export class PlaywrightSurface {
     this.browserName = options.browser ?? 'chromium';
     this.connect = options.connect;
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
+    this.video = new VideoRecorder(this.viewport);
   }
 
   // --- lifecycle ---
@@ -287,6 +292,7 @@ export class PlaywrightSurface {
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     this.traceSegments = 0;
+    this.video.reset(context.artifactsDir);
     this.routes.length = 0;
     this.dialogs.reset();
     await this.openContext(undefined, context.signal);
@@ -317,6 +323,9 @@ export class PlaywrightSurface {
     this.context = null;
     this.page = null;
     if (context === null) return;
+    // The harness stops the video before the attempt ends; a segment still
+    // recording here belongs to an attempt cut short, and is kept as far as it got.
+    if (this.video.isRecording) await withinCleanupBudget(this.video.contextClosing(), budget);
     if (this.tracing) {
       this.tracing = false;
       await withinCleanupBudget(context.tracing.stop(), budget);
@@ -406,6 +415,7 @@ export class PlaywrightSurface {
     const context = this.requireContext();
     if (this.page === null || this.page.isClosed()) {
       this.page = await context.newPage();
+      await this.video.pageOpened(this.page);
     }
     return this.page;
   }
@@ -432,6 +442,9 @@ export class PlaywrightSurface {
     this.page = null;
     this.tracing = false;
     this.refs.clear();
+    // A screencast is the old page's: its segment closes here, and the next
+    // page the new context opens starts the following one.
+    await this.video.contextClosing();
     if (resumeTrace) {
       this.traceSegments += 1;
       await context.tracing
@@ -440,6 +453,9 @@ export class PlaywrightSurface {
     }
     await context.close();
     await this.openContext(storageState);
+    // The recording's next segment opens the new context's page before the
+    // trace resumes, for the same reason `startVideo` opens the first one.
+    if (this.video.isArmed) await this.ensurePage();
     if (resumeTrace) {
       await this.requireContext().tracing.start(TRACE_OPTIONS);
       this.tracing = true;
@@ -571,9 +587,10 @@ export class PlaywrightSurface {
       operation,
       action.kind,
       () => {
-        this.requirePage();
-        return dispatchLocatorAction(this.refs.lookup(ref), action, operation.timeoutMs, (other) =>
-          this.refs.lookup(other),
+        const page = this.requirePage();
+        const target = this.refs.lookup(ref);
+        return this.video.follow(page, target, action.kind, () =>
+          dispatchLocatorAction(target, action, operation.timeoutMs, (other) => this.refs.lookup(other)),
         );
       },
       (cause) => classifyActionError(cause, action),
@@ -634,11 +651,13 @@ export class PlaywrightSurface {
     return this.guard(operation, 'screenshot', async () => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
-      await page.screenshot({
-        path: absolute,
-        timeout: operation.timeoutMs,
-        ...maskOptions(secureFieldMasks(page)),
-      });
+      await this.video.withoutCursor(page, () =>
+        page.screenshot({
+          path: absolute,
+          timeout: operation.timeoutMs,
+          ...maskOptions(secureFieldMasks(page)),
+        }),
+      );
       return relative;
     });
   }
@@ -666,6 +685,28 @@ export class PlaywrightSurface {
       this.tracing = false;
       return relative;
     });
+  }
+
+  // --- video ---
+
+  /**
+   * Arms the attempt's recording, opening the attempt's page if it has none
+   * yet. Eager on purpose: a page has one screencast, sized by its first
+   * client, and a trace started afterwards (the harness starts the video
+   * first) then records its frames at the recording's size rather than the
+   * recording inheriting the trace's 800-pixel cap. Pages a replaced context
+   * opens later resume in `ensurePage`.
+   */
+  startVideo(operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'video', async () => {
+      const page = await this.ensurePage();
+      await this.video.arm(page);
+    });
+  }
+
+  /** Finishes the recording and returns every segment this attempt wrote, in order. */
+  stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
+    return this.guard(operation, 'video', () => this.video.stop());
   }
 
   // --- state ---
@@ -745,7 +786,7 @@ export class PlaywrightSurface {
     // a tree-only observation, exactly like an engine that has no pixels.
     const pixelCapture =
       options?.pixels === true
-        ? capturePixels(page, operation, viewport).catch(() => undefined)
+        ? this.video.withoutCursor(page, () => capturePixels(page, operation, viewport)).catch(() => undefined)
         : Promise.resolve(undefined);
     let captured: Awaited<ReturnType<typeof captureDocument>>;
     let capturedPixels: PixelCapture | undefined;

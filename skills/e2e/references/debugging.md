@@ -16,7 +16,8 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 
 3. Artifacts named there live under `.e2e/artifacts/`: screenshots, a
    Playwright `trace.zip` per attempt (`npx playwright show-trace <file>`),
-   downloads, and with `--debug` the transcript of every agent step.
+   downloads, with `--video` a `video/video.webm` per attempt, and with
+   `--debug` the transcript of every agent step.
 
 ## Error codes and what to do
 
@@ -54,6 +55,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `--no-cache` | Rule out a stale `agent.act` replay |
 | `--debug` | Read each agent step's duration, model calls, cost, and transcript |
 | `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | See exactly what the model was shown and called |
+| `--video` | Watch the failed attempt; `step.startedAt` minus the video artifact's `startedAt` is the step's offset into it |
 | `command.log: '.e2e/logs/app.log'` | Read the app's own output when it never becomes ready or errors mid-test |
 | `await app.screenshot('before-submit')` | Attach evidence at a chosen point |
 | `CI=1 npx --no-install e2e run` | Reproduce CI-only behaviour: `ONLY_IN_CI`, read-only cache, `reuseExisting` ignored |

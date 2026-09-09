@@ -20,6 +20,9 @@ import type {
 } from '../../src/engine/index.ts';
 
 const builtEngineModule = '../../dist/engine/index.js';
+
+/** The EBML magic every WebM file starts with, followed by nothing worth decoding. */
+const FAKE_WEBM = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00]);
 const { defineEngine, EngineError, ENGINE_SPI_VERSION } = (await import(
   builtEngineModule
 )) as typeof import('../../src/engine/index.ts');
@@ -66,6 +69,12 @@ export interface FakeEngineBehavior {
   state?: boolean;
   /** Declares the artifacts capability (screenshot only). */
   artifacts?: boolean;
+  /**
+   * Declares video recording on top of screenshots: `stopVideo` writes one
+   * small `video/fake.webm` into the attempt directory and reports when the
+   * segment began.
+   */
+  video?: boolean;
   /** Declares a viewport swipe, unlocking the agent's scroll verb. */
   swipe?: boolean;
   /** Throw to fail state restore after startAttempt succeeded. */
@@ -133,6 +142,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
   }
 
   const tree = behavior.tree ?? FAKE_NODE;
+  let videoStartedAt: string | undefined;
 
   const engine = defineEngine({
     name: 'fake',
@@ -265,13 +275,31 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
           },
         }
       : {}),
-    ...(behavior.artifacts === true
+    ...(behavior.artifacts === true || behavior.video === true
       ? {
           artifacts: {
             async screenshot(label, operation) {
               record(`artifacts.screenshot(${label ?? ''})`, operation);
               return 'screenshots/fake.png';
             },
+            ...(behavior.video === true
+              ? {
+                  async startVideo(operation) {
+                    record('artifacts.startVideo', operation);
+                    videoStartedAt = new Date().toISOString();
+                  },
+                  async stopVideo(operation) {
+                    record('artifacts.stopVideo', operation);
+                    const dir = attempts[current]?.artifactsDir;
+                    if (dir === undefined || videoStartedAt === undefined) return [];
+                    mkdirSync(path.join(dir, 'video'), { recursive: true });
+                    writeFileSync(path.join(dir, 'video', 'fake.webm'), FAKE_WEBM);
+                    const startedAt = videoStartedAt;
+                    videoStartedAt = undefined;
+                    return [{ path: 'video/fake.webm', startedAt }];
+                  },
+                }
+              : {}),
           },
         }
       : {}),

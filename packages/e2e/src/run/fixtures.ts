@@ -35,7 +35,14 @@ export interface ArtifactSink {
   register(
     kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
     relativePath: string,
+    options?: ArtifactRegistration,
   ): string;
+}
+
+/** Facts about a produced artifact its file does not carry. */
+export interface ArtifactRegistration {
+  /** When a time-based artifact (a video segment) began recording. */
+  readonly startedAt?: string;
 }
 
 export interface AttemptEnvironment {

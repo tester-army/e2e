@@ -45,7 +45,8 @@
         ],
         "artifactCapabilities": [
           "screenshot",
-          "trace"
+          "trace",
+          "video"
         ],
         "stateCapability": true
       }
@@ -77,7 +78,21 @@
             "startedAt": "2026-07-24T12:00:00.000Z",
             "durationMs": 1000,
             "steps": [],
-            "artifacts": [],
+            "artifacts": [
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
+                "kind": "video",
+                "mediaType": "video/webm",
+                "path": "web/tests_example.e2e.ts__opens_app/attempt-0/video/video.webm",
+                "size": 8,
+                "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "redaction": "incomplete",
+                "producer": {
+                  "kind": "attempt"
+                }
+              }
+            ],
             "secondaryErrors": [],
             "cleanup": "complete"
           }
@@ -106,7 +121,7 @@
       "maxAgentContextBytes": 0,
       "maxLedgerBytes": 0,
       "maxObservationBytes": 0,
-      "artifactBytes": 0,
+      "artifactBytes": 8,
       "downloads": 0,
       "events": 0,
       "modelTokens": 0,

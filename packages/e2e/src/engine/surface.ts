@@ -17,11 +17,11 @@ import type {
   OperationContext,
   SemanticNode,
 } from './contract.ts';
-import type { EngineObserveOptions, EngineState } from './index.ts';
+import type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
 
 export type * from './contract.ts';
 export { EngineError } from './contract.ts';
-export type { EngineObserveOptions, EngineState } from './index.ts';
+export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
 
 /**
  * The agent's action grammar, by verb. A session declares which verbs its
@@ -70,6 +70,10 @@ export interface SessionArtifacts {
   startTrace?(operation: OperationContext): Promise<void>;
   /** Stops trace recording and returns an artifact-relative path. */
   stopTrace?(operation: OperationContext): Promise<string>;
+  /** Starts video recording. */
+  startVideo?(operation: OperationContext): Promise<void>;
+  /** Stops video recording and returns the segments written, in order. */
+  stopVideo?(operation: OperationContext): Promise<readonly VideoSegment[]>;
 }
 
 export interface TargetSession {

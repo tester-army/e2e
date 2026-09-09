@@ -115,11 +115,13 @@ function serialGroup(
 function runStarted(
   overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string; visionModel?: string } = {},
 ): RunEventFact {
+  const projectRoot = overrides.projectRoot ?? '/project';
   return {
     type: 'run-started',
     runId: 'run-1',
     projectId: 'project',
-    projectRoot: overrides.projectRoot ?? '/project',
+    projectRoot,
+    artifactsRoot: `${projectRoot}/.e2e/artifacts`,
     ci: overrides.ci ?? false,
     targets: overrides.targets ?? ['chromium'],
     ...(overrides.model === undefined ? {} : { model: overrides.model }),
@@ -455,6 +457,37 @@ describe('ListReporter', () => {
       // Failures come after the file blocks and before the summary.
       expect(text.indexOf(' Failed Tests 2 ')).toBeGreaterThan(text.indexOf(' ❯ |chromium| tests/a.e2e.ts'));
       expect(text.indexOf(' Failed Tests 2 ')).toBeLessThan(text.indexOf('Test Files'));
+    });
+
+    it('names the recording a failed attempt kept, relative to the project', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const failed = failedAttempt('boom');
+      failed.artifacts = [
+        {
+          id: 'attempt-1:artifact:0',
+          kind: 'video',
+          mediaType: 'video/webm',
+          path: 'chromium/a/attempt-0/video/video.webm',
+          startedAt: new Date(0).toISOString(),
+          redaction: 'incomplete',
+          producer: { kind: 'attempt' },
+        },
+        {
+          id: 'attempt-1:artifact:1',
+          kind: 'trace',
+          mediaType: 'application/zip',
+          path: 'chromium/a/attempt-0/trace/trace.zip',
+          redaction: 'complete',
+          producer: { kind: 'attempt' },
+        },
+      ];
+      reporter.handle(finished(result({ status: 'failed', id: 'a', file: 'tests/a.e2e.ts', title: ['first'], attempts: [failed] })));
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '/project/.e2e/report.json' }));
+      expect(lines).toContain(' ❯ video .e2e/artifacts/chromium/a/attempt-0/video/video.webm');
+      expect(lines.some((line) => line.includes('trace.zip'))).toBe(false);
     });
 
     it('names the status when a failure recorded no error', () => {

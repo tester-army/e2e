@@ -62,6 +62,8 @@ export type RunEventFact =
       readonly runId: string;
       readonly projectId: string;
       readonly projectRoot: string;
+      /** Absolute directory the report's artifact paths are relative to. */
+      readonly artifactsRoot: string;
       readonly ci: boolean;
       readonly targets: readonly string[];
       /** The configured agent model as `provider/model-id`; absent when none is configured. */

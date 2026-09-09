@@ -695,6 +695,11 @@ export interface StoredArtifact {
   readonly attemptId: string;
   /** The step that produced it, when one was running. */
   readonly stepId?: string;
+  /**
+   * When a time-based artifact began recording (a video segment), so a host
+   * can align step timestamps with it without reading the report.
+   */
+  readonly startedAt?: string;
 }
 
 /**
@@ -711,12 +716,32 @@ export interface ArtifactStore {
   put(artifact: StoredArtifact): Promise<{ readonly ref: string }>;
 }
 
+/**
+ * Artifact kinds a config may ask for. `video` is never in the default set:
+ * asking for it, in the config or with `--video`, is always a contract, and
+ * it never enters the config digest, so recording a run cannot invalidate
+ * its cached traces.
+ */
+export type ConfiguredArtifactKind = 'trace' | 'screenshot' | 'video';
+
+/** Options of the `video` artifact. */
+export interface VideoArtifactConfig {
+  /**
+   * Which attempts keep their recording: every attempt (`all`, the default),
+   * or only the ones that did not pass (`on-failure`), so a CI run records
+   * everything and keeps only what needs watching.
+   */
+  retain?: 'all' | 'on-failure';
+}
+
 /** Artifact configuration: which kinds to capture, and where they go. */
 export interface ArtifactsConfig {
   /** Kinds to capture; defaults to screenshot and trace. */
-  kinds?: readonly ('trace' | 'screenshot')[];
+  kinds?: readonly ConfiguredArtifactKind[];
   /** Host store every produced artifact is handed to; undefined keeps files local only. */
   store?: ArtifactStore;
+  /** Options of the `video` kind; ignored unless `video` is among the kinds. */
+  video?: VideoArtifactConfig;
 }
 
 /**
@@ -759,8 +784,8 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   retries?: number;
   workers?: number;
-  /** Artifact kinds, or `{ kinds, store }` to also hand every artifact to a host store. */
-  artifacts?: readonly ('trace' | 'screenshot')[] | ArtifactsConfig;
+  /** Artifact kinds, or `{ kinds, store, video }` to also hand every artifact to a host store. */
+  artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
   /** Output renderers; `junit` writes `.e2e/junit.xml`, `json` prints the report and excludes `list`. */
   reporters?: readonly ('list' | 'json' | 'junit')[];
   screen?: {

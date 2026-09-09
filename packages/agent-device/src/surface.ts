@@ -7,7 +7,7 @@
  * agent-device's commands. The runner owns everything else.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { createAgentDeviceClient } from 'agent-device';
@@ -26,6 +26,7 @@ import {
   type NodeRef,
   type ObservationPixels,
   type OperationContext,
+  type VideoSegment,
   type ScrollDirection,
   type SemanticNode,
 } from '@e2edev/e2e/engine';
@@ -142,6 +143,8 @@ const MAX_LOCATED_REFS = 2048;
 interface Attempt {
   readonly artifactsDir: string;
   screenshots: number;
+  /** The recording in progress, once `startVideo` asked the device for one. */
+  video: { readonly relative: string; readonly absolute: string; readonly startedAt: string } | undefined;
 }
 
 /**
@@ -281,7 +284,7 @@ export class AgentDeviceSurface {
       throw invalidState('an attempt is already running on this agent-device engine');
     }
     await this.settleInflight(context.signal);
-    this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0 };
+    this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0, video: undefined };
     this.generation = new Map();
     this.located.clear();
     const app = this.pinnedApp;
@@ -289,10 +292,61 @@ export class AgentDeviceSurface {
     await this.openApp(app, true, context.signal);
   }
 
-  async endAttempt(_context: EngineCleanupContext): Promise<void> {
+  async endAttempt(context: EngineCleanupContext): Promise<void> {
+    const dangling = this.attempt?.video;
     this.attempt = undefined;
     this.generation = new Map();
     this.located.clear();
+    // The harness stops the video before it ends the attempt; a recording still
+    // running here belongs to an attempt that died mid-flight, and the device
+    // must not keep recording into the next one.
+    if (dangling !== undefined) {
+      await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), context.signal).catch(
+        () => undefined,
+      );
+    }
+  }
+
+  // --- video ---
+
+  /**
+   * Asks the device to record its screen into the attempt directory. Taps stay
+   * visible in the recording (agent-device's touch indicator), which is the
+   * closest a phone comes to a cursor.
+   */
+  async startVideo(operation: OperationContext): Promise<void> {
+    const attempt = this.attempt;
+    if (attempt === undefined) throw invalidState('startVideo outside an attempt');
+    if (attempt.video !== undefined) throw invalidState('a video is already recording');
+    const relative = path.join('video', 'video.mp4');
+    const absolute = path.join(attempt.artifactsDir, relative);
+    mkdirSync(path.dirname(absolute), { recursive: true });
+    await this.command(
+      'start video recording',
+      (client) => client.recording.record({ action: 'start', path: absolute, quality: 'medium' }),
+      operation.signal,
+    );
+    attempt.video = { relative, absolute, startedAt: new Date().toISOString() };
+  }
+
+  /** Stops the recording and returns its one segment, or none when the device wrote nothing. */
+  async stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
+    const attempt = this.attempt;
+    if (attempt === undefined) throw invalidState('stopVideo outside an attempt');
+    const video = attempt.video;
+    if (video === undefined) return [];
+    attempt.video = undefined;
+    const result = await this.command(
+      'stop video recording',
+      (client) => client.recording.record({ action: 'stop' }),
+      operation.signal,
+    );
+    // The device may finalize the file under a path of its own choosing; the
+    // artifact must live where the attempt directory expects it.
+    const written = typeof result.outPath === 'string' ? result.outPath : video.absolute;
+    if (written !== video.absolute && existsSync(written)) renameSync(written, video.absolute);
+    if (!existsSync(video.absolute)) return [];
+    return [{ path: video.relative, startedAt: video.startedAt }];
   }
 
   async dispose(context: EngineCleanupContext): Promise<void> {

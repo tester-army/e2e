@@ -14,7 +14,7 @@ import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { ArtifactStore } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
-import type { AttemptContext } from './execute.ts';
+import type { AttemptContext, ClosingRecord } from './execute.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { StepRecord } from './steps.ts';
 import { findRegistered, type Realm, RealmManager } from './realm.ts';
@@ -71,7 +71,7 @@ export interface SerialHost {
   closeSession(
     session: TargetSession,
     attemptId: string,
-    record: { cleanup: 'complete' | 'failed' | 'forced' },
+    record: ClosingRecord,
     sink: ArtifactSink,
     secondaryErrors: SerializedError[],
   ): Promise<void>;
@@ -313,9 +313,8 @@ async function runSerialAttempt(
     }
   }
   await host.realms.leave(realm);
-  await host.closeSession(shared.session, attemptId, record, artifacts.sink, record.secondaryErrors);
-  await artifacts.settle();
-
+  // The group's verdict is reached before its session closes: the close reads
+  // it to decide what the shared recording is worth.
   const failedMember = memberRecords.find(isFailedMember);
   if (host.interruptSignal.aborted) {
     record.status = 'interrupted';
@@ -330,6 +329,8 @@ async function runSerialAttempt(
     record.status = failedMember.status;
     if (failedMember.error !== undefined) record.error = failedMember.error;
   }
+  await host.closeSession(shared.session, attemptId, record, artifacts.sink, record.secondaryErrors);
+  await artifacts.settle();
   record.durationMs = Date.now() - startedMs;
   return record;
 }

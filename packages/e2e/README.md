@@ -146,6 +146,12 @@ agent step, in the AI SDK devtools database shape. Open it with
 [unbox-ai](https://github.com/tester-army/unbox-ai):
 `npx unbox-ai .e2e/ai-trace.json`.
 
+`e2e run --video` records every attempt: a WebM screencast of the page with a
+visible pointer that glides to each target, under the attempt's artifact
+directory, named in the failure recap. `artifacts: ['screenshot', 'trace',
+'video']` turns it on for every run, and `artifacts: { video: { retain:
+'on-failure' } }` keeps only the recordings of attempts that did not pass.
+
 ## Coding agents
 
 `e2e init` installs a skill, `SKILL.md` plus one file per topic, into
@@ -162,7 +168,7 @@ npx --no-install e2e guide writing-tests  # one topic
 
 ## Current limitations
 
-- The HTML reporter and video artifacts are not available.
+- The HTML reporter is not available.
 - Reported steps carry no source locations.
 
 ## Contributing

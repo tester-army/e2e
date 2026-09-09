@@ -41,6 +41,8 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
+      startVideo: (operation) => surface.startVideo(operation),
+      stopVideo: (operation) => surface.stopVideo(operation),
     },
     url: (operation) => surface.url(operation),
     fixtures: {

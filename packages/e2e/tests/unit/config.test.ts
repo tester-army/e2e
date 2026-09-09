@@ -45,7 +45,7 @@ describe('resolveConfig', () => {
     expect(config.cleanupTimeout).toBe(30_000);
     expect(config.retries).toBe(0);
     expect(config.tests).toEqual(['tests/**/*.e2e.ts']);
-    expect(config.artifacts).toEqual(['screenshot', 'trace']);
+    expect(Object.fromEntries(config.artifacts)).toEqual({ screenshot: 'best-effort', trace: 'best-effort' });
     expect(config.reporters).toEqual(['list']);
     expect(config.testIdAttribute).toBe('data-testid');
   });
@@ -683,27 +683,28 @@ describe('resolveConfig', () => {
 
   describe('artifacts config', () => {
     const APP = {};
-    it('defaults kinds and leaves the store unset for the array form', () => {
+    /** The resolved kinds with their policy, in order. */
+    const policies = (config: { artifacts: ReadonlyMap<string, string> }) => Object.fromEntries(config.artifacts);
+
+    it('defaults kinds best-effort and leaves the store unset for the array form', () => {
       const resolved = resolve({ ...APP });
-      expect(resolved.artifacts).toEqual(['screenshot', 'trace']);
-      expect(resolved.artifactsExplicit).toBe(false);
+      expect(policies(resolved)).toEqual({ screenshot: 'best-effort', trace: 'best-effort' });
       expect(resolved.artifactStore).toBeUndefined();
-      expect(resolve({ ...APP, artifacts: ['trace'] }).artifactsExplicit).toBe(true);
+      // A named kind is a contract.
+      expect(policies(resolve({ ...APP, artifacts: ['trace'] }))).toEqual({ trace: 'required' });
     });
 
     it('accepts { kinds, store } and keeps the live store out of the digest', () => {
       const store = { put: async () => ({ ref: 'x' }) };
       const withStore = resolve({ ...APP, artifacts: { kinds: ['screenshot'], store } });
-      expect(withStore.artifacts).toEqual(['screenshot']);
-      expect(withStore.artifactsExplicit).toBe(true);
+      expect(policies(withStore)).toEqual({ screenshot: 'required' });
       expect(withStore.artifactStore).toBe(store);
       // Same kinds, with and without a store, digest identically: the store is
       // a live value, not configuration.
       expect(withStore.configDigest).toBe(resolve({ ...APP, artifacts: ['screenshot'] }).configDigest);
-      // A store alone keeps the default kinds and is not "explicit".
+      // A store alone keeps the default kinds, still best-effort.
       const storeOnly = resolve({ ...APP, artifacts: { store } });
-      expect(storeOnly.artifacts).toEqual(['screenshot', 'trace']);
-      expect(storeOnly.artifactsExplicit).toBe(false);
+      expect(policies(storeOnly)).toEqual({ screenshot: 'best-effort', trace: 'best-effort' });
     });
 
     it('rejects unknown keys, a non-store store, and unknown kinds in either form', () => {
@@ -713,10 +714,54 @@ describe('resolveConfig', () => {
       expect(() => resolve({ ...APP, artifacts: { store: { upload: true } } as never })).toThrow(
         /artifacts.store must implement ArtifactStore/,
       );
-      expect(() => resolve({ ...APP, artifacts: { kinds: ['video'] } as never })).toThrow(
-        /unknown artifact kind "video"/,
+      expect(() => resolve({ ...APP, artifacts: { kinds: ['gif'] } as never })).toThrow(
+        /unknown artifact kind "gif"/,
       );
-      expect(() => resolve({ ...APP, artifacts: ['video'] as never })).toThrow(/unknown artifact kind "video"/);
+      expect(() => resolve({ ...APP, artifacts: ['gif'] as never })).toThrow(/unknown artifact kind "gif"/);
+    });
+
+    it('accepts the video kind in either form and keeps it out of the digest', () => {
+      const withVideo = resolve({ ...APP, artifacts: ['screenshot', 'trace', 'video'] });
+      expect(policies(withVideo)).toEqual({ screenshot: 'required', trace: 'required', video: 'required' });
+      expect(withVideo.videoRetain).toBe('all');
+      // Recording a run must never invalidate the traces it would replay.
+      expect(withVideo.configDigest).toBe(resolve({ ...APP, artifacts: ['screenshot', 'trace'] }).configDigest);
+      const object = resolve({ ...APP, artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } });
+      expect(policies(object)).toEqual({ video: 'required' });
+      expect(object.videoRetain).toBe('on-failure');
+      expect(object.configDigest).toBe(resolve({ ...APP, artifacts: [] }).configDigest);
+      expect(resolve({ ...APP }).videoRetain).toBe('all');
+    });
+
+    it('adds video as a required kind for --video without turning the default set into a contract', () => {
+      const flagged = resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { video: true } });
+      expect(policies(flagged)).toEqual({ screenshot: 'best-effort', trace: 'best-effort', video: 'required' });
+      expect(flagged.configDigest).toBe(resolve({ ...APP }).configDigest);
+      const already = resolveConfig(
+        { targets: TARGETS, artifacts: ['video'] },
+        { projectRoot: ROOT, env: BASE_ENV, cli: { video: true } },
+      );
+      expect(policies(already)).toEqual({ video: 'required' });
+    });
+
+    it('never writes --video back into the default set or the kinds array it was given', () => {
+      const own: ('screenshot' | 'trace' | 'video')[] = ['screenshot'];
+      resolveConfig({ targets: TARGETS, artifacts: own }, { projectRoot: ROOT, env: BASE_ENV, cli: { video: true } });
+      expect(own).toEqual(['screenshot']);
+      const later = resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: {} });
+      expect(policies(later)).toEqual({ screenshot: 'best-effort', trace: 'best-effort' });
+    });
+
+    it('rejects a malformed video block', () => {
+      expect(() => resolve({ ...APP, artifacts: { video: { keep: true } } as never })).toThrow(
+        /unknown artifacts.video config key "keep"/,
+      );
+      expect(() => resolve({ ...APP, artifacts: { video: { retain: 'sometimes' } } as never })).toThrow(
+        /artifacts.video.retain must be one of all, on-failure/,
+      );
+      expect(() => resolve({ ...APP, artifacts: { video: 'on-failure' } as never })).toThrow(
+        /artifacts.video must be an object/,
+      );
     });
   });
 });

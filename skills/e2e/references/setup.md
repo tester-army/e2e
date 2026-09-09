@@ -90,7 +90,7 @@ export default {
 | `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. A model passed to `createAgent({ model })` is the one model for `act` and the judgments, over `E2E_MODEL`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
-| `artifacts` | `['screenshot', 'trace']` | Kinds to keep, or `{ kinds, store }`. |
+| `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
 | `projectId` | the package name | Report and cache identity. |
 
 ## The app under test

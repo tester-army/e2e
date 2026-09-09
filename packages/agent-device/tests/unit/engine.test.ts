@@ -821,3 +821,63 @@ describe('reference lifetime and cancellation', () => {
     expect(h.fake.calls).toHaveLength(before);
   });
 });
+
+describe('video', () => {
+  const recorder = (h: Harness, finalizeAt?: string) => {
+    let requested: string | undefined;
+    h.fake.respond('recording.record', (args) => {
+      const options = args as { action: 'start' | 'stop'; path?: string };
+      if (options.action === 'start') {
+        requested = options.path;
+        return { recording: 'started', outPath: finalizeAt ?? options.path, sessionStateDir: '/tmp', showTouches: true };
+      }
+      const written = finalizeAt ?? requested!;
+      writeFileSync(written, 'mp4 bytes');
+      return { recording: 'stopped', outPath: written, artifacts: [], durationMs: 1200, showTouches: true };
+    });
+  };
+  const records = (h: Harness) => h.fake.methods().filter((method) => method === 'recording.record');
+
+  it('starts and stops the device recorder into the attempt directory and reports one segment', async () => {
+    const h = harness();
+    recorder(h);
+    await openAttempt(h);
+    // Nothing recording yet: nothing to stop, and no device command spent on it.
+    expect(await h.engine.artifacts!.stopVideo!(operation())).toEqual([]);
+    expect(records(h)).toHaveLength(0);
+    await h.engine.artifacts!.startVideo!(operation());
+    expect(h.fake.lastArgs('recording.record')).toEqual({
+      action: 'start',
+      path: path.join(artifactsDir, 'video', 'video.mp4'),
+      quality: 'medium',
+    });
+    const segments = await h.engine.artifacts!.stopVideo!(operation());
+    expect(h.fake.lastArgs('recording.record')).toEqual({ action: 'stop' });
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.path).toBe(path.join('video', 'video.mp4'));
+    expect(Number.isNaN(Date.parse(segments[0]!.startedAt))).toBe(false);
+    expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
+    await h.engine.endAttempt!(cleanup());
+    expect(records(h)).toHaveLength(2);
+  });
+
+  it('moves a recording the device finalized elsewhere into place, and stops a dangling one at attempt end', async () => {
+    const h = harness();
+    const elsewhere = path.join(artifactsDir, 'elsewhere.mp4');
+    recorder(h, elsewhere);
+    await openAttempt(h);
+    await h.engine.artifacts!.startVideo!(operation());
+    const segments = await h.engine.artifacts!.stopVideo!(operation());
+    expect(segments.map((segment) => segment.path)).toEqual([path.join('video', 'video.mp4')]);
+    expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
+    expect(existsSync(elsewhere)).toBe(false);
+    await h.engine.endAttempt!(cleanup());
+    // A recording still running when the attempt ends is stopped, best-effort.
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
+    await h.engine.artifacts!.startVideo!(operation());
+    const before = records(h).length;
+    await h.engine.endAttempt!(cleanup());
+    expect(records(h)).toHaveLength(before + 1);
+    expect(h.fake.lastArgs('recording.record')).toEqual({ action: 'stop' });
+  });
+});

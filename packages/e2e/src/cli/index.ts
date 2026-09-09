@@ -221,6 +221,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--artifacts <dir>', 'artifact root (default: .e2e/artifacts)')
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to .e2e/ai-trace.json (unbox-ai)')
+    .option('--video', 'record a video of every attempt, when the engine supports it')
     .addHelpText(
       'after',
       [
@@ -260,6 +261,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           passWithNoTests?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
+          video?: boolean;
         },
         command: Command,
       ) => {
@@ -281,6 +283,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             passWithNoTests: options.passWithNoTests,
             debug: options.debug,
             aiTrace: options.aiTrace,
+            video: options.video,
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
           });
