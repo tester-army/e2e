@@ -15,6 +15,7 @@ import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
+import { buildWorkPlans } from '../../src/run/units.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
 import type { MainToWorker, RunUnitMessage } from '../../src/run/worker/protocol.ts';
 
@@ -249,9 +250,7 @@ async function run(
 ): Promise<Collected> {
   const collected: Collected = { results: [], serialGroups: [], runErrors: [] };
   await runUnits({
-    selection,
-    collection,
-    projectRoot: '/project',
+    plans: buildWorkPlans(selection, collection, '/project'),
     workers: overrides.workers ?? 2,
     interruptGraceMs: overrides.interruptGraceMs ?? 1_000,
     interruptSignal: overrides.interruptSignal ?? new AbortController().signal,

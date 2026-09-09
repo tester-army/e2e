@@ -21,6 +21,7 @@
 
 import { engineBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { obj } from '../internal/objects.ts';
 
 // Semantics the spec requires every engine and contributed fixture to
 // reproduce exactly, exported so an engine never carries its own copy: the
@@ -311,12 +312,13 @@ export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;
   /**
-   * The most workers the run will start for this target: the run's worker
-   * cap, the engine's declared `workers`, and the number of files selected
-   * for the target, whichever is smallest. Provision for exactly these slots
-   * (boot that many devices of a pool); `init` then finds them ready.
+   * The worker slots the run will start for this target, `0` to `slots - 1`:
+   * the run's worker cap, the engine's declared `workers`, and the work units
+   * selected for the target, whichever is smallest; `0` when nothing runs on
+   * it. Provision for exactly these slots (boot that many devices of a pool);
+   * `init` then finds them ready.
    */
-  readonly workers: number;
+  readonly slots: number;
   /**
    * The run's environment: what every worker is started with. A host may hand
    * the run an environment other than the runner process's own, so anything
@@ -701,12 +703,12 @@ export function defineEngine(spec: Engine): EngineHandle {
     throw invalid(name, 'declares swipe without observe');
   }
 
-  const handle: Record<string, unknown> = {
+  const handle: Record<string, unknown> = obj({
     name,
     version: spec.version,
     spiVersion: spec.spiVersion,
-    ...(spec.workers === undefined ? {} : { workers: spec.workers }),
-  };
+    workers: spec.workers,
+  });
   for (const member of FUNCTION_MEMBERS) {
     const fn = spec[member];
     if (fn !== undefined) handle[member] = fn.bind(spec);

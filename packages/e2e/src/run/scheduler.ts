@@ -8,8 +8,7 @@
  * execution.
  */
 
-import type { Collection } from '../collect/collect.ts';
-import type { Selection, TestTargetPair } from '../collect/select.ts';
+import type { TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';
@@ -19,12 +18,12 @@ import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import type { StepProgress } from './steps.ts';
 import type { SpawnUnitRunner, UnitRunner } from './unit-runner.ts';
 import {
-  buildWorkPlans,
   INTERRUPTED_BEFORE_START,
   nonRunResult,
   pairResult,
   setupFailedSkip,
   unstartedResult,
+  type TargetWorkPlan,
   type WorkUnit,
 } from './units.ts';
 import {
@@ -51,9 +50,8 @@ export interface SchedulerEvents {
 }
 
 export interface RunUnitsOptions {
-  readonly selection: Selection;
-  readonly collection: Collection;
-  readonly projectRoot: string;
+  /** Per-target work, built once by the runner; see `buildWorkPlans`. */
+  readonly plans: readonly TargetWorkPlan[];
   /** Maximum workers alive at once across all targets. */
   readonly workers: number;
   /** Budget for a worker to finish an in-flight unit after an interrupt. */
@@ -77,7 +75,7 @@ const MAX_INIT_FAILURES = 2;
 /** How long a retiring or draining worker gets before it is force-killed. */
 const SHUTDOWN_GRACE_MS = 10_000;
 
-/** Runs every selected unit and streams records. */
+/** Runs every planned unit and streams records. */
 export async function runUnits(options: RunUnitsOptions): Promise<void> {
   await new Scheduler(options).run();
 }
@@ -86,10 +84,6 @@ interface TargetState {
   readonly target: ResolvedTarget;
   readonly setupQueue: WorkUnit[];
   readonly fileQueue: WorkUnit[];
-  /** Worker slots in use, held until the worker's exit is observed. */
-  readonly slots: Set<number>;
-  /** The most workers this target may have alive at once: the engine's declared `workers`, else unbounded. */
-  readonly capacity: number;
   /** session name -> id of the setup test that failed to produce it */
   readonly failedSessions: Map<string, string>;
   initFailures: number;
@@ -193,18 +187,11 @@ class Scheduler {
   constructor(private readonly options: RunUnitsOptions) {}
 
   async run(): Promise<void> {
-    const plans = buildWorkPlans(
-      this.options.selection,
-      this.options.collection,
-      this.options.projectRoot,
-    );
-    for (const plan of plans) {
+    for (const plan of this.options.plans) {
       this.targets.set(plan.target.name, {
         target: plan.target,
         setupQueue: [...plan.setupUnits],
         fileQueue: [...plan.fileUnits],
-        slots: new Set(),
-        capacity: plan.target.engine?.workers ?? Number.POSITIVE_INFINITY,
         failedSessions: new Map(),
         initFailures: 0,
         failed: false,
@@ -386,12 +373,20 @@ class Scheduler {
   }
 
   /**
-   * Whether the target may start another worker. Slots are held until a
-   * worker's exit is observed, so a retired worker still counts: its surface
-   * is in use until it is gone.
+   * Whether the target may start another worker: fewer of its workers exist
+   * than its engine serves at once, the run cap when it declares no bound.
+   * Derived from the live worker list, like setup gating: a retired worker
+   * counts until its exit is observed, because its surface is in use until
+   * it is gone.
    */
   private hasCapacity(state: TargetState): boolean {
-    return state.slots.size < state.capacity;
+    const capacity = state.target.engine?.workers ?? this.options.workers;
+    return this.workersOf(state.target.name).length < capacity;
+  }
+
+  /** Every worker of one target that has not exited yet, retired ones included. */
+  private workersOf(targetName: string): SchedulerWorker[] {
+    return this.workers.filter((worker) => worker.targetName === targetName);
   }
 
   /**
@@ -428,10 +423,11 @@ class Scheduler {
     );
   }
 
+  /** Starts a worker on the lowest slot none of the target's workers holds, so a replacement takes over the slot of the one that exited. */
   private spawn(state: TargetState): SchedulerWorker {
+    const taken = new Set(this.workersOf(state.target.name).map((worker) => worker.workerSlot));
     let workerSlot = 0;
-    while (state.slots.has(workerSlot)) workerSlot += 1;
-    state.slots.add(workerSlot);
+    while (taken.has(workerSlot)) workerSlot += 1;
     const worker = new SchedulerWorker(
       state.target.name,
       workerSlot,
@@ -463,7 +459,6 @@ class Scheduler {
   private forget(worker: SchedulerWorker): void {
     const index = this.workers.indexOf(worker);
     if (index !== -1) this.workers.splice(index, 1);
-    this.targets.get(worker.targetName)?.slots.delete(worker.workerSlot);
   }
 
   private targetState(worker: SchedulerWorker): TargetState {

@@ -102,7 +102,7 @@ describe('defineEngine', () => {
     await handle.prepare?.({
       runId: 'run',
       targetName: 'toy',
-      workers: 1,
+      slots: 1,
       env: {},
       signal: new AbortController().signal,
       log: () => {},

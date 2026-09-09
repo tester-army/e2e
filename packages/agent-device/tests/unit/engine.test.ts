@@ -184,7 +184,7 @@ describe('lifecycle', () => {
     await h.engine.prepare!({
       runId: 'run-1',
       targetName: 'ios',
-      workers: 2,
+      slots: 2,
       env: {},
       signal: new AbortController().signal,
       log: (line) => lines.push(line),
@@ -198,10 +198,10 @@ describe('lifecycle', () => {
 
     // Without a pinned app there is nothing to open; a build `appPath` installs in init, so it boots only too.
     const bare = harness({ device: 'iPhone 16e' }, false);
-    await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', workers: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(bare.fake.methods()).toEqual(['devices.boot']);
     const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
-    await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', workers: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(build.fake.methods()).toEqual(['devices.boot']);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
@@ -209,7 +209,7 @@ describe('lifecycle', () => {
     await single.engine.prepare!({
       runId: 'run-1',
       targetName: 'ios',
-      workers: 1,
+      slots: 1,
       env: {},
       signal: new AbortController().signal,
       log: () => undefined,
@@ -224,7 +224,7 @@ describe('lifecycle', () => {
       throw new Error('runner still installing');
     });
     const lines: string[] = [];
-    const info = { runId: 'run-1', targetName: 'ios', workers: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
+    const info = { runId: 'run-1', targetName: 'ios', slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
     await h.engine.prepare!(info);
     expect(lines[1]).toMatch(/runner not warmed up.*runner still installing/);
 

@@ -86,6 +86,18 @@ export function buildWorkPlans(
   });
 }
 
+/**
+ * The worker slots the run will start for a plan, `0` to `slots - 1`: the
+ * run's worker cap, the engine's declared `workers`, and the units to
+ * dispatch, whichever is smallest. A strict bound: a worker retired after a
+ * failing unit holds its slot until it exits, so its replacement may take a
+ * higher one, but never more slots than there are units to fail on.
+ */
+export function plannedSlots(plan: TargetWorkPlan, runWorkers: number): number {
+  const units = plan.setupUnits.length + plan.fileUnits.length;
+  return Math.min(runWorkers, plan.target.engine?.workers ?? runWorkers, units);
+}
+
 /** Skip info for a pair whose session-producing setup did not pass. */
 export function setupFailedSkip(session: string, setupTestId: string): SkipInfo {
   return {

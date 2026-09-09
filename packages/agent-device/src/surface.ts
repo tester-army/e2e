@@ -313,11 +313,11 @@ export class AgentDeviceSurface {
    */
   async prepare(info: EnginePrepareInfo): Promise<void> {
     const app = this.options.appPath === undefined ? this.options.app : undefined;
-    for (let slot = 0; slot < info.workers; slot += 1) {
+    for (let slot = 0; slot < info.slots; slot += 1) {
       const device = this.deviceForSlot(slot);
       const label = device ?? `a booted ${this.options.platform} device`;
       const client = this.createClient(this.sessionFor(info.targetName, slot));
-      info.log(`booting ${label} (${slot + 1} of ${info.workers})`);
+      info.log(`booting ${label} (${slot + 1} of ${info.slots})`);
       await this.runOn(client, 'boot', (live) => live.devices.boot(this.selection(device)), info.signal);
       if (app === undefined) continue;
       try {
