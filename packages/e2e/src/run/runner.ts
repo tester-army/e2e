@@ -40,7 +40,7 @@ import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
-import { sleep } from '../internal/time.ts';
+import { withAbort, withTimeout } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterLinks } from '../types.ts';
 import type { ResolvedModel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
@@ -92,7 +92,7 @@ export interface RunOptions {
   forceSignal?: AbortSignal | undefined;
   /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
-  /** Budget for each reporter's `onRunFinished`, in ms; the test harness shortens it. */
+  /** Budget for each reporter's `onRunFinished`, in ms. Only the test harness sets it; there is no flag. */
   reporterTimeout?: number | undefined;
 }
 
@@ -404,23 +404,29 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ...(junitPath === undefined ? {} : { junitPath }),
       ...(aiTracePath === undefined ? {} : { aiTracePath }),
     });
-    // Reporters run after the summary, so the terminal never waits on an
-    // upload, and their links print under it. Only a loaded config has any:
-    // a config failure ran nothing they could report.
-    if (loaded.config !== undefined && customReporters.length > 0) {
-      const links = await runReporters(customReporters, {
-        report,
-        status,
-        exitCode,
-        reportPath,
-        artifactsRoot: resolveArtifactsRoot(loaded.config, options.artifactsDir),
-        junitPath,
-        aiTracePath,
-      }, options.reporterTimeout ?? REPORTER_TIMEOUT_MS);
-      listReporter?.links(links);
-    }
     if (jsonReport) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    }
+    // Reporters run last, after the summary and the json document, so no
+    // consumer of the terminal waits on an upload; their links print under
+    // the summary. Only a loaded config has any: a config failure ran nothing
+    // they could report.
+    if (loaded.config !== undefined && customReporters.length > 0) {
+      const links = await runReporters(
+        customReporters,
+        {
+          report,
+          status,
+          exitCode,
+          reportPath,
+          artifactsRoot: resolveArtifactsRoot(loaded.config, options.artifactsDir),
+          junitPath,
+          aiTracePath,
+        },
+        options.reporterTimeout ?? REPORTER_TIMEOUT_MS,
+        forceController.signal,
+      );
+      listReporter?.links(links);
     }
     if (debug.enabled) {
       process.stderr.write(debug.summary());
@@ -842,48 +848,56 @@ function resultExitCodes(results: readonly ResultRecord[]): number[] {
   return codes;
 }
 
-const REPORTER_TIMED_OUT = Symbol('reporter timed out');
+/** Why a reporter's `onRunFinished` was given up on: the message is the stderr line. */
+class ReporterAbandoned extends Error {}
 
 /**
- * Awaits every reporter's `onRunFinished` at once, each within `timeoutMs`,
- * and collects the links they resolve with. A reporter that throws or runs
- * out of time is one line on stderr; it can never change the run's outcome.
+ * Awaits every reporter's `onRunFinished` at once, each within `timeoutMs`
+ * and until a forced interrupt, and collects the links they resolve with. A
+ * reporter that throws, runs out of time, or returns something other than
+ * links is one line on stderr; it can never change the run's outcome.
  */
 async function runReporters(
   reporters: readonly Reporter[],
   finished: FinishedRun,
   timeoutMs: number,
+  force: AbortSignal,
 ): Promise<ReporterLinks> {
   const warn = (reporter: Reporter, detail: string): void => {
     process.stderr.write(`e2e: reporter "${reporter.name}" ${detail}\n`);
   };
+  const budget = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
   const outcomes = await Promise.all(
     reporters.map(async (reporter): Promise<ReporterLinks> => {
       if (reporter.onRunFinished === undefined) return [];
-      const timer = new AbortController();
       try {
-        const result = await Promise.race([
-          reporter.onRunFinished(finished),
-          // Rejects when aborted below, which is how the pending timer is cleared.
-          sleep(timeoutMs, timer.signal).then(
-            (): typeof REPORTER_TIMED_OUT => REPORTER_TIMED_OUT,
-            (): undefined => undefined,
+        const result = await withAbort(
+          withTimeout(
+            Promise.resolve(reporter.onRunFinished(finished)),
+            timeoutMs,
+            () => new ReporterAbandoned(`did not finish within ${budget}`),
           ),
-        ]);
-        if (result === REPORTER_TIMED_OUT) {
-          warn(reporter, `did not finish within ${timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`}`);
-          return [];
-        }
-        return result ?? [];
+          force,
+          () => new ReporterAbandoned('abandoned: the run was forced to stop'),
+        );
+        const links = Array.isArray(result) ? result.filter(isReporterLink) : [];
+        const dropped = (Array.isArray(result) ? result.length : 0) - links.length;
+        if (dropped > 0) warn(reporter, `returned ${dropped} link(s) without a label and a url; dropped`);
+        return links;
       } catch (cause) {
-        warn(reporter, `failed: ${errorMessage(cause)}`);
+        warn(reporter, cause instanceof ReporterAbandoned ? cause.message : `failed: ${errorMessage(cause)}`);
         return [];
-      } finally {
-        timer.abort();
       }
     }),
   );
   return outcomes.flat();
+}
+
+/** A link is a non-empty label and a non-empty url; anything else came from untyped code. */
+function isReporterLink(value: unknown): value is ReporterLinks[number] {
+  if (typeof value !== 'object' || value === null) return false;
+  const { label, url } = value as { label?: unknown; url?: unknown };
+  return typeof label === 'string' && label.length > 0 && typeof url === 'string' && url.length > 0;
 }
 
 function resolveArtifactsRoot(config: ResolvedConfig, override: string | undefined): string {

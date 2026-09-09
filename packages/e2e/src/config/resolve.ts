@@ -473,7 +473,7 @@ function resolveReporters(
   raw: E2EConfig,
   cli: CliOverrides,
 ): { reporters: readonly BuiltinReporter[]; customReporters: readonly Reporter[] } {
-  const configured = raw.reporters ?? BUILTIN_REPORTERS.slice(0, 1);
+  const configured = raw.reporters ?? ['list'];
   if (!Array.isArray(configured)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -510,11 +510,10 @@ function resolveReporters(
 /** Structural reporter check: a non-empty name and at least one handler, each a function when present. */
 function isReporter(value: unknown): value is Reporter {
   if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as { name?: unknown; onEvent?: unknown; onRunFinished?: unknown };
-  if (typeof candidate.name !== 'string' || candidate.name.length === 0) return false;
-  const handlers = [candidate.onEvent, candidate.onRunFinished];
-  if (handlers.some((handler) => handler !== undefined && typeof handler !== 'function')) return false;
-  return handlers.some((handler) => handler !== undefined);
+  const { name, onEvent, onRunFinished } = value as { name?: unknown; onEvent?: unknown; onRunFinished?: unknown };
+  if (typeof name !== 'string' || name.length === 0) return false;
+  const optionalFunction = (handler: unknown): boolean => handler === undefined || typeof handler === 'function';
+  return optionalFunction(onEvent) && optionalFunction(onRunFinished) && (onEvent ?? onRunFinished) !== undefined;
 }
 
 function isArtifactStore(value: unknown): value is ArtifactStore {
@@ -699,14 +698,35 @@ function modelIdentity(model: ModelInstance): Record<string, string> {
   };
 }
 
+/** The artifact kinds as the digest sees them: no store, no video. */
+function digestedArtifactKinds(artifacts: NonNullable<E2EConfig['artifacts']>): ConfiguredArtifactKind[] {
+  const kinds = isArtifactsObject(artifacts) ? artifacts.kinds : artifacts;
+  return (kinds ?? [...DEFAULT_ARTIFACT_KINDS]).filter((kind) => kind !== 'video');
+}
+
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // `agent` may be the executor itself; its digest identity is name/version,
   // which is exactly what survives the function-stripping JSON clone below.
   // Every model slot is reduced to its identity: a live instance carries
   // provider settings (and possibly credentials) that must never be digested.
+  // Live values are reduced before the clone, not after: a store or a
+  // reporter may hold a client whose object graph JSON cannot serialize.
+  //
+  // An artifact store is a live value: only the kinds are configuration, so
+  // the array and object forms digest identically and a host store never
+  // enters the digest. Nor does video: recording a run must never invalidate
+  // the traces it would otherwise replay, so the digest reads the same kinds
+  // with or without it and ignores the `video` options block. A reporter
+  // object changes nothing about what a run records, so it never enters the
+  // digest either; the built-in ids digest as they always have, so adding a
+  // reporter to a config leaves its cache valid.
   const rawAgent = raw.agent;
   const forClone: Record<string, unknown> = {
     ...raw,
+    ...(raw.artifacts === undefined ? {} : { artifacts: digestedArtifactKinds(raw.artifacts) }),
+    ...(Array.isArray(raw.reporters)
+      ? { reporters: raw.reporters.filter((reporter) => typeof reporter === 'string') }
+      : {}),
     ...(rawAgent === undefined || isStepExecutor(rawAgent)
       ? {}
       : {
@@ -723,21 +743,6 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
     ...(structuredCloneJsonSafe(forClone) as Record<string, unknown>),
     projectId,
   };
-  // An artifact store is a live value: only the kinds are configuration, so
-  // the array and object forms digest identically and a host store never
-  // enters the digest. Nor does video: recording a run must never invalidate
-  // the traces it would otherwise replay, so the digest reads the same kinds
-  // with or without it and ignores the `video` options block.
-  if (raw.artifacts !== undefined) {
-    const kinds = isArtifactsObject(raw.artifacts) ? raw.artifacts.kinds : raw.artifacts;
-    sanitized['artifacts'] = (kinds ?? [...DEFAULT_ARTIFACT_KINDS]).filter((kind) => kind !== 'video');
-  }
-  // A reporter object is a live value that changes nothing about what a run
-  // records, so it never enters the digest; the built-in ids digest as they
-  // always have, so adding a reporter to a config leaves its cache valid.
-  if (Array.isArray(raw.reporters)) {
-    sanitized['reporters'] = raw.reporters.filter((reporter) => typeof reporter === 'string');
-  }
   if (raw.credentials !== undefined) {
     sanitized['credentials'] = Object.fromEntries(
       Object.entries(raw.credentials).map(([name, credential]) => [

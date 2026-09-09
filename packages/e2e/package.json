@@ -41,10 +41,6 @@
     "./engine": {
       "types": "./dist/engine/index.d.ts",
       "default": "./dist/engine/index.js"
-    },
-    "./reporter": {
-      "types": "./dist/reporter/index.d.ts",
-      "default": "./dist/reporter/index.js"
     }
   },
   "bin": {

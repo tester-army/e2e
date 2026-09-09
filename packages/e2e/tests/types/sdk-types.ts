@@ -12,6 +12,7 @@ import {
   type AsyncExpectation,
   type E2EConfig,
   type Reporter,
+  type RunEvent,
   type Screen,
   type TraceCacheStore,
 } from '../../src/index.ts';
@@ -44,7 +45,7 @@ declare const reporter: Reporter;
 ({ reporters: [reporter] }) satisfies E2EConfig;
 ({
   name: 'upload',
-  onEvent: (event) => void event.seq,
+  onEvent: (event: RunEvent) => void event.seq,
   onRunFinished: async (run) => [{ label: 'Results', url: run.report.run.id }],
 }) satisfies Reporter;
 // @ts-expect-error a reporter has a name

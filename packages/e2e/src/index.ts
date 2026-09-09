@@ -30,4 +30,5 @@ export type {
   StepVerdictStatus,
 } from './agent/executor.ts';
 export type { VisionDegradation } from './run/steps.ts';
+export type { RunEvent, RunEventOf } from './run/events.ts';
 export type { EngineAppDeclaration } from './engine/index.ts';
