@@ -395,7 +395,7 @@ export class ListReporter {
     switch (progress.phase) {
       case 'start': {
         const { api, label, kind } = progress;
-        running.current = { api, label, kind, events: [] };
+        running.current = { api, label, kind, events: [], replaying: false };
         this.window.redraw();
         break;
       }
@@ -403,6 +403,13 @@ export class ListReporter {
         const { current } = running;
         if (current === undefined || !isShownEvent(progress.event)) break;
         current.events.push(progress.event);
+        this.window.redraw();
+        break;
+      }
+      case 'replay': {
+        const { current } = running;
+        if (current === undefined) break;
+        current.replaying = progress.active;
         this.window.redraw();
         break;
       }

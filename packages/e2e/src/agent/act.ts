@@ -426,6 +426,7 @@ class ActDispatch {
       redact: this.redact,
       testIdAttribute: this.runtime.config.testIdAttribute,
       currentPath: (nodes) => this.currentPath(nodes !== undefined && nodes === this.latest?.nodes ? this.latest : undefined),
+      replaying: (active) => this.runtime.steps.replaying(active),
     };
   }
 

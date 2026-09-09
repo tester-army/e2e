@@ -1115,6 +1115,24 @@ describe('ListReporter', () => {
       );
     });
 
+    it('shows the trace cache replaying instead of a model turn, and the model again once it hands off', () => {
+      const { chunks, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(testStarted('t1', 'checkout', 'chromium'));
+      const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', target: 'chromium', progress } as never);
+      step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
+      step({ phase: 'replay', api: 'agent.act', active: true });
+      step({ phase: 'event', api: 'agent.act', event: { kind: 'engine', name: 'tap', detail: 'tap button "Pay"', durationMs: 27, status: 'passed' } });
+      const replaying = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+      expect(replaying).toMatch(/↳ agent\.act "pay"\n {9}› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Replaying\n/);
+      expect(replaying).not.toContain('Thinking');
+      step({ phase: 'replay', api: 'agent.act', active: false });
+      const handedOff = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+      expect(handedOff).toMatch(/› tap button "Pay" \(27ms\)\n {9}[·✢✳✶✻✽] Thinking\n/);
+      expect(handedOff).not.toContain('Replaying');
+    });
+
     it('shows no wait row for a deterministic step and keeps the one clock on the test row', () => {
       const { chunks, output } = liveCapture();
       const reporter = plainReporter(output, true);

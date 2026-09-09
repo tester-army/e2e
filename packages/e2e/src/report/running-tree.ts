@@ -166,7 +166,7 @@ export class RunningTree {
 
   /**
    * The current step of a running pair and, for an agent step, its calls and
-   * the turn in flight, at most `budget` rows. Older calls fold into one
+   * the work in flight, at most `budget` rows. Older calls fold into one
    * marker. No clock here: the test row above carries the one clock, so the
    * eye has a single moving number per running test.
    */
@@ -181,19 +181,20 @@ export class RunningTree {
     for (const event of overflow > 0 ? current.events.slice(overflow) : current.events) {
       rows.push(`  ${eventLine(pc, event)}`);
     }
-    rows.push(`  ${this.waitingRow(now)}`);
+    rows.push(`  ${this.waitingRow(now, current.replaying)}`);
     return rows.slice(0, budget);
   }
 
   /**
-   * The model turn in flight: a spinner and a shimmering `Thinking`. Tool
-   * calls take milliseconds and their turn is reported right after them, so
-   * between events the model is always the one working.
+   * The work in flight: a spinner and a shimmering status word. Tool calls
+   * take milliseconds and their turn is reported right after them, so between
+   * events the model is the one working and the word is `Thinking`, except
+   * while the trace cache replays recorded actions with no model in the loop.
    */
-  private waitingRow(now: number): string {
+  private waitingRow(now: number, replaying: boolean): string {
     const { pc } = this;
     const frame = Math.floor(now / REPAINT_INTERVAL_MS);
     const spinner = pc.cyan(SPINNER_FRAMES[Math.floor(frame / SPINNER_HOLD_FRAMES) % SPINNER_FRAMES.length]!);
-    return `${spinner} ${shimmer(pc, 'Thinking', frame)}`;
+    return `${spinner} ${shimmer(pc, replaying ? 'Replaying' : 'Thinking', frame)}`;
   }
 }
