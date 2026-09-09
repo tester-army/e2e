@@ -20,8 +20,8 @@ planted bug.
   `/e/<slug>`; the home page lists them all.
 - `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
-  deterministic config. Spends real model calls, so it runs on the weekly
-  `.github/workflows/agent.yml` schedule, never on a PR.
+  deterministic config. It gates every PR too. Each step spends real model
+  calls (cents per run) and needs `E2E_MODEL_API_KEY`.
 
 ## Commands
 

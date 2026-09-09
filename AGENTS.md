@@ -55,8 +55,9 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 - `packages/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
   self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
   dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
-  benchmark, plus the e2e suites written against them (`tests/` gates PRs,
-  `tests-agent/` is opt-in). Scenario files are copies: keep diffs against
+  benchmark, plus the e2e suites written against them (`tests/` and
+  `tests-agent/` both gate PRs; the agentic one spends real model calls).
+  Scenario files are copies: keep diffs against
   the source minimal so scenarios port both ways, and never fix a planted bug.
 - `docs/` (the Starlight docs site; pages live in `docs/src/content/docs/`,
   navigation and theme in `docs/astro.config.ts` and `docs/src/styles/custom.css`).
