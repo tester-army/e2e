@@ -23,7 +23,8 @@ export function resolveExpression(
     case 'query': {
       const candidates =
         expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index, options), index);
-      return candidates.filter((entry) => matchesQuery(entry, expression.query, options));
+      const matches = candidates.filter((entry) => matchesQuery(entry, expression.query, options));
+      return expression.query.kind === 'text' ? innermostOnly(matches) : matches;
     }
     case 'filter': {
       const source = resolveExpression(expression.source, index, options);
@@ -50,6 +51,17 @@ export function resolveExpression(
         retryable: false,
       });
   }
+}
+
+/**
+ * Drops every match that contains another match, the way a browser's text
+ * selector answers with the innermost element. A device tree echoes text
+ * upwards: iOS reports a React Native Text host view and its StaticText child
+ * with the same label, and a container view inherits its descendants' labels,
+ * so without this rule every `getByText` on such a screen is ambiguous.
+ */
+function innermostOnly(matches: readonly ProjectedNode[]): ProjectedNode[] {
+  return matches.filter((entry) => !matches.some((other) => other !== entry && isWithin(other, entry)));
 }
 
 /** Strict descendants of any node in `ancestors`, in document order. */

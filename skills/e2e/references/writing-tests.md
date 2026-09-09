@@ -118,7 +118,9 @@ Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `contentinfo`, `complementary`, `region`. The union is closed; anything else
 is a type error.
 
-Text matching is exact by default after whitespace normalization.
+Text matching is exact by default after whitespace normalization, and
+`getByText` returns the innermost match: a container that echoes its child's
+text (an iOS Text host view around its StaticText) does not count twice.
 `exact: false` is a case-insensitive substring match; a `RegExp` matches as
 written.
 

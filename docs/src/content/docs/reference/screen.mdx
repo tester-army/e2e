@@ -59,6 +59,16 @@ screen.getByText('Welcome back', { exact: false });
 screen.getByTestId('todo-3');
 ```
 
+### Echoed text
+
+`getByText` answers with the innermost matching node. A node whose match is
+also matched by one of its descendants is not returned, so a container that
+echoes its child's text counts once. Browsers behave this way natively; on a
+device the engine applies the same rule, because iOS reports a React Native
+`Text` as a host view and a `StaticText` child carrying the same label, and a
+plain view inherits the labels of its children. Two matches that do not contain
+each other, such as the same text on two pages, remain `LOCATOR_AMBIGUOUS`.
+
 ### Hidden duplicates
 
 Every query accepts `visible: true`, which drops nodes the platform reports as
