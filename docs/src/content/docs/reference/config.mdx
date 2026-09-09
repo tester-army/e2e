@@ -325,7 +325,7 @@ instead of replacing them.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `name` | `string` | - | Stable ID used by `--target`, reports, sessions, and artifact paths |
+| `name` | `string` | `platform` | Stable ID used by `--target`, reports, sessions, and artifact paths; unique across targets |
 | `platform` | `Platform` | - | Any label; `platforms: [...]` on a test filters against it |
 | `engine` | `EngineHandle` | none | `playwright({ url?, command?, browser?, viewport?, connect? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP); `agentDevice({ platform, app?, appPath? })` from `@e2edev/agent-device` for an [iOS or Android device](/reference/device); any [`defineEngine`](/writing-an-engine) handle otherwise |
 
