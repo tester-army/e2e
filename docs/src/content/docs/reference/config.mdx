@@ -60,7 +60,7 @@ the module type of `.ts` test files or helpers.
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
 | `timeout` | `number` | `120000` | positive safe integer |
 | `launchTimeout` | `number` | `60000` | positive safe integer |
-| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every engine operation, including each observation and action inside an agent step |
+| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every engine operation, including each observation and navigation inside an agent step. A targeted agent action (tap, type, press, select, scroll, secret fill) is bounded by the smaller of this and 15 s, so a control an overlay blocks reports what is in the way within seconds |
 | `assertionTimeout` | `number` | `5000` | positive safe integer |
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |

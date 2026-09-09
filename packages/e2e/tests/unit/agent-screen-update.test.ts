@@ -1,0 +1,180 @@
+import type { ModelMessage } from 'ai';
+import { describe, expect, it } from 'vitest';
+import type { ExecutorObservation } from '../../src/agent/executor.ts';
+import { compactScreenHistory, ScreenPresenter } from '../../src/agent/screen-update.ts';
+
+function screen(revision: string, lines: readonly string[], extra: Partial<ExecutorObservation> = {}): ExecutorObservation {
+  return {
+    revision,
+    text: lines.join('\n'),
+    truncated: false,
+    viewport: { width: 1280, height: 720, scale: 1 },
+    ...extra,
+  };
+}
+
+const HOME = [
+  '#n1 document "Home"',
+  ' #n2 heading "Welcome"',
+  ' #n3 button "Increment"',
+  ' #n4 status "Counter" text="0"',
+  ' #n5 link "About" href="/about"',
+  ' #n6 textbox "Email"',
+];
+
+describe('ScreenPresenter', () => {
+  it('sends the first screen whole, with its revision, path, and size', () => {
+    const presenter = new ScreenPresenter();
+    const text = presenter.initial(screen('b1', HOME, { path: '/' }));
+    expect(text.split('\n')[0]).toBe('Current screen (revision b1, path /, 6 nodes):');
+    expect(text).toContain(' #n3 button "Increment"');
+  });
+
+  it('reports a changed and an added line, in document order, keyed by stable ids', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const next = [...HOME];
+    next[3] = ' #n4 status "Counter" text="1"';
+    next.push(' #n7 button "Late arrival"');
+    const text = presenter.update(screen('b2', next), { lead: 'Tapped #n3.' });
+    expect(text.split('\n')).toEqual([
+      'Tapped #n3.',
+      '',
+      'Screen changes since revision b1 (now revision b2, 7 nodes): 1 added, 1 changed. Every node not listed as removed is still on screen under the id you have.',
+      'changed #n4 status "Counter" text="1" (was: #n4 status "Counter" text="0")',
+      'added #n7 button "Late arrival"',
+    ]);
+  });
+
+  it('lists removed lines after the additions', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const next = HOME.filter((line) => !line.includes('#n5'));
+    const text = presenter.update(screen('b2', next));
+    expect(text).toContain('1 removed.');
+    expect(text).toContain('removed #n5 link "About" href="/about"');
+    expect(text).not.toContain('added ');
+  });
+
+  it('says so when nothing changed, and blames the action when one was expected to change something', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    expect(presenter.update(screen('b2', HOME))).toBe(
+      'Screen unchanged since revision b1 (re-observed as revision b2); the ids you have stay valid.',
+    );
+    const afterAction = presenter.update(screen('b3', HOME), { lead: 'Tapped #n3.', expectChange: true });
+    expect(afterAction).toContain('Tapped #n3.');
+    expect(afterAction).toContain('did not change within the wait after this action');
+    expect(afterAction).toContain('re-observed as revision b3');
+  });
+
+  it('ignores focus moving, which every action does, when deciding what changed', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const focused = [...HOME];
+    focused[2] = ' #n3 button "Increment" [focused]';
+    expect(presenter.update(screen('b2', focused), { lead: 'Tapped #n3.', expectChange: true })).toContain(
+      'did not change within the wait',
+    );
+    const typed = [...focused];
+    typed[5] = ' #n6 textbox "Email" value="a" [focused]';
+    typed[2] = ' #n3 button "Increment"';
+    const text = presenter.update(screen('b3', typed));
+    expect(text).toContain('changed #n6 textbox "Email" value="a" (was: #n6 textbox "Email")');
+    expect(text).not.toContain('Increment');
+  });
+
+  it('falls back to the whole screen when most of it changed', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const other = [
+      '#n20 document "Pricing"',
+      ' #n21 heading "Plans"',
+      ' #n22 button "Choose Pro"',
+      ' #n23 button "Choose Team"',
+    ];
+    const text = presenter.update(screen('b2', other, { path: '/pricing' }), { lead: 'Tapped #n5.' });
+    expect(text).toContain('The screen changed substantially since revision b1. Current screen (revision b2, path /pricing, 4 nodes):');
+    expect(text).toContain(' #n22 button "Choose Pro"');
+    expect(text).not.toContain('added ');
+  });
+
+  it('compares against the newest screen it rendered, whole or as changes', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const typed = [...HOME];
+    typed[5] = ' #n6 textbox "Email" value="ada@example.test"';
+    presenter.update(screen('b2', typed));
+    const pressed = [...typed];
+    pressed[3] = ' #n4 status "Counter" text="1"';
+    const text = presenter.update(screen('b3', pressed));
+    // The email line was already reported and is not repeated.
+    expect(text).not.toContain('Email');
+    expect(text).toContain('changed #n4 status "Counter" text="1" (was: #n4 status "Counter" text="0")');
+  });
+
+  it('notes a truncated screen on a change update', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const next = [...HOME, ' #n8 button "More"'];
+    const text = presenter.update(screen('b2', next, { truncated: true }));
+    expect(text).toContain('[the new screen was truncated at the observation byte limit]');
+  });
+});
+
+function fullScreenResult(id: string, revision: string): ModelMessage {
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: id,
+        toolName: 'tap',
+        output: { type: 'text', value: `Tapped #n3.\n\nThe screen changed substantially since revision b0. Current screen (revision ${revision}, 2 nodes):\n#n1 document\n #n2 heading "X"` },
+      },
+    ],
+  };
+}
+
+function changesResult(id: string): ModelMessage {
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: id,
+        toolName: 'type',
+        output: { type: 'text', value: 'Typed into #n6.\n\nScreen changes since revision b1 (now revision b2, 6 nodes): 1 changed. Every node not listed as removed is still on screen under the id you have.\nchanged #n6 textbox "Email" value="a" (was: #n6 textbox "Email")' },
+      },
+    ],
+  };
+}
+
+describe('compactScreenHistory', () => {
+  const opening: ModelMessage = {
+    role: 'user',
+    content: 'Execute this test step: do the thing\n\nCurrent screen (revision b0, 2 nodes):\n#n1 document\n #n2 heading "Home"',
+  };
+
+  it('leaves the transcript alone while at most two full screens are present', () => {
+    const messages = [opening, changesResult('c1'), fullScreenResult('c2', 'b2'), changesResult('c3')];
+    expect(compactScreenHistory(messages)).toBe(messages);
+  });
+
+  it('elides the oldest full screen once a third arrives, and never a change update', () => {
+    const messages = [
+      opening,
+      changesResult('c1'),
+      fullScreenResult('c2', 'b2'),
+      changesResult('c3'),
+      fullScreenResult('c4', 'b4'),
+    ];
+    const compacted = compactScreenHistory(messages);
+    expect(compacted).not.toBe(messages);
+    expect(compacted[0]!.content).toBe(
+      'Execute this test step: do the thing\n[earlier screen elided; the newest "Current screen" plus the changes after it describe the screen]',
+    );
+    // Both later full screens and every change update survive verbatim.
+    expect(compacted.slice(1)).toEqual(messages.slice(1));
+  });
+});

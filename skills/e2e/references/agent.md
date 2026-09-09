@@ -140,7 +140,10 @@ the end state may not), and it is what lets the trace cache record the step.
 ## What the model sees
 
 A redacted snapshot of the screen (roles, names, text, states), a summary of
-prior steps, and your context. Never raw HTML, cookies, headers, environment
+prior steps, and your context. The first screen of a step arrives whole;
+every action result after it reports only what changed, keyed by node ids
+that stay stable while an element exists, and is read after the action's
+effect landed. Never raw HTML, cookies, headers, environment
 values, or a `Secret`'s value; password fields arrive masked. Pixels only
 with `vision`, and only while no secret has been filled. Nothing the model
 returns runs as code or selectors: the runner validates and authorizes every

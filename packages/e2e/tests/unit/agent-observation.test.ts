@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { observationShape, prepareObservation } from '../../src/agent/observation.ts';
+import { observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -244,5 +244,50 @@ describe('projectTree', () => {
       ],
     });
     expect(JSON.stringify(projected)).not.toContain('selector');
+  });
+});
+
+describe('settleObservation', () => {
+  const clock = { remainingMs: () => 60_000, signal: new AbortController().signal };
+  const fast = { pollMs: 5, changeWaitMs: 150, stableWaitMs: 30 };
+
+  /** Captures the scripted values in order, then the last one forever. */
+  function scripted(values: readonly string[]): { capture: () => Promise<string>; calls: () => number } {
+    let index = 0;
+    return {
+      capture: () => Promise.resolve(values[Math.min(index++, values.length - 1)]!),
+      calls: () => index,
+    };
+  }
+
+  it('waits for the screen to leave the pre-action shape before settling on it', async () => {
+    const source = scripted(['old', 'old', 'old', 'new', 'new', 'new']);
+    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: 'old' });
+    expect(value).toBe('new');
+  });
+
+  it('returns the unchanged screen once the change wait runs out', async () => {
+    const source = scripted(['old']);
+    const started = Date.now();
+    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: 'old' });
+    expect(value).toBe('old');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(140);
+  });
+
+  it('never settles on a transitional capture while the change wait lasts', async () => {
+    const source = scripted(['old', '', '', 'new', 'new']);
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      changedFrom: 'old',
+      transitional: (v) => v === '',
+    });
+    expect(value).toBe('new');
+  });
+
+  it('settles on stability alone without a pre-action shape', async () => {
+    const source = scripted(['a', 'b', 'b']);
+    const value = await settleObservation(source.capture, (v) => v, clock, fast);
+    expect(value).toBe('b');
+    expect(source.calls()).toBe(3);
   });
 });

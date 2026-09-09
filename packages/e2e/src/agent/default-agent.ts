@@ -1,13 +1,13 @@
 /**
  * The default step executor: the tool-loop
  * chassis plus the grammar toolset, kept deliberately small. Every mutating
- * tool returns the updated screen; verdicts, budgets, hard stops, loop
+ * tool returns what changed on screen; verdicts, budgets, hard stops, loop
  * guards, wind-down, and the transcript come from the chassis
  * (`tool-loop.ts`) unchanged. `createToolLoopExecutor` is the same loop with
  * a caller's own prompt and vocabulary.
  */
 
-import type { ModelMessage, ToolExecutionOptions, ToolSet } from 'ai';
+import type { ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import type { ProviderOptions } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
@@ -18,6 +18,7 @@ import {
   type StepExecutorContext,
 } from './executor.ts';
 import { createGrammarTools } from './primitives.ts';
+import { compactScreenHistory, ScreenPresenter } from './screen-update.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool, toolAppliesTo, withToolContext } from './tool.ts';
@@ -26,14 +27,22 @@ const BASE_RULES = `You are an autonomous end-to-end testing agent executing exa
 
 Rules:
 - Work only toward the given step; do not start the next step or explore beyond it.
-- Use the tools to inspect and act. Node ids like "n42" are valid only for the newest observation; after any action, use ids from the latest "Updated screen" snapshot.
-- Issue at most ONE mutating tool call per turn: every mutation refreshes the screen and invalidates all earlier node ids, so a second action batched in the same turn targets a stale screen and fails.
-- Never invent node ids. If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude.`;
+- The screen is a tree of nodes with stable ids like "n42": a node keeps its id for as long as it exists, across every screen and change in this conversation. The first screen is sent whole; every action result and every observe reports only what changed since the screen you last received, one line per node: "added" (a new node), "changed" (with what it read before), or "removed" (the node is gone; never target it again). A node not listed as removed is still there under the id you have. Never invent ids.
+- Every action result already waited for the effect and contains the changes, so do not call observe after an action. Call observe only after waiting for something the last result showed in progress.
+- You may issue several actions in one turn when each targets a node already on screen and no earlier action in the turn changes what a later one targets: fill several fields, then press the submit button as the last action. Actions run in order; each result reports its own changes. Anything that changes the page (a tap on a link or button, a navigation, a submit) should be the last action of its turn.
+- If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude.`;
 
-/** How many trailing screen snapshots stay verbatim in the transcript. */
-const SNAPSHOT_PRESERVE_COUNT = 2;
+/** One presenter per dispatched step, shared by the opening prompt and the tools that follow it. */
+const presenters = new WeakMap<StepExecutorContext, ScreenPresenter>();
 
-const SNAPSHOT_PATTERN = /(?:Updated|Current) screen \(revision /;
+function presenterFor(context: StepExecutorContext): ScreenPresenter {
+  let presenter = presenters.get(context);
+  if (presenter === undefined) {
+    presenter = new ScreenPresenter();
+    presenters.set(context, presenter);
+  }
+  return presenter;
+}
 
 export interface CreateAgentOptions {
   /** AI SDK language model; defaults to the config-resolved `agent.model`. */
@@ -64,10 +73,10 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     system,
     ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
     ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
-    prepareMessages: compactSnapshotHistory,
+    prepareMessages: compactScreenHistory,
     tools: (context, helpers) => ({
       ...wrapUserTools(context, helpers, userTools),
-      ...createGrammarTools(context, { guard: helpers.guard }),
+      ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
     }),
     buildPrompt: async (context) => {
       const observation = await context.observe();
@@ -85,7 +94,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       if (context.ledger !== '') {
         parts.push(`Previously completed steps:\n${context.ledger}`);
       }
-      parts.push(`Current screen (revision ${observation.revision}):\n${observation.text}`);
+      parts.push(presenterFor(context).initial(observation));
       return parts.join('\n\n');
     },
   });
@@ -116,78 +125,6 @@ function formatReplayedPrefix(prefix: ReplayedPrefix): string {
         ]),
     'Continue the step from the CURRENT screen state shown below — do NOT redo the actions above.',
   ].join('\n');
-}
-
-/**
- * Compacts stale screen snapshots out of the history: the initial prompt's
- * `Current screen` and every tool result's `Updated screen`.
- *
- * Only the newest observations describe the screen the model is acting on;
- * every older tree is dead weight that grows the prompt linearly with turn
- * count - and the very first tree, in the user prompt, is the oldest of all.
- * A stale snapshot keeps what preceded the tree (the instruction, or what
- * the action did) and loses the tree. Returns the input array unchanged when
- * there is nothing to compact, so the caller can skip the messages override.
- */
-function compactSnapshotHistory(messages: ModelMessage[]): ModelMessage[] {
-  const total = messages.reduce(
-    (count, message) => count + snapshotParts(message).filter((text) => text !== undefined).length,
-    0,
-  );
-  let stale = total - SNAPSHOT_PRESERVE_COUNT;
-  if (stale <= 0) return messages;
-  return messages.map((message) => {
-    if (stale <= 0) return message;
-    if (message.role === 'user') {
-      if (typeof message.content === 'string') {
-        if (!SNAPSHOT_PATTERN.test(message.content)) return message;
-        stale -= 1;
-        return { ...message, content: elideSnapshot(message.content) };
-      }
-      const content = message.content.map((part) => {
-        if (stale <= 0 || part.type !== 'text' || !SNAPSHOT_PATTERN.test(part.text)) return part;
-        stale -= 1;
-        return { ...part, text: elideSnapshot(part.text) };
-      });
-      return { ...message, content };
-    }
-    if (message.role !== 'tool') return message;
-    const texts = snapshotParts(message);
-    if (!texts.some((text) => text !== undefined)) return message;
-    const content = message.content.map((part, index) => {
-      const text = texts[index];
-      if (text === undefined || stale <= 0) return part;
-      stale -= 1;
-      return { ...part, output: { type: 'text' as const, value: elideSnapshot(text) } };
-    });
-    return { ...message, content };
-  });
-}
-
-/** Everything before the snapshot marker, then the elision notice in place of the tree. */
-function elideSnapshot(text: string): string {
-  const at = text.search(SNAPSHOT_PATTERN);
-  const head = at <= 0 ? (text.split('\n', 1)[0] ?? '') : text.slice(0, at).trimEnd();
-  return `${head}\n[stale screen snapshot elided; act on the newest observation]`;
-}
-
-/** Per-part snapshot text of one message; undefined for non-snapshot parts. */
-function snapshotParts(message: ModelMessage): (string | undefined)[] {
-  if (message.role === 'user') {
-    if (typeof message.content === 'string') {
-      return [SNAPSHOT_PATTERN.test(message.content) ? message.content : undefined];
-    }
-    return message.content.map((part) =>
-      part.type === 'text' && SNAPSHOT_PATTERN.test(part.text) ? part.text : undefined,
-    );
-  }
-  if (message.role !== 'tool') return [];
-  return message.content.map((part) => {
-    if (part.type !== 'tool-result') return undefined;
-    const output = part.output;
-    if (output.type !== 'text' || typeof output.value !== 'string') return undefined;
-    return SNAPSHOT_PATTERN.test(output.value) ? output.value : undefined;
-  });
 }
 
 /** Validates `defineTool` values and reserved names once, at construction. */

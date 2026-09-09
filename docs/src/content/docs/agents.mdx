@@ -109,6 +109,30 @@ redacted observation and pixel-withholding policy the executor uses. Mutating
 tools must request observations in a separate read-only call; their bodies
 already occupy the action queue.
 
+## What the built-in agent sends
+
+The opening prompt carries the instruction, the params, the ledger of
+completed steps, and the whole screen once. Every action result and every
+`observe` after that reports only what changed since the screen the model last
+received: lines that appeared, lines that changed with what they read before,
+lines that went away. Node ids are stable for as long as an element exists, so
+a line the model saw earlier still names the same element and a change update
+is a complete picture, not a hint. A screen that changed mostly goes out whole
+again, and older full screens are elided from the transcript once two newer
+ones supersede them, which keeps the conversation prefix stable for prompt
+caching.
+
+An action result is read after the action's effect. The runner waits, bounded
+to two seconds, for the screen to leave the shape the action was resolved
+against, so a tap on a link reports the page it opened rather than the page it
+left, and a control that did nothing is reported as having no visible effect
+instead of returning a stale screen. The model may batch several actions in
+one turn; they run in order and each reports its own changes. A failed action
+returns the failure together with the current screen, so a stale id costs no
+extra turn, and a targeted action waits at most 15 seconds for its node to
+become actionable, so a tap blocked by a consent banner or a modal reports the
+element in the way instead of spending the whole `actionTimeout` on it.
+
 ## Two layers
 
 The harness redacts and records; what the model reads is the agent's

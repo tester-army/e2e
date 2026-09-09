@@ -12,8 +12,8 @@
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { EngineError, type OperationContext, type SemanticNode } from '../engine/surface.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import type { OperationContext, SemanticNode } from '../engine/surface.ts';
+import { asEngineError, ConfigurationError, TestError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
@@ -50,6 +50,7 @@ import { isDerivedValue } from './derived.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import {
+  isTransitionalObservation,
   observationShape,
   pixelsForModel,
   prepareObservation,
@@ -64,6 +65,18 @@ import { describePosition } from '../cache/relocate.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { ModelUsage, tokenFields } from './usage.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
+
+/**
+ * Ceiling on one targeted grammar action: the time the engine may wait for a
+ * node to become actionable before the failure goes back to the model.
+ * `actionTimeout` bounds every engine operation and doubles as the judgment
+ * tier's clock, so projects raise it for slow models; a tap under a consent
+ * overlay then sits in the engine's actionability retry for the whole budget
+ * (90 s in the testbed) before the model learns anything, when the useful
+ * answer — what is in the way — is known within seconds. Navigation keeps the
+ * full budget: a slow page really can take that long to load.
+ */
+const MAX_TARGETED_ACTION_MS = 15_000;
 
 /** Everything one dispatched step is, resolved before the step opens. */
 interface DispatchSpec {
@@ -224,6 +237,15 @@ class ActDispatch {
   private readonly stepIndex: number;
   /** The last pixel decision recorded on this step: `allowed`, or the withheld reason. */
   private pixelsDecided: string | undefined;
+  /**
+   * The screen shape the newest committed action was resolved against, kept
+   * until the next settled observation has waited for the screen to leave it.
+   * Armed by actions whose effect shows in the tree; a secret fill leaves no
+   * visible trace and a scroll moves nothing the tree records, so neither
+   * arms it. Without this, the observation after a tap on a link reads the
+   * old page, stable and wrong, and the model repairs what already worked.
+   */
+  private pendingChange: string | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -339,7 +361,7 @@ class ActDispatch {
     return {
       tap: (target) =>
         this.commitTargeted('tap', target, async (node) => {
-          await this.session.perform(node.ref, { kind: 'tap' }, this.operation());
+          await this.session.perform(node.ref, { kind: 'tap' }, this.actionOperation());
           return { name: 'tap', node };
         }),
       type: (target, value) => {
@@ -350,7 +372,7 @@ class ActDispatch {
           await this.session.perform(
             node.ref,
             { kind: 'fill', value, sensitive: false },
-            this.operation(),
+            this.actionOperation(),
           );
           return { name: 'type', node, value };
         });
@@ -361,7 +383,7 @@ class ActDispatch {
           throw new TestError('INVALID_ARGUMENT', 'press key must be a short non-empty string');
         }
         return this.commitTargeted('press', target, async (node) => {
-          await this.session.perform(node.ref, { kind: 'press', key }, this.operation());
+          await this.session.perform(node.ref, { kind: 'press', key }, this.actionOperation());
           return { name: 'press', node, key };
         });
       },
@@ -370,7 +392,7 @@ class ActDispatch {
           throw new TestError('INVALID_ARGUMENT', 'select value must be a non-empty option label');
         }
         return this.commitTargeted('selectOption', target, async (node) => {
-          await this.session.perform(node.ref, { kind: 'selectOption', value }, this.operation());
+          await this.session.perform(node.ref, { kind: 'selectOption', value }, this.actionOperation());
           return { name: 'select', node, value };
         });
       },
@@ -673,6 +695,15 @@ class ActDispatch {
     return boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline);
   }
 
+  /** The operation context of one targeted action; see MAX_TARGETED_ACTION_MS. */
+  private actionOperation(): OperationContext {
+    return boundedOperation(
+      this.runtime.engine,
+      Math.min(this.runtime.config.actionTimeout, MAX_TARGETED_ACTION_MS),
+      this.deadline,
+    );
+  }
+
   /** Resolves the configured model once; executors that never read it never pay. */
   private resolveModel(): ModelInstance | undefined {
     if (!this.sdkModelResolved) {
@@ -778,18 +809,27 @@ class ActDispatch {
     // A tainted viewport never captures pixels: the engine would mask what it
     // knows about, and the secret may be anywhere on screen by now.
     const capturePixels = pixels && !this.runtime.taint.value;
+    // A settled look consumes the pending change: it waits for the screen to
+    // leave the pre-action shape once, and later looks read the screen as is.
+    const changedFrom = settle ? this.pendingChange : undefined;
+    if (settle) this.pendingChange = undefined;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
       () =>
         settle
-          ? settleObservation(() => this.captureObservation(capturePixels), observationShape, {
-              remainingMs: () => this.deadline.remaining(),
-              // The step's own hard stop must interrupt a settle sleep too —
-              // the attempt signal alone would let settling outlive the step
-              // by one poll interval.
-              signal: this.stepSignal,
-            })
+          ? settleObservation(
+              () => this.captureObservation(capturePixels),
+              observationShape,
+              {
+                remainingMs: () => this.deadline.remaining(),
+                // The step's own hard stop must interrupt a settle sleep too —
+                // the attempt signal alone would let settling outlive the step
+                // by one poll interval.
+                signal: this.stepSignal,
+              },
+              { changedFrom, transitional: isTransitionalObservation },
+            )
           : this.captureObservation(capturePixels),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
@@ -848,7 +888,7 @@ class ActDispatch {
     if (node === undefined) {
       throw new AgentError(
         'LOCATOR_NOT_FOUND',
-        `node #${id} is not part of observation ${latest.revision}; re-observe and use a current id`,
+        `node #${id} is not on the current screen (observation ${latest.revision}); it was removed or never existed`,
       );
     }
     return node;
@@ -880,6 +920,11 @@ class ActDispatch {
     } catch (cause) {
       this.checkpoint(cause);
       throw cause;
+    }
+    // The effect may still be arriving: the next settled observation waits for
+    // the screen to leave the shape this action was resolved against.
+    if (name !== 'scroll' && name !== 'typeSecret' && this.latest !== undefined) {
+      this.pendingChange = observationShape(this.latest);
     }
     if (this.stepCache === undefined) return;
     // A typed value the step derived at run time is this run's data, not the
@@ -922,10 +967,10 @@ class ActDispatch {
           ...(position === undefined ? {} : { position }),
         };
       } catch (cause) {
-        if (cause instanceof EngineError && cause.code === 'NODE_STALE') {
+        if (asEngineError(cause)?.code === 'NODE_STALE') {
           throw new AgentError(
             'LOCATOR_NOT_FOUND',
-            'the target node is stale; re-observe and use a current id',
+            'the target node left the screen before the action reached it',
             { cause },
           );
         }
@@ -940,13 +985,13 @@ class ActDispatch {
     }
     if (target === undefined) {
       await this.runAction('scroll', async () => {
-        await this.session.swipe(direction, undefined, this.operation());
+        await this.session.swipe(direction, undefined, this.actionOperation());
         return { name: 'scroll', direction };
       });
       return;
     }
     await this.commitTargeted('scroll', target, async (node) => {
-      await this.session.perform(node.ref, { kind: 'swipe', direction }, this.operation());
+      await this.session.perform(node.ref, { kind: 'swipe', direction }, this.actionOperation());
       return { name: 'scroll', direction, node };
     });
   }
@@ -979,7 +1024,7 @@ class ActDispatch {
       await this.session.perform(
         node.ref,
         { kind: 'fill', value: plaintext, sensitive: true },
-        this.operation(),
+        this.actionOperation(),
       );
       this.runtime.taint.value = true;
       // Recorded by stable name only; replay re-runs the full authorization.

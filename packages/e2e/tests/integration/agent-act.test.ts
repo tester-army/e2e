@@ -561,10 +561,11 @@ describe('loop guards and transcripts', () => {
           },
         ];
       }
-      // Node ids are stable, so the same tap keeps succeeding and every result
-      // carries a screen; the first prompt's screen is compacted away by the
-      // third turn, so the id is read from the newest result, as a model would.
-      const id = nodeIdFor(call.lastToolResult || call.prompt, /button "Increment"/);
+      // Node ids are stable, so the same tap keeps succeeding. Results report
+      // only what changed, and the opening screen is never elided while only
+      // change updates follow it, so the id is read from the prompt, as a
+      // model would.
+      const id = nodeIdFor(call.prompt, /button "Increment"/);
       return [{ toolName: 'tap', input: { target: id } }];
     });
     const { outcome, project } = await runProject(
@@ -614,8 +615,8 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
         const id = nodeIdFor(call.prompt, /button "Increment"/);
         return [{ toolName: 'tap', input: { target: id } }];
       }
-      // The tap result carries the updated screen; conclude once it shows 1.
-      if (/Updated screen/.test(call.lastToolResult)) {
+      // The tap result reports the change; conclude once the counter reads 1.
+      if (/text="1"/.test(call.lastToolResult)) {
         return [
           {
             toolName: 'complete_step',
@@ -664,7 +665,11 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'type',
     ]);
     expect(loopCalls[0]!.prompt).toContain('increment the counter once');
-    expect(loopCalls[1]!.lastToolResult).toContain('Updated screen');
+    expect(loopCalls[0]!.prompt).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);
+    // The result reports the change since the opening screen, not the tree again.
+    expect(loopCalls[1]!.lastToolResult).toContain('Screen changes since revision');
+    expect(loopCalls[1]!.lastToolResult).toMatch(/changed #\S+ status "Counter" text="1" \(was: #\S+ status "Counter" text="0"\)/);
+    expect(loopCalls[1]!.lastToolResult).not.toContain('button "Increment"');
   });
 
   it('accounts executor model calls in the step metrics and provenance', () => {
@@ -685,4 +690,140 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       step!.metrics!.modelCalls,
     );
   });
+});
+
+const DELAYED_SUITE = `import { test, expect } from '@e2edev/e2e';
+
+test('default agent reads the second view', async ({ app, agent, screen }) => {
+  await app.open('/delayed');
+  await agent.act('continue to the second view');
+  await expect(screen.getByRole('heading', { name: 'Second view' })).toBeVisible();
+});
+`;
+
+const DEAD_END_SUITE = `import { test } from '@e2edev/e2e';
+
+test('default agent taps a control with no effect', async ({ app, agent }) => {
+  await app.open('/delayed');
+  await agent.act('tap the dead end button once and report what happened');
+});
+`;
+
+const BATCH_SUITE = `import { test, expect } from '@e2edev/e2e';
+
+test('default agent fills two fields in one turn', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('fill the email and the focus target fields');
+  await expect(screen.getByLabel('Email')).toHaveValue('ada@example.test');
+  await expect(screen.getByLabel('Focus target')).toHaveValue('hello');
+});
+`;
+
+describe('the default agent reads action results after their effect', () => {
+  let app: FixtureApp;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('waits for a change that lands after the tap and reports it as a diff', async () => {
+    const model = installFakeLoopModel((call) => {
+      if (call.lastToolResult === '') {
+        return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Continue"/) } }];
+      }
+      return [
+        {
+          toolName: 'complete_step',
+          input: { status: 'passed', summary: 'the second view is showing' },
+        },
+      ];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/delayed.e2e.ts': DELAYED_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+    );
+    try {
+      expect(resultByTitle(outcome, 'default agent reads the second view').status).toBe('passed');
+      // Two turns: the tap and the verdict. The tap's own result already shows
+      // the view that arrived 700 ms after the click, as a change update.
+      expect(loopCalls).toHaveLength(2);
+      const result = loopCalls[1]!.lastToolResult;
+      expect(result).toContain('Screen changes since revision');
+      expect(result).toMatch(/added #\S+ heading "Second view"/);
+      expect(result).toMatch(/removed #\S+ button "Continue"/);
+      expect(result).not.toContain('Current screen');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('reports an action that changed nothing instead of a stale screen', async () => {
+    const model = installFakeLoopModel((call) => {
+      if (call.lastToolResult === '') {
+        return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Dead end"/) } }];
+      }
+      return [
+        {
+          toolName: 'complete_step',
+          input: { status: 'passed', summary: 'tapped the dead end button; nothing changed' },
+        },
+      ];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/dead-end.e2e.ts': DEAD_END_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+    );
+    try {
+      expect(resultByTitle(outcome, 'default agent taps a control with no effect').status).toBe('passed');
+      expect(loopCalls[1]!.lastToolResult).toContain('did not change within the wait after this action');
+      // No tree and no change lines: the model has the screen already.
+      expect(loopCalls[1]!.lastToolResult).not.toMatch(/^(added|changed|removed) #n\d+ /m);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('runs batched actions in order, each with its own changes, and answers a redundant observe cheaply', async () => {
+    const model = installFakeLoopModel((call) => {
+      if (call.turn === 1) {
+        return [
+          { toolName: 'type', input: { target: nodeIdFor(call.prompt, /textbox "Email"/), value: 'ada@example.test' } },
+          { toolName: 'type', input: { target: nodeIdFor(call.prompt, /textbox "Focus target"/), value: 'hello' } },
+        ];
+      }
+      if (call.turn === 2) return [{ toolName: 'observe', input: {} }];
+      return [
+        {
+          toolName: 'complete_step',
+          input: { status: 'passed', summary: 'both fields hold their values' },
+        },
+      ];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/batch.e2e.ts': BATCH_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'default agent fills two fields in one turn');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      const [first, second] = loopCalls[1]!.toolResults;
+      // Each result reports the change of its own action and nothing else.
+      expect(first).toMatch(/changed #\S+ textbox "Email"[^\n]*value="ada@example.test"/);
+      expect(first).not.toContain('value="hello"');
+      expect(second).toMatch(/changed #\S+ textbox "Focus target"[^\n]*value="hello"/);
+      expect(second).not.toContain('ada@example.test');
+      // Nothing moved between the second type and the observe.
+      expect(loopCalls[2]!.lastToolResult).toContain('Screen unchanged since revision');
+      const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+      expect(step.metrics!.actionSteps).toBe(2);
+      expect(step.metrics!.modelCalls).toBe(3);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
 });
