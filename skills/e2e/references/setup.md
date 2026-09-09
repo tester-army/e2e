@@ -62,8 +62,7 @@ export default {
   tests: 'tests/**/*.e2e.ts',
   targets: [
     {
-      name: 'web',
-      platform: 'web',
+      platform: 'web', // also the target name, unless name is set
       engine: playwright({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
@@ -80,7 +79,7 @@ export default {
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `targets` | required | Non-empty. Each target: `name` (used by `--target` and in reports), `platform` (`web`, `ios`, `android`, or any label), `engine`. |
+| `targets` | required | Non-empty. Each target: `platform` (`web`, `ios`, `android`, or any label), `engine`, and an optional `name` (defaults to the platform; used by `--target` and in reports). |
 | `tests` | `'tests/**/*.e2e.ts'` | A glob or an array of globs, `/` separators. |
 | `timeout` | `120000` | Per test attempt, in ms. Also the default `agent.act` deadline. |
 | `actionTimeout` | `30000` | Every locator action and engine operation, including each observation inside an agent step. Raise it for slow model providers. |
@@ -209,7 +208,7 @@ import { agentDeviceTools } from '@e2edev/agent-device/tools';
 const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
 
 export default {
-  targets: [{ name: 'ios', platform: 'ios', engine: iphone }],
+  targets: [{ platform: 'ios', engine: iphone }],
   workers: 1,
   agent: createAgent({ tools: agentDeviceTools(iphone) }),
 } satisfies E2EConfig;

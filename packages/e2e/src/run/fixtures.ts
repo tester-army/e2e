@@ -396,7 +396,6 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
 
   return {
     open: (openPath?: string) => navigate('app.open', openPath ?? '/', openPath),
-    deepLink: (url: string) => navigate('app.deepLink', url, url),
     async restart(): Promise<void> {
       await steps.run('app', 'app.restart', '', async () => {
         await engine.session.app.restart(engine.operation(config.timeout));

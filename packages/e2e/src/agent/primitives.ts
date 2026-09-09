@@ -280,6 +280,7 @@ export function trackModelCalls(
       context.budgets.recordModelCall({
         ...(step.usage.inputTokens === undefined ? {} : { inputTokens: step.usage.inputTokens }),
         ...(step.usage.outputTokens === undefined ? {} : { outputTokens: step.usage.outputTokens }),
+        startedAt: new Date(turnStartedMs).toISOString(),
         durationMs: Date.now() - turnStartedMs,
         ...(typeof model?.provider === 'string' ? { provider: model.provider } : {}),
         ...(typeof model?.modelId === 'string' ? { modelId: model.modelId } : {}),

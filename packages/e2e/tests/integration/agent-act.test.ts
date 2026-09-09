@@ -87,9 +87,12 @@ function scriptedExecutor(): StepExecutor {
     name: 'scripted-executor',
     version: 'test',
     async runStep(context: StepExecutorContext) {
+      const turnStartedAt = new Date().toISOString();
       let observation = await context.observe();
       const id = nodeIdFor(observation.text, /button "Increment"/);
       await context.actions.tap({ id });
+      // Like a tool-using loop: the turn is reported after its tool ran.
+      context.budgets.recordModelCall({ startedAt: turnStartedAt, durationMs: 5 });
       observation = await context.observe();
       if (!/status.*"1"|"Counter".*value="1"/.test(observation.text)) {
         return { status: 'failed' as const, summary: 'the counter did not show 1 after one tap' };
@@ -146,6 +149,12 @@ describe('agent.act with a hand-rolled step executor', () => {
     const engineEvents = step!.events.filter((event) => event.kind === 'engine');
     const observations = step!.events.filter((event) => event.kind === 'observation');
     expect(engineEvents).toHaveLength(1);
+    const modelEvents = step!.events.filter((event) => event.kind === 'model');
+    expect(modelEvents).toHaveLength(1);
+    // Recorded after the tap, stamped with the executor's start: earlier in
+    // time than the engine event, later in the list.
+    expect(step!.events.indexOf(modelEvents[0]!)).toBeGreaterThan(step!.events.indexOf(engineEvents[0]!));
+    expect(Date.parse(modelEvents[0]!.startedAt)).toBeLessThanOrEqual(Date.parse(engineEvents[0]!.startedAt));
     // The executor's two looks, plus the trace cache's two (on by default):
     // the settled baseline before any action and the passing observation,
     // whose delta becomes the staged trace's end anchors.

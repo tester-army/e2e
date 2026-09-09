@@ -20,6 +20,12 @@ export type StepKind = (typeof STEP_KINDS)[number];
  */
 export interface StepEvent {
   kind: 'poll' | 'observation' | 'model' | 'policy' | 'engine' | 'schema';
+  /**
+   * When the event began, not when it was recorded. A `model` event carries
+   * the moment the request went out even when the executor reports the turn
+   * after the tool calls it made, so events sorted by `startedAt` are in
+   * causal order while `events` itself is in recording order.
+   */
   startedAt: string;
   durationMs: number;
   status: 'passed' | 'failed' | 'cancelled';

@@ -50,6 +50,10 @@ a deterministic check that names a platform label is scoped with
 | `session` | `string` | `e2e-<target name>` | agent-device session. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
 
+Every optional value also accepts `undefined`, so a config passes
+`device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`
+straight through, with no conditional spread.
+
 The device boots in `init`, once per worker. agent-device commands take no
 abort signal, so a cancelled or timed-out command is abandoned by its caller
 but keeps running on the device; the next attempt waits for every abandoned

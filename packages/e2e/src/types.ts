@@ -358,7 +358,7 @@ export interface Locator extends Screen {
 }
 
 export interface App {
-  /** Opens the configured app URL or a path relative to it. */
+  /** Opens the app: the declared URL, a path relative to it, or an absolute URL within the allowed origins. */
   open(path?: string): Promise<void>;
   /** Recreates the execution context while preserving persisted state. */
   restart(): Promise<void>;
@@ -366,8 +366,6 @@ export interface App {
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
-  /** Opens an allowed deep or universal link. */
-  deepLink(url: string): Promise<void>;
   /** Captures a redacted evidence screenshot. */
   screenshot(label?: string): Promise<string>;
 }
@@ -587,7 +585,8 @@ export interface ServiceConfig extends CommandConfig {
  * command that starts it); a target carries no app config of its own.
  */
 export interface Target {
-  name: string;
+  /** Label in reports and for `--target`; defaults to the platform. */
+  name?: string;
   platform: Platform;
   engine?: EngineHandle;
 }

@@ -187,8 +187,8 @@ export class RunningTree {
 
   /**
    * The model turn in flight: a spinner and a shimmering `Thinking`. Tool
-   * calls take milliseconds and are reported before their turn, so between
-   * events the model is always the one working.
+   * calls take milliseconds and their turn is reported right after them, so
+   * between events the model is always the one working.
    */
   private waitingRow(now: number): string {
     const { pc } = this;

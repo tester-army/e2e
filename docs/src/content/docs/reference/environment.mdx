@@ -50,7 +50,6 @@ ignored. These two are read as set-or-unset, so an empty string is a value.
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
-| `E2E_DEBUG` | comma-separated flags | `agent` streams every agent invocation phase, model selection, and locate outcome to stderr as it happens; `observations` also dumps every observation the model sees; `all` is both. Unknown flags are ignored. Read from `process.env` directly, once, at the first trace call |
 | `NO_COLOR` | set | Plain CLI output. Colors are also off when stdout is not a TTY |
 | `FORCE_COLOR` | set | Colored CLI output even when piped |
 

@@ -395,19 +395,14 @@ export class ListReporter {
     switch (progress.phase) {
       case 'start': {
         const { api, label, kind } = progress;
-        running.current = { api, label, kind, events: [], turnStart: 0 };
+        running.current = { api, label, kind, events: [] };
         this.window.redraw();
         break;
       }
       case 'event': {
         const { current } = running;
         if (current === undefined || !isShownEvent(progress.event)) break;
-        if (progress.event.kind === 'model') {
-          current.events.splice(current.turnStart, 0, progress.event);
-          current.turnStart = current.events.length;
-        } else {
-          current.events.push(progress.event);
-        }
+        current.events.push(progress.event);
         this.window.redraw();
         break;
       }

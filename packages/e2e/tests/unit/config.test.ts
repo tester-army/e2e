@@ -110,7 +110,7 @@ describe('resolveConfig', () => {
     expect(() => resolve({ app: {} } as never)).toThrow('the app under test is declared by the engine: engine: playwright({ url })');
     expect(() => resolve({ webServer: {} } as never)).toThrow('playwright({ url, command: { executable, args } })');
     expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
-      'target "web" has unknown key "url"; a target is { name, platform, engine? }; the app under test is declared by the engine',
+      'target "web" has unknown key "url"; a target is { name?, platform, engine? }; the app under test is declared by the engine',
     );
     expect(() => resolve({ targets: [{ ...WEB, platfrom: 'web' }] } as never)).toThrow('did you mean "platform"?');
     expect(() => resolve({ reporters: ['lst'] } as never)).toThrow(
@@ -156,9 +156,21 @@ describe('resolveConfig', () => {
     );
   });
 
-  it('validates target names and uniqueness', () => {
+  it('defaults a target name to its platform', () => {
+    const engine = fakeEngine();
+    expect(resolve({ targets: [{ platform: 'ios', engine }] }).targets[0]).toMatchObject({ name: 'ios', platform: 'ios', engine });
+    expect(resolve({ targets: [{ platform: 'ios' }, { platform: 'android' }] }).targets.map((target) => target.name)).toEqual([
+      'ios',
+      'android',
+    ]);
+  });
+
+  it('validates target names and uniqueness, defaulted names included', () => {
     expect(() => resolve({ targets: [{ name: 'bad name', platform: 'web' }] })).toThrow(
-      /target names/,
+      'invalid target name "bad name"; target names are limited to ASCII letters, numbers, "_", "-", and "."',
+    );
+    expect(() => resolve({ targets: [{ platform: 'bad name' }] })).toThrow(
+      'invalid target name "bad name" (defaulted from the platform)',
     );
     expect(() =>
       resolve({
@@ -167,7 +179,21 @@ describe('resolveConfig', () => {
           { name: 'web', platform: 'web' },
         ],
       }),
-    ).toThrow(/duplicate target/);
+    ).toThrow(/duplicate target name "web"$/);
+    const hint = 'a target without a name is named after its platform, so name one of them';
+    expect(() => resolve({ targets: [{ platform: 'ios' }, { platform: 'ios' }] })).toThrow(`duplicate target name "ios"; ${hint}`);
+    expect(() => resolve({ targets: [{ name: 'web', platform: 'ios' }, { platform: 'web' }] })).toThrow(
+      `duplicate target name "web"; ${hint}`,
+    );
+    expect(() => resolve({ targets: [{ platform: 'web' }, { name: 'web', platform: 'ios' }] })).toThrow(
+      `duplicate target name "web"; ${hint}`,
+    );
+  });
+
+  it('points at the entry when a target has no name to report under', () => {
+    expect(() => resolve({ targets: [{ engine: fakeEngine() }] } as never)).toThrow('targets[0] requires a non-empty platform');
+    expect(() => resolve({ targets: [{ platform: 'ios', browser: 'x' }] } as never)).toThrow('targets[0] has unknown key "browser"');
+    expect(() => resolve({ targets: [{ name: 'ios' }] } as never)).toThrow('target "ios" requires a non-empty platform');
   });
 
   it('accepts any platform: the engine decides what a target can do', () => {
