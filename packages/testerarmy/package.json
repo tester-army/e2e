@@ -1,0 +1,62 @@
+{
+  "name": "@e2edev/testerarmy",
+  "version": "0.0.0",
+  "description": "TesterArmy reporter for e2e: uploads every finished run, artifacts included",
+  "keywords": [
+    "e2e",
+    "testing",
+    "agentic",
+    "end-to-end",
+    "reporter",
+    "testerarmy"
+  ],
+  "license": "MIT",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/testerarmy"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/testerarmy#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "restricted",
+    "provenance": false,
+    "tag": "beta"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "peerDependencies": {
+    "@e2edev/e2e": ">=0.9.0 <1"
+  },
+  "devDependencies": {
+    "@e2edev/e2e": "workspace:*",
+    "@types/node": "26.4.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

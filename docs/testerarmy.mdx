@@ -1,0 +1,78 @@
+---
+title: Upload runs to TesterArmy
+description: The @e2edev/testerarmy reporter sends every finished run, artifacts included, to your TesterArmy project.
+---
+
+[TesterArmy](https://tester.army) keeps your runs: the report, the screenshots,
+the Playwright traces, the recordings, one page per run with a link you can
+send to a teammate. `@e2edev/testerarmy` is a [reporter](/reference/reporters)
+that uploads a run as soon as it finishes and prints the run's URL under the
+summary.
+
+## Setup
+
+```bash
+npm install --save-dev @e2edev/testerarmy
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+import { testerarmy } from '@e2edev/testerarmy';
+
+export default {
+  targets: [{ engine: playwright({ url: 'localhost:3000' }) }],
+  reporters: ['list', testerarmy()],
+} satisfies E2EConfig;
+```
+
+Then give it a key, one of two ways:
+
+- Run `npx testerarmy auth` once. The reporter reads the key the CLI saves.
+- Set `TESTERARMY_API_KEY`, in CI as a secret. Keys come from
+  [tester.army/dashboard/profile/api-keys](https://tester.army/dashboard/profile/api-keys).
+
+Without either, the reporter uploads nothing and the summary says so in one
+row, so the same config serves a laptop without an account and a CI job with
+the secret:
+
+```
+       Report  .e2e/report.json
+
+   TesterArmy  not uploaded: set TESTERARMY_API_KEY or run `testerarmy auth` to upload runs
+```
+
+With a key, the row is the run's URL.
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `project` | the key's default project | The TesterArmy project id the runs land in |
+| `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
+
+`TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
+
+## What is uploaded
+
+The report-1 document the run wrote to `.e2e/report.json`, exactly as written,
+and every artifact it names that exists on disk: screenshots, traces, and
+`--video` recordings. Artifacts travel by content digest, so bytes TesterArmy
+already holds for your team are not sent again, and a retried upload of the
+same run is idempotent because the run id is the report's own.
+
+In CI the reporter also sends where the run came from: the commit, the branch,
+the pull request, and a link to the job, read from GitHub Actions, GitLab CI,
+CircleCI, Buildkite, or Vercel. report-1 itself records only that the run was
+in CI.
+
+A Playwright trace records what the page showed, including the text a test
+typed into fields. Upload to a project whose members may see that.
+
+## What it never does
+
+The reporter runs after the summary, within the runner's reporter budget, and
+cannot change the run's status or exit code. A failed or slow upload is one
+line on stderr, and a forced stop (a second Ctrl-C) abandons it at once. The
+key is read when the run finishes, never when the config loads, and never
+enters the report or the trace cache.

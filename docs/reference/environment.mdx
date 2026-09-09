@@ -76,6 +76,17 @@ rather than a person. Only the derived name is sent.
 
 What is sent and how to read it is on the [Telemetry](/telemetry) page.
 
+## Reporters
+
+`@e2edev/testerarmy` reads three variables when a run finishes, the same ones
+the `testerarmy` CLI reads:
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `TESTERARMY_API_KEY` | value | The API key; unset, the key `testerarmy auth` saved is used, and with neither the reporter uploads nothing. The `apiKey` option names a different variable. |
+| `TESTERARMY_BASE_URL` | value | The TesterArmy host, `https://tester.army` by default. |
+| CI provider variables | value | `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `BUILDKITE`, or `VERCEL` and the commit, branch, pull request, and job URL each exposes, sent beside the report as the run's origin. |
+
 ## Engines
 
 | Variable | Reading | Effect |

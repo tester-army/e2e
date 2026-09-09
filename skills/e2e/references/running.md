@@ -78,6 +78,8 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.
 - `json`: the report document on stdout.
+- `testerarmy()` from `@e2edev/testerarmy`: uploads the run and its artifacts to
+  TesterArmy and prints the run URL; needs `TESTERARMY_API_KEY` or `testerarmy auth`.
 - Artifacts (screenshots, Playwright traces, `--video` recordings, `--debug`
   transcripts, downloads) live under `.e2e/artifacts/`; every path is
   recorded in the report.
