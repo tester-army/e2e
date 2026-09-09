@@ -66,7 +66,7 @@ the module type of `.ts` test files or helpers.
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024; a target never runs more than the `workers` its engine declares |
 | `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | `screenshot`, `trace`, and the opt-in `video`; `store` is an [`ArtifactStore`](#artifacts); `video` holds the [recording options](#video) |
-| `reporters` | `readonly ('list' \| 'json' \| 'junit')[]` | `['list']` | those three IDs; `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml` |
+| `reporters` | `readonly ('list' \| 'json' \| 'junit' \| Reporter)[]` | `['list']` | the three IDs and [reporter objects](/reference/reporters); `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml`; `--reporter` replaces the IDs and keeps the objects |
 | `screen` | object | see [screen](#screen) | - |
 | `agent` | object or `StepExecutor` | see [agent](#agent) | - |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
@@ -109,6 +109,8 @@ store never crosses a process boundary: each worker constructs its own when
 it loads the config module.
 Every run writes `.e2e/report.json` regardless of the selected reporters; the
 `junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
+A [reporter object](/reference/reporters) in `reporters` receives that report,
+with the artifact locations, once the run is over.
 
 ### video
 

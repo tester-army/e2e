@@ -169,7 +169,7 @@ platform, skipped, or is a setup test.
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it |
 | `--retries <n>` | integer 0-10 | resolved config value | Replaces `config.retries`; out of range is `INVALID_CONFIG` |
 | `--workers <n>` | integer 1-1024 | resolved config value | Replaces `config.workers`; `--workers 0` is `INVALID_CONFIG` |
-| `--reporter <ids>` | comma-separated list | resolved config value | Replaces `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. |
+| `--reporter <ids>` | comma-separated list | resolved config value | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. [Reporter objects](/reference/reporters) in the config keep running. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree |
 | `--no-cache` | boolean | `false` | Runs with the trace cache off, overriding `config.cache` — the quickest way to check whether a failure is cache-related |
 | `--pass-with-no-tests` | boolean | `false` | Allows zero runnable ordinary test-target pairs instead of failing with `NO_TESTS` |
@@ -231,7 +231,9 @@ npx --no-install e2e run --reporter list,junit
 Every run atomically writes `.e2e/report.json` under the artifact parent
 regardless of the selected reporters; `junit.xml` is written right before it,
 from the same document, so a lost `junit.xml` is recorded in `report.json` like
-any other run error. A reporter can never change run status.
+any other run error. A reporter can never change run status. A [reporter
+object](/reference/reporters) runs after the summary and prints the links it
+returns under it.
 
 With `--ai-trace`, the run also writes `.e2e/ai-trace.json` next to the
 report: one run per agent step, named after the test and the step, with one

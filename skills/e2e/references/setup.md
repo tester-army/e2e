@@ -85,7 +85,7 @@ export default {
 | `assertionTimeout` | `5000` | `expect` polling window. |
 | `retries` | `0`, `1` in CI | 0 to 10. |
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers, at most the `workers` the engine declares per target (a device target: one per device). |
-| `reporters` | `['list']` | `list`, `json`, `junit`. `json` excludes `list`. |
+| `reporters` | `['list']` | `list`, `json`, `junit`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. A model passed to `createAgent({ model })` is the one model for `act` and the judgments, over `E2E_MODEL`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |

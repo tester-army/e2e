@@ -40,7 +40,8 @@ import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
-import type { E2EConfig } from '../types.ts';
+import { sleep } from '../internal/time.ts';
+import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterLinks } from '../types.ts';
 import type { ResolvedModel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
 
@@ -54,7 +55,7 @@ export interface RunOptions {
   headed?: boolean | undefined;
   retries?: number | undefined;
   workers?: number | undefined;
-  reporters?: readonly ('list' | 'json' | 'junit')[] | undefined;
+  reporters?: readonly BuiltinReporter[] | undefined;
   artifactsDir?: string | undefined;
   passWithNoTests?: boolean | undefined;
   /** Runs with the trace cache off (`--no-cache`), overriding the config. */
@@ -91,7 +92,12 @@ export interface RunOptions {
   forceSignal?: AbortSignal | undefined;
   /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
+  /** Budget for each reporter's `onRunFinished`, in ms; the test harness shortens it. */
+  reporterTimeout?: number | undefined;
 }
+
+/** How long a reporter's `onRunFinished` may take before the run stops waiting for it. */
+const REPORTER_TIMEOUT_MS = 60_000;
 
 /** The selection flags of `run`, without anything that would start a process. */
 export type ListOptions = Pick<
@@ -212,10 +218,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   );
 
   // The event stream is the run's single spine: the list reporter is one sink
-  // on it, beside any other, so every consumer sees the same story.
+  // on it, beside every reporter object's `onEvent`, so every consumer sees
+  // the same story.
   const reporters = loaded.config?.reporters ?? options.reporters ?? ['list'];
+  const customReporters = loaded.config?.customReporters ?? [];
+  const listReporter =
+    options.quiet === true || !reporters.includes('list') ? undefined : new ListReporter();
   const emit = createRunEventEmitter([
-    options.quiet === true || !reporters.includes('list') ? undefined : new ListReporter().handle,
+    listReporter?.handle,
+    ...customReporters.map((reporter) =>
+      reporter.onEvent === undefined ? undefined : reporter.onEvent.bind(reporter),
+    ),
     options.onEvent,
   ]);
   const jsonReport = reporters.includes('json');
@@ -391,6 +404,21 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ...(junitPath === undefined ? {} : { junitPath }),
       ...(aiTracePath === undefined ? {} : { aiTracePath }),
     });
+    // Reporters run after the summary, so the terminal never waits on an
+    // upload, and their links print under it. Only a loaded config has any:
+    // a config failure ran nothing they could report.
+    if (loaded.config !== undefined && customReporters.length > 0) {
+      const links = await runReporters(customReporters, {
+        report,
+        status,
+        exitCode,
+        reportPath,
+        artifactsRoot: resolveArtifactsRoot(loaded.config, options.artifactsDir),
+        junitPath,
+        aiTracePath,
+      }, options.reporterTimeout ?? REPORTER_TIMEOUT_MS);
+      listReporter?.links(links);
+    }
     if (jsonReport) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
@@ -812,6 +840,50 @@ function resultExitCodes(results: readonly ResultRecord[]): number[] {
     }
   }
   return codes;
+}
+
+const REPORTER_TIMED_OUT = Symbol('reporter timed out');
+
+/**
+ * Awaits every reporter's `onRunFinished` at once, each within `timeoutMs`,
+ * and collects the links they resolve with. A reporter that throws or runs
+ * out of time is one line on stderr; it can never change the run's outcome.
+ */
+async function runReporters(
+  reporters: readonly Reporter[],
+  finished: FinishedRun,
+  timeoutMs: number,
+): Promise<ReporterLinks> {
+  const warn = (reporter: Reporter, detail: string): void => {
+    process.stderr.write(`e2e: reporter "${reporter.name}" ${detail}\n`);
+  };
+  const outcomes = await Promise.all(
+    reporters.map(async (reporter): Promise<ReporterLinks> => {
+      if (reporter.onRunFinished === undefined) return [];
+      const timer = new AbortController();
+      try {
+        const result = await Promise.race([
+          reporter.onRunFinished(finished),
+          // Rejects when aborted below, which is how the pending timer is cleared.
+          sleep(timeoutMs, timer.signal).then(
+            (): typeof REPORTER_TIMED_OUT => REPORTER_TIMED_OUT,
+            (): undefined => undefined,
+          ),
+        ]);
+        if (result === REPORTER_TIMED_OUT) {
+          warn(reporter, `did not finish within ${timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`}`);
+          return [];
+        }
+        return result ?? [];
+      } catch (cause) {
+        warn(reporter, `failed: ${errorMessage(cause)}`);
+        return [];
+      } finally {
+        timer.abort();
+      }
+    }),
+  );
+  return outcomes.flat();
 }
 
 function resolveArtifactsRoot(config: ResolvedConfig, override: string | undefined): string {

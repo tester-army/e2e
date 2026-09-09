@@ -193,6 +193,28 @@ function plainReporter(output: { write(line: string): void; raw?(text: string): 
   return new ListReporter(output, { live, colors: false });
 }
 
+describe('reporter links', () => {
+  it('prints each link as a summary row, then a blank line', () => {
+    const lines: string[] = [];
+    const reporter = plainReporter({ write: (line) => lines.push(line) });
+    reporter.links([
+      { label: 'Results', url: 'https://example.test/runs/1' },
+      { label: 'Video', url: 'https://example.test/runs/1/video' },
+    ]);
+    expect(lines).toEqual([
+      expect.stringMatching(/^ +Results {2}https:\/\/example\.test\/runs\/1$/),
+      expect.stringMatching(/^ +Video {2}https:\/\/example\.test\/runs\/1\/video$/),
+      '',
+    ]);
+  });
+
+  it('prints nothing for no links', () => {
+    const lines: string[] = [];
+    plainReporter({ write: (line) => lines.push(line) }).links([]);
+    expect(lines).toEqual([]);
+  });
+});
+
 /** Overrides the reported terminal size for one test; returns the restore function. */
 function withTerminalSize(size: { rows?: number; columns?: number }): () => void {
   const saved = { rows: process.stdout.rows, columns: process.stdout.columns };

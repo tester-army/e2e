@@ -11,6 +11,7 @@ import {
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
+  type Reporter,
   type Screen,
   type TraceCacheStore,
 } from '../../src/index.ts';
@@ -38,6 +39,18 @@ declare const engine: EngineHandle;
 // @ts-expect-error video retention is a closed union
 ({ artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
+declare const reporter: Reporter;
+({ reporters: ['list', reporter] }) satisfies E2EConfig;
+({ reporters: [reporter] }) satisfies E2EConfig;
+({
+  name: 'upload',
+  onEvent: (event) => void event.seq,
+  onRunFinished: async (run) => [{ label: 'Results', url: run.report.run.id }],
+}) satisfies Reporter;
+// @ts-expect-error a reporter has a name
+({ onRunFinished: async () => undefined }) satisfies Reporter;
+// @ts-expect-error reporter ids are a closed union
+({ reporters: ['xunit'] }) satisfies E2EConfig;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
 screen.getByRole('button', { name: 'Save', visible: true });

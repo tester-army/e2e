@@ -1,0 +1,142 @@
+---
+title: Reporters
+description: Reporter objects in `reporters`, what they receive, and what the runner guarantees them.
+---
+
+`reporters` takes the built-in ids (`list`, `json`, `junit`; see
+[CLI → Output](/reference/cli#output)) and reporter objects. A reporter object
+is how a run's outcome leaves the machine: it sees every run event as it
+happens and receives the finished run, report and artifact locations
+included, once the summary has printed. It is a live config value, so it lives
+in `e2e.config.ts`, never on the command line.
+
+```ts
+import type { E2EConfig, Reporter } from '@e2edev/e2e';
+
+const upload: Reporter = {
+  name: 'upload',
+  async onRunFinished(run) {
+    const response = await fetch('https://example.test/runs', {
+      method: 'POST',
+      body: JSON.stringify(run.report),
+    });
+    const { url } = (await response.json()) as { url: string };
+    return [{ label: 'Results', url }];
+  },
+};
+
+export default {
+  targets: [{ engine: playwright({ url: 'localhost:3000' }) }],
+  reporters: ['list', upload],
+} satisfies E2EConfig;
+```
+
+## The contract
+
+```ts
+interface Reporter {
+  readonly name: string;
+  onEvent?(event: RunEvent): void;
+  onRunFinished?(run: FinishedRun): Promise<ReporterLinks | void>;
+}
+
+interface FinishedRun {
+  readonly report: Report;                 // the report-1 document, as written
+  readonly status: RunStatus;              // report.run.status
+  readonly exitCode: RunExitCode;
+  readonly reportPath: string | undefined; // absent when the write failed
+  readonly artifactsRoot: string;          // what the report's artifact paths are relative to
+  readonly junitPath: string | undefined;
+  readonly aiTracePath: string | undefined;
+}
+
+type ReporterLinks = readonly { label: string; url: string }[];
+```
+
+`Reporter`, `FinishedRun`, and `ReporterLinks` are on the main entrypoint
+beside `ArtifactStore`. `@e2edev/e2e/reporter` exports the same three plus the
+shapes they are built from: `Report`, `RunEvent` and `RunEventOf`, the record
+types (`ArtifactRecord`, `SerialGroupRecord`, `StepRecord`, and the rest), and
+`SerializedError`, so a reporter package types its handlers without
+indexed-access gymnastics.
+
+A name and at least one handler are required; the resolver rejects anything
+else with `INVALID_CONFIG`.
+
+## The event stream
+
+`onEvent` receives every lifecycle fact as plain JSON data, the same records
+the report persists, streamed while the run is going. It is exactly the feed
+the `list` reporter renders, so a reporter can never see a different story
+than the terminal. Each event carries a `seq` stamped by the run's single
+writer and an ISO `at` timestamp.
+
+```ts
+type RunEventFact =
+  | { type: 'run-started'; runId; projectId; projectRoot; artifactsRoot; ci; targets; model? }
+  | { type: 'plan'; total; files: { file; target; tests }[] }
+  | { type: 'notice'; target; message }
+  | { type: 'setup'; step: SetupStep; state: 'started' }
+  | { type: 'setup'; step: SetupStep; state: 'finished'; durationMs; outcome?: 'reused' }
+  | { type: 'test-started'; testId; title; file; serialId; target }
+  | { type: 'step'; testId; target; progress: StepProgress }
+  | { type: 'test-finished'; result: RunEventResult }
+  | { type: 'serial-group'; group: SerialGroupRecord }
+  | { type: 'run-error'; error: SerializedError }
+  | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
+  | { type: 'run-finished'; status; exitCode; reportPath?; junitPath?; aiTracePath? };
+```
+
+`run-started` comes first and `run-finished` last. `test-finished` carries
+the full result record, including every attempt's artifacts, so a reporter
+that uploads evidence as it lands has what it needs before the run is over.
+Redaction happens before events are built; secret values never appear in the
+stream.
+
+`onEvent` must not block and must not throw: a throw quarantines the reporter
+for the rest of the run, and the run is never affected. Work that takes time
+belongs in `onRunFinished`.
+
+## The finished run
+
+`onRunFinished` runs after `report.json` is written and after the `list`
+summary has printed, so the terminal never waits on an upload. Every
+reporter's `onRunFinished` runs at once. Each is awaited for one minute; one
+that takes longer is abandoned with a line on stderr, and the run ends with
+its own exit code. A reporter that throws is the same one line. Nothing a
+reporter does can change the run's status, its exit code, or its report.
+
+The links a reporter resolves with print under the summary as rows in the same
+layout as `Report` and `JUnit`:
+
+```
+   Test Files  2 passed (2)
+        Tests  6 passed (6)
+     Start at  14:02:11
+     Duration  8.41s
+       Report  .e2e/report.json
+
+      Results  https://example.test/runs/0192c…
+```
+
+Artifact paths in the report are POSIX paths relative to `artifactsRoot`;
+`path.join(run.artifactsRoot, artifact.path)` is the file. `size` and
+`sha256` are recorded for every artifact, so a reporter can skip bytes the
+other side already has.
+
+## What `--reporter` does to reporter objects
+
+Nothing. `e2e run --reporter list,junit` replaces the built-in ids only: a
+reporter object has no id to name on the command line, so a CI flag choosing
+the terminal output never drops the upload the config asked for. A config
+whose `reporters` holds only objects prints nothing to the terminal, the same
+as `reporters: ['junit']`.
+
+## Where a reporter runs
+
+In the runner's process only. Workers load the config module too and so
+construct their own copy of every reporter object, but never call it:
+constructing a reporter must have no side effects, and anything it needs
+(a token from the environment, say) is read inside its handlers. Reporter
+objects never enter the [config digest](/reference/config#cache): adding one
+leaves the trace cache valid.

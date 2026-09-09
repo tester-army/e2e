@@ -265,8 +265,15 @@ export class ManagedProcess {
     const exited = new Promise<void>((resolve) => {
       child.once('exit', () => resolve());
     });
-    const timer = sleep(shutdownTimeout).then(() => 'timeout' as const);
-    const winner = await Promise.race([exited.then(() => 'exited' as const), timer]);
+    // The timer is cancelled once the process is gone: left pending, it kept
+    // the event loop alive for the whole timeout after the run had ended.
+    const timer = new AbortController();
+    const timedOut = sleep(shutdownTimeout, timer.signal).then(
+      () => 'timeout' as const,
+      () => 'exited' as const,
+    );
+    const winner = await Promise.race([exited.then(() => 'exited' as const), timedOut]);
+    timer.abort();
     if (winner === 'timeout') {
       signalProcessGroup(child, 'SIGKILL');
       await exited.catch(() => undefined);

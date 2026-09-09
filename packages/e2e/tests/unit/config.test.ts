@@ -319,6 +319,34 @@ describe('resolveConfig', () => {
     expect(() => resolve({ reporters: ['xunit'] as never })).toThrow(/unknown reporter "xunit"/);
   });
 
+  it('accepts reporter objects beside the ids and keeps them under --reporter', () => {
+    const upload = { name: 'upload', onRunFinished: async () => undefined };
+    const config = resolve({ reporters: ['list', upload] });
+    expect(config.reporters).toEqual(['list']);
+    expect(config.customReporters).toEqual([upload]);
+    const overridden = resolveConfig(
+      { targets: TARGETS, reporters: ['list', upload] },
+      { projectRoot: ROOT, env: BASE_ENV, cli: { reporters: ['junit'] } },
+    );
+    expect(overridden.reporters).toEqual(['junit']);
+    expect(overridden.customReporters).toEqual([upload]);
+    // Objects alone leave the terminal silent, as `['junit']` does.
+    expect(resolve({ reporters: [upload] }).reporters).toEqual([]);
+  });
+
+  it('rejects a reporter object without a name or a handler', () => {
+    const handler = async () => undefined;
+    expect(() => resolve({ reporters: [{ onRunFinished: handler }] as never })).toThrow(/object with a name/);
+    expect(() => resolve({ reporters: [{ name: '', onRunFinished: handler }] as never })).toThrow(/object with a name/);
+    expect(() => resolve({ reporters: [{ name: 'x' }] as never })).toThrow(/object with a name/);
+    expect(() => resolve({ reporters: [{ name: 'x', onEvent: 'no' }] as never })).toThrow(/object with a name/);
+  });
+
+  it('keeps reporter objects out of the config digest', () => {
+    const upload = { name: 'upload', onRunFinished: async () => undefined };
+    expect(resolve({ reporters: ['list', upload] }).configDigest).toBe(resolve({ reporters: ['list'] }).configDigest);
+  });
+
   it('validates numeric bounds', () => {
     expect(() => resolve({ retries: 11 })).toThrow(/retries/);
     expect(() => resolve({ retries: -1 })).toThrow(/retries/);

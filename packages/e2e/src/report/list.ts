@@ -12,6 +12,7 @@ import type { SerializedError } from '../internal/errors.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
 import type { ArtifactRecord, AttemptRecord, ResultStatus, SerialGroupRecord } from '../run/records.ts';
+import type { ReporterLinks } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
   addUsage,
@@ -731,6 +732,15 @@ export class ListReporter {
       for (const line of bounded(error.message).split('\n')) this.print(pc.red(line));
       this.print('');
     }
+  }
+
+  /** Prints the links reporters resolved with, as rows under the summary. */
+  links(links: ReporterLinks): void {
+    if (links.length === 0) return;
+    for (const link of links) {
+      this.print(padTitle(this.pc, bounded(link.label)) + bounded(link.url));
+    }
+    this.print('');
   }
 
   private runFinished(event: RunEventOf<'run-finished'>): void {
