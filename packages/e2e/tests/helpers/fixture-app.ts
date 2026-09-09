@@ -434,6 +434,53 @@ const PAGES: Record<string, string> = {
   </script>
 </body>
 </html>`,
+  // A list that remounts and rotates its rows on the first pointer move after
+  // every render, the way a live-updating list re-renders under the cursor.
+  // Every tap on a handle from the last observation therefore lands on a
+  // detached node exactly once; the control itself, "Tap me", stays on screen
+  // under a new element. Re-armed by each successful tap so all three taps
+  // exercise the relocation.
+  '/churn': `<!doctype html>
+<html>
+<head><title>Churn</title></head>
+<body>
+  <h1>Churn</h1>
+  <output id="progress" role="status" aria-label="Progress">0 / 3</output>
+  <ul id="rows"></ul>
+  <script>
+    let armed = true;
+    let rotation = 0;
+    let taps = 0;
+    const labels = ['Decoy one', 'Tap me', 'Decoy two'];
+    function render() {
+      const rows = document.getElementById('rows');
+      rows.replaceChildren();
+      for (let i = 0; i < labels.length; i += 1) {
+        const label = labels[(i + rotation) % labels.length];
+        const li = document.createElement('li');
+        const button = document.createElement('button');
+        button.textContent = label;
+        if (label === 'Tap me') {
+          button.addEventListener('click', () => {
+            taps += 1;
+            armed = true;
+            document.getElementById('progress').textContent = taps + ' / 3';
+          });
+        }
+        li.append(button);
+        rows.append(li);
+      }
+    }
+    document.addEventListener('mousemove', () => {
+      if (!armed) return;
+      armed = false;
+      rotation += 1;
+      render();
+    });
+    render();
+  </script>
+</body>
+</html>`,
   '/flags': `<!doctype html>
 <html>
 <head><title>Flags</title></head>

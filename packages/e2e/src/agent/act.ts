@@ -24,6 +24,7 @@ import type {
   AgentErrorCode,
   JsonValue,
   ModelInstance,
+  Momentum,
   ScrollDirection,
   Secret,
 } from '../types.ts';
@@ -60,8 +61,8 @@ import {
 } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
-import { containerKey, describeAction, type RecordableAction } from './actions.ts';
-import { describePosition } from '../cache/relocate.ts';
+import { containerKey, describeAction, describeTarget, type RecordableAction } from './actions.ts';
+import { describePosition, relocateDescriptor } from '../cache/relocate.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { ModelUsage, tokenFields } from './usage.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
@@ -77,6 +78,30 @@ import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-c
  * full budget: a slow page really can take that long to load.
  */
 const MAX_TARGETED_ACTION_MS = 15_000;
+
+/**
+ * How many times a targeted action re-finds its node after the engine reports
+ * it stale. One relocation covers a re-render between the observation and the
+ * action; the second covers a render tick landing between the fresh look and
+ * the action itself. A control that keeps vanishing faster than that is
+ * reported to the model as gone.
+ */
+const MAX_STALE_RELOCATIONS = 2;
+
+/**
+ * The change wait after a scroll. A scroll moves nothing the tree records,
+ * so most scrolls change no shape at all and the wait is pure cost; a
+ * windowed list or a lazy feed renders its next rows within a few hundred
+ * milliseconds, which is what this covers.
+ */
+const SCROLL_CHANGE_WAIT_MS = 500;
+
+/**
+ * How far one grammar scroll moves. The engine's default flick is half the
+ * scrolled box; a deliberate scroll of three quarters keeps every row on
+ * screen at least once while covering a long feed in fewer actions.
+ */
+const SCROLL_MOMENTUM: Momentum = 'slow';
 
 /** Everything one dispatched step is, resolved before the step opens. */
 interface DispatchSpec {
@@ -246,6 +271,8 @@ class ActDispatch {
    * old page, stable and wrong, and the model repairs what already worked.
    */
   private pendingChange: string | undefined;
+  /** The change wait the pending action asked for; undefined takes the default. */
+  private pendingChangeWaitMs: number | undefined;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -812,7 +839,11 @@ class ActDispatch {
     // A settled look consumes the pending change: it waits for the screen to
     // leave the pre-action shape once, and later looks read the screen as is.
     const changedFrom = settle ? this.pendingChange : undefined;
-    if (settle) this.pendingChange = undefined;
+    const changeWaitMs = settle ? this.pendingChangeWaitMs : undefined;
+    if (settle) {
+      this.pendingChange = undefined;
+      this.pendingChangeWaitMs = undefined;
+    }
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
@@ -828,7 +859,7 @@ class ActDispatch {
                 // by one poll interval.
                 signal: this.stepSignal,
               },
-              { changedFrom, transitional: isTransitionalObservation },
+              { changedFrom, changeWaitMs, transitional: isTransitionalObservation },
             )
           : this.captureObservation(capturePixels),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
@@ -922,9 +953,12 @@ class ActDispatch {
       throw cause;
     }
     // The effect may still be arriving: the next settled observation waits for
-    // the screen to leave the shape this action was resolved against.
-    if (name !== 'scroll' && name !== 'typeSecret' && this.latest !== undefined) {
+    // the screen to leave the shape this action was resolved against. A secret
+    // fill leaves no visible trace and arms nothing; a scroll waits briefly for
+    // rows a windowed or lazy list renders.
+    if (name !== 'typeSecret' && this.latest !== undefined) {
       this.pendingChange = observationShape(this.latest);
+      this.pendingChangeWaitMs = name === 'scroll' ? SCROLL_CHANGE_WAIT_MS : undefined;
     }
     if (this.stepCache === undefined) return;
     // A typed value the step derived at run time is this run's data, not the
@@ -937,46 +971,83 @@ class ActDispatch {
     this.stepCache.record(action);
   }
 
-  /** One action against a resolved node; a stale ref asks for a re-observe. */
+  /**
+   * One action against a resolved node. A node the engine reports stale is
+   * re-found by its descriptor against a fresh capture and the action retried
+   * (`MAX_STALE_RELOCATIONS` times): a list that remounts its rows between
+   * the observation and the action keeps the control on screen under a dead
+   * handle, and the control, not the handle, is what the model asked for. A
+   * descriptor that matches nothing or several nodes fails the action instead.
+   */
   private commitTargeted(
     name: string,
     target: ExecutorTarget,
     perform: (node: SemanticNode) => Promise<RecordableAction>,
   ): Promise<void> {
     return this.runAction(name, async () => {
-      const node = this.resolveTarget(target);
-      // The container the node sits in is captured with it: that is what
-      // tells this row's "Delete" from the next row's when the flow replays.
-      const latest = this.latest;
-      const within =
-        latest === undefined ? undefined : containerKey(node.ref.id, latest.nodes, latest.parents, this.redact);
-      // When the description still matches several controls, the position among
-      // them is recorded too; a replay that finds the same number picks the same one.
-      const position =
-        latest === undefined
-          ? undefined
-          : describePosition(node, within, latest.nodes, {
-              redact: this.redact,
-              testIdAttribute: this.runtime.config.testIdAttribute,
-            });
-      try {
-        const action = await perform(node);
-        return {
-          ...action,
-          ...(within === undefined ? {} : { within }),
-          ...(position === undefined ? {} : { position }),
-        };
-      } catch (cause) {
-        if (asEngineError(cause)?.code === 'NODE_STALE') {
-          throw new AgentError(
-            'LOCATOR_NOT_FOUND',
-            'the target node left the screen before the action reached it',
-            { cause },
-          );
+      let node = this.resolveTarget(target);
+      // resolveTarget guarantees an observation; it is the one the node came from.
+      let observation = this.latest!;
+      for (let relocations = 0; ; relocations += 1) {
+        // The container the node sits in is captured with it: that is what
+        // tells this row's "Delete" from the next row's when the flow replays.
+        const within = containerKey(node.ref.id, observation.nodes, observation.parents, this.redact);
+        // When the description still matches several controls, the position among
+        // them is recorded too; a replay that finds the same number picks the same one.
+        const position = describePosition(node, within, observation.nodes, {
+          redact: this.redact,
+          testIdAttribute: this.runtime.config.testIdAttribute,
+        });
+        try {
+          const action = await perform(node);
+          return {
+            ...action,
+            ...(within === undefined ? {} : { within }),
+            ...(position === undefined ? {} : { position }),
+          };
+        } catch (cause) {
+          if (asEngineError(cause)?.code !== 'NODE_STALE') throw cause;
+          const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.relocateStale(node) : undefined;
+          if (relocated === undefined) {
+            throw new AgentError(
+              'LOCATOR_NOT_FOUND',
+              'the target node left the screen before the action reached it',
+              { cause },
+            );
+          }
+          node = relocated.node;
+          observation = relocated.observation;
         }
-        throw cause;
       }
     });
+  }
+
+  /**
+   * Re-finds a node that went stale: one fresh capture, then the trace
+   * recorder's own descriptor matching (`cache/relocate.ts`) against it,
+   * exactly one match or nothing. The capture is taken directly rather than
+   * through the serialized observe: this runs inside a serialized action
+   * body, and a queued observation would wait on its own caller.
+   */
+  private async relocateStale(
+    stale: SemanticNode,
+  ): Promise<{ node: SemanticNode; observation: AgentObservation } | undefined> {
+    const options = { redact: this.redact, testIdAttribute: this.runtime.config.testIdAttribute };
+    const descriptor = describeTarget(stale, this.redact, this.runtime.config.testIdAttribute);
+    if (descriptor === undefined) return undefined;
+    this.checkpoint();
+    const observation = await instrumentPhase(
+      this.runtime,
+      { api: this.spec.api, kind: 'observation', phase: 'agent.observe', name: 'relocate' },
+      () => this.captureObservation(false),
+      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
+    );
+    this.latest = observation;
+    this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
+    const relocated = relocateDescriptor(descriptor, observation.nodes, options);
+    if (relocated.kind !== 'found') return undefined;
+    const node = observation.nodes.get(relocated.id);
+    return node === undefined ? undefined : { node, observation };
   }
 
   private async scroll(direction: ScrollDirection, target: ExecutorTarget | undefined): Promise<void> {
@@ -985,13 +1056,17 @@ class ActDispatch {
     }
     if (target === undefined) {
       await this.runAction('scroll', async () => {
-        await this.session.swipe(direction, undefined, this.actionOperation());
+        await this.session.swipe(direction, SCROLL_MOMENTUM, this.actionOperation());
         return { name: 'scroll', direction };
       });
       return;
     }
     await this.commitTargeted('scroll', target, async (node) => {
-      await this.session.perform(node.ref, { kind: 'swipe', direction }, this.actionOperation());
+      await this.session.perform(
+        node.ref,
+        { kind: 'swipe', direction, momentum: SCROLL_MOMENTUM },
+        this.actionOperation(),
+      );
       return { name: 'scroll', direction, node };
     });
   }

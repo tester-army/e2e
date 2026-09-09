@@ -827,3 +827,45 @@ describe('the default agent reads action results after their effect', () => {
     }
   }, 120_000);
 });
+
+const CHURN_SUITE = `import { test, expect } from '@e2edev/e2e';
+
+test('default agent taps a control that remounts under it', async ({ app, agent, screen }) => {
+  await app.open('/churn');
+  await agent.act('tap the "Tap me" button three times');
+  await expect(screen.getByRole('status')).toHaveText('3 / 3');
+});
+`;
+
+describe('a targeted action re-finds a node that went stale', () => {
+  it('relocates by descriptor and retries instead of failing the tap', async () => {
+    const app = await startFixtureApp();
+    const model = installFakeLoopModel((call) => {
+      if (call.turn <= 3) {
+        // Ids are read from the newest screen each turn; the page remounts the
+        // row on the pointer move the tap makes, so the handle is dead on arrival.
+        return [{ toolName: 'tap', input: { target: nodeIdFor(call.lastToolResult || call.prompt, /button "Tap me"/) } }];
+      }
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'tapped three times' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/churn.e2e.ts': CHURN_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'default agent taps a control that remounts under it');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+      expect(step.metrics!.actionSteps).toBe(3);
+      // Every tap went stale once and was re-found: three relocation captures,
+      // and no tap result reported a failure.
+      const relocations = step.events.filter((event) => event.kind === 'observation' && event.name === 'relocate');
+      expect(relocations.length).toBeGreaterThanOrEqual(3);
+      for (const call of loopCalls.slice(1, 4)) expect(call.lastToolResult).not.toContain('failed');
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+});

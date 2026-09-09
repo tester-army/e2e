@@ -131,7 +131,11 @@ one turn; they run in order and each reports its own changes. A failed action
 returns the failure together with the current screen, so a stale id costs no
 extra turn, and a targeted action waits at most 15 seconds for its node to
 become actionable, so a tap blocked by a consent banner or a modal reports the
-element in the way instead of spending the whole `actionTimeout` on it.
+element in the way instead of spending the whole `actionTimeout` on it. A node
+the engine reports stale is re-found by its descriptor in a fresh capture and
+the action retried, up to twice, so a list that remounts its rows under the
+pointer costs no model turn. The `scroll` tool takes `times` to move several
+screens in one call; each screen is one recorded action.
 
 ## Two layers
 

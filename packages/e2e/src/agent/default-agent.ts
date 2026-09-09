@@ -30,7 +30,7 @@ Rules:
 - The screen is a tree of nodes with stable ids like "n42": a node keeps its id for as long as it exists, across every screen and change in this conversation. The first screen is sent whole; every action result and every observe reports only what changed since the screen you last received, one line per node: "added" (a new node), "changed" (with what it read before), or "removed" (the node is gone; never target it again). A node not listed as removed is still there under the id you have. Never invent ids.
 - Every action result already waited for the effect and contains the changes, so do not call observe after an action. Call observe only after waiting for something the last result showed in progress.
 - You may issue several actions in one turn when each targets a node already on screen and no earlier action in the turn changes what a later one targets: fill several fields, then press the submit button as the last action. Actions run in order; each result reports its own changes. Anything that changes the page (a tap on a link or button, a navigation, a submit) should be the last action of its turn.
-- If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude.`;
+- If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude. Scrolling may repeat (times) or be issued several times in one turn to move far; each result reports what came into the tree.`;
 
 /** One presenter per dispatched step, shared by the opening prompt and the tools that follow it. */
 const presenters = new WeakMap<StepExecutorContext, ScreenPresenter>();

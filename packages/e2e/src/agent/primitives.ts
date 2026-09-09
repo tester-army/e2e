@@ -40,6 +40,9 @@ const MODEL_ERROR_CODES = [
  */
 const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 
+/** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
+const MAX_SCROLL_TIMES = 5;
+
 /** The model-pickable codes a blocked verdict accepts; derived, never restated. */
 const MODEL_BLOCKABLE_CODES = MODEL_ERROR_CODES.filter((code) => BLOCKABLE_CODES.has(code));
 
@@ -245,23 +248,37 @@ export function createGrammarTools(
   }
   if (verbs.has('scroll')) {
     const direction = z.enum(['up', 'down', 'left', 'right']);
+    const times = z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_SCROLL_TIMES)
+      .optional()
+      .describe(`How many screens to scroll in this one call, 1 to ${String(MAX_SCROLL_TIMES)}; default 1. Use more to move far down a long list or feed.`);
+    // Each repeat is one recorded action against the budget, paced like a
+    // separate call, so a lazy list gets to render between screens.
+    const scrolling = async (way: 'up' | 'down' | 'left' | 'right', id: string | undefined, count: number) => {
+      for (let repeat = 0; repeat < count; repeat += 1) {
+        await context.actions.scroll(way, id === undefined ? undefined : { id });
+        if (repeat < count - 1) await context.observe();
+      }
+    };
+    const scrolled = (way: string, count: number) =>
+      count === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(count)} screens.`;
     // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
     tools['scroll'] = verbs.has('tap')
       ? schemaTool({
-          description: 'Scroll the viewport, or one scrollable node when target is given.',
-          inputSchema: z.object({ direction, target: target.optional() }),
-          execute: ({ direction: way, target: id }) =>
-            acting(
-              `Scrolled ${way}.`,
-              () => context.actions.scroll(way, id === undefined ? undefined : { id }),
-              false,
-            ),
+          description:
+            'Scroll the viewport, or one scrollable node when target is given. The result reports the rows that came into or left the tree.',
+          inputSchema: z.object({ direction, target: target.optional(), times }),
+          execute: ({ direction: way, target: id, times: count }) =>
+            acting(scrolled(way, count ?? 1), () => scrolling(way, id, count ?? 1), false),
         })
       : schemaTool({
-          description: 'Scroll the viewport.',
-          inputSchema: z.object({ direction }),
-          execute: ({ direction: way }) =>
-            acting(`Scrolled ${way}.`, () => context.actions.scroll(way), false),
+          description: 'Scroll the viewport. The result reports the rows that came into or left the tree.',
+          inputSchema: z.object({ direction, times }),
+          execute: ({ direction: way, times: count }) =>
+            acting(scrolled(way, count ?? 1), () => scrolling(way, undefined, count ?? 1), false),
         });
   }
   if (verbs.has('navigate')) {
