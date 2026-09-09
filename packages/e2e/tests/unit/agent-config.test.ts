@@ -24,7 +24,7 @@ describe('agent config defaults', () => {
     const config = resolve({});
     expect(config.agent.maxSteps).toBe(25);
     expect(config.agent.maxModelCalls).toBe(25);
-    expect(config.agent.maxObservationBytes).toBe(1_048_576);
+    expect(config.agent.maxObservationBytes).toBe(262_144);
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.context).toBeUndefined();
     expect(config.agent.vision).toBe(false);

@@ -37,9 +37,10 @@ const PROVIDER_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
  * honoring `retry-after` before its own exponential backoff. Raising the SDK
  * default of 2 costs nothing on a healthy provider: `timeout` below is merged
  * into the signal the retry loop waits on, so the step deadline — not the
- * attempt count — bounds the whole chain.
+ * attempt count — bounds the whole chain. The act loop sends the same count
+ * and the same kind of timeout, so both tiers fail a flaky provider alike.
  */
-const TRANSPORT_RETRIES = 5;
+export const TRANSPORT_RETRIES = 5;
 
 /** Creates the adapter for one resolved model, or fails with MODEL_UNAVAILABLE. */
 export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapter {
@@ -355,7 +356,12 @@ function unwrapRetry(cause: unknown): unknown {
   return cause.lastError ?? cause;
 }
 
-function isAbort(cause: unknown): boolean {
+/**
+ * True when a provider call ended by abort or timeout rather than by a
+ * provider answer, including a retry chain the deadline cut short. Requires
+ * the SDK to be loaded, which every caller has done by the time a call failed.
+ */
+export function isAbort(cause: unknown): boolean {
   const { RetryError } = aiSdk();
   if (RetryError.isInstance(cause) && cause.reason === 'abort') return true;
   return cause instanceof Error && (cause.name === 'AbortError' || cause.name === 'TimeoutError');
