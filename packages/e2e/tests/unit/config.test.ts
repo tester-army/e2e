@@ -179,9 +179,14 @@ describe('resolveConfig', () => {
           { name: 'web', platform: 'web' },
         ],
       }),
-    ).toThrow('duplicate target name "web"');
-    expect(() => resolve({ targets: [{ platform: 'ios' }, { platform: 'ios' }] })).toThrow(
-      'duplicate target name "ios"; targets sharing a platform need explicit names',
+    ).toThrow(/duplicate target name "web"$/);
+    const hint = 'a target without a name is named after its platform, so name one of them';
+    expect(() => resolve({ targets: [{ platform: 'ios' }, { platform: 'ios' }] })).toThrow(`duplicate target name "ios"; ${hint}`);
+    expect(() => resolve({ targets: [{ name: 'web', platform: 'ios' }, { platform: 'web' }] })).toThrow(
+      `duplicate target name "web"; ${hint}`,
+    );
+    expect(() => resolve({ targets: [{ platform: 'web' }, { name: 'web', platform: 'ios' }] })).toThrow(
+      `duplicate target name "web"; ${hint}`,
     );
   });
 

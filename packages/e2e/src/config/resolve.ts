@@ -451,6 +451,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     throw new ConfigurationError('INVALID_CONFIG', 'targets must be a non-empty array');
   }
   const seen = new Set<string>();
+  const defaulted = new Set<string>();
   return raw.targets.map((target, index) => {
     // Errors raised before the name settles point at the entry itself.
     const where = typeof target.name === 'string' ? `target "${target.name}"` : `targets[${index}]`;
@@ -477,10 +478,14 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
       );
     }
     if (seen.has(name)) {
-      const hint = target.name === undefined ? '; targets sharing a platform need explicit names' : '';
+      const hint =
+        target.name === undefined || defaulted.has(name)
+          ? '; a target without a name is named after its platform, so name one of them'
+          : '';
       throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${name}"${hint}`);
     }
     seen.add(name);
+    if (target.name === undefined) defaulted.add(name);
     if (target.engine !== undefined && !isEngineHandle(target.engine)) {
       const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
       throw new ConfigurationError(
