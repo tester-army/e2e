@@ -789,3 +789,13 @@ export const readManySemanticsFunction = new Function(
   'options',
   `return elements.map((element) => (${readSemanticsFunction.toString()})(element, options));`,
 ) as (elements: Element[], options: NodeReadOptions) => RawNodeData[];
+
+/**
+ * The batch reader for `page.evaluate`, which takes one argument: the element
+ * handles the caller already holds, so what is read and what is later acted
+ * on are the same elements by construction rather than by a second lookup.
+ */
+export const readHandlesSemanticsFunction = new Function(
+  'arg',
+  `return arg.elements.map((element) => (${readSemanticsFunction.toString()})(element, arg.options));`,
+) as (arg: { elements: Element[]; options: NodeReadOptions }) => RawNodeData[];

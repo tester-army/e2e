@@ -40,9 +40,10 @@ export class RefRegistry {
   storeLocated(target: ActionTarget): string {
     const id = this.mintId();
     this.located.set(id, target);
-    for (const oldest of this.located.keys()) {
+    for (const [oldest, evicted] of this.located) {
       if (this.located.size <= MAX_STORED_REFS) break;
       this.located.delete(oldest);
+      if (evicted.kind === 'element') void evicted.element.dispose().catch(() => undefined);
     }
     return id;
   }
@@ -69,6 +70,7 @@ export class RefRegistry {
   clear(): void {
     RefRegistry.dispose(this.observation);
     this.observation = new Map();
+    RefRegistry.dispose(this.located);
     this.located.clear();
   }
 

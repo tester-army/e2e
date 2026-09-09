@@ -40,7 +40,7 @@ import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
 import { captureDocument, toSemanticNode } from './observation.ts';
 import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
-import { readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { readHandlesSemanticsFunction, readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
 import { RefRegistry } from './refs.ts';
 import {
   cancelled,
@@ -573,30 +573,25 @@ export class PlaywrightSurface {
         await this.validateFrames(expression);
         const projected = projectExpression(page, expression);
         const { displayValue, name, steps } = projected;
-        const read = () =>
-          projected.locator.evaluateAll(readManySemanticsFunction, {
-            testIdAttribute: this.testIdAttribute,
-            secureFieldSelector: SECURE_FIELD_SELECTOR,
-            mode: { kind: 'node' as const },
-          });
+        const readOptions = {
+          testIdAttribute: this.testIdAttribute,
+          secureFieldSelector: SECURE_FIELD_SELECTOR,
+          mode: { kind: 'node' as const },
+        };
         // A predicate-filtered match is one element among many candidates, and the candidate
         // list is broad (every labelable control, every input with a value). Re-resolving it
         // by position at action time would act on a neighbor whenever the page inserted or
-        // removed an element in between, so such matches are pinned to element handles taken
-        // beside the read; a count that differs between the two says the page moved, and the
-        // read runs again.
-        let handles: ElementHandle<Element>[] | null = null;
-        let raws = await read();
-        if (displayValue !== null || name !== null) {
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            const candidates = (await projected.locator.elementHandles()) as ElementHandle<Element>[];
-            if (candidates.length === raws.length) {
-              handles = candidates;
-              break;
-            }
-            raws = await read();
-          }
-        }
+        // removed an element in between, so such matches are pinned to element handles: the
+        // handles are taken first and the semantics are read from those very handles, so what
+        // was read and what is acted on are one set of elements by construction.
+        const handles =
+          displayValue !== null || name !== null
+            ? ((await projected.locator.elementHandles()) as ElementHandle<Element>[])
+            : null;
+        const raws =
+          handles === null
+            ? await projected.locator.evaluateAll(readManySemanticsFunction, readOptions)
+            : await page.evaluate(readHandlesSemanticsFunction, { elements: handles, options: readOptions });
         const candidates = raws
           .map((raw, index) => ({ raw, index }))
           .filter(({ raw }) => !(projected.visible && raw.states.hidden));
@@ -620,6 +615,13 @@ export class PlaywrightSurface {
                 async ({ index }, options) =>
                   (await projected.locator.nth(index).filter(options).count()) > 0,
               );
+        if (handles !== null) {
+          // Only the matches keep their handles; the rest would otherwise live until the page goes.
+          const kept = new Set(matches.map(({ index }) => index));
+          for (const [index, handle] of handles.entries()) {
+            if (!kept.has(index)) void handle.dispose().catch(() => undefined);
+          }
+        }
         return matches.map(({ raw, index }) => {
           const pinned = handles?.[index];
           // A single match keeps the strict locator, so a ref that turns
