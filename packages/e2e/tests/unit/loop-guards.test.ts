@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { ModelMessage, ToolResultPart } from 'ai';
 import {
+  checkFailureStreak,
   checkLoopGuards,
   DEFAULT_LOOP_GUARD_THRESHOLDS,
+  extractToolResults,
   type GuardToolCall,
+  isFailedResult,
 } from '../../src/agent/loop-guards.ts';
 
 const call = (toolName: string, input = '{}'): GuardToolCall => ({ toolName, input });
@@ -71,5 +75,44 @@ describe('checkLoopGuards thresholds', () => {
     expect(checkLoopGuards(calls).kind).toBe('clear');
     expect(checkLoopGuards(calls, { ...DEFAULT_LOOP_GUARD_THRESHOLDS, repeatWarn: 2 }).kind).toBe('warn');
     expect(checkLoopGuards(calls, { ...DEFAULT_LOOP_GUARD_THRESHOLDS, repeatWarn: 1, repeatStop: 2 }).kind).toBe('stop');
+  });
+});
+
+describe('failure streak', () => {
+  const failed = 'Tapped #n6. failed: node #n6 is not on the current screen (observation b3); it was removed or never existed\n\nCurrent screen (revision b3, 2 nodes):\n#n1 document\n #n2 heading "X"';
+  const tapped = 'Tapped #n6.\n\nScreen unchanged since revision b3 (2 nodes).';
+
+  it('recognizes every failure shape a tool result takes, and nothing else', () => {
+    expect(isFailedResult(failed)).toBe(true);
+    expect(isFailedResult('Action failed: the step budget is spent')).toBe(true);
+    expect(isFailedResult('Tool "seed" failed: connection refused')).toBe(true);
+    expect(isFailedResult(tapped)).toBe(false);
+    // Text the model typed is not a failure, even when it reads like one.
+    expect(isFailedResult('Typed "failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+  });
+
+  it('warns at three failures in a row, stops at five, and starts over after a success', () => {
+    const streak = (count: number) => Array.from({ length: count }, () => failed);
+    expect(checkFailureStreak(streak(2)).kind).toBe('clear');
+    const warned = checkFailureStreak([tapped, ...streak(3)]);
+    expect(warned.kind).toBe('warn');
+    expect((warned as { reason: string }).reason).toBe('the last 3 actions failed in a row');
+    expect(checkFailureStreak(streak(5)).kind).toBe('stop');
+    expect(checkFailureStreak([...streak(4), tapped, ...streak(2)]).kind).toBe('clear');
+  });
+
+  it('reads text tool results in order and skips the conclusion tool and structured results', () => {
+    const result = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: toolName, toolName, output }],
+    });
+    const messages: ModelMessage[] = [
+      { role: 'user', content: 'Execute this test step' },
+      result('tap', { type: 'text', value: failed }),
+      result('lookup', { type: 'json', value: { rows: 3 } }),
+      result('complete_step', { type: 'text', value: 'Action failed: summary too long' }),
+      result('tap', { type: 'text', value: tapped }),
+    ];
+    expect(extractToolResults(messages, 'complete_step')).toEqual([failed, tapped]);
   });
 });

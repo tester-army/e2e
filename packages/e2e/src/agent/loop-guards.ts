@@ -34,6 +34,9 @@ export interface LoopGuardThresholds {
   readonly repeatStop: number;
   readonly cycleWarn: number;
   readonly cycleStop: number;
+  /** Consecutive failed tool results that warn, then force the conclusion. */
+  readonly failureWarn: number;
+  readonly failureStop: number;
 }
 
 /** The thresholds the built-in agent ships with. */
@@ -42,6 +45,8 @@ export const DEFAULT_LOOP_GUARD_THRESHOLDS: LoopGuardThresholds = {
   repeatStop: 5,
   cycleWarn: 2,
   cycleStop: 3,
+  failureWarn: 3,
+  failureStop: 5,
 };
 
 /**
@@ -142,4 +147,52 @@ function safeStringify(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/**
+ * Extracts the text of every tool result in a transcript, in order, excluding
+ * the conclusion tool's. Only text results count: a structured result is a
+ * project tool's own shape and says nothing about failure.
+ */
+export function extractToolResults(messages: readonly ModelMessage[], concludeToolName: string): string[] {
+  const results: string[] = [];
+  for (const message of messages) {
+    if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (part.type !== 'tool-result' || part.toolName === concludeToolName) continue;
+      const output = part.output;
+      if (output.type === 'text' && typeof output.value === 'string') results.push(output.value);
+    }
+  }
+  return results;
+}
+
+/**
+ * Whether a tool result reports its action failing, by the first line's
+ * shape: `Tapped #n6. failed: …` from a grammar action, `Action failed: …`
+ * from the loop's guard, `Tool "x" failed: …` from a project tool.
+ */
+export function isFailedResult(text: string): boolean {
+  const first = text.split('\n', 1)[0] ?? '';
+  return /(?:^|\. )(?:Action |Tool "[^"]*" )?failed: /.test(first);
+}
+
+/**
+ * Checks the trailing run of failed results. Different targets or inputs do
+ * not save a streak: five failures in a row say the approach is wrong, not
+ * that the last id was. Warns first, then forces the conclusion.
+ */
+export function checkFailureStreak(
+  results: readonly string[],
+  thresholds: LoopGuardThresholds = DEFAULT_LOOP_GUARD_THRESHOLDS,
+): LoopGuardVerdict {
+  let streak = 0;
+  for (let index = results.length - 1; index >= 0 && isFailedResult(results[index]!); index -= 1) streak += 1;
+  if (streak >= thresholds.failureStop) {
+    return { kind: 'stop', reason: `the last ${String(streak)} actions failed in a row` };
+  }
+  if (streak >= thresholds.failureWarn) {
+    return { kind: 'warn', reason: `the last ${String(streak)} actions failed in a row` };
+  }
+  return { kind: 'clear' };
 }

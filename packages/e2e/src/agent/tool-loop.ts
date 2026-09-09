@@ -25,7 +25,13 @@ import {
   type StepVerdict,
 } from './executor.ts';
 import { createVerdictTool, trackModelCalls, VERDICT_RULES } from './primitives.ts';
-import { checkLoopGuards, DEFAULT_LOOP_GUARD_THRESHOLDS, extractGuardCalls } from './loop-guards.ts';
+import {
+  checkFailureStreak,
+  checkLoopGuards,
+  DEFAULT_LOOP_GUARD_THRESHOLDS,
+  extractGuardCalls,
+  extractToolResults,
+} from './loop-guards.ts';
 
 /** Turns remaining when the loop warns the model to wrap up, by default. */
 const WIND_DOWN_TURNS = 5;
@@ -323,6 +329,24 @@ class LoopRun {
           prepared,
           `[SYSTEM NOTICE] You appear to be going in circles: ${guard.reason}. ` +
             'Change approach, or call complete_step with your best verdict.',
+        );
+      }
+    }
+    // A streak of failures with varied inputs is the same circle by another
+    // route: the approach is not working, whatever id it tries next.
+    if (this.guardStop === undefined) {
+      const streak = checkFailureStreak(
+        extractToolResults(prepared, 'complete_step'),
+        DEFAULT_LOOP_GUARD_THRESHOLDS,
+      );
+      if (streak.kind === 'stop') {
+        this.guardStop = streak.reason;
+      } else if (streak.kind === 'warn' && streak.reason !== this.noticedGuardReason) {
+        this.noticedGuardReason = streak.reason;
+        prepared = appendNotice(
+          prepared,
+          `[SYSTEM NOTICE] ${streak.reason}. Read the failure text and the current screen and change approach; ` +
+            'if the step cannot be done, call complete_step with your best verdict.',
         );
       }
     }
