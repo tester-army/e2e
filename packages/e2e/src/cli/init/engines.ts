@@ -29,8 +29,7 @@ export function getEnginePresets() {
       imports: ["import { playwright } from '@e2edev/playwright';"],
       config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
   targets: [{
-    name: 'web',
-    platform: 'web',
+    platform: 'web', // also the target name, unless name is set
     engine: playwright({
       url: process.env.APP_URL ?? 'http://localhost:3000',
       // Let the runner start the dev server and wait for url to answer:

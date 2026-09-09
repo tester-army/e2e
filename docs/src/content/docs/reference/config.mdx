@@ -300,12 +300,14 @@ export default {
 
 ## targets
 
-Target names are required, unique, and limited to ASCII letters, digits, `_`,
-`-`, and `.`. An empty `targets` array is an error.
+A target's `name` defaults to its `platform`, so one target per platform needs
+none; two targets on the same platform name themselves. Names are unique and
+limited to ASCII letters, digits, `_`, `-`, and `.`. An empty `targets` array
+is an error.
 
 ```ts
 export interface Target {
-  name: string;
+  name?: string; // defaults to platform
   platform: Platform;
   engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
 }

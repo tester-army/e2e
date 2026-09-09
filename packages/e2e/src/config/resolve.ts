@@ -444,7 +444,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     throw new ConfigurationError(
       'INVALID_CONFIG',
       'targets is required: declare at least one target and the engine that drives it, ' +
-        'e.g. targets: [{ name, platform, engine }]',
+        'e.g. targets: [{ platform, engine }]',
     );
   }
   if (!Array.isArray(raw.targets) || raw.targets.length === 0) {
@@ -452,16 +452,8 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
   }
   const seen = new Set<string>();
   return raw.targets.map((target, index) => {
-    if (typeof target.name !== 'string' || !TARGET_NAME_PATTERN.test(target.name)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `target names are required and limited to ASCII letters, numbers, "_", "-", and "."`,
-      );
-    }
-    if (seen.has(target.name)) {
-      throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${target.name}"`);
-    }
-    seen.add(target.name);
+    // Errors raised before the name settles point at the entry itself.
+    const where = typeof target.name === 'string' ? `target "${target.name}"` : `targets[${index}]`;
     for (const key of Object.keys(target)) {
       if (!TARGET_KEYS.has(key)) {
         const hint = FOREIGN_TARGET_KEYS.has(key)
@@ -469,29 +461,39 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
           : didYouMean(key, [...TARGET_KEYS]);
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `target "${target.name}" has unknown key "${key}"; a target is { name, platform, engine? }${hint}`,
+          `${where} has unknown key "${key}"; a target is { name?, platform, engine? }${hint}`,
         );
       }
     }
     if (typeof target.platform !== 'string' || target.platform.trim() === '') {
+      throw new ConfigurationError('INVALID_CONFIG', `${where} requires a non-empty platform`);
+    }
+    const name = target.name === undefined ? target.platform : target.name;
+    if (typeof name !== 'string' || !TARGET_NAME_PATTERN.test(name)) {
+      const source = target.name === undefined ? ' (defaulted from the platform)' : '';
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" requires a non-empty platform`,
+        `invalid target name ${JSON.stringify(name)}${source}; target names are limited to ASCII letters, numbers, "_", "-", and "."`,
       );
     }
+    if (seen.has(name)) {
+      const hint = target.name === undefined ? '; targets sharing a platform need explicit names' : '';
+      throw new ConfigurationError('INVALID_CONFIG', `duplicate target name "${name}"${hint}`);
+    }
+    seen.add(name);
     if (target.engine !== undefined && !isEngineHandle(target.engine)) {
       const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
+        `target "${name}" engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
       );
     }
     return {
-      name: target.name,
+      name,
       index,
       platform: target.platform,
       engine: target.engine,
-      app: resolveTargetApp(target.name, target.engine, projectRoot),
+      app: resolveTargetApp(name, target.engine, projectRoot),
     };
   });
 }

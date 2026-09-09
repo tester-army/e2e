@@ -587,7 +587,8 @@ export interface ServiceConfig extends CommandConfig {
  * command that starts it); a target carries no app config of its own.
  */
 export interface Target {
-  name: string;
+  /** Label in reports and for `--target`; defaults to the platform. */
+  name?: string;
   platform: Platform;
   engine?: EngineHandle;
 }

@@ -19,6 +19,9 @@ declare const asyncExpectation: AsyncExpectation;
 
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
+({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
+// @ts-expect-error a target's name defaults to its platform; the platform has no default
+({ targets: [{ name: 'ios' }] }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
 ({ cache: 'sometimes' }) satisfies E2EConfig;
 // @ts-expect-error attribute values must be text matches
