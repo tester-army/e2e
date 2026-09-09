@@ -106,6 +106,7 @@ const TWINS = `<!doctype html>
 <button id="labeled-button">Go</button>
 <label for="score">Score</label>
 <meter id="score" value="0.5"></meter>
+<button id="insert-field" onclick="const l=document.createElement('label');l.textContent='Inserted';const i=document.createElement('input');i.id='inserted';l.htmlFor='inserted';document.body.prepend(i);document.body.prepend(l);">Insert a field</button>
 <p>Decorative twin</p>
 <div data-testid="memory-panel" aria-hidden="true"><span>Open</span></div>
 <div data-testid="memory-panel"><span>Open</span></div>

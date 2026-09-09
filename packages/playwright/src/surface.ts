@@ -572,12 +572,31 @@ export class PlaywrightSurface {
         const page = this.requirePage();
         await this.validateFrames(expression);
         const projected = projectExpression(page, expression);
-        const raws = await projected.locator.evaluateAll(readManySemanticsFunction, {
-          testIdAttribute: this.testIdAttribute,
-          secureFieldSelector: SECURE_FIELD_SELECTOR,
-          mode: { kind: 'node' as const },
-        });
         const { displayValue, name, steps } = projected;
+        const read = () =>
+          projected.locator.evaluateAll(readManySemanticsFunction, {
+            testIdAttribute: this.testIdAttribute,
+            secureFieldSelector: SECURE_FIELD_SELECTOR,
+            mode: { kind: 'node' as const },
+          });
+        // A predicate-filtered match is one element among many candidates, and the candidate
+        // list is broad (every labelable control, every input with a value). Re-resolving it
+        // by position at action time would act on a neighbor whenever the page inserted or
+        // removed an element in between, so such matches are pinned to element handles taken
+        // beside the read; a count that differs between the two says the page moved, and the
+        // read runs again.
+        let handles: ElementHandle<Element>[] | null = null;
+        let raws = await read();
+        if (displayValue !== null || name !== null) {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const candidates = (await projected.locator.elementHandles()) as ElementHandle<Element>[];
+            if (candidates.length === raws.length) {
+              handles = candidates;
+              break;
+            }
+            raws = await read();
+          }
+        }
         const candidates = raws
           .map((raw, index) => ({ raw, index }))
           .filter(({ raw }) => !(projected.visible && raw.states.hidden));
@@ -602,11 +621,14 @@ export class PlaywrightSurface {
                   (await projected.locator.nth(index).filter(options).count()) > 0,
               );
         return matches.map(({ raw, index }) => {
+          const pinned = handles?.[index];
           // A single match keeps the strict locator, so a ref that turns
           // ambiguous between locate and perform fails loud instead of acting
           // on whichever element is first.
           const locator = raws.length === 1 ? projected.locator : projected.locator.nth(index);
-          const id = this.refs.storeLocated({ kind: 'locator', locator });
+          const id = this.refs.storeLocated(
+            pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
+          );
           return toSemanticNode({ id, revision: '' }, raw);
         });
       },
