@@ -93,7 +93,6 @@ Fixtures are lazy; destructure them in the callback.
 | `back()` | One history step back. |
 | `restart()` | Recreates the context and keeps persisted state, including a restored session. |
 | `clearState()` | Clears cookies and storage, then relaunches. Not inside a serial group. |
-| `deepLink(url)` | Opens an allowed deep or universal link. |
 | `screenshot(label?)` | Saves a redacted screenshot as an artifact and returns its path. |
 
 ## Locators

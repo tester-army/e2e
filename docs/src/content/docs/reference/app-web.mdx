@@ -19,7 +19,6 @@ export interface App {
   restart(): Promise<void>;
   clearState(): Promise<void>;
   back(): Promise<void>;
-  deepLink(url: string): Promise<void>;
   screenshot(label?: string): Promise<string>;
 }
 ```
@@ -33,7 +32,6 @@ the remaining test timeout.
 | `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` |
 | `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` |
 | `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED` |
-| `deepLink(url)` | `config.timeout`, 120000 ms | Resolves the URL against the base URL and validates the origin. | `POLICY_DENIED` for a disallowed origin or a `file:`, `data:`, or `javascript:` scheme |
 | `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures evidence, registers it as an attempt artifact, and returns its path relative to the artifact root. `label` defaults to `''`. | `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
 
 ```ts
