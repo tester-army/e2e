@@ -2,12 +2,13 @@
  * The attempt's recording on the Playwright surface.
  *
  * A screencast belongs to one page, so a recording is a series of segments:
- * one per page the attempt's contexts open. `arm` starts the first segment on
- * the attempt's page; a context replaced mid-attempt (a restart, a state
- * reset) ends the segment with the old page, and the new context's first page
- * starts the next. Each segment is captured at the attempt's viewport size and
- * carries the instant it began, so a consumer can place step timestamps on it.
- * The first segment is `video/video.webm`; later ones are
+ * one per page the attempt shows. `arm` starts the first segment on the
+ * attempt's page; a page about to close (a restart, a context replaced by a
+ * state reset) ends its segment first, since Playwright writes nothing for a
+ * screencast whose page closed under it, and the next page the attempt opens
+ * starts the next segment. Each segment is captured at the attempt's viewport
+ * size and carries the instant it began, so a consumer can place step
+ * timestamps on it. The first segment is `video/video.webm`; later ones are
  * `video/video-part<n>.webm`.
  *
  * The recorder also owns the pointer the frames show: it is installed on every
@@ -19,9 +20,9 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright';
-import type { LocatorAction, VideoSegment } from '@e2edev/e2e/engine';
+import { EngineError, type LocatorAction, type VideoSegment } from '@e2edev/e2e/engine';
 import { installCursorOverlay, withCursorFollowing, withCursorHidden } from './cursor-overlay.ts';
-import type { ActionTarget } from './support.ts';
+import { message, type ActionTarget } from './support.ts';
 
 /** One segment in progress: the page it records and where its file lands. */
 interface Segment {
@@ -41,6 +42,8 @@ export class VideoRecorder {
   private finished: VideoSegment[] = [];
   /** Segments started this attempt, for their file names. */
   private count = 0;
+  /** The first segment whose stop failed and left no file; `stop` reports it. */
+  private lost: { readonly relative: string; readonly cause: unknown } | undefined;
 
   constructor(viewport: { readonly width: number; readonly height: number }) {
     this.viewport = viewport;
@@ -53,6 +56,7 @@ export class VideoRecorder {
     this.current = null;
     this.finished = [];
     this.count = 0;
+    this.lost = undefined;
   }
 
   /** True between `arm` and `stop`: a page the attempt opens then starts a segment. */
@@ -65,10 +69,10 @@ export class VideoRecorder {
     return this.current !== null;
   }
 
-  /** Arms the recording and starts it on `page`, unless a segment already records. */
+  /** Starts the recording on `page`, unless a segment already records, and arms it. */
   async arm(page: Page): Promise<void> {
-    this.armed = true;
     if (this.current === null) await this.begin(page);
+    this.armed = true;
   }
 
   /** A page the attempt opened: the next segment, when armed. */
@@ -76,15 +80,29 @@ export class VideoRecorder {
     if (this.armed) await this.begin(page);
   }
 
-  /** The recorded page's context is closing: its segment ends here. */
-  contextClosing(): Promise<void> {
+  /** The recorded page is about to close: its segment ends here, while the page can still flush it. */
+  pageClosing(): Promise<void> {
     return this.end();
   }
 
-  /** Ends the recording and returns every segment written this attempt, in order. */
+  /**
+   * Ends the recording and returns every segment written this attempt, in
+   * order. A segment that was lost (its stop failed and left no file) is
+   * reported instead: the harness records that as a cleanup failure, and the
+   * segments that did finalize stay on disk.
+   */
   async stop(): Promise<readonly VideoSegment[]> {
     await this.end();
     this.armed = false;
+    const lost = this.lost;
+    this.lost = undefined;
+    if (lost !== undefined) {
+      throw new EngineError(
+        'ENGINE_FAILURE',
+        `video segment ${lost.relative} could not be finalized: ${message(lost.cause)}`,
+        { retryable: false, cause: lost.cause },
+      );
+    }
     return this.finished.splice(0);
   }
 
@@ -106,7 +124,7 @@ export class VideoRecorder {
   /**
    * Starts one segment on a page: the pointer overlay first, so it is in the
    * frames from the start, then the screencast at the attempt's viewport size.
-   * A segment still recording (its page closed under the attempt) ends first.
+   * A segment still recording (a page the app closed on its own) ends first.
    */
   private async begin(page: Page): Promise<void> {
     await this.end();
@@ -124,15 +142,23 @@ export class VideoRecorder {
   }
 
   /**
-   * Ends the segment in progress. A page that is already gone cannot be asked
-   * to stop, but Playwright flushed its frames as it closed, so the file is
-   * kept if it exists; a segment that wrote nothing is not a segment.
+   * Ends the segment in progress. A stop that failed but left a file keeps
+   * the file; one that left nothing (a page closed before the stop, which
+   * Playwright never flushes) lost the segment, which `stop` reports. A
+   * segment that wrote nothing is not a segment.
    */
   private async end(): Promise<void> {
     const segment = this.current;
     if (segment === null) return;
     this.current = null;
-    await segment.page.screencast.stop().catch(() => undefined);
+    try {
+      await segment.page.screencast.stop();
+    } catch (cause) {
+      if (!existsSync(segment.absolute)) {
+        this.lost ??= { relative: segment.relative, cause };
+        return;
+      }
+    }
     if (existsSync(segment.absolute)) {
       this.finished.push({ path: segment.relative, startedAt: segment.startedAt });
     }

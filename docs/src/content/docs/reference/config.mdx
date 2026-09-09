@@ -119,11 +119,11 @@ each target and pulses on a tap, so a recording shows what acted and where; a
 device engine records the device screen (MP4, with taps shown). The file lands
 under the attempt's artifact directory as `video/video.webm` (or `.mp4`) and is
 recorded in `report.json` as an artifact of kind `video` whose `startedAt` is
-the recording's first frame, so `step.startedAt - artifact.startedAt` is a
+when the recording started, so `step.startedAt - artifact.startedAt` is a
 step's offset into the video. The failure recap of the list reporter names the
-file under each failed test. An attempt that recreated its context mid-way (an
-`app.restart()`, a state reset) writes one segment per context:
-`video/video.webm`, then `video/video-part2.webm`, and so on.
+file under each failed test. A screencast belongs to one page, so an attempt
+that opened a new one mid-way (an `app.restart()`, a state reset) writes one
+segment per page: `video/video.webm`, then `video/video-part2.webm`, and so on.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |

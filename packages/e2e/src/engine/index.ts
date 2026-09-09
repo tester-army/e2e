@@ -293,9 +293,9 @@ export interface EngineArtifacts {
   startVideo?(context: OperationContext): Promise<void>;
   /**
    * Stops recording and returns every segment written, in order. One segment
-   * is the common case; a surface that had to recreate its context mid-attempt
-   * (a restart, a state reset) returns one per context. An attempt that never
-   * showed anything returns none.
+   * is the common case; a surface whose recording is bound to a page returns
+   * one per page the attempt showed (a restart or a state reset opens a new
+   * one). An attempt that never showed anything returns none.
    */
   stopVideo?(context: OperationContext): Promise<readonly VideoSegment[]>;
 }
@@ -304,7 +304,7 @@ export interface EngineArtifacts {
 export interface VideoSegment {
   /** Path relative to the attempt artifact directory. */
   readonly path: string;
-  /** When the segment's first frame was captured, as an ISO timestamp. */
+  /** When the segment started recording, as an ISO timestamp; its first frame is at or just after it. */
   readonly startedAt: string;
 }
 

@@ -325,7 +325,7 @@ export class PlaywrightSurface {
     if (context === null) return;
     // The harness stops the video before the attempt ends; a segment still
     // recording here belongs to an attempt cut short, and is kept as far as it got.
-    if (this.video.isRecording) await withinCleanupBudget(this.video.contextClosing(), budget);
+    if (this.video.isRecording) await withinCleanupBudget(this.video.pageClosing(), budget);
     if (this.tracing) {
       this.tracing = false;
       await withinCleanupBudget(context.tracing.stop(), budget);
@@ -442,9 +442,10 @@ export class PlaywrightSurface {
     this.page = null;
     this.tracing = false;
     this.refs.clear();
-    // A screencast is the old page's: its segment closes here, and the next
-    // page the new context opens starts the following one.
-    await this.video.contextClosing();
+    // A screencast is the old page's: its segment closes here, while the page
+    // can still flush it, and the next page the new context opens starts the
+    // following one.
+    await this.video.pageClosing();
     if (resumeTrace) {
       this.traceSegments += 1;
       await context.tracing
@@ -511,6 +512,9 @@ export class PlaywrightSurface {
     return this.guard(operation, 'restart', async () => {
       const baseUrl = this.requireBaseUrl();
       const context = this.requireContext();
+      // The recording's segment ends before its page closes: Playwright writes
+      // nothing for a screencast whose page went away first.
+      await this.video.pageClosing();
       for (const page of context.pages()) await page.close();
       this.page = null;
       const page = await this.ensurePage();
@@ -589,9 +593,12 @@ export class PlaywrightSurface {
       () => {
         const page = this.requirePage();
         const target = this.refs.lookup(ref);
-        return this.video.follow(page, target, action.kind, () =>
-          dispatchLocatorAction(target, action, operation.timeoutMs, (other) => this.refs.lookup(other)),
-        );
+        return this.video.follow(page, target, action.kind, async () => {
+          // The pointer's prelude may have used up what was left of the
+          // budget: a step the harness has given up on must not act now.
+          if (operation.signal.aborted) throw cancelled(`${action.kind} cancelled`);
+          await dispatchLocatorAction(target, action, operation.timeoutMs, (other) => this.refs.lookup(other));
+        });
       },
       (cause) => classifyActionError(cause, action),
     );

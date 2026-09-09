@@ -71,7 +71,7 @@
     "artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "mediaType", "path", "size", "sha256", "redaction", "producer"],
+      "required": ["id", "kind", "mediaType", "redaction", "producer"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": { "enum": ["screenshot", "trace", "video", "download", "log", "other"] },
@@ -102,7 +102,13 @@
           ]
         },
         "extensions": { "$ref": "#/$defs/extensions" }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "redaction": { "const": "incomplete" } } },
+          "else": { "required": ["path", "size", "sha256"] }
+        }
+      ]
     },
     "model": {
       "type": "object",

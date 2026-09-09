@@ -880,4 +880,49 @@ describe('video', () => {
     expect(records(h)).toHaveLength(before + 1);
     expect(h.fake.lastArgs('recording.record')).toEqual({ action: 'stop' });
   });
+
+  it('stops a start that outlived its budget, and keeps a recording whose stop failed for endAttempt', async () => {
+    const h = harness();
+    let releaseStart: (() => void) | undefined;
+    let stops = 0;
+    let failNextStop = false;
+    h.fake.respond('recording.record', (args) => {
+      const options = args as { action: 'start' | 'stop'; path?: string };
+      if (options.action === 'start') {
+        return new Promise((resolve) => {
+          releaseStart = () =>
+            resolve({ recording: 'started', outPath: options.path, sessionStateDir: '/tmp', showTouches: true });
+        });
+      }
+      stops += 1;
+      if (failNextStop) {
+        failNextStop = false;
+        throw new Error('recorder busy');
+      }
+      return { recording: 'stopped', artifacts: [], durationMs: 0, showTouches: true };
+    });
+    await openAttempt(h);
+    // The launch budget expires while the device is still starting the recorder;
+    // the recorder comes up anyway, and ending the attempt must stop it.
+    const budget = new AbortController();
+    const starting = h.engine.artifacts!.startVideo!(operation(budget.signal));
+    budget.abort();
+    await expect(starting).rejects.toThrow();
+    releaseStart!();
+    await h.engine.endAttempt!(cleanup());
+    expect(stops).toBe(1);
+
+    // A stop that fails keeps the recording marked, so ending the attempt stops it again.
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
+    const started = h.engine.artifacts!.startVideo!(operation());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    releaseStart!();
+    await started;
+    failNextStop = true;
+    await expect(h.engine.artifacts!.stopVideo!(operation())).rejects.toThrow();
+    expect(stops).toBe(2);
+    await h.engine.endAttempt!(cleanup());
+    expect(stops).toBe(3);
+    expect(h.fake.lastArgs('recording.record')).toEqual({ action: 'stop' });
+  });
 });

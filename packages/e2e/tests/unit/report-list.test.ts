@@ -896,6 +896,33 @@ describe('ListReporter', () => {
       expect(lines).toContain('     → no browser');
     });
 
+    it('names the group recording under a failed member, since members carry no attempts', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+      const group = serialGroup(
+        'g3',
+        [{ members: [serialMember('m1'), serialMember('m2', { status: 'failed', error: memberError })], error: memberError }],
+        { status: 'failed' },
+      );
+      if (group.type !== 'serial-group') throw new Error('serial group event expected');
+      group.group.attempts[0]!.artifacts.push({
+        id: 'group-attempt-0:artifact:0',
+        kind: 'video',
+        mediaType: 'video/webm',
+        path: 'chromium/wizard/attempt-0/video/video.webm',
+        startedAt: new Date(0).toISOString(),
+        redaction: 'incomplete',
+        producer: { kind: 'attempt' },
+      });
+      reporter.handle(group);
+      reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g3' })));
+      reporter.handle(finished(result({ status: 'failed', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g3' })));
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+      expect(lines).toContain(' ❯ video .e2e/artifacts/chromium/wizard/attempt-0/video/video.webm');
+    });
+
     it('tolerates a group that arrives after its members, printing what it has', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);

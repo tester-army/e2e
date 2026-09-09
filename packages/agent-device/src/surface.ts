@@ -143,8 +143,19 @@ const MAX_LOCATED_REFS = 2048;
 interface Attempt {
   readonly artifactsDir: string;
   screenshots: number;
-  /** The recording in progress, once `startVideo` asked the device for one. */
-  video: { readonly relative: string; readonly absolute: string; readonly startedAt: string } | undefined;
+  /**
+   * The recording the device was asked for. Marked before the start command
+   * goes out, since a start that outlives its budget still records, and
+   * cleared only once a stop succeeded: either way `endAttempt` can stop it.
+   */
+  video: Recording | undefined;
+}
+
+/** One device recording: where its file lands, and when the device confirmed it was on. */
+interface Recording {
+  readonly relative: string;
+  readonly absolute: string;
+  startedAt: string;
 }
 
 /**
@@ -298,9 +309,12 @@ export class AgentDeviceSurface {
     this.generation = new Map();
     this.located.clear();
     // The harness stops the video before it ends the attempt; a recording still
-    // running here belongs to an attempt that died mid-flight, and the device
-    // must not keep recording into the next one.
+    // marked here belongs to an attempt cut short, or to a stop that failed,
+    // and the device must not keep recording into the next one. A start that
+    // outlived its budget may still be landing: it settles first, so the stop
+    // cannot overtake it.
     if (dangling !== undefined) {
+      await this.settleInflight(context.signal).catch(() => undefined);
       await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), context.signal).catch(
         () => undefined,
       );
@@ -321,12 +335,17 @@ export class AgentDeviceSurface {
     const relative = path.join('video', 'video.mp4');
     const absolute = path.join(attempt.artifactsDir, relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
+    // Marked before the device is asked: a start that outlives its budget
+    // still records, and `endAttempt` must be able to stop it.
+    const recording: Recording = { relative, absolute, startedAt: new Date().toISOString() };
+    attempt.video = recording;
     await this.command(
       'start video recording',
       (client) => client.recording.record({ action: 'start', path: absolute, quality: 'medium' }),
       operation.signal,
     );
-    attempt.video = { relative, absolute, startedAt: new Date().toISOString() };
+    // The device confirmed: it is recording from about now.
+    recording.startedAt = new Date().toISOString();
   }
 
   /** Stops the recording and returns its one segment, or none when the device wrote nothing. */
@@ -335,12 +354,13 @@ export class AgentDeviceSurface {
     if (attempt === undefined) throw invalidState('stopVideo outside an attempt');
     const video = attempt.video;
     if (video === undefined) return [];
-    attempt.video = undefined;
     const result = await this.command(
       'stop video recording',
       (client) => client.recording.record({ action: 'stop' }),
       operation.signal,
     );
+    // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
+    attempt.video = undefined;
     // The device may finalize the file under a path of its own choosing; the
     // artifact must live where the attempt directory expects it.
     const written = typeof result.outPath === 'string' ? result.outPath : video.absolute;

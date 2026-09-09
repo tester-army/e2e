@@ -19,16 +19,17 @@ export interface ArtifactRecord {
   ref?: string;
   /**
    * When a time-based artifact began recording: a video segment's first frame
-   * is at this instant, so `step.startedAt - artifact.startedAt` is the
-   * step's offset into it.
+   * is at or just after this instant, so `step.startedAt - artifact.startedAt`
+   * is the step's offset into it.
    */
   startedAt?: string;
   /**
-   * Mirrors report-1: how much of the file the runner masked, and nothing
-   * about whether it exists. Screenshots and traces are `complete`; a video
-   * is `incomplete`, since a recording masks nothing (a secure field renders
-   * its own dots, but anything else the screen showed is in the frames) and
-   * is kept as it is.
+   * Mirrors report-1: how much of the file the runner masked. Screenshots and
+   * traces are `complete`; a video is `incomplete`, since a recording masks
+   * nothing (a secure field renders its own dots, but anything else the
+   * screen showed is in the frames), and is kept as it is. report-1 also
+   * admits an `incomplete` artifact without a `path`, one its producer
+   * withheld; this runner never writes one.
    */
   redaction: 'complete' | 'not-required' | 'incomplete';
   producer: ArtifactProducer;

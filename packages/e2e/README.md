@@ -149,8 +149,9 @@ agent step, in the AI SDK devtools database shape. Open it with
 `e2e run --video` records every attempt: a WebM screencast of the page with a
 visible pointer that glides to each target, under the attempt's artifact
 directory, named in the failure recap. `artifacts: ['screenshot', 'trace',
-'video']` turns it on for every run, and `artifacts: { video: { retain:
-'on-failure' } }` keeps only the recordings of attempts that did not pass.
+'video']` turns it on for every run, and `artifacts: { kinds: ['screenshot',
+'trace', 'video'], video: { retain: 'on-failure' } }` keeps only the
+recordings of attempts that did not pass.
 
 ## Coding agents
 

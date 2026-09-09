@@ -622,7 +622,7 @@ describe('playwright engine lifecycle', () => {
     }
   });
 
-  it('records a video per context, with a pointer that never enters observations or captures', async () => {
+  it('records a video per page, with a pointer that never enters observations or captures', async () => {
     const engine = playwright();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     const nodesOf = (snapshot: { nodes: readonly SemanticNode[] }) => snapshot.nodes.flatMap((node) => [...walk(node)]);
@@ -652,11 +652,21 @@ describe('playwright engine lifecycle', () => {
         expect(await hostVisible()).toBe(true);
         await engine.artifacts!.screenshot('shot', operation('v1'));
         expect(await hostVisible()).toBe(true);
-        // A state reset recreates the context; the recording continues in a new segment.
+        // A restart closes the page and opens another: the recording continues
+        // in a second segment, with the pointer installed on the new page.
+        await engine.app!.restart!(operation('v1'));
+        const restarted = surfaceOf(engine)!.page();
+        expect(restarted).not.toBe(page);
+        expect(await restarted.evaluate(() => document.getElementById('__e2e_cursor_overlay__') !== null)).toBe(true);
+        // A state reset recreates the context; the recording continues in a third.
         await engine.app!.clearState!(operation('v1'));
         await engine.app!.navigate!(`${app.url}/`, operation('v1'));
         const segments = await engine.artifacts!.stopVideo!(operation('v1'));
-        expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm', 'video/video-part2.webm']);
+        expect(segments.map((segment) => segment.path)).toEqual([
+          'video/video.webm',
+          'video/video-part2.webm',
+          'video/video-part3.webm',
+        ]);
         for (const segment of segments) {
           const absolute = path.join(videoDir, segment.path);
           expect(existsSync(absolute), segment.path).toBe(true);

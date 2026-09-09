@@ -11,10 +11,10 @@
           {
             "artifacts": [
               {
-                "id": "withheld",
-                "kind": "video",
-                "mediaType": "video/webm",
-                "redaction": "incomplete",
+                "id": "no-file",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
                 "producer": {
                   "kind": "attempt"
                 }

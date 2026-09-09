@@ -279,14 +279,17 @@ async function animateCursorToTarget(page: Page, target: ActionTarget): Promise<
 }
 
 async function targetBox(target: ActionTarget): Promise<Box | null> {
-  const timeout = CURSOR_TARGET_TIMEOUT_MS;
+  // One budget for both steps: scrolling and measuring share it, so a target
+  // that never resolves costs the action the budget once, not twice.
+  const deadline = Date.now() + CURSOR_TARGET_TIMEOUT_MS;
+  const remaining = () => Math.max(1, deadline - Date.now());
   if (target.kind === 'locator') {
     const locator: Locator = target.locator;
-    await locator.scrollIntoViewIfNeeded({ timeout }).catch(() => undefined);
-    return locator.boundingBox({ timeout });
+    await locator.scrollIntoViewIfNeeded({ timeout: remaining() }).catch(() => undefined);
+    return locator.boundingBox({ timeout: remaining() });
   }
   const element: ElementHandle<Element> = target.element;
-  await element.scrollIntoViewIfNeeded({ timeout }).catch(() => undefined);
+  await element.scrollIntoViewIfNeeded({ timeout: remaining() }).catch(() => undefined);
   return element.boundingBox();
 }
 

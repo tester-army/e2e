@@ -304,7 +304,7 @@ export interface EngineArtifacts {
 export interface VideoSegment {
   /** Relative to the attempt artifact directory. */
   readonly path: string;
-  /** When the segment's first frame was captured, as an ISO timestamp. */
+  /** When the segment started recording, as an ISO timestamp; its first frame is at or just after it. */
   readonly startedAt: string;
 }
 ```
@@ -321,10 +321,11 @@ surface that records both through one screencast sizes it for whichever
 client came first, and the recording is the one a person watches: the browser
 engine opens the attempt's page when the video starts, so the trace that
 follows records its frames at the recording's size. `stopVideo` returns every
-segment written, in order, each with the instant its first frame was captured,
-so a consumer can place the report's step timestamps on the recording. A surface
-that had to recreate its context mid-attempt returns one segment per context,
-and an attempt that never showed anything returns none. Recordings are the one
+segment written, in order, each with the instant it started recording, so a
+consumer can place the report's step timestamps on it. A surface whose
+recording is bound to a page returns one segment per page the attempt showed
+(a restart or a state reset opens a new one), and an attempt that never showed
+anything returns none. Recordings are the one
 artifact the harness cannot vouch for: it records them with
 `redaction: 'incomplete'`, since a screencast masks nothing.
 
