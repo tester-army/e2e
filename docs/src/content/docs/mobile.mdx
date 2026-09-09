@@ -3,7 +3,12 @@ title: iOS and Android quickstart
 description: From an empty directory to a passing test on an iOS simulator or an Android emulator.
 ---
 
-import { CardGrid, LinkCard, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import { CardGrid, Code, LinkCard, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import iosConfig from '../../../examples/mobile/e2e.ios.config.ts?raw';
+import androidConfig from '../../../examples/mobile/e2e.android.config.ts?raw';
+import toolsConfig from '../../../examples/mobile/e2e.tools.config.ts?raw';
+import iosExample from '../../../examples/mobile/tests/ios.e2e.ts?raw';
+import androidExample from '../../../examples/mobile/tests/android.e2e.ts?raw';
 
 `@e2edev/agent-device` drives iOS simulators and Android emulators through the
 same engine contract the browser engine implements, so `agent`, `app`, `screen`,
@@ -23,8 +28,9 @@ every option, method, and role mapping.
 - `npx agent-device doctor` reports what
   [agent-device](https://github.com/callstack/agent-device) found on the
   machine, and `npx agent-device devices` lists the simulators and emulators it
-  can drive. Run them before the first `e2e run`: a device agent-device cannot
-  boot fails the target's boot, and no test reports anything useful about that.
+  can drive. Run both before the first `e2e run`: a device agent-device cannot
+  reach fails the target's boot, and that failure says less about the machine
+  than `doctor` does.
 
 <Steps>
 
@@ -63,45 +69,13 @@ every option, method, and role mapping.
 
    <TabItem label="iOS">
 
-   ```ts title="e2e.config.ts"
-   import type { E2EConfig } from '@e2edev/e2e';
-   import { createAgent } from '@e2edev/e2e/agent';
-   import { agentDevice } from '@e2edev/agent-device';
-
-   export default {
-     // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
-     agent: createAgent({
-       system: 'You are a thorough QA agent. Verify every outcome.',
-     }),
-     // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
-     targets: [{ name: 'ios', platform: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
-     workers: 1,
-   } satisfies E2EConfig;
-   ```
+   <Code code={iosConfig} lang="ts" title="e2e.config.ts" />
 
    </TabItem>
 
    <TabItem label="Android">
 
-   ```ts title="e2e.config.ts"
-   import type { E2EConfig } from '@e2edev/e2e';
-   import { createAgent } from '@e2edev/e2e/agent';
-   import { agentDevice } from '@e2edev/agent-device';
-
-   export default {
-     // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
-     agent: createAgent({
-       system: 'You are a thorough QA agent. Verify every outcome.',
-     }),
-     // Requires the Android SDK and an emulator. Replace com.android.settings with your app's package.
-     targets: [{
-       name: 'android',
-       platform: 'android',
-       engine: agentDevice({ platform: 'android', app: 'com.android.settings' }),
-     }],
-     workers: 1,
-   } satisfies E2EConfig;
-   ```
+   <Code code={androidConfig} lang="ts" title="e2e.config.ts" />
 
    </TabItem>
 
@@ -122,27 +96,13 @@ every option, method, and role mapping.
 
    <TabItem label="iOS">
 
-   ```ts title="tests/example.e2e.ts"
-   import { test } from '@e2edev/agent-device';
-   import { expect } from '@e2edev/e2e';
-
-   test('Settings opens', async ({ screen }) => {
-     await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
-   });
-   ```
+   <Code code={iosExample} lang="ts" title="tests/example.e2e.ts" />
 
    </TabItem>
 
    <TabItem label="Android">
 
-   ```ts title="tests/example.e2e.ts"
-   import { test } from '@e2edev/agent-device';
-   import { expect } from '@e2edev/e2e';
-
-   test('Settings opens', async ({ screen }) => {
-     await expect(screen.getByText('Network & internet')).toBeVisible();
-   });
-   ```
+   <Code code={androidExample} lang="ts" title="tests/example.e2e.ts" />
 
    </TabItem>
 
@@ -183,24 +143,7 @@ The engine's grammar covers tap, type, and scroll. Everything else the model
 might need on a device comes from the tool pack, which the generated config
 leaves out:
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
-import { agentDevice } from '@e2edev/agent-device';
-import { agentDeviceTools } from '@e2edev/agent-device/tools';
-
-const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
-const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
-
-export default {
-  targets: [
-    { name: 'iphone', platform: 'ios', engine: iphone },
-    { name: 'pixel', platform: 'android', engine: pixel },
-  ],
-  workers: 1,
-  agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
-} satisfies E2EConfig;
-```
+<Code code={toolsConfig} lang="ts" title="e2e.config.ts" />
 
 That adds `open_app`, free-form `swipe`, `type_text`, `alert`, and `screenshot`.
 Pass every device engine the config declares: tool names are fixed, so two packs

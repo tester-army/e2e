@@ -61,6 +61,9 @@ importers:
         specifier: 0.26.0
         version: 0.26.0(@astrojs/starlight@0.42.0(astro@7.3.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.4.1)(@vercel/functions@3.9.5(ws@8.21.3))(tsx@4.23.13)(yaml@2.9.0))(typescript@7.0.2))(astro@7.3.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.4.1)(@vercel/functions@3.9.5(ws@8.21.3))(tsx@4.23.13)(yaml@2.9.0))
     devDependencies:
+      '@e2edev/agent-device':
+        specifier: workspace:*
+        version: link:../packages/agent-device
       '@e2edev/e2e':
         specifier: workspace:*
         version: link:../packages/e2e

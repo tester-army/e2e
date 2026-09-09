@@ -20,6 +20,7 @@
     "starlight-links-validator": "0.26.0"
   },
   "devDependencies": {
+    "@e2edev/agent-device": "workspace:*",
     "@e2edev/e2e": "workspace:*",
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.4.1",
