@@ -3,8 +3,6 @@ title: agent
 description: Planned flows, judgments, extraction, and their budgets.
 ---
 
-import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
-
 Every `agent` call is one bounded invocation: a fresh observation, an explicit
 deadline, a model-call budget, and no shared transcript between calls. Acquiring
 the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
@@ -116,14 +114,16 @@ Set `agent.vision` in config to make a mode the project default; a per-call valu
 always wins. Images are billed as input tokens, so `true` costs more than the
 same call without it on every call.
 
-<Aside type="caution" title="'fallback' behaves like false">
+<Warning>
+**'fallback' behaves like false**
+
 `'fallback'` exists for calls that can discover mid-flight that the tree was
 not enough. A judgment never does: `assert`, `waitFor`, and `extract` always
 produce an answer from the tree, so there is no miss to escalate on;
 escalating on a `false` judgment would just bias it toward `true`. Under
 `'fallback'` they run tree-only, exactly like `false`. Use `vision: true` or
 `'only'` when you need pixels judged.
-</Aside>
+</Warning>
 
 ### Judging pixels and nothing else
 
@@ -151,7 +151,9 @@ bytes. The runner still captures the observation and reports against it; it
 just isn't sent. The step records `visionOnly: true` and zero
 `observationBytes`.
 
-<Aside type="caution" title="Pixels are viewport-scoped, the tree is document-scoped">
+<Warning>
+**Pixels are viewport-scoped, the tree is document-scoped**
+
 The screenshot is the viewport, never the full page. So a condition the tree
 satisfies can be false on screen, and that is usually the point. But it also
 means `'only'` cannot see below the fold.
@@ -164,7 +166,7 @@ await agent.waitFor('a list of offers with hotel names and prices is visible', {
 
 Write `'only'` conditions about what is on screen, and let the flow scroll first
 when you want to ask about something further down.
-</Aside>
+</Warning>
 
 One consequence worth knowing: **no pixels means no answer.** If the viewport is
 pixel-tainted by a secret fill, or masking cannot be proven complete, `'only'`
@@ -176,10 +178,12 @@ otherwise, and keep it for the rest of the invocation, including polling rounds
 whose pixels were withheld, so a polling method never switches models between
 rounds.
 
-<Aside type="note" title="Additive, never pixels-only">
+<Note>
+**Additive, never pixels-only**
+
 In every mode but `'only'`, the tree is always sent. It is byte-budgeted and
 cheap, and its node references are what keep a step auditable.
-</Aside>
+</Note>
 
 Pixel evidence degrades instead of failing the call. It is withheld, and the tree
 sent alone, when the viewport is pixel-tainted by a secret fill
@@ -350,12 +354,12 @@ Check `code` with `isAgentError(error)`, exported from `@e2edev/e2e`, rather
 than `instanceof`, which does not hold across the runner's module realms. Every
 code, its class, and its exit code are in [Errors](/reference/errors).
 
-<CardGrid>
-  <LinkCard title="Agents" href="/agents" />
-  <LinkCard title="screen and Locator" href="/reference/screen" />
-  <LinkCard title="Config" href="/reference/config" />
-  <LinkCard title="Errors" href="/reference/errors" />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="Agents" href="/agents" />
+  <Card title="screen and Locator" href="/reference/screen" />
+  <Card title="Config" href="/reference/config" />
+  <Card title="Errors" href="/reference/errors" />
+</CardGroup>
 
 Model usage accounting is shared by executor steps and judgment calls. A step
 reports `tokenAccounting: 'provider'` only when every call supplies complete

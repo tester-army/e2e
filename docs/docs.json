@@ -1,0 +1,83 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "e2e",
+  "description": "An open framework for agentic end-to-end testing.",
+  "colors": {
+    "primary": "#ff8001",
+    "light": "#ffb56c",
+    "dark": "#b55b01"
+  },
+  "logo": {
+    "light": "/logo.png",
+    "dark": "/logo.png",
+    "href": "/"
+  },
+  "favicon": "/favicon.ico",
+  "fonts": {
+    "heading": { "family": "Geist", "weight": 500 },
+    "body": { "family": "Geist" }
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "styling": {
+    "codeblocks": "dark",
+    "eyebrows": "breadcrumbs"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/tester-army/e2e"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": ["index", "quickstart", "writing-tests", "agents"]
+      },
+      {
+        "group": "Guides",
+        "pages": ["authentication", "ci", "coding-agents", "telemetry"]
+      },
+      {
+        "group": "Extend",
+        "pages": ["writing-an-engine"]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/test",
+          "reference/expect",
+          "reference/screen",
+          "reference/app-web",
+          "reference/device",
+          "reference/agent",
+          "reference/config",
+          "reference/cli",
+          "reference/reporters",
+          "reference/environment",
+          "reference/errors",
+          "reference/engine"
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/tester-army/e2e"
+    }
+  },
+  "redirects": [
+    { "source": "/introduction", "destination": "/" },
+    { "source": "/web", "destination": "/reference/app-web" },
+    { "source": "/running-tests", "destination": "/reference/cli" },
+    { "source": "/configuration", "destination": "/reference/config" },
+    { "source": "/from-playwright", "destination": "/writing-tests" },
+    { "source": "/troubleshooting", "destination": "/reference/errors" },
+    { "source": "/writing-a-driver", "destination": "/writing-an-engine" },
+    { "source": "/writing-a-backend", "destination": "/writing-an-engine" },
+    { "source": "/reference/backend", "destination": "/reference/engine" }
+  ]
+}

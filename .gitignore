@@ -1,9 +1,5 @@
 node_modules/
 dist/
-# Astro writes generated types here while building the docs site; the Vercel
-# adapter and CLI write the build output and the project link here.
-.astro/
-.vercel/
 .env.local
 *.tsbuildinfo
 .e2e/artifacts/

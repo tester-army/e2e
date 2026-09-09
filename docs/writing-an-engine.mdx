@@ -3,8 +3,6 @@ title: Writing an engine
 description: How the runner talks to a surface, and what it takes to add a new one.
 ---
 
-import { Aside } from '@astrojs/starlight/components';
-
 Everything in `e2e` above the engine is portable. `test`, `expect`, `screen`,
 `app`, and the agent tiers never touch a browser, a simulator, or a device: they
 speak one narrow contract from `@e2edev/e2e/engine`, and an engine is the package that
@@ -83,7 +81,7 @@ traces.
 targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }) }],
 ```
 
-<Aside type="note">
+<Note>
 Depend on `@e2edev/e2e/engine` only, and take `e2e` as a **peer** dependency, never a
 regular one: the engine and the runner must agree on one copy of the error
 classes. Everything the spec requires an engine to reproduce exactly is exported
@@ -94,7 +92,7 @@ there: the runner error taxonomy (`TestError`, `ConfigurationError`,
 the utilities `obj`, `raceAbort`, `withTimeout`, and `withinCleanupBudget`.
 Anything else an engine needs is its own to write; there is no shared internal
 subpath.
-</Aside>
+</Note>
 
 ## Capabilities
 

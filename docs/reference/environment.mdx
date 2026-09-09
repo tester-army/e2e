@@ -3,8 +3,6 @@ title: Environment variables
 description: Every variable the runner and the first-party engines read, and what each one does.
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
-
 The runner reads a closed set of variables. This page lists all of them, from
 an inventory of every `process.env` and `env[...]` read in `@e2edev/e2e` and
 `@e2edev/playwright`. A variable not listed here has no effect on a run.
@@ -93,8 +91,8 @@ which the scaffolded config reads for `playwright({ url })`, is read by your
 config module, not by the runner; pass it to a dev server through
 `command.env` if the server needs it too.
 
-<CardGrid>
-  <LinkCard title="Config" href="/reference/config" />
-  <LinkCard title="CLI" href="/reference/cli" />
-  <LinkCard title="Telemetry" href="/telemetry" />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="Config" href="/reference/config" />
+  <Card title="CLI" href="/reference/cli" />
+  <Card title="Telemetry" href="/telemetry" />
+</CardGroup>

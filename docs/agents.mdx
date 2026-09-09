@@ -3,8 +3,6 @@ title: Your own agent
 description: Pick a model, add project tools, or replace the executor.
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
-
 The `agent` in your config is a **step executor**: one step in, one
 verdict out. The runner owns everything around it: redacted observations,
 every action, budgets, origin policy, secrets, the report. Customizing the
@@ -363,7 +361,11 @@ database per process and rewrites it whole, so use it with `workers: 1`.
 
 ## Next
 
-<CardGrid>
-  <LinkCard title="agent reference" href="/reference/agent" description="Every method, option, and budget." />
-  <LinkCard title="Writing an engine" href="/writing-an-engine" description="Plug in a whole new engine below the executor." />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="agent reference" href="/reference/agent">
+    Every method, option, and budget.
+  </Card>
+  <Card title="Writing an engine" href="/writing-an-engine">
+    Plug in a whole new engine below the executor.
+  </Card>
+</CardGroup>

@@ -1,0 +1,69 @@
+/*
+ * TesterArmy design system on Mintlify.
+ *
+ * docs.json carries the palette (orange-300 as the accent, orange-100 in dark
+ * mode, orange-500 in light mode) and the Geist type. This file adds what the
+ * config cannot express: square corners, text weight capped at medium, the
+ * orange rule over the page title, hairlines above every h2, and Geist Mono in
+ * code. Mintlify includes every .css file next to docs.json on every page.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  --ta-orange-300: rgb(255 128 1);
+  --ta-grey-50: rgb(232 232 232);
+  --ta-grey-400: rgb(78 78 78);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Square corners everywhere, like every TesterArmy surface. Mintlify is
+   Tailwind-built, so the rounded utilities are the one place radii come from. */
+[class*='rounded'] {
+  border-radius: 0 !important;
+}
+
+/* Text weight caps at medium. Emphasis reads through color, not weight. */
+#content h1,
+#content h2,
+#content h3,
+#content h4,
+#content strong,
+#content th,
+#page-title h1,
+#sidebar [data-active='true'] {
+  font-weight: 500;
+}
+
+#content h2,
+#content h3 {
+  letter-spacing: -0.01em;
+}
+
+/* The page title sits under an orange rule, the way section numbers do on tester.army. */
+#page-title {
+  padding-top: 1rem;
+  border-top: 2px solid var(--ta-orange-300);
+}
+
+/* A hairline above every h2 separates sections. */
+#content h2 {
+  padding-top: 1rem;
+  border-top: 1px solid var(--ta-grey-50);
+}
+
+.dark #content h2 {
+  border-top-color: var(--ta-grey-400);
+}
+
+/* Code renders in Geist Mono, one dark surface in both color schemes (styling.codeblocks). */
+code,
+pre,
+kbd,
+samp {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}

@@ -3,8 +3,6 @@ title: E2EConfig
 description: Every configuration key, its default, its valid range, and the environment variables.
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
-
 `E2EConfig` is the type of the object `e2e.config.ts` default-exports. Write the
 object literal and end it with `satisfies E2EConfig`: the editor completes every
 key, unknown keys are flagged, and the export keeps its literal type. Every rule
@@ -668,9 +666,9 @@ value, including `no` and `off`, turns CI mode on.
 | `workers` | `max(1, floor(availableParallelism() / 2))` | `1` |
 | `test.only` | allowed | `ONLY_IN_CI`, exit code 2 |
 
-<CardGrid>
-  <LinkCard title="Quickstart" href="/quickstart" />
-  <LinkCard title="Continuous integration" href="/ci" />
-  <LinkCard title="CLI" href="/reference/cli" />
-  <LinkCard title="Errors" href="/reference/errors" />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="Quickstart" href="/quickstart" />
+  <Card title="Continuous integration" href="/ci" />
+  <Card title="CLI" href="/reference/cli" />
+  <Card title="Errors" href="/reference/errors" />
+</CardGroup>

@@ -3,8 +3,6 @@ title: Coding agents
 description: What e2e gives Claude Code, Codex, Cursor, and friends, and how they should use it.
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
-
 e2e ships no MCP server. A coding agent works with the same three things you
 do: the skill that teaches the API, the `e2e` CLI, and the JSON report a run
 writes. `e2e init` installs the skill; the skill explains the other two.
@@ -166,7 +164,11 @@ needs a second attempt, the skill is missing something; the fix belongs in
 `skills/e2e/` in the e2e repository, not in your project's copy, so every
 project gets it on the next `init`.
 
-<CardGrid>
-  <LinkCard title="CLI reference" href="/reference/cli" description="init, guide, and run, flag by flag." />
-  <LinkCard title="Your own agent" href="/agents" description="The agent behind agent.act, and the trace cache in detail." />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="CLI reference" href="/reference/cli">
+    init, guide, and run, flag by flag.
+  </Card>
+  <Card title="Your own agent" href="/agents">
+    The agent behind agent.act, and the trace cache in detail.
+  </Card>
+</CardGroup>

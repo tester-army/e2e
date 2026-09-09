@@ -3,98 +3,111 @@ title: Quickstart
 description: Three commands to a green run, then an agent step, then CI.
 ---
 
-import { Aside, CardGrid, Code, LinkCard, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
-import config from '../../../examples/quickstart/e2e.config.ts?raw';
-import example from '../../../examples/quickstart/tests/example.e2e.ts?raw';
-import agentExample from '../../../examples/quickstart/tests/agent.e2e.ts?raw';
-import commandConfig from '../../../examples/quickstart/e2e.command.config.ts?raw';
-
 The first run needs no model key. Start your app's dev server, run three
 commands in the app's directory, and a browser test goes green against it.
 Adding an agent step comes after.
 
-<Aside type="note">
+<Note>
 Node.js 22.12 or newer. On Windows, run everything inside WSL.
-</Aside>
+</Note>
 
 ## Three commands
 
 <Steps>
+  <Step title="Scaffold">
+  With your dev server up on `http://localhost:3000`:
 
-1. **Scaffold**
+  <CodeGroup>
+  ```bash npm
+  npx @e2edev/e2e@beta init
+  ```
 
-   With your dev server up on `http://localhost:3000`:
+  ```bash pnpm
+  pnpm dlx @e2edev/e2e@beta init
+  ```
+  </CodeGroup>
 
-   <Tabs syncKey="pkg">
+  Accept the defaults: Playwright, AI testing on, and the coding-agent
+  skill. `init` adds `@e2edev/e2e`, `@e2edev/playwright`, and `ai` to
+  `devDependencies`, a `test:e2e` script, `.e2e/` entries in `.gitignore`,
+  and writes two files. It never overwrites a file that exists.
 
-   <TabItem label="npm">
+  ```ts title="e2e.config.ts"
+  import type { E2EConfig } from '@e2edev/e2e';
+  import { createAgent } from '@e2edev/e2e/agent';
+  import { playwright } from '@e2edev/playwright';
 
-   ```bash
-   npx @e2edev/e2e@beta init
-   ```
+  export default {
+    // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
+    // E2E_MODEL_ENDPOINT points at another OpenAI-compatible endpoint (default: the AI Gateway).
+    // To call a provider directly, pass an AI SDK model: createAgent({ model: openai('gpt-5.4-mini') }).
+    // That model is the one model for every agent.* call, checked once when the
+    // first test acquires the agent fixture.
+    agent: createAgent({
+      system: 'You are a thorough QA agent. Verify every outcome.',
+    }),
+    // The engine declares the app it drives; APP_URL overrides the default at run time.
+    targets: [{
+      name: 'web',
+      platform: 'web',
+      engine: playwright({
+        url: process.env.APP_URL ?? 'http://localhost:3000',
+        // Let the runner start the dev server and wait for url to answer:
+        // command: { executable: 'npm', args: ['run', 'dev'] },
+      }),
+    }],
+  } satisfies E2EConfig;
+  ```
 
-   </TabItem>
+  ```ts title="tests/example.e2e.ts"
+  import { test } from '@e2edev/playwright';
+  import { expect } from '@e2edev/e2e';
 
-   <TabItem label="pnpm">
+  test('app opens', async ({ app, web }) => {
+    await app.open('/');
+    await expect(web.locator('body')).toBeVisible();
+  });
+  ```
 
-   ```bash
-   pnpm dlx @e2edev/e2e@beta init
-   ```
+  Every target names the engine that drives it, and the engine declares the
+  app: here a URL, on a device a bundle id. `APP_URL` overrides the default
+  when you run. A scheme is optional; `localhost:3000` becomes
+  `http://localhost:3000` and `app.example.com` becomes
+  `https://app.example.com`.
+  </Step>
+  <Step title="Install">
+  ```bash
+  npm install
+  ```
 
-   </TabItem>
+  Or whatever `init` printed as its `next:` line; it names the package
+  manager your lockfile or `packageManager` field points at.
+  </Step>
+  <Step title="Run">
+  ```bash
+  APP_URL=http://localhost:3000 npx --no-install e2e run
+  ```
 
-   </Tabs>
+  The first run downloads a browser, once. Then:
 
-   Accept the defaults: Playwright, AI testing on, and the coding-agent
-   skill. `init` adds `@e2edev/e2e`, `@e2edev/playwright`, and `ai` to
-   `devDependencies`, a `test:e2e` script, `.e2e/` entries in `.gitignore`,
-   and writes two files. It never overwrites a file that exists.
+  ```text
+   RUN  e2e v0.7.0 /home/ada/my-app
+        run 01a08550-4cfd-780e-a5f6-98980fc63fed · targets: web
 
-   <Code code={config} lang="ts" title="e2e.config.ts" />
+   ✓ playwright engine for target "web" prepared 8.85s
+   ✓ |web| tests/example.e2e.ts (1 test) 135ms
+     ✓ app opens 135ms
 
-   <Code code={example} lang="ts" title="tests/example.e2e.ts" />
+   Test Files  1 passed (1)
+        Tests  1 passed (1)
+     Start at  08:36:59
+     Duration  523ms
+       Report  .e2e/report.json
+  ```
 
-   Every target names the engine that drives it, and the engine declares the
-   app: here a URL, on a device a bundle id. `APP_URL` overrides the default
-   when you run. A scheme is optional; `localhost:3000` becomes
-   `http://localhost:3000` and `app.example.com` becomes
-   `https://app.example.com`.
-
-2. **Install**
-
-   ```bash
-   npm install
-   ```
-
-   Or whatever `init` printed as its `next:` line; it names the package
-   manager your lockfile or `packageManager` field points at.
-
-3. **Run**
-
-   ```bash
-   APP_URL=http://localhost:3000 npx --no-install e2e run
-   ```
-
-   The first run downloads a browser, once. Then:
-
-   ```text
-    RUN  e2e v0.7.0 /home/ada/my-app
-         run 01a08550-4cfd-780e-a5f6-98980fc63fed · targets: web
-
-    ✓ playwright engine for target "web" prepared 8.85s
-    ✓ |web| tests/example.e2e.ts (1 test) 135ms
-      ✓ app opens 135ms
-
-    Test Files  1 passed (1)
-         Tests  1 passed (1)
-      Start at  08:36:59
-      Duration  523ms
-        Report  .e2e/report.json
-   ```
-
-   No model was called. `agent` is configured but nothing asked for it, and
-   the runner only checks the model when a test acquires the `agent` fixture.
-
+  No model was called. `agent` is configured but nothing asked for it, and
+  the runner only checks the model when a test acquires the `agent` fixture.
+  </Step>
 </Steps>
 
 `npx --no-install e2e list` is the dry run: it collects and selects tests the
@@ -117,7 +130,21 @@ report shape.
 The scaffold's `tests/example.e2e.ts` ends with a commented-out agent test.
 Give it a goal your app can actually satisfy, or write a new file next to it:
 
-<Code code={agentExample} lang="ts" title="tests/signup.e2e.ts" />
+```ts title="tests/signup.e2e.ts"
+import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
+  await app.open('/');
+
+  await agent.act('sign up for a free trial as {name} with email {email}', {
+    params: { name: 'Ada Lovelace', email: 'ada@example.test' },
+  });
+
+  await agent.assert('the welcome screen greets Ada by name');
+  await expect(screen.getByRole('status')).toContainText('trial');
+});
+```
 
 Import `test` from `@e2edev/playwright` when a test touches the `web` fixture:
 it is the same runtime `test` as `e2e`'s, typed with the fixture the browser
@@ -162,7 +189,30 @@ Uncomment the `command` line the scaffold left in `playwright(...)` and the
 runner spawns your dev server, waits until `url` answers, and stops it when
 the run ends, fails, or is interrupted:
 
-<Code code={commandConfig} lang="ts" title="e2e.config.ts" />
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { playwright } from '@e2edev/playwright';
+
+export default {
+  agent: createAgent({
+    system: 'You are a thorough QA agent. Verify every outcome.',
+  }),
+  targets: [{
+    name: 'web',
+    platform: 'web',
+    engine: playwright({
+      url: process.env.APP_URL ?? 'http://localhost:3000',
+      command: {
+        executable: 'npm',
+        args: ['run', 'dev'],
+        reuseExisting: true,
+        log: '.e2e/logs/app.log',
+      },
+    }),
+  }],
+} satisfies E2EConfig;
+```
 
 ```text
  ✓ target "web" command ready 1.20s
@@ -220,9 +270,17 @@ iOS on macOS and Android elsewhere, and writes a Settings example; see
 
 ## Next
 
-<CardGrid>
-  <LinkCard title="Writing tests" href="/writing-tests" description="Goals, checks, extraction, and the deterministic APIs." />
-  <LinkCard title="Your own agent" href="/agents" description="Add tools, tune the loop, or bring your own executor." />
-  <LinkCard title="Authentication" href="/authentication" description="Sign in once with a secret the model never sees." />
-  <LinkCard title="CI" href="/ci" description="The one workflow you need." />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="Writing tests" href="/writing-tests">
+    Goals, checks, extraction, and the deterministic APIs.
+  </Card>
+  <Card title="Your own agent" href="/agents">
+    Add tools, tune the loop, or bring your own executor.
+  </Card>
+  <Card title="Authentication" href="/authentication">
+    Sign in once with a secret the model never sees.
+  </Card>
+  <Card title="CI" href="/ci">
+    The one workflow you need.
+  </Card>
+</CardGroup>

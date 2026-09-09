@@ -3,8 +3,6 @@ title: test
 description: Tests, setup tests, groups, hooks, options, and fixtures.
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
-
 `test` is the only registration surface. Every member registers synchronously
 while the test file is imported.
 
@@ -228,9 +226,9 @@ export interface TestCase {
 }
 ```
 
-<CardGrid>
-  <LinkCard title="Writing tests" href="/writing-tests" />
-  <LinkCard title="expect" href="/reference/expect" />
-  <LinkCard title="Authentication" href="/authentication" />
-  <LinkCard title="Errors" href="/reference/errors" />
-</CardGrid>
+<CardGroup cols={2}>
+  <Card title="Writing tests" href="/writing-tests" />
+  <Card title="expect" href="/reference/expect" />
+  <Card title="Authentication" href="/authentication" />
+  <Card title="Errors" href="/reference/errors" />
+</CardGroup>

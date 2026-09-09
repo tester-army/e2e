@@ -18,7 +18,7 @@ There is no separate spec. The code is the contract, pinned in three places:
   wire change edits the schema, both fixtures, and the producer in one review.
 - Security invariants are the list under Gotchas below, enforced by tests in
   `tests/integration/agent-policy.test.ts` and the secret-ledger unit tests.
-- Behavior changes update the matching `docs/src/content/docs/**/*.mdx` page in the same
+- Behavior changes update the matching `docs/**/*.mdx` page in the same
   change, including "not implemented yet" callouts, and `skills/e2e/` when the
   changed surface is described there. `scripts/check-error-codes.ts` (in
   `pnpm check`) fails when an error code in source is missing from
@@ -59,8 +59,10 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   `tests-agent/` both gate PRs; the agentic one spends real model calls).
   Scenario files are copies: keep diffs against
   the source minimal so scenarios port both ways, and never fix a planted bug.
-- `docs/` (the Starlight docs site; pages live in `docs/src/content/docs/`,
-  navigation and theme in `docs/astro.config.ts` and `docs/src/styles/custom.css`).
+- `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
+  navigation, theme, and redirects in `docs/docs.json`, extra CSS in
+  `docs/style.css`; `docs/examples/` is typechecked and shown verbatim in the
+  quickstart, kept in sync by `scripts/check-docs-examples.ts`).
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add tester-army/e2e` only looks in well-known
