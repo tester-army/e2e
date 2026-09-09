@@ -46,7 +46,7 @@ declare const reporter: Reporter;
 ({
   name: 'upload',
   onEvent: (event: RunEvent) => void event.seq,
-  onRunFinished: async (run) => [{ label: 'Results', url: run.report.run.id }],
+  onRunFinished: async (run) => [{ label: 'Results', text: run.report.run.id }],
 }) satisfies Reporter;
 // @ts-expect-error a reporter has a name
 ({ onRunFinished: async () => undefined }) satisfies Reporter;

@@ -151,7 +151,6 @@ function runFinished(
     status?: 'passed' | 'failed' | 'error' | 'interrupted';
     exitCode?: 0 | 1 | 2 | 130;
     reportPath?: string;
-    junitPath?: string;
     aiTracePath?: string;
   } = {},
 ): RunEventFact {
@@ -160,7 +159,6 @@ function runFinished(
     status: overrides.status ?? 'passed',
     exitCode: overrides.exitCode ?? 0,
     ...(overrides.reportPath === undefined ? {} : { reportPath: overrides.reportPath }),
-    ...(overrides.junitPath === undefined ? {} : { junitPath: overrides.junitPath }),
     ...(overrides.aiTracePath === undefined ? {} : { aiTracePath: overrides.aiTracePath }),
   };
 }
@@ -193,24 +191,24 @@ function plainReporter(output: { write(line: string): void; raw?(text: string): 
   return new ListReporter(output, { live, colors: false });
 }
 
-describe('reporter links', () => {
-  it('prints each link as a summary row, then a blank line', () => {
+describe('reporter rows', () => {
+  it('prints each row in the summary layout, then a blank line', () => {
     const lines: string[] = [];
     const reporter = plainReporter({ write: (line) => lines.push(line) });
-    reporter.links([
-      { label: 'Results', url: 'https://example.test/runs/1' },
-      { label: 'Video', url: 'https://example.test/runs/1/video' },
+    reporter.rows([
+      { label: 'JUnit', text: '.e2e/junit.xml' },
+      { label: 'Results', text: 'https://example.test/runs/1' },
     ]);
     expect(lines).toEqual([
+      '      JUnit  .e2e/junit.xml',
       expect.stringMatching(/^ +Results {2}https:\/\/example\.test\/runs\/1$/),
-      expect.stringMatching(/^ +Video {2}https:\/\/example\.test\/runs\/1\/video$/),
       '',
     ]);
   });
 
-  it('prints nothing for no links', () => {
+  it('prints nothing for no rows', () => {
     const lines: string[] = [];
-    plainReporter({ write: (line) => lines.push(line) }).links([]);
+    plainReporter({ write: (line) => lines.push(line) }).rows([]);
     expect(lines).toEqual([]);
   });
 });
@@ -624,7 +622,6 @@ describe('ListReporter', () => {
         status: 'failed',
         exitCode: 1,
         reportPath: '/project/.e2e/report.json',
-        junitPath: '/project/.e2e/junit.xml',
         aiTracePath: '/project/.e2e/ai-trace.json',
       }));
       expect(lines).toContain(' Test Files  1 failed | 0 passed | 1 skipped (2)');
@@ -632,7 +629,6 @@ describe('ListReporter', () => {
       expect(lines.some((line) => /^ {3}Start at {2}\d\d:\d\d:\d\d$/.test(line))).toBe(true);
       expect(lines.some((line) => /^ {3}Duration {2}\d+(\.\d+)?m?s$/.test(line))).toBe(true);
       expect(lines).toContain('     Report  .e2e/report.json');
-      expect(lines).toContain('      JUnit  .e2e/junit.xml');
       expect(lines).toContain('   AI trace  .e2e/ai-trace.json (open with: npx unbox-ai .e2e/ai-trace.json)');
       expect(lines.at(-1)).toBe('');
     });
@@ -1464,7 +1460,7 @@ describe('ListReporter', () => {
       type: 'run-error',
       error: { category: `infra${esc}` as never, code: `X${esc}`, message: 'm', retryable: false, phase: `prepare${esc}` as never },
     });
-    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: `/project/${esc}/report.json`, junitPath: `${esc}j.xml`, aiTracePath: `${esc}t.json` }));
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: `/project/${esc}/report.json`, aiTracePath: `${esc}t.json` }));
     expect(raw.length).toBeGreaterThan(10);
     // eslint-disable-next-line no-control-regex
     expect(raw.some((line) => /[\u0000-\u001f\u007f]/.test(line))).toBe(false);

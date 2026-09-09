@@ -6,7 +6,7 @@
 
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { credentials } from '../../src/index.ts';
@@ -139,13 +139,14 @@ describe('run events', () => {
 });
 
 describe('run events: run lifecycle hygiene', () => {
-  it('a junit-write failure lands in report.json, the outcome, the exit code, and run-finished alike', async () => {
+  it('a junit-write failure is one stderr line and leaves the outcome, the report, and run-finished alone', async () => {
     const app = await startFixtureApp();
     const project = createProject({ 'tests/events.e2e.ts': SUITE });
     // A directory where junit.xml must be written makes its atomic rename fail
-    // while report.json, written last, still has a clear path.
+    // while report.json beside it still has a clear path.
     mkdirSync(path.join(project.dir, '.e2e', 'junit.xml'), { recursive: true });
     const events: RunEvent[] = [];
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
       const outcome = await runExisting(project, {
         appUrl: app.url,
@@ -159,30 +160,21 @@ describe('run events: run lifecycle hygiene', () => {
           events.push(event);
         } },
       });
-      expect(outcome.exitCode).toBe(3);
-      expect(outcome.status).toBe('error');
-      expect(outcome.junitPath).toBeUndefined();
+      // The junit reporter is a reporter: like any other it cannot change the outcome.
+      expect(outcome.exitCode).toBe(0);
+      expect(outcome.status).toBe('passed');
       expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
       const persisted = JSON.parse(readFileSync(outcome.reportPath!, 'utf8')) as typeof outcome.report;
-      const junitErrors = persisted.run.errors.filter(
-        (entry) => entry.code === 'REPORT_WRITE_FAILED' && entry.phase === 'report' && entry.message.includes('JUnit'),
-      );
-      expect(junitErrors).toHaveLength(1);
-      expect(junitErrors[0]?.category).toBe('infrastructure');
-      // The persisted file and the returned document tell the same story.
-      expect(persisted.run.errors).toEqual(outcome.report.run.errors);
-      expect(persisted.run.status).toBe(outcome.report.run.status);
-      expect(persisted.run.exitCode).toBe(outcome.exitCode);
-      const types = events.map((event) => event.type);
-      expect(types.indexOf('run-error')).toBeGreaterThan(-1);
-      expect(types.indexOf('run-error')).toBeLessThan(types.indexOf('run-finished'));
+      expect(persisted.run.errors).toEqual([]);
+      expect(events.map((event) => event.type)).not.toContain('run-error');
       const finished = events.at(-1);
       if (finished?.type !== 'run-finished') throw new Error('missing run-finished');
-      expect(finished.exitCode).toBe(outcome.exitCode);
-      expect(finished.status).toBe('error');
+      expect(finished.status).toBe('passed');
       expect(finished.reportPath).toBe(outcome.reportPath);
-      expect(finished.junitPath).toBeUndefined();
+      const written = stderr.mock.calls.map((call) => String(call[0])).join('');
+      expect(written).toContain('e2e: reporter "junit" failed:');
     } finally {
+      vi.restoreAllMocks();
       project.cleanup();
       await app.close();
     }

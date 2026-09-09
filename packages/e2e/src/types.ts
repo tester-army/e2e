@@ -774,7 +774,7 @@ export interface AgentConfig {
   providerOptions?: ProviderOptions;
 }
 
-/** The built-in output renderers. */
+/** The reporters the runner ships, named by id; each is a `Reporter` on the same contract. */
 export type BuiltinReporter = 'list' | 'json' | 'junit';
 
 /**
@@ -790,35 +790,36 @@ export interface FinishedRun {
   /** The same status `report.run.status` carries. */
   readonly status: RunStatus;
   readonly exitCode: RunExitCode;
-  /** Where `report.json` was written; undefined when the write failed. */
+  /** Absolute project root, what the terminal shows paths relative to. */
+  readonly projectRoot: string;
+  /** Where `report.json` was written; undefined when the write failed or config never loaded. */
   readonly reportPath: string | undefined;
   /** Absolute directory the report's artifact paths are relative to. */
   readonly artifactsRoot: string;
-  /** Where the `junit` reporter wrote its XML, when it was selected. */
-  readonly junitPath: string | undefined;
   /** Where `--ai-trace` wrote the run's model calls, when it was requested. */
   readonly aiTracePath: string | undefined;
 }
 
-/** Links a reporter hands back for the terminal summary: a label and a URL. */
-export type ReporterLinks = readonly { readonly label: string; readonly url: string }[];
+/** Rows a reporter hands back for the terminal summary: a label and its text, a URL or a path. */
+export type ReporterSummary = readonly { readonly label: string; readonly text: string }[];
 
 /**
- * A reporter object in `reporters`, beside the built-in ids. `onEvent` sees
- * every run event as it happens, exactly what the `list` reporter renders,
- * and must not block: a throw quarantines it for the rest of the run.
- * `onRunFinished` runs once `report.json` is written and the summary has
- * printed; it is awaited within a fixed budget, and the links it resolves
- * with print under the summary. A reporter can never change the run's
- * status or exit code: a failure or a timeout is one line on stderr. Like
- * every live value, a reporter never crosses a process boundary; workers
- * construct their own copy when they load the config module and never call
- * it, so constructing one must have no side effects.
+ * A reporter in `reporters`, the contract the built-in `list`, `json`, and
+ * `junit` reporters implement too. `onEvent` sees every run event as it
+ * happens, exactly what the `list` reporter renders, and must not block: a
+ * throw quarantines it for the rest of the run. `onRunFinished` runs once
+ * `report.json` is written and the summary has printed; it is awaited within
+ * a fixed budget, and the rows it resolves with print under the summary. A
+ * reporter can never change the run's status or exit code: a failure or a
+ * timeout is one line on stderr. Like every live value, a reporter never
+ * crosses a process boundary; workers construct their own copy when they
+ * load the config module and never call it, so constructing one must have no
+ * side effects.
  */
 export interface Reporter {
   readonly name: string;
   onEvent?(event: RunEvent): void;
-  onRunFinished?(run: FinishedRun): Promise<ReporterLinks | void>;
+  onRunFinished?(run: FinishedRun): Promise<ReporterSummary | void>;
 }
 
 export interface E2EConfig {

@@ -107,7 +107,7 @@ These appear in terminal output and in the report as plain string codes.
 | `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |
 | `WORKER_PROTOCOL` | A worker reported a unit other than the one it was running | infrastructure | 3 |
 | `SESSION_KEY_INVALID` | A worker received a session key that is not 32 bytes. Packaging or IPC fault. | infrastructure | 3 |
-| `REPORT_WRITE_FAILED` | `report.json`, `junit.xml`, or `ai-trace.json` could not be written. Recorded as a run error; the in-memory outcome is still complete | infrastructure | 3 |
+| `REPORT_WRITE_FAILED` | `report.json` or `ai-trace.json` could not be written. Recorded as a run error; the in-memory outcome is still complete. A `junit.xml` that could not be written is the `junit` reporter's stderr line instead | infrastructure | 3 |
 | `EVALUATE_FAILED` | `web.evaluate` threw inside the page (`@e2edev/playwright`) | test | 1 |
 | `INTERRUPTED` | A user or CI signal aborted the run | interrupted | 130 |
 

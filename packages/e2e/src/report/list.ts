@@ -10,9 +10,9 @@ import path from 'node:path';
 import picocolors from 'picocolors';
 import type { SerializedError } from '../internal/errors.ts';
 import { packageVersion } from '../internal/package-version.ts';
-import type { RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
+import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
 import type { ArtifactRecord, AttemptRecord, ResultStatus, SerialGroupRecord } from '../run/records.ts';
-import type { ReporterLinks } from '../types.ts';
+import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
   addUsage,
@@ -155,7 +155,8 @@ const DEFAULT_OUTPUT: ListReporterOutput = {
  * reporter is one sink on the run's single event spine, so it can only show
  * what every other sink receives.
  */
-export class ListReporter {
+export class ListReporter implements Reporter {
+  readonly name = 'list';
   private readonly pc: Colors;
   private readonly window: LiveWindow;
   private readonly tree: RunningTree;
@@ -221,6 +222,10 @@ export class ListReporter {
     this.separator = this.pc.dim(' > ');
     this.tree = new RunningTree(this.pc, (target) => this.badge(target));
     this.window = new LiveWindow(live ? output.raw?.bind(output) : undefined, () => this.renderWindow());
+  }
+
+  onEvent(event: RunEvent): void {
+    this.handle(event);
   }
 
   /**
@@ -734,11 +739,11 @@ export class ListReporter {
     }
   }
 
-  /** Prints the links reporters resolved with, as rows under the summary. */
-  links(links: ReporterLinks): void {
-    if (links.length === 0) return;
-    for (const link of links) {
-      this.print(padTitle(this.pc, bounded(link.label)) + bounded(link.url));
+  /** Prints the rows reporters resolved with under the summary, in the summary's layout. */
+  rows(rows: ReporterSummary): void {
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      this.print(padTitle(this.pc, bounded(row.label)) + bounded(row.text));
     }
     this.print('');
   }
@@ -760,9 +765,6 @@ export class ListReporter {
       padTitle(pc, 'Report') +
         (event.reportPath === undefined ? pc.dim('(not written)') : this.displayPath(event.reportPath)),
     );
-    if (event.junitPath !== undefined) {
-      this.print(padTitle(pc, 'JUnit') + this.displayPath(event.junitPath));
-    }
     if (event.aiTracePath !== undefined) {
       const shown = this.displayPath(event.aiTracePath);
       this.print(padTitle(pc, 'AI trace') + `${shown} ${pc.dim(`(open with: npx unbox-ai ${shown})`)}`);

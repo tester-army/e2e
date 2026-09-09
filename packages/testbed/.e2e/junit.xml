@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="e2e" tests="33" failures="0" errors="0" skipped="0" time="6.612">
+  <testsuite name="tests/auth.setup.e2e.ts" tests="1" failures="0" errors="0" skipped="0" time="0.231">
+    <testcase name="authenticate as admin [web]" classname="tests/auth.setup.e2e.ts" time="0.231"/>
+  </testsuite>
+  <testsuite name="tests/board.e2e.ts" tests="3" failures="0" errors="0" skipped="0" time="0.519">
+    <testcase name="hover reveals the card menu action [web]" classname="tests/board.e2e.ts" time="0.166"/>
+    <testcase name="setInputFiles resolves paths from the project root [web]" classname="tests/board.e2e.ts" time="0.081"/>
+    <testcase name="dragging the card marks it done [web]" classname="tests/board.e2e.ts" time="0.272"/>
+  </testsuite>
+  <testsuite name="tests/dashboard.e2e.ts" tests="4" failures="0" errors="0" skipped="0" time="0.698">
+    <testcase name="dashboard &gt; authenticated session reaches the dashboard directly [web]" classname="tests/dashboard.e2e.ts" time="0.288"/>
+    <testcase name="dashboard &gt; signing out invalidates the session [web]" classname="tests/dashboard.e2e.ts" time="0.153"/>
+    <testcase name="dashboard &gt; anonymous visitors are redirected to login [web]" classname="tests/dashboard.e2e.ts" time="0.073"/>
+    <testcase name="dashboard &gt; wrong credentials surface an alert [web]" classname="tests/dashboard.e2e.ts" time="0.184"/>
+  </testsuite>
+  <testsuite name="tests/dialogs-frames.e2e.ts" tests="6" failures="0" errors="0" skipped="0" time="0.915">
+    <testcase name="dialogs &gt; accepting a confirm dialog [web]" classname="tests/dialogs-frames.e2e.ts" time="0.329"/>
+    <testcase name="dialogs &gt; dismissing a confirm dialog [web]" classname="tests/dialogs-frames.e2e.ts" time="0.120"/>
+    <testcase name="dialogs &gt; custom dialog handlers read the message [web]" classname="tests/dialogs-frames.e2e.ts" time="0.120"/>
+    <testcase name="frames &gt; queries and actions scoped inside an iframe [web]" classname="tests/dialogs-frames.e2e.ts" time="0.150"/>
+    <testcase name="frames &gt; frame queries do not leak into the host page [web]" classname="tests/dialogs-frames.e2e.ts" time="0.092"/>
+    <testcase name="downloads &gt; waits for a triggered download [web]" classname="tests/dialogs-frames.e2e.ts" time="0.104"/>
+  </testsuite>
+  <testsuite name="tests/forms.e2e.ts" tests="4" failures="0" errors="0" skipped="0" time="1.758">
+    <testcase name="forms &gt; fills, clears, and submits a profile [web]" classname="tests/forms.e2e.ts" time="1.520"/>
+    <testcase name="forms &gt; validates required fields [web]" classname="tests/forms.e2e.ts" time="0.108"/>
+    <testcase name="forms &gt; reads current values without retrying [web]" classname="tests/forms.e2e.ts" time="0.067"/>
+    <testcase name="forms &gt; drives the page with raw keyboard input [web]" classname="tests/forms.e2e.ts" time="0.063"/>
+  </testsuite>
+  <testsuite name="tests/network.e2e.ts" tests="4" failures="0" errors="0" skipped="0" time="1.140">
+    <testcase name="network &gt; loads users from the real API [web]" classname="tests/network.e2e.ts" time="0.347"/>
+    <testcase name="network &gt; stubs the API with route fulfillment [web]" classname="tests/network.e2e.ts" time="0.386"/>
+    <testcase name="network &gt; surfaces aborted requests as failures [web]" classname="tests/network.e2e.ts" time="0.207"/>
+    <testcase name="network &gt; evaluate inspects live page state [web]" classname="tests/network.e2e.ts" time="0.200"/>
+  </testsuite>
+  <testsuite name="tests/smoke.e2e.ts" tests="2" failures="0" errors="0" skipped="0" time="0.255">
+    <testcase name="playground renders and navigates [web]" classname="tests/smoke.e2e.ts" time="0.143"/>
+    <testcase name="screenshots capture evidence [web]" classname="tests/smoke.e2e.ts" time="0.112"/>
+  </testsuite>
+  <testsuite name="tests/todos.e2e.ts" tests="6" failures="0" errors="0" skipped="0" time="0.871">
+    <testcase name="todos &gt; adds todos with the button and the keyboard [web]" classname="tests/todos.e2e.ts" time="0.171"/>
+    <testcase name="todos &gt; ignores empty submissions [web]" classname="tests/todos.e2e.ts" time="0.109"/>
+    <testcase name="todos &gt; completes and filters todos [web]" classname="tests/todos.e2e.ts" time="0.283"/>
+    <testcase name="todos &gt; deletes todos [web]" classname="tests/todos.e2e.ts" time="0.094"/>
+    <testcase name="todos &gt; persists across restart and clears with clearState [web]" classname="tests/todos.e2e.ts" time="0.167"/>
+    <testcase name="todos &gt; attempts start from a logically fresh session [web]" classname="tests/todos.e2e.ts" time="0.047"/>
+  </testsuite>
+  <testsuite name="tests/wizard.e2e.ts" tests="3" failures="0" errors="0" skipped="0" time="0.225">
+    <testcase name="workspace wizard &gt; step 1: name the workspace [web]" classname="tests/wizard.e2e.ts" time="0.109"/>
+    <testcase name="workspace wizard &gt; step 2: pick a plan [web]" classname="tests/wizard.e2e.ts" time="0.070"/>
+    <testcase name="workspace wizard &gt; step 3: confirm with state from earlier members [web]" classname="tests/wizard.e2e.ts" time="0.046"/>
+  </testsuite>
+</testsuites>

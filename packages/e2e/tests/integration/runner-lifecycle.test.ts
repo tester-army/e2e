@@ -481,8 +481,7 @@ test('fails', async () => {
       );
       expect(outcome.exitCode).toBe(1);
       expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
-      expect(outcome.junitPath).toBe(path.join(project.dir, '.e2e', 'junit.xml'));
-      const xml = readFileSync(outcome.junitPath!, 'utf8');
+      const xml = readFileSync(path.join(project.dir, '.e2e', 'junit.xml'), 'utf8');
       expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<testsuites ')).toBe(true);
       expect(xml).toContain(
         '<testsuite name="tests/junit.e2e.ts" tests="2" failures="1" errors="0" skipped="0"',
@@ -503,7 +502,7 @@ test('fails', async () => {
         { 'tests/no-junit.e2e.ts': `import { test } from '@e2edev/e2e';\ntest('x', async () => {});\n` },
         { appUrl: app.url },
       );
-      expect(outcome.junitPath).toBeUndefined();
+      expect(outcome.exitCode).toBe(0);
       expect(existsSync(path.join(project.dir, '.e2e', 'junit.xml'))).toBe(false);
       project.cleanup();
     },

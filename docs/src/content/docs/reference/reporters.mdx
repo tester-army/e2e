@@ -4,11 +4,13 @@ description: Reporter objects in `reporters`, what they receive, and what the ru
 ---
 
 `reporters` takes the built-in ids (`list`, `json`, `junit`; see
-[CLI → Output](/reference/cli#output)) and reporter objects. A reporter object
-is how a run's outcome leaves the machine: it sees every run event as it
-happens and receives the finished run, report and artifact locations
-included, once the summary has printed. It is a live config value, so it lives
-in `e2e.config.ts`, never on the command line.
+[CLI → Output](/reference/cli#output)) and reporter objects. Both are the same
+thing: each id names a `Reporter` the runner ships, on the contract below, and
+a reporter object is one you supply. A reporter is how a run's outcome leaves
+the machine: it sees every run event as it happens and receives the finished
+run, report and artifact locations included, once the summary has printed. It
+is a live config value, so it lives in `e2e.config.ts`, never on the command
+line.
 
 ```ts
 import type { E2EConfig, Reporter } from '@e2edev/e2e';
@@ -22,7 +24,7 @@ const upload: Reporter = {
       body: JSON.stringify(run.report),
     });
     const { url } = (await response.json()) as { url: string };
-    return [{ label: 'Results', url }];
+    return [{ label: 'Results', text: url }];
   },
 };
 
@@ -38,25 +40,30 @@ export default {
 interface Reporter {
   readonly name: string;
   onEvent?(event: RunEvent): void;
-  onRunFinished?(run: FinishedRun): Promise<ReporterLinks | void>;
+  onRunFinished?(run: FinishedRun): Promise<ReporterSummary | void>;
 }
 
 interface FinishedRun {
   readonly report: Report;                 // the report-1 document, as written
   readonly status: RunStatus;              // report.run.status
   readonly exitCode: RunExitCode;
+  readonly projectRoot: string;            // what the terminal shows paths relative to
   readonly reportPath: string | undefined; // absent when the write failed
   readonly artifactsRoot: string;          // what the report's artifact paths are relative to
-  readonly junitPath: string | undefined;
   readonly aiTracePath: string | undefined;
 }
 
-type ReporterLinks = readonly { label: string; url: string }[];
+type ReporterSummary = readonly { label: string; text: string }[];
 ```
 
-`Reporter`, `FinishedRun`, `ReporterLinks`, `Report`, `RunEvent`, and
+`Reporter`, `FinishedRun`, `ReporterSummary`, `Report`, `RunEvent`, and
 `RunEventOf` are on the main entrypoint beside `ArtifactStore`, so an inline
 reporter in `e2e.config.ts` types its handlers from one import.
+
+The built-in `junit` reporter is the smallest complete example: it reads
+`run.report`, writes `junit.xml` beside `run.reportPath`, and returns one row
+naming the file relative to `run.projectRoot`. `json` is an `onRunFinished`
+that writes the document to stdout; `list` is an `onEvent`.
 
 A name and at least one handler are required; the resolver rejects anything
 else with `INVALID_CONFIG`.
@@ -97,20 +104,21 @@ belongs in `onRunFinished`.
 
 ## The finished run
 
-`onRunFinished` runs last: after `report.json` is written, after the `list`
-summary has printed, and after the `json` reporter has written its document
-to stdout, so nothing reading the terminal waits on an upload. Every
-reporter's `onRunFinished` runs at once. Each is awaited for one minute; one
-that takes longer is abandoned with a line on stderr, and the run ends with
-its own exit code. A reporter that throws is the same one line, and so is one
-that resolves with anything other than links. A graceful interrupt (one
-Ctrl-C) still runs the reporters, since a cut-short run is often the one worth
-uploading; a forced interrupt (a second Ctrl-C) abandons them at once. Nothing
-a reporter does can change the run's status, its exit code, or its report.
+`onRunFinished` runs last, after `report.json` is written and after the
+`list` summary has printed, so nothing reading the terminal waits on an
+upload. Every reporter's `onRunFinished` runs at once, the built-in ones
+included, so the `json` document reaches stdout without waiting on anyone.
+Each is awaited for one minute; one that takes longer is abandoned with a line
+on stderr, and the run ends with its own exit code. A reporter that throws is
+the same one line, and so is one that resolves with anything other than rows.
+A graceful interrupt (one Ctrl-C) still runs the reporters, since a cut-short
+run is often the one worth uploading; a forced interrupt (a second Ctrl-C)
+abandons them at once. Nothing a reporter does can change the run's status,
+its exit code, or its report: a `junit.xml` that could not be written is a
+stderr line, not a run error.
 
-The links a reporter resolves with print under the `list` summary as rows in
-the same layout as `Report` and `JUnit`; the `json` reporter does not carry
-them:
+The rows a reporter resolves with print under the `list` summary in the same
+layout as `Report`; the `json` reporter does not carry them:
 
 ```
    Test Files  2 passed (2)
@@ -119,6 +127,7 @@ them:
      Duration  8.41s
        Report  .e2e/report.json
 
+        JUnit  .e2e/junit.xml
       Results  https://example.test/runs/0192c…
 ```
 

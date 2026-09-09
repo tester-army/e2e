@@ -47,7 +47,7 @@ describe('reporter objects', () => {
       },
       onRunFinished: async (run) => {
         finished = run;
-        return [{ label: 'Results', url: 'https://example.test/runs/1' }];
+        return [{ label: 'Results', text: 'https://example.test/runs/1' }];
       },
     };
     const outcome = await runExisting(project, {
@@ -66,6 +66,7 @@ describe('reporter objects', () => {
     expect(run.exitCode).toBe(0);
     expect(run.report).toBe(outcome.report);
     expect(run.reportPath).toBe(outcome.reportPath);
+    expect(run.projectRoot).toBe(project.dir);
     expect(run.artifactsRoot).toBe(path.join(project.dir, '.e2e', 'artifacts'));
     const artifacts = run.report.run.results.flatMap((result) =>
       result.attempts.flatMap((attempt) => attempt.artifacts),
@@ -92,7 +93,7 @@ describe('reporter objects', () => {
     // What untyped JavaScript hands back: not links.
     const malformed = {
       name: 'malformed',
-      onRunFinished: async () => [{ href: 'https://example.test' }, { label: 'ok', url: 'https://example.test/ok' }],
+      onRunFinished: async () => [{ href: 'https://example.test' }, { label: 'ok', text: 'https://example.test/ok' }],
     } as unknown as Reporter;
     const outcome = await runExisting(project, {
       appUrl: app.url,
@@ -105,7 +106,7 @@ describe('reporter objects', () => {
     const written = stderr.mock.calls.map((call) => String(call[0])).join('');
     expect(written).toContain('e2e: reporter "throwing" failed: boom');
     expect(written).toContain('e2e: reporter "hanging" did not finish within 200ms');
-    expect(written).toContain('e2e: reporter "malformed" returned 1 link(s) without a label and a url; dropped');
+    expect(written).toContain('e2e: reporter "malformed" returned 1 row(s) without a label and text; dropped');
   }, 120_000);
 
   it('abandons a reporter when the run is forced to stop', async () => {

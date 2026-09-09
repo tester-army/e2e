@@ -2,6 +2,9 @@
 
 import { sanitizeText } from '../internal/errors.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';
+import path from 'node:path';
+import type { Reporter } from '../types.ts';
+import { writeTextReport } from './write.ts';
 
 /** What the final attempt of one result left behind, in the terms JUnit knows. */
 interface FinalAttempt {
@@ -235,3 +238,18 @@ export function renderJunitReport(report: Report1Document): string {
   lines.push('</testsuites>');
   return `${lines.join('\n')}\n`;
 }
+
+/**
+ * The built-in `junit` reporter: the report as JUnit XML in `junit.xml`
+ * beside `report.json`, for CI test summaries. Nothing to write beside when
+ * the report itself was not written.
+ */
+export const junitReporter: Reporter = {
+  name: 'junit',
+  async onRunFinished(run) {
+    if (run.reportPath === undefined) return;
+    const file = path.join(path.dirname(run.reportPath), 'junit.xml');
+    await writeTextReport(file, renderJunitReport(run.report));
+    return [{ label: 'JUnit', text: path.relative(run.projectRoot, file) || file }];
+  },
+};
