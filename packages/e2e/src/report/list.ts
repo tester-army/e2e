@@ -183,6 +183,8 @@ export class ListReporter {
   private startupMs = 0;
   /** Run-wide model usage, summed from every reported result and serial group. */
   private readonly runUsage = emptyUsage();
+  /** The configured agent model, repeated in the summary once the header has scrolled away. */
+  private model: string | undefined;
 
   constructor(
     private readonly output: ListReporterOutput = DEFAULT_OUTPUT,
@@ -286,7 +288,8 @@ export class ListReporter {
     if (event.ci) details.push('CI');
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {
-      this.output.write(BADGE_PADDING + pc.dim(`model ${bounded(event.model)}`));
+      this.model = bounded(event.model);
+      this.output.write(BADGE_PADDING + pc.dim(`model ${this.model}`));
     }
     this.output.write('');
     this.window.start();
@@ -591,7 +594,10 @@ export class ListReporter {
       padTitle(pc, 'Tests') + (tests.total === 0 ? this.emptyState('no tests executed', 'none executed') : stateString(pc, tests)),
     ];
     const ai = usageText(this.runUsage);
-    if (ai !== undefined) rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls`);
+    if (ai !== undefined) {
+      const model = this.model === undefined ? '' : ` · ${this.model}`;
+      rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls${model}`);
+    }
     if (this.errors.length > 0) {
       const count = this.errors.length;
       rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));
