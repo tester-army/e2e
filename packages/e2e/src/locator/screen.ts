@@ -8,6 +8,7 @@ import { realmSlot } from '../internal/realm-slot.ts';
 import { normalizeText } from '../internal/text.ts';
 import type {
   ActionOptions,
+  LongPressOptions,
   Locator,
   Role,
   RoleOptions,
@@ -212,8 +213,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
     );
   }
 
-  longPress(options?: ActionOptions & { durationMs?: number }): Promise<void> {
-    const durationMs = validateLongPress(options?.durationMs);
+  longPress(options?: LongPressOptions): Promise<void> {
+    const durationMs = validateLongPress(options?.duration);
     return this.action('locator.longPress', () =>
       this.context.engine.perform(this.expression, { kind: 'longPress', durationMs }, options?.timeout),
     );
@@ -442,7 +443,7 @@ function validateLongPress(durationMs: number | undefined): number {
   if (!Number.isInteger(value) || value < 100 || value > 10_000) {
     throw new TestError(
       'INVALID_ARGUMENT',
-      `longPress durationMs must be an integer from 100 through 10000, got ${String(durationMs)}`,
+      `longPress duration must be an integer from 100 through 10000, got ${String(durationMs)}`,
     );
   }
   return value;

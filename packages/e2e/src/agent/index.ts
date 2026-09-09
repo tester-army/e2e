@@ -106,7 +106,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     act: (instruction, options, ...legacy: readonly unknown[]) =>
       runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
-      const intervalMs = validateInterval(options?.intervalMs);
+      const intervalMs = validateInterval(options?.interval);
       return step(
         {
           api: 'agent.waitFor',
@@ -147,7 +147,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.extract',
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, stepTimeout),
-          maxModelCalls: resolveBoundedBudget(options.maxModelCalls, EXTRACT_MODEL_CALLS, 'maxModelCalls'),
+          maxModelCalls: EXTRACT_MODEL_CALLS,
           vision: resolveVision(options.vision),
         },
         instruction,
@@ -265,7 +265,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * screen actually changes, which is also what makes a condition that came true two
  * seconds ago cost two seconds rather than a full interval.
  *
- * `intervalMs` stays the rate limit it always was: at most one judgment per
+ * `interval` stays the rate limit it always was: at most one judgment per
  * interval, so a screen that changes continuously — a spinner, a countdown —
  * cannot spend the budget in a second.
  *
@@ -328,7 +328,7 @@ function validateInterval(intervalMs: number | undefined): number {
   if (!Number.isInteger(value) || value < 100 || value > 60_000) {
     throw new TestError(
       'INVALID_ARGUMENT',
-      `intervalMs must be an integer from 100 through 60000, got ${String(intervalMs)}`,
+      `interval must be an integer from 100 through 60000, got ${String(intervalMs)}`,
     );
   }
   return value;

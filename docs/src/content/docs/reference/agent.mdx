@@ -206,10 +206,7 @@ controls what the model is shown before it.
 ### agent.assert
 
 ```ts
-assert(
-  assertion: string,
-  options?: { timeout?: number; screenshot?: boolean; vision?: VisionMode },
-): Promise<void>;
+assert(assertion: string, options?: AssertOptions): Promise<void>;
 ```
 
 One fresh observation, exactly one judgment. It does not poll.
@@ -232,10 +229,7 @@ await agent.assert('the dashboard shows a trial badge');
 ### agent.waitFor
 
 ```ts
-waitFor(
-  condition: string,
-  options?: { timeout?: number; intervalMs?: number; maxModelCalls?: number; vision?: VisionMode },
-): Promise<void>;
+waitFor(condition: string, options?: WaitForOptions): Promise<void>;
 ```
 
 One observation and one judgment per interval. Succeeds on the first true
@@ -245,7 +239,7 @@ judgment.
 | --- | --- | --- | --- |
 | `condition` | `string` | - | - |
 | `options.timeout` | `number` | `30000` | positive safe integer |
-| `options.intervalMs` | `number` | `3000` | integer 100-60000 |
+| `options.interval` | `number` | `3000` | integer 100-60000, milliseconds |
 | `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
 
 Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on budget
@@ -253,7 +247,7 @@ exhaustion, each carrying the last judgment, and `INVALID_ARGUMENT` for an
 out-of-range option.
 
 ```ts
-await agent.waitFor('the upload progress reports completion', { intervalMs: 500 });
+await agent.waitFor('the upload progress reports completion', { interval: 500 });
 ```
 
 ### agent.extract
@@ -261,7 +255,7 @@ await agent.waitFor('the upload progress reports completion', { intervalMs: 500 
 ```ts
 extract<Schema extends StandardSchemaV1>(
   instruction: string,
-  options: { schema: Schema; timeout?: number; maxModelCalls?: number; vision?: VisionMode },
+  options: ExtractOptions<Schema>,
 ): Promise<StandardSchemaV1.InferOutput<Schema>>;
 ```
 
@@ -273,11 +267,11 @@ returns the validated value. It performs no app actions.
 | `instruction` | `string` | - | - |
 | `options.schema` | `Schema` | - | any Standard Schema v1 validator |
 | `options.timeout` | `number` | `30000` | positive safe integer |
-| `options.maxModelCalls` | `number` | `2` | positive integer, at most 2 |
 
-Invalid output is repaired while budget remains. Throws `INVALID_ARGUMENT` for a
-schema that is not Standard Schema v1 or `maxModelCalls` above 2, and
-`MODEL_OUTPUT_INVALID` when validation still fails.
+The budget is fixed at two model calls: one extraction and one repair round
+for output that failed validation. Throws `INVALID_ARGUMENT` for a schema that
+is not Standard Schema v1, and `MODEL_OUTPUT_INVALID` when validation still
+fails after the repair.
 
 ```ts
 const summary = await agent.extract('the workspace name and plan', {
@@ -293,6 +287,22 @@ export interface VisionOption {
 }
 
 export type VisionMode = boolean | 'fallback' | 'only';
+
+export interface AssertOptions extends VisionOption {
+  timeout?: number;
+  screenshot?: boolean;
+}
+
+export interface WaitForOptions extends VisionOption {
+  timeout?: number;
+  interval?: number;
+  maxModelCalls?: number;
+}
+
+export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption {
+  schema: Schema;
+  timeout?: number;
+}
 
 export interface ActOptions {
   params?: AgentParams;
@@ -321,7 +331,10 @@ configuration limits.
 
 `ActOptions`, `AgentParams`, and `ActResult` belong to `act`; `act` takes no
 `schema` and no `vision`. Judgments return `void`;
-`extract` returns the validated value directly.
+`extract` returns the validated value directly. `assert` and `extract` have a
+fixed budget of two model calls, the judgment or extraction plus one repair
+round; `waitFor` takes `maxModelCalls` because it polls. Every duration option
+(`timeout`, `interval`) is milliseconds.
 
 ## AgentError
 

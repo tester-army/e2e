@@ -86,7 +86,7 @@ import { z } from 'zod';
 await agent.assert('the dashboard shows a trial badge'); // one look, one judgment
 
 await agent.waitFor('the export finished and a download link appeared', { // polls
-  intervalMs: 500,
+  interval: 500,
   timeout: 120_000,
 });
 
@@ -99,7 +99,7 @@ expect(data.titles).toContain('Buy milk');
 - `assert` does not poll. A false judgment is `ASSERTION_FAILED` with the
   model's explanation and a screenshot in the report. Malformed output gets
   one repair round, then `MODEL_OUTPUT_INVALID`.
-- `waitFor` observes every `intervalMs` (default 3 s) and spends a judgment
+- `waitFor` observes every `interval` (default 3 s) and spends a judgment
   only when the screen changed; `STEP_TIMEOUT` after `timeout` (default
   30 s).
 - `extract` accepts any Standard Schema validator (zod works). Invalid output

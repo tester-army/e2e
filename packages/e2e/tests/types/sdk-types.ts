@@ -46,6 +46,11 @@ await agent.act('open billing', { plan: 'pro' }, {});
 await agent.act('read total', { schema: z.object({ total: z.number() }) });
 // @ts-expect-error act takes no vision option; assert, waitFor, and extract do
 await agent.act('open billing', { vision: true });
+await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+// @ts-expect-error the wait interval is `interval`, in milliseconds
+await agent.waitFor('the page settles', { intervalMs: 500 });
+// @ts-expect-error extract has a fixed budget: one extraction plus one repair round
+await agent.extract('read total', { schema: z.object({ total: z.number() }), maxModelCalls: 1 });
 
 test.describe('synchronous', () => {});
 // @ts-expect-error describe registration must be synchronous

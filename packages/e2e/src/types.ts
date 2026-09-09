@@ -142,6 +142,31 @@ export interface VisionOption {
   vision?: VisionMode;
 }
 
+/** `assert` options: one judgment plus one repair round, within `timeout`. */
+export interface AssertOptions extends VisionOption {
+  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  timeout?: number;
+  /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
+  screenshot?: boolean;
+}
+
+/** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
+export interface WaitForOptions extends VisionOption {
+  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  timeout?: number;
+  /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
+  interval?: number;
+  /** Judgment budget; defaults to `agent.maxModelCalls` and can only lower it. */
+  maxModelCalls?: number;
+}
+
+/** `extract` options: one extraction plus one repair round, validated against `schema`. */
+export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption {
+  schema: Schema;
+  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  timeout?: number;
+}
+
 /**
  * One `act` call: the values the instruction refers to and the step's
  * budgets. Structured output and vision are judgment-tier options:
@@ -201,23 +226,14 @@ export interface Agent {
   /** Plans and executes a bounded multi-action flow; resolves with what the step did. */
   act(instruction: string, options?: ActOptions): Promise<ActResult>;
   /** Polls a natural-language condition until true or timed out. */
-  waitFor(
-    condition: string,
-    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
-  ): Promise<void>;
+  waitFor(condition: string, options?: WaitForOptions): Promise<void>;
   /** Extracts and validates structured screen data. */
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: ExtractOptions<Schema>,
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
-  /** Judges a natural-language assertion against fresh observations. */
-  assert(
-    assertion: string,
-    options?: VisionOption & {
-      timeout?: number;
-      screenshot?: boolean;
-    },
-  ): Promise<void>;
+  /** Judges a natural-language assertion against a fresh observation. */
+  assert(assertion: string, options?: AssertOptions): Promise<void>;
 }
 
 export type Role =
@@ -282,6 +298,11 @@ export interface ActionOptions {
   timeout?: number;
 }
 
+/** `longPress` options: the hold time in milliseconds, 100 through 10000, default 500. */
+export interface LongPressOptions extends ActionOptions {
+  duration?: number;
+}
+
 export interface SwipeOptions {
   direction: ScrollDirection;
   momentum?: Momentum;
@@ -324,7 +345,7 @@ export interface Locator extends Screen {
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
-  longPress(options?: ActionOptions & { durationMs?: number }): Promise<void>;
+  longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */
   fill(value: string | Secret, options?: ActionOptions): Promise<void>;
   /** Clears exactly one input. */

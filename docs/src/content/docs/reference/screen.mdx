@@ -166,7 +166,7 @@ deadline, and performs one operation. Default timeout `config.actionTimeout`,
 | `tap` | `tap(options?: ActionOptions): Promise<void>` |
 | `click` | `click(options?: ActionOptions): Promise<void>` |
 | `doubleTap` | `doubleTap(options?: ActionOptions): Promise<void>` |
-| `longPress` | `longPress(options?: ActionOptions & { durationMs?: number }): Promise<void>` |
+| `longPress` | `longPress(options?: LongPressOptions): Promise<void>` |
 | `fill` | `fill(value: string \| Secret, options?: ActionOptions): Promise<void>` |
 | `clear` | `clear(options?: ActionOptions): Promise<void>` |
 | `press` | `press(key: string, options?: ActionOptions): Promise<void>` |
@@ -181,7 +181,7 @@ deadline, and performs one operation. Default timeout `config.actionTimeout`,
 | `swipe` | `swipe(options: SwipeOptions & ActionOptions): Promise<void>` |
 
 - `click` is an alias of `tap`.
-- `longPress` `durationMs` defaults to 500, integer 100 through 10000. Out of
+- `longPress` `duration` is milliseconds, default 500, integer 100 through 10000. Out of
   range throws `INVALID_ARGUMENT`.
 - `fill` replaces the current content. A `Secret` is resolved on the host
   immediately before the call and never logged, reported, or sent to a model.
@@ -282,6 +282,10 @@ export interface RoleOptions extends TextMatchOptions {
 
 export interface ActionOptions {
   timeout?: number;
+}
+
+export interface LongPressOptions extends ActionOptions {
+  duration?: number;
 }
 
 export interface SwipeOptions {
