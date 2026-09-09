@@ -588,10 +588,13 @@ export class PlaywrightSurface {
           displayValue !== null || name !== null
             ? ((await projected.locator.elementHandles()) as ElementHandle<Element>[])
             : null;
+        const first = handles?.[0];
         const raws =
           handles === null
             ? await projected.locator.evaluateAll(readManySemanticsFunction, readOptions)
-            : await page.evaluate(readHandlesSemanticsFunction, { elements: handles, options: readOptions });
+            : first === undefined
+              ? []
+              : await first.evaluate(readHandlesSemanticsFunction, { elements: handles, options: readOptions });
         const candidates = raws
           .map((raw, index) => ({ raw, index }))
           .filter(({ raw }) => !(projected.visible && raw.states.hidden));
