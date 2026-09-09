@@ -9,8 +9,7 @@ import { expect, credentials } from '@e2edev/e2e';
 test('signs in with the member credential', async ({ web, agent, screen }) => {
   await web.goto('/login');
   await agent.act('sign in with the given credentials', {
-    username: 'member',
-    password: credentials.user('member').password,
+    params: { username: 'member', password: credentials.user('member').password },
   });
   await expect(screen.getByText('Welcome, member')).toBeVisible();
 });

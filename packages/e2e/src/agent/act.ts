@@ -19,10 +19,9 @@ import type { Deadline } from '../internal/time.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { StepMetrics, StepModelInfo } from '../run/steps.ts';
 import type {
+  ActOptions,
+  ActResult,
   AgentErrorCode,
-  AgentOptions,
-  AgentParams,
-  AgentResult,
   JsonValue,
   ModelInstance,
   ScrollDirection,
@@ -30,7 +29,7 @@ import type {
 } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import {
-  rejectUnsupportedActOptions,
+  validateActOptions,
   validateInstruction,
   validateParams,
   validateVerdict,
@@ -84,13 +83,13 @@ interface DispatchSpec {
 export async function runActStep(
   runtime: AgentContext,
   instruction: string,
-  params: AgentParams | undefined,
-  options: AgentOptions | undefined,
-): Promise<AgentResult> {
+  options: ActOptions | undefined,
+  extraArguments = 0,
+): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
-  rejectUnsupportedActOptions(options);
-  const { projected, secrets } = validateParams(params);
-  await dispatchAgentStep(runtime, {
+  validateActOptions(options, extraArguments);
+  const { projected, secrets } = validateParams(options?.params);
+  return dispatchAgentStep(runtime, {
     api: 'agent.act',
     kind: 'act',
     instruction: normalized,
@@ -101,7 +100,6 @@ export async function runActStep(
     maxSteps: options?.maxSteps,
     maxModelCalls: options?.maxModelCalls,
   });
-  return { ok: true };
 }
 
 /**
@@ -145,8 +143,8 @@ export async function runAssertStep(
  * passing is what confirms the traces staged before it at attempt end
  * (cache/context.ts).
  */
-async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<void> {
-  await runtime.steps.run('agent', spec.api, spec.instruction, async () => {
+async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<ActResult> {
+  return runtime.steps.run('agent', spec.api, spec.instruction, async () => {
     const dispatch = new ActDispatch(runtime, spec);
     try {
       let verdict: StepVerdict;
@@ -157,6 +155,7 @@ async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Pro
       }
       dispatch.settle(validateVerdict(verdict, runtime.executor.name));
       await dispatch.conclude('passed');
+      return dispatch.result();
     } catch (cause) {
       await dispatch.conclude(isAgentError(cause) && cause.code === 'CANCELLED' ? 'cancelled' : 'failed');
       throw cause;
@@ -555,7 +554,7 @@ class ActDispatch {
     if (usage?.modelId !== undefined) this.modelId = usage.modelId;
     this.runtime.steps.recordEvent({
       kind: 'model',
-      startedAt: timestamp(),
+      startedAt: usage?.startedAt ?? timestamp(),
       durationMs: Math.max(0, Math.round(usage?.durationMs ?? 0)),
       status: 'passed',
       name: 'executor',
@@ -605,6 +604,17 @@ class ActDispatch {
       );
     };
     return call.mutates ? this.serialized(run) : run();
+  }
+
+  /** What the settled step did, for the caller of `agent.act()`. */
+  result(): ActResult {
+    const cache = this.stepCache?.cacheInfo;
+    return {
+      summary: this.explanation ?? '',
+      ...(cache === undefined ? {} : { cache }),
+      modelCalls: this.metrics.modelCalls,
+      actions: this.metrics.actionSteps,
+    };
   }
 
   /** Attaches metrics, model provenance, and the verdict explanation to the step. */

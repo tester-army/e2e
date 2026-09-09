@@ -59,6 +59,16 @@ screen.getByText('Welcome back', { exact: false });
 screen.getByTestId('todo-3');
 ```
 
+### Echoed text
+
+`getByText` answers with the innermost matching node. A node whose match is
+also matched by one of its descendants is not returned, so a container that
+echoes its child's text counts once. Browsers behave this way natively; on a
+device the engine applies the same rule, because iOS reports a React Native
+`Text` as a host view and a `StaticText` child carrying the same label, and a
+plain view inherits the labels of its children. Two matches that do not contain
+each other, such as the same text on two pages, remain `LOCATOR_AMBIGUOUS`.
+
 ### Hidden duplicates
 
 Every query accepts `visible: true`, which drops nodes the platform reports as
@@ -186,6 +196,7 @@ deadline, and performs one operation. Default timeout `config.actionTimeout`,
 await screen.getByLabel('Email').fill('ada@example.test');
 await screen.getByRole('checkbox', { name: 'Remember me' }).check();
 await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
+await screen.getByLabel('Plan').selectOption({ value: 'pro' });
 await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
 ```
 
@@ -267,7 +278,6 @@ export interface RoleOptions extends TextMatchOptions {
   disabled?: boolean;
   selected?: boolean;
   expanded?: boolean;
-  hidden?: boolean;
 }
 
 export interface ActionOptions {
@@ -281,8 +291,9 @@ export interface SwipeOptions {
 
 export type SelectOption =
   | string
-  | { label: string; index?: never }
-  | { label?: never; index: number };
+  | { label: string; value?: never; index?: never }
+  | { value: string; label?: never; index?: never }
+  | { index: number; label?: never; value?: never };
 
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
@@ -297,19 +308,20 @@ export type Momentum = 'none' | 'slow' | 'fast';
 | `disabled` | Require the disabled state |
 | `selected` | Require the selected state |
 | `expanded` | Require the expanded state |
-| `hidden` | Include nodes hidden from the accessibility tree |
 | `exact` | Inherited; applies to `name` |
 | `visible` | Inherited; keep only nodes the platform reports as shown |
 
 String matching is exact by default. `exact: false` is case-insensitive
 substring matching. A `RegExp` ignores `exact`.
 
-`visible` is not the inverse of `hidden`: `hidden` widens a role query to nodes
-outside the accessibility tree, `visible` narrows any query to nodes on screen.
-See [Hidden duplicates](#hidden-duplicates).
+A role query never matches a node hidden from the accessibility tree, on every
+engine. `visible` applies the same rule to the other query kinds, so
+`getByText` or `getByLabel` can drop a hidden twin too. See
+[Hidden duplicates](#hidden-duplicates).
 
-`SelectOption`: a bare string is the option label. The object form is mutually
-exclusive, `label` or `index`, never both.
+`SelectOption`: a bare string is the option label. The object form names one of
+`label`, `value` (the option's `value` attribute, what the form submits), or
+`index`, never two.
 
 <CardGrid>
   <LinkCard title="Writing tests" href="/writing-tests" />

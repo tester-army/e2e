@@ -32,7 +32,6 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
       if (states.disabled !== undefined) options.disabled = states.disabled;
       if (states.selected !== undefined) options.selected = states.selected;
       if (states.expanded !== undefined) options.expanded = states.expanded;
-      if (states.hidden !== undefined) options.includeHidden = states.hidden;
       return scope.getByRole(query.value.value as Parameters<Page['getByRole']>[0], options);
     }
     case 'label':

@@ -20,7 +20,7 @@ const SECRET_SUITE = `import { test, credentials } from '@e2edev/e2e';
 
 test('secret probe', async ({ app, agent }) => {
   await app.open();
-  await agent.act('probe', { password: credentials.user('admin').password });
+  await agent.act('probe', { params: { password: credentials.user('admin').password } });
 });
 `;
 
@@ -158,14 +158,14 @@ describe('input boundaries and adversarial loops', () => {
 
 test('oversized params', async ({ app, agent }) => {
   await app.open();
-  await agent.act('probe', { blob: 'x'.repeat(70_000) });
+  await agent.act('probe', { params: { blob: 'x'.repeat(70_000) } });
 });
 
 test('too-deep params', async ({ app, agent }) => {
   await app.open();
   let value = { leaf: true };
   for (let i = 0; i < 40; i += 1) value = { nested: value };
-  await agent.act('probe', { value });
+  await agent.act('probe', { params: { value } });
 });
 `;
     const executor: StepExecutor = {
@@ -200,7 +200,7 @@ test('too-deep params', async ({ app, agent }) => {
 
 test('defiant model', async ({ app, agent }) => {
   await app.open();
-  await agent.act('never conclude', undefined, { maxModelCalls: 6, timeout: 30_000 });
+  await agent.act('never conclude', { maxModelCalls: 6, timeout: 30_000 });
 });
 `;
     const startedMs = Date.now();

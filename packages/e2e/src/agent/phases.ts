@@ -10,7 +10,6 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { E2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { POLL_INTERVAL_MS, sleep, type Deadline } from '../internal/time.ts';
-import { agentTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { StepEvent, StepRecorder } from '../run/steps.ts';
 import { AgentError, toAgentError } from './error.ts';
@@ -76,7 +75,6 @@ export async function instrumentPhase<Value>(
 ): Promise<Value> {
   const startedAt = timestamp();
   const startedMs = Date.now();
-  const label = spec.name === undefined ? spec.kind : `${spec.kind}:${spec.name}`;
   try {
     const value = await body();
     const eventDetail = detail?.(value);
@@ -88,12 +86,6 @@ export async function instrumentPhase<Value>(
       ...(spec.name === undefined ? {} : { name: spec.name }),
       ...eventDetail,
     });
-    agentTrace(
-      () =>
-        `${spec.api} ${label} passed ${Date.now() - startedMs}ms` +
-        `${eventDetail?.count !== undefined ? ` count=${eventDetail.count}` : ''}` +
-        `${eventDetail?.bytes !== undefined ? ` bytes=${eventDetail.bytes}` : ''}`,
-    );
     return value;
   } catch (cause) {
     const error = toAgentError(cause);
@@ -105,11 +97,6 @@ export async function instrumentPhase<Value>(
       ...(spec.name === undefined ? {} : { name: spec.name }),
       code: phaseErrorCode(cause),
     });
-    agentTrace(
-      () =>
-        `${spec.api} ${label} failed ${Date.now() - startedMs}ms ` +
-        `${phaseErrorCode(cause)}: ${cause instanceof Error ? cause.message : String(cause)}`,
-    );
     throw error;
   } finally {
     host.debug?.record(spec.phase, Date.now() - startedMs);
@@ -159,7 +146,7 @@ export async function retryingObserve(options: {
   readonly signal: AbortSignal;
   readonly api: string;
 }): Promise<Observation> {
-  for (let attempt = 1; ; attempt += 1) {
+  for (;;) {
     try {
       return await options.observe(options.operation());
     } catch (cause) {
@@ -167,9 +154,6 @@ export async function retryingObserve(options: {
       if (!(cause instanceof EngineError && cause.retryable)) {
         throw cause;
       }
-      agentTrace(
-        () => `${options.api} observation attempt ${attempt} raced the screen: ${cause.code}`,
-      );
       await sleep(POLL_INTERVAL_MS, options.signal);
     }
   }

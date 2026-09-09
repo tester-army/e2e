@@ -24,9 +24,8 @@ function names(expression: LocatorExpression): string[] {
 }
 
 describe('locator expressions over a device snapshot', () => {
-  it('answers role queries with name filters and skips hidden nodes unless asked', () => {
+  it('answers role queries with name filters and skips hidden nodes', () => {
     expect(names(query('role', 'button'))).toEqual(['Back']);
-    expect(names(query('role', 'button', { states: { hidden: true } }))).toEqual(['Back', 'Hidden']);
     expect(names(query('role', 'button', { name: exact('Back') }))).toEqual(['Back']);
     expect(names(query('role', 'button', { name: { kind: 'regexp', source: '^ba', flags: 'i' } }))).toEqual(['Back']);
     expect(names(query('role', 'switch', { states: { checked: true } }))).toEqual([]);
@@ -43,15 +42,24 @@ describe('locator expressions over a device snapshot', () => {
 
   it('answers label, text, display value, and test id queries', () => {
     expect(names(query('label', 'Search'))).toEqual(['Search']);
-    expect(names(query('text', 'About'))).toEqual(['About', 'About']);
+    expect(names(query('text', 'About'))).toEqual(['About']);
     expect(names({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'abo', exact: false } } })).toEqual([
-      'About',
       'About',
     ]);
     expect(names(query('displayValue', 'wifi'))).toEqual(['Search']);
     expect(names(query('displayValue', 'hunter2'))).toEqual([]);
     expect(names(query('testId', 'ABOUT'))).toEqual(['About']);
     expect(names(query('placeholder', 'anything'))).toEqual([]);
+  });
+
+  it('answers text queries with the innermost match when an ancestor echoes the text', () => {
+    let counter = 0;
+    const { index } = projectSnapshot(SETTINGS_NODES, { testIdAttribute: 'data-testid', mintId: () => `n${++counter}` });
+    const matches = resolveExpression(query('text', 'About'), index, OPTIONS);
+    expect(matches.map((entry) => entry.node.role)).toEqual(['text']);
+    // The echoing cell still answers label and role queries, and filters by its subtree text.
+    expect(names(query('label', 'About'))).toEqual(['About', 'About']);
+    expect(names({ kind: 'filter', source: query('role', 'listitem'), hasText: exact('About') })).toEqual(['About']);
   });
 
   it('scopes, filters, and indexes', () => {

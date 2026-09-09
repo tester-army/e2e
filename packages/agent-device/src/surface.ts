@@ -51,6 +51,10 @@ export type ClientFactory = (session: string) => AgentDeviceClient;
 
 export type AgentDevicePlatform = 'ios' | 'android';
 
+/**
+ * Options of the device engine. Every optional value also accepts `undefined`,
+ * so values read straight from `process.env` need no conditional spread.
+ */
 export interface AgentDeviceOptions {
   /** Platform the target's device runs. */
   readonly platform: AgentDevicePlatform;
@@ -60,35 +64,35 @@ export interface AgentDeviceOptions {
    * surface observes whatever is in the foreground, and `app.restart` and
    * `app.clearState` are not declared.
    */
-  readonly app?: string;
+  readonly app?: string | undefined;
   /**
    * Build to install on the device once per worker, before the first attempt:
    * an iOS `.app` bundle or an Android `.apk`, resolved against the project
    * root (the config's directory). Without `app`, the installed bundle id or
    * package becomes the app opened fresh at the start of every attempt.
    */
-  readonly appPath?: string;
+  readonly appPath?: string | undefined;
   /**
    * Stable identity keying trace cache and session entries; defaults to `app`,
    * else `appPath`. Declare one when the pinned app differs per run (a build
    * path with a version in it) so entries survive the rename.
    */
-  readonly identity?: string;
+  readonly identity?: string | undefined;
   /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
-  readonly environment?: 'test' | 'staging' | 'production';
+  readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /** Simulator or emulator to use, by name or id; agent-device picks a booted one otherwise. */
-  readonly device?: string;
+  readonly device?: string | undefined;
   /**
    * agent-device session name; defaults to `e2e-<target name>`. One run per
    * session at a time: concurrent runs on the same session interleave taps.
    */
-  readonly session?: string;
+  readonly session?: string | undefined;
   /**
    * What an observation captures. `full` (default) includes static text, so
    * judgments can read values; `interactive` keeps only actionable nodes and
    * is cheaper on screens with long lists.
    */
-  readonly snapshot?: 'full' | 'interactive';
+  readonly snapshot?: 'full' | 'interactive' | undefined;
 }
 
 /** How `installApp` puts a build on the device. */

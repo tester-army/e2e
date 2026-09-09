@@ -1,0 +1,101 @@
+---
+title: Environment variables
+description: Every variable the runner and the first-party engines read, and what each one does.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+The runner reads a closed set of variables. This page lists all of them, from
+an inventory of every `process.env` and `env[...]` read in `@e2edev/e2e` and
+`@e2edev/playwright`. A variable not listed here has no effect on a run.
+
+Almost every read goes through an `env` object the runner is handed once, at
+config load, so an embedder can substitute its own (see
+[Embedding](/reference/embedding)). The exceptions are called out below.
+
+Two readings recur. A **value** counts when it is set and not blank. A **flag**
+is on when it is set and not blank, `0`, or `false`; the value is trimmed and
+lowercased first, so `FALSE` is off and `no` and `off` are on.
+
+## Model
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `E2E_MODEL` | value | `provider/model-id` used when `agent.model` is unset and `createAgent` brought no model. Without any of the three, acquiring `agent` is `MODEL_UNAVAILABLE` |
+| `E2E_VISION_MODEL` | value | `provider/model-id` used when `agent.visionModel` is unset; without either the vision model is `agent.model` |
+| `E2E_MODEL_API_KEY` | value | Default gateway credential. `agent.model.apiKeyEnv` names another variable to read in its place |
+| `AI_GATEWAY_API_KEY` | value | Read when the named key variable (`E2E_MODEL_API_KEY` or `apiKeyEnv`) is blank |
+| `E2E_MODEL_ENDPOINT` | value | Gateway endpoint when `agent.model.endpoint` is unset. Must parse as a URL, else `INVALID_CONFIG` |
+
+The order is spelled out under [Resolution order](/reference/config#resolution-order).
+
+## Credentials
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `E2E_USER_<NAME>_USERNAME` | set | Replaces `credentials.<name>.username` |
+| `E2E_USER_<NAME>_PASSWORD` | set | Replaces `credentials.<name>.password` |
+
+`<NAME>` is the credential name uppercased with every character outside
+`A-Z0-9` replaced by `_`. A pair for a name absent from `credentials` is
+ignored. These two are read as set-or-unset, so an empty string is a value.
+
+## Run mode
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `CI` | flag | CI mode: `retries` defaults to 1 and `workers` to 1, `cache` defaults to `read-only`, a focused test is `ONLY_IN_CI`, and `reuseExisting` on an app command is ignored |
+
+## Diagnostics
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `NO_COLOR` | set | Plain CLI output. Colors are also off when stdout is not a TTY |
+| `FORCE_COLOR` | set | Colored CLI output even when piped |
+
+`--debug` and `--ai-trace` are flags, not variables; see
+[CLI](/reference/cli#e2e-run).
+
+## Telemetry
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `E2E_TELEMETRY_DISABLED` | flag | Turns anonymous usage telemetry off. `e2e telemetry disable` saves the same choice in the preferences file |
+| `DO_NOT_TRACK` | flag | Same as `E2E_TELEMETRY_DISABLED` |
+| `E2E_TELEMETRY_DEBUG` | flag | Prints every telemetry event to stderr instead of sending it |
+| `XDG_CONFIG_HOME` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
+| `APPDATA` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
+
+Telemetry also inspects, without reading a value, the presence of the markers
+CI vendors and coding agents set, to attribute a run to a vendor or an agent
+rather than a person. Only the derived name is sent.
+
+| Markers | Reported as |
+| --- | --- |
+| `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `BUILDKITE`, `JENKINS_URL`, `TRAVIS`, `BITBUCKET_BUILD_NUMBER`, `TF_BUILD`, `TEAMCITY_VERSION`, `CODEBUILD_BUILD_ID`, `VERCEL`, `NETLIFY`, `DRONE`, `SEMAPHORE`, `APPVEYOR`, `WOODPECKER` | `ci_name`: `github-actions`, `gitlab`, `circleci`, `buildkite`, `jenkins`, `travis`, `bitbucket`, `azure-pipelines`, `teamcity`, `aws-codebuild`, `vercel`, `netlify`, `drone`, `semaphore`, `appveyor`, `woodpecker`; `unknown` when only `CI` is set |
+| `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `CURSOR_TRACE_ID`, `CODEX_SANDBOX`, `CODEX_THREAD_ID`, `CODEX_CI`, `GEMINI_CLI`, `COPILOT_GITHUB_TOKEN`, `COPILOT_MODEL`, `COPILOT_ALLOW_ALL`, `OPENCODE_CLIENT`, `AUGMENT_AGENT`, `ANTIGRAVITY_AGENT`, `REPL_ID`, `AI_AGENT` | `coding_agent`: `claude-code`, `cursor`, `codex`, `gemini-cli`, `copilot`, `opencode`, `augment`, `antigravity`, `replit`, `other` |
+| `WSL_DISTRO_NAME` | `wsl: true` |
+| `npm_config_user_agent` | `package_manager`: the invoking package manager. `e2e init` reads the same variable to pick the install command |
+
+What is sent and how to read it is on the [Telemetry](/telemetry) page.
+
+## Engines
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache. The engine's `prepare` hook checks for the browser in-process only when the run's environment agrees with the process's own; otherwise it defers to the `playwright install` CLI, which is a no-op when nothing is missing |
+
+## What app processes inherit
+
+An app `command` or `service` does not inherit the runner's environment. The
+child receives `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, and
+`COMSPEC` from `process.env`, plus whatever `command.env` sets. `APP_URL`,
+which the scaffolded config reads for `playwright({ url })`, is read by your
+config module, not by the runner; pass it to a dev server through
+`command.env` if the server needs it too.
+
+<CardGrid>
+  <LinkCard title="Config" href="/reference/config" />
+  <LinkCard title="CLI" href="/reference/cli" />
+  <LinkCard title="Telemetry" href="/telemetry" />
+</CardGrid>

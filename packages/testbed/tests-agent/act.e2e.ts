@@ -25,8 +25,7 @@ test('act signs in with a secret credential', async ({ web, agent, screen }) => 
   // The password is a Secret: the model sees only its name and purpose, and
   // the fill runs through the authorized type_secret tool.
   await agent.act('sign in with the given credentials', {
-    username: 'admin',
-    password: credentials.user('admin').password,
+    params: { username: 'admin', password: credentials.user('admin').password },
   });
   await expect(screen.getByRole('status')).toHaveText('Welcome back, admin!');
 });

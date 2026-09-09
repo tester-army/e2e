@@ -25,6 +25,11 @@ it loads anything else on an older runtime.
 | `-h`, `--help` | Prints the help of the command it follows and exits 0. `e2e --help` opens with the installed version, lists the commands with examples, and links these docs. `e2e run --help` groups the flags into Selection, Execution, and Output, then lists examples and the exit codes. `e2e help run` prints the same text. |
 | `-v`, `--version` | Prints the installed `@e2edev/e2e` version, nothing else, and exits 0. |
 
+```console
+$ npx --no-install e2e --version
+0.7.0
+```
+
 Titles and flags are colored on a terminal and plain when the output is piped
 or `NO_COLOR` is set; `FORCE_COLOR` keeps them. `e2e` without a command prints
 the help on stderr and exits 2. A misspelled command exits 2 with a suggestion
@@ -172,8 +177,37 @@ platform, skipped, or is a setup test.
 | `--ai-trace` | boolean | `false` | Records every model call of the run to `.e2e/ai-trace.json`, an AI SDK devtools database a trace viewer such as [unbox-ai](https://github.com/tester-army/unbox-ai) opens directly |
 
 `--retries` and `--workers` obey the bounds of the config keys they replace
-(`retries` 0-10, `workers` 1-1024). An out-of-range flag fails with
-`INVALID_CONFIG` before anything starts, the same as the config value would.
+(`retries` 0-10, `workers` 1-1024). The parser accepts any nonnegative
+integer and rejects anything else with exit 2; the config resolver then
+applies the bounds, so an out-of-range flag fails with `INVALID_CONFIG`
+before anything starts, the same as the config value would.
+
+`--debug` appends two tables to stderr after the reporter's output. Phase
+timings are summed across the runner and every worker and sorted by total
+time; the agent step table lists every agent step in execution order with its
+per-phase split, model calls, tokens, and the gateway's cost when it reported
+one. A run without agent steps prints the timings alone.
+
+```console
+$ npx --no-install e2e run --debug
+...
+[e2e debug] phase timings (wall 14.2s)
+  phase               count   total     avg     max
+  scheduler               1   11.8s   11.8s   11.8s
+  test.body               6   10.1s   1.7s    3.9s
+  session.launch          6    1.1s   183ms   410ms
+  engine.prepare          1   612ms   612ms   612ms
+  collect                 1   420ms   420ms   420ms
+  config.load             1   118ms   118ms   118ms
+  realm.import            1    96ms    96ms    96ms
+  session.close           6    88ms    15ms    31ms
+  engine.init             1    74ms    74ms    74ms
+
+[e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
+  step                                   total   model  observe  action  calls  tokens in/out     cost
+  act "add a todo named groceries"       3.9s    2.8s    410ms   620ms      3  9412/388       $0.0198
+  assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        $0.0114
+```
 
 ```bash
 npx --no-install e2e run
@@ -190,7 +224,7 @@ npx --no-install e2e run --reporter list,junit
 | Reporter | Writes |
 | --- | --- |
 | `list` | Human-readable progress to the terminal, laid out like vitest's default reporter: a `RUN` banner naming the run, targets, and configured model; one line per setup step worth a line once it is done: every service and app command (`✓ service "postgres" ready 4.10s`, `reused` for an attached process) and any collection or engine provisioning that narrated, such as a first-run browser download (`✓ playwright engine for target "web" prepared 13.20s`); one line per test file and target (`✓ web tests/todos.e2e.ts (6 tests) 4.20s`), with every test listed under a file that failed, had a flaky pass, is the run's only file, or (on a TTY) ran agent steps, and each test's finished agent steps nested under it with their duration and model-call count; a `Failed Tests` section at the end with each error, the failing line, and a code frame; and a padded summary (`Test Files`, `Tests`, `AI`, `Start at`, `Duration` with the time spent starting services and app commands split out as `(startup 41.20s)`, `Report`). `Start at` and `Duration` count from the moment the run starts executing, after collection and engine provisioning, so a first-run browser download shows in the log but not in the duration. On a TTY a live window of fixed height below the log shows the setup step in flight with its elapsed time (`❯ starting service "postgres" 12.30s`, `❯ preparing playwright engine for target "web" 4.10s`), the running files and tests with elapsed times, each test's finished steps, its current step with the model turns (`Thinking`, duration, `↑input ↓output` tokens) and tool calls in the order they happened, an animated indicator for the turn in flight, and the running counters. Without a TTY, finished agent steps print as they complete, prefixed with their test, so CI logs of a long agentic run read without `--debug`. Control characters are stripped and each untrusted field is capped at 8 KiB. |
-| `json` | The report document to stdout. Cannot be combined with `list`. |
+| `json` | The report document to stdout, and nothing else on stdout: diagnostics and `--debug` tables go to stderr, so `e2e run --reporter json \| jq` works. The document is the same one written to `.e2e/report.json`, described by `schema/report-v1.schema.json` in the package. The shape is stable: it changes only together with the `schemaVersion` field (`report-1` today), so a tool that parses it is a supported consumer. Cannot be combined with `list`. |
 | `junit` | The same report as JUnit XML to `.e2e/junit.xml`, beside `report.json`, for CI test summaries. One `<testsuite>` per test file, one `<testcase>` per test-target pair named `title > path [target]`; a test-category error is a `<failure>`, any other category an `<error>`, a skip a `<skipped>` with its reason, and a flaky pass a passed case with a `<system-out>` note. Run-level errors (an unreachable app, say) form a `run` suite of `<error>` cases. Combines with `list` or `json`; alone, the terminal stays silent. |
 
 Every run atomically writes `.e2e/report.json` under the artifact parent

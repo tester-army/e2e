@@ -10,10 +10,12 @@ import type {
   testCaseBrand,
 } from './internal/brands.ts';
 import type { StepExecutor } from './agent/executor.ts';
+import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
+export type { StepCacheInfo } from './run/steps.ts';
 export type {
   ActionTrace,
   RecordedAction,
@@ -141,18 +143,34 @@ export interface VisionOption {
 }
 
 /**
- * Per-call budgets for `act`. Structured output and vision are judgment-tier
- * options: `extract` takes `schema`; `assert`, `waitFor`, and `extract`
- * take `vision`.
+ * One `act` call: the values the instruction refers to and the step's
+ * budgets. Structured output and vision are judgment-tier options:
+ * `extract` takes `schema`; `assert`, `waitFor`, and `extract` take `vision`.
  */
-export interface AgentOptions {
+export interface ActOptions {
+  /**
+   * JSON-safe values the instruction refers to, at most 64 KiB and 32 levels
+   * deep. A `Secret` reaches the model by name only; the runner fills it.
+   */
+  params?: AgentParams;
+  /** Step deadline in milliseconds; defaults to the test timeout. */
   timeout?: number;
+  /** Action budget; defaults to `agent.maxSteps` and can only lower it. */
   maxSteps?: number;
+  /** Model-call budget; defaults to `agent.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
 }
 
-export interface AgentResult {
-  readonly ok: true;
+/** What one passing `act` step did, as the report records it. */
+export interface ActResult {
+  /** The executor's one-line account of the step, or the replay's when the cache finished it. */
+  readonly summary: string;
+  /** How the trace cache took part; absent when caching is off for the step. */
+  readonly cache?: StepCacheInfo;
+  /** Model calls the step spent; 0 when a cached replay finished it. */
+  readonly modelCalls: number;
+  /** Grammar actions and mutating tool calls the step performed. */
+  readonly actions: number;
 }
 
 export type AgentErrorCode =
@@ -180,12 +198,8 @@ export type AgentErrorCode =
   | 'CANCELLED';
 
 export interface Agent {
-  /** Plans and executes a bounded multi-action flow. */
-  act(
-    instruction: string,
-    params?: AgentParams,
-    options?: AgentOptions,
-  ): Promise<AgentResult>;
+  /** Plans and executes a bounded multi-action flow; resolves with what the step did. */
+  act(instruction: string, options?: ActOptions): Promise<ActResult>;
   /** Polls a natural-language condition until true or timed out. */
   waitFor(
     condition: string,
@@ -251,13 +265,17 @@ export interface TextMatchOptions {
   visible?: boolean;
 }
 
+/**
+ * Role query options. A role query never matches a node hidden from the
+ * accessibility tree, on every engine; `visible` (inherited) is the one knob
+ * that narrows the other query kinds the same way.
+ */
 export interface RoleOptions extends TextMatchOptions {
   name?: TextMatch;
   checked?: boolean;
   disabled?: boolean;
   selected?: boolean;
   expanded?: boolean;
-  hidden?: boolean;
 }
 
 export interface ActionOptions {
@@ -269,10 +287,12 @@ export interface SwipeOptions {
   momentum?: Momentum;
 }
 
+/** One option of a select: its label (a bare string too), its `value` attribute, or its zero-based index. */
 export type SelectOption =
   | string
-  | { label: string; index?: never }
-  | { label?: never; index: number };
+  | { label: string; value?: never; index?: never }
+  | { value: string; label?: never; index?: never }
+  | { index: number; label?: never; value?: never };
 
 export interface Screen {
   /** Creates a lazy role query. */
@@ -358,7 +378,7 @@ export interface Locator extends Screen {
 }
 
 export interface App {
-  /** Opens the configured app URL or a path relative to it. */
+  /** Opens the app: the declared URL, a path relative to it, or an absolute URL within the allowed origins. */
   open(path?: string): Promise<void>;
   /** Recreates the execution context while preserving persisted state. */
   restart(): Promise<void>;
@@ -366,8 +386,6 @@ export interface App {
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
-  /** Opens an allowed deep or universal link. */
-  deepLink(url: string): Promise<void>;
   /** Captures a redacted evidence screenshot. */
   screenshot(label?: string): Promise<string>;
 }
@@ -587,7 +605,8 @@ export interface ServiceConfig extends CommandConfig {
  * command that starts it); a target carries no app config of its own.
  */
 export interface Target {
-  name: string;
+  /** Label in reports and for `--target`; defaults to the platform. */
+  name?: string;
   platform: Platform;
   engine?: EngineHandle;
 }

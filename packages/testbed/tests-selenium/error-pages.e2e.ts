@@ -20,7 +20,7 @@ test.describe('error pages', { requires: ['web'] }, () => {
     // `app.open` does not surface the status code, so a hard 404 is
     // indistinguishable from a successful navigation until something is read
     // off the page.
-    await app.deepLink('https://seleniumbase.io/other/');
+    await app.open('https://seleniumbase.io/other/');
     await expect(web).toHaveTitle('SeleniumBase Docs');
     await expect(screen.getByRole('heading', { name: '404 - Not found' })).toBeVisible();
   });
@@ -39,7 +39,7 @@ test.describe('error pages', { requires: ['web'] }, () => {
       await route.continue();
     });
 
-    await app.deepLink('https://seleniumbase.io/other/broken_page');
+    await app.open('https://seleniumbase.io/other/broken_page');
     await expect(web).toHaveTitle('Error Page');
 
     expect(requested.length).toBe(4);
@@ -49,7 +49,7 @@ test.describe('error pages', { requires: ['web'] }, () => {
     await app.open('/');
     const [response] = await Promise.all([
       web.waitForResponse('**/broken_links/bad_image_1.png'),
-      app.deepLink('https://seleniumbase.io/other/broken_page'),
+      app.open('https://seleniumbase.io/other/broken_page'),
     ]);
     expect(response.status).toBe(404);
   });

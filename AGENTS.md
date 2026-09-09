@@ -20,7 +20,10 @@ There is no separate spec. The code is the contract, pinned in three places:
   `tests/integration/agent-policy.test.ts` and the secret-ledger unit tests.
 - Behavior changes update the matching `docs/src/content/docs/**/*.mdx` page in the same
   change, including "not implemented yet" callouts, and `skills/e2e/` when the
-  changed surface is described there.
+  changed surface is described there. `scripts/check-error-codes.ts` (in
+  `pnpm check`) fails when an error code in source is missing from
+  `reference/errors.mdx` or `reference/engine.mdx`, or documented but raised
+  nowhere.
 
 There are no RFCs or design documents in the repo. The why lives in PR
 descriptions and commit bodies; `git log` and `gh pr view` are the archive.
@@ -70,7 +73,7 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios

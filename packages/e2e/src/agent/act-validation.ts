@@ -7,7 +7,7 @@
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { isSecret } from '../locator/screen.ts';
-import type { AgentErrorCode, AgentOptions, AgentParams, JsonValue, Secret } from '../types.ts';
+import type { ActOptions, AgentErrorCode, AgentParams, JsonValue, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE } from './error.ts';
 import { BLOCKABLE_CODES, type StepVerdict } from './executor.ts';
 
@@ -36,12 +36,26 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls']);
+
 /**
- * The `act` type has no `schema` or `vision`; a caller outside the type
- * checker who passes one still fails loudly instead of being silently ignored.
+ * The `act` type has no `schema` or `vision`, and no key outside
+ * `ActOptions`; a caller outside the type checker who passes one still fails
+ * loudly instead of being silently ignored. The pre-0.8 shapes land here too:
+ * `act(instruction, params)` arrives as an options bag of the caller's own
+ * keys, and `act(instruction, params, options)` as a third argument.
  */
-export function rejectUnsupportedActOptions(options: AgentOptions | undefined): void {
+export function validateActOptions(options: ActOptions | undefined, extraArguments: number): void {
+  if (extraArguments > 0) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      'agent.act takes two arguments: act(instruction, { params, timeout, maxSteps, maxModelCalls })',
+    );
+  }
   if (options === undefined) return;
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options must be a plain object');
+  }
   const loose = options as { readonly schema?: unknown; readonly vision?: unknown };
   const unsupported = (name: string): never => {
     throw new ConfigurationError(
@@ -51,6 +65,14 @@ export function rejectUnsupportedActOptions(options: AgentOptions | undefined): 
   };
   if (loose.schema !== undefined) unsupported('structured output (options.schema)');
   if (loose.vision !== undefined) unsupported('vision evidence (options.vision)');
+  const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
+  if (unknown.length > 0) {
+    const listed = unknown.map((key) => JSON.stringify(key)).join(', ');
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `agent.act options has no ${unknown.length === 1 ? 'key' : 'keys'} ${listed}; the values an instruction refers to go under params: act(instruction, { params: { ${unknown.join(', ')} } })`,
+    );
+  }
 }
 
 /**

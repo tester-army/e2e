@@ -30,18 +30,17 @@ step budget, and a model-call budget, then your next line runs.
 
 ```ts
 await agent.act('complete checkout with the test card');
-await agent.act('invite {email} as an editor', { email: 'ada@example.test' });
+await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
 ```
 
-Real values travel through `params`, never from the model's imagination. A
+Real values travel through `options.params`, never from the model's imagination. A
 `Secret` param stays host-side entirely: the model sees only its name, and the
 runner fills the field itself (see [Authentication](/authentication)):
 
 ```ts
 const member = credentials.user('member');
 await agent.act('Sign in', {
-  username: member.username,
-  password: member.password,
+  params: { username: member.username, password: member.password },
 });
 ```
 

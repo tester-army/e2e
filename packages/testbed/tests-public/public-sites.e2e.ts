@@ -20,7 +20,7 @@ test('following the IANA reference link', async ({ app, screen, web }) => {
 });
 
 test('playwright.dev navigation works', async ({ app, screen, web }) => {
-  await app.deepLink('https://playwright.dev');
+  await app.open('https://playwright.dev');
   await expect(web).toHaveTitle(/Playwright/);
   await screen.getByRole('link', { name: 'Get started' }).tap();
   await expect(web).toHaveURL(/docs\/intro/);

@@ -60,6 +60,8 @@ test('actions and state', async ({ app, screen, web }) => {
   await expect(screen.getByLabel('Plan')).toHaveValue('pro');
   await screen.getByLabel('Plan').selectOption({ index: 2 });
   await expect(screen.getByLabel('Plan')).toHaveValue('team');
+  await screen.getByLabel('Plan').selectOption({ value: 'free' });
+  await expect(screen.getByLabel('Plan')).toHaveValue('free');
 
   await screen.getByRole('button', { name: 'Menu' }).tap();
   await expect(screen.getByRole('button', { name: 'Menu' })).toBeExpanded();
@@ -235,9 +237,9 @@ test('screenshots land in the artifact directory', async ({ app }) => {
   if (!shot.includes('screenshots/')) throw new Error('unexpected screenshot path: ' + shot);
 });
 
-test('deep links honor origin policy', async ({ app }) => {
+test('absolute URLs honor origin policy', async ({ app }) => {
   await app.open();
-  await app.deepLink('https://evil.example.com/phish');
+  await app.open('https://evil.example.com/phish');
 });
 `;
 
@@ -311,7 +313,7 @@ describe('web platform integration', () => {
   });
 
   it('denies navigation outside allowed origins', () => {
-    const result = resultByTitle(outcome, 'deep links honor origin policy');
+    const result = resultByTitle(outcome, 'absolute URLs honor origin policy');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('POLICY_DENIED');
   });

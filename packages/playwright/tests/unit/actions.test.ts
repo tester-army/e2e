@@ -142,6 +142,7 @@ describe('dispatchLocatorAction', () => {
     [{ kind: 'selectOption', value: 'Blue' }, 'selectOption', [{ label: 'Blue' }, { timeout: 7 }]],
     [{ kind: 'selectOption', value: { index: 2 } }, 'selectOption', [{ index: 2 }, { timeout: 7 }]],
     [{ kind: 'selectOption', value: { label: 'Red' } }, 'selectOption', [{ label: 'Red' }, { timeout: 7 }]],
+    [{ kind: 'selectOption', value: { value: 'blue' } }, 'selectOption', [{ value: 'blue' }, { timeout: 7 }]],
     [{ kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, 'setInputFiles', [['/tmp/a.txt'], { timeout: 7 }]],
   ] as const satisfies readonly (readonly [LocatorAction, string, readonly unknown[]])[])(
     'dispatches %j to locator.%s',

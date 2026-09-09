@@ -153,6 +153,18 @@ describe('lifecycle', () => {
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
   });
 
+  it('takes undefined for every optional option, so env-driven configs need no conditional spreads', async () => {
+    const h = harness(
+      { app: undefined, appPath: undefined, identity: undefined, environment: undefined, device: undefined, session: undefined, snapshot: undefined },
+      false,
+    );
+    expect(Object.keys(h.engine.app!)).toEqual(['back']);
+    await openAttempt(h);
+    expect(h.sessions).toEqual(['e2e-ios-simulator']);
+    expect(h.fake.methods()).toEqual(['devices.boot']);
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
+  });
+
   it('installs the build once per init and opens what it installed when no app is pinned', async () => {
     const h = harness({ appPath: './build/App.app' }, false);
     h.fake.respond('apps.install', () => ({

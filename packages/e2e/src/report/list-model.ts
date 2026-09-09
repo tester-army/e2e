@@ -23,13 +23,11 @@ export interface CurrentStep {
   /** Only an agent step has model turns to wait on. */
   readonly kind: StepKind;
   /**
-   * Model turns and tool calls in causal order: each turn before the tool
-   * calls it made. The executor reports a turn only after its tools ran, so
-   * the turn is inserted ahead of them.
+   * Model turns and tool calls in stream order. A tool-using executor
+   * reports a turn once its tools ran, so the turn follows them here; its
+   * `startedAt` still carries the moment the request went out.
    */
   readonly events: ShownEvent[];
-  /** Index in `events` where the tool calls of the turn still in flight begin. */
-  turnStart: number;
 }
 
 /** One finished agent step of a pair, as the `end` progress reported it. */

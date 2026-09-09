@@ -13,7 +13,6 @@ import type { TargetSession, Observation } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline } from '../internal/time.ts';
-import { agentTrace, observationTrace } from '../internal/trace.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
@@ -180,11 +179,6 @@ export class Invocation {
       projectPriorSteps(runtime.priorSteps()),
       runtime.config.limits.maxLedgerBytes,
     );
-    agentTrace(
-      () =>
-        `${options.api} ${JSON.stringify(options.label ?? '')} start ` +
-        `(timeout ${options.timeoutMs}ms, budget ${options.maxModelCalls} calls, ledger ${this.ledger.bytes}B)`,
-    );
   }
 
   get session(): TargetSession {
@@ -242,13 +236,6 @@ export class Invocation {
     }
     this.observationRevision = observation.revision;
     if (pixels) this.recordPixels(observation);
-    observationTrace(
-      () =>
-        `${this.options.api} ${observation.revision} (${observation.nodes.size} nodes, ${observation.bytes}B${
-          observation.truncated ? ', truncated' : ''
-        }${describePixels(observation)})`,
-      observation.text,
-    );
     return observation;
   }
 
@@ -389,7 +376,6 @@ export class Invocation {
           !this.deadline.expired()
         ) {
           this.recordSchemaRejection(request.schemaName);
-          agentTrace(() => `${this.options.api} repair round: ${cause.explanation}`);
           repair = {
             issue: cause.explanation,
             rawText: cause.rawText,
@@ -495,16 +481,6 @@ export class Invocation {
   }
 }
 
-/** Trace fragment describing what pixel evidence an observation carried. */
-function describePixels(observation: AgentObservation): string {
-  if (observation.pixels !== undefined) {
-    const { width, height, data, maskedRegionCount } = observation.pixels;
-    return `, pixels ${width}x${height} ${data.byteLength}B, ${maskedRegionCount} masked`;
-  }
-  return observation.pixelsWithheld === undefined
-    ? ''
-    : `, pixels withheld (${observation.pixelsWithheld})`;
-}
 
 /** Image parts for one request, derived from the observation it quotes. */
 function imagesFor(observation: AgentObservation | undefined): readonly ModelImage[] | undefined {

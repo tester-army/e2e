@@ -93,7 +93,6 @@ Fixtures are lazy; destructure them in the callback.
 | `back()` | One history step back. |
 | `restart()` | Recreates the context and keeps persisted state, including a restored session. |
 | `clearState()` | Clears cookies and storage, then relaunches. Not inside a serial group. |
-| `deepLink(url)` | Opens an allowed deep or universal link. |
 | `screenshot(label?)` | Saves a redacted screenshot as an artifact and returns its path. |
 
 ## Locators
@@ -104,7 +103,7 @@ subtree.
 
 | Query | Matches |
 | --- | --- |
-| `getByRole(role, { name?, exact?, checked?, disabled?, selected?, expanded?, hidden?, visible? })` | Semantic role, optionally by accessible name and state. First choice. |
+| `getByRole(role, { name?, exact?, checked?, disabled?, selected?, expanded?, visible? })` | Semantic role, optionally by accessible name and state. First choice. |
 | `getByLabel(text, { exact?, visible? })` | Form controls by label. |
 | `getByPlaceholder(text)` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
@@ -118,7 +117,9 @@ Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `contentinfo`, `complementary`, `region`. The union is closed; anything else
 is a type error.
 
-Text matching is exact by default after whitespace normalization.
+Text matching is exact by default after whitespace normalization, and
+`getByText` returns the innermost match: a container that echoes its child's
+text (an iOS Text host view around its StaticText) does not count twice.
 `exact: false` is a case-insensitive substring match; a `RegExp` matches as
 written.
 
@@ -148,7 +149,7 @@ Each action resolves one node, waits for it to be actionable within
 
 `tap()` (alias `click()`), `doubleTap()`, `longPress({ durationMs? })`,
 `fill(value | Secret)`, `clear()`, `press(key)`, `check()`, `uncheck()`,
-`selectOption(label | { label } | { index })`, `focus()`, `hover()`,
+`selectOption(label | { label } | { value } | { index })`, `focus()`, `hover()`,
 `setInputFiles(paths)` (relative to the project root), `dragTo(locator)`,
 `scrollIntoView()`, `swipe({ direction, momentum? })`.
 
