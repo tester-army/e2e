@@ -20,7 +20,7 @@ export default {
   timeout: 300_000,
   actionTimeout: 90_000,
   agent: {
-    model: process.env.E2E_MODEL ?? 'google/gemini-3-flash',
+    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
     context: [
       'This is the e2e web benchmark: a list of self-contained scenarios, each',
       'served at /e/<slug>. A step plays out inside the scenario page it starts',
