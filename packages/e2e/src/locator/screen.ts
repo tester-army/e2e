@@ -4,6 +4,7 @@ import nodePath from 'node:path';
 import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { normalizeText } from '../internal/text.ts';
 import type {
@@ -214,6 +215,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   longPress(options?: LongPressOptions): Promise<void> {
+    rejectUnknownOptions('longPress', options, ['timeout', 'duration']);
     const durationMs = validateLongPress(options?.duration);
     return this.action('locator.longPress', () =>
       this.context.engine.perform(this.expression, { kind: 'longPress', durationMs }, options?.timeout),

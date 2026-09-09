@@ -12,21 +12,12 @@ the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 ```ts
 export interface Agent {
   act(instruction: string, options?: ActOptions): Promise<ActResult>;
-  waitFor(
-    condition: string,
-    options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
-  ): Promise<void>;
+  waitFor(condition: string, options?: WaitForOptions): Promise<void>;
   extract<Schema extends StandardSchemaV1>(
     instruction: string,
-    options: VisionOption & { schema: Schema; timeout?: number; maxModelCalls?: number },
+    options: ExtractOptions<Schema>,
   ): Promise<StandardSchemaV1.InferOutput<Schema>>;
-  assert(
-    assertion: string,
-    options?: VisionOption & {
-      timeout?: number;
-      screenshot?: boolean;
-    },
-  ): Promise<void>;
+  assert(assertion: string, options?: AssertOptions): Promise<void>;
 }
 ```
 
@@ -244,7 +235,8 @@ judgment.
 
 Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on budget
 exhaustion, each carrying the last judgment, and `INVALID_ARGUMENT` for an
-out-of-range option.
+out-of-range option or one `waitFor` does not take (`intervalMs` fails
+naming `interval`).
 
 ```ts
 await agent.waitFor('the upload progress reports completion', { interval: 500 });

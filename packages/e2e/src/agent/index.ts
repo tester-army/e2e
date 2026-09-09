@@ -11,6 +11,7 @@
 
 import { isVisionMode } from '../config/agent.ts';
 import { TestError } from '../internal/errors.ts';
+import { rejectUnknownOptions } from '../internal/options.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
 import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
@@ -44,6 +45,10 @@ const CHANGE_POLL_MS = 500;
 const EXTRACT_MODEL_CALLS = 2;
 /** One judgment plus one repair round for a response that missed the grammar. */
 const ASSERT_MODEL_CALLS = 2;
+
+const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision'] as const;
+const EXTRACT_KEYS = ['schema', 'timeout', 'vision'] as const;
+const ASSERT_KEYS = ['timeout', 'screenshot', 'vision'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -106,6 +111,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     act: (instruction, options, ...legacy: readonly unknown[]) =>
       runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
+      rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
       const intervalMs = validateInterval(options?.interval);
       return step(
         {
@@ -140,7 +146,8 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     },
 
     extract(instruction, options) {
-      requireStandardSchema(options.schema);
+      rejectUnknownOptions('agent.extract', options, EXTRACT_KEYS);
+      requireStandardSchema(options?.schema);
       const schema = options.schema;
       return step(
         {
@@ -190,6 +197,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     },
 
     assert(assertion, options) {
+      rejectUnknownOptions('agent.assert', options, ASSERT_KEYS);
       // A custom executor judges assertions through the socket: swapping
       // brains swaps all the thinking. The built-in path keeps the optimized
       // judgment tier below: one call, plus one repair round for a response

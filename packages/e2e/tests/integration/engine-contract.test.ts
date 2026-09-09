@@ -50,7 +50,7 @@ const WAIT_TEST = `import { test } from '@e2edev/e2e';
 
 test('waits for a condition', async ({ app, agent }) => {
   await app.open('/');
-  await agent.waitFor('the Submit button is enabled', { intervalMs: 100, timeout: 1500 });
+  await agent.waitFor('the Submit button is enabled', { interval: 100, timeout: 1500 });
 });
 `;
 
