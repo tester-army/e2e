@@ -434,12 +434,13 @@ const PAGES: Record<string, string> = {
   </script>
 </body>
 </html>`,
-  // A list that remounts and rotates its rows on the first pointer move after
-  // every render, the way a live-updating list re-renders under the cursor.
-  // Every tap on a handle from the last observation therefore lands on a
-  // detached node exactly once; the control itself, "Tap me", stays on screen
-  // under a new element. Re-armed by each successful tap so all three taps
-  // exercise the relocation.
+  // A list that remounts and rotates its rows the first time the pointer enters
+  // them after every render, the way a live-updating list re-renders under
+  // the cursor. Every tap on a handle from the last observation therefore
+  // lands on a detached node once; the control itself, "Tap me", stays on
+  // screen under a new element. Re-armed by each successful tap so all three
+  // taps exercise the relocation. The trigger is the rows, not the document,
+  // so a stray pointer move at the origin cannot disarm it before the tap.
   '/churn': `<!doctype html>
 <html>
 <head><title>Churn</title></head>
@@ -471,7 +472,7 @@ const PAGES: Record<string, string> = {
         rows.append(li);
       }
     }
-    document.addEventListener('mousemove', () => {
+    document.getElementById('rows').addEventListener('mouseover', () => {
       if (!armed) return;
       armed = false;
       rotation += 1;

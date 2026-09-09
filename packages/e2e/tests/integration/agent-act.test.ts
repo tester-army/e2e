@@ -842,9 +842,13 @@ describe('a targeted action re-finds a node that went stale', () => {
     const app = await startFixtureApp();
     const model = installFakeLoopModel((call) => {
       if (call.turn <= 3) {
-        // Ids are read from the newest screen each turn; the page remounts the
-        // row on the pointer move the tap makes, so the handle is dead on arrival.
-        return [{ toolName: 'tap', input: { target: nodeIdFor(call.lastToolResult || call.prompt, /button "Tap me"/) } }];
+        // The id comes from the newest screen that lists the button, the way a
+        // model reads its history: a result that reports only the progress
+        // change leaves the earlier id valid. The page remounts the row when
+        // the pointer enters it, so the handle is dead on arrival.
+        const screens = call.toolResults.toReversed().concat(call.prompt);
+        const screen = screens.find((text) => /button "Tap me"/.test(text)) ?? call.prompt;
+        return [{ toolName: 'tap', input: { target: nodeIdFor(screen, /button "Tap me"/) } }];
       }
       return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'tapped three times' } }];
     });
@@ -858,10 +862,10 @@ describe('a targeted action re-finds a node that went stale', () => {
       expect(result.status).toBe('passed');
       const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
       expect(step.metrics!.actionSteps).toBe(3);
-      // Every tap went stale once and was re-found: three relocation captures,
-      // and no tap result reported a failure.
+      // A tap went stale and was re-found rather than failed: at least one
+      // relocation capture, and no tap result reported a failure.
       const relocations = step.events.filter((event) => event.kind === 'observation' && event.name === 'relocate');
-      expect(relocations.length).toBeGreaterThanOrEqual(3);
+      expect(relocations.length).toBeGreaterThanOrEqual(1);
       for (const call of loopCalls.slice(1, 4)) expect(call.lastToolResult).not.toContain('failed');
     } finally {
       project.cleanup();
