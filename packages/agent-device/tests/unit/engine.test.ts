@@ -30,6 +30,13 @@ function cleanup() {
   return { signal: new AbortController().signal, timeoutMs: 5_000 };
 }
 
+/** The pool variable `prepare` wrote for a target, found by its readable prefix (the suffix is a digest of the name). */
+function poolVariableIn(env: NodeJS.ProcessEnv, readable: string): string {
+  const key = Object.keys(env).find((candidate) => new RegExp(`^E2E_AGENT_DEVICE_POOL_${readable}_[0-9A-F]{8}$`).test(candidate));
+  if (key === undefined) throw new Error(`no pool variable for ${readable} in ${Object.keys(env).join(', ')}`);
+  return key;
+}
+
 async function boot(engine: EngineHandle, targetName = 'ios-simulator', workerSlot = 0): Promise<void> {
   await engine.init!({
     runId: 'run-1',
@@ -265,17 +272,18 @@ describe('lifecycle', () => {
     expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-0', 'e2e-ios-1']);
     expect(lines[0]).toMatch(/2 booted ios device\(s\); driving 2/);
     // The workers read the pool from the run's environment, never from a second inventory.
-    expect(env['E2E_AGENT_DEVICE_POOL_IOS']).toBe(
+    const variable = poolVariableIn(env, 'IOS');
+    expect(env[variable]).toBe(
       JSON.stringify(['2BBF3F07-AF66-4F95-82AB-BF442506FC89', '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3']),
     );
     const worker = harness({ device: undefined });
-    const previous = process.env['E2E_AGENT_DEVICE_POOL_IOS'];
-    process.env['E2E_AGENT_DEVICE_POOL_IOS'] = env['E2E_AGENT_DEVICE_POOL_IOS'];
+    const previous = process.env[variable];
+    process.env[variable] = env[variable];
     try {
       await boot(worker.engine, 'ios', 1);
     } finally {
-      if (previous === undefined) delete process.env['E2E_AGENT_DEVICE_POOL_IOS'];
-      else process.env['E2E_AGENT_DEVICE_POOL_IOS'] = previous;
+      if (previous === undefined) delete process.env[variable];
+      else process.env[variable] = previous;
     }
     expect(worker.fake.methods()).toEqual(['devices.boot']);
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', udid: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' });
@@ -292,14 +300,22 @@ describe('lifecycle', () => {
     const info = { runId: 'run-1', targetName: 'ios', slots: 1, env, signal: new AbortController().signal, log: () => undefined };
     expect(await h.engine.prepare!(info)).toEqual({ workers: 1 });
     expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([{ platform: 'ios', device: 'A' }]);
-    expect(env['E2E_AGENT_DEVICE_POOL_IOS']).toBe(JSON.stringify(['A']));
+    expect(env[poolVariableIn(env, 'IOS')]).toBe(JSON.stringify(['A']));
+    // The same handle prepared again, for another target, discovers afresh and writes that target's own variable.
+    h.fake.respond('devices.list', () => [{ platform: 'ios', id: 'C', name: 'C', booted: true }]);
+    await h.engine.prepare!({ ...info, targetName: 'ios.a', env });
+    expect(h.fake.methods().filter((method) => method === 'devices.list')).toHaveLength(2);
+    expect(env[poolVariableIn(env, 'IOS_A')]).toBe(JSON.stringify(['C']));
+    // Names that sanitize alike keep distinct variables.
+    await h.engine.prepare!({ ...info, targetName: 'ios-a', env });
+    expect(Object.keys(env).filter((key) => key.startsWith('E2E_AGENT_DEVICE_POOL_IOS_A_'))).toHaveLength(2);
 
     const cold = harness({ device: undefined });
     cold.fake.respond('devices.list', () => []);
     const coldEnv: NodeJS.ProcessEnv = {};
     expect(await cold.engine.prepare!({ ...info, env: coldEnv })).toEqual({ workers: 1 });
     expect(cold.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
-    expect(coldEnv['E2E_AGENT_DEVICE_POOL_IOS']).toBe('[]');
+    expect(coldEnv[poolVariableIn(coldEnv, 'IOS')]).toBe('[]');
   });
 
   it('selects a named device by name and a UDID by udid', async () => {

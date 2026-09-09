@@ -76,8 +76,8 @@ pool and let `workers` be at least its size, or pass no `device` at all: then
 `prepare` lists the booted devices of the platform and drives as many as the
 run has slots, so four booted simulators run four files at a time with no
 config. The discovered pool reaches the workers through the run's
-environment (`E2E_AGENT_DEVICE_POOL_<TARGET>`), so each slot resumes the
-device `prepare` booted for it.
+environment (`E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>`), so each slot resumes
+the device `prepare` booted for it.
 
 ```ts
 const iphones = agentDevice({

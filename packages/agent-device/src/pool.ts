@@ -9,6 +9,7 @@
  * environment; the worker that owns a slot then resumes its session in `init`.
  */
 
+import { createHash } from 'node:crypto';
 import { ConfigurationError, EngineError, obj, type EnginePrepareInfo, type EnginePrepareResult } from '@e2edev/e2e/engine';
 import { message, runCommand } from './errors.ts';
 import type { AgentDeviceOptions, AgentDevicePlatform, ClientFactory } from './options.ts';
@@ -29,9 +30,15 @@ export function deviceSelection(
   return obj({ platform, device });
 }
 
-/** The environment variable a discovered pool travels to the workers in, one per target. */
-export function poolVariable(targetName: string): string {
-  return `E2E_AGENT_DEVICE_POOL_${targetName.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`;
+/**
+ * The environment variable a discovered pool travels to the workers in, one
+ * per target: the name made environment-safe for reading, plus a digest of
+ * the exact name so `ios-a` and `ios.a` never share a key.
+ */
+function poolVariable(targetName: string): string {
+  const readable = targetName.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+  const digest = createHash('sha256').update(targetName).digest('hex').slice(0, 8).toUpperCase();
+  return `E2E_AGENT_DEVICE_POOL_${readable}_${digest}`;
 }
 
 /** The configured pool, or `undefined` when the devices are discovered at run time. */
@@ -48,14 +55,16 @@ function configured(device: AgentDeviceOptions['device']): readonly string[] | u
 }
 
 export class DevicePool {
-  /** The devices, once known: configured up front, else discovered in `prepare` or resolved in `init`. */
-  private devices: readonly string[] | undefined;
+  /** The devices named in the config, or `undefined` when they are discovered per run and target. */
+  private readonly configured: readonly string[] | undefined;
+  /** What `prepare` discovered in this process, per target: a handle may serve several targets and runs. */
+  private readonly discovered = new Map<string, readonly string[]>();
 
   constructor(
     private readonly options: AgentDeviceOptions,
     private readonly createClient: ClientFactory,
   ) {
-    this.devices = configured(options.device);
+    this.configured = configured(options.device);
   }
 
   /**
@@ -64,7 +73,7 @@ export class DevicePool {
    * reports it, which lets the run plan with its own cap meanwhile.
    */
   get size(): number | undefined {
-    return this.devices?.length;
+    return this.configured?.length;
   }
 
   /** The agent-device session a worker slot drives its device under: the `session` option or `e2e-<target>`, then `-<slot>`. */
@@ -74,17 +83,16 @@ export class DevicePool {
 
   /**
    * The device of a worker slot, for a worker's `init`. A configured pool
-   * answers directly; a discovered one reads what `prepare` left in the
-   * environment. With neither (a run without `prepare`), the choice stays
-   * with agent-device, which picks a booted device. A slot beyond the pool is
-   * a broken invariant: the runner caps the target at the workers this engine
-   * declared or reported.
+   * answers directly; a discovered one is what this process's `prepare`
+   * found for the target (an in-process run), else what `prepare` left in
+   * the environment (a child worker). With neither (a run without
+   * `prepare`), the choice stays with agent-device, which picks a booted
+   * device. A slot beyond the pool is a broken invariant: the runner caps the
+   * target at the workers this engine declared or reported.
    */
   device(targetName: string, slot: number): string | undefined {
-    const devices = this.devices ?? this.fromEnvironment(process.env, targetName);
-    if (devices === undefined) return undefined;
-    this.devices = devices;
-    if (devices.length === 0) return undefined;
+    const devices = this.configured ?? this.discovered.get(targetName) ?? this.fromEnvironment(process.env, targetName);
+    if (devices === undefined || devices.length === 0) return undefined;
     if (slot >= devices.length) {
       throw new EngineError(
         'ENGINE_FAILURE',
@@ -111,8 +119,7 @@ export class DevicePool {
    * boots whatever agent-device picks.
    */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult> {
-    const devices = this.devices ?? (await this.discoverForRun(info));
-    this.devices = devices;
+    const devices = this.configured ?? (await this.discoverForRun(info));
     const slots = Math.min(info.slots, Math.max(1, devices.length));
     const app = this.options.appPath === undefined ? this.options.app : undefined;
     for (let slot = 0; slot < slots; slot += 1) {
@@ -145,6 +152,7 @@ export class DevicePool {
       info.log(`${booted.length} booted ${this.options.platform} device(s); driving ${devices.length}: ${names}`);
     }
     info.env[poolVariable(info.targetName)] = JSON.stringify(devices);
+    this.discovered.set(info.targetName, devices);
     return devices;
   }
 
