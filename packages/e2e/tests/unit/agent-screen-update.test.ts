@@ -118,7 +118,24 @@ describe('ScreenPresenter', () => {
     presenter.initial(screen('b1', HOME));
     const next = [...HOME, ' #n8 button "More"'];
     const text = presenter.update(screen('b2', next, { truncated: true }));
-    expect(text).toContain('[the new screen was truncated at the observation byte limit]');
+    expect(text).toContain('1 added. The screen was truncated at the observation byte limit');
+  });
+
+  it('reports no removals against a truncated screen, whose missing nodes were cut, not gone', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    // The walk stopped after four nodes: the link and the textbox may well still exist.
+    const text = presenter.update(screen('b2', HOME.slice(0, 4), { truncated: true }));
+    expect(text).not.toMatch(/^removed /m);
+    expect(text).not.toContain('Screen unchanged');
+    expect(text).toContain('no listed node changed. The screen was truncated at the observation byte limit');
+  });
+
+  it('does not call a node changed when only its depth moved', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME));
+    const next = HOME.map((line) => (line.includes('#n4 ') ? ` ${line}` : line));
+    expect(presenter.update(screen('b2', next))).toContain('Screen unchanged since revision b1');
   });
 });
 
@@ -156,12 +173,12 @@ describe('compactScreenHistory', () => {
     content: 'Execute this test step: do the thing\n\nCurrent screen (revision b0, 2 nodes):\n#n1 document\n #n2 heading "Home"',
   };
 
-  it('leaves the transcript alone while at most two full screens are present', () => {
-    const messages = [opening, changesResult('c1'), fullScreenResult('c2', 'b2'), changesResult('c3')];
+  it('leaves the transcript alone while only one full screen is present', () => {
+    const messages = [opening, changesResult('c1'), changesResult('c3')];
     expect(compactScreenHistory(messages)).toBe(messages);
   });
 
-  it('elides the oldest full screen once a third arrives, and never a change update', () => {
+  it('elides the older full screen once a newer one arrives, and never a change update', () => {
     const messages = [
       opening,
       changesResult('c1'),
@@ -174,7 +191,13 @@ describe('compactScreenHistory', () => {
     expect(compacted[0]!.content).toBe(
       'Execute this test step: do the thing\n[earlier screen elided; the newest "Current screen" plus the changes after it describe the screen]',
     );
-    // Both later full screens and every change update survive verbatim.
-    expect(compacted.slice(1)).toEqual(messages.slice(1));
+    // The middle full screen is elided down to its lead; the newest full
+    // screen and every change update survive verbatim.
+    const middle = compacted[2]!.content as Extract<ModelMessage, { role: 'tool' }>['content'];
+    expect(middle[0]).toMatchObject({
+      output: { type: 'text', value: expect.stringMatching(/^Tapped #n3\.\n\nThe screen changed substantially since revision b0\.\n\[earlier screen elided/) },
+    });
+    expect(compacted[1]).toEqual(messages[1]);
+    expect(compacted.slice(3)).toEqual(messages.slice(3));
   });
 });

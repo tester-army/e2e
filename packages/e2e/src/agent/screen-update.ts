@@ -17,8 +17,12 @@
 import type { ModelMessage } from 'ai';
 import type { ExecutorObservation } from './executor.ts';
 
-/** How many of the newest full screens stay verbatim in the transcript. */
-const FULL_SCREEN_PRESERVE_COUNT = 2;
+/**
+ * How many of the newest full screens stay verbatim in the transcript. One:
+ * a whole new screen means the page changed mostly, and the screen it
+ * replaced is dead weight on every later turn. Change updates never elide.
+ */
+const FULL_SCREEN_PRESERVE_COUNT = 1;
 
 /** A diff past this many lines goes out as the full screen instead. */
 const MAX_DIFF_LINES = 60;
@@ -32,10 +36,12 @@ const FULL_SCREEN_PATTERN = /Current screen \(revision /;
 /** The screen as the model last received it, indexed for comparison. */
 interface ShownScreen {
   readonly revision: string;
-  /** Node lines in document order; the truncation marker is not a node. */
+  /** Node lines in document order, without indentation or focus; the truncation marker is not a node. */
   readonly order: readonly string[];
   readonly byId: ReadonlyMap<string, string>;
   readonly nodes: number;
+  /** The walk stopped at the byte limit: nodes beyond it exist but are not listed. */
+  readonly truncated: boolean;
 }
 
 /** How a screen update reads: the lead line names the action it follows. */
@@ -72,16 +78,19 @@ export class ScreenPresenter {
     if (previous === undefined) return `${lead}${renderFull(observation)}`;
     const diff = diffScreens(previous, next);
     const changes = diff.length;
-    if (changes === 0) {
+    // A truncated screen is never called unchanged: what it left out is unknown.
+    if (changes === 0 && !observation.truncated) {
       return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true)}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
       return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}`;
     }
+    const assurance = observation.truncated
+      ? 'The screen was truncated at the observation byte limit: nodes past it are not listed and none is reported removed; every listed node keeps the id you have.'
+      : 'Every node not listed as removed is still on screen under the id you have.';
     return [
-      `${lead}Screen changes since revision ${previous.revision} (now revision ${observation.revision}${describeLocation(observation)}, ${String(next.nodes)} nodes): ${describeCounts(diff)}. Every node not listed as removed is still on screen under the id you have.`,
+      `${lead}Screen changes since revision ${previous.revision} (now revision ${observation.revision}${describeLocation(observation)}, ${String(next.nodes)} nodes): ${describeCounts(diff)}. ${assurance}`,
       ...diff,
-      ...(observation.truncated ? ['[the new screen was truncated at the observation byte limit]'] : []),
     ].join('\n');
   }
 }
@@ -89,11 +98,12 @@ export class ScreenPresenter {
 /** `2 added, 1 changed, 5 removed`, omitting the kinds that did not happen. */
 function describeCounts(diff: readonly string[]): string {
   const count = (kind: string): number => diff.filter((line) => line.startsWith(`${kind} `)).length;
-  return (['added', 'changed', 'removed'] as const)
+  const counts = (['added', 'changed', 'removed'] as const)
     .map((kind) => [count(kind), kind] as const)
     .filter(([n]) => n > 0)
     .map(([n, kind]) => `${String(n)} ${kind}`)
     .join(', ');
+  return counts === '' ? 'no listed node changed' : counts;
 }
 
 /** One full screen, headed so the elision can find it later. */
@@ -137,11 +147,13 @@ function indexScreen(observation: ExecutorObservation): ShownScreen {
   for (const raw of observation.text.split('\n')) {
     const id = lineId(raw);
     if (id === undefined) continue;
-    const line = withoutFocus(raw);
+    // Without indentation: a node that only moved to another depth reads the
+    // same, and reporting it as changed would show identical text twice.
+    const line = withoutFocus(raw).trimStart();
     order.push(line);
     byId.set(id, line);
   }
-  return { revision: observation.revision, order, byId, nodes: byId.size };
+  return { revision: observation.revision, order, byId, nodes: byId.size, truncated: observation.truncated };
 }
 
 /**
@@ -159,14 +171,17 @@ function diffScreens(previous: ShownScreen, next: ShownScreen): string[] {
     if (id === undefined) continue;
     const before = previous.byId.get(id);
     if (before === undefined) {
-      lines.push(`added ${line.trimStart()}`);
+      lines.push(`added ${line}`);
     } else if (before !== line) {
-      lines.push(`changed ${line.trimStart()} (was: ${before.trimStart()})`);
+      lines.push(`changed ${line} (was: ${before})`);
     }
   }
+  // A truncated screen stopped listing nodes at the byte limit; the ones it
+  // left out may well still exist, so nothing is called removed on its word.
+  if (next.truncated) return lines;
   for (const line of previous.order) {
     const id = lineId(line);
-    if (id !== undefined && !next.byId.has(id)) lines.push(`removed ${line.trimStart()}`);
+    if (id !== undefined && !next.byId.has(id)) lines.push(`removed ${line}`);
   }
   return lines;
 }
