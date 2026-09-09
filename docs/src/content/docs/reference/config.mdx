@@ -55,6 +55,7 @@ the module type of `.ts` test files or helpers.
 
 | Key | Type | Default | Valid range |
 | --- | --- | --- | --- |
+| `specVersion` | `'0.1'` | `'0.1'` | the one value this runner implements; anything else is `INVALID_CONFIG` |
 | `projectId` | `string` | nearest `package.json` name, else a generated ID | 1-256 characters |
 | `targets` | `readonly Target[]` | required | non-empty; each engine declares [the app under test](#the-app-under-test) |
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
@@ -68,7 +69,7 @@ the module type of `.ts` test files or helpers.
 | `artifacts` | kinds array or `{ kinds?, store? }` | `['screenshot', 'trace']` | those two kinds; `store` is an [`ArtifactStore`](#artifacts) |
 | `reporters` | `readonly ('list' \| 'json' \| 'junit')[]` | `['list']` | those three IDs; `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml` |
 | `screen` | object | see [screen](#screen) | - |
-| `agent` | object | see [agent](#agent) | - |
+| `agent` | object or `StepExecutor` | see [agent](#agent) | - |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | - |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
@@ -353,7 +354,8 @@ screen?: {
 ## agent
 
 ```ts
-agent?: {
+agent?: StepExecutor | {
+  executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
   visionModel?: string | ModelConfig | ModelInstance;
   maxSteps?: number;
@@ -365,8 +367,14 @@ agent?: {
 };
 ```
 
+The block takes three shapes: an options object, an options object with an
+`executor`, or the executor itself (`agent: createAgent({ model })`). The bare
+form is shorthand for `{ executor }`; every other key then takes its default.
+An unknown key is `INVALID_CONFIG` with the nearest valid name.
+
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
+| `executor` | `StepExecutor` | the built-in AI SDK executor | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Anything else is `INVALID_CONFIG`. Like a model instance it never crosses a process boundary; workers rebuild it from the config module. See [Your own agent](/agents). |
 | `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
 | `visionModel` | `string \| ModelConfig \| ModelInstance` | `agent.model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
@@ -569,8 +577,9 @@ enforcement site for it, so a configured limit is never a silent no-op.
 
 ## Environment variables
 
-The runner reads a closed set. Diagnostics are `e2e run --debug`,
-`e2e run --ai-trace`, and the `E2E_DEBUG` stream.
+The runner reads a closed set, listed with every other variable it consults on
+the [Environment variables](/reference/environment) page. The ones that change
+what a config resolves to:
 
 | Variable | Effect |
 | --- | --- |
@@ -578,12 +587,10 @@ The runner reads a closed set. Diagnostics are `e2e run --debug`,
 | `E2E_VISION_MODEL` | `provider/model-id` fallback when `agent.visionModel` is unset |
 | `E2E_MODEL_API_KEY` | Default provider credential |
 | `AI_GATEWAY_API_KEY` | Gateway credential, used when the named key variable holds no value |
+| `E2E_MODEL_ENDPOINT` | Gateway endpoint when `agent.model.endpoint` is unset |
 | `E2E_USER_<NAME>_USERNAME` | Overrides `credentials.<name>.username` |
 | `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
 | `CI` | Switches CI defaults and rejects focused tests |
-| `E2E_DEBUG` | Comma-separated flags. `agent` streams every agent invocation phase, model selection, and locate outcome to stderr as it happens; `observations` also dumps every observation the model sees; `all` is both. A debugging aid, not part of the report |
-| `E2E_TELEMETRY_DISABLED` | Turns anonymous usage telemetry off, as does `DO_NOT_TRACK`; `e2e telemetry disable` saves the same choice. See [Telemetry](/telemetry) |
-| `E2E_TELEMETRY_DEBUG` | Prints every telemetry event to stderr instead of sending it |
 
 ### Resolution order
 
@@ -593,6 +600,7 @@ The runner reads a closed set. Diagnostics are `e2e run --debug`,
 | Model | the model passed to `createAgent({ model })`, then `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls |
 | Vision model | `agent.visionModel`, then `E2E_VISION_MODEL`, then `agent.model` |
 | Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
+| Model endpoint | `agent.model.endpoint`, then `E2E_MODEL_ENDPOINT`, then the gateway default |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
 "First non-empty" ignores values that are undefined or whitespace only. Naming

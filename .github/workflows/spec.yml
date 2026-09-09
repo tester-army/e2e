@@ -33,6 +33,8 @@ jobs:
         run: pnpm check:dead-code
       - name: Typecheck packages
         run: pnpm typecheck
+      - name: Error code reference
+        run: pnpm docs:check-errors
       - name: Install browsers
         run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
       - name: Testbed
