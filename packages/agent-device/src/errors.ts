@@ -14,7 +14,7 @@
  */
 
 import { normalizeAgentDeviceError } from 'agent-device';
-import { EngineError, ConfigurationError, InfrastructureError, TestError } from '@e2edev/e2e/engine';
+import { EngineError, ConfigurationError, InfrastructureError, TestError, raceAbort } from '@e2edev/e2e/engine';
 import { cancelled } from './support.ts';
 
 /**
@@ -55,6 +55,18 @@ export function translateError(cause: unknown, operation: string): Error {
   }
   if (TIMEOUT_PATTERN.test(normalized.message)) return new EngineError('OPERATION_TIMEOUT', text, options);
   return new EngineError('ENGINE_FAILURE', text, options);
+}
+
+/**
+ * Runs one agent-device command under an abort signal and translates its
+ * failure onto the engine taxonomy: the one boundary every command crosses.
+ */
+export async function runCommand<T>(label: string, work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  try {
+    return await raceAbort(work, signal, label);
+  } catch (cause) {
+    throw translateError(cause, label);
+  }
 }
 
 /**

@@ -52,8 +52,8 @@ Options:
 | `platform` | `'ios'` or `'android'`. |
 | `app` | Bundle id, package, or display name opened fresh at the start of every attempt. Also unlocks `app.restart()` and `app.clearState()`. |
 | `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the project root. Without `app`, the installed bundle id or package is the app opened per attempt. |
-| `device` | Simulator or emulator name or id; a booted one is picked otherwise. |
-| `session` | agent-device session name; defaults to `e2e-<target name>`. One run per session at a time. |
+| `device` | Simulator or emulator name or id; a booted one is picked otherwise. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. |
+| `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 
 Every optional value also accepts `undefined`, so a config passes

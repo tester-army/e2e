@@ -1,0 +1,65 @@
+/**
+ * What the device engine is given: its options, and the agent-device client
+ * it drives them through. Shared by the surface (one session per worker) and
+ * the pool (the target's devices, one per worker slot).
+ */
+
+import type { createAgentDeviceClient } from 'agent-device';
+
+export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
+
+/** Mints the agent-device client for one session; the seam unit tests script. */
+export type ClientFactory = (session: string) => AgentDeviceClient;
+
+export type AgentDevicePlatform = 'ios' | 'android';
+
+/**
+ * Options of the device engine. Every optional value also accepts `undefined`,
+ * so values read straight from `process.env` need no conditional spread.
+ */
+export interface AgentDeviceOptions {
+  /** Platform the target's device runs. */
+  readonly platform: AgentDevicePlatform;
+  /**
+   * App opened fresh at the start of every attempt: a bundle id, a package
+   * name, or a display name agent-device resolves (`Settings`). Without it the
+   * surface observes whatever is in the foreground, and `app.restart` and
+   * `app.clearState` are not declared.
+   */
+  readonly app?: string | undefined;
+  /**
+   * Build to install on the device once per worker, before the first attempt:
+   * an iOS `.app` bundle or an Android `.apk`, resolved against the project
+   * root (the config's directory). Without `app`, the installed bundle id or
+   * package becomes the app opened fresh at the start of every attempt.
+   */
+  readonly appPath?: string | undefined;
+  /**
+   * Stable identity keying trace cache and session entries; defaults to `app`,
+   * else `appPath`. Declare one when the pinned app differs per run (a build
+   * path with a version in it) so entries survive the rename.
+   */
+  readonly identity?: string | undefined;
+  /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
+  readonly environment?: 'test' | 'staging' | 'production' | undefined;
+  /**
+   * Simulator or emulator to use, by name or id; agent-device picks a booted
+   * one otherwise. A list is a pool: the engine declares one worker per
+   * entry and worker slot `n` drives the `n`th, so `workers` at or above the
+   * pool size runs the target's files across every device at once.
+   */
+  readonly device?: string | readonly string[] | undefined;
+  /**
+   * agent-device session name, before the worker slot: slot `n` drives its
+   * device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run
+   * per session at a time: concurrent runs on the same session interleave
+   * taps.
+   */
+  readonly session?: string | undefined;
+  /**
+   * What an observation captures. `full` (default) includes static text, so
+   * judgments can read values; `interactive` keeps only actionable nodes and
+   * is cheaper on screens with long lists.
+   */
+  readonly snapshot?: 'full' | 'interactive' | undefined;
+}

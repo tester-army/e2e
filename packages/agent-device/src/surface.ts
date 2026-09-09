@@ -4,13 +4,13 @@
  * observe/locate/perform members. It owns the id space (one fresh generation
  * per observation), the attempt state (artifact directory, screenshot
  * counter), and every translation between the contract's vocabulary and
- * agent-device's commands. The runner owns everything else.
+ * agent-device's commands. Its device and session come from the target's
+ * `DevicePool`, by worker slot. The runner owns everything else.
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { createAgentDeviceClient } from 'agent-device';
 import {
   EngineError,
   raceAbort,
@@ -19,7 +19,6 @@ import {
   type EngineCleanupContext,
   type EngineInitInfo,
   type EngineObserveOptions,
-  type EnginePrepareInfo,
   type EngineSnapshot,
   type LocatorAction,
   type LocatorExpression,
@@ -30,10 +29,12 @@ import {
   type ScrollDirection,
   type SemanticNode,
 } from '@e2edev/e2e/engine';
-import { staleOr, translateError } from './errors.ts';
+import { runCommand, staleOr } from './errors.ts';
 import { resolveExpression } from './locate.ts';
 import { isWithin, projectSnapshot, screenTitle, type ProjectedNode, type ProjectedSnapshot, type RawNode } from './nodes.ts';
+import type { AgentDeviceClient, AgentDeviceOptions, AgentDevicePlatform, ClientFactory } from './options.ts';
 import { maskPng } from './png.ts';
+import { DevicePool, deviceSelection } from './pool.ts';
 import {
   invalidState,
   notActionable,
@@ -44,63 +45,6 @@ import {
   unsupported,
   type Rect,
 } from './support.ts';
-
-export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
-
-/** Mints the agent-device client for one session; the seam unit tests script. */
-export type ClientFactory = (session: string) => AgentDeviceClient;
-
-export type AgentDevicePlatform = 'ios' | 'android';
-
-/**
- * Options of the device engine. Every optional value also accepts `undefined`,
- * so values read straight from `process.env` need no conditional spread.
- */
-export interface AgentDeviceOptions {
-  /** Platform the target's device runs. */
-  readonly platform: AgentDevicePlatform;
-  /**
-   * App opened fresh at the start of every attempt: a bundle id, a package
-   * name, or a display name agent-device resolves (`Settings`). Without it the
-   * surface observes whatever is in the foreground, and `app.restart` and
-   * `app.clearState` are not declared.
-   */
-  readonly app?: string | undefined;
-  /**
-   * Build to install on the device once per worker, before the first attempt:
-   * an iOS `.app` bundle or an Android `.apk`, resolved against the project
-   * root (the config's directory). Without `app`, the installed bundle id or
-   * package becomes the app opened fresh at the start of every attempt.
-   */
-  readonly appPath?: string | undefined;
-  /**
-   * Stable identity keying trace cache and session entries; defaults to `app`,
-   * else `appPath`. Declare one when the pinned app differs per run (a build
-   * path with a version in it) so entries survive the rename.
-   */
-  readonly identity?: string | undefined;
-  /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
-  readonly environment?: 'test' | 'staging' | 'production' | undefined;
-  /**
-   * Simulator or emulator to use, by name or id; agent-device picks a booted
-   * one otherwise. A list is a pool: the engine declares one worker per
-   * entry and worker slot `n` drives the `n`th, so `workers` at or above the
-   * pool size runs the target's files across every device at once.
-   */
-  readonly device?: string | readonly string[] | undefined;
-  /**
-   * agent-device session name; defaults to `e2e-<target name>`, with
-   * `-<worker slot>` appended when `device` is a pool. One run per session at
-   * a time: concurrent runs on the same session interleave taps.
-   */
-  readonly session?: string | undefined;
-  /**
-   * What an observation captures. `full` (default) includes static text, so
-   * judgments can read values; `interactive` keeps only actionable nodes and
-   * is cheaper on screens with long lists.
-   */
-  readonly snapshot?: 'full' | 'interactive' | undefined;
-}
 
 /** How `installApp` puts a build on the device. */
 export interface InstallAppOptions {
@@ -184,7 +128,7 @@ export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private testIdAttribute = 'data-testid';
   private attempt: Attempt | undefined;
-  /** The device this worker drives: the `device` option, or the pool entry for the worker slot. */
+  /** The device this worker drives, the pool's entry for its slot; undefined leaves the choice to agent-device. */
   private device: string | undefined;
   private generation = new Map<string, NodeBinding>();
   private readonly located = new Map<string, NodeBinding>();
@@ -202,10 +146,15 @@ export class AgentDeviceSurface {
    */
   private readonly inflight = new Set<Promise<unknown>>();
 
+  /** The target's devices, one per worker slot; `init` takes this worker's from it. */
+  readonly pool: DevicePool;
+
   constructor(
     readonly options: AgentDeviceOptions,
     private readonly createClient: ClientFactory,
-  ) {}
+  ) {
+    this.pool = new DevicePool(options, createClient);
+  }
 
   /** Whether the manifest declares app restart and state clearing. */
   get managesApp(): boolean {
@@ -235,21 +184,7 @@ export class AgentDeviceSurface {
    */
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
-    return this.runOn(client, label, (live) => this.track(run(live)), signal ?? new AbortController().signal);
-  }
-
-  /** Runs one command on a given client, translating its failure onto the engine taxonomy. */
-  private async runOn<T>(
-    client: AgentDeviceClient,
-    label: string,
-    run: (client: AgentDeviceClient) => Promise<T>,
-    signal: AbortSignal,
-  ): Promise<T> {
-    try {
-      return await raceAbort(() => run(client), signal, label);
-    } catch (cause) {
-      throw translateError(cause, label);
-    }
+    return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal);
   }
 
   /** Registers one device command as in flight until it settles. */
@@ -273,69 +208,17 @@ export class AgentDeviceSurface {
     }
   }
 
-  /** Resolves `device` for a worker slot; a pool needs an entry for every slot the run can reach. */
-  private deviceForSlot(workerSlot: number): string | undefined {
-    const option = this.options.device;
-    if (option === undefined || typeof option === 'string') return option;
-    const device = option[workerSlot];
-    if (device === undefined) {
-      throw new EngineError(
-        'ENGINE_FAILURE',
-        `worker slot ${workerSlot} has no device: the pool names ${option.length}; set workers to ${option.length} for this target or add a device`,
-        { retryable: false },
-      );
-    }
-    return device;
-  }
-
-  /** The agent-device session of a worker slot: the `session` option or `e2e-<target>`, slot-suffixed for a pool. */
-  private sessionFor(targetName: string, workerSlot: number): string {
-    const session = this.options.session ?? `e2e-${targetName}`;
-    return Array.isArray(this.options.device) ? `${session}-${workerSlot}` : session;
-  }
-
-  /** Selection agent-device commands take for the device this surface drives. */
-  private selection(device: string | undefined): { platform: AgentDevicePlatform; device?: string } {
-    return { platform: this.options.platform, ...(device === undefined ? {} : { device }) };
-  }
-
-  /**
-   * Boots the device of every worker slot the run will use and opens the
-   * pinned app on it once, so its automation runner is up, once per run and
-   * outside every launch budget. One slot after another, on purpose: workers
-   * booting at once in `init` contend for the host and the daemon, and one
-   * cold boot pushes the others past `launchTimeout`. Each slot warms under
-   * the session its worker resumes, so `init` finds a booted device and the
-   * first attempt an attached runner. A device that cannot boot ends the run
-   * here; an app that does not open is logged and left to the first attempt.
-   * A build `appPath` installs in `init` is not on the device yet, so that
-   * case boots only.
-   */
-  async prepare(info: EnginePrepareInfo): Promise<void> {
-    const app = this.options.appPath === undefined ? this.options.app : undefined;
-    for (let slot = 0; slot < info.slots; slot += 1) {
-      const device = this.deviceForSlot(slot);
-      const label = device ?? `a booted ${this.options.platform} device`;
-      const client = this.createClient(this.sessionFor(info.targetName, slot));
-      info.log(`booting ${label} (${slot + 1} of ${info.slots})`);
-      await this.runOn(client, 'boot', (live) => live.devices.boot(this.selection(device)), info.signal);
-      if (app === undefined) continue;
-      try {
-        await this.runOn(client, `open ${app}`, (live) => live.apps.open({ app, ...this.selection(device) }), info.signal);
-      } catch (cause) {
-        if (info.signal.aborted) throw cause;
-        const reason = cause instanceof Error ? cause.message : String(cause);
-        info.log(`${label}: automation runner not warmed up (${reason}); the first attempt starts it`);
-      }
-    }
+  /** The device selection this worker's commands take. */
+  private selection(): { platform: AgentDevicePlatform; device?: string } {
+    return deviceSelection(this.options.platform, this.device);
   }
 
   async init(info: EngineInitInfo): Promise<void> {
     this.testIdAttribute = info.testIdAttribute;
     this.projectRoot = info.projectRoot;
-    this.device = this.deviceForSlot(info.workerSlot);
-    this.client ??= this.createClient(this.sessionFor(info.targetName, info.workerSlot));
-    await this.command('boot', (client) => client.devices.boot(this.selection(this.device)), info.signal);
+    this.device = this.pool.device(info.workerSlot);
+    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot));
+    await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
     if (this.options.appPath === undefined) return;
     const installed = await this.installApp(
       this.options.appPath,
@@ -383,8 +266,7 @@ export class AgentDeviceSurface {
       (client) =>
         client.apps.open({
           app,
-          platform: this.options.platform,
-          ...(this.device === undefined ? {} : { device: this.device }),
+          ...this.selection(),
           ...(relaunch ? { relaunch: true } : {}),
         }),
       signal,
@@ -401,10 +283,7 @@ export class AgentDeviceSurface {
    */
   async installApp(appPath: string, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
     const resolved = path.resolve(this.projectRoot, appPath);
-    const selection = {
-      platform: this.options.platform,
-      ...(this.device === undefined ? {} : { device: this.device }),
-    };
+    const selection = this.selection();
     const app = options.app ?? (options.reinstall === true ? this.pinnedApp : undefined);
     if (options.reinstall === true && app === undefined) {
       throw invalidState('reinstall needs an app: pass `app`, or pin one with the engine option `app` or `appPath`');

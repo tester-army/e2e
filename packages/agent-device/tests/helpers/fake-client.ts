@@ -6,7 +6,7 @@
  * engine owes agent-device.
  */
 
-import type { AgentDeviceClient } from '../../src/surface.ts';
+import type { AgentDeviceClient } from '../../src/options.ts';
 import type { RawNode } from '../../src/nodes.ts';
 
 export type Responder = (args: unknown) => unknown;

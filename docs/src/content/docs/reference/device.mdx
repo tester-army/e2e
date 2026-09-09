@@ -46,8 +46,8 @@ a deterministic check that names a platform label is scoped with
 | `platform` | `'ios' \| 'android'` | required | Which device family the target boots. |
 | `app` | `string` | none | App opened fresh at the start of every attempt: a bundle id, a package name, or a display name. Declares `app.restart()` and `app.clearState()`. |
 | `appPath` | `string` | none | An iOS `.app` bundle or Android `.apk`, resolved against the project root, installed once per worker after boot and before the first attempt. Without `app`, the installed bundle id or package is the app opened per attempt. |
-| `device` | `string \| string[]` | a booted device | Simulator or emulator name or id. A list is a pool: the engine declares one worker per entry, worker slot `n` drives the `n`th, and `-<n>` is appended to the session name. |
-| `session` | `string` | `e2e-<target name>` | agent-device session. One run per session at a time. |
+| `device` | `string \| string[]` | a booted device | Simulator or emulator name or id. A list is a pool: the engine declares one worker per entry and worker slot `n` drives the `n`th. |
+| `session` | `string` | `e2e-<target name>` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
 
 Every optional value also accepts `undefined`, so a config passes

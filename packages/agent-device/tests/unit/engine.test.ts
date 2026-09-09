@@ -15,7 +15,8 @@ import { decodePng, encodePng } from '../helpers/png.ts';
 import type { EngineFixtureContext, EngineHandle, OperationContext, SemanticNode } from '@e2edev/e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import type { Device } from '../../src/device.ts';
-import { AgentDeviceSurface, type AgentDeviceOptions } from '../../src/surface.ts';
+import type { AgentDeviceOptions } from '../../src/options.ts';
+import { AgentDeviceSurface } from '../../src/surface.ts';
 import { createFakeClient, SETTINGS_SNAPSHOT, type FakeClient } from '../helpers/fake-client.ts';
 
 /** Deliberately not `process.cwd()`: relative build paths must resolve here, not there. */
@@ -123,10 +124,10 @@ describe('manifest', () => {
 });
 
 describe('lifecycle', () => {
-  it('boots once per init under a session named after the target, opens the app fresh per attempt, and closes on dispose', async () => {
+  it('boots once per init under a session named after the target and worker slot, opens the app fresh per attempt, and closes on dispose', async () => {
     const h = harness();
     await openAttempt(h);
-    expect(h.sessions).toEqual(['e2e-ios-simulator']);
+    expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', relaunch: true });
@@ -143,13 +144,13 @@ describe('lifecycle', () => {
 
     // A disposed handle boots again: the config-held handle outlives a worker.
     await boot(h.engine, 'second');
-    expect(h.sessions).toEqual(['e2e-ios-simulator', 'e2e-second']);
+    expect(h.sessions).toEqual(['e2e-ios-simulator-0', 'e2e-second-0']);
   });
 
   it('honours an explicit session and device, and does not open anything without a pinned app', async () => {
     const h = harness({ session: 'qa-run', device: 'iPhone 16e' }, false);
     await openAttempt(h);
-    expect(h.sessions).toEqual(['qa-run']);
+    expect(h.sessions).toEqual(['qa-run-0']);
     expect(h.fake.methods()).toEqual(['devices.boot']);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
   });
@@ -171,7 +172,7 @@ describe('lifecycle', () => {
     const third = harness({ device: pool });
     await expect(boot(third.engine, 'ios', 2)).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
-      message: expect.stringContaining('worker slot 2 has no device'),
+      message: expect.stringContaining('worker slot 2 is outside a device pool of 2'),
     });
     expect(third.fake.methods()).toEqual([]);
   });
@@ -214,7 +215,7 @@ describe('lifecycle', () => {
       signal: new AbortController().signal,
       log: () => undefined,
     });
-    expect(single.sessions).toEqual(['qa']);
+    expect(single.sessions).toEqual(['qa-0']);
     expect(single.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
   });
 
@@ -245,7 +246,7 @@ describe('lifecycle', () => {
     );
     expect(Object.keys(h.engine.app!)).toEqual(['back']);
     await openAttempt(h);
-    expect(h.sessions).toEqual(['e2e-ios-simulator']);
+    expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
     expect(h.fake.methods()).toEqual(['devices.boot']);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
   });

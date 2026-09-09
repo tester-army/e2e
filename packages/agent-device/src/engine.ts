@@ -8,9 +8,10 @@
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { ConfigurationError, defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from '@e2edev/e2e/engine';
+import { defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from '@e2edev/e2e/engine';
 import { createDeviceFixture } from './device.ts';
-import { AgentDeviceSurface, type AgentDeviceOptions, type ClientFactory } from './surface.ts';
+import type { AgentDeviceOptions, ClientFactory } from './options.ts';
+import { AgentDeviceSurface } from './surface.ts';
 
 const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
 
@@ -20,8 +21,8 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     name: 'agent-device',
     version: ownVersion(),
     spiVersion: 1,
-    workers: poolSize(surface.options),
-    prepare: (info) => surface.prepare(info),
+    workers: surface.pool.size,
+    prepare: (info) => surface.pool.prepare(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
@@ -56,22 +57,6 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 export function agentDevice(options: AgentDeviceOptions): EngineHandle {
   const factory: ClientFactory = (session) => createAgentDeviceClient({ session });
   return buildEngine(new AgentDeviceSurface(options, factory));
-}
-
-/**
- * Workers the engine serves per target: one per device, since two workers on
- * one simulator interleave taps. A pool names a device per worker slot.
- */
-function poolSize(options: AgentDeviceOptions): number {
-  const { device } = options;
-  if (!Array.isArray(device)) return 1;
-  if (device.length === 0) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'agentDevice: `device` is an empty pool; name at least one simulator or emulator, or omit it to use a booted one',
-    );
-  }
-  return device.length;
 }
 
 /**
