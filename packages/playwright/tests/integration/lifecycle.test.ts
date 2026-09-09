@@ -58,12 +58,12 @@ async function lastFrame(
     video.muted = true;
     video.src = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'video/webm' }));
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error('the recording did not decode'));
+      video.addEventListener('loadedmetadata', () => resolve(), { once: true });
+      video.addEventListener('error', () => reject(new Error('the recording did not decode')), { once: true });
     });
     await video.play();
     await new Promise<void>((resolve) => {
-      video.onended = () => resolve();
+      video.addEventListener('ended', () => resolve(), { once: true });
       setTimeout(resolve, 5_000);
     });
     const canvas = document.createElement('canvas');
