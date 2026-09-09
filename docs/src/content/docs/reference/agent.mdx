@@ -11,11 +11,7 @@ the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 
 ```ts
 export interface Agent {
-  act(
-    instruction: string,
-    params?: AgentParams,
-    options?: AgentOptions,
-  ): Promise<AgentResult>;
+  act(instruction: string, options?: ActOptions): Promise<ActResult>;
   waitFor(
     condition: string,
     options?: VisionOption & { timeout?: number; intervalMs?: number; maxModelCalls?: number },
@@ -85,18 +81,23 @@ const { summary, cache } = await agent.act('Sign in', {
 });
 ```
 
-The result carries the executor's `summary`, the `modelCalls` and `actions`
-the step spent, and `cache`: how the trace cache took part (`self-finalized`
-when a recorded flow replayed the whole step with no model call,
-`agent-concluded` when a replay handed off mid-step, `missed` otherwise;
-absent when caching is off).
+The result carries the step's `summary` (the executor's verdict, or the
+replay's account when the cache finished the step), the `modelCalls` and
+`actions` the step spent, and `cache`: how the trace cache took part
+(`self-finalized` when a recorded flow replayed the whole step with no model
+call, `agent-concluded` when a replay handed off mid-step, `missed` otherwise,
+with a `reason` such as `no-entry` or `retry`; absent when caching is off).
+A retry attempt records but never replays, so its steps report `missed` with
+the reason `retry`.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code such as `AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
 `SEED_DATA_MISSING`, `TEST_SETUP_FAILED`, or `AUTOMATION_UNSUPPORTED` when the
 step could not reach a product verdict; `STEP_BUDGET_EXHAUSTED` and
 `STEP_TIMEOUT` when a budget or the deadline ran out; and `INVALID_ARGUMENT`
-for a malformed instruction or oversized `params`.
+for a malformed instruction, oversized `params`, or an option `act` does not
+take, which is what a call in the pre-0.8 shape, `act(instruction, params)`,
+now fails with.
 
 ## Vision
 

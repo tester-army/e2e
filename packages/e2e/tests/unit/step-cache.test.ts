@@ -107,6 +107,24 @@ describe('StepTraceSession', () => {
     expect(session.replayedPrefix).toBeUndefined();
   });
 
+  it('names a retry attempt as the miss reason without reading the store', async () => {
+    let reads = 0;
+    const session = makeSession(
+      {
+        ...fakeContext(async () => {
+          reads += 1;
+          return { status: 'miss' };
+        }),
+        replayEligible: false,
+      },
+      makeHost(['/']),
+    );
+    await expect(session.begin()).resolves.toBeUndefined();
+    expect(reads).toBe(0);
+    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'retry', replayedActions: 0, totalActions: 0 });
+    expect(session.replayedPrefix).toBeUndefined();
+  });
+
   it('degrades a hit that is not a trace-1 entry to a miss, whichever store returned it', async () => {
     const malformed = { schemaVersion: 'trace-1', payload: { actions: 'not a list' } } as unknown as TraceEntry;
     const session = makeSession(

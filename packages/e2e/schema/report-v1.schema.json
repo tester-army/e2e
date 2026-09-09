@@ -190,6 +190,7 @@
         "mode": { "enum": ["self-finalized", "agent-concluded", "missed"] },
         "reason": {
           "enum": [
+            "retry",
             "no-entry",
             "invalid-entry",
             "truncated",

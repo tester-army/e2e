@@ -8,4 +8,7 @@
 `act('x', { params: { email } })`. The result is an `ActResult`, with the
 executor's `summary`, the `modelCalls` and `actions` the step spent, and
 `cache`, how the trace cache took part, instead of `{ ok: true }`.
-`ActOptions` and `ActResult` replace `AgentOptions` and `AgentResult`.
+`ActOptions` and `ActResult` replace `AgentOptions` and `AgentResult`. A
+call in the old shape fails with `INVALID_ARGUMENT` naming the move, from a
+JavaScript test as from a typed one, instead of running with its parameters
+silently ignored.

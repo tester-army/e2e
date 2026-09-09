@@ -162,7 +162,12 @@ export class StepTraceSession {
     // doubling as the replay decision's current path.
     if (this.recorder !== undefined) this.startNodes = await probeScreen(this.host);
     this.startPath = await this.host.currentPath(this.startNodes);
-    if (!this.cache.replayEligible) return undefined;
+    if (!this.cache.replayEligible) {
+      // A retry records like any step but never replays; the report says so
+      // instead of looking like a step that ran with caching off.
+      this.info = this.missed('retry', 0);
+      return undefined;
+    }
 
     const read = await this.readEntry();
     if (read.status === 'miss') {

@@ -536,7 +536,8 @@ to trip over.
 Entries are disposable: deleting `.e2e/cache/` slows the next run and changes
 nothing else. Every agent step's report records how the cache participated
 (`step.cache`: `self-finalized`, `agent-concluded`, or `missed`, with a
-reason).
+reason; a retry attempt records but never replays, so its steps read `missed`
+with the reason `retry`).
 
 ### Commit your traces
 

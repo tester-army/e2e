@@ -5,8 +5,7 @@ test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
   await app.open('/');
 
   await agent.act('sign up for a free trial as {name} with email {email}', {
-    name: 'Ada Lovelace',
-    email: 'ada@example.test',
+    params: { name: 'Ada Lovelace', email: 'ada@example.test' },
   });
 
   await agent.assert('the welcome screen greets Ada by name');

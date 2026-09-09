@@ -29,7 +29,7 @@ import type {
 } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import {
-  rejectUnsupportedActOptions,
+  validateActOptions,
   validateInstruction,
   validateParams,
   validateVerdict,
@@ -84,9 +84,10 @@ export async function runActStep(
   runtime: AgentContext,
   instruction: string,
   options: ActOptions | undefined,
+  extraArguments = 0,
 ): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
-  rejectUnsupportedActOptions(options);
+  validateActOptions(options, extraArguments);
   const { projected, secrets } = validateParams(options?.params);
   return dispatchAgentStep(runtime, {
     api: 'agent.act',

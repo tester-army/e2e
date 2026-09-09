@@ -102,7 +102,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     });
 
   const agent: Agent = {
-    act: (instruction, options) => runActStep(runtime, instruction, options),
+    // The rest parameter exists only to catch the pre-0.8 three-argument call.
+    act: (instruction, options, ...legacy: readonly unknown[]) =>
+      runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
       const intervalMs = validateInterval(options?.intervalMs);
       return step(
