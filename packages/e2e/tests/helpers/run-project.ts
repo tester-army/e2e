@@ -26,7 +26,7 @@ const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
  * runtime even though the src/dist types differ.
  */
 function defaultTargets(appUrl: string): NonNullable<E2EConfig['targets']> {
-  return [{ name: 'web', platform: 'web', engine: playwright({ url: appUrl }) }] as unknown as NonNullable<
+  return [{ name: 'web', engine: playwright({ url: appUrl }) }] as unknown as NonNullable<
     E2EConfig['targets']
   >;
 }
@@ -109,7 +109,7 @@ export function workerConfigSource(workers: number, extra = ''): string {
 import { playwright } from '@e2edev/playwright';
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: ${workers},${extra}
 } satisfies E2EConfig;
 `;

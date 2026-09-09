@@ -20,6 +20,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     name: 'agent-device',
     version: ownVersion(),
     spiVersion: 1,
+    platform: surface.options.platform,
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),

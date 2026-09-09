@@ -110,7 +110,7 @@ describe('resolveConfig', () => {
     expect(() => resolve({ app: {} } as never)).toThrow('the app under test is declared by the engine: engine: playwright({ url })');
     expect(() => resolve({ webServer: {} } as never)).toThrow('playwright({ url, command: { executable, args } })');
     expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
-      'target "web" has unknown key "url"; a target is { name?, platform, engine? }; the app under test is declared by the engine',
+      'target "web" has unknown key "url"; a target is { name?, platform?, engine? }; the app under test is declared by the engine',
     );
     expect(() => resolve({ targets: [{ ...WEB, platfrom: 'web' }] } as never)).toThrow('did you mean "platform"?');
     expect(() => resolve({ reporters: ['lst'] } as never)).toThrow(
@@ -191,9 +191,30 @@ describe('resolveConfig', () => {
   });
 
   it('points at the entry when a target has no name to report under', () => {
-    expect(() => resolve({ targets: [{ engine: fakeEngine() }] } as never)).toThrow('targets[0] requires a non-empty platform');
+    expect(() => resolve({ targets: [{ engine: fakeEngine() }] } as never)).toThrow(
+      'targets[0] needs a platform: engine fake declares none; set platform on the target',
+    );
     expect(() => resolve({ targets: [{ platform: 'ios', browser: 'x' }] } as never)).toThrow('targets[0] has unknown key "browser"');
-    expect(() => resolve({ targets: [{ name: 'ios' }] } as never)).toThrow('target "ios" requires a non-empty platform');
+    expect(() => resolve({ targets: [{ name: 'ios' }] } as never)).toThrow(
+      'target "ios" needs a platform: it has no engine to inherit one from; set platform on the target',
+    );
+  });
+
+  it('inherits the platform the engine declares, and the name follows', () => {
+    const ios = defineEngine({ name: 'fake-ios', version: '1.0.0', spiVersion: 1, platform: 'ios' });
+    expect(resolve({ targets: [{ engine: ios }] }).targets[0]).toMatchObject({ name: 'ios', platform: 'ios' });
+    expect(resolve({ targets: [{ name: 'phone', engine: ios }] }).targets[0]).toMatchObject({ name: 'phone', platform: 'ios' });
+    expect(resolve({ targets: [{ platform: 'ios', engine: ios }] }).targets[0]).toMatchObject({ name: 'ios', platform: 'ios' });
+  });
+
+  it('rejects a target platform that disagrees with its engine, and a target with no platform to inherit', () => {
+    const ios = defineEngine({ name: 'fake-ios', version: '1.0.0', spiVersion: 1, platform: 'ios' });
+    expect(() => resolve({ targets: [{ name: 'phone', platform: 'iphone-17', engine: ios }] })).toThrow(
+      'target "phone" declares platform "iphone-17" but its engine fake-ios drives "ios"; drop the target\'s platform or make them agree',
+    );
+    expect(() => resolve({ targets: [{ engine: fakeEngine() }] })).toThrow(
+      'targets[0] needs a platform: engine fake declares none; set platform on the target',
+    );
   });
 
   it('accepts any platform: the engine decides what a target can do', () => {

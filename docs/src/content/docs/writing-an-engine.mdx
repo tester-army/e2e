@@ -58,6 +58,7 @@ export function hyperdrive(options: { device: string }): EngineHandle {
     name: 'hyperdrive',
     version: '1.0.0',
     spiVersion: 1,
+    platform: 'ios',
     async init(info) { await client.boot(); },
     async dispose(context) { await client.shutdown({ signal: context.signal }); },
     async observe() { return { nodes: await client.snapshot() }; },
@@ -79,7 +80,7 @@ so an engine that resolves nodes differently never replays another version's
 traces.
 
 ```ts title="e2e.config.ts"
-targets: [{ name: 'phone', platform: 'ios', engine: hyperdrive({ device: 'iPhone 16' }) }],
+targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }) }],
 ```
 
 <Aside type="note">

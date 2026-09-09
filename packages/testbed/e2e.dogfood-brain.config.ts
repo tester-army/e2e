@@ -79,7 +79,7 @@ export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-brain',
   tests: 'tests-dogfood-brain/**/*.e2e.ts',
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://127.0.0.1:4312' }) }],
+  targets: [{ name: 'web', engine: playwright({ url: 'http://127.0.0.1:4312' }) }],
   timeout: 120_000,
   agent: mathBrain,
 } satisfies E2EConfig;

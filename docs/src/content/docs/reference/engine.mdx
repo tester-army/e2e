@@ -32,6 +32,7 @@ export interface Engine {
   readonly name: string;
   readonly version: string;
   readonly spiVersion: 1;
+  readonly platform?: Platform;
 
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;

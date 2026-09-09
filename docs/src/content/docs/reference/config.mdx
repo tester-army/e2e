@@ -18,7 +18,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
     },
   ],
@@ -149,7 +148,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
@@ -266,7 +264,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://localhost:3000',
         services: [
@@ -301,15 +298,17 @@ export default {
 
 ## targets
 
-A target's `name` defaults to its `platform`, so one target per platform needs
-none; two targets on the same platform name themselves. Names are unique and
-limited to ASCII letters, digits, `_`, `-`, and `.`. An empty `targets` array
-is an error.
+A target's `platform` comes from its engine (`web` for playwright, the device
+platform for agent-device), and its `name` defaults to the platform, so
+`{ engine: playwright({ url }) }` is a complete target. Set `platform` on a
+target without an engine; two targets on one platform name themselves. Names
+are unique and limited to ASCII letters, digits, `_`, `-`, and `.`. An empty
+`targets` array is an error.
 
 ```ts
 export interface Target {
-  name?: string; // defaults to platform
-  platform: Platform;
+  name?: string;         // defaults to platform
+  platform?: Platform;   // defaults to the engine's
   engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
 }
 ```
@@ -327,7 +326,7 @@ instead of replacing them.
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `name` | `string` | `platform` | Stable ID used by `--target`, reports, sessions, and artifact paths; unique across targets |
-| `platform` | `Platform` | - | Any label; `platforms: [...]` on a test filters against it |
+| `platform` | `Platform` | the engine's | The label `platforms: [...]` on a test filters against. Set it for a target without an engine; a value that disagrees with the engine's is `INVALID_CONFIG` |
 | `engine` | `EngineHandle` | none | `playwright({ url?, command?, browser?, viewport?, connect? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP); `agentDevice({ platform, app?, appPath? })` from `@e2edev/agent-device` for an [iOS or Android device](/reference/device); any [`defineEngine`](/writing-an-engine) handle otherwise |
 
 The app URL, browser choice, and viewport are options of the playwright
@@ -336,8 +335,8 @@ engine, not of the runner. Two browsers on one app each name it:
 ```ts
 const app = { url: 'http://localhost:3000' };
 targets: [
-  { name: 'chromium', platform: 'web', engine: playwright(app) },
-  { name: 'webkit-mobile', platform: 'web', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+  { name: 'chromium', engine: playwright(app) },
+  { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
 ],
 ```
 
@@ -470,7 +469,7 @@ An unconfigured name, or a call outside an active runner, throws
 
 ```ts title="e2e.config.ts"
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
   credentials: {
     member: { username: 'member@example.test', password: 'local-dev-only' },
     admin: {

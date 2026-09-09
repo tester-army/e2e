@@ -13,17 +13,20 @@ import {
   type Screen,
   type TraceCacheStore,
 } from '../../src/index.ts';
+import type { EngineHandle } from '../../src/engine/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
 declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
+declare const engine: EngineHandle;
 
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 ({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
-// @ts-expect-error a target's name defaults to its platform; the platform has no default
-({ targets: [{ name: 'ios' }] }) satisfies E2EConfig;
+// A target inherits its platform from the engine; the resolver rejects one with neither.
+({ targets: [{ engine }] }) satisfies E2EConfig;
+({ targets: [{ name: 'phone', engine }] }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
 ({ cache: 'sometimes' }) satisfies E2EConfig;
 // @ts-expect-error attribute values must be text matches

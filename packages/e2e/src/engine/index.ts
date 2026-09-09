@@ -40,6 +40,7 @@ import type {
   Expectable,
   Locator,
   Momentum,
+  Platform,
   Screen,
   ScrollDirection,
   ServiceConfig,
@@ -415,6 +416,12 @@ export interface Engine {
    * changed required semantics do.
    */
   readonly spiVersion: EngineSpiVersion;
+  /**
+   * Platform this engine drives (`web`, `ios`, `android`, or a label of the
+   * engine's own). A target inherits it; a target that names a platform of
+   * its own must agree with it.
+   */
+  readonly platform?: Platform;
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   /**
@@ -511,6 +518,7 @@ const KNOWN_KEYS = [
   'name',
   'version',
   'spiVersion',
+  'platform',
   'observe',
   'locate',
   'perform',
@@ -641,6 +649,9 @@ export function defineEngine(spec: Engine): EngineHandle {
       `declares spiVersion ${String(spec.spiVersion)}; this runner supports ${ENGINE_SPI_VERSION}`,
     );
   }
+  if (spec.platform !== undefined && (typeof spec.platform !== 'string' || spec.platform.trim() === '')) {
+    throw invalid(name, 'platform must be a non-empty string when declared');
+  }
   // A literal's unknown key is a misspelling or a misplaced tool; a class
   // instance's own fields are its state, so only literals are checked.
   if (Object.getPrototypeOf(spec) === Object.prototype) {
@@ -675,7 +686,12 @@ export function defineEngine(spec: Engine): EngineHandle {
     throw invalid(name, 'declares swipe without observe');
   }
 
-  const handle: Record<string, unknown> = { name, version: spec.version, spiVersion: spec.spiVersion };
+  const handle: Record<string, unknown> = {
+    name,
+    version: spec.version,
+    spiVersion: spec.spiVersion,
+    ...(spec.platform === undefined ? {} : { platform: spec.platform }),
+  };
   for (const member of FUNCTION_MEMBERS) {
     const fn = spec[member];
     if (fn !== undefined) handle[member] = fn.bind(spec);

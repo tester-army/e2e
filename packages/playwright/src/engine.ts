@@ -53,6 +53,7 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
     name: 'playwright',
     version: ownVersion(),
     spiVersion: 1,
+    platform: 'web',
     prepare: (info) => surface.prepare(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),

@@ -244,6 +244,12 @@ describe('createEngineSession pixels-only observation', () => {
 describe('engine targets in config', () => {
   const ROOT = '/tmp/e2e-engine-config';
 
+  it('rejects an empty platform declaration', () => {
+    expect(() => defineEngine({ name: 'x', version: '1', spiVersion: 1, platform: ' ' })).toThrow(
+      'platform must be a non-empty string when declared',
+    );
+  });
+
   it('resolves an engine target on any platform without an app url', () => {
     const engine = defineEngine(observingEngine());
     const config = resolveConfig(

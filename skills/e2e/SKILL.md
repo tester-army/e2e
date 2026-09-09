@@ -22,7 +22,6 @@ import { playwright } from '@e2edev/playwright';
 export default {
   targets: [
     {
-      platform: 'web', // also the target name, unless name is set
       engine: playwright({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },

@@ -607,7 +607,11 @@ export interface ServiceConfig extends CommandConfig {
 export interface Target {
   /** Label in reports and for `--target`; defaults to the platform. */
   name?: string;
-  platform: Platform;
+  /**
+   * Platform label, inherited from the engine when omitted. Required for a
+   * target without an engine; when both name one, they must agree.
+   */
+  platform?: Platform;
   engine?: EngineHandle;
 }
 

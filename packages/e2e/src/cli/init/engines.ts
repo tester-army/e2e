@@ -29,7 +29,7 @@ export function getEnginePresets() {
       imports: ["import { playwright } from '@e2edev/playwright';"],
       config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
   targets: [{
-    platform: 'web', // also the target name, unless name is set
+    // Named after the platform the engine declares: "web".
     engine: playwright({
       url: process.env.APP_URL ?? 'http://localhost:3000',
       // Let the runner start the dev server and wait for url to answer:
@@ -79,10 +79,10 @@ test('app responds', async () => {
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
         ? `  // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
-  targets: [{ name: 'ios', platform: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,`
         : `  // Requires the Android SDK and an emulator. Replace com.android.settings with your app's package.
-  targets: [{ name: 'android', platform: 'android', engine: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
+  targets: [{ name: 'android', engine: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
   workers: 1,`,
       example: `import { test } from '@e2edev/agent-device';
 import { expect } from '@e2edev/e2e';

@@ -32,8 +32,8 @@ const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
 
 export default {
   targets: [
-    { name: 'iphone', platform: 'ios', engine: iphone },
-    { name: 'pixel', platform: 'android', engine: pixel },
+    { name: 'iphone', engine: iphone },
+    { name: 'pixel', engine: pixel },
   ],
   workers: 1,
   agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },

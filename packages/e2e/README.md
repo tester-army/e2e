@@ -23,7 +23,7 @@ import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
+  targets: [{ name: 'web', engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
 } satisfies E2EConfig;
 ```
 
@@ -37,7 +37,6 @@ export default {
   targets: [
     {
       name: 'web',
-      platform: 'web',
       engine: playwright({
         url: 'http://127.0.0.1:3000',
         services: [

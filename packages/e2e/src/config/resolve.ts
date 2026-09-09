@@ -17,6 +17,7 @@ import type {
   ModelInstance,
   Platform,
   SecretProvider,
+  Target,
   TraceCacheStore,
 } from '../types.ts';
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
@@ -146,7 +147,7 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   baseUrl: APP_BELONGS_TO_ENGINE,
   webServer: 'the runner starts the app from the engine options: playwright({ url, command: { executable, args } })',
   use: 'browser and app options are engine options: engine: playwright({ ... })',
-  projects: 'one target per browser or device: targets: [{ name, platform, engine }]',
+  projects: 'one target per browser or device: targets: [{ engine }]',
 };
 
 /** Keys authors put on a target that belong to its engine. */
@@ -444,7 +445,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     throw new ConfigurationError(
       'INVALID_CONFIG',
       'targets is required: declare at least one target and the engine that drives it, ' +
-        'e.g. targets: [{ platform, engine }]',
+        'e.g. targets: [{ engine }]',
     );
   }
   if (!Array.isArray(raw.targets) || raw.targets.length === 0) {
@@ -462,14 +463,19 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
           : didYouMean(key, [...TARGET_KEYS]);
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `${where} has unknown key "${key}"; a target is { name?, platform, engine? }${hint}`,
+          `${where} has unknown key "${key}"; a target is { name?, platform?, engine? }${hint}`,
         );
       }
     }
-    if (typeof target.platform !== 'string' || target.platform.trim() === '') {
-      throw new ConfigurationError('INVALID_CONFIG', `${where} requires a non-empty platform`);
+    if (target.engine !== undefined && !isEngineHandle(target.engine)) {
+      const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${where} engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
+      );
     }
-    const name = target.name === undefined ? target.platform : target.name;
+    const platform = resolvePlatform(target, where);
+    const name = target.name === undefined ? platform : target.name;
     if (typeof name !== 'string' || !TARGET_NAME_PATTERN.test(name)) {
       const source = target.name === undefined ? ' (defaulted from the platform)' : '';
       throw new ConfigurationError(
@@ -486,21 +492,44 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
     }
     seen.add(name);
     if (target.name === undefined) defaulted.add(name);
-    if (target.engine !== undefined && !isEngineHandle(target.engine)) {
-      const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `target "${name}" engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
-      );
-    }
     return {
       name,
       index,
-      platform: target.platform,
+      platform,
       engine: target.engine,
       app: resolveTargetApp(name, target.engine, projectRoot),
     };
   });
+}
+
+/**
+ * The target's platform: its own label, else the engine's declaration. Tool
+ * packs are offered by the engine's platform while tests filter by the
+ * target's, so a target that names one while its engine declares another is a
+ * mistake, not an override.
+ */
+function resolvePlatform(target: Target, where: string): Platform {
+  const declared = target.platform;
+  if (declared !== undefined && (typeof declared !== 'string' || declared.trim() === '')) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} platform must be a non-empty string`);
+  }
+  const inherited = target.engine?.platform;
+  if (declared !== undefined && inherited !== undefined && declared !== inherited) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} declares platform "${declared}" but its engine ${target.engine?.name} drives "${inherited}"; drop the target's platform or make them agree`,
+    );
+  }
+  const platform = declared ?? inherited;
+  if (platform === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where} needs a platform: ${
+        target.engine === undefined ? 'it has no engine to inherit one from' : `engine ${target.engine.name} declares none`
+      }; set platform on the target`,
+    );
+  }
+  return platform;
 }
 
 function normalizeTests(tests: E2EConfig['tests']): readonly string[] {
