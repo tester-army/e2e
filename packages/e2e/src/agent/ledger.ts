@@ -10,6 +10,7 @@
 
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { StepRecord } from '../run/steps.ts';
+import { recordedVerdictOf } from './step-cache.ts';
 
 /** Maximum size of one handoff, before ledger-wide compaction. */
 export const MAX_HANDOFF_BYTES = 700;
@@ -39,8 +40,17 @@ export function projectPriorSteps(records: readonly StepRecord[]): PriorStep[] {
     api: step.api,
     label: boundedText(step.label),
     status: step.status,
-    ...(step.explanation === undefined ? {} : { explanation: boundedText(step.explanation) }),
+    ...(step.explanation === undefined ? {} : { explanation: boundedText(handoffOf(step)) }),
   }));
+}
+
+/**
+ * A replayed step's handoff is the verdict its recording run wrote; the replay
+ * notice in front of it describes the cache, which the model has no use for.
+ */
+function handoffOf(step: StepRecord): string {
+  const explanation = step.explanation ?? '';
+  return step.cache?.mode === 'self-finalized' ? recordedVerdictOf(explanation) : explanation;
 }
 
 function boundedText(text: string): string {
