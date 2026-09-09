@@ -5,9 +5,9 @@
  * and observation race-hardening cannot drift between the two paths.
  */
 
-import { EngineError, type Observation, type OperationContext } from '../engine/surface.ts';
+import type { Observation, OperationContext } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { E2EError } from '../internal/errors.ts';
+import { asEngineError, E2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { POLL_INTERVAL_MS, sleep, type Deadline } from '../internal/time.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
@@ -151,7 +151,11 @@ export async function retryingObserve(options: {
       return await options.observe(options.operation());
     } catch (cause) {
       options.guard(cause);
-      if (!(cause instanceof EngineError && cause.retryable)) {
+      // Structural, not instanceof: an engine a config file imported lives in
+      // another module registry, and its retryable race would otherwise fail
+      // the observation the moment a page navigates under it.
+      const engineError = asEngineError(cause);
+      if (engineError === undefined || !engineError.retryable) {
         throw cause;
       }
       await sleep(POLL_INTERVAL_MS, options.signal);
@@ -159,8 +163,10 @@ export async function retryingObserve(options: {
   }
 }
 
-/** Event code for a failed phase: the runner code, or the error's name. */
+/** Event code for a failed phase: the runner or engine code, or the error's name. */
 function phaseErrorCode(cause: unknown): string {
   if (cause instanceof E2EError) return cause.code;
+  const engineError = asEngineError(cause);
+  if (engineError !== undefined) return engineError.code;
   return cause instanceof Error ? cause.name : 'ERROR';
 }
