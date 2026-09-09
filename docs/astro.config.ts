@@ -74,7 +74,7 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Get started',
-          items: [{ label: 'Introduction', link: '/' }, 'quickstart', 'writing-tests', 'agents'],
+          items: [{ label: 'Introduction', link: '/' }, 'quickstart', 'mobile', 'writing-tests', 'agents'],
         },
         {
           label: 'Guides',

@@ -1,0 +1,268 @@
+---
+title: iOS and Android quickstart
+description: From an empty directory to a passing test on an iOS simulator or an Android emulator.
+---
+
+import { CardGrid, LinkCard, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`@e2edev/agent-device` drives iOS simulators and Android emulators through the
+same engine contract the browser engine implements, so `agent`, `app`, `screen`,
+and `expect` behave as they do on the web. This page goes from an empty
+directory to a green run against the platform's own Settings app, then lists
+what a device target cannot do. [Device](/reference/device) is the reference for
+every option, method, and role mapping.
+
+## Before you start
+
+- Node.js 22.12 or newer.
+- For iOS, macOS with Xcode and a simulator runtime, and a booted simulator:
+  Xcode's Open Developer Tool menu, or `xcrun simctl boot 'iPhone 17'`.
+- For Android, the Android SDK with at least one AVD. agent-device boots the
+  emulator itself, so an already-running one is optional. This half works on
+  macOS, Linux, and Windows; iOS needs macOS.
+- `npx agent-device doctor` reports what
+  [agent-device](https://github.com/callstack/agent-device) found on the
+  machine, and `npx agent-device devices` lists the simulators and emulators it
+  can drive. Run them before the first `e2e run`: a device agent-device cannot
+  boot fails the target's boot, and no test reports anything useful about that.
+
+<Steps>
+
+1. **Initialize**
+
+   <Tabs syncKey="pkg">
+
+   <TabItem label="npm">
+
+   ```bash
+   npx @e2edev/e2e@beta init
+   ```
+
+   </TabItem>
+
+   <TabItem label="pnpm">
+
+   ```bash
+   pnpm dlx @e2edev/e2e@beta init
+   ```
+
+   </TabItem>
+
+   </Tabs>
+
+   Choose **agent-device** at the engine prompt. Init adds the runner and the
+   engine to `devDependencies`, defaults the platform to iOS on macOS and to
+   Android everywhere else, and writes a Settings example for that platform.
+   Keep **AI testing** enabled to get `createAgent` in the config and a
+   commented agentic test; decline it and the generated files make no model
+   calls. There is no `APP_URL` to set: a device has no app URL.
+
+2. **Read the config it wrote**
+
+   <Tabs syncKey="platform">
+
+   <TabItem label="iOS">
+
+   ```ts title="e2e.config.ts"
+   import type { E2EConfig } from '@e2edev/e2e';
+   import { createAgent } from '@e2edev/e2e/agent';
+   import { agentDevice } from '@e2edev/agent-device';
+
+   export default {
+     // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
+     agent: createAgent({
+       system: 'You are a thorough QA agent. Verify every outcome.',
+     }),
+     // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
+     targets: [{ name: 'ios', platform: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+     workers: 1,
+   } satisfies E2EConfig;
+   ```
+
+   </TabItem>
+
+   <TabItem label="Android">
+
+   ```ts title="e2e.config.ts"
+   import type { E2EConfig } from '@e2edev/e2e';
+   import { createAgent } from '@e2edev/e2e/agent';
+   import { agentDevice } from '@e2edev/agent-device';
+
+   export default {
+     // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
+     agent: createAgent({
+       system: 'You are a thorough QA agent. Verify every outcome.',
+     }),
+     // Requires the Android SDK and an emulator. Replace com.android.settings with your app's package.
+     targets: [{
+       name: 'android',
+       platform: 'android',
+       engine: agentDevice({ platform: 'android', app: 'com.android.settings' }),
+     }],
+     workers: 1,
+   } satisfies E2EConfig;
+   ```
+
+   </TabItem>
+
+   </Tabs>
+
+   `app` is what the engine opens fresh at the start of every attempt: a bundle
+   id, an Android package, or a display name. Point it at your own app once the
+   Settings run passes, and add `appPath` to install a `.app` or `.apk` build
+   first. `device` names a specific simulator or emulator; without it
+   agent-device picks a booted one.
+
+   `workers: 1` is part of the config, not a suggestion. Workers share one
+   device, so a second worker taps the same screen as the first.
+
+3. **Read the test it wrote**
+
+   <Tabs syncKey="platform">
+
+   <TabItem label="iOS">
+
+   ```ts title="tests/example.e2e.ts"
+   import { test } from '@e2edev/agent-device';
+   import { expect } from '@e2edev/e2e';
+
+   test('Settings opens', async ({ screen }) => {
+     await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
+   });
+   ```
+
+   </TabItem>
+
+   <TabItem label="Android">
+
+   ```ts title="tests/example.e2e.ts"
+   import { test } from '@e2edev/agent-device';
+   import { expect } from '@e2edev/e2e';
+
+   test('Settings opens', async ({ screen }) => {
+     await expect(screen.getByText('Network & internet')).toBeVisible();
+   });
+   ```
+
+   </TabItem>
+
+   </Tabs>
+
+   Import `test` from `@e2edev/agent-device` to have the `device` fixture typed;
+   `expect` stays `e2e`'s. The test opens nothing itself, because the engine
+   already relaunched `app` when the attempt started.
+
+   Both checks name a label that exists on one platform only. A suite that runs
+   on an iPhone and a Pixel keeps those in files scoped with
+   `platforms: ['ios']` or `platforms: ['android']` and leaves the portable work
+   to `agent`, which reads the screen instead of the label.
+
+4. **Run**
+
+   ```bash
+   npx --no-install e2e run
+   ```
+
+   The engine boots the device once per worker, opens Settings, and runs the
+   test. Add the model for the commented agentic test:
+
+   ```bash
+   E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e run
+   ```
+
+   Every run writes `.e2e/report.json`, and each `app.screenshot()` lands under
+   the attempt's artifact directory as `screenshots/NNN-<label>.png`. The
+   [CLI reference](/reference/cli) has the flags, the report, and the exit
+   codes.
+
+</Steps>
+
+## Give the agent the device tools
+
+The engine's grammar covers tap, type, and scroll. Everything else the model
+might need on a device comes from the tool pack, which the generated config
+leaves out:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { agentDevice } from '@e2edev/agent-device';
+import { agentDeviceTools } from '@e2edev/agent-device/tools';
+
+const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
+const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
+
+export default {
+  targets: [
+    { name: 'iphone', platform: 'ios', engine: iphone },
+    { name: 'pixel', platform: 'android', engine: pixel },
+  ],
+  workers: 1,
+  agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
+} satisfies E2EConfig;
+```
+
+That adds `open_app`, free-form `swipe`, `type_text`, `alert`, and `screenshot`.
+Pass every device engine the config declares: tool names are fixed, so two packs
+cannot be merged, and the pack dispatches each call to the engine whose attempt
+is running.
+
+## What a device target cannot do
+
+The limits below are the engine's, not gaps in this page. Every one of them
+fails loudly rather than silently doing something else.
+
+- **No `state` capability.** A simulator has no portable session snapshot, so
+  `test.setup` and `session:` are unavailable. Sign in with deterministic
+  `screen` actions inside the test that needs the session.
+- **No secret fills.** `type_secret` is not offered to the model at all: a
+  secret fill is authorized against the origin of the surface, and
+  `app://device/...` has none for an allowlist to name. Fill credentials through
+  a `screen` action instead.
+- **Screenshots only, and redacted.** Every secure field's bounds are painted
+  black before the file is written, a screenshot that cannot be redacted fails
+  instead of being kept, and there are no Playwright-style traces.
+- **`check` and `uncheck` need a reported checked state.** iOS switches report
+  one; Android's do not, so toggling on Android goes through `agent.act` or a
+  tap.
+- **`selectOption`, `setInputFiles`, and `scrollIntoView` are
+  `UNSUPPORTED_CAPABILITY`,** as is focus on a control (a touch surface focuses
+  by tapping, which would activate it) and any key other than `Enter` or a
+  single character.
+- **No `app.navigate()`.** `app.back()` is there, and `restart()` and
+  `clearState()` arrive with a pinned `app` or `appPath`.
+- **Cancelled commands keep running.** agent-device commands take no abort
+  signal, so a timed-out command is abandoned by its caller but stays alive on
+  the device. The next attempt waits for every abandoned command to settle
+  before it opens anything, within the launch timeout.
+
+## The trace cache on a device
+
+The runner caches an `agent.act` step against the location the surface reports,
+and a device has no address bar. This engine mints one:
+`app://device/<bundle id>/<screen title>`, with the title read off the
+navigation bar on iOS and the collapsing toolbar on Android. A step recorded on
+`/com.apple.preferences/General` replays only when Settings is on General again,
+and a flow that stays inside tap, type, and scroll replays with no model calls.
+
+Two things end a replay: a project-tool call such as `open_app`, and a target
+that no longer relocates. Pin `app` so every attempt starts on the same screen,
+and switch apps between steps through the `device` fixture rather than inside
+one.
+
+## In CI
+
+A device job is the local flow plus the device: boot the simulator or emulator
+in its own step, then run the suite, so the wait for a cold device shows up in
+the job log instead of inside the first test's timeout. iOS needs a macOS
+runner; Android runs anywhere the SDK and an emulator do. CI already forces
+`workers: 1`, and it makes the trace cache read-only, so a committed cache
+replays without recording. The rest of the workflow, including keeping
+model-backed tests off pull requests, is on the [CI page](/ci).
+
+<CardGrid>
+  <LinkCard title="Device reference" href="/reference/device" description="Every engine option, the device fixture, roles, and tools." />
+  <LinkCard title="Writing tests" href="/writing-tests" description="Goals, checks, extraction, and the deterministic APIs." />
+  <LinkCard title="Your own agent" href="/agents" description="Add tools, tune the loop, or bring your own executor." />
+  <LinkCard title="CI" href="/ci" description="The one workflow you need." />
+</CardGrid>
