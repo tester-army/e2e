@@ -573,7 +573,65 @@
         "summary": { "$ref": "#/$defs/summary" },
         "limits": { "$ref": "#/$defs/limits" },
         "usage": { "$ref": "#/$defs/usage" },
+        "explore": { "$ref": "#/$defs/explore" },
         "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    },
+    "exploreFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "index", "kind", "severity", "title", "expected", "actual", "reproduction", "reportedAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "index": { "type": "integer", "minimum": 0 },
+        "step": { "type": "integer", "minimum": 1 },
+        "kind": { "enum": ["issue", "warning"] },
+        "severity": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "expected": { "type": "string", "maxLength": 2000 },
+        "actual": { "type": "string", "maxLength": 2000 },
+        "reproduction": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "path": { "type": "string", "maxLength": 2048 },
+        "observationRevision": { "type": "string", "minLength": 1 },
+        "reportedAt": { "$ref": "#/$defs/timestamp" },
+        "screenshot": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "exploreStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "title", "instruction", "status", "startedAt", "durationMs"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "instruction": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "enum": ["passed", "failed", "blocked", "exhausted"] },
+        "summary": { "type": "string", "maxLength": 4000 },
+        "errorCode": { "type": "string", "minLength": 1 },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "explore": {
+      "description": "The record of an e2e explore run: the goal, the steps the agent planned and ran, and the findings it reported. Present only on explore runs.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "budgets", "ended", "steps", "findings"],
+      "properties": {
+        "goal": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSteps", "timeoutMs"],
+          "properties": {
+            "maxSteps": { "type": "integer", "minimum": 1 },
+            "timeoutMs": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "ended": { "enum": ["finished", "step-limit", "time", "stuck", "aborted"] },
+        "summary": { "type": "string", "maxLength": 4000 },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/exploreStep" } },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/exploreFinding" } }
       }
     }
   }

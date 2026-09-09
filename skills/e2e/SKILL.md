@@ -58,6 +58,7 @@ one. Without them, the installed CLI prints the same text:
 | `writing-tests` | [references/writing-tests.md](references/writing-tests.md) | Writing or fixing tests: fixtures, locators, actions, matchers, sign-in sessions, the `web` fixture |
 | `agent` | [references/agent.md](references/agent.md) | Adding `agent.*` steps, picking a model, cost and budgets, the trace cache |
 | `running` | [references/running.md](references/running.md) | CLI flags, reporters, `.e2e/report.json`, exit codes, CI |
+| `explore` | [references/explore.md](references/explore.md) | Exploring an app toward a goal without a test file: `e2e explore`, its budgets, verdict, and `run.explore` |
 | `debugging` | [references/debugging.md](references/debugging.md) | A run failed: error codes and their fixes, `--headed`, `--debug`, `--ai-trace` |
 
 ## Workflow

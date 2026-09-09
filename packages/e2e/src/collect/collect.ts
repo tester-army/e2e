@@ -269,6 +269,27 @@ export function collectFromRegistration(
 }
 
 /**
+ * A collection made of one registration supplied in memory instead of
+ * discovered files: what `e2e explore` runs, whose one test has no file. The
+ * virtual file name is what the report and the reporters show for it. Nothing
+ * is discovered, so no near miss or unmatched positional can exist.
+ */
+export function collectInMemory(
+  projectRoot: string,
+  file: string,
+  registration: ModuleRegistration,
+): Collection {
+  const collected = collectFromRegistration(projectRoot, path.join(projectRoot, file), registration);
+  return {
+    files: [collected],
+    tests: collected.tests,
+    discovered: [collected.file],
+    nearMisses: [],
+    unmatchedPositionals: [],
+  };
+}
+
+/**
  * Runs collection: resolves globs, sorts matched files by code point, narrows
  * them by any positional arguments, and imports each module once in the
  * collection realm.

@@ -7,7 +7,7 @@
  * executor needs no import from here (and no AI SDK) at all.
  */
 
-export { createAgent, type CreateAgentOptions } from './default-agent.ts';
+export { createAgent, type CreateAgentOptions, type DefaultAgent } from './default-agent.ts';
 export {
   createToolLoopExecutor,
   type ToolLoopExecutorOptions,

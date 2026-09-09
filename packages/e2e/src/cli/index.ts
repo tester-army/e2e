@@ -6,6 +6,7 @@ import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import { list, run, type ListedPair } from '../run/runner.ts';
+import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { cliSessionEvent, runCompletedEvent } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { cache, type CacheCommand } from './cache.ts';
@@ -37,6 +38,17 @@ function parseList(value: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item !== '');
+}
+
+/** An integer inside a closed range, for the explore budgets. */
+function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
+  return (value) => {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < bounds.min || parsed > bounds.max) {
+      throw new InvalidArgumentError(`must be an integer from ${bounds.min} through ${bounds.max}`);
+    }
+    return parsed;
+  };
 }
 
 const REPORTERS = ['list', 'json', 'junit'] as const;
@@ -140,6 +152,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
           'e2e run --tag smoke --reporter list,junit',
+          "e2e explore 'Explore checkout like a first-time buyer and find bugs'",
           'e2e list --tag smoke',
           'e2e cache ls',
           'e2e guide',
@@ -294,6 +307,107 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           process.exitCode = outcome.exitCode;
           // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
           telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
+        } finally {
+          release();
+        }
+      },
+    );
+
+  program
+    .command('explore')
+    .summary('explore the app toward a goal and report findings, without a test file')
+    .description(
+      'Run the agent against the app with a goal instead of a test: it plans one exploration step at a time, drives the app, reports every defect it has evidence of, and ends with an assessment. The run writes .e2e/report.json like e2e run, with the exploration record under run.explore. The model comes from agent.model or E2E_MODEL.',
+    )
+    .argument('[goal]', 'what to explore, in a sentence (default: "Explore the app and find bugs")')
+    .optionsGroup('Selection:')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--target <id>', 'the target to explore (default: the first configured target)')
+    .optionsGroup('Budgets:')
+    .option(
+      '--max-steps <n>',
+      `exploration steps at most, ${STEP_BOUNDS.min} through ${STEP_BOUNDS.max} (default: ${STEP_BOUNDS.default})`,
+      parseBoundedInt(STEP_BOUNDS),
+    )
+    .option(
+      '--timeout <ms>',
+      `wall clock in milliseconds, ${TIMEOUT_BOUNDS.min} through ${TIMEOUT_BOUNDS.max} (default: ${TIMEOUT_BOUNDS.default})`,
+      parseBoundedInt(TIMEOUT_BOUNDS),
+    )
+    .optionsGroup('Execution:')
+    .option('--headed', 'show the UI while the agent explores, when the engine supports it')
+    .optionsGroup('Output:')
+    .option('--reporter <ids>', 'comma-separated reporters: list, json, junit', parseReporters)
+    .option('--artifacts <dir>', 'artifact root (default: .e2e/artifacts)')
+    .option('--debug', 'print phase timings and the agent step table to stderr')
+    .option('--ai-trace', 'record every model call to .e2e/ai-trace.json (unbox-ai)')
+    .option('--video', 'record a video of the exploration, when the engine supports it')
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples([
+          'e2e explore',
+          "e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'",
+          'e2e explore --target web --max-steps 4 --headed',
+          "E2E_MODEL=provider/model-id e2e explore 'Hunt for broken forms and dead links' --video",
+        ]),
+        '',
+        helpSection('Exit codes:', [
+          `${pc.cyan('0'.padEnd(3))}  the exploration ran and reported no issue (warnings do not count)`,
+          `${pc.cyan('1'.padEnd(3))}  at least one issue was reported, or nothing could be explored`,
+          `${pc.cyan('2'.padEnd(3))}  CLI, config, or agent policy error`,
+          `${pc.cyan('3'.padEnd(3))}  engine, app process, model provider, or artifact failure`,
+          `${pc.cyan('130'.padEnd(3))}  interrupted by Ctrl-C or a CI signal`,
+        ]),
+        '',
+        docsLine('/explore'),
+      ].join('\n'),
+    )
+    .action(
+      async (
+        goal: string | undefined,
+        options: {
+          config?: string;
+          target?: string;
+          maxSteps?: number;
+          timeout?: number;
+          headed?: boolean;
+          reporter?: Reporter[];
+          artifacts?: string;
+          debug?: boolean;
+          aiTrace?: boolean;
+          video?: boolean;
+        },
+        command: Command,
+      ) => {
+        const signals = new SignalLadder();
+        const release = signals.arm();
+        try {
+          const outcome = await explore({
+            goal,
+            configPath: options.config,
+            target: options.target,
+            maxSteps: options.maxSteps,
+            timeoutMs: options.timeout,
+            headed: options.headed,
+            reporters: options.reporter,
+            artifactsDir: options.artifacts,
+            debug: options.debug,
+            aiTrace: options.aiTrace,
+            video: options.video,
+            interruptSignal: signals.interruptSignal,
+            forceSignal: signals.forceSignal,
+            notice: (message) => process.stderr.write(`e2e explore: ${message}\n`),
+          });
+          process.exitCode = outcome.exitCode;
+          telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
+        } catch (cause) {
+          // A config that would not load, before any run started: the run's
+          // own failures are already in its report and exit code.
+          const error = classifyError(cause);
+          process.stderr.write(`${error.code}: ${error.message}\n`);
+          process.exitCode = exitCodeForCategory(error.category);
         } finally {
           release();
         }

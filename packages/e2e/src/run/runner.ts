@@ -10,7 +10,8 @@ import {
   type ResolvedConfig,
   type ResolvedTarget,
 } from '../config/resolve.ts';
-import { collect, type Collection } from '../collect/collect.ts';
+import { collect, collectInMemory, type Collection } from '../collect/collect.ts';
+import type { ModuleRegistration } from '../collect/registry.ts';
 import { select, selectTargets, type Selection, type SelectionFilters } from '../collect/select.ts';
 import {
   classifyError,
@@ -28,7 +29,7 @@ import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import { buildReport, describeTarget, type Report1Document, type TargetProvenance } from '../report/build.ts';
+import { buildReport, describeTarget, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { jsonReporter } from '../report/json.ts';
 import { junitReporter } from '../report/junit.ts';
@@ -82,6 +83,19 @@ export interface RunOptions {
    * run executes in-process on one worker.
    */
   rawConfig?: E2EConfig | undefined;
+  /**
+   * Tests registered in memory instead of discovered from files: one virtual
+   * file name and the registration its module would have produced. This is
+   * how `e2e explore` runs its goal as a test without a test file. Test
+   * bodies are closures, which cannot cross a process boundary, so the run
+   * executes in-process on one worker, exactly like a `rawConfig` run.
+   */
+  tests?: InMemoryTests | undefined;
+  /**
+   * The exploration record `e2e explore` adds to the report as `run.explore`,
+   * read once the run is over so it carries the final steps and findings.
+   */
+  exploreReport?: (() => ReportExplore | undefined) | undefined;
   /** The environment the run resolves against, instead of `process.env`. */
   env?: NodeJS.ProcessEnv | undefined;
   /** Suppresses the list reporter. */
@@ -99,6 +113,12 @@ export interface RunOptions {
   onEvent?: RunEventSink | undefined;
   /** Budget for each reporter's `onRunFinished`, in ms. Only the test harness sets it; there is no flag. */
   reporterTimeout?: number | undefined;
+}
+
+/** A registration supplied in memory, under the virtual file name the report shows for it. */
+export interface InMemoryTests {
+  readonly file: string;
+  readonly registration: ModuleRegistration;
 }
 
 /** How long a reporter's `onRunFinished` may take before the run stops waiting for it. */
@@ -291,6 +311,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       serialGroups,
       runErrors,
       targetProvenance,
+      explore: options.exploreReport?.(),
     });
 
   /**
@@ -466,7 +487,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     try {
       planned = await setupStep({ kind: 'collect' }, () =>
         debug.time('collect', async () => {
-          const collection = await collect(config, options.files);
+          const collection =
+            options.tests === undefined
+              ? await collect(config, options.files)
+              : collectInMemory(config.projectRoot, options.tests.file, options.tests.registration);
           const selection = select(
             collection,
             config,
@@ -494,9 +518,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     let plans = buildWorkPlans(selection, collection, config.projectRoot);
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A supplied `rawConfig` cannot cross a process
-    // boundary (it may hold live engine handles), so it runs in-process
-    // against one worker.
-    const runWorkers = config.configPath === undefined ? 1 : config.workers;
+    // boundary (it may hold live engine handles), and neither can the bodies
+    // of tests registered in memory, so either runs in-process against one
+    // worker.
+    const inProcess = config.configPath === undefined || options.tests !== undefined;
+    const runWorkers = inProcess ? 1 : config.workers;
 
     // Provisioning: an engine that must fetch something onto this machine (a
     // first-run browser download) does it here, once per target, before the
@@ -560,17 +586,19 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // Both transports are reached through `SpawnUnitRunner`: the scheduler is
     // the only engine either way.
-    if (aiTrace !== undefined && config.configPath === undefined) {
+    if (aiTrace !== undefined && inProcess) {
       // In-process execution shares this process with the runner, so the
       // recorder lives here and is drained straight into the collector.
       aiTraceRecorder = new AiTraceRecorder();
       await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
     }
+    // The second test only narrows the type: `inProcess` already covers it.
     const spawn =
-      config.configPath === undefined
+      inProcess || config.configPath === undefined
         ? inProcessSpawner({
             config,
             selection,
+            registration: options.tests?.registration,
             runId,
             artifactsRoot,
             sessionStore: store,

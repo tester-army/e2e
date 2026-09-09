@@ -1,12 +1,13 @@
 ---
 title: CLI
-description: e2e init, e2e guide, e2e run, e2e list, and e2e cache, flag by flag.
+description: e2e init, e2e guide, e2e run, e2e explore, e2e list, and e2e cache, flag by flag.
 ---
 
 ```bash
 npx --no-install e2e init [directory]
 npx --no-install e2e guide [topic]
 npx --no-install e2e run [files...] [options]
+npx --no-install e2e explore [goal] [options]
 npx --no-install e2e list [files...] [options]
 npx --no-install e2e cache ls|clear|stats [--config <path>]
 npx --no-install e2e --help
@@ -274,6 +275,50 @@ belongs to the CLI; the runner itself never handles process signals.
 A worker whose runner disappears (killed, crashed) never runs on by itself: it
 disposes its engine and exits within the cleanup budget, so a device or a
 browser is not driven by a process nobody is listening to.
+
+## e2e explore
+
+```bash
+e2e explore [goal]
+```
+
+A run with no test file: the agent gets a goal, plans one exploration step at
+a time, drives the app, reports every defect it has evidence of through its
+`report_finding` tool, and ends with an assessment. The goal is one quoted
+sentence; without one it is `Explore the app and find bugs`. The model comes
+from `agent.model` or `E2E_MODEL`, as for `run`. [Exploring without a
+test](/explore) describes what a run does and how to read it.
+
+| Flag | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `--config <path>` | string | discovered | Explicit config path, with the same errors as `run`. |
+| `--target <id>` | string | the first configured target | The one target to explore. Several targets and no flag explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
+| `--max-steps <n>` | integer 1-12 | `8` | Exploration steps at most. Out of range exits 2. |
+| `--timeout <ms>` | integer 180000-900000 | `600000` | The run's wall clock. The last minute is kept for the closing assessment. Out of range exits 2. |
+| `--headed` | boolean | `false` | Requests visible UI when the engine supports it. |
+| `--reporter <ids>` | comma-separated list | resolved config value | As for `run`. The exploration summary rows print under the `list` summary; `json` carries the record in the report. |
+| `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report, the artifact tree, and the finding screenshots (`explore/<launch time>/finding-<n>.png`). |
+| `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
+| `--ai-trace` | boolean | `false` | As for `run`. |
+| `--video` | boolean | `false` | As for `run`: one video of the whole exploration. |
+
+The run has one result, under the virtual file `explore`, titled by the goal.
+The trace cache is off and retries are zero whatever the config says.
+`.e2e/report.json` gains `run.explore`: the goal, the budgets, why the run
+ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
+assessment, the steps, and the findings.
+
+Exit codes: `0` when steps ran and no finding of kind `issue` was reported,
+`1` when one was, or when no step ran and nothing was found (the run is
+`blocked`, never a zero-coverage pass), `2` and `3` as for `run`, `130` on
+Ctrl-C.
+
+```bash
+npx --no-install e2e explore
+npx --no-install e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
+npx --no-install e2e explore --target web --max-steps 4 --headed
+E2E_MODEL=provider/model-id npx --no-install e2e explore 'Hunt for broken forms and dead links' --video
+```
 
 ## e2e list
 

@@ -61,13 +61,36 @@ export interface CreateAgentOptions {
   readonly providerOptions?: ProviderOptions;
 }
 
+/** Cross-realm identity marker for executors `createAgent` built. */
+const DEFAULT_AGENT_MARKER = Symbol.for('e2e.default-agent.v1');
+
+/**
+ * The executor `createAgent` returns: the step executor plus the options it
+ * was built from, readable so a host that composes another vocabulary on top
+ * of a project's (`e2e explore` adds its finding tool to the project's tools)
+ * starts from the same tools, guidance, model, and provider options.
+ */
+export interface DefaultAgent extends StepExecutor {
+  /** The project tools passed to `createAgent`, validated. */
+  readonly tools: Readonly<Record<string, DefinedTool>>;
+  /** The extra system guidance passed to `createAgent`, when any. */
+  readonly system: string | undefined;
+  readonly maxTurns: number | undefined;
+  readonly providerOptions: ProviderOptions | undefined;
+}
+
+/** True when an executor came from `createAgent`, in this or another realm. */
+export function isDefaultAgent(value: unknown): value is DefaultAgent {
+  return typeof value === 'object' && value !== null && DEFAULT_AGENT_MARKER in value;
+}
+
 /** Builds the default AI SDK step executor. */
-export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
+export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
   const userTools = validateUserTools(options.tools);
   const system = [BASE_RULES, options.system]
     .filter((part): part is string => part !== undefined && part.trim() !== '')
     .join('\n\n');
-  return createToolLoopExecutor({
+  const executor = createToolLoopExecutor({
     name: 'e2e-default-agent',
     version: '2',
     ...(options.model === undefined ? {} : { model: options.model }),
@@ -99,6 +122,15 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
       return parts.join('\n\n');
     },
   });
+  const agent: DefaultAgent = {
+    ...executor,
+    tools: userTools,
+    system: options.system,
+    maxTurns: options.maxTurns,
+    providerOptions: options.providerOptions,
+  };
+  Object.defineProperty(agent, DEFAULT_AGENT_MARKER, { value: true });
+  return agent;
 }
 
 /**

@@ -4,9 +4,10 @@
 
 ```bash
 npx --no-install e2e run [files...] [options]   # run tests
+npx --no-install e2e explore [goal] [options]   # explore the app toward a goal, no test file (see the explore topic)
 npx --no-install e2e list [files...] [options]  # print what run would select, without running
 npx --no-install e2e init [--yes]               # scaffold a project, refresh the agent skill
-npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, debugging
+npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, explore, debugging
 npx --no-install e2e cache ls|clear|stats       # read or empty the trace cache
 npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the switch
 ```

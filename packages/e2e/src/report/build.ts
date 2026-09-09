@@ -77,6 +77,55 @@ export interface BuildReportOptions {
   serialGroups: readonly SerialGroupRecord[];
   runErrors: readonly RunError[];
   targetProvenance: ReadonlyMap<string, TargetProvenance>;
+  /** The exploration record of an `e2e explore` run; absent for a test run. */
+  explore?: ReportExplore | undefined;
+}
+
+/** One finding `e2e explore` recorded through its `report_finding` tool. */
+export interface ReportExploreFinding {
+  id: string;
+  index: number;
+  /** One-based exploration step the finding was reported in; absent when reported between steps. */
+  step?: number | undefined;
+  /** An `issue` fails the run; a `warning` is recorded and does not. */
+  kind: 'issue' | 'warning';
+  /** 5 = a core journey is impossible or data is wrong, 1 = a polish item. */
+  severity: 1 | 2 | 3 | 4 | 5;
+  title: string;
+  expected: string;
+  actual: string;
+  reproduction: readonly string[];
+  /** Redacted location when the engine reports one. */
+  path?: string | undefined;
+  observationRevision?: string | undefined;
+  reportedAt: string;
+  /** Evidence screenshot, relative to the artifact root, when pixels were granted. */
+  screenshot?: string | undefined;
+}
+
+/** One exploration step: a charter the agent planned and then executed as an `agent.act` step. */
+export interface ReportExploreStep {
+  index: number;
+  title: string;
+  instruction: string;
+  /** `exhausted`: the step ended at its action or time budget, which is not a failure. */
+  status: 'passed' | 'failed' | 'blocked' | 'exhausted';
+  summary?: string | undefined;
+  errorCode?: string | undefined;
+  startedAt: string;
+  durationMs: number;
+}
+
+/** The `run.explore` block: what `e2e explore` was asked, did, and found. */
+export interface ReportExplore {
+  goal: string;
+  budgets: { maxSteps: number; timeoutMs: number };
+  /** Why exploration stopped. */
+  ended: 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted';
+  /** The agent's closing assessment, when it gave one. */
+  summary?: string | undefined;
+  steps: readonly ReportExploreStep[];
+  findings: readonly ReportExploreFinding[];
 }
 
 // --- report-1 wire shapes (schema/report-v1.schema.json) ---
@@ -254,6 +303,8 @@ export interface Report1Document {
     summary: ReportSummary;
     limits: ReportLimits;
     usage: ReportUsage;
+    /** Present on an `e2e explore` run only. */
+    explore?: ReportExplore | undefined;
   };
 }
 
@@ -605,6 +656,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         serialGroups: options.serialGroups,
         discovered: summary.discovered,
       }),
+      ...(options.explore === undefined ? {} : { explore: options.explore }),
     },
   };
 }

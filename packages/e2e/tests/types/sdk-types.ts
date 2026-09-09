@@ -17,6 +17,8 @@ import {
   type TraceCacheStore,
 } from '../../src/index.ts';
 import type { EngineHandle } from '../../src/engine/index.ts';
+import { createAgent, defineTool, type DefaultAgent } from '../../src/agent/public.ts';
+import type { Report } from '../../src/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
@@ -93,3 +95,15 @@ test('as the buyer', { agent: 'buyer' }, async () => {});
 test.describe('admin flows', { agent: 'admin' }, () => {});
 await agent.act('approve it', { agent: 'admin' });
 await agent.assert('it is approved', { agent: 'buyer' });
+// createAgent hands back its vocabulary readable, so a host (e2e explore) can compose on it.
+declare const seedCart: ReturnType<typeof defineTool>;
+const projectAgent: DefaultAgent = createAgent({ tools: { seedCart }, system: 'Be thorough.' });
+projectAgent.tools.seedCart satisfies ReturnType<typeof defineTool> | undefined;
+projectAgent.system satisfies string | undefined;
+({ agent: projectAgent }) satisfies E2EConfig;
+// @ts-expect-error the vocabulary is read-only
+projectAgent.tools = {};
+
+// The report carries the exploration record only on an explore run.
+declare const report: Report;
+report.run.explore satisfies { goal: string; findings: readonly { severity: 1 | 2 | 3 | 4 | 5 }[] } | undefined;

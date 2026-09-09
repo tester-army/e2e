@@ -7,6 +7,7 @@
  */
 
 import type { TestIdentity } from '../collect/collect.ts';
+import type { ModuleRegistration } from '../collect/registry.ts';
 import type { Selection, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { classifyError, ConfigurationError, serializeError } from '../internal/errors.ts';
@@ -19,6 +20,13 @@ import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './w
 export interface InProcessRunnerOptions {
   readonly config: ResolvedConfig;
   readonly selection: Selection;
+  /**
+   * The registration of tests supplied in memory (`RunOptions.tests`). There
+   * is no file to re-import, so every unit adopts this registration as its
+   * realm; such a run has one unit and no retries, so nothing asks for a
+   * second realm of it.
+   */
+  readonly registration?: ModuleRegistration | undefined;
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
@@ -124,7 +132,7 @@ class InProcessRunner implements UnitRunner {
       workerSlot: this.workerSlot,
       isolated: false,
       debug: this.options.debug,
-      resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit),
+      resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit, this.options.registration),
     };
   }
 }
@@ -134,6 +142,7 @@ async function resolveFromSelection(
   selection: Selection,
   target: ResolvedTarget,
   unit: RunUnitMessage,
+  registration: ModuleRegistration | undefined,
 ): Promise<ResolvedUnitPairs> {
   const selected = selection.perTarget.find((entry) => entry.target.name === target.name);
   const available = new Map<string, TestTargetPair>();
@@ -146,7 +155,7 @@ async function resolveFromSelection(
     if (pair === undefined) missing.push(wire.test);
     else pairs.push(pair);
   }
-  return { pairs, missing };
+  return { pairs, missing, ...(registration === undefined ? {} : { registration }) };
 }
 
 /** Creates the spawn factory the scheduler uses for in-process execution. */

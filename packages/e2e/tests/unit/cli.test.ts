@@ -459,7 +459,7 @@ describe('e2e guide', () => {
     await invoke('guide', 'nope');
     expect(process.exitCode).toBe(2);
     expect(stdoutSpy).not.toHaveBeenCalled();
-    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, debugging, running, setup, writing-tests\n');
+    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, debugging, explore, running, setup, writing-tests\n');
   });
 
   it('is listed in the help with an example, and its own help names the topics', async () => {
@@ -472,7 +472,7 @@ describe('e2e guide', () => {
     await invoke('guide', '--help');
     const help = written(stdoutSpy);
     expect(help).toContain('Usage: e2e guide [options] [topic]');
-    expect(help).toMatch(/one of agent, debugging, running, setup,\s+writing-tests/u);
+    expect(help).toMatch(/one of agent, debugging, explore, running, setup,\s+writing-tests/u);
     expect(help).toContain('  $ e2e guide writing-tests\n');
     expect(help).toContain('Docs: https://e2e-docs.vercel.app/reference/cli#e2e-guide\n');
     expect(process.exitCode).toBe(0);
