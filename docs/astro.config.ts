@@ -96,7 +96,6 @@ export default defineConfig({
             'reference/config',
             'reference/cli',
             'reference/environment',
-            'reference/embedding',
             'reference/errors',
             'reference/engine',
           ],

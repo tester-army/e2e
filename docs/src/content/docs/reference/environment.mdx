@@ -10,8 +10,7 @@ an inventory of every `process.env` and `env[...]` read in `@e2edev/e2e` and
 `@e2edev/playwright`. A variable not listed here has no effect on a run.
 
 Almost every read goes through an `env` object the runner is handed once, at
-config load, so an embedder can substitute its own (see
-[Embedding](/reference/embedding)). The exceptions are called out below.
+config load. The exceptions are called out below.
 
 Two readings recur. A **value** counts when it is set and not blank. A **flag**
 is on when it is set and not blank, `0`, or `false`; the value is trimmed and

@@ -69,7 +69,7 @@ export interface TargetExecutorOptions {
   /**
    * Whether this executor runs in a process of its own that ends with its
    * work. Only then can an interrupted test body be abandoned mid-flight:
-   * the process takes it down. In the host's own process (a `rawConfig`
+   * the process takes it down. In the runner's own process (a `rawConfig`
    * run) the body would keep executing after the run resolved, so there the
    * interrupt waits for it to reach a harness call or its timeout.
    */

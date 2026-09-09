@@ -63,13 +63,15 @@ export interface RunOptions {
   /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
-   * A config value instead of a discovered file — the embedding-host entry
-   * point (see the embedding guide). May hold live values (executors, driver
-   * handles, model instances, cache stores, secret providers), which cannot
-   * cross a process boundary, so the run executes in-process on one worker.
+   * A config value instead of a discovered file, for the test harness. May
+   * hold live values (executors, engine handles, model instances, cache
+   * stores, secret providers), which cannot cross a process boundary, so the
+   * run executes in-process on one worker.
    */
   rawConfig?: E2EConfig | undefined;
+  /** The environment the run resolves against, instead of `process.env`. */
   env?: NodeJS.ProcessEnv | undefined;
+  /** Suppresses the list reporter. */
   quiet?: boolean | undefined;
   /** Cancellation: the running test ends, its teardown runs, the run finishes as `interrupted`. */
   interruptSignal?: AbortSignal | undefined;
@@ -80,7 +82,7 @@ export interface RunOptions {
    * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
    */
   forceSignal?: AbortSignal | undefined;
-  /** Structured, JSON-serializable run events for embedding hosts. */
+  /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
 }
 
@@ -201,9 +203,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     (cause: unknown) => ({ config: undefined, error: classifyError(cause) }),
   );
 
-  // The event stream is the run's single spine: the list reporter is just one
-  // sink on it, beside the host's, so the CLI and a host can never see
-  // different stories.
+  // The event stream is the run's single spine: the list reporter is one sink
+  // on it, beside any other, so every consumer sees the same story.
   const reporters = loaded.config?.reporters ?? options.reporters ?? ['list'];
   const emit = createRunEventEmitter([
     options.quiet === true || !reporters.includes('list') ? undefined : new ListReporter().handle,
@@ -540,7 +541,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     sessionStore = store;
 
     // Workers re-load the config module themselves, so a file-backed config
-    // runs across processes. A programmatic `rawConfig` cannot cross a process
+    // runs across processes. A supplied `rawConfig` cannot cross a process
     // boundary (it may hold live engine handles), so it runs in-process
     // against one worker. Either way the scheduler is the only engine.
     if (aiTrace !== undefined && config.configPath === undefined) {

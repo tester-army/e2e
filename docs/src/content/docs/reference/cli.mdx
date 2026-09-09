@@ -263,8 +263,7 @@ claiming to stop a running test. The final summary names the interrupt too: a
 run cut before its plan arrived ends with `Test Files none started
 (interrupted)` rather than `no test files`, and a run cut after it keeps its
 counters against the planned total. This ladder
-belongs to the CLI; the [programmatic runner](/reference/embedding) never
-handles process signals.
+belongs to the CLI; the runner itself never handles process signals.
 
 A worker whose runner disappears (killed, crashed) never runs on by itself: it
 disposes its engine and exits within the cleanup budget, so a device or a
@@ -349,8 +348,7 @@ reporting an empty cache.
 
 Shows whether anonymous usage telemetry is on, and switches it. The CLI sends
 one event per command and one per run, built from counts, versions, and the
-names your config declares; [Telemetry](/telemetry) lists every property. Hosts embedding
-`@e2edev/e2e/run` send nothing.
+names your config declares; [Telemetry](/telemetry) lists every property.
 
 | Command | Effect |
 | --- | --- |

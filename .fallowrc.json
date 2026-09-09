@@ -27,7 +27,6 @@
     "dev-dependencies-in-production": "warn"
   },
   "ignoreUnresolvedImports": [
-    "@e2edev/e2e/run",
     "**/dist/**"
   ]
 }

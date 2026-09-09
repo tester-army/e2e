@@ -101,8 +101,8 @@ A host store receives every artifact the moment it is complete on disk — as
 produced, not after the run — and returns its own reference, which the report
 records as the artifact's `ref` beside the local path. A failed `put` never
 fails the run; the record simply carries no `ref`. Like every live value, a
-store never crosses a process boundary, so it runs in-process
-(`rawConfig`).
+store never crosses a process boundary: each worker constructs its own when
+it loads the config module.
 Every run writes `.e2e/report.json` regardless of the selected reporters; the
 `junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
 

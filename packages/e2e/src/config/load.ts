@@ -67,8 +67,8 @@ export function discoverConfig(cwd: string, explicitPath?: string): DiscoveredCo
 /**
  * The failure for a run that found no config file: where the search looked,
  * a lookalike in the working directory when one exists, and otherwise the
- * command that creates a config. Thrown by the CLI path only; an embedding
- * host passes its config as a value.
+ * command that creates a config. Thrown when a config file is discovered,
+ * never for a supplied config value.
  */
 export function missingConfigError(cwd: string): ConfigurationError {
   const root = path.resolve(cwd);

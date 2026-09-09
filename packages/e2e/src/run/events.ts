@@ -1,13 +1,13 @@
 /**
- * Structured run events (`@e2edev/e2e/run`): the run's single event spine.
+ * Structured run events: the run's single event spine.
  *
  * Every event is plain JSON data — the same records the report persists and
- * the worker IPC already carries, so a host can stream them over any wire
+ * the worker IPC already carries, so a sink can forward them over any wire
  * without touching live handles. The list reporter consumes exactly this
- * stream (`ListReporter.handle`, report/list.ts), so the CLI's rendering and a
- * host's dashboard can never drift: there is one dispatch, not two. The
- * report stays the canonical record; the stream exists so consumers can
- * render progress while the run is still going.
+ * stream (`ListReporter.handle`, report/list.ts), so no two consumers can
+ * drift: there is one dispatch, not two. The report stays the canonical
+ * record; the stream exists so consumers can render progress while the run
+ * is still going.
  *
  * The emitter is the single writer: it stamps `seq` and `at`, so ordering
  * survives any transport that preserves per-connection order. A sink that
@@ -204,7 +204,7 @@ export function toEventResult(record: ResultRecord): RunEventResult {
 
 /**
  * Builds the run's single event writer over every configured sink. Sinks are
- * quarantined independently, so a broken host callback cannot silence the
+ * quarantined independently, so one broken sink cannot silence the
  * list reporter or vice versa. Returns a no-op when no sink is configured,
  * so call sites never branch.
  */

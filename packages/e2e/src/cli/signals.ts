@@ -1,8 +1,8 @@
 /**
  * What Ctrl-C means to the CLI, press by press. The runner installs no
- * process handlers and never exits the process — a host embedding it passes
- * its own signals — so process termination is owned here, by the one caller
- * that is the process.
+ * process handlers and never exits the process; it takes its interrupt and
+ * force signals as options, so process termination is owned here, by the one
+ * caller that is the process.
  */
 
 import { killManagedProcessGroups } from '../run/managed-process.ts';

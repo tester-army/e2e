@@ -133,8 +133,8 @@ const DEFAULT_OUTPUT: ListReporterOutput = {
 
 /**
  * Renders the run's event stream as the CLI's human-readable output. The
- * reporter is one sink on the run's single event spine, beside a host's
- * `onEvent`, so the CLI shows exactly what a host receives.
+ * reporter is one sink on the run's single event spine, so it can only show
+ * what every other sink receives.
  */
 export class ListReporter {
   private readonly pc: Colors;

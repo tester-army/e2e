@@ -1,6 +1,6 @@
 /**
  * In-process `UnitRunner`, used when the config cannot cross a process
- * boundary — a programmatic `rawConfig` may hold live engine handles and
+ * boundary — a supplied `rawConfig` may hold live engine handles and
  * closures. Execution still goes through the scheduler and the same
  * `TargetWorker` core; only the transport and pair resolution differ, and the
  * scheduler is capped at one worker so nothing overlaps in this process.

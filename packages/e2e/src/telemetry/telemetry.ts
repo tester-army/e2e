@@ -4,9 +4,8 @@
  * One instance lives for one CLI invocation. Commands hand it events; at the
  * end of the invocation `flush` sends them in a single bounded request, so a
  * command never waits on telemetry for more than the flush budget and never
- * fails because of it. Telemetry is a CLI concern only: a host embedding the
- * runner through `@e2edev/e2e/run` never constructs this class, and its runs
- * send nothing.
+ * fails because of it. Telemetry is a CLI concern only: the runner never
+ * constructs this class.
  *
  * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, an
  * `e2e telemetry disable`, or a preferences directory that cannot be written

@@ -203,7 +203,7 @@ describe('initializing standalone projects', () => {
     writeFileSync(path.join(dir, 'e2e.config.ts'), "import { test } from '@e2edev/e2e/test';\nexport default { marker: test };\n");
     await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
       code: 'CONFIG_LOAD_FAILED',
-      message: expect.stringContaining('@e2edev/e2e exports @e2edev/e2e, @e2edev/e2e/agent, @e2edev/e2e/engine, @e2edev/e2e/run'),
+      message: expect.stringContaining('@e2edev/e2e exports @e2edev/e2e, @e2edev/e2e/agent, @e2edev/e2e/engine'),
     });
   });
 

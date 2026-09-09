@@ -52,14 +52,14 @@ describe('explainModuleError', () => {
     const manifestPath = path.join(manifestDir, 'package.json');
     writeFileSync(
       manifestPath,
-      JSON.stringify({ name: '@e2edev/e2e', exports: { '.': './dist/index.js', './agent': './dist/agent.js', './run': './dist/run.js' } }),
+      JSON.stringify({ name: '@e2edev/e2e', exports: { '.': './dist/index.js', './agent': './dist/agent.js', './engine': './dist/engine.js' } }),
     );
     const cause = nodeError(
       'ERR_PACKAGE_PATH_NOT_EXPORTED',
       `Package subpath './agnet' is not defined by "exports" in ${manifestPath} imported from ${importer}`,
     );
     expect(explainModuleError(cause, importer)).toBe(
-      `${cause.message}; @e2edev/e2e exports @e2edev/e2e, @e2edev/e2e/agent, @e2edev/e2e/run; did you mean "@e2edev/e2e/agent"?`,
+      `${cause.message}; @e2edev/e2e exports @e2edev/e2e, @e2edev/e2e/agent, @e2edev/e2e/engine; did you mean "@e2edev/e2e/agent"?`,
     );
   });
 
