@@ -24,9 +24,8 @@ function names(expression: LocatorExpression): string[] {
 }
 
 describe('locator expressions over a device snapshot', () => {
-  it('answers role queries with name filters and skips hidden nodes unless asked', () => {
+  it('answers role queries with name filters and skips hidden nodes', () => {
     expect(names(query('role', 'button'))).toEqual(['Back']);
-    expect(names(query('role', 'button', { states: { hidden: true } }))).toEqual(['Back', 'Hidden']);
     expect(names(query('role', 'button', { name: exact('Back') }))).toEqual(['Back']);
     expect(names(query('role', 'button', { name: { kind: 'regexp', source: '^ba', flags: 'i' } }))).toEqual(['Back']);
     expect(names(query('role', 'switch', { states: { checked: true } }))).toEqual([]);

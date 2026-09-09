@@ -12,7 +12,7 @@ export function roleQuery(
   scope: LocatorExpression | undefined,
 ): LocatorExpression {
   const states: Record<string, boolean> = {};
-  for (const key of ['checked', 'disabled', 'selected', 'expanded', 'hidden'] as const) {
+  for (const key of ['checked', 'disabled', 'selected', 'expanded'] as const) {
     const value = options?.[key];
     if (value !== undefined) states[key] = value;
   }

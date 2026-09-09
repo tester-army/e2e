@@ -85,8 +85,8 @@ function subtreeHasText(
 const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded'] as const;
 
 /**
- * One node against one semantic query. Role queries skip hidden nodes unless
- * the query asks for them, as a browser's role query does; the other kinds
+ * One node against one semantic query. Role queries skip hidden nodes, as a
+ * browser's role query does; the other kinds
  * answer with every node and leave visibility to the action or assertion,
  * unless the query says `visible`, which drops hidden nodes for every kind.
  */
@@ -100,8 +100,8 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery, options: Locat
       }
       if ((node.role ?? '') !== query.value.value) return false;
       if (query.name !== undefined && !matchesText(node.name ?? '', query.name)) return false;
+      if (node.states?.hidden === true) return false;
       const wanted = query.states ?? {};
-      if (wanted.hidden !== true && node.states?.hidden === true) return false;
       for (const key of STATE_KEYS) {
         const expected = wanted[key];
         if (expected !== undefined && (node.states?.[key] ?? false) !== expected) return false;

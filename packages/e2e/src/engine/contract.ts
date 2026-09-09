@@ -34,8 +34,13 @@ export interface SemanticQuery {
   readonly kind: QueryKind;
   readonly value: TextPattern;
   readonly name?: TextPattern;
+  /**
+   * States a role query requires. A role query never matches a node whose
+   * `states.hidden` is true, as a browser's role selector never does; there is
+   * no state that widens it to hidden nodes.
+   */
   readonly states?: Readonly<
-    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'hidden', boolean>>
+    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded', boolean>>
   >;
   /**
    * When true, an engine MUST exclude every match whose `states.hidden` would

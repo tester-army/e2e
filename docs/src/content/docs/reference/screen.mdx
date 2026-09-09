@@ -277,7 +277,6 @@ export interface RoleOptions extends TextMatchOptions {
   disabled?: boolean;
   selected?: boolean;
   expanded?: boolean;
-  hidden?: boolean;
 }
 
 export interface ActionOptions {
@@ -307,16 +306,16 @@ export type Momentum = 'none' | 'slow' | 'fast';
 | `disabled` | Require the disabled state |
 | `selected` | Require the selected state |
 | `expanded` | Require the expanded state |
-| `hidden` | Include nodes hidden from the accessibility tree |
 | `exact` | Inherited; applies to `name` |
 | `visible` | Inherited; keep only nodes the platform reports as shown |
 
 String matching is exact by default. `exact: false` is case-insensitive
 substring matching. A `RegExp` ignores `exact`.
 
-`visible` is not the inverse of `hidden`: `hidden` widens a role query to nodes
-outside the accessibility tree, `visible` narrows any query to nodes on screen.
-See [Hidden duplicates](#hidden-duplicates).
+A role query never matches a node hidden from the accessibility tree, on every
+engine. `visible` applies the same rule to the other query kinds, so
+`getByText` or `getByLabel` can drop a hidden twin too. See
+[Hidden duplicates](#hidden-duplicates).
 
 `SelectOption`: a bare string is the option label. The object form is mutually
 exclusive, `label` or `index`, never both.

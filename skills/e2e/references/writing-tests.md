@@ -103,7 +103,7 @@ subtree.
 
 | Query | Matches |
 | --- | --- |
-| `getByRole(role, { name?, exact?, checked?, disabled?, selected?, expanded?, hidden?, visible? })` | Semantic role, optionally by accessible name and state. First choice. |
+| `getByRole(role, { name?, exact?, checked?, disabled?, selected?, expanded?, visible? })` | Semantic role, optionally by accessible name and state. First choice. |
 | `getByLabel(text, { exact?, visible? })` | Form controls by label. |
 | `getByPlaceholder(text)` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |

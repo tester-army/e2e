@@ -251,13 +251,17 @@ export interface TextMatchOptions {
   visible?: boolean;
 }
 
+/**
+ * Role query options. A role query never matches a node hidden from the
+ * accessibility tree, on every engine; `visible` (inherited) is the one knob
+ * that narrows the other query kinds the same way.
+ */
 export interface RoleOptions extends TextMatchOptions {
   name?: TextMatch;
   checked?: boolean;
   disabled?: boolean;
   selected?: boolean;
   expanded?: boolean;
-  hidden?: boolean;
 }
 
 export interface ActionOptions {

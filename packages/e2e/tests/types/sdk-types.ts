@@ -10,12 +10,14 @@ import {
   type Agent,
   type AsyncExpectation,
   type E2EConfig,
+  type Screen,
   type TraceCacheStore,
 } from '../../src/index.ts';
 
 declare const agent: Agent;
 declare const remoteStore: TraceCacheStore;
 declare const asyncExpectation: AsyncExpectation;
+declare const screen: Screen;
 
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
@@ -26,6 +28,9 @@ declare const asyncExpectation: AsyncExpectation;
 ({ cache: 'sometimes' }) satisfies E2EConfig;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
+screen.getByRole('button', { name: 'Save', visible: true });
+// @ts-expect-error role queries never match hidden nodes; visible is the one visibility knob
+screen.getByRole('button', { hidden: true });
 
 const plainResult = await agent.act('open billing');
 // @ts-expect-error act returns no data; extract does
