@@ -176,6 +176,68 @@ describe('lifecycle', () => {
     expect(third.fake.methods()).toEqual([]);
   });
 
+  it('declares one worker per device and prepares each slot the run uses: a boot, then the pinned app opened once to bring the runner up', async () => {
+    const pool = ['iPhone 17', 'iPhone 17 Pro', 'iPhone Air'] as const;
+    const h = harness({ device: pool });
+    expect(h.engine.workers).toBe(3);
+    const lines: string[] = [];
+    await h.engine.prepare!({
+      runId: 'run-1',
+      targetName: 'ios',
+      workers: 2,
+      env: {},
+      signal: new AbortController().signal,
+      log: (line) => lines.push(line),
+    });
+    expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-1']);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open', 'devices.boot', 'apps.open']);
+    expect(h.fake.calls[0]!.args).toEqual({ platform: 'ios', device: 'iPhone 17' });
+    expect(h.fake.calls[1]!.args).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17' });
+    expect(h.fake.calls[2]!.args).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
+    expect(lines).toEqual(['booting iPhone 17 (1 of 2)', 'booting iPhone 17 Pro (2 of 2)']);
+
+    // Without a pinned app there is nothing to open; a build `appPath` installs in init, so it boots only too.
+    const bare = harness({ device: 'iPhone 16e' }, false);
+    await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', workers: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    expect(bare.fake.methods()).toEqual(['devices.boot']);
+    const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
+    await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', workers: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    expect(build.fake.methods()).toEqual(['devices.boot']);
+
+    const single = harness({ device: 'iPhone 16e', session: 'qa' });
+    expect(single.engine.workers).toBe(1);
+    await single.engine.prepare!({
+      runId: 'run-1',
+      targetName: 'ios',
+      workers: 1,
+      env: {},
+      signal: new AbortController().signal,
+      log: () => undefined,
+    });
+    expect(single.sessions).toEqual(['qa']);
+    expect(single.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
+  });
+
+  it('logs a runner that does not warm up in prepare instead of failing the run; a device that cannot boot does fail it', async () => {
+    const h = harness({ device: 'iPhone 16e' });
+    h.fake.respond('apps.open', () => {
+      throw new Error('runner still installing');
+    });
+    const lines: string[] = [];
+    const info = { runId: 'run-1', targetName: 'ios', workers: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
+    await h.engine.prepare!(info);
+    expect(lines[1]).toMatch(/runner not warmed up.*runner still installing/);
+
+    h.fake.respond('devices.boot', () => {
+      throw new Error('no such device');
+    });
+    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ message: expect.stringContaining('no such device') });
+  });
+
+  it('rejects an empty pool at config time', () => {
+    expect(() => harness({ device: [] })).toThrow(/empty pool/);
+  });
+
   it('takes undefined for every optional option, so env-driven configs need no conditional spreads', async () => {
     const h = harness(
       { app: undefined, appPath: undefined, identity: undefined, environment: undefined, device: undefined, session: undefined, snapshot: undefined },

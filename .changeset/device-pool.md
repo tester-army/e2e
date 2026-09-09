@@ -2,4 +2,4 @@
 '@e2edev/agent-device': minor
 ---
 
-`device` accepts a list. Each worker slot boots and drives its own entry under a slot-suffixed session (`e2e-<target>-<slot>`), so `workers: pool.length` runs a target's files across every simulator or emulator in the pool at once. A slot beyond the pool fails that worker's init with `ENGINE_FAILURE` instead of sharing a device.
+`device` accepts a list. The engine declares one worker per device (one for a single or unnamed device), so a `workers` above the pool size no longer over-subscribes it; worker slot `n` drives the `n`th entry under the configured session name suffixed with `-<n>` (`e2e-<target>-<n>` by default). Devices boot in `prepare`, one slot after another and outside `launchTimeout`, each opening the pinned `app` once so its automation runner is up before the first attempt. An empty pool is a configuration error.

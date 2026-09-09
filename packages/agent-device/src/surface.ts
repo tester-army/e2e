@@ -19,6 +19,7 @@ import {
   type EngineCleanupContext,
   type EngineInitInfo,
   type EngineObserveOptions,
+  type EnginePrepareInfo,
   type EngineSnapshot,
   type LocatorAction,
   type LocatorExpression,
@@ -82,9 +83,9 @@ export interface AgentDeviceOptions {
   readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /**
    * Simulator or emulator to use, by name or id; agent-device picks a booted
-   * one otherwise. A list is a pool: worker slot `n` drives the `n`th entry,
-   * so `workers: pool.length` runs the target's files across every device at
-   * once, and a slot beyond the pool fails that worker's init.
+   * one otherwise. A list is a pool: the engine declares one worker per
+   * entry and worker slot `n` drives the `n`th, so `workers` at or above the
+   * pool size runs the target's files across every device at once.
    */
   readonly device?: string | readonly string[] | undefined;
   /**
@@ -234,8 +235,18 @@ export class AgentDeviceSurface {
    */
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
+    return this.runOn(client, label, (live) => this.track(run(live)), signal ?? new AbortController().signal);
+  }
+
+  /** Runs one command on a given client, translating its failure onto the engine taxonomy. */
+  private async runOn<T>(
+    client: AgentDeviceClient,
+    label: string,
+    run: (client: AgentDeviceClient) => Promise<T>,
+    signal: AbortSignal,
+  ): Promise<T> {
     try {
-      return await raceAbort(() => this.track(run(client)), signal ?? new AbortController().signal, label);
+      return await raceAbort(() => run(client), signal, label);
     } catch (cause) {
       throw translateError(cause, label);
     }
@@ -277,21 +288,54 @@ export class AgentDeviceSurface {
     return device;
   }
 
+  /** The agent-device session of a worker slot: the `session` option or `e2e-<target>`, slot-suffixed for a pool. */
+  private sessionFor(targetName: string, workerSlot: number): string {
+    const session = this.options.session ?? `e2e-${targetName}`;
+    return Array.isArray(this.options.device) ? `${session}-${workerSlot}` : session;
+  }
+
+  /** Selection agent-device commands take for the device this surface drives. */
+  private selection(device: string | undefined): { platform: AgentDevicePlatform; device?: string } {
+    return { platform: this.options.platform, ...(device === undefined ? {} : { device }) };
+  }
+
+  /**
+   * Boots the device of every worker slot the run will use and opens the
+   * pinned app on it once, so its automation runner is up, once per run and
+   * outside every launch budget. One slot after another, on purpose: workers
+   * booting at once in `init` contend for the host and the daemon, and one
+   * cold boot pushes the others past `launchTimeout`. Each slot warms under
+   * the session its worker resumes, so `init` finds a booted device and the
+   * first attempt an attached runner. A device that cannot boot ends the run
+   * here; an app that does not open is logged and left to the first attempt.
+   * A build `appPath` installs in `init` is not on the device yet, so that
+   * case boots only.
+   */
+  async prepare(info: EnginePrepareInfo): Promise<void> {
+    const app = this.options.appPath === undefined ? this.options.app : undefined;
+    for (let slot = 0; slot < info.workers; slot += 1) {
+      const device = this.deviceForSlot(slot);
+      const label = device ?? `a booted ${this.options.platform} device`;
+      const client = this.createClient(this.sessionFor(info.targetName, slot));
+      info.log(`booting ${label} (${slot + 1} of ${info.workers})`);
+      await this.runOn(client, 'boot', (live) => live.devices.boot(this.selection(device)), info.signal);
+      if (app === undefined) continue;
+      try {
+        await this.runOn(client, `open ${app}`, (live) => live.apps.open({ app, ...this.selection(device) }), info.signal);
+      } catch (cause) {
+        if (info.signal.aborted) throw cause;
+        const reason = cause instanceof Error ? cause.message : String(cause);
+        info.log(`${label}: automation runner not warmed up (${reason}); the first attempt starts it`);
+      }
+    }
+  }
+
   async init(info: EngineInitInfo): Promise<void> {
     this.testIdAttribute = info.testIdAttribute;
     this.projectRoot = info.projectRoot;
     this.device = this.deviceForSlot(info.workerSlot);
-    const session = this.options.session ?? `e2e-${info.targetName}`;
-    this.client ??= this.createClient(Array.isArray(this.options.device) ? `${session}-${info.workerSlot}` : session);
-    await this.command(
-      'boot',
-      (client) =>
-        client.devices.boot({
-          platform: this.options.platform,
-          ...(this.device === undefined ? {} : { device: this.device }),
-        }),
-      info.signal,
-    );
+    this.client ??= this.createClient(this.sessionFor(info.targetName, info.workerSlot));
+    await this.command('boot', (client) => client.devices.boot(this.selection(this.device)), info.signal);
     if (this.options.appPath === undefined) return;
     const installed = await this.installApp(
       this.options.appPath,

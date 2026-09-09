@@ -85,7 +85,7 @@ export default {
 | `actionTimeout` | `30000` | Every locator action and engine operation, including each observation inside an agent step. Raise it for slow model providers. |
 | `assertionTimeout` | `5000` | `expect` polling window. |
 | `retries` | `0`, `1` in CI | 0 to 10. |
-| `workers` | half the cores, `1` in CI | Test files run in parallel across workers. Use `1` for device targets. |
+| `workers` | half the cores, `1` in CI | Test files run in parallel across workers, at most the `workers` the engine declares per target (a device target: one per device). |
 | `reporters` | `['list']` | `list`, `json`, `junit`. `json` excludes `list`. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. A model passed to `createAgent({ model })` is the one model for `act` and the judgments, over `E2E_MODEL`. |
@@ -217,10 +217,11 @@ export default {
 - `app` is a bundle id, package name, or display name opened fresh per
   attempt. `appPath` installs a `.app` or `.apk` once per worker; without
   `app`, the installed bundle is the one opened.
-- `workers: 1` with a single `device`: workers would share one simulator.
-  To run on several at once, pass a pool, `device: ['iPhone 17', 'iPhone 17
-  Pro']`, and set `workers` to its length; each worker slot drives one entry
-  and the test files spread across them.
+- The engine declares one worker per device, so a single `device` target
+  runs one worker whatever `workers` says. To run on several at once, pass a
+  pool, `device: ['iPhone 17', 'iPhone 17 Pro']`; each worker slot drives one
+  entry and the test files spread across them. Devices boot in `prepare`,
+  before the run's clock starts.
 - Cancelled device commands keep running; the next attempt waits for them.
   Raw screenshot files are removed when capture finishes, including after
   cancellation.
