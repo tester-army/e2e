@@ -21,6 +21,9 @@ export default {
   actionTimeout: 90_000,
   agent: {
     model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+    // The ceiling a step may ask for: a per-call `maxSteps` can only lower it,
+    // and the scroll-heavy scenarios declare the budget they need per test.
+    maxSteps: 60,
     context: [
       'This is the e2e web benchmark: a list of self-contained scenarios, each',
       'served at /e/<slug>. A step plays out inside the scenario page it starts',

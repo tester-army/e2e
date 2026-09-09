@@ -21,7 +21,13 @@ planted bug.
 - `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
   deterministic config. It gates every PR too. Each step spends real model
-  calls (cents per run) and needs `E2E_MODEL_API_KEY`.
+  calls (cents per run) and needs `E2E_MODEL_API_KEY`. `scenarios.e2e.ts`
+  drives every task scenario the accessibility tree can carry with one
+  `agent.act` per scenario and checks the success message deterministically;
+  scenarios the grammar cannot finish yet are declared and skipped with the
+  reason. `planted-bugs.e2e.ts` asserts that an `agent.assert` of the correct
+  behavior fails on a bug-book scenario, so a passing judgment there is a
+  missed bug.
 
 ## Commands
 
