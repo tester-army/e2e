@@ -114,9 +114,8 @@ Every run writes `.e2e/report.json` regardless of the selected reporters; the
 
 With `video` among the kinds, or `e2e run --video`, every attempt records the
 surface it drives: a browser engine writes a WebM screencast of its page at the
-attempt's viewport size, with a pointer drawn into the frames that glides to
-each target and pulses on a tap, so a recording shows what acted and where; a
-device engine records the device screen (MP4, with taps shown). The file lands
+attempt's viewport size; a device engine records the device screen (MP4, with
+taps shown). The file lands
 under the attempt's artifact directory as `video/video.webm` (or `.mp4`) and is
 recorded in `report.json` as an artifact of kind `video` whose `startedAt` is
 when the recording started, so `step.startedAt - artifact.startedAt` is a

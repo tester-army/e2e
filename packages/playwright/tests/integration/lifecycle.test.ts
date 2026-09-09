@@ -16,7 +16,6 @@ import type {
   OperationContext,
   SemanticNode,
 } from '@e2edev/e2e/engine';
-import { withCursorHidden } from '../../src/cursor-overlay.ts';
 import { playwright, surfaceOf } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
@@ -622,42 +621,23 @@ describe('playwright engine lifecycle', () => {
     }
   });
 
-  it('records a video per page, with a pointer that never enters observations or captures', async () => {
+  it('records a video per page: a restart and a state reset each continue in a new segment', async () => {
     const engine = playwright();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     const nodesOf = (snapshot: { nodes: readonly SemanticNode[] }) => snapshot.nodes.flatMap((node) => [...walk(node)]);
     try {
       await withAttempt(engine, app, videoDir, 'v1', async () => {
         await engine.app!.navigate!(`${app.url}/form`, operation('v1'));
-        const plain = nodesOf(await engine.observe!(operation('v1')));
         await engine.artifacts!.startVideo!(operation('v1'));
-        // The pointer is in the page now, but the tree is exactly what it was.
-        const observed = nodesOf(await engine.observe!(operation('v1'), { pixels: true }));
-        expect(observed.length).toBe(plain.length);
         const page = surfaceOf(engine)!.page();
-        const hostVisible = () =>
-          page.evaluate(() => {
-            const host = document.getElementById('__e2e_cursor_overlay__');
-            return host !== null && host.style.display !== 'none';
-          });
-        expect(await hostVisible()).toBe(true);
-        // A pointer action glides the pointer to its target before dispatching.
+        // Observations, actions, and captures run as they would without a recording.
+        const observed = nodesOf(await engine.observe!(operation('v1'), { pixels: true }));
         const textbox = observed.find((node) => node.role === 'textbox' && node.name === 'First');
         await engine.perform!(textbox!.ref, { kind: 'fill', value: 'recorded', sensitive: false }, operation('v1'));
-        expect(await hostVisible()).toBe(true);
-        // Captures hide it for exactly their duration.
-        await withCursorHidden(page, async () => {
-          expect(await hostVisible()).toBe(false);
-        });
-        expect(await hostVisible()).toBe(true);
         await engine.artifacts!.screenshot('shot', operation('v1'));
-        expect(await hostVisible()).toBe(true);
-        // A restart closes the page and opens another: the recording continues
-        // in a second segment, with the pointer installed on the new page.
+        // A restart closes the page and opens another: the recording continues in a second segment.
         await engine.app!.restart!(operation('v1'));
-        const restarted = surfaceOf(engine)!.page();
-        expect(restarted).not.toBe(page);
-        expect(await restarted.evaluate(() => document.getElementById('__e2e_cursor_overlay__') !== null)).toBe(true);
+        expect(surfaceOf(engine)!.page()).not.toBe(page);
         // A state reset recreates the context; the recording continues in a third.
         await engine.app!.clearState!(operation('v1'));
         await engine.app!.navigate!(`${app.url}/`, operation('v1'));

@@ -170,7 +170,7 @@ export class PlaywrightSurface {
   private tracing = false;
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
   private traceSegments = 0;
-  /** The attempt's recording and the pointer it shows; every hook is a no-op without one. */
+  /** The attempt's recording; every hook is a no-op without one. */
   private readonly video: VideoRecorder;
   /**
    * Attempt-scoped network routes. Registered on the
@@ -591,14 +591,10 @@ export class PlaywrightSurface {
       operation,
       action.kind,
       () => {
-        const page = this.requirePage();
-        const target = this.refs.lookup(ref);
-        return this.video.follow(page, target, action.kind, async () => {
-          // The pointer's prelude may have used up what was left of the
-          // budget: a step the harness has given up on must not act now.
-          if (operation.signal.aborted) throw cancelled(`${action.kind} cancelled`);
-          await dispatchLocatorAction(target, action, operation.timeoutMs, (other) => this.refs.lookup(other));
-        });
+        this.requirePage();
+        return dispatchLocatorAction(this.refs.lookup(ref), action, operation.timeoutMs, (other) =>
+          this.refs.lookup(other),
+        );
       },
       (cause) => classifyActionError(cause, action),
     );
@@ -658,13 +654,11 @@ export class PlaywrightSurface {
     return this.guard(operation, 'screenshot', async () => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
-      await this.video.withoutCursor(page, () =>
-        page.screenshot({
-          path: absolute,
-          timeout: operation.timeoutMs,
-          ...maskOptions(secureFieldMasks(page)),
-        }),
-      );
+      await page.screenshot({
+        path: absolute,
+        timeout: operation.timeoutMs,
+        ...maskOptions(secureFieldMasks(page)),
+      });
       return relative;
     });
   }
@@ -793,7 +787,7 @@ export class PlaywrightSurface {
     // a tree-only observation, exactly like an engine that has no pixels.
     const pixelCapture =
       options?.pixels === true
-        ? this.video.withoutCursor(page, () => capturePixels(page, operation, viewport)).catch(() => undefined)
+        ? capturePixels(page, operation, viewport).catch(() => undefined)
         : Promise.resolve(undefined);
     let captured: Awaited<ReturnType<typeof captureDocument>>;
     let capturedPixels: PixelCapture | undefined;

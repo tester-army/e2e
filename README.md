@@ -45,9 +45,9 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 - Credentials never reach the model or the report.
 - `--ai-trace` records every model call to `.e2e/ai-trace.json`; open it with
   [unbox-ai](https://github.com/tester-army/unbox-ai) to see where the tokens went.
-- `--video` records every attempt, a WebM with a visible pointer in the
-  browser or an MP4 with taps shown on a device, so a failure can be watched
-  instead of reconstructed. Off by default.
+- `--video` records every attempt, a WebM in the browser or an MP4 on a
+  device, so a failure can be watched instead of reconstructed. Off by
+  default.
 - Runs locally. No account, no hosted runner. The CLI sends anonymous usage
   counts to improve the framework, never your tests or your app's data;
   `e2e telemetry disable` turns that off

@@ -146,12 +146,11 @@ agent step, in the AI SDK devtools database shape. Open it with
 [unbox-ai](https://github.com/tester-army/unbox-ai):
 `npx unbox-ai .e2e/ai-trace.json`.
 
-`e2e run --video` records every attempt: a WebM screencast of the page with a
-visible pointer that glides to each target, under the attempt's artifact
-directory, named in the failure recap. `artifacts: ['screenshot', 'trace',
-'video']` turns it on for every run, and `artifacts: { kinds: ['screenshot',
-'trace', 'video'], video: { retain: 'on-failure' } }` keeps only the
-recordings of attempts that did not pass.
+`e2e run --video` records every attempt: a WebM screencast of the page under
+the attempt's artifact directory, named in the failure recap.
+`artifacts: ['screenshot', 'trace', 'video']` turns it on for every run, and
+`artifacts: { kinds: ['screenshot', 'trace', 'video'], video: { retain:
+'on-failure' } }` keeps only the recordings of attempts that did not pass.
 
 ## Coding agents
 

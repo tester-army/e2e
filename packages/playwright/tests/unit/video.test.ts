@@ -1,8 +1,8 @@
 /**
  * The recorder's segment bookkeeping over a scripted page: one segment per
  * page, a failed stop that still left a file kept, a lost segment reported at
- * stop, and every hook a no-op until armed. The real screencast and pointer
- * are covered by the lifecycle integration test.
+ * stop, and every hook a no-op until armed. The real screencast is covered by
+ * the lifecycle integration test.
  */
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,8 +19,6 @@ const VIEWPORT = { width: 320, height: 200 };
 function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error } = {}) {
   const started: string[] = [];
   const page = {
-    addInitScript: async () => undefined,
-    evaluate: async () => undefined,
     screencast: {
       start: async ({ path: file }: { path: string }) => {
         if (options.startError !== undefined) throw options.startError;
@@ -107,12 +105,6 @@ describe('VideoRecorder', () => {
     const idle = fakePage();
     await video.pageOpened(idle.page);
     expect(idle.started).toEqual([]);
-    expect(await video.withoutCursor(idle.page, async () => 'captured')).toBe('captured');
-    let dispatched = false;
-    await video.follow(idle.page, { kind: 'locator', locator: {} as never }, 'tap', async () => {
-      dispatched = true;
-    });
-    expect(dispatched).toBe(true);
     await video.pageClosing();
     expect(await video.stop()).toEqual([]);
   });

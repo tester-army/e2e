@@ -27,7 +27,7 @@ npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: sta
 | `--pass-with-no-tests` | Exit 0 when nothing matches instead of `NO_TESTS`. |
 | `--debug` | Phase timings and an agent step table on stderr; step transcripts saved as artifacts. |
 | `--ai-trace` | Record every model call to `.e2e/ai-trace.json`. |
-| `--video` | Record every attempt (WebM with a visible pointer on a browser engine, MP4 on a device engine) under its artifact directory; the failure recap names the file. Fails with `UNSUPPORTED_ARTIFACT` when the engine cannot record. |
+| `--video` | Record every attempt (WebM on a browser engine, MP4 on a device engine) under its artifact directory; the failure recap names the file. Fails with `UNSUPPORTED_ARTIFACT` when the engine cannot record. |
 
 ```bash
 npx --no-install e2e run tests/signup.e2e.ts

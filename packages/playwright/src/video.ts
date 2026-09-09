@@ -9,20 +9,14 @@
  * starts the next segment. Each segment is captured at the attempt's viewport
  * size and carries the instant it began, so a consumer can place step
  * timestamps on it. The first segment is `video/video.webm`; later ones are
- * `video/video-part<n>.webm`.
- *
- * The recorder also owns the pointer the frames show: it is installed on every
- * recorded page, follows pointer actions while the recording is armed, and is
- * hidden while model-facing pixels and evidence screenshots are captured.
- * Without a recording, every hook here is a no-op.
+ * `video/video-part<n>.webm`. Without a recording, every hook here is a no-op.
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { EngineError, type LocatorAction, type VideoSegment } from '@e2edev/e2e/engine';
-import { installCursorOverlay, withCursorFollowing, withCursorHidden } from './cursor-overlay.ts';
-import { message, type ActionTarget } from './support.ts';
+import { EngineError, type VideoSegment } from '@e2edev/e2e/engine';
+import { message } from './support.ts';
 
 /** One segment in progress: the page it records and where its file lands. */
 interface Segment {
@@ -106,29 +100,12 @@ export class VideoRecorder {
     return this.finished.splice(0);
   }
 
-  /** Runs a locator action with the pointer following it while recording; otherwise just the action. */
-  follow(
-    page: Page,
-    target: ActionTarget,
-    kind: LocatorAction['kind'],
-    dispatch: () => Promise<void>,
-  ): Promise<void> {
-    return this.armed ? withCursorFollowing(page, target, kind, dispatch) : dispatch();
-  }
-
-  /** Runs a capture with the pointer hidden while recording, so evidence and model pixels never show it. */
-  withoutCursor<T>(page: Page, work: () => Promise<T>): Promise<T> {
-    return this.armed ? withCursorHidden(page, work) : work();
-  }
-
   /**
-   * Starts one segment on a page: the pointer overlay first, so it is in the
-   * frames from the start, then the screencast at the attempt's viewport size.
+   * Starts one segment on a page, a screencast at the attempt's viewport size.
    * A segment still recording (a page the app closed on its own) ends first.
    */
   private async begin(page: Page): Promise<void> {
     await this.end();
-    await installCursorOverlay(page);
     this.count += 1;
     const name = this.count === 1 ? 'video' : `video-part${String(this.count)}`;
     const relative = path.posix.join('video', `${name}.webm`);
