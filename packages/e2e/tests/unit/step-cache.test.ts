@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentCacheContext } from '../../src/cache/context.ts';
 import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
-import { StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
+import { recordedVerdictOf, StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
@@ -88,6 +88,20 @@ function recordingSession(cache: AgentCacheContext, paths: (string | undefined)[
 
 const noEntry = fakeContext(async () => {
   throw new Error('no entry');
+});
+
+describe('recordedVerdictOf', () => {
+  it('returns a summary the replay did not write as it is', () => {
+    expect(recordedVerdictOf('opened the customers page')).toBe('opened the customers page');
+    expect(recordedVerdictOf('replayed the flow by hand')).toBe('replayed the flow by hand');
+  });
+
+  it('keeps only the recorded verdict of a replay summary, even one that mentions a verdict itself', async () => {
+    const context = entryContext({ summary: 'saw "recorded verdict: none" in the log' });
+    const session = makeSession(context, makeHost(['/pricing', '/customers?utm=x', '/customers']));
+    const verdict = await session.begin();
+    expect(recordedVerdictOf(verdict!.summary!)).toBe('saw "recorded verdict: none" in the log');
+  });
 });
 
 describe('StepTraceSession', () => {

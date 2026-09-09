@@ -51,6 +51,24 @@ describe('serializeLedger', () => {
     expect(handoff.length).toBe(MAX_HANDOFF_BYTES);
   });
 
+  it('hands later steps the recorded verdict of a replayed step, not the replay notice', () => {
+    const explanation =
+      'replayed 2 recorded action(s) zero-turn from the trace cache; recorded verdict: opened the customers page';
+    const replayed = step({
+      api: 'agent.act',
+      label: 'open customers',
+      explanation,
+      cache: { mode: 'self-finalized', replayedActions: 2, totalActions: 2 },
+    });
+    // Projection is the trust boundary where records become model input; the notice goes there.
+    const { text } = serializeLedger(projectPriorSteps([replayed]), 65_536);
+    expect(text).toContain('opened the customers page');
+    expect(text).not.toContain('replayed 2 recorded');
+    // A step the executor ran keeps its explanation as written, whatever it starts with.
+    const ran = step({ api: 'agent.act', label: 'open customers', explanation, cache: { mode: 'missed', replayedActions: 0, totalActions: 0 } });
+    expect(serializeLedger(projectPriorSteps([ran]), 65_536).text).toContain('replayed 2 recorded');
+  });
+
 });
 
 describe('projectPriorSteps', () => {
