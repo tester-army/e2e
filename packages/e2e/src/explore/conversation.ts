@@ -59,7 +59,7 @@ export function createConversationExplorer(options: ConversationOptions): StepEx
     ...(model === undefined ? {} : { model: asSdkLanguageModel(model) }),
     system: [base?.system, CONVERSATION_RULES].filter((part): part is string => part !== undefined && part.trim() !== '').join('\n\n'),
     ...(base?.providerOptions === undefined ? {} : { providerOptions: base.providerOptions }),
-    prepareMessages: compactScreenHistory,
+    prepareMessages: (messages) => compactScreenHistory(messages),
     tools: (context, helpers): ToolSet => ({
       ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
       // The finding tool is a project-style tool: it runs under the step's accounting with the observation context.
