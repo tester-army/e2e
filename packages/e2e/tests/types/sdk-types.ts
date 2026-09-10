@@ -95,15 +95,15 @@ test('as the buyer', { agent: 'buyer' }, async () => {});
 test.describe('admin flows', { agent: 'admin' }, () => {});
 await agent.act('approve it', { agent: 'admin' });
 await agent.assert('it is approved', { agent: 'buyer' });
-// createAgent hands back its vocabulary readable, so a host (e2e explore) can compose on it.
+// createAgent hands back what it was built from, so a host (e2e explore) can compose on it.
 declare const seedCart: ReturnType<typeof defineTool>;
 const projectAgent: DefaultAgent = createAgent({ tools: { seedCart }, system: 'Be thorough.' });
-projectAgent.tools.seedCart satisfies ReturnType<typeof defineTool> | undefined;
-projectAgent.system satisfies string | undefined;
+projectAgent.options.tools?.seedCart satisfies ReturnType<typeof defineTool> | undefined;
+projectAgent.options.system satisfies string | undefined;
 ({ agents: { default: projectAgent } }) satisfies E2EConfig;
-// @ts-expect-error the vocabulary is read-only
-projectAgent.tools = {};
+// @ts-expect-error the options are read-only
+projectAgent.options = {};
 
-// The report carries the exploration record only on an explore run.
+// The report carries the exploration record only on an explore run; a finding's evidence is one of the attempt's artifacts.
 declare const report: Report;
-report.run.explore satisfies { goal: string; findings: readonly { severity: 1 | 2 | 3 | 4 | 5 }[] } | undefined;
+report.run.explore satisfies { goal: string; findings: readonly { severity: 1 | 2 | 3 | 4 | 5; artifactId?: string | undefined }[] } | undefined;

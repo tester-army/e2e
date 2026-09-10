@@ -36,9 +36,9 @@ safety rules, so what it finds is what a test would find.
 5. **Repeats** until the planner decides the goal is covered, or a budget ends
    the run, then asks the model for a closing assessment.
 
-The explorer is built from `agents.default`, or from the agent `--agent` names,
-so its model is that agent's, with `E2E_MODEL` filling in when the agent sets
-none, like any run. To try another model on the same goal with an agent that
+The exploration runs as `agents.default`, or as the agent `--agent` names, with
+the explorer built from that agent, so its model is that agent's, with
+`E2E_MODEL` filling in when the agent sets none, like any run. To try another model on the same goal with an agent that
 sets none:
 
 ```bash
@@ -110,8 +110,10 @@ and under the run summary:
 `.e2e/report.json` carries the exploration under `run.explore`: the goal, the
 budgets, why the run ended, the assessment, every step with its title,
 instruction, status, and the agent's summary, and every finding with its
-severity, kind, reproduction steps, path, observation revision, and the
-evidence screenshot path under the artifact root. The one result in
+severity, kind, reproduction steps, path, observation revision, and the id of
+its evidence screenshot, which is one of the attempt's `screenshot` artifacts,
+attached to the step that reported it and handed to a configured artifact store
+like every other. The one result in
 `run.results` is the exploration itself, under the virtual file `explore`,
 with the planner's `agent.extract` steps and the charters' `agent.act` steps
 in its timeline. `--reporter json`, `--reporter junit`, reporter objects,
@@ -121,8 +123,9 @@ in its timeline. `--reporter json`, `--reporter junit`, reporter objects,
 
 Explore reads your `e2e.config.ts`. The target's engine, app command, allowed
 origins, and the agent's `context`, `vision`, and provider options all apply.
-`--agent <name>` builds the explorer from another configured agent, so a
-UX-review agent and a functional one can explore the same app in turn.
+`--agent <name>` runs the exploration as another configured agent, with the
+explorer built from it, so a UX-review agent and a functional one can explore
+the same app in turn.
 
 Configured `credentials` reach the explorer the way they reach a test: every
 charter carries them as step secrets, the planner is told which accounts

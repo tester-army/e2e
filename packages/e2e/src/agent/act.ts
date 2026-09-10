@@ -11,6 +11,7 @@
  */
 
 import { writeFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { OperationContext, SemanticNode } from '../engine/surface.ts';
 import { asEngineError, ConfigurationError, TestError } from '../internal/errors.ts';
@@ -42,6 +43,7 @@ import {
   type ExecutorModelCall,
   type ExecutorObservation,
   type ExecutorObserveOptions,
+  type ExecutorPixels,
   type ExecutorTarget,
   type StepExecutorContext,
   type StepVerdict,
@@ -393,6 +395,7 @@ class ActDispatch {
           this.transcript = text;
         }
       },
+      attachScreenshot: (pixels, label) => this.attachScreenshot(pixels, label),
       actions: this.buildActions(),
     };
   }
@@ -705,6 +708,19 @@ class ActDispatch {
       ...(this.latest !== undefined ? { observationRevision: this.latest.revision } : {}),
     });
     this.writeTranscript();
+  }
+
+  /**
+   * Persists observed pixels as a step-attributed `screenshot` artifact and
+   * returns its id. The pixels are the engine's redacted capture, so the file
+   * is masked as every screenshot artifact is.
+   */
+  private async attachScreenshot(pixels: ExecutorPixels, label: string): Promise<string> {
+    const name = `${label.replace(/[^A-Za-z0-9_-]+/g, '-')}.png`;
+    await writeFile(join(this.runtime.artifacts.dir, name), pixels.data);
+    const id = this.runtime.artifacts.register('screenshot', name);
+    this.runtime.steps.attachArtifact(id);
+    return id;
   }
 
   /** Persists the executor transcript as a step-attributed `log` artifact. */

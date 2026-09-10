@@ -244,7 +244,7 @@ describe('the exploration body', () => {
         },
       } as unknown as Agent;
       const app = { open: async () => undefined } as unknown as App;
-      await createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true, credentials: ['ada'] })({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures);
+      await createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true, accounts: [{ name: 'ada', username: 'ada@example.test' }] })({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures);
       expect(planInstructions[0]).toContain('- ada (username: ada@example.test)');
       expect(planInstructions[0]).not.toContain('bookworm');
       const params = actParams[0] as { credentials: { ada: { username: string; password: unknown } } };

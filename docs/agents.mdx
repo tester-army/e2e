@@ -162,7 +162,11 @@ Read-only tools can call `getToolContext(executionOptions).observe({ pixels:
 true })`, importing `getToolContext` from `@e2edev/e2e/agent`. This is the same
 redacted observation and pixel-withholding policy the executor uses. Mutating
 tools must request observations in a separate read-only call; their bodies
-already occupy the action queue.
+already occupy the action queue. A tool with evidence worth keeping hands the
+observation's pixels to `attachScreenshot(pixels, label)` from the same
+context: the file becomes a `screenshot` artifact of the step, in the attempt's
+artifact directory and the report's artifact records, and reaches a configured
+artifact store, and the call resolves with the artifact's id.
 
 ## What the built-in agent sends
 

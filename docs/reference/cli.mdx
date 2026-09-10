@@ -293,12 +293,12 @@ test](/explore) describes what a run does and how to read it.
 | --- | --- | --- | --- |
 | `--config <path>` | string | discovered | Explicit config path, with the same errors as `run`. |
 | `--target <id>` | string | the first configured target | The one target to explore. Several targets and no flag explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
-| `--agent <name>` | string | `default` | The configured agent (`agents.<name>`) the explorer is built from. An options block or a `createAgent(...)` value lends its model, tools, guidance, and context; a hand-rolled `StepExecutor` has no vocabulary to reuse and is replaced by the built-in agent for the run, with a notice. An unknown name is `INVALID_CONFIG` before anything starts. |
+| `--agent <name>` | string | `default` | The configured agent (`agents.<name>`) the exploration runs as, with the explorer built from it; the report's agent steps name it, as for `run`. An options block or a `createAgent(...)` value lends its model, tools, guidance, and context; a hand-rolled `StepExecutor` has no vocabulary to reuse and is replaced by the built-in agent for the run, with a notice. An unknown name is `INVALID_CONFIG` before anything starts. |
 | `--max-steps <n>` | integer 1-12 | `8` | Exploration steps at most. Out of range exits 2. |
 | `--timeout <ms>` | integer 180000-900000 | `600000` | The run's wall clock. The last minute is kept for the closing assessment. Out of range exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it. |
 | `--reporter <ids>` | comma-separated list | resolved config value | As for `run`. The exploration summary rows print under the `list` summary; `json` carries the record in the report. |
-| `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report, the artifact tree, and the finding screenshots (`explore/<launch time>/finding-<n>.png`). |
+| `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and the artifact tree; a finding's evidence screenshot is one of the attempt's artifacts there. |
 | `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
 | `--ai-trace` | boolean | `false` | As for `run`. |
 | `--video` | boolean | `false` | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine) when the engine can record; otherwise the run fails with `UNSUPPORTED_ARTIFACT` before exploration starts. |

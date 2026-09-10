@@ -64,9 +64,12 @@ The terminal prints each step live and, under the summary, `Explored`,
   "ended": "finished | step-limit | time | stuck | aborted",
   "summary": "the closing assessment",
   "steps": [{ "index": 1, "title": "...", "instruction": "...", "status": "passed | failed | blocked | exhausted", "summary": "...", "startedAt": "...", "durationMs": 0 }],
-  "findings": [{ "index": 0, "step": 1, "kind": "issue", "severity": 4, "title": "...", "expected": "...", "actual": "...", "reproduction": ["..."], "path": "/cart", "screenshot": "explore/<launch time>/finding-1.png", "reportedAt": "..." }]
+  "findings": [{ "index": 0, "step": 1, "kind": "issue", "severity": 4, "title": "...", "expected": "...", "actual": "...", "reproduction": ["..."], "path": "/cart", "artifactId": "<attempt id>:artifact:2", "reportedAt": "..." }]
 }
 ```
+
+`artifactId` names the evidence screenshot among the attempt's `artifacts` in
+`run.results[0]`, where its path, size, and digest are.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`
 instructions or `screen.*` actions, and `expected` is the assertion.

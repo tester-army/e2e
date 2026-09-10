@@ -11,8 +11,8 @@
 
 import { AgentError, isAgentError } from '../agent/error.ts';
 import { credentials } from '../credentials.ts';
-import type { ReportExplore } from '../report/build.ts';
-import type { TestFn } from '../types.ts';
+import type { ReportExplore, ReportExploreStep } from '../report/build.ts';
+import type { Agent, AgentParams, TestFn } from '../types.ts';
 import { planNext, type PlanAccount, type PlanDecision } from './plan.ts';
 import type { ExploreState } from './state.ts';
 
@@ -38,12 +38,110 @@ export interface ExploreBodyOptions {
    */
   readonly openApp: boolean;
   /**
-   * Names of the configured credentials. Each travels with every charter as a
-   * step secret, so the explorer can sign in with `type_secret` by name; the
+   * The configured accounts. Each travels with every charter as a step
+   * secret, so the explorer can sign in with `type_secret` by name; the
    * password itself never reaches the model.
    */
-  readonly credentials?: readonly string[] | undefined;
+  readonly accounts?: readonly PlanAccount[] | undefined;
   readonly now?: (() => number) | undefined;
+}
+
+/** Why the loop stopped, with the closing assessment when the planner gave one. */
+interface Ending {
+  readonly ended: ReportExplore['ended'];
+  readonly summary?: string | undefined;
+}
+
+/** What the loop runs with. */
+interface Loop {
+  readonly agent: Agent;
+  readonly state: ExploreState;
+  readonly accounts: readonly PlanAccount[];
+  /** The accounts with their passwords as secrets, once resolved; undefined when none is configured. */
+  readonly secrets: AgentParams | undefined;
+  readonly stepTimeoutMs: number;
+  readonly remaining: () => number;
+}
+
+/** Builds the test body for one exploration. */
+export function createExploreBody(options: ExploreBodyOptions): TestFn {
+  const { state } = options;
+  const now = options.now ?? Date.now;
+  const accounts = options.accounts ?? [];
+  return async ({ agent, app }) => {
+    const deadline = now() + state.budgets.timeoutMs;
+    if (options.openApp) await app.open();
+    // Resolved here, once the runner has the credential registry up.
+    const secrets =
+      accounts.length === 0
+        ? undefined
+        : Object.fromEntries(
+            accounts.map((account) => [account.name, { username: account.username, password: credentials.user(account.name).password }]),
+          );
+    const ending = await runSteps({ agent, state, accounts, secrets, stepTimeoutMs: options.stepTimeoutMs, remaining: () => deadline - now() });
+    state.end(ending.ended, ending.summary);
+    conclude(state);
+  };
+}
+
+/**
+ * Plan, act, repeat, until something ends the run; returns why. A cancelled
+ * step or a failing provider throws out instead, and the record keeps its
+ * `aborted` default.
+ */
+async function runSteps(loop: Loop): Promise<Ending> {
+  const { agent, state, remaining } = loop;
+  /** Planner answers outside the grammar in a row; one is covered, two end the run. */
+  let plannerFailures = 0;
+  for (;;) {
+    const stop = mustFinish(state, remaining());
+    if (stop !== undefined && remaining() < MIN_PLAN_TIMEOUT_MS) return { ended: stop.ended };
+    let plan: PlanDecision;
+    try {
+      plan = await planNext(agent, state, {
+        mustFinish: stop !== undefined,
+        reason: stop?.reason,
+        accounts: loop.accounts,
+        remainingMs: remaining(),
+        timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
+      });
+      plannerFailures = 0;
+    } catch (cause) {
+      // A model that cannot produce a plan in the grammar, even after the
+      // repair round, is a model shortcoming, not the end of the world: one
+      // failure is covered by a built-in charter (a survey first, a
+      // continuation later); two in a row end the exploration with the
+      // record so far; a failed closing assessment leaves the run to end for
+      // the reason it had to, without one. Anything else (the provider, the
+      // clock, a cancellation) is the run's error.
+      if (!isAgentError(cause) || cause.code !== 'MODEL_OUTPUT_INVALID') throw cause;
+      if (stop !== undefined) return { ended: stop.ended };
+      plannerFailures += 1;
+      if (plannerFailures > 1) return { ended: 'aborted' };
+      plan = state.steps.length === 0 ? SURVEY_STEP : CONTINUE_STEP;
+    }
+    if (plan.kind === 'finish') return { ended: stop?.ended ?? 'finished', summary: plan.summary };
+    // Asked to finish, the model planned a step anyway: the budget wins.
+    if (stop !== undefined) return { ended: stop.ended };
+
+    // The plan call took its own time; a step still has to fit before the
+    // reserve, or the run is out of time whatever the check above said.
+    const room = remaining() - FINISH_RESERVE_MS;
+    if (room < MIN_STEP_MS) return { ended: 'time' };
+    const step = state.beginStep(plan.title, plan.instruction);
+    const params = stepParams(state, loop.secrets);
+    try {
+      const result = await agent.act(step.instruction, {
+        timeout: Math.min(loop.stepTimeoutMs, room),
+        ...(params === undefined ? {} : { params }),
+      });
+      state.endStep('passed', result.summary);
+    } catch (cause) {
+      if (!isAgentError(cause)) throw cause;
+      state.endStep(stepStatus(cause), cause.explanation, cause.code);
+      if (cause.code === 'CANCELLED') throw cause;
+    }
+  }
 }
 
 /** Why the loop can no longer start a step, if it cannot. */
@@ -64,6 +162,27 @@ function mustFinish(
   return undefined;
 }
 
+/**
+ * The step parameters a charter carries: the findings so far, so the agent
+ * neither reports one twice nor spends the step re-confirming it, and the
+ * configured accounts as secrets it can fill by name. Undefined when there
+ * is nothing to carry.
+ */
+function stepParams(state: ExploreState, secrets: AgentParams | undefined): AgentParams | undefined {
+  const reported = state.findings.map((finding) => finding.title);
+  const params: AgentParams = {
+    ...(reported.length === 0 ? {} : { reportedFindings: reported }),
+    ...(secrets === undefined ? {} : { credentials: secrets }),
+  };
+  return Object.keys(params).length === 0 ? undefined : params;
+}
+
+/** How a step that threw ended: a charter that ran out of room ended, it did not fail. */
+function stepStatus(cause: AgentError): ReportExploreStep['status'] {
+  if (cause.code === 'STEP_BUDGET_EXHAUSTED' || cause.code === 'STEP_TIMEOUT') return 'exhausted';
+  return cause.code === 'CANCELLED' || cause.blocked ? 'blocked' : 'failed';
+}
+
 /** The first charter when the planner could not write one: look around. */
 const SURVEY_STEP: PlanDecision = {
   kind: 'step',
@@ -79,128 +198,6 @@ const CONTINUE_STEP: PlanDecision = {
   instruction:
     'Continue the exploration: from the goal in the project context and the previously completed steps, pick the flow or screen the goal names that no step has covered yet, exercise it end to end with realistic inputs, and report any defect you see on the way.',
 };
-
-/** Builds the test body for one exploration. */
-export function createExploreBody(options: ExploreBodyOptions): TestFn {
-  const { state } = options;
-  const now = options.now ?? Date.now;
-  return async ({ agent, app }) => {
-    const deadline = now() + state.budgets.timeoutMs;
-    const remaining = (): number => deadline - now();
-
-    if (options.openApp) await app.open();
-
-    // Resolved once the runner has the registry up, which is now.
-    const accounts: PlanAccount[] = (options.credentials ?? []).map((name) => {
-      const credential = credentials.user(name);
-      return { name, username: credential.username };
-    });
-    const secrets =
-      accounts.length === 0
-        ? undefined
-        : Object.fromEntries(
-            accounts.map((account) => [
-              account.name,
-              { username: account.username, password: credentials.user(account.name).password },
-            ]),
-          );
-
-    /** Planner answers outside the grammar in a row; one is covered, two end the run. */
-    let plannerFailures = 0;
-    for (;;) {
-      const stop = mustFinish(state, remaining());
-      if (stop !== undefined && remaining() < MIN_PLAN_TIMEOUT_MS) {
-        state.ended = stop.ended;
-        break;
-      }
-      let plan: PlanDecision;
-      try {
-        plan = await planNext(agent, state, {
-          mustFinish: stop !== undefined,
-          reason: stop?.reason,
-          accounts,
-          remainingMs: remaining(),
-          timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
-        });
-        plannerFailures = 0;
-      } catch (cause) {
-        // A model that cannot produce a plan in the grammar, even after the
-        // repair round, is a model shortcoming, not the end of the world: one
-        // failure is covered by a built-in charter (a survey first, a
-        // continuation later); two in a row end the exploration with the
-        // record so far; a failed closing assessment leaves the run to end for
-        // the reason it had to, without one. Anything else (the provider, the
-        // clock, a cancellation) is the run's error.
-        if (!isAgentError(cause) || cause.code !== 'MODEL_OUTPUT_INVALID') {
-          state.ended = 'aborted';
-          throw cause;
-        }
-        if (stop !== undefined) {
-          state.ended = stop.ended;
-          break;
-        }
-        plannerFailures += 1;
-        if (plannerFailures > 1) {
-          state.ended = 'aborted';
-          break;
-        }
-        plan = state.steps.length === 0 ? SURVEY_STEP : CONTINUE_STEP;
-      }
-      if (plan.kind === 'finish') {
-        state.summary = plan.summary;
-        state.ended = stop?.ended ?? 'finished';
-        break;
-      }
-      if (stop !== undefined) {
-        // Asked to finish, the model planned a step anyway: the budget wins.
-        state.ended = stop.ended;
-        break;
-      }
-
-      // The plan call took its own time; a step still has to fit before the
-      // reserve, or the run is out of time whatever the check above said.
-      const room = remaining() - FINISH_RESERVE_MS;
-      if (room < MIN_STEP_MS) {
-        state.ended = 'time';
-        break;
-      }
-      state.beginStep(plan.title, plan.instruction);
-      const timeout = Math.min(options.stepTimeoutMs, room);
-      // The findings so far ride along as step parameters, so the agent
-      // neither reports one twice nor spends the step re-confirming it; the
-      // configured credentials ride along as secrets it can fill by name.
-      const reported = state.findings.map((finding) => finding.title);
-      const params = {
-        ...(reported.length === 0 ? {} : { reportedFindings: reported }),
-        ...(secrets === undefined ? {} : { credentials: secrets }),
-      };
-      try {
-        const result = await agent.act(plan.instruction, {
-          timeout,
-          ...(Object.keys(params).length === 0 ? {} : { params }),
-        });
-        state.endStep('passed', result.summary);
-      } catch (cause) {
-        if (!isAgentError(cause)) throw cause;
-        if (cause.code === 'CANCELLED') {
-          state.endStep('blocked', cause.explanation, cause.code);
-          state.ended = 'aborted';
-          throw cause;
-        }
-        if (cause.code === 'STEP_BUDGET_EXHAUSTED' || cause.code === 'STEP_TIMEOUT') {
-          // A charter that ran out of room ended, it did not fail.
-          state.endStep('exhausted', cause.explanation, cause.code);
-        } else if (cause.blocked) {
-          state.endStep('blocked', cause.explanation, cause.code);
-        } else {
-          state.endStep('failed', cause.explanation, cause.code);
-        }
-      }
-    }
-
-    conclude(state);
-  };
-}
 
 /** Turns the record into the run's verdict. */
 function conclude(state: ExploreState): void {

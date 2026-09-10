@@ -307,6 +307,15 @@ export interface StepExecutorContext {
    * otherwise. Call once, at conclusion.
    */
   attachTranscript(text: string): void;
+  /**
+   * Keeps pixels the executor or one of its tools observed as a `screenshot`
+   * artifact of the step in progress, and resolves with the artifact's report
+   * id: what a tool with evidence worth keeping (a defect on screen) calls.
+   * The file lands in the attempt's artifact directory and the report's
+   * artifact records like every screenshot the runner takes, and reaches a
+   * configured `ArtifactStore`. The label names the file.
+   */
+  attachScreenshot(pixels: ExecutorPixels, label: string): Promise<string>;
 }
 
 export type StepVerdictStatus = 'passed' | 'failed' | 'blocked';

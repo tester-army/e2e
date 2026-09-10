@@ -6,17 +6,18 @@
  */
 
 import { z } from 'zod';
+import type { ReportExploreStep } from '../report/build.ts';
 import type { Agent } from '../types.ts';
-import { clip, MAX_INSTRUCTION_CHARS, MAX_SUMMARY_CHARS, MAX_TITLE_CHARS, type ExploreState } from './state.ts';
+import { MAX_TITLE_CHARS, type ExploreState } from './state.ts';
 
 const MIN_SUMMARY_CHARS = 10;
 /** A title derived from an instruction stops at the first clause or here. */
 const DERIVED_TITLE_CHARS = 80;
 /**
  * The most the grammar accepts in one field. Well above the report's ceilings,
- * which `normalizeStep` and the state clip to afterwards: a model that pours a
- * whole charter into one field (seen live, past 2000 characters) has still
- * planned a step, and a rejection would cost a repair round for nothing.
+ * which the state clips to when the step opens: a model that pours a whole
+ * charter into one field (seen live, past 2000 characters) has still planned
+ * a step, and a rejection would cost a repair round for nothing.
  */
 const MAX_FIELD_CHARS = 8_000;
 
@@ -26,7 +27,7 @@ const MAX_FIELD_CHARS = 8_000;
  * property, and every provider renders a flat object. Fields the decision
  * does not use are empty strings. The shape is lenient on purpose: a model
  * that puts the whole charter into `title` and leaves `instruction` empty
- * (seen live) has still planned a step, and `planNext` derives the missing
+ * (seen live) has still planned a step, and `repairPlan` derives the missing
  * field rather than spending the repair round on it.
  */
 export const PLAN_SCHEMA = z
@@ -45,6 +46,8 @@ export const PLAN_SCHEMA = z
       context.addIssue({ code: 'custom', path: ['summary'], message: 'finishing needs an overall assessment' });
     }
   });
+
+type PlanAnswer = z.output<typeof PLAN_SCHEMA>;
 
 export type PlanDecision =
   | { readonly kind: 'step'; readonly title: string; readonly instruction: string }
@@ -69,37 +72,36 @@ export interface PlanRequest {
 
 /** Asks the model for the next charter or the closing assessment. */
 export async function planNext(agent: Agent, state: ExploreState, request: PlanRequest): Promise<PlanDecision> {
-  const plan = await agent.extract(planInstruction(state, request), {
-    schema: PLAN_SCHEMA,
-    timeout: request.timeoutMs,
-  });
-  if (plan.decision === 'finish') return { kind: 'finish', summary: clip(unpad(plan.summary), MAX_SUMMARY_CHARS) };
-  return normalizeStep(plan.title, plan.instruction);
+  return repairPlan(await agent.extract(planInstruction(state, request), { schema: PLAN_SCHEMA, timeout: request.timeoutMs }));
 }
 
 /**
- * The step's title and instruction, each derived from the other when the
- * model filled only one: a charter with no title takes its first clause, a
- * title with no charter is the charter.
+ * The decision, after the repairs live providers' answers have needed. Every
+ * repair the planner makes is here:
+ *
+ * - Digit runs a provider pads a field with (seen live: a title followed by
+ *   hundreds of `1234567890`) are removed; they carry no meaning and would
+ *   otherwise become the charter's tail. The threshold sits past any number a
+ *   charter can mean: phone numbers, order ids, card numbers, and amounts all
+ *   stop short of twenty digits.
+ * - A step with only one of `title` and `instruction` filled has the other
+ *   derived: a charter with no title takes its first clause, a title with no
+ *   charter is the charter.
+ *
+ * Length is not repaired here: the grammar accepts long fields, and the state
+ * clips them to the report's ceilings when the step opens.
  */
-export function normalizeStep(title: string | undefined, instruction: string | undefined): PlanDecision {
-  const givenTitle = unpad(title ?? '');
-  const givenInstruction = unpad(instruction ?? '');
-  // The charter is bounded like the report records it; the act instruction it becomes has room for it.
-  const charter = clip(givenInstruction === '' ? givenTitle : givenInstruction, MAX_INSTRUCTION_CHARS);
+export function repairPlan(answer: PlanAnswer): PlanDecision {
+  if (answer.decision === 'finish') return { kind: 'finish', summary: unpad(answer.summary) };
+  const title = unpad(answer.title);
+  const instruction = unpad(answer.instruction);
+  const charter = instruction === '' ? title : instruction;
   // A title that stood in for the charter is a heading only while it is short.
-  const longest = givenInstruction === '' ? DERIVED_TITLE_CHARS : MAX_TITLE_CHARS;
-  const heading = givenTitle !== '' && givenTitle.length <= longest ? givenTitle : deriveTitle(charter);
+  const longest = instruction === '' ? DERIVED_TITLE_CHARS : MAX_TITLE_CHARS;
+  const heading = title !== '' && title.length <= longest ? title : deriveTitle(charter);
   return { kind: 'step', title: heading, instruction: charter };
 }
 
-/**
- * Removes the digit runs a provider sometimes pads a field with (seen live:
- * a title followed by hundreds of `1234567890`), which carry no meaning and
- * would otherwise become the charter's tail. The threshold sits past any
- * number a charter can mean: phone numbers, order ids, card numbers, and
- * amounts all stop short of twenty digits.
- */
 function unpad(text: string): string {
   return text.replace(/\s*\d{20,}\s*/g, ' ').trim();
 }
@@ -110,7 +112,7 @@ function deriveTitle(charter: string): string {
   return short.length <= DERIVED_TITLE_CHARS ? short : `${short.slice(0, DERIVED_TITLE_CHARS - 1)}…`;
 }
 
-const STATUS_MARKS: Record<ExploreState['steps'][number]['status'], string> = {
+const STATUS_MARKS: Record<ReportExploreStep['status'], string> = {
   passed: 'passed',
   failed: 'FAILED',
   blocked: 'blocked',

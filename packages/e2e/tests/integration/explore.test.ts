@@ -131,13 +131,18 @@ describe('e2e explore', () => {
     const finding = record.findings[0]!;
     expect(finding).toMatchObject({ step: 1, kind: 'issue', severity: 3, title: COUNTER_FINDING.title, path: '/' });
     expect(finding.observationRevision).toBeDefined();
-    expect(finding.screenshot).toMatch(/^explore\/.+\/finding-1\.png$/);
-    expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', ...finding.screenshot!.split('/')))).toBe(true);
 
     // The one result is the exploration, under the virtual file, failed by the issue.
     expect(outcome.report.run.results).toHaveLength(1);
     const result = outcome.report.run.results[0]!;
     expect(result.file).toBe('explore');
+    // The evidence is an ordinary screenshot artifact of the attempt, attached to the act step that reported it.
+    const attempt = result.attempts[0]!;
+    const evidence = attempt.artifacts.find((artifact) => artifact.id === finding.artifactId);
+    expect(evidence).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', producer: { kind: 'step' } });
+    expect(evidence!.path).toMatch(/\/finding-1\.png$/);
+    expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', ...evidence!.path!.split('/')))).toBe(true);
+    expect(attempt.steps.find((step) => step.api === 'agent.act')!.artifacts).toContain(finding.artifactId);
     expect(result.titlePath).toEqual(['Explore the home page and find bugs']);
     expect(result.attempts.at(-1)!.error?.message).toContain('exploration found 1 issue(s)');
     // The planner ran as an extract step, the charter as an act step, in the attempt's timeline.
@@ -204,7 +209,7 @@ describe('e2e explore', () => {
     ]);
   }, 120_000);
 
-  it('explores the first of several targets, opening its app first, and leaves a malformed reporters value to config validation', async () => {
+  it('explores the first of several targets, opening its app first, and rejects a config that does not resolve before anything starts', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'Looked around.' }),
       loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'unused' } }],
@@ -226,16 +231,18 @@ describe('e2e explore', () => {
     expect(outcome.report.run.results.map((result) => result.targetId)).toEqual(['web']);
     expect(outcome.report.run.results[0]!.attempts[0]!.steps[0]!.api).toBe('app.open');
 
-    const malformed = await explore({
-      cwd: project.dir,
-      rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } }, reporters: 'json' as never },
-      goal: 'Look around',
+    const web = { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } } };
+    await expect(explore({ cwd: project.dir, rawConfig: { ...web, reporters: 'json' as never }, goal: 'Look around' })).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: /reporters must be an array/,
     });
-    expect(malformed.exitCode).toBe(2);
-    expect(malformed.report.run.errors[0]).toMatchObject({ code: 'INVALID_CONFIG' });
+    await expect(explore({ cwd: project.dir, rawConfig: web, target: 'nope' })).rejects.toMatchObject({
+      code: 'UNKNOWN_TARGET',
+      message: /unknown target ID "nope"; the config declares "web"/,
+    });
   }, 120_000);
 
-  it('builds the explorer from the agent --agent names, keeps the other agents, and rejects an unknown name before anything starts', async () => {
+  it('runs as the agent --agent names, built from it, keeps the other agents, and rejects an unknown name before anything starts', async () => {
     let plans = 0;
     const seen: string[][] = [];
     const model = installExploreModel({
@@ -264,6 +271,10 @@ describe('e2e explore', () => {
     });
     expect(outcome.status).toBe('passed');
     expect(notices).toEqual(['exploring with agent "ux"']);
+    // The steps record the agent they ran as, like `e2e run --agent`.
+    const steps = outcome.report.run.results[0]!.attempts[0]!.steps.filter((step) => step.api.startsWith('agent.'));
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.map((step) => step.agent)).toEqual(steps.map(() => 'ux'));
     // The ux agent's tool is in the explorer's vocabulary.
     expect(seen[0]).toContain('ping');
     expect(seen[0]).toContain(FINDING_TOOL_NAME);
@@ -309,8 +320,14 @@ describe('e2e explore', () => {
     expect(loopCalls.map((call) => call.prompt).join('\n')).not.toContain('bookworm');
   }, 120_000);
 
-  it('rejects a goal past the ceiling before anything starts', async () => {
+  it('rejects a goal past the ceiling, a budget out of range, and a credential inventory that would not fit a step before anything starts', async () => {
     await expect(explore({ cwd: project.dir, rawConfig: {}, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
     await expect(explore({ cwd: project.dir, rawConfig: {}, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    const credentials = Object.fromEntries(
+      Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'pw' }]),
+    );
+    await expect(
+      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, credentials } }),
+    ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('400 account(s) serialize to') });
   });
 });

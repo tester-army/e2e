@@ -5,7 +5,7 @@ import { Argument, Command, CommanderError, InvalidArgumentError, Option } from 
 import picocolors from 'picocolors';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
-import { list, run, type ListedPair } from '../run/runner.ts';
+import { list, run, type ListedPair, type RunOutcome } from '../run/runner.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { cliSessionEvent, runCompletedEvent } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
@@ -90,9 +90,23 @@ const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
   ['130', 'interrupted by Ctrl-C or a CI signal'],
 ];
 
+/** `explore` exits as `run` does; only what a pass and a failure mean differs. */
+const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
+  '0': 'the exploration ran and reported no issue (warnings do not count)',
+  '1': 'at least one issue was reported, or nothing could be explored',
+};
+const EXPLORE_EXIT_CODES = EXIT_CODES.map(([code, meaning]) => [code, EXPLORE_EXIT_MEANINGS[code] ?? meaning] as const);
+
 /** A titled block indented like commander's own help sections. */
 function helpSection(title: string, lines: readonly string[]): string {
   return [pc.bold(title), ...lines.map((line) => `  ${line}`)].join('\n');
+}
+
+function exitCodesSection(codes: readonly (readonly [code: string, meaning: string])[]): string {
+  return helpSection(
+    'Exit codes:',
+    codes.map(([code, meaning]) => `${pc.cyan(code.padEnd(3))}  ${meaning}`),
+  );
 }
 
 function examples(commands: readonly string[]): string {
@@ -122,6 +136,34 @@ function usedFlags(command: Command): string[] {
       option.long !== undefined && command.getOptionValueSource(option.attributeName()) === 'cli' ? [option.long] : [],
     )
     .toSorted();
+}
+
+/**
+ * Runs a command that ends in a run outcome: under the Ctrl-C ladder, with the
+ * exit code the outcome carries, and the run recorded for telemetry. What
+ * throws before a run starts (a config that would not load, an unknown agent
+ * or target) prints as `CODE: message` with the code's exit status; the run's
+ * own failures are already in its report and its exit code.
+ */
+async function runToOutcome(
+  telemetry: Telemetry,
+  command: Command,
+  start: (signals: SignalLadder) => Promise<RunOutcome>,
+): Promise<void> {
+  const signals = new SignalLadder();
+  const release = signals.arm();
+  try {
+    const outcome = await start(signals);
+    process.exitCode = outcome.exitCode;
+    // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
+    telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
+  } catch (cause) {
+    const error = classifyError(cause);
+    process.stderr.write(`${error.code}: ${error.message}\n`);
+    process.exitCode = exitCodeForCategory(error.category);
+  } finally {
+    release();
+  }
 }
 
 /** Builds the commander program. */
@@ -249,10 +291,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... e2e run --no-cache',
         ]),
         '',
-        helpSection(
-          'Exit codes:',
-          EXIT_CODES.map(([code, meaning]) => `${pc.cyan(code.padEnd(3))}  ${meaning}`),
-        ),
+        exitCodesSection(EXIT_CODES),
         '',
         docsLine('/reference/cli#exit-codes'),
       ].join('\n'),
@@ -280,11 +319,9 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           video?: boolean;
         },
         command: Command,
-      ) => {
-        const signals = new SignalLadder();
-        const release = signals.arm();
-        try {
-          const outcome = await run({
+      ) =>
+        runToOutcome(telemetry, command, (signals) =>
+          run({
             files,
             configPath: options.config,
             targetIds: options.target,
@@ -303,14 +340,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             video: options.video,
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
-          });
-          process.exitCode = outcome.exitCode;
-          // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
-          telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
-        } finally {
-          release();
-        }
-      },
+          }),
+        ),
     );
 
   program
@@ -355,14 +386,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           "E2E_MODEL=provider/model-id e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
-        helpSection('Exit codes:', [
-          `${pc.cyan('0'.padEnd(3))}  the exploration ran and reported no issue (warnings do not count)`,
-          `${pc.cyan('1'.padEnd(3))}  at least one issue was reported, or nothing could be explored`,
-          `${pc.cyan('2'.padEnd(3))}  CLI, config, or agent policy error`,
-          `${pc.cyan('3'.padEnd(3))}  engine, app process, model provider, or artifact failure`,
-          `${pc.cyan('4'.padEnd(3))}  internal runner error`,
-          `${pc.cyan('130'.padEnd(3))}  interrupted by Ctrl-C or a CI signal`,
-        ]),
+        exitCodesSection(EXPLORE_EXIT_CODES),
         '',
         docsLine('/explore'),
       ].join('\n'),
@@ -384,11 +408,9 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           video?: boolean;
         },
         command: Command,
-      ) => {
-        const signals = new SignalLadder();
-        const release = signals.arm();
-        try {
-          const outcome = await explore({
+      ) =>
+        runToOutcome(telemetry, command, (signals) =>
+          explore({
             goal,
             configPath: options.config,
             target: options.target,
@@ -404,19 +426,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
             notice: (message) => process.stderr.write(`e2e explore: ${message}\n`),
-          });
-          process.exitCode = outcome.exitCode;
-          telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
-        } catch (cause) {
-          // A config that would not load, before any run started: the run's
-          // own failures are already in its report and exit code.
-          const error = classifyError(cause);
-          process.stderr.write(`${error.code}: ${error.message}\n`);
-          process.exitCode = exitCodeForCategory(error.category);
-        } finally {
-          release();
-        }
-      },
+          }),
+        ),
     );
 
   program

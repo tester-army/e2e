@@ -594,7 +594,7 @@
         "path": { "type": "string", "maxLength": 2048 },
         "observationRevision": { "type": "string", "minLength": 1 },
         "reportedAt": { "$ref": "#/$defs/timestamp" },
-        "screenshot": { "$ref": "#/$defs/relativePath" }
+        "artifactId": { "type": "string", "minLength": 1 }
       }
     },
     "exploreStep": {

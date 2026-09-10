@@ -17,7 +17,7 @@ const MAX_SUMMARY_CHARS = 2_000;
 const MAX_INSTRUCTION_BYTES = 8_192;
 
 /** Spec 02: canonical non-secret parameters are capped at 64 KiB, 32 levels. */
-const MAX_PARAMS_BYTES = 65_536;
+export const MAX_PARAMS_BYTES = 65_536;
 const MAX_PARAMS_DEPTH = 32;
 
 /** Normalizes and bounds the instruction per spec 02. */

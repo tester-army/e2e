@@ -99,8 +99,8 @@ export interface ReportExploreFinding {
   path?: string | undefined;
   observationRevision?: string | undefined;
   reportedAt: string;
-  /** Evidence screenshot, relative to the artifact root, when pixels were granted. */
-  screenshot?: string | undefined;
+  /** The attempt's `screenshot` artifact holding the evidence, by id, when pixels were granted. */
+  artifactId?: string | undefined;
 }
 
 /** One exploration step: a charter the agent planned and then executed as an `agent.act` step. */

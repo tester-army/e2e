@@ -36,11 +36,11 @@ describe('ExploreState', () => {
   it('records steps in order with their outcome and timing', () => {
     let clock = 1_000;
     const state = new ExploreState('Explore checkout', { maxSteps: 4, timeoutMs: 300_000 }, () => clock);
-    expect(state.beginStep('Cart', 'Add two items and open the cart')).toBe(1);
+    expect(state.beginStep('Cart', 'Add two items and open the cart').index).toBe(1);
     clock += 2_500;
     const step = state.endStep('passed', 'Cart opened with both items');
     expect(step).toMatchObject({ index: 1, title: 'Cart', status: 'passed', durationMs: 2_500, summary: 'Cart opened with both items' });
-    expect(state.beginStep('Checkout', 'Pay for the cart')).toBe(2);
+    expect(state.beginStep('Checkout', 'Pay for the cart').index).toBe(2);
     state.endStep('failed', 'agent.act failed: the pay button did nothing', 'ACTION_FAILED');
     expect(state.steps.map((entry) => entry.status)).toEqual(['passed', 'failed']);
     expect(state.steps[1]!.errorCode).toBe('ACTION_FAILED');
@@ -60,9 +60,18 @@ describe('ExploreState', () => {
     state.beginStep('Cart', 'open the cart');
     const inStep = finding(state);
     expect(inStep).toMatchObject({ index: 1, step: 1, kind: 'issue', severity: 4 });
-    state.attachEvidence(inStep.id, 'explore/run/finding-2.png');
-    expect(state.findings[1]!.screenshot).toBe('explore/run/finding-2.png');
+    state.attachEvidence(inStep.id, 'attempt-1:artifact:0');
+    expect(state.findings[1]!.artifactId).toBe('attempt-1:artifact:0');
     expect(state.issues).toHaveLength(2);
+  });
+
+  it('opens a step as the report will record it, so the charter the agent runs is the bounded one', () => {
+    const state = new ExploreState('goal', { maxSteps: 2, timeoutMs: 300_000 });
+    const opened = state.beginStep(`  ${'x'.repeat(400)}  `, 'y'.repeat(5_000));
+    expect(opened.index).toBe(1);
+    expect(opened.title).toHaveLength(200);
+    expect(opened.instruction).toHaveLength(2_000);
+    expect(state.endStep('passed')).toMatchObject({ title: opened.title, instruction: opened.instruction });
   });
 
   it('counts failed and blocked steps in a row, skipping steps that ended at their limit', () => {
@@ -97,14 +106,22 @@ describe('ExploreState', () => {
     state.beginStep('x'.repeat(400), 'y'.repeat(5_000));
     state.endStep('passed', 'z'.repeat(9_000));
     finding(state, { title: 't'.repeat(300), reproduction: Array.from({ length: 30 }, () => 'r'.repeat(900)) });
-    state.summary = 's'.repeat(9_000);
-    state.ended = 'finished';
+    state.end('finished', 's'.repeat(9_000));
     const snapshot = state.snapshot();
     assertValidExplore(snapshot);
     expect(snapshot.steps[0]!.title).toHaveLength(200);
     expect(snapshot.steps[0]!.instruction).toHaveLength(2_000);
     expect(snapshot.findings[0]!.reproduction).toHaveLength(20);
     expect(snapshot.summary).toHaveLength(4_000);
+  });
+
+  it('is aborted with no assessment until ended, and drops a blank assessment', () => {
+    const state = new ExploreState('goal', { maxSteps: 2, timeoutMs: 300_000 });
+    expect(state.ended).toBe('aborted');
+    expect(state.summary).toBeUndefined();
+    state.end('time', '   ');
+    expect(state.ended).toBe('time');
+    expect(state.snapshot().summary).toBeUndefined();
   });
 
   it('clip trims and marks truncation, counting code points so no surrogate pair is split', () => {
@@ -124,8 +141,7 @@ describe('summaryRows', () => {
     state.endStep('exhausted');
     finding(state, { title: 'Minor misalignment', kind: 'warning', severity: 2 });
     finding(state, { title: 'Total shows $0.00', severity: 4, path: '/cart' });
-    state.summary = 'Checkout is broken.';
-    state.ended = 'step-limit';
+    state.end('step-limit', 'Checkout is broken.');
     const rows = summaryRows(state);
     expect(rows.map((row) => row.label.trim())).toEqual(['Explored', 'Findings', 'S4 issue', 'S2 warning', 'Assessment']);
     expect(rows[0]!.text).toBe('2 steps (1 passed, 1 ended at their limit); ended: the step limit was reached');
@@ -135,7 +151,7 @@ describe('summaryRows', () => {
 
   it('says none when nothing was found', () => {
     const state = new ExploreState('goal', { maxSteps: 4, timeoutMs: 300_000 });
-    state.ended = 'finished';
+    state.end('finished');
     expect(summaryRows(state).map((row) => row.text)).toEqual(['0 steps (0 passed); ended: the agent covered the goal', 'none']);
   });
 });

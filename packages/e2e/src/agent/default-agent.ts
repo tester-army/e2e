@@ -71,12 +71,8 @@ const DEFAULT_AGENT_MARKER = Symbol.for('e2e.default-agent.v1');
  * starts from the same tools, guidance, model, and provider options.
  */
 export interface DefaultAgent extends StepExecutor {
-  /** The project tools passed to `createAgent`, validated. */
-  readonly tools: Readonly<Record<string, DefinedTool>>;
-  /** The extra system guidance passed to `createAgent`, when any. */
-  readonly system: string | undefined;
-  readonly maxTurns: number | undefined;
-  readonly providerOptions: ProviderOptions | undefined;
+  /** What `createAgent` was given, with the tools validated. */
+  readonly options: CreateAgentOptions;
 }
 
 /** True when an executor came from `createAgent`, in this or another realm. */
@@ -122,13 +118,7 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       return parts.join('\n\n');
     },
   });
-  const agent: DefaultAgent = {
-    ...executor,
-    tools: userTools,
-    system: options.system,
-    maxTurns: options.maxTurns,
-    providerOptions: options.providerOptions,
-  };
+  const agent: DefaultAgent = { ...executor, options: { ...options, tools: userTools } };
   Object.defineProperty(agent, DEFAULT_AGENT_MARKER, { value: true });
   return agent;
 }
@@ -216,6 +206,7 @@ function wrapUserTools(
                 }
                 return context.observe(options);
               },
+              attachScreenshot: (pixels, label) => context.attachScreenshot(pixels, label),
             })),
           );
           // A text result is bounded like every other thing the model reads;

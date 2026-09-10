@@ -91,11 +91,6 @@ export interface RunOptions {
    * executes in-process on one worker, exactly like a `rawConfig` run.
    */
   tests?: InMemoryTests | undefined;
-  /**
-   * The exploration record `e2e explore` adds to the report as `run.explore`,
-   * read once the run is over so it carries the final steps and findings.
-   */
-  exploreReport?: (() => ReportExplore | undefined) | undefined;
   /** The environment the run resolves against, instead of `process.env`. */
   env?: NodeJS.ProcessEnv | undefined;
   /** Suppresses the list reporter. */
@@ -119,6 +114,11 @@ export interface RunOptions {
 export interface InMemoryTests {
   readonly file: string;
   readonly registration: ModuleRegistration;
+  /**
+   * The exploration record `e2e explore` adds to the report as `run.explore`,
+   * read once the run is over so it carries the final steps and findings.
+   */
+  readonly explore?: (() => ReportExplore) | undefined;
 }
 
 /** How long a reporter's `onRunFinished` may take before the run stops waiting for it. */
@@ -311,7 +311,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       serialGroups,
       runErrors,
       targetProvenance,
-      explore: options.exploreReport?.(),
+      explore: options.tests?.explore?.(),
     });
 
   /**
@@ -520,8 +520,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // runs across processes. A supplied `rawConfig` cannot cross a process
     // boundary (it may hold live engine handles), and neither can the bodies
     // of tests registered in memory, so either runs in-process against one
-    // worker.
-    const inProcess = config.configPath === undefined || options.tests !== undefined;
+    // worker: `workerConfigPath` is the file a child process would load, and
+    // there is none in either case.
+    const workerConfigPath = options.tests === undefined ? config.configPath : undefined;
+    const inProcess = workerConfigPath === undefined;
     const runWorkers = inProcess ? 1 : config.workers;
 
     // Provisioning: an engine that must fetch something onto this machine (a
@@ -592,9 +594,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       aiTraceRecorder = new AiTraceRecorder();
       await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
     }
-    // The second test only narrows the type: `inProcess` already covers it.
     const spawn =
-      inProcess || config.configPath === undefined
+      workerConfigPath === undefined
         ? inProcessSpawner({
             config,
             selection,
@@ -606,7 +607,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             debug,
           })
         : childProcessSpawner({
-            configPath: config.configPath,
+            configPath: workerConfigPath,
             projectRoot: config.projectRoot,
             configDigest: config.configDigest,
             cli,

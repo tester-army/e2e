@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStep, PLAN_SCHEMA, planInstruction } from '../../src/explore/plan.ts';
+import { PLAN_SCHEMA, planInstruction, repairPlan } from '../../src/explore/plan.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 
 /** Answers with every field present, as strict providers require; unused ones empty. */
-const step = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'step', title: '', instruction: '', summary: '', ...fields });
-const finish = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'finish', title: '', instruction: '', summary: '', ...fields });
+const step = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'step' as const, title: '', instruction: '', summary: '', ...fields });
+const finish = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'finish' as const, title: '', instruction: '', summary: '', ...fields });
 
 describe('PLAN_SCHEMA', () => {
 
@@ -32,44 +32,44 @@ describe('PLAN_SCHEMA', () => {
   });
 });
 
-describe('normalizeStep', () => {
-  it('keeps a short title with its instruction', () => {
-    expect(normalizeStep(' Cart ', ' Open the cart. ')).toEqual({ kind: 'step', title: 'Cart', instruction: 'Open the cart.' });
+describe('repairPlan', () => {
+  it('trims a step and its title, and passes a finish through', () => {
+    expect(repairPlan(step({ title: ' Cart ', instruction: ' Open the cart. ' }))).toEqual({ kind: 'step', title: 'Cart', instruction: 'Open the cart.' });
+    expect(repairPlan(finish({ summary: ' Checkout works; the cart total is wrong. ' }))).toEqual({ kind: 'finish', summary: 'Checkout works; the cart total is wrong.' });
   });
 
   it('uses a lone title as the charter and derives the heading from its first clause', () => {
     const charter = 'Open the cart page: add two copies of Dune, then check that the total equals twice the unit price';
-    expect(normalizeStep(charter, undefined)).toEqual({ kind: 'step', title: 'Open the cart page', instruction: charter });
+    expect(repairPlan(step({ title: charter }))).toEqual({ kind: 'step', title: 'Open the cart page', instruction: charter });
   });
 
   it('derives a heading for a charter with no title, bounded', () => {
     const long = `${'word '.repeat(40).trim()} then stop`;
-    const plan = normalizeStep(undefined, long);
+    const plan = repairPlan(step({ instruction: long }));
     expect(plan.kind === 'step' && plan.instruction).toBe(long);
     expect(plan.kind === 'step' && plan.title.length).toBeLessThanOrEqual(80);
   });
 
   it('replaces an over-long title with a derived one', () => {
-    const title = 'x'.repeat(300);
-    const plan = normalizeStep(title, 'Do the thing');
-    expect(plan).toEqual({ kind: 'step', title: 'Do the thing', instruction: 'Do the thing' });
+    expect(repairPlan(step({ title: 'x'.repeat(300), instruction: 'Do the thing' }))).toEqual({ kind: 'step', title: 'Do the thing', instruction: 'Do the thing' });
   });
 
   it('strips the digit runs a provider pads a field with', () => {
     const padded = `Browse catalog and manage cart nav flow${'1234567890'.repeat(60)}`;
-    expect(normalizeStep(padded, undefined)).toEqual({ kind: 'step', title: 'Browse catalog and manage cart nav flow', instruction: 'Browse catalog and manage cart nav flow' });
-    expect(normalizeStep('Sign in', `Open the sign in page ${'0123456789'.repeat(3)} and sign in`)).toEqual({ kind: 'step', title: 'Sign in', instruction: 'Open the sign in page and sign in' });
+    expect(repairPlan(step({ title: padded }))).toEqual({ kind: 'step', title: 'Browse catalog and manage cart nav flow', instruction: 'Browse catalog and manage cart nav flow' });
+    expect(repairPlan(step({ title: 'Sign in', instruction: `Open the sign in page ${'0123456789'.repeat(3)} and sign in` }))).toEqual({ kind: 'step', title: 'Sign in', instruction: 'Open the sign in page and sign in' });
+    expect(repairPlan(finish({ summary: `All good.${'9876543210'.repeat(4)}` }))).toEqual({ kind: 'finish', summary: 'All good.' });
     // Numbers a charter can mean are content, not padding: ids, phone numbers, card numbers.
-    expect(normalizeStep('Order 1042', 'Check order #1042 for $28.00')).toEqual({ kind: 'step', title: 'Order 1042', instruction: 'Check order #1042 for $28.00' });
+    expect(repairPlan(step({ title: 'Order 1042', instruction: 'Check order #1042 for $28.00' }))).toEqual({ kind: 'step', title: 'Order 1042', instruction: 'Check order #1042 for $28.00' });
     const tracking = 'Confirm tracking number 1234567890123 shows for order 4111111111111111 and phone 5551234567';
-    expect(normalizeStep('Tracking', tracking)).toEqual({ kind: 'step', title: 'Tracking', instruction: tracking });
+    expect(repairPlan(step({ title: 'Tracking', instruction: tracking }))).toEqual({ kind: 'step', title: 'Tracking', instruction: tracking });
   });
 
-  it('accepts a charter far past the report ceiling and clips it instead of rejecting it', () => {
+  it('accepts a charter far past the report ceiling and leaves its length to the state', () => {
     const huge = `Open the catalog. ${'Check every price and stock count carefully. '.repeat(120)}`;
     expect(PLAN_SCHEMA.safeParse(step({ title: huge })).success).toBe(true);
-    const plan = normalizeStep(huge, undefined);
-    expect(plan.kind === 'step' && plan.instruction.length).toBe(2_000);
+    const plan = repairPlan(step({ title: huge }));
+    expect(plan.kind === 'step' && plan.instruction).toBe(huge.trim());
     expect(plan.kind === 'step' && plan.title).toBe('Open the catalog');
     expect(PLAN_SCHEMA.safeParse(finish({ summary: 's'.repeat(6_000) })).success).toBe(true);
     expect(PLAN_SCHEMA.safeParse(step({ title: 'x'.repeat(8_001) })).success).toBe(false);

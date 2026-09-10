@@ -71,21 +71,25 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
   return typeof value === 'object' && value !== null && DEFINED_TOOL_MARKER in value;
 }
 
-/** Guarded observation capability supplied to read-only tools by createAgent. */
-export function getToolContext(options: object): Pick<StepExecutorContext, 'observe'> {
-  const context = (options as { [TOOL_CONTEXT]?: Pick<StepExecutorContext, 'observe'> })[TOOL_CONTEXT];
+/**
+ * The harness capabilities a project tool reaches through `getToolContext`:
+ * observing the screen (read-only tools only) and keeping what it saw as a
+ * screenshot artifact of the step.
+ */
+export type ToolContext = Pick<StepExecutorContext, 'observe' | 'attachScreenshot'>;
+
+/** The capabilities createAgent supplied to the running tool. */
+export function getToolContext(options: object): ToolContext {
+  const context = (options as { [TOOL_CONTEXT]?: ToolContext })[TOOL_CONTEXT];
   if (context === undefined || typeof context.observe !== 'function') {
     throw new TestError('INVALID_ARGUMENT', 'this tool needs the observation context supplied by createAgent');
   }
-  return { observe: context.observe };
+  return { observe: context.observe, attachScreenshot: context.attachScreenshot };
 }
 
 const TOOL_CONTEXT = Symbol.for('e2e.tool-context.v1');
 
 /** Carries harness capabilities alongside SDK options without replacing the project's SDK context. */
-export function withToolContext(
-  options: ToolExecutionOptions<unknown>,
-  context: Pick<StepExecutorContext, 'observe'>,
-): ToolExecutionOptions<unknown> {
+export function withToolContext(options: ToolExecutionOptions<unknown>, context: ToolContext): ToolExecutionOptions<unknown> {
   return Object.assign({}, options, { [TOOL_CONTEXT]: context });
 }
