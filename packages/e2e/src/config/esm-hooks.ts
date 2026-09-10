@@ -11,7 +11,8 @@
  * `"type": "module"`, keeps its module type.
  *
  * Only path specifiers are forced: the entry file URL, `./helper.ts`, and
- * tsconfig `paths` aliases, which tsx maps to paths before calling this hook.
+ * tsconfig `paths` aliases, which tsx maps to `file:` URLs (on every platform)
+ * before calling this hook.
  * A bare specifier is a package, linked or installed, and keeps the format its
  * own manifest declares; `.cts` files stay CommonJS.
  */

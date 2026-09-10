@@ -14,13 +14,16 @@ describe('asModule', () => {
     expect(asModule(url, { url, format })).toEqual({ url, format: 'module' });
   });
 
-  it.each(['./helper.ts', '../shared/seed.ts', '/app/tests/helper.ts'])(
-    'marks a file reached by the path %s as an ES module',
-    (specifier) => {
-      const resolution = { url: 'file:///app/tests/helper.ts', format: 'commonjs-typescript' };
-      expect(asModule(specifier, resolution)).toEqual({ ...resolution, format: 'module' });
-    },
-  );
+  it.each([
+    ['./helper.ts', 'file:///app/tests/helper.ts'],
+    ['../shared/seed.ts', 'file:///app/shared/seed.ts'],
+    ['/app/tests/helper.ts', 'file:///app/tests/helper.ts'],
+    // A tsconfig paths alias, as tsx passes it on Windows: pathToFileURL of the mapped path.
+    ['file:///C:/app/src/lib/seed.ts', 'file:///C:/app/src/lib/seed.ts'],
+  ])('marks a file reached by the path %s as an ES module', (specifier, url) => {
+    const resolution = { url, format: 'commonjs-typescript' };
+    expect(asModule(specifier, resolution)).toEqual({ ...resolution, format: 'module' });
+  });
 
   it.each([
     ['an ES module', './a.ts', { url: 'file:///app/a.ts', format: 'module' }],
