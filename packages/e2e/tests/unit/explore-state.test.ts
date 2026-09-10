@@ -107,9 +107,11 @@ describe('ExploreState', () => {
     expect(snapshot.summary).toHaveLength(4_000);
   });
 
-  it('clip trims and marks truncation', () => {
+  it('clip trims and marks truncation, counting code points so no surrogate pair is split', () => {
     expect(clip('  hello  ', 10)).toBe('hello');
     expect(clip('abcdef', 4)).toBe('abc…');
+    expect(clip('😀😀😀😀', 3)).toBe('😀😀…');
+    expect(clip('😀😀', 2)).toBe('😀😀');
   });
 });
 

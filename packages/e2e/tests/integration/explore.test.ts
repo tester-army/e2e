@@ -93,14 +93,11 @@ describe('e2e explore', () => {
   });
 
   it('plans steps, records the finding with its evidence, and fails the run for the issue', async () => {
-    let plans = 0;
+    const planPrompts: string[] = [];
     const model = installExploreModel({
       plan: (call) => {
-        plans += 1;
-        expect(call.instruction).toContain('Goal: Explore the home page and find bugs');
-        if (plans === 1) return { decision: 'step', title: 'Counter', instruction: 'Tap Increment once and check the counter' };
-        expect(call.instruction).toContain('1. [passed] Counter — Counter went to 1');
-        expect(call.instruction).toContain(`- [issue, severity 3] ${COUNTER_FINDING.title}`);
+        planPrompts.push(call.instruction);
+        if (planPrompts.length === 1) return { decision: 'step', title: 'Counter', instruction: 'Tap Increment once and check the counter' };
         return { decision: 'finish', summary: 'The counter works but says nothing about what it counts.' };
       },
       loop: (call) => {
@@ -112,6 +109,11 @@ describe('e2e explore', () => {
     const outcome = await runExplore(project, app, model);
 
     expect(outcome.report.run.errors).toEqual([]);
+    // The planner saw the goal each time, then the record of the step and its finding.
+    expect(planPrompts).toHaveLength(2);
+    expect(planPrompts[0]).toContain('Goal: Explore the home page and find bugs');
+    expect(planPrompts[1]).toContain('1. [passed] Counter — Counter went to 1');
+    expect(planPrompts[1]).toContain(`- [issue, severity 3] ${COUNTER_FINDING.title}`);
     expect(outcome.exitCode).toBe(1);
     expect(outcome.status).toBe('failed');
     assertValidReport(outcome.report);
@@ -199,6 +201,37 @@ describe('e2e explore', () => {
     expect((outcome as unknown as { notices: string[] }).notices).toEqual([
       'the configured agent "house-brain" is a custom executor; explore runs the built-in agent instead',
     ]);
+  }, 120_000);
+
+  it('explores the first of several targets, opening the app only when it declares a URL, and leaves a malformed reporters value to config validation', async () => {
+    const model = installExploreModel({
+      plan: () => ({ decision: 'finish', summary: 'Looked around.' }),
+      loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'unused' } }],
+    });
+    // The first target leaves its name to the platform; the run must still explore exactly that one.
+    const notices: string[] = [];
+    const outcome = await explore({
+      cwd: project.dir,
+      rawConfig: {
+        targets: [{ engine: playwright({ url: app.url }) }, { name: 'second', engine: playwright({ url: app.url }) }] as never,
+        agent: { model },
+      },
+      goal: 'Look around',
+      maxSteps: 1,
+      timeoutMs: 180_000,
+      notice: (message) => notices.push(message),
+    });
+    expect(notices).toEqual(['exploring target "web"; pass --target to explore another']);
+    expect(outcome.report.run.results.map((result) => result.targetId)).toEqual(['web']);
+    expect(outcome.report.run.results[0]!.attempts[0]!.steps[0]!.api).toBe('app.open');
+
+    const malformed = await explore({
+      cwd: project.dir,
+      rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agent: { model }, reporters: 'json' as never },
+      goal: 'Look around',
+    });
+    expect(malformed.exitCode).toBe(2);
+    expect(malformed.report.run.errors[0]).toMatchObject({ code: 'INVALID_CONFIG' });
   }, 120_000);
 
   it('rejects a goal past the ceiling before anything starts', async () => {

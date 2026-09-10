@@ -142,8 +142,13 @@ export class ExploreState {
   }
 }
 
-/** Trims and bounds free text so the report stays inside the schema's ceilings. */
+/**
+ * Trims and bounds free text so the report stays inside the schema's
+ * ceilings. Counted in code points, as the schema counts, so a cut never
+ * splits a surrogate pair.
+ */
 export function clip(text: string, max: number): string {
   const trimmed = text.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+  const points = Array.from(trimmed);
+  return points.length <= max ? trimmed : `${points.slice(0, max - 1).join('')}…`;
 }

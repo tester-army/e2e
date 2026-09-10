@@ -108,7 +108,7 @@ const pages = {
     return layout(
       'Cart',
       `<h1>Cart</h1>
-       ${request.added ? `<p role="status">Added ${request.added} to your cart.</p>` : ''}
+       ${request.added ? `<p role="status">Added ${escapeHtml(request.added)} to your cart.</p>` : ''}
        ${
          rows.length === 0
            ? '<p>Your cart is empty. <a href="/catalog">Browse the catalog</a>.</p>'
@@ -256,6 +256,8 @@ const server = createServer(async (request, response) => {
       return redirect('/cart');
     }
     if (url.pathname === '/checkout') {
+      // Nothing to order: back to the cart, which says so.
+      if (state.cart.length === 0) return redirect('/cart');
       const total = state.cart.reduce((sum, row) => sum + BOOKS.find((book) => book.id === row.id).price * row.qty, 0);
       const order = { id: 1041 + state.orders.length, total, placed: new Date().toISOString().slice(0, 10) };
       state.orders.push(order);
@@ -285,7 +287,8 @@ const server = createServer(async (request, response) => {
     state.signedIn = false;
     return redirect('/');
   }
-  const page = pages[url.pathname];
+  // The confirmation is rendered by the checkout POST only; the route has no page of its own.
+  const page = url.pathname === '/order-confirmation' ? undefined : pages[url.pathname];
   if (page === undefined) return html(layout('Not found', `<h1>Page not found</h1><p>There is nothing at ${escapeHtml(url.pathname)}.</p>`), 404);
   return html(page({ added: url.searchParams.get('added'), saved: url.searchParams.get('saved') === '1' }));
 });

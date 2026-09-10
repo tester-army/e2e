@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { createAgent, type DefaultAgent } from '../agent/default-agent.ts';
 import { defineTool, getToolContext, type DefinedTool } from '../agent/tool.ts';
 import { asSdkLanguageModel } from '../config/agent.ts';
+import type { ModelInstance } from '../types.ts';
 import type { ExploreState } from './state.ts';
 
 export const FINDING_TOOL_NAME = 'report_finding';
@@ -33,6 +34,11 @@ export interface ExplorerOptions {
    */
   readonly base: DefaultAgent | undefined;
   /**
+   * The model a replaced hand-rolled executor brought along, so swapping the
+   * brain keeps the model the project configured. `base` wins when both exist.
+   */
+  readonly model?: ModelInstance | undefined;
+  /**
    * Writes a finding's evidence pixels and returns the artifact-root-relative
    * path, or undefined when nothing was written. Failures are swallowed: the
    * finding stands without its screenshot.
@@ -46,8 +52,9 @@ export function createExplorer(options: ExplorerOptions): DefaultAgent {
   const system = [base?.system, EXPLORE_RULES]
     .filter((part): part is string => part !== undefined && part.trim() !== '')
     .join('\n\n');
+  const model = base?.model ?? options.model;
   return createAgent({
-    ...(base?.model === undefined ? {} : { model: asSdkLanguageModel(base.model) }),
+    ...(model === undefined ? {} : { model: asSdkLanguageModel(model) }),
     system,
     tools: { ...base?.tools, [FINDING_TOOL_NAME]: createFindingTool(options) },
     ...(base?.maxTurns === undefined ? {} : { maxTurns: base.maxTurns }),

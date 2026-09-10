@@ -300,7 +300,7 @@ test](/explore) describes what a run does and how to read it.
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report, the artifact tree, and the finding screenshots (`explore/<launch time>/finding-<n>.png`). |
 | `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
 | `--ai-trace` | boolean | `false` | As for `run`. |
-| `--video` | boolean | `false` | As for `run`: one video of the whole exploration. |
+| `--video` | boolean | `false` | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine) when the engine can record; otherwise the run fails with `UNSUPPORTED_ARTIFACT` before exploration starts. |
 
 The run has one result, under the virtual file `explore`, titled by the goal.
 The trace cache is off and retries are zero whatever the config says.

@@ -49,9 +49,10 @@ describe('normalizeStep', () => {
 });
 
 describe('planInstruction', () => {
-  const state = new ExploreState('Explore checkout like a first-time buyer', { maxSteps: 6, timeoutMs: 600_000 });
+  const fresh = () => new ExploreState('Explore checkout like a first-time buyer', { maxSteps: 6, timeoutMs: 600_000 });
 
   it('opens with the goal, an empty record, and the two decisions', () => {
+    const state = fresh();
     const text = planInstruction(state, { mustFinish: false, remainingMs: 540_000, timeoutMs: 60_000 });
     expect(text).toContain('Goal: Explore checkout like a first-time buyer');
     expect(text).toContain('0 of 6 steps used, about 9 minute(s) left');
@@ -61,6 +62,7 @@ describe('planInstruction', () => {
   });
 
   it('lists the steps with their outcome and the findings so far', () => {
+    const state = fresh();
     state.beginStep('Cart', 'open the cart');
     state.endStep('passed', 'Cart opened');
     state.beginStep('Pay', 'pay for the cart');
@@ -73,6 +75,7 @@ describe('planInstruction', () => {
   });
 
   it('asks only for the assessment when the run must finish', () => {
+    const state = fresh();
     const text = planInstruction(state, { mustFinish: true, reason: 'the step limit of 6 is reached', remainingMs: 100_000, timeoutMs: 60_000 });
     expect(text).toContain('The run must end now: the step limit of 6 is reached.');
     expect(text).toContain('"decision": "finish"');

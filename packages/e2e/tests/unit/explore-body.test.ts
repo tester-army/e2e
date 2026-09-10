@@ -40,7 +40,7 @@ function fixtures(script: Script, state: ExploreState) {
   } as unknown as Agent;
   const opened: string[] = [];
   const app = { open: async (target?: string) => void opened.push(target ?? '/') } as unknown as App;
-  const body = createExploreBody({ state, stepTimeoutMs: 240_000 });
+  const body = createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true });
   return {
     run: () => body({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures),
     planInstructions,
@@ -186,7 +186,7 @@ describe('the exploration body', () => {
       },
     } as unknown as Agent;
     const app = { open: async () => undefined } as unknown as App;
-    const body = createExploreBody({ state, stepTimeoutMs: 240_000, now: () => clock });
+    const body = createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true, now: () => clock });
     await body({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures);
     // 300 s left minus the 60 s finish reserve.
     expect(timeouts).toEqual([240_000]);
@@ -194,6 +194,33 @@ describe('the exploration body', () => {
     expect(planInstructions[1]).toContain('the time budget is nearly spent');
     expect(state.ended).toBe('time');
     expect(state.summary).toBe('Time is up.');
+  });
+
+  it('does not open the app for a target without a URL, and ends on the clock when a slow plan leaves no room for a step', async () => {
+    let clock = 0;
+    const state = new ExploreState('goal', { maxSteps: 8, timeoutMs: 300_000 }, () => clock);
+    const opened: string[] = [];
+    const acts: string[] = [];
+    const agent = {
+      extract: async () => {
+        // The plan alone eats what was left above the reserve.
+        clock += 240_000;
+        return { decision: 'step', title: 'Late', instruction: 'too late to start' };
+      },
+      act: async (instruction: string) => {
+        acts.push(instruction);
+        return { summary: 'never', modelCalls: 1, actions: 1 };
+      },
+    } as unknown as Agent;
+    const app = { open: async () => void opened.push('/') } as unknown as App;
+    // Nothing ran and nothing was found, so the body concludes blocked; the clock is what this test is about.
+    await expect(
+      Promise.resolve().then(() => createExploreBody({ state, stepTimeoutMs: 240_000, openApp: false, now: () => clock })({ agent, app, screen: {} as never, platform: 'ios' } as TestFixtures)),
+    ).rejects.toMatchObject({ code: 'AUTOMATION_UNSUPPORTED' });
+    expect(opened).toEqual([]);
+    expect(acts).toEqual([]);
+    expect(state.steps).toEqual([]);
+    expect(state.ended).toBe('time');
   });
 
   it('fails the run for issues, naming them', async () => {
@@ -229,7 +256,7 @@ describe('the exploration body', () => {
     const invalid = () => new AgentError('MODEL_OUTPUT_INVALID', 'extracted data failed schema validation');
     const app = { open: async () => undefined } as unknown as App;
     const run = (state: ExploreState, agent: Agent) =>
-      createExploreBody({ state, stepTimeoutMs: 240_000 })({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures);
+      createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true })({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures);
 
     const first = new ExploreState('goal', budgets);
     let plans = 0;

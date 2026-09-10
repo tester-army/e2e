@@ -13,10 +13,11 @@ import { isDefaultAgent, type DefaultAgent } from '../agent/default-agent.ts';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
+import { resolveConfig, type ResolvedTarget } from '../config/resolve.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
 import { run, type RunOptions, type RunOutcome } from '../run/runner.ts';
-import type { AgentConfig, BuiltinReporter, E2EConfig, Target } from '../types.ts';
+import type { AgentConfig, BuiltinReporter, E2EConfig, ModelInstance } from '../types.ts';
 import { createExploreBody } from './body.ts';
 import { createExplorer } from './executor.ts';
 import { exploreReporter } from './reporter.ts';
@@ -83,20 +84,26 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
 
   const state = new ExploreState(goal, budgets);
   const evidence = evidenceWriter(resolveArtifactsRoot(projectRoot, options.artifactsDir));
+  const target = pickTarget(raw, { projectRoot, env }, options.target, notice);
   const rawConfig: E2EConfig = {
     ...raw,
     agent: exploreAgentConfig(raw.agent, { state, evidence, notice }),
     // Nothing replays an exploration, and a retry would explore twice.
     cache: 'off',
     retries: 0,
-    reporters: [...(raw.reporters ?? ['list']), exploreReporter(state)],
+    // A malformed value is left as it is, for config resolution to reject.
+    reporters: Array.isArray(raw.reporters)
+      ? [...raw.reporters, exploreReporter(state)]
+      : raw.reporters === undefined
+        ? ['list', exploreReporter(state)]
+        : raw.reporters,
   };
   const runOptions: RunOptions = {
     cwd: projectRoot,
     rawConfig,
     env,
-    tests: { file: EXPLORE_FILE, registration: exploreRegistration(state) },
-    targetIds: pickTarget(raw.targets, options.target, notice),
+    tests: { file: EXPLORE_FILE, registration: exploreRegistration(state, target.openApp) },
+    targetIds: target.ids,
     headed: options.headed,
     reporters: options.reporters,
     artifactsDir: options.artifactsDir,
@@ -159,17 +166,19 @@ function exploreAgentConfig(
   if (block !== undefined && (typeof block !== 'object' || block === null || Array.isArray(block))) return block;
   const executor = bare ?? block?.executor;
   let base: DefaultAgent | undefined;
+  let carried: ModelInstance | undefined;
   if (executor !== undefined) {
     if (isDefaultAgent(executor)) {
       base = executor;
     } else {
+      carried = executor.model;
       options.notice(
         `the configured agent "${executor.name}" is a custom executor; explore runs the built-in agent instead` +
-          (executor.model === undefined ? '' : ', with the model from agent.model or E2E_MODEL'),
+          (carried === undefined ? '' : ', with the model that executor brought'),
       );
     }
   }
-  const explorer = createExplorer({ state: options.state, base, evidence: options.evidence });
+  const explorer = createExplorer({ state: options.state, base, model: carried, evidence: options.evidence });
   return {
     ...block,
     executor: explorer,
@@ -178,22 +187,36 @@ function exploreAgentConfig(
   };
 }
 
-/** The target to explore, or undefined for the runner's default when one target is configured. */
+/**
+ * The target to explore. Names come from the resolved config, since a target
+ * may leave `name` to its platform: with several targets and no `--target`,
+ * the first is explored and the notice says so, and an app is opened first
+ * only when the target declares a URL. A config that does not resolve is left
+ * for the run to report; a `--target` the config lacks reaches the run too,
+ * as `UNKNOWN_TARGET`.
+ */
 function pickTarget(
-  targets: readonly Target[] | undefined,
+  raw: E2EConfig,
+  options: { projectRoot: string; env: NodeJS.ProcessEnv },
   requested: string | undefined,
   notice: (message: string) => void,
-): readonly string[] | undefined {
-  if (requested !== undefined) return [requested];
-  if (!Array.isArray(targets) || targets.length <= 1) return undefined;
-  const first = targets[0] as { name?: unknown } | undefined;
-  if (typeof first?.name !== 'string') return undefined;
-  notice(`exploring target "${first.name}"; pass --target to explore another`);
-  return [first.name];
+): { ids: readonly string[] | undefined; openApp: boolean } {
+  let targets: readonly ResolvedTarget[];
+  try {
+    targets = resolveConfig(raw, options).targets;
+  } catch {
+    return { ids: requested === undefined ? undefined : [requested], openApp: true };
+  }
+  const chosen = requested === undefined ? targets[0] : targets.find((candidate) => candidate.name === requested);
+  if (chosen === undefined) return { ids: requested === undefined ? undefined : [requested], openApp: true };
+  if (requested === undefined && targets.length > 1) {
+    notice(`exploring target "${chosen.name}"; pass --target to explore another`);
+  }
+  return { ids: [chosen.name], openApp: chosen.app.base !== undefined };
 }
 
 /** The one-test registration: the goal is the title, the body is the exploration loop. */
-function exploreRegistration(state: ExploreState): ModuleRegistration {
+function exploreRegistration(state: ExploreState, openApp: boolean): ModuleRegistration {
   const title = state.goal;
   const test: RegisteredTest = {
     kind: 'test',
@@ -206,7 +229,7 @@ function exploreRegistration(state: ExploreState): ModuleRegistration {
       agentContext: `Exploration goal: ${state.goal}`,
     },
     sessions: [],
-    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS }),
+    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp }),
     group: undefined,
     mode: 'normal',
     source: undefined,

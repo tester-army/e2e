@@ -1,10 +1,9 @@
 /**
  * Scores `e2e explore` against the bug garden's planted defects, across
- * models and agent variants, all runs in parallel on their own app instance.
+ * models, all runs in parallel on their own app instance.
  *
  *   AI_GATEWAY_API_KEY=... node scripts/explore-bench.mjs \
- *     --models openai/gpt-5.6-luna-fast,anthropic/claude-sonnet-4.5 \
- *     --steps 8 --timeout 600000
+ *     --models openai/gpt-5.6-luna-fast,google/gemini-3.6-flash --steps 8 --timeout 600000
  *
  * Each run writes under .e2e/explore-bench/<label>/ (report.json, artifacts,
  * cli.log); the matrix and the per-bug hits land in summary.json and on
@@ -39,24 +38,25 @@ const BUGS = [
 
 const args = parseArgs(process.argv.slice(2));
 const models = (args.models ?? 'openai/gpt-5.6-luna-fast').split(',').map((value) => value.trim()).filter(Boolean);
-/** Agent variants; `EXPLORE_STYLE` reaches the config, which may key guidance on it. One variant today. */
-const styles = (args.styles ?? 'default').split(',').map((value) => value.trim()).filter(Boolean);
 const steps = args.steps ?? '8';
 const timeout = args.timeout ?? '600000';
 const goal =
   args.goal ??
   'Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.';
 
-const runs = [];
-let port = Number(args.port ?? 4300);
-for (const model of models) {
-  for (const style of styles) {
-    runs.push({ model, style, port: port++, label: `${model.replace(/[^A-Za-z0-9.-]+/g, '_')}__${style}` });
-  }
-}
+const firstPort = Number(args.port ?? 4300);
+// The index keeps two ids that slug alike apart.
+const runs = models.map((model, index) => ({
+  model,
+  port: firstPort + index,
+  label: `${String(index + 1).padStart(2, '0')}-${model.replace(/[^A-Za-z0-9.-]+/g, '_')}`,
+}));
 
 mkdirSync(OUT, { recursive: true });
-const results = await Promise.all(runs.map((run) => execute(run)));
+// Every run settles on its own: one garden that fails to start is one row, not a lost matrix.
+const results = (await Promise.allSettled(runs.map((run) => execute(run)))).map((settled, index) =>
+  settled.status === 'fulfilled' ? settled.value : { ...runs[index], exitCode: -1, durationMs: 0, error: String(settled.reason?.message ?? settled.reason) },
+);
 const summary = { goal, steps: Number(steps), timeoutMs: Number(timeout), runs: results };
 writeFileSync(path.join(OUT, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
 print(results);
@@ -65,19 +65,19 @@ async function execute(run) {
   const dir = path.join(OUT, run.label);
   mkdirSync(dir, { recursive: true });
   const app = spawn(process.execPath, ['app/bug-garden.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(run.port) }, stdio: ['ignore', 'pipe', 'inherit'] });
-  await new Promise((resolve, reject) => {
-    app.stdout.once('data', () => resolve());
-    app.once('exit', (code) => reject(new Error(`bug garden exited with ${code} before listening`)));
-  });
   const startedAt = Date.now();
   try {
+    await new Promise((resolve, reject) => {
+      app.stdout.once('data', () => resolve());
+      app.once('exit', (code) => reject(new Error(`bug garden exited with ${code} before listening`)));
+    });
     const log = createWriteStream(path.join(dir, 'cli.log'));
     const cli = spawn(
       process.execPath,
       [CLI, 'explore', goal, '--config', 'e2e.explore.config.ts', '--max-steps', steps, '--timeout', timeout, '--artifacts', path.join(dir, 'artifacts'), '--debug'],
       {
         cwd: ROOT,
-        env: { ...process.env, E2E_MODEL: run.model, EXPLORE_STYLE: run.style, EXPLORE_APP_URL: `http://127.0.0.1:${run.port}`, FORCE_COLOR: '0' },
+        env: { ...process.env, E2E_MODEL: run.model, EXPLORE_APP_URL: `http://127.0.0.1:${run.port}`, FORCE_COLOR: '0' },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );

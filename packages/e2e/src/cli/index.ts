@@ -358,6 +358,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           `${pc.cyan('1'.padEnd(3))}  at least one issue was reported, or nothing could be explored`,
           `${pc.cyan('2'.padEnd(3))}  CLI, config, or agent policy error`,
           `${pc.cyan('3'.padEnd(3))}  engine, app process, model provider, or artifact failure`,
+          `${pc.cyan('4'.padEnd(3))}  internal runner error`,
           `${pc.cyan('130'.padEnd(3))}  interrupted by Ctrl-C or a CI signal`,
         ]),
         '',

@@ -20,7 +20,7 @@ safety rules, so what it finds is what a test would find.
 
 ## What a run does
 
-1. **Opens the app** on the target's declared URL, exactly as `app.open()` does.
+1. **Opens the app** on the target's declared URL, exactly as `app.open()` does. A device target that declares no URL is already showing its app, so this step is skipped.
 2. **Plans a step.** One structured model call reads the goal, the steps so
    far, the findings so far, and the current screen, and answers with the next
    charter: a title and a concrete instruction for one flow or area. It prefers
@@ -31,8 +31,8 @@ safety rules, so what it finds is what a test would find.
    and one more: `report_finding`.
 4. **Records findings** the moment the agent calls the tool: title, kind, a
    severity from 1 to 5, what it expected, what it saw, and how to get there,
-   plus the current path and a redacted screenshot when the engine grants
-   pixels.
+   plus the current path when the engine reports one and a redacted
+   screenshot when the engine grants pixels.
 5. **Repeats** until the planner decides the goal is covered, or a budget ends
    the run, then asks the model for a closing assessment.
 
@@ -46,8 +46,9 @@ E2E_MODEL=anthropic/claude-sonnet-4.5 npx --no-install e2e explore 'Hunt for bro
 ## How steps end
 
 A step that finishes its charter passes. A step whose flow the application
-would not let it complete fails, and the run **keeps going**: a failed step is
-a finding, not the end of the exploration. A step that runs out of its action
+would not let it complete fails, and the run **keeps going**: the failed step
+is recorded with the agent's account of what stopped it, and only findings the
+agent reported count toward the verdict. A step that runs out of its action
 or time budget mid-charter ended at its limit; that is a time box, not a
 failure, and it does not count against the run.
 
@@ -74,12 +75,18 @@ capped by what remains of the run.
 | Steps ran, no `issue` finding (warnings allowed) | passed | 0 |
 | At least one `issue` finding | failed | 1 |
 | No step ran and nothing was found | blocked | 1 |
-| Config error, or a step the agent could not plan | error | 2 or 3 |
+| Config, engine, or model provider error | error | 2 or 3 |
 
 A finding of kind `issue` is a defect a user would hit; a `warning` is
 cosmetic or polish and never fails the run. A run that explored nothing and
 found nothing is blocked rather than passed: a zero-coverage pass would say
 the app is fine when nothing was checked.
+
+A planner answer outside the grammar is not an error. The first time, the run
+falls back to a survey step (visit each top-level screen once); a later time,
+the exploration ends with the record so far and `ended: 'aborted'`. Anything
+else that stops the planner, a provider failure or the clock, is the run's
+error.
 
 ## What you get
 
@@ -108,8 +115,10 @@ in its timeline. `--reporter json`, `--reporter junit`, reporter objects,
 ## Your config applies
 
 Explore reads your `e2e.config.ts`. The target's engine, app command, allowed
-origins, credentials, `agent.context`, `agent.vision`, and provider options
-all apply. An agent built with `createAgent({ tools, system })` lends its
+origins, `agent.context`, `agent.vision`, and provider options all apply.
+Configured `credentials` do not reach the explorer yet: a secret is filled only
+through a step that declares it in its params, and exploration steps declare
+none, so a sign-in behind a real credential is out of reach for now. An agent built with `createAgent({ tools, system })` lends its
 tools and guidance to the explorer, so a `seedCart` tool is available while
 exploring too. A hand-rolled `StepExecutor` has no vocabulary the explorer
 can reuse; it is replaced by the built-in agent for the run, with a notice.

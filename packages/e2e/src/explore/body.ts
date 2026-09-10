@@ -30,6 +30,12 @@ export interface ExploreBodyOptions {
   readonly state: ExploreState;
   /** Each step's own deadline, before the run's remaining time caps it. */
   readonly stepTimeoutMs: number;
+  /**
+   * Whether to open the app first. `app.open()` needs a target with a declared
+   * URL; a device target without one is already showing the app when the
+   * attempt starts.
+   */
+  readonly openApp: boolean;
   readonly now?: (() => number) | undefined;
 }
 
@@ -67,7 +73,7 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
     const deadline = now() + state.budgets.timeoutMs;
     const remaining = (): number => deadline - now();
 
-    await app.open();
+    if (options.openApp) await app.open();
 
     for (;;) {
       const stop = mustFinish(state, remaining());
@@ -110,8 +116,15 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
         break;
       }
 
+      // The plan call took its own time; a step still has to fit before the
+      // reserve, or the run is out of time whatever the check above said.
+      const room = remaining() - FINISH_RESERVE_MS;
+      if (room < MIN_STEP_MS) {
+        state.ended = 'time';
+        break;
+      }
       state.beginStep(plan.title, plan.instruction);
-      const timeout = Math.max(MIN_STEP_MS, Math.min(options.stepTimeoutMs, remaining() - FINISH_RESERVE_MS));
+      const timeout = Math.min(options.stepTimeoutMs, room);
       // The findings so far ride along as step parameters, so the agent
       // neither reports one twice nor spends the step re-confirming it.
       const reported = state.findings.map((finding) => finding.title);

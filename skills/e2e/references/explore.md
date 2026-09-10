@@ -26,8 +26,10 @@ E2E_MODEL=provider/model-id npx --no-install e2e explore 'Hunt for broken forms'
 4. Repeats until the planner finishes, the step limit, the clock, or three
    failed or blocked steps in a row that reported nothing; then asks for a closing assessment.
 
-A failed step does not end the run: it is a finding. A step that hits its
-action or time budget ended at its limit and counts as neither.
+A failed step does not end the run: it is recorded, and only findings the
+agent reported count toward the verdict. A step that hits its action or time
+budget ended at its limit and counts as neither. Configured `credentials` do
+not reach the explorer yet.
 
 ## Flags
 
