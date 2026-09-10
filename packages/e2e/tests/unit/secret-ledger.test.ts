@@ -29,3 +29,31 @@ describe('SecretLedger', () => {
     expect(ledger.redact('abcdef abc')).toBe('<secret:long> <secret:short>');
   });
 });
+
+describe('encoded forms', () => {
+  const ledger = new SecretLedger([['member', 'p@ss "w\\rd" & <x>']]);
+
+  it('redacts the value as a JSON string body, once and twice quoted', () => {
+    const once = JSON.stringify({ value: 'p@ss "w\\rd" & <x>' });
+    expect(ledger.redact(once)).toBe('{"value":"<secret:member>"}');
+    const twice = JSON.stringify({ text: once });
+    expect(ledger.redact(twice)).toBe(JSON.stringify({ text: '{"value":"<secret:member>"}' }));
+  });
+
+  it('redacts the value URL-encoded as a query component and as a form body', () => {
+    expect(ledger.redact(`/login?pw=${encodeURIComponent('p@ss "w\\rd" & <x>')}`)).toBe('/login?pw=<secret:member>');
+    expect(ledger.redact(new URLSearchParams({ pw: 'p@ss "w\\rd" & <x>' }).toString())).toBe('pw=<secret:member>');
+  });
+
+  it('redacts the value HTML-escaped', () => {
+    expect(ledger.redact('<input value="p@ss &quot;w\\rd&quot; &amp; &lt;x&gt;">')).toBe(
+      '<input value="<secret:member>">',
+    );
+  });
+
+  it('adds no forms for a value every encoding leaves alone', () => {
+    expect(new SecretLedger([['plain', 'hunter2']]).redact('hunter2 hunter2')).toBe(
+      '<secret:plain> <secret:plain>',
+    );
+  });
+});

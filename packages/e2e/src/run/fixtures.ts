@@ -12,7 +12,7 @@ import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { SecretLedger } from '../internal/redact.ts';
+import { sessionSecrecy } from './secrecy.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -27,6 +27,7 @@ import {
 } from '../locator/screen.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import type { ArtifactRecord } from './records.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -44,6 +45,12 @@ export interface ArtifactSink {
 export interface ArtifactRegistration {
   /** When a time-based artifact (a video segment) began recording. */
   readonly startedAt?: string;
+  /**
+   * How much of the file the runner masked, when that was decided per
+   * artifact (a trace, rewritten or found to need no rewriting) rather than
+   * per kind.
+   */
+  readonly redaction?: ArtifactRecord['redaction'];
 }
 
 export interface AttemptEnvironment {
@@ -74,9 +81,6 @@ export interface AttemptEnvironment {
   readonly models: WorkerModels;
 }
 
-/** Secrets survive every fixture graph that shares the same live isolation. */
-const sessionSecrets = new WeakMap<TargetSession, { ledger: SecretLedger; taint: { value: boolean } }>();
-
 /** Builds the lazy fixture graph for one attempt. */
 export function createFixtures(
   environment: AttemptEnvironment,
@@ -90,12 +94,7 @@ export function createFixtures(
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  let secrecy = sessionSecrets.get(environment.session);
-  if (secrecy === undefined) {
-    secrecy = { ledger: initialSecretLedger(environment), taint: { value: false } };
-    sessionSecrets.set(environment.session, secrecy);
-  }
-  const { ledger, taint } = secrecy;
+  const { ledger, taint } = sessionSecrecy(environment.session, environment.config.credentials);
   const secrets: SecretResolver = {
     async resolve(secret) {
       const credential = environment.config.credentials.get(secret.name);
@@ -368,18 +367,6 @@ function joinAgentContext(
     (part): part is string => part !== undefined && part.trim() !== '',
   );
   return parts.length === 0 ? undefined : parts.join('\n');
-}
-
-/**
- * The session's secret ledger, seeded with the passwords known up front.
- * Provider-backed values join through the resolver at fill time.
- */
-function initialSecretLedger(environment: AttemptEnvironment): SecretLedger {
-  return new SecretLedger(
-    [...environment.config.credentials].flatMap(([name, { password }]) =>
-      typeof password === 'string' ? [[name, password] as const] : [],
-    ),
-  );
 }
 
 /** Navigation needs an app URL, and only the target's engine can declare one. */

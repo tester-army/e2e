@@ -1,10 +1,11 @@
 /** Runner-side secret redaction. */
 
 /**
- * Builds a redactor replacing every exact registered secret value with its
- * stable secret name.
+ * Builds a redactor replacing every registered secret value, in each form the
+ * value takes in text the runner writes or rewrites, with its stable secret
+ * name.
  *
- * Longer values are substituted first, so a secret that contains another secret
+ * Longer forms are substituted first, so a secret that contains another secret
  * is not left half-rewritten.
  */
 export function createRedactor(
@@ -12,6 +13,7 @@ export function createRedactor(
 ): (text: string) => string {
   const entries = [...secrets]
     .filter(([, value]) => value.length > 0)
+    .flatMap(([name, value]) => encodedForms(value).map((form) => [name, form] as const))
     .toSorted((a, b) => b[1].length - a[1].length);
   if (entries.length === 0) return (text) => text;
   return (text) => {
@@ -19,6 +21,37 @@ export function createRedactor(
     for (const [name, value] of entries) out = out.split(value).join(`<secret:${name}>`);
     return out;
   };
+}
+
+/**
+ * The forms one value takes in captured text: as is; as the body of a JSON
+ * string (a trace records action parameters and DOM snapshots as JSON) and
+ * of a JSON string quoted inside another (a JSON request body inside a HAR
+ * field); HTML-escaped (a serialized page); and URL-encoded both ways a form
+ * body or a query string spells it. Forms the value does not change under
+ * collapse into one.
+ */
+function encodedForms(value: string): string[] {
+  const json = JSON.stringify(value).slice(1, -1);
+  return [
+    ...new Set([
+      value,
+      json,
+      JSON.stringify(json).slice(1, -1),
+      escapeHtml(value),
+      encodeURIComponent(value),
+      new URLSearchParams([['v', value]]).toString().slice(2),
+    ]),
+  ];
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 /**

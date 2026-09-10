@@ -44,8 +44,11 @@ logs, reports, or artifacts. A secret fill is authorized by the runner from
 its own observation (an unresolved handle, a secure sink, an allowed origin,
 an editable node with a compatible purpose, no control transfer since); the
 model never sees or picks the value. Once a secret is filled, the viewport
-stays pixel-tainted for the rest of the attempt. Sessions are per-run,
-target-bound, encrypted with a memory-only key, and deleted at cleanup.
+stays pixel-tainted for the rest of the attempt, and the attempt's Playwright
+trace is rewritten before it is registered or stored: every credential value,
+in every encoding a trace spells it, becomes `<secret:name>`, and a trace that
+cannot be rewritten is deleted. Sessions are per-run, target-bound, encrypted
+with a memory-only key, and deleted at cleanup.
 
 ## Navigation policy
 

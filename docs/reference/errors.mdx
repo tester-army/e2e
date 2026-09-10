@@ -97,6 +97,7 @@ These appear in terminal output and in the report as plain string codes.
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
 | `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
 | `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |
+| `TRACE_WITHHELD` | A trace from an attempt that filled a secret could not be rewritten, so it was deleted. Recorded in the attempt's `secondaryErrors`; never fails the attempt. | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
 | `WORKER_EXIT` | A worker exited unexpectedly between tests | infrastructure | 3 |

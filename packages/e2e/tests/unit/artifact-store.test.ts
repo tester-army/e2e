@@ -174,3 +174,22 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     expect(record.mediaType).toBe('text/plain');
   });
 });
+
+describe('artifact redaction labels', () => {
+  it('marks a trace registered without a verdict as incomplete, and takes the verdict when given', async () => {
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: root(),
+      segments: ['web', 'test-1', 'attempt-0'],
+      attemptId: 'att-1',
+    });
+    mkdirSync(path.join(artifacts.dir, 'trace'));
+    writeFileSync(path.join(artifacts.dir, 'trace', 'trace.zip'), 'zip bytes');
+    artifacts.sink.register('trace', 'trace/trace.zip');
+    artifacts.sink.register('trace', 'trace/trace.zip', { redaction: 'not-required' });
+    artifacts.sink.register('trace', 'trace/trace.zip', { redaction: 'complete' });
+    await artifacts.settle();
+    expect(artifacts.records.map((record) => record.redaction)).toEqual(['incomplete', 'not-required', 'complete']);
+    // A labelled trace still carries its file.
+    expect(artifacts.records[2]).toMatchObject({ path: 'web/test-1/attempt-0/trace/trace.zip', size: 9 });
+  });
+});

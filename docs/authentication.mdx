@@ -157,6 +157,19 @@ is replaced with a placeholder before the observation leaves the runner. Reading
 a secure field back out is denied too, so assert the outcome - that the form
 submitted, that the dashboard rendered - rather than the secret.
 
+A Playwright trace records what happened, the filled value included: in the
+action's parameters, in every DOM snapshot of the field, and in the request
+that carried it. Once a secret was filled in an attempt, the runner rewrites
+every text entry of that attempt's trace before the trace is registered,
+hashed, or handed to an artifact store, replacing each credential value (as
+typed, JSON-quoted, HTML-escaped, and URL-encoded) with `<secret:name>`. The
+report marks such a trace `redaction: "complete"`; a trace from an attempt that
+filled no secret is `not-required`. A trace that cannot be rewritten is deleted
+rather than kept, and the attempt's `secondaryErrors` say so. The screencast
+frames inside a trace are pixels, not text: a password field renders its own
+dots there, but anything else the page showed is in them, the same as in a
+screenshot or a video.
+
 ### Narrow where a credential may be used
 
 ```ts title="e2e.config.ts"

@@ -40,7 +40,9 @@ import type {
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { INTERRUPTED_BEFORE_START, pairResult, unstartedResult } from './units.ts';
+import { sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
+import { redactTraceArchives } from './trace-redaction.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
 import type { SetupFn } from '../types.ts';
@@ -575,7 +577,25 @@ export class TargetExecutor implements SerialHost {
     }
     if (stopTrace !== undefined) {
       await this.stopRecording('trace', attemptId, record, secondaryErrors, async (operation) => {
-        artifactSink.register('trace', await stopTrace(operation));
+        const relative = await stopTrace(operation);
+        // An engine records what happened, filled secrets included, so the
+        // trace is the runner's to redact before anything hashes or stores
+        // it. Only a session a secret was filled on can have recorded one:
+        // the taint is the fill's own mark, so an untainted trace needs no
+        // rewriting, and a tainted one is kept only once rewritten.
+        const secrecy = sessionSecrecy(session, this.config.credentials);
+        if (!secrecy.taint.value) {
+          artifactSink.register('trace', relative, { redaction: 'not-required' });
+          return;
+        }
+        try {
+          await redactTraceArchives(artifactSink.dir, relative, secrecy.ledger.redact);
+        } catch (cause) {
+          // The trace is gone; the report says why, whatever the policy.
+          secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+          return;
+        }
+        artifactSink.register('trace', relative, { redaction: 'complete' });
       });
     }
     try {
