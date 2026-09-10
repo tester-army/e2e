@@ -86,22 +86,24 @@ describe('trace secrecy', () => {
         cache: 'off' as const,
         artifacts: { kinds: ['screenshot', 'trace'], store },
         credentials: { member: { username: 'ada', password: SECRET } },
-        agent: {
-          executor: {
-            name: 'secret-filler',
-            async runStep(context) {
-              const observation = await context.observe({ tree: true });
-              const secure = (function find(node): { id: string } | undefined {
-                if (node.states?.secure === true) return node;
-                for (const child of node.children ?? []) {
-                  const found = find(child);
-                  if (found !== undefined) return found;
-                }
-                return undefined;
-              })(observation.tree!);
-              // Declared secrets are keyed by the credential's name, not the param's.
-              await context.actions.typeSecret({ id: secure!.id }, 'member');
-              return { status: 'passed', summary: 'filled' };
+        agents: {
+          default: {
+            executor: {
+              name: 'secret-filler',
+              async runStep(context) {
+                const observation = await context.observe({ tree: true });
+                const secure = (function find(node): { id: string } | undefined {
+                  if (node.states?.secure === true) return node;
+                  for (const child of node.children ?? []) {
+                    const found = find(child);
+                    if (found !== undefined) return found;
+                  }
+                  return undefined;
+                })(observation.tree!);
+                // Declared secrets are keyed by the credential's name, not the param's.
+                await context.actions.typeSecret({ id: secure!.id }, 'member');
+                return { status: 'passed', summary: 'filled' };
+              },
             },
           },
         },
