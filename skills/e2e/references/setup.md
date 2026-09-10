@@ -87,7 +87,7 @@ export default {
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers, at most the `workers` the engine declares per target (a device target: one per device). |
 | `reporters` | `['list']` | `list`, `json`, `junit`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
-| `agent` | unset | `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. A model passed to `createAgent({ model })` is the one model for `act` and the judgments, over `E2E_MODEL`. |
+| `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
@@ -185,7 +185,7 @@ or read the address from the environment:
 | --- | --- |
 | `E2E_MODEL` | `provider/model-id` for `agent.*` steps when the config sets no model. Routed through the Vercel AI Gateway. |
 | `E2E_MODEL_API_KEY` | Credential for that model. `AI_GATEWAY_API_KEY` is the fallback. |
-| `E2E_MODEL_ENDPOINT` | Any OpenAI-compatible endpoint URL for that model; the gateway is the default. HTTPS unless loopback. `agent.model.endpoint` wins. |
+| `E2E_MODEL_ENDPOINT` | Any OpenAI-compatible endpoint URL for that model; the gateway is the default. HTTPS unless loopback. The agent's `model.endpoint` wins. |
 | `E2E_VISION_MODEL` | Model for calls with `vision`; falls back to the main model. |
 | `E2E_USER_<NAME>_USERNAME`, `E2E_USER_<NAME>_PASSWORD` | Override `credentials.<name>`. `<NAME>` is the credential name uppercased, other characters as `_`. |
 | `CI` | Turns on CI defaults: `retries: 1`, `workers: 1`, `test.only` rejected, cache read-only, `reuseExisting` ignored. |
