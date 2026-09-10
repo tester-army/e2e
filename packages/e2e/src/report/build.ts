@@ -162,6 +162,8 @@ export interface ReportStep {
   cache?: StepCacheInfo | undefined;
   events: readonly StepEvent[];
   model?: StepModelInfo | undefined;
+  /** The vision model's calls and usage, when the step made harness-side vision calls. */
+  visionModel?: StepModelInfo | undefined;
   /** The configured agent an agent step ran with, by name. */
   agent?: string | undefined;
   error?: ReportError | undefined;
@@ -566,8 +568,8 @@ function computeUsage(options: {
       usage.maxModelCallsInStep = Math.max(usage.maxModelCallsInStep, metrics.modelCalls);
       usage.maxActionStepsInStep = Math.max(usage.maxActionStepsInStep, metrics.actionSteps);
     }
-    const model = step.model;
-    if (model !== undefined) {
+    for (const model of [step.model, step.visionModel]) {
+      if (model === undefined) continue;
       usage.modelTokens = Math.min(Number.MAX_SAFE_INTEGER, usage.modelTokens + model.inputTokens + model.outputTokens);
       if (model.cacheReadTokens !== undefined) {
         cachedTokens = Math.min(Number.MAX_SAFE_INTEGER, (cachedTokens ?? 0) + model.cacheReadTokens);

@@ -17,7 +17,9 @@ import type { AgentErrorCode } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
 import type { ExecutorModelCall, StepExecutor } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
+import type { ModelProvenance, ModelUsage as ModelCallUsage } from './model/adapter.ts';
 import { boundedOperation, checkStepClock } from './phases.ts';
+import { POLICY_VERSION } from './prompts.ts';
 import { ModelUsage, tokenFields } from './usage.ts';
 
 /**
@@ -62,7 +64,12 @@ export class StepAccounting {
     contextBytes: 0,
     ledgerBytes: 0,
   };
+  /** Usage of the executor's own model calls. */
   readonly usage = new ModelUsage();
+  /** Usage of the harness-made vision calls, booked apart so the report names the model that answered. */
+  private readonly visionUsage = new ModelUsage();
+  private visionProvenance: ModelProvenance | undefined;
+  private visionCalls = 0;
   /** Aborts the executor on any hard stop, so a step never outlives its clock. */
   private readonly stepAbort = new AbortController();
   /** First budget/timeout/cancel failure; runtime truth outranks the verdict. */
@@ -170,12 +177,24 @@ export class StepAccounting {
     this.countModelCall();
   }
 
+  /** Books the usage of one harness-made vision call; returns the token count for its event. */
+  recordVisionUsage(usage: ModelCallUsage): number {
+    return this.visionUsage.record(usage);
+  }
+
   /**
-   * Counts one model call against the budget. Harness-made calls (the pixel
-   * tier) record their own phase event and usage, then count here, so the
-   * ceiling is one number whoever spent it.
+   * Counts one harness-made vision call (the pixel tier) against the budget.
+   * The call records its own phase event and usage; the ceiling is one
+   * number whoever spent it, while the report keeps the vision model's calls
+   * under its own name.
    */
-  countModelCall(): void {
+  countVisionCall(provenance: ModelProvenance): void {
+    this.visionProvenance = provenance;
+    this.visionCalls += 1;
+    this.countModelCall();
+  }
+
+  private countModelCall(): void {
     this.metrics.modelCalls += 1;
     if (this.metrics.modelCalls > this.maxModelCalls) {
       throw this.fatalize(
@@ -222,11 +241,15 @@ export class StepAccounting {
   }
 
   /**
-   * Model provenance for the report. The executor is the authority on which
-   * model answered; an executor that reports nothing is still identified, so a
-   * step's model calls are never attributed to the wrong tier.
+   * The executor's own model calls for the report, or undefined when it made
+   * none. The executor is the authority on which model answered; an executor
+   * that reports nothing is still identified, so a step's model calls are
+   * never attributed to the wrong tier. Vision calls are reported apart
+   * (`visionModelInfo`), never under the executor's model.
    */
-  modelInfo(executor: Pick<StepExecutor, 'name' | 'version'>): StepModelInfo {
+  modelInfo(executor: Pick<StepExecutor, 'name' | 'version'>): StepModelInfo | undefined {
+    const calls = this.metrics.modelCalls - this.visionCalls;
+    if (calls === 0) return undefined;
     const executorVersion = executor.version ?? '0';
     return this.usage.report(
       {
@@ -236,7 +259,13 @@ export class StepAccounting {
         adapterVersion: `executor/${executor.name}@${executorVersion}`,
         policyVersion: `${executor.name}/${executorVersion}`,
       },
-      this.metrics.modelCalls,
+      calls,
     );
+  }
+
+  /** The harness-made vision calls for the report, under the vision adapter's provenance; undefined when there were none. */
+  visionModelInfo(): StepModelInfo | undefined {
+    if (this.visionProvenance === undefined) return undefined;
+    return this.visionUsage.report({ ...this.visionProvenance, policyVersion: POLICY_VERSION }, this.visionCalls);
   }
 }

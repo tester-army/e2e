@@ -94,10 +94,15 @@ export class ActionDispatcher {
 
   /** The tap verb: one committed tap on a resolved node. */
   tap(target: ExecutorTarget): Promise<void> {
-    return this.commitTargeted('tap', target, async (node) => {
-      await this.session.perform(node.ref, { kind: 'tap' }, this.accounting.actionOperation());
-      return { name: 'tap', node };
-    });
+    return this.runAction('tap', this.targeted(target, (node) => this.performTap(node)));
+  }
+
+  /**
+   * `tap` for a caller already running inside the operation queue — the pixel
+   * tier, whose capture, localization, and tap are one queued transaction.
+   */
+  tapNow(target: ExecutorTarget): Promise<void> {
+    return this.runActionNow('tap', this.targeted(target, (node) => this.performTap(node)));
   }
 
   /**
@@ -105,20 +110,13 @@ export class ActionDispatcher {
    * viewport, so a point the model placed off the edge lands on the edge
    * rather than failing the engine.
    */
-  async tapAt(point: ViewportPoint, description?: string): Promise<void> {
-    if (
-      typeof point?.x !== 'number' ||
-      typeof point.y !== 'number' ||
-      !Number.isFinite(point.x) ||
-      !Number.isFinite(point.y)
-    ) {
-      throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
-    }
-    const clamped = clampToViewport(point, this.feed.latest?.viewport);
-    await this.runAction('tapAt', async () => {
-      await this.session.tapAt(clamped, this.accounting.actionOperation());
-      return { name: 'tapAt', point: clamped, ...(description === undefined ? {} : { description }) };
-    });
+  tapAt(point: ViewportPoint, description?: string): Promise<void> {
+    return this.runAction('tapAt', this.pointTap(point, description));
+  }
+
+  /** `tapAt` for a caller already running inside the operation queue; see `tapNow`. */
+  tapAtNow(point: ViewportPoint, description?: string): Promise<void> {
+    return this.runActionNow('tapAt', this.pointTap(point, description));
   }
 
   /** Records project tools through the same budget and operation queue as grammar actions. */
@@ -128,7 +126,8 @@ export class ActionDispatcher {
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
         this.accounting.reserveAction();
-        this.options.trace()?.recordGap(call.name);
+        const trace: StepTraceSession | undefined = this.options.trace();
+        trace?.recordGap(call.name);
       }
       const value = await instrumentPhase(
         this.runtime,
@@ -145,6 +144,28 @@ export class ActionDispatcher {
 
   private get session() {
     return this.runtime.engine.session;
+  }
+
+  private async performTap(node: SemanticNode): Promise<RecordableAction> {
+    await this.session.perform(node.ref, { kind: 'tap' }, this.accounting.actionOperation());
+    return { name: 'tap', node };
+  }
+
+  /** The body of one bare-point tap; the argument is checked before anything is queued. */
+  private pointTap(point: ViewportPoint, description: string | undefined): () => Promise<RecordableAction> {
+    if (
+      typeof point?.x !== 'number' ||
+      typeof point.y !== 'number' ||
+      !Number.isFinite(point.x) ||
+      !Number.isFinite(point.y)
+    ) {
+      throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
+    }
+    const clamped = clampToViewport(point, this.feed.latest?.viewport);
+    return async () => {
+      await this.session.tapAt(clamped, this.accounting.actionOperation());
+      return { name: 'tapAt', point: clamped, ...(description === undefined ? {} : { description }) };
+    };
   }
 
   private type(target: ExecutorTarget, value: string): Promise<void> {
@@ -280,7 +301,7 @@ export class ActionDispatcher {
     // fill leaves no visible trace and arms nothing; a scroll waits briefly for
     // rows a windowed or lazy list renders.
     if (name !== 'typeSecret') this.feed.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
-    const trace = this.options.trace();
+    const trace: StepTraceSession | undefined = this.options.trace();
     if (trace === undefined) return;
     // A typed value the step derived at run time is this run's data, not the
     // flow's: it is recorded as a gap so replay hands over before it rather
@@ -305,7 +326,15 @@ export class ActionDispatcher {
     target: ExecutorTarget,
     perform: (node: SemanticNode) => Promise<RecordableAction>,
   ): Promise<void> {
-    return this.runAction(name, async () => {
+    return this.runAction(name, this.targeted(target, perform));
+  }
+
+  /** The body of one targeted action: resolution, the relocation loop, and the placement the trace records. */
+  private targeted(
+    target: ExecutorTarget,
+    perform: (node: SemanticNode) => Promise<RecordableAction>,
+  ): () => Promise<RecordableAction> {
+    return async () => {
       let { node, observation } = this.feed.resolve(target);
       const redact = this.runtime.redact;
       const testIdAttribute = this.runtime.config.testIdAttribute;
@@ -335,6 +364,6 @@ export class ActionDispatcher {
           observation = relocated.observation;
         }
       }
-    });
+    };
   }
 }

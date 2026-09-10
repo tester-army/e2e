@@ -21,4 +21,6 @@ executor socket gains `actions.tapAt`, `vision.tap`, `vision.look`, and
 with the `pointer` capability and the `tapAt` grammar verb, and pins
 `SemanticNode.rect` to the top-level viewport's CSS pixels for nodes inside
 nested documents too. Steps that sent pixels record `visionInput` and
-`metrics.pixelBytes`.
+`metrics.pixelBytes`, and the report gains an optional step `visionModel`
+record so the vision model's calls and tokens are never booked under the act
+model.

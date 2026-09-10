@@ -106,6 +106,8 @@ export interface StepCacheInfo {
 export interface StepAgentDetails {
   metrics?: StepMetrics;
   model?: StepModelInfo;
+  /** The harness-made vision calls of an act step, under the vision model's own name; `model` then covers the executor's calls only. */
+  visionModel?: StepModelInfo;
   cache?: StepCacheInfo;
   observationRevision?: string;
   explanation?: string;
@@ -139,6 +141,8 @@ export interface StepRecord {
   cache?: StepCacheInfo;
   events: StepEvent[];
   model?: StepModelInfo;
+  /** The vision model's calls and usage, when the step made harness-side vision calls (`tap_visual`, `look`). */
+  visionModel?: StepModelInfo;
   /** The configured agent an agent step ran with, by name. */
   agent?: string;
   error?: SerializedError;
@@ -328,6 +332,7 @@ export class StepRecorder {
     if (current === undefined) return;
     if (details.metrics !== undefined) current.metrics = details.metrics;
     if (details.model !== undefined) current.model = details.model;
+    if (details.visionModel !== undefined) current.visionModel = details.visionModel;
     if (details.cache !== undefined) current.cache = details.cache;
     if (details.observationRevision !== undefined) {
       current.observationRevision = details.observationRevision;

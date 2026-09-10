@@ -102,12 +102,15 @@ the vision model is asked to abstain rather than guess; an abstain taps nothing
 and comes back with what to do instead (dismiss the layer in front, scroll it
 into view, describe it more precisely). Both tools are offered only while no
 secret has been filled in the attempt, since pixels are withheld from then on
-(`PIXEL_TAINTED`), and `tap_visual` needs an engine with `perform`; a bare
-point additionally needs `tapAt` (the `pointer` capability, which the
-Playwright and agent-device engines declare). A tap that resolved to a listed
-control is recorded in the trace cache like any tap; a bare-point tap is
-recorded as a gap, so a step that needed one does not replay past it. A step
-that sent pixels records `visionInput: true` and `metrics.pixelBytes`.
+(`PIXEL_TAINTED`), and `tap_visual` needs an engine that can tap, by node
+(`perform`) or by point (`tapAt`, the `pointer` capability, which the
+Playwright and agent-device engines declare); a pixels-only engine with
+`tapAt` alone gets it too. A tap that resolved to a listed control is
+recorded in the trace cache like any tap; a bare-point tap is recorded as a
+gap, so a step that needed one does not replay past it. A step that sent
+pixels records `visionInput: true` and `metrics.pixelBytes`, and its vision
+calls under `visionModel`, apart from the executor's own `model`, so a step
+that mixed a cheap act model with a pinned grounding model reports each.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,

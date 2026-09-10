@@ -68,7 +68,9 @@ export interface PixelObservation {
 /**
  * What the step dispatch lends the tier. Each member is one of the dispatch's
  * existing duties, counted, recorded, and bounded there exactly as it is for
- * the executor's own calls.
+ * the executor's own calls. The dispatch runs each verb below as one queued
+ * transaction, so the members themselves are unqueued: nothing else acts
+ * between the screenshot and the tap it decides.
  */
 export interface VisionHost {
   readonly platform: Platform;

@@ -169,6 +169,8 @@ class ActDispatch {
   private readonly accounting: StepAccounting;
   private readonly feed: ObservationFeed;
   private readonly dispatcher: ActionDispatcher;
+  /** Call-order serialization of the step's observations and actions. */
+  private readonly queue: OperationQueue;
   /** What the pixel tier borrows from this step; see `visionHost`. */
   private readonly vision: VisionHost;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
@@ -195,11 +197,11 @@ class ActDispatch {
     });
     // One queue for observations and actions alike: call order is what keeps
     // a batched turn from resolving two targets against one stale screen.
-    const queue = new OperationQueue();
-    this.feed = new ObservationFeed(runtime, this.accounting, queue, {
+    this.queue = new OperationQueue();
+    this.feed = new ObservationFeed(runtime, this.accounting, this.queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
     });
-    this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
+    this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, this.queue, {
       instruction: spec.instruction,
       params: spec.params,
       secrets: spec.secrets,
@@ -280,8 +282,12 @@ class ActDispatch {
         get tainted() {
           return dispatch.runtime.taint.value;
         },
-        tap: (description) => tapVisual(this.vision, description),
-        look: (options) => look(this.vision, options),
+        // Each pixel verb is one queued transaction: the screenshot, the
+        // localization, and the tap it decides on run with no other action
+        // landing in between, so the point is never applied to a screen the
+        // pixels no longer show. The host's members therefore run unqueued.
+        tap: (description) => this.queue.run(() => tapVisual(this.vision, description)),
+        look: (options) => this.queue.run(() => look(this.vision, options)),
       },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
@@ -394,9 +400,12 @@ class ActDispatch {
     const { metrics } = this.accounting;
     const cacheInfo = this.stepCache?.cacheInfo;
     const latest = this.feed.latest;
+    const model = this.accounting.modelInfo(this.agent.executor);
+    const visionModel = this.accounting.visionModelInfo();
     this.runtime.steps.attachAgentDetails({
       metrics: { ...metrics },
-      ...(metrics.modelCalls > 0 ? { model: this.accounting.modelInfo(this.agent.executor) } : {}),
+      ...(model === undefined ? {} : { model }),
+      ...(visionModel === undefined ? {} : { visionModel }),
       ...(cacheInfo === undefined ? {} : { cache: cacheInfo }),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(latest !== undefined ? { observationRevision: latest.revision } : {}),
@@ -439,12 +448,12 @@ class ActDispatch {
       platform: this.runtime.target.platform,
       verbs: this.runtime.target.verbs,
       observePixels: async () => {
-        const observation = await this.feed.observeSettled(true);
+        const observation = await this.feed.observeSettledNow(true);
         return { observation, view: await this.feed.view(observation, { pixels: true }) };
       },
       ask: (request) => this.askVisionModel(request),
-      tap: (id) => this.dispatcher.tap({ id }),
-      tapAt: (point, description) => this.dispatcher.tapAt(point, description),
+      tap: (id) => this.dispatcher.tapNow({ id }),
+      tapAt: (point, description) => this.dispatcher.tapAtNow(point, description),
     };
   }
 
@@ -456,9 +465,8 @@ class ActDispatch {
    * rephrase and ask again.
    */
   private async askVisionModel<Value>(request: VisionRequest<Value>): Promise<Value | undefined> {
-    const { accounting, agent, runtime } = this;
-    accounting.checkpoint();
-    const adapter = agent.models.select(true);
+    this.accounting.checkpoint();
+    const adapter = this.agent.models.select(true);
     const images: ModelImage[] = [
       {
         data: request.pixels.data,
@@ -471,24 +479,24 @@ class ActDispatch {
       // Pixels the feed cleared are leaving the runner as model input.
       this.feed.notePixelsSent();
       const result = await instrumentPhase(
-        runtime,
-        { api: accounting.api, kind: 'model', phase: 'agent.model', name: request.schemaName },
+        this.runtime,
+        { api: this.accounting.api, kind: 'model', phase: 'agent.model', name: request.schemaName },
         () =>
           adapter.generate({
-            system: `${buildSystem(request.task, agent.agentContext)}\n\n${request.rules}`,
+            system: `${buildSystem(request.task, this.agent.agentContext)}\n\n${request.rules}`,
             prompt: request.prompt,
             images,
             schemaName: request.schemaName,
             schema: request.schema,
             validate: request.validate,
             maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
-            maxInputTokens: runtime.config.limits.maxModelTokensPerCall,
-            providerOptions: agent.config.providerOptions,
-            signal: accounting.signal,
-            timeoutMs: Math.max(1, Math.min(accounting.remainingMs(), VISION_CALL_TIMEOUT_MS)),
+            maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
+            providerOptions: this.agent.config.providerOptions,
+            signal: this.accounting.signal,
+            timeoutMs: Math.max(1, Math.min(this.accounting.remainingMs(), VISION_CALL_TIMEOUT_MS)),
           }),
         (generated) => ({
-          count: accounting.usage.record(generated.usage),
+          count: this.accounting.recordVisionUsage(generated.usage),
           ...tokenFields(generated.usage),
         }),
       );
@@ -498,9 +506,10 @@ class ActDispatch {
       throw cause;
     } finally {
       // The call is spent whatever it answered.
-      accounting.countModelCall();
+      this.accounting.countVisionCall(adapter.provenance);
     }
   }
+
 
   private invented(code: AgentErrorCode, cause?: AgentError): AgentError {
     return new AgentError(

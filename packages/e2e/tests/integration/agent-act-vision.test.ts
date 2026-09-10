@@ -8,6 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { StepExecutor } from '../../src/agent/executor.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createFakeModel, fakeCalls, type FakeCall } from '../helpers/fake-model.ts';
 import { installFakeLoopModel, loopCalls, type LoopCall } from '../helpers/fake-loop-model.ts';
@@ -172,6 +173,11 @@ describe('agent.act pixel verbs', () => {
     const step = stepOf('describes the screen from pixels');
     expect(step.events.filter((event) => event.kind === 'engine')).toHaveLength(0);
     expect(step.metrics!.modelCalls).toBe(3);
+    // The budget is one number, the report keeps each model's calls under its own name.
+    expect(step.model!.calls).toBe(2);
+    expect(step.model!.model).not.toBe('scripted-grounding');
+    expect(step.visionModel!.model).toBe('scripted-grounding');
+    expect(step.visionModel!.calls).toBe(1);
   });
 
   it('relays an abstain with its recovery and taps nothing', () => {
@@ -192,5 +198,78 @@ describe('agent.act pixel verbs', () => {
     const [untainted] = turnsOf('pick the red pin');
     expect(untainted!.toolNames).toContain('tap_visual');
     expect(untainted!.toolNames).toContain('look');
+  });
+});
+
+/**
+ * An executor that fires a visual tap and a node tap without awaiting the
+ * first: the visual tap's screenshot, localization, and tap must run as one
+ * queued transaction, or the node tap lands between the screenshot and the
+ * point it produced.
+ */
+const racer: StepExecutor = {
+  name: 'racer',
+  version: '1',
+  async runStep(context) {
+    const observation = await context.observe();
+    const reset = /#(\S+) button "Reset"/.exec(observation.text)?.[1];
+    if (reset === undefined) return { status: 'failed', summary: 'no reset button on screen' };
+    const [visual] = await Promise.all([
+      context.vision.tap('the red pin on the map'),
+      context.actions.tap({ id: reset }),
+    ]);
+    return { status: visual.outcome === 'tapped' ? 'passed' : 'failed', summary: visual.summary };
+  },
+};
+
+describe('agent.act pixel verbs from a custom executor', () => {
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    fakeCalls.length = 0;
+    const vision = createFakeModel(visionModel, { modelId: 'scripted-grounding' });
+    const run = await runProject(
+      {
+        'tests/race.e2e.ts': `import { test, expect } from '@e2edev/e2e';
+
+test('a visual tap issued alongside a node tap lands first', async ({ app, agent, screen }) => {
+  await app.open('/canvas');
+  await agent.act('pick the red pin, then reset');
+  await expect(screen.getByRole('status')).toHaveText('reset');
+});
+`,
+      },
+      {
+        appUrl: app.url,
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: { executor: racer, visionModel: vision } } },
+      },
+    );
+    outcome = run.outcome;
+    project = run.project;
+  }, 180_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('runs the screenshot, the localization, and the tap as one queued transaction', () => {
+    const result = resultByTitle(outcome, 'a visual tap issued alongside a node tap lands first');
+    expect(result.status).toBe('passed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+    const actions = step.events.filter((event) => event.kind === 'engine').map((event) => event.name);
+    expect(actions).toEqual(['tapAt', 'tap']);
+  });
+
+  it('reports the vision calls under the vision model, and no executor model when it made no call', () => {
+    const result = resultByTitle(outcome, 'a visual tap issued alongside a node tap lands first');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+    expect(step.model).toBeUndefined();
+    expect(step.visionModel!.model).toBe('scripted-grounding');
+    expect(step.visionModel!.calls).toBe(1);
+    expect(step.metrics!.modelCalls).toBe(1);
   });
 });

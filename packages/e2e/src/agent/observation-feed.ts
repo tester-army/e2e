@@ -96,6 +96,15 @@ export class ObservationFeed {
     return this.queue.run(() => this.observeNow(true, pixels));
   }
 
+  /**
+   * `observeSettled` for a caller already running inside the operation queue
+   * — the pixel tier, whose capture, localization, and tap are one queued
+   * transaction, so no action lands between the screenshot and the tap.
+   */
+  observeSettledNow(pixels = false): Promise<AgentObservation> {
+    return this.observeNow(true, pixels);
+  }
+
   /** The executor's view of one capture: redacted text, and the tree and pixels it asked for. */
   async view(observation: AgentObservation, options: ExecutorObserveOptions): Promise<ExecutorObservation> {
     if (options === null || typeof options !== 'object') {
