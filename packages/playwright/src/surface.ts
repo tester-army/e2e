@@ -40,7 +40,12 @@ import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
 import { captureDocument, toSemanticNode } from './observation.ts';
 import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
-import { readHandlesSemanticsFunction, readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
+import {
+  CLOSED_SHADOW_ROOTS_INIT_SCRIPT,
+  readHandlesSemanticsFunction,
+  readManySemanticsFunction,
+  SECURE_FIELD_SELECTOR,
+} from './read-node.ts';
 import { RefRegistry } from './refs.ts';
 import {
   cancelled,
@@ -412,6 +417,9 @@ export class PlaywrightSurface {
         // injected headers a worker would carry the page past the gate bare.
         ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
       });
+      // Before any page of the context loads, so every closed shadow root a
+      // page attaches is on record by the time the reader walks it.
+      await this.context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
       this.context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
       this.context.on('dialog', (dialog) => {
         void this.dialogs.dispatch(dialog);

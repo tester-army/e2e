@@ -17,6 +17,39 @@
  */
 export const SECURE_FIELD_SELECTOR = 'input[type="password" i]';
 
+/**
+ * Where the init script below records closed shadow roots, keyed by host, and
+ * where the in-page reader looks for them. The reader is serialized into the
+ * page and cannot import this constant, so the literal is repeated inside it;
+ * the two must agree, like `SECURE_FIELD_SELECTOR` on both sides of masking.
+ */
+const CLOSED_SHADOW_ROOTS_KEY = 'e2e.closedShadowRoots';
+
+/**
+ * Context init script that keeps every closed shadow root reachable for the
+ * reader. A closed root hides its tree from `element.shadowRoot`, so a checkout
+ * button a third-party widget renders that way is on screen for a person yet
+ * absent from the walk. `attachShadow` is the one way a script creates such a
+ * root; wrapping it before any page script runs records host and root in a
+ * WeakMap under a well-known symbol, which the reader consults where it reads
+ * `shadowRoot`. The map is keyed by the host element and never enumerated, so
+ * it holds nothing alive and changes nothing the page can observe about the
+ * root itself. Declarative `<template shadowrootmode="closed">` roots are
+ * parsed rather than attached and stay out of reach.
+ */
+export const CLOSED_SHADOW_ROOTS_INIT_SCRIPT = `(() => {
+  const key = Symbol.for(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)});
+  if (Object.prototype.hasOwnProperty.call(globalThis, key)) return;
+  const roots = new WeakMap();
+  Object.defineProperty(globalThis, key, { value: roots, enumerable: false, configurable: false, writable: false });
+  const attachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (init) {
+    const root = attachShadow.call(this, init);
+    if (init && init.mode === 'closed') roots.set(this, root);
+    return root;
+  };
+})();`;
+
 export interface RawNodeData {
   role: string | null;
   name: string | null;
@@ -381,6 +414,16 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   const styleOf = (el: Element): CSSStyleDeclaration | undefined =>
     el instanceof HTMLElement ? el.ownerDocument.defaultView?.getComputedStyle(el) : undefined;
 
+  /**
+   * Closed shadow roots the context's init script recorded, when it ran in this
+   * document. Same literal as `CLOSED_SHADOW_ROOTS_KEY`; the reader cannot import it.
+   */
+  const closedShadowRoots = (globalThis as unknown as Record<symbol, WeakMap<Element, ShadowRoot> | undefined>)[
+    Symbol.for('e2e.closedShadowRoots')
+  ];
+  const shadowRootOf = (el: Element): ShadowRoot | null =>
+    el.shadowRoot ?? closedShadowRoots?.get(el) ?? null;
+
   const isHidden = (el: Element, style = styleOf(el)): boolean => {
     if (el.getAttribute('aria-hidden') === 'true') return true;
     if (!(el instanceof HTMLElement)) return el.getClientRects().length === 0;
@@ -735,13 +778,13 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     }
     if (OPAQUE_TAGS.indexOf(tag) !== -1) return;
     for (const child of Array.from(el.children)) walk(child, nextParent);
-    // An open shadow root is part of what the user sees, so it is part of what
-    // the model is shown. Walking the host's light children and its shadow tree
+    // A shadow root is part of what the user sees, so it is part of what the
+    // model is shown. Walking the host's light children and its shadow tree
     // double-counts nothing: slotted elements are light children, and the shadow
     // tree holds the `<slot>` placeholders rather than copies of them. A closed
-    // root is not reachable from script, so it stays invisible — the same as for
-    // a person reading the page.
-    const shadow = el.shadowRoot;
+    // root is unreachable from `shadowRoot`, so it comes from the record the
+    // context's init script kept when the page attached it.
+    const shadow = shadowRootOf(el);
     if (shadow !== null) {
       for (const child of Array.from(shadow.children)) walk(child, nextParent);
     }

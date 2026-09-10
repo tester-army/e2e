@@ -677,6 +677,24 @@ describe('playwright engine lifecycle', () => {
     });
   });
 
+  it('observes and acts inside a closed shadow root, which Playwright locators cannot reach', async () => {
+    const engine = playwright();
+    await withAttempt(engine, app, artifactsDir, 'cs1', async () => {
+      await engine.app!.navigate!(`${app.url}/closed-shadow`, operation('cs1'));
+      // The control exists only for the reader: a role query goes through
+      // Playwright, which stops at a closed root.
+      expect(await engine.locate!(byRole('button'), operation('cs1'))).toHaveLength(0);
+
+      const snapshot = await engine.observe!(operation('cs1'));
+      const checkout = [...walk(snapshot.nodes[0]!)].find((node) => node.role === 'button');
+      expect(checkout?.name).toBe('Checkout');
+
+      await engine.perform!(checkout!.ref, { kind: 'tap' }, operation('cs1'));
+      const headings = await engine.locate!(byRole('heading'), operation('cs1'));
+      expect(headings.map((node) => node.name)).toEqual(['Checked out']);
+    });
+  });
+
   it('keeps tracing across clearState: the earlier segment is kept and the trace still stops', async () => {
     const engine = playwright();
     const traceDir = mkdtempSync(path.join(tmpdir(), 'e2e-trace-'));

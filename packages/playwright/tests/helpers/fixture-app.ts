@@ -53,6 +53,28 @@ const LOGIN = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * A checkout control rendered the way third-party storefront widgets render
+ * theirs: inside a closed shadow root, invisible to `shadowRoot` and to
+ * Playwright's own locators. Clicking it writes into the light DOM.
+ */
+const CLOSED_SHADOW = `<!doctype html>
+<html>
+<head><title>Fixture Closed Shadow</title></head>
+<body>
+<h1 id="status">Cart</h1>
+<x-checkout></x-checkout>
+<script>
+  const host = document.querySelector('x-checkout');
+  const root = host.attachShadow({ mode: 'closed' });
+  const button = document.createElement('button');
+  button.textContent = 'Checkout';
+  button.addEventListener('click', () => { document.getElementById('status').textContent = 'Checked out'; });
+  root.appendChild(button);
+</script>
+</body>
+</html>`;
+
 /** Shows the stored token; `?set=<value>` stores one first. */
 const STATE = `<!doctype html>
 <html>
@@ -148,6 +170,7 @@ const PROTECTED_AUTHORIZATION = `Basic ${Buffer.from(
 
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
+  '/closed-shadow': CLOSED_SHADOW,
   '/form': FORM,
   '/values': VALUES,
   '/login': LOGIN,
