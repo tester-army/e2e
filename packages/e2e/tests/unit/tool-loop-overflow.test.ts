@@ -34,7 +34,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
     priorSteps: () => steps.completed(),
     agentContext: undefined,
     saveSession: undefined,
-    models: new WorkerModels(config.agent, () => {}),
+    models: new WorkerModels(() => {}),
   });
   return { fixtures, steps };
 }
