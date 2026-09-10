@@ -28,10 +28,13 @@ AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/bench bench run --arms luna-fast,ge
 pnpm --filter @e2edev/bench bench run --dry-run              # print every command the matrix would run
 pnpm --filter @e2edev/bench bench score .bench/<label>       # rescore a raw matrix (after an adjudication, say)
 pnpm --filter @e2edev/bench bench report                     # render the newest summary as Markdown
+pnpm bench docs                                              # regenerate docs/benchmark.mdx from results/ (root `check` verifies it)
 ```
 
 `run` writes raw runs under `.bench/<label>/<arm>/<track>/r<n>/` (report,
 AI trace, artifacts, `cli.log`, `run.json`) and the summary under `results/`.
+`docs/benchmark.mdx` is rendered from every summary under `results/` by
+`bench docs`; edit `src/docs-page.ts`, never the page.
 
 ## Scoring
 

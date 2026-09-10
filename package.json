@@ -10,9 +10,10 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build && pnpm --filter @e2edev/github run build && pnpm --filter @e2edev/oauth run build",
-    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run docs:check",
+    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run docs:check-bench && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "docs:check-errors": "node scripts/check-error-codes.ts",
+    "docs:check-bench": "pnpm --filter @e2edev/bench run bench docs --check",
     "docs:check": "pnpm --filter @e2edev/docs run check",
     "docs:dev": "pnpm --filter @e2edev/docs run dev",
     "lint": "oxlint",

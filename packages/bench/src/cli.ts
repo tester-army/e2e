@@ -5,6 +5,7 @@
  *                       [--repeats 3] [--concurrency 2] [--label name] [--dry-run]
  *   node src/cli.ts score <matrix dir>      rescore a raw matrix into a summary
  *   node src/cli.ts report [summary.json]   render a summary (default: the newest) as Markdown
+ *   node src/cli.ts docs [--check]          write docs/benchmark.mdx from results/ (or fail if it is stale)
  *
  * `run` needs `AI_GATEWAY_API_KEY` in the environment; it writes raw runs
  * under `.bench/<label>/` and the summary under `results/`. Arms default to
@@ -16,11 +17,12 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { coreArms, selectArms, type Arm } from './catalog.ts';
+import { renderDocsPage } from './docs-page.ts';
 import { checkPrerequisites, commandFor, planRuns, runMatrix } from './matrix.ts';
 import { renderMarkdown } from './render.ts';
 import { readAdjudications } from './score-explore.ts';
 import { scoreRun } from './score-run.ts';
-import { buildSummary, collectProvenance, latestSummary, readSummary, writeSummary, type Provenance } from './summary.ts';
+import { buildSummary, collectProvenance, latestSummary, listSummaries, readSummary, writeSummary, type Provenance } from './summary.ts';
 import { selectTracks, TRACKS, type Track } from './tracks.ts';
 
 const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -28,6 +30,7 @@ const REPO_ROOT = path.resolve(PACKAGE_ROOT, '../..');
 const RAW_DIR = path.join(PACKAGE_ROOT, '.bench');
 const RESULTS_DIR = path.join(PACKAGE_ROOT, 'results');
 const ADJUDICATIONS = path.join(PACKAGE_ROOT, 'adjudications.json');
+const DOCS_PAGE = path.join(REPO_ROOT, 'docs/benchmark.mdx');
 /** Written next to the raw runs so `score` knows what the matrix was. */
 const MATRIX_FILE = 'matrix.json';
 
@@ -51,8 +54,10 @@ async function main(argv: readonly string[]): Promise<number> {
       return score(rest);
     case 'report':
       return report(rest);
+    case 'docs':
+      return docs(rest);
     default:
-      log('usage: bench run|score|report; see src/cli.ts');
+      log('usage: bench run|score|report|docs; see src/cli.ts');
       return 2;
   }
 }
@@ -153,6 +158,22 @@ async function report(argv: readonly string[]): Promise<number> {
     return 2;
   }
   process.stdout.write(renderMarkdown(readSummary(file)));
+  return 0;
+}
+
+/** Renders the docs page from every summary; `--check` compares instead of writing. */
+async function docs(argv: readonly string[]): Promise<number> {
+  const { values } = parseArgs({ args: [...argv], options: { check: { type: 'boolean', default: false } } });
+  const summaries = listSummaries(RESULTS_DIR).map(readSummary).toReversed();
+  const page = renderDocsPage(summaries);
+  const current = existsSync(DOCS_PAGE) ? readFileSync(DOCS_PAGE, 'utf8') : undefined;
+  if (values.check) {
+    if (current === page) return 0;
+    log(`${path.relative(REPO_ROOT, DOCS_PAGE)} is out of date with packages/bench/results; run: pnpm bench docs`);
+    return 1;
+  }
+  writeFileSync(DOCS_PAGE, page);
+  log(`wrote ${path.relative(REPO_ROOT, DOCS_PAGE)} from ${String(summaries.length)} summar${summaries.length === 1 ? 'y' : 'ies'}`);
   return 0;
 }
 

@@ -81,7 +81,9 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   suites of the web benchmark and the testbed's bug garden across a catalog of
   models and repeats, scores every report (pass rate, judgment confusion
   matrix, explore recall, cost, speed), and commits compact summaries under
-  `results/`. Never gates a PR; `README.md` there has the commands.
+  `results/`, and renders `docs/benchmark.mdx` from them (`pnpm bench docs`;
+  the root `check` fails when the page is stale). Never gates a PR;
+  `README.md` there has the commands.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
   `docs/style.css`; `docs/examples/` is typechecked and shown verbatim in the

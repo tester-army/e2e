@@ -37,7 +37,8 @@ export function renderMarkdown(summary: Summary): string {
   return lines.join('\n');
 }
 
-function renderTrack(track: TrackId, rows: readonly ArmTrackAggregate[]): string[] {
+/** One track's table, arms as rows; the columns depend on the track's oracle. */
+export function renderTrack(track: TrackId, rows: readonly ArmTrackAggregate[]): string[] {
   const usageHead = ['calls', 'tokens in/out', 'cached', 'reasoning', 'cost', 'list cost', 'time', 'model time'];
   const usageCells = (row: ArmTrackAggregate): string[] => [
     count(row.usage.calls),

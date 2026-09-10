@@ -142,11 +142,17 @@ export function writeSummary(dir: string, summary: Summary): string {
   return file;
 }
 
-/** The newest summary in `dir` by id (ids start with the date), or undefined when there is none. */
+/** Every summary file in `dir`, oldest first (ids start with the date). */
+export function listSummaries(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.json'))
+    .toSorted()
+    .map((name) => path.join(dir, name));
+}
+
+/** The newest summary in `dir`, or undefined when there is none. */
 export function latestSummary(dir: string): string | undefined {
-  const files = readdirSync(dir).filter((name) => name.endsWith('.json')).toSorted();
-  const last = files.at(-1);
-  return last === undefined ? undefined : path.join(dir, last);
+  return listSummaries(dir).at(-1);
 }
 
 export function readSummary(file: string): Summary {

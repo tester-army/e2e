@@ -42,12 +42,15 @@ export function scoreTests(report: Report, reasoning: ReadonlyMap<string, number
 function taskRow(test: TestRecord, reasoningTokens: number): TaskRow {
   const attempt = test.attempts.at(-1);
   const usage = attempt === undefined ? emptyUsage() : attemptUsage(attempt);
+  // The attempt's code names what ended the test (a timed-out test reads
+  // TEST_TIMEOUT, not the CANCELLED its step was left with); the step's code
+  // is the fallback when the attempt recorded none.
   const failedStep = attempt?.steps.find((step) => step.status !== 'passed' && step.error !== undefined);
   return {
     id: `${test.file}#${test.titlePath.join(' > ')}`,
     title: test.titlePath.at(-1) ?? '',
     status: test.status,
-    code: test.status === 'passed' || test.status === 'skipped' ? undefined : (failedStep?.error?.code ?? attempt?.error?.code),
+    code: test.status === 'passed' || test.status === 'skipped' ? undefined : (attempt?.error?.code ?? failedStep?.error?.code),
     ...usage,
     reasoningTokens,
     durationMs: attempt?.durationMs ?? 0,
