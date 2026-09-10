@@ -7,11 +7,18 @@
 
 import { z } from 'zod';
 import type { Agent } from '../types.ts';
-import { MAX_INSTRUCTION_CHARS, MAX_SUMMARY_CHARS, MAX_TITLE_CHARS, type ExploreState } from './state.ts';
+import { clip, MAX_INSTRUCTION_CHARS, MAX_SUMMARY_CHARS, MAX_TITLE_CHARS, type ExploreState } from './state.ts';
 
 const MIN_SUMMARY_CHARS = 10;
 /** A title derived from an instruction stops at the first clause or here. */
 const DERIVED_TITLE_CHARS = 80;
+/**
+ * The most the grammar accepts in one field. Well above the report's ceilings,
+ * which `normalizeStep` and the state clip to afterwards: a model that pours a
+ * whole charter into one field (seen live, past 2000 characters) has still
+ * planned a step, and a rejection would cost a repair round for nothing.
+ */
+const MAX_FIELD_CHARS = 8_000;
 
 /**
  * A flat object with optional fields rather than a union: every provider
@@ -24,9 +31,9 @@ const DERIVED_TITLE_CHARS = 80;
 export const PLAN_SCHEMA = z
   .object({
     decision: z.enum(['step', 'finish']),
-    title: z.string().max(MAX_INSTRUCTION_CHARS).optional(),
-    instruction: z.string().max(MAX_INSTRUCTION_CHARS).optional(),
-    summary: z.string().max(MAX_SUMMARY_CHARS).optional(),
+    title: z.string().max(MAX_FIELD_CHARS).optional(),
+    instruction: z.string().max(MAX_FIELD_CHARS).optional(),
+    summary: z.string().max(MAX_FIELD_CHARS).optional(),
   })
   .superRefine((value, context) => {
     if (value.decision === 'step') {
@@ -65,7 +72,7 @@ export async function planNext(agent: Agent, state: ExploreState, request: PlanR
     schema: PLAN_SCHEMA,
     timeout: request.timeoutMs,
   });
-  if (plan.decision === 'finish') return { kind: 'finish', summary: plan.summary!.trim() };
+  if (plan.decision === 'finish') return { kind: 'finish', summary: clip(plan.summary!, MAX_SUMMARY_CHARS) };
   return normalizeStep(plan.title, plan.instruction);
 }
 
@@ -77,7 +84,8 @@ export async function planNext(agent: Agent, state: ExploreState, request: PlanR
 export function normalizeStep(title: string | undefined, instruction: string | undefined): PlanDecision {
   const givenTitle = (title ?? '').trim();
   const givenInstruction = (instruction ?? '').trim();
-  const charter = givenInstruction === '' ? givenTitle : givenInstruction;
+  // The charter is bounded like the report records it; the act instruction it becomes has room for it.
+  const charter = clip(givenInstruction === '' ? givenTitle : givenInstruction, MAX_INSTRUCTION_CHARS);
   // A title that stood in for the charter is a heading only while it is short.
   const longest = givenInstruction === '' ? DERIVED_TITLE_CHARS : MAX_TITLE_CHARS;
   const heading = givenTitle !== '' && givenTitle.length <= longest ? givenTitle : deriveTitle(charter);

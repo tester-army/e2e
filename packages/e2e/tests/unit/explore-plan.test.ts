@@ -46,6 +46,16 @@ describe('normalizeStep', () => {
     const plan = normalizeStep(title, 'Do the thing');
     expect(plan).toEqual({ kind: 'step', title: 'Do the thing', instruction: 'Do the thing' });
   });
+
+  it('accepts a charter far past the report ceiling and clips it instead of rejecting it', () => {
+    const huge = `Open the catalog. ${'Check every price and stock count carefully. '.repeat(120)}`;
+    expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: huge }).success).toBe(true);
+    const plan = normalizeStep(huge, undefined);
+    expect(plan.kind === 'step' && plan.instruction.length).toBe(2_000);
+    expect(plan.kind === 'step' && plan.title).toBe('Open the catalog');
+    expect(PLAN_SCHEMA.safeParse({ decision: 'finish', summary: 's'.repeat(6_000) }).success).toBe(true);
+    expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: 'x'.repeat(8_001) }).success).toBe(false);
+  });
 });
 
 describe('planInstruction', () => {
