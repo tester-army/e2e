@@ -21,26 +21,27 @@ const DERIVED_TITLE_CHARS = 80;
 const MAX_FIELD_CHARS = 8_000;
 
 /**
- * A flat object with optional fields rather than a union: every provider
- * renders it, and the refinement below turns a missing field into a repair
- * round that names it. The shape is lenient on purpose: a model that puts the
- * whole charter into `title` and leaves `instruction` empty (seen live) has
- * still planned a step, and `planNext` derives the missing field rather than
- * spending the repair round on it.
+ * A flat object with every field required rather than a union: OpenAI's
+ * strict structured output rejects a schema whose `required` omits a
+ * property, and every provider renders a flat object. Fields the decision
+ * does not use are empty strings. The shape is lenient on purpose: a model
+ * that puts the whole charter into `title` and leaves `instruction` empty
+ * (seen live) has still planned a step, and `planNext` derives the missing
+ * field rather than spending the repair round on it.
  */
 export const PLAN_SCHEMA = z
   .object({
     decision: z.enum(['step', 'finish']),
-    title: z.string().max(MAX_FIELD_CHARS).optional(),
-    instruction: z.string().max(MAX_FIELD_CHARS).optional(),
-    summary: z.string().max(MAX_FIELD_CHARS).optional(),
+    title: z.string().max(MAX_FIELD_CHARS).describe('For a step: the area or flow in a few words. Empty for finish.'),
+    instruction: z.string().max(MAX_FIELD_CHARS).describe('For a step: the concrete charter. Empty for finish.'),
+    summary: z.string().max(MAX_FIELD_CHARS).describe('For finish: the overall assessment. Empty for a step.'),
   })
   .superRefine((value, context) => {
     if (value.decision === 'step') {
-      if (`${value.title ?? ''}${value.instruction ?? ''}`.trim() === '') {
+      if (`${value.title}${value.instruction}`.trim() === '') {
         context.addIssue({ code: 'custom', path: ['instruction'], message: 'a step needs a concrete instruction' });
       }
-    } else if ((value.summary ?? '').trim().length < MIN_SUMMARY_CHARS) {
+    } else if (value.summary.trim().length < MIN_SUMMARY_CHARS) {
       context.addIssue({ code: 'custom', path: ['summary'], message: 'finishing needs an overall assessment' });
     }
   });
@@ -74,7 +75,7 @@ export async function planNext(agent: Agent, state: ExploreState, request: PlanR
     schema: PLAN_SCHEMA,
     timeout: request.timeoutMs,
   });
-  if (plan.decision === 'finish') return { kind: 'finish', summary: clip(unpad(plan.summary!), MAX_SUMMARY_CHARS) };
+  if (plan.decision === 'finish') return { kind: 'finish', summary: clip(unpad(plan.summary), MAX_SUMMARY_CHARS) };
   return normalizeStep(plan.title, plan.instruction);
 }
 
@@ -153,7 +154,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     return [
       ...header,
       `The run must end now: ${request.reason ?? 'its budget is spent'}.`,
-      'Respond with {"decision": "finish", "summary": "..."}: the overall assessment in two to five sentences,',
+      'Respond with {"decision": "finish", "title": "", "instruction": "", "summary": "..."}: the overall assessment in two to five sentences,',
       'what was explored, the key findings, and your verdict on the goal. Ground it in the steps and findings above.',
     ].join('\n');
   }
@@ -171,6 +172,6 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '  step confirming it.',
     '- "finish": the goal is covered, or nothing new is reachable. "summary" is the overall assessment in two to',
     '  five sentences: what was explored, the key findings, and your verdict on the goal.',
-    'Respond with {"decision": "step", "title": "...", "instruction": "..."} or {"decision": "finish", "summary": "..."}.',
+    'Respond with every field present: {"decision": "step", "title": "...", "instruction": "...", "summary": ""} or {"decision": "finish", "title": "", "instruction": "", "summary": "..."}.',
   ].join('\n');
 }

@@ -2,25 +2,33 @@ import { describe, expect, it } from 'vitest';
 import { normalizeStep, PLAN_SCHEMA, planInstruction } from '../../src/explore/plan.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 
+/** Answers with every field present, as strict providers require; unused ones empty. */
+const step = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'step', title: '', instruction: '', summary: '', ...fields });
+const finish = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'finish', title: '', instruction: '', summary: '', ...fields });
+
 describe('PLAN_SCHEMA', () => {
-  it('accepts a step with a title and an instruction', () => {
-    const parsed = PLAN_SCHEMA.safeParse({ decision: 'step', title: 'Cart', instruction: 'Add two items and open the cart' });
-    expect(parsed.success).toBe(true);
+
+  it('accepts a step with a title and an instruction, and a finish with a summary', () => {
+    expect(PLAN_SCHEMA.safeParse(step({ title: 'Cart', instruction: 'Add two items and open the cart' })).success).toBe(true);
+    expect(PLAN_SCHEMA.safeParse(finish({ summary: 'Checkout works; the cart total is wrong.' })).success).toBe(true);
   });
 
-  it('accepts a finish with a summary', () => {
-    expect(PLAN_SCHEMA.safeParse({ decision: 'finish', summary: 'Checkout works; the cart total is wrong.' }).success).toBe(true);
+  it('requires every field to be present, as strict providers demand', async () => {
+    expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: 'Cart', instruction: 'open' }).success).toBe(false);
+    const { deriveJsonSchema } = await import('../../src/agent/model/schema.ts');
+    const json = (await deriveJsonSchema(PLAN_SCHEMA)) as { required?: string[]; properties?: Record<string, unknown> };
+    expect([...(json.required ?? [])].toSorted()).toEqual(Object.keys(json.properties ?? {}).toSorted());
   });
 
-  it('accepts a step with only one of title and instruction, and names an empty one', () => {
-    expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: 'Open the cart and check the total against the line prices' }).success).toBe(true);
-    expect(PLAN_SCHEMA.safeParse({ decision: 'step', instruction: 'Open the cart' }).success).toBe(true);
-    const empty = PLAN_SCHEMA.safeParse({ decision: 'step', title: ' ' });
+  it('accepts a step with only one of title and instruction filled, and names an empty one', () => {
+    expect(PLAN_SCHEMA.safeParse(step({ title: 'Open the cart and check the total against the line prices' })).success).toBe(true);
+    expect(PLAN_SCHEMA.safeParse(step({ instruction: 'Open the cart' })).success).toBe(true);
+    const empty = PLAN_SCHEMA.safeParse(step({ title: ' ' }));
     expect(empty.success).toBe(false);
     expect(empty.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['instruction']);
-    const finish = PLAN_SCHEMA.safeParse({ decision: 'finish' });
-    expect(finish.success).toBe(false);
-    expect(finish.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['summary']);
+    const noSummary = PLAN_SCHEMA.safeParse(finish({}));
+    expect(noSummary.success).toBe(false);
+    expect(noSummary.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['summary']);
   });
 });
 
@@ -57,12 +65,12 @@ describe('normalizeStep', () => {
 
   it('accepts a charter far past the report ceiling and clips it instead of rejecting it', () => {
     const huge = `Open the catalog. ${'Check every price and stock count carefully. '.repeat(120)}`;
-    expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: huge }).success).toBe(true);
+    expect(PLAN_SCHEMA.safeParse(step({ title: huge })).success).toBe(true);
     const plan = normalizeStep(huge, undefined);
     expect(plan.kind === 'step' && plan.instruction.length).toBe(2_000);
     expect(plan.kind === 'step' && plan.title).toBe('Open the catalog');
-    expect(PLAN_SCHEMA.safeParse({ decision: 'finish', summary: 's'.repeat(6_000) }).success).toBe(true);
-    expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: 'x'.repeat(8_001) }).success).toBe(false);
+    expect(PLAN_SCHEMA.safeParse(finish({ summary: 's'.repeat(6_000) })).success).toBe(true);
+    expect(PLAN_SCHEMA.safeParse(step({ title: 'x'.repeat(8_001) })).success).toBe(false);
   });
 });
 
