@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../../src/agent/default-agent.ts';
 import { isStepExecutor } from '../../src/agent/executor.ts';
+import { DEFAULT_EXPERIMENT } from '../../src/explore/experiment.ts';
 import { exploreAgents } from '../../src/explore/index.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 import type { AgentConfig } from '../../src/types.ts';
@@ -9,6 +10,7 @@ const options = () => ({
   state: new ExploreState('goal', { maxSteps: 2, timeoutMs: 180_000 }),
   evidence: async () => undefined,
   notices: [] as string[],
+  experiment: DEFAULT_EXPERIMENT,
 });
 const explorerOf = (agents: ReturnType<typeof exploreAgents>): AgentConfig => agents!['default'] as AgentConfig;
 

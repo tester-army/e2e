@@ -17,7 +17,7 @@ import type { ExploreState } from './state.ts';
 export const FINDING_TOOL_NAME = 'report_finding';
 
 /** Appended to the project's own guidance; the goal itself travels as agent context. */
-const EXPLORE_RULES = `Exploration mode: this run has no scripted test. Each step is an exploration charter the planner wrote toward the goal given in the project context.
+export const EXPLORE_RULES = `Exploration mode: this run has no scripted test. Each step is an exploration charter the planner wrote toward the goal given in the project context.
 - Think like a curious first-time user hunting for bugs: exercise the flow the charter names end to end, with realistic inputs and edge cases. Interact, do not just look: fill forms with obviously made-up test data and submit them, save and come back to check what was kept, sign in with made-up credentials when none are configured, and when a list has several items act on one that is not the first and check that the right one changed.
 - On every screen, sanity-check beyond "it renders": totals equal the sum of their parts and quantities multiply; counts match the items listed; nothing is negative that cannot be; dates are plausible and in order, not an epoch default; copy has no template tokens, placeholders, or misspellings; every control does what its name says; what a screen claims happened (saved, added, removed) is true on the next screen; a password is never shown as you type it.
 - Report every defect with ${FINDING_TOOL_NAME} the moment the evidence is on screen, one call per distinct defect: what you expected, what the screen shows, and the actions that reach it. Do not save findings for the conclusion: a defect that appears only in a summary is lost, since the report reads the tool, not the prose. Findings listed under "reportedFindings" in the step parameters are already recorded: never report them again and spend no actions re-confirming them.
@@ -98,7 +98,7 @@ type FindingReport = z.output<typeof FINDING_SCHEMA>;
  * the evidence pixels, records the finding against the step in progress, and
  * answers the model with the finding's number so it is not reported twice.
  */
-function createFindingTool(options: ExplorerOptions): DefinedTool {
+export function createFindingTool(options: ExplorerOptions): DefinedTool {
   return defineTool(
     {
       description:

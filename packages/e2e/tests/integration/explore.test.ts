@@ -308,6 +308,42 @@ describe('e2e explore', () => {
     expect(loopCalls.map((call) => call.prompt).join('\n')).not.toContain('bookworm');
   }, 120_000);
 
+  it('runs the conversation arm as one act with start, finish, and report tools, when the experiment asks for it', async () => {
+    const seen: string[][] = [];
+    const model = installExploreModel({
+      plan: () => { throw new Error('the conversation arm has no planner'); },
+      loop: (call) => {
+        seen.push([...call.toolNames]);
+        switch (call.turn) {
+          case 1: return [{ toolName: 'start_step', input: { title: 'Counter', instruction: 'Tap Increment and check the counter' } }];
+          case 2: return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Increment"/) } }];
+          case 3: return [{ toolName: FINDING_TOOL_NAME, input: { ...COUNTER_FINDING, kind: 'warning', severity: 1 } }];
+          case 4: return [{ toolName: 'finish_step', input: { status: 'passed', summary: 'Counter went to 1' } }];
+          case 5: return [{ toolName: 'finish_run', input: { summary: 'One flow, one polish item.' } }];
+          default: return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'done' } }];
+        }
+      },
+    });
+    const outcome = await explore({
+      cwd: project.dir,
+      rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } } },
+      env: { ...process.env, E2E_EXPLORE_EXPERIMENT: 'conversation' },
+      goal: 'Explore the home page and find bugs',
+      maxSteps: 3,
+      timeoutMs: 180_000,
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.status).toBe('passed');
+    expect(seen[0]).toEqual(expect.arrayContaining(['start_step', 'finish_step', 'finish_run', FINDING_TOOL_NAME, 'tap', 'complete_step']));
+    const record = outcome.report.run.explore!;
+    expect(record.steps.map((step) => [step.title, step.status, step.summary])).toEqual([['Counter', 'passed', 'Counter went to 1']]);
+    expect(record.findings).toHaveLength(1);
+    expect(record.summary).toBe('One flow, one polish item.');
+    expect(record.ended).toBe('finished');
+    // The whole exploration was one act step.
+    expect(outcome.report.run.results[0]!.attempts[0]!.steps.map((step) => step.api)).toEqual(['app.open', 'agent.act']);
+  }, 120_000);
+
   it('rejects a goal past the ceiling before anything starts', async () => {
     await expect(explore({ cwd: project.dir, rawConfig: {}, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
     await expect(explore({ cwd: project.dir, rawConfig: {}, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });

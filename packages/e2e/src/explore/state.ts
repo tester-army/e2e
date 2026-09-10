@@ -48,6 +48,11 @@ export class ExploreState {
     private readonly now: () => number = Date.now,
   ) {}
 
+  /** Whether a step is open. */
+  currentStepOpen(): boolean {
+    return this.open !== undefined;
+  }
+
   /** Opens the next step; the index is one-based. */
   beginStep(title: string, instruction: string): number {
     if (this.open !== undefined) throw new Error(`exploration step ${this.open.index} is still open`);
