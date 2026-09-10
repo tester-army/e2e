@@ -24,4 +24,6 @@ Credentials are the provider's business: a missing key is the provider's own
 error on the first agent step, and a rejected one is reported as such. Reports
 record the instance's provider and model id, OpenRouter's per-request cost is
 read from its usage accounting, and telemetry gains `model_gateway`, the AI
-SDK provider that served the first model-backed step.
+SDK provider that served the first model-backed step. A new docs page, Models
+and credentials, covers which package constructs which model and where each
+reads its key.

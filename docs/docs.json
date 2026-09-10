@@ -52,6 +52,7 @@
       {
         "group": "Guides",
         "pages": [
+          "models",
           "authentication",
           "ci",
           "github",

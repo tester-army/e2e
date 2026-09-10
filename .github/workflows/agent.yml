@@ -85,10 +85,10 @@ jobs:
       # which reads as a product defect. Say what is actually wrong instead.
       - name: Require model credential
         env:
-          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         run: |
-          if [ -z "$E2E_MODEL_API_KEY" ]; then
-            echo "::error::E2E_MODEL_API_KEY is not set for this repository." \
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
+            echo "::error::AI_GATEWAY_API_KEY is not set for this repository." \
               "The agent suites need a real provider credential."
             exit 1
           fi
@@ -100,9 +100,8 @@ jobs:
       - name: Run ${{ matrix.script }}
         continue-on-error: ${{ matrix.optional }}
         env:
-          # Every testbed config builds its model with the AI SDK's gateway(),
-          # which reads this variable; the secret keeps its historical name.
-          AI_GATEWAY_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          # Every testbed config builds its model with the AI SDK's gateway(), which reads this variable.
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           # Read through a variable, not interpolated into the script, and left
           # unset when empty: the configs treat '' as a configured model id.
           MODEL_INPUT: ${{ inputs.model }}

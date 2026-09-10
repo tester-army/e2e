@@ -190,7 +190,8 @@ implied. There is exactly one model: it drives `agent.act` and judges
 `agent.assert`, `agent.waitFor`, and `agent.extract`. The runner checks that
 one is configured when the first test acquires the `agent` fixture and stops
 the run with `MODEL_UNAVAILABLE` (exit 2) if none is; a missing key is the
-provider's own error on the first agent step.
+provider's own error on the first agent step. [Models and
+credentials](/models) covers every option.
 
 `system` shapes how the agent works. Later you can hand it your own tools, or
 replace it with a custom executor; [Your own agent](/agents) covers both.

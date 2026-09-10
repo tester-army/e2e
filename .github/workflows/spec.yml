@@ -45,7 +45,7 @@ jobs:
       # agent meets deliberately hard surfaces, and each step costs cents.
       - name: Web benchmark (agent)
         env:
-          AI_GATEWAY_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         run: pnpm --filter @e2edev/web-benchmark test:agent
 
   test:

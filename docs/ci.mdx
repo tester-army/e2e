@@ -136,7 +136,8 @@ reads none of them, so the value never enters logs, reports, or child-process
 arguments, and your app process cannot read it. To switch models per run,
 have the config read a variable of your own, e.g.
 `gateway(process.env.MODEL ?? 'openai/gpt-5.4-mini')`, and keep it in a
-non-secret variable so you can see which model a run used.
+non-secret variable so you can see which model a run used. Which variable each
+provider package reads is on [Models and credentials](/models).
 
 ## Keep model-backed tests opt-in
 

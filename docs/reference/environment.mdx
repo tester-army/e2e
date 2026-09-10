@@ -26,7 +26,8 @@ from `@openrouter/ai-sdk-provider` reads `OPENROUTER_API_KEY`, `openai()`
 from `@ai-sdk/openai` reads `OPENAI_API_KEY`, and so on. Those reads happen
 in your config module and the provider, on the first model call, not in the
 runner; a missing model is `MODEL_UNAVAILABLE` when `agent` is first acquired,
-and a missing key is the provider's own error on the first agent step.
+and a missing key is the provider's own error on the first agent step. See
+[Models and credentials](/models).
 
 The order is spelled out under [Resolution order](/reference/config#resolution-order).
 
