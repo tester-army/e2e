@@ -21,7 +21,9 @@ virtual file `explore`, so reporters, `.e2e/report.json`, artifacts,
 report gains `run.explore` with the goal, budgets, steps, findings, and
 assessment, and the `list` reporter prints the findings under the summary. The
 explorer is built from `agents.default`, or from the agent `--agent` names, so
-the model is that agent's or `E2E_MODEL`. An agent built with
+the model is that agent's or `E2E_MODEL`. Configured `credentials` travel with
+every charter as step secrets, so the explorer signs in with `type_secret` by
+account name and the password never reaches the model. An agent built with
 `createAgent({ tools, system })` lends its vocabulary to the explorer:
 `createAgent` now returns a `DefaultAgent` whose `tools`, `system`,
 `maxTurns`, and `providerOptions` are readable. `e2e guide explore` prints the

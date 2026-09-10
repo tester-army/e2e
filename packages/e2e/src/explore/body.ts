@@ -10,9 +10,10 @@
  */
 
 import { AgentError, isAgentError } from '../agent/error.ts';
+import { credentials } from '../credentials.ts';
 import type { ReportExplore } from '../report/build.ts';
 import type { TestFn } from '../types.ts';
-import { planNext, type PlanDecision } from './plan.ts';
+import { planNext, type PlanAccount, type PlanDecision } from './plan.ts';
 import type { ExploreState } from './state.ts';
 
 /** Failed or blocked steps in a row, none with a finding, that end the run: the approach is not working. */
@@ -36,6 +37,12 @@ export interface ExploreBodyOptions {
    * attempt starts.
    */
   readonly openApp: boolean;
+  /**
+   * Names of the configured credentials. Each travels with every charter as a
+   * step secret, so the explorer can sign in with `type_secret` by name; the
+   * password itself never reaches the model.
+   */
+  readonly credentials?: readonly string[] | undefined;
   readonly now?: (() => number) | undefined;
 }
 
@@ -75,6 +82,21 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
 
     if (options.openApp) await app.open();
 
+    // Resolved once the runner has the registry up, which is now.
+    const accounts: PlanAccount[] = (options.credentials ?? []).map((name) => {
+      const credential = credentials.user(name);
+      return { name, username: credential.username };
+    });
+    const secrets =
+      accounts.length === 0
+        ? undefined
+        : Object.fromEntries(
+            accounts.map((account) => [
+              account.name,
+              { username: account.username, password: credentials.user(account.name).password },
+            ]),
+          );
+
     for (;;) {
       const stop = mustFinish(state, remaining());
       if (stop !== undefined && remaining() < MIN_PLAN_TIMEOUT_MS) {
@@ -86,6 +108,7 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
         plan = await planNext(agent, state, {
           mustFinish: stop !== undefined,
           reason: stop?.reason,
+          accounts,
           remainingMs: remaining(),
           timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
         });
@@ -131,12 +154,17 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
       state.beginStep(plan.title, plan.instruction);
       const timeout = Math.min(options.stepTimeoutMs, room);
       // The findings so far ride along as step parameters, so the agent
-      // neither reports one twice nor spends the step re-confirming it.
+      // neither reports one twice nor spends the step re-confirming it; the
+      // configured credentials ride along as secrets it can fill by name.
       const reported = state.findings.map((finding) => finding.title);
+      const params = {
+        ...(reported.length === 0 ? {} : { reportedFindings: reported }),
+        ...(secrets === undefined ? {} : { credentials: secrets }),
+      };
       try {
         const result = await agent.act(plan.instruction, {
           timeout,
-          ...(reported.length === 0 ? {} : { params: { reportedFindings: reported } }),
+          ...(Object.keys(params).length === 0 ? {} : { params }),
         });
         state.endStep('passed', result.summary);
       } catch (cause) {

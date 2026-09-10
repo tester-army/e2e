@@ -272,6 +272,42 @@ describe('e2e explore', () => {
     ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'unknown agent "nope"; configured: default' });
   }, 120_000);
 
+  it('lets the explorer sign in with a configured credential through type_secret, never seeing the password', async () => {
+    const planPrompts: string[] = [];
+    let fillResult: string | undefined;
+    const model = installExploreModel({
+      plan: (call) => {
+        planPrompts.push(call.instruction);
+        return planPrompts.length === 1 ? { decision: 'step', title: 'Sign in', instruction: 'Fill the password for the ada account' } : { decision: 'finish', summary: 'The password field takes the credential.' };
+      },
+      loop: (call) => {
+        if (call.turn === 1) return [{ toolName: 'type_secret', input: { target: nodeIdFor(call.prompt, /textbox "Password"/), name: 'ada' } }];
+        fillResult = call.lastToolResult;
+        return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Filled the password' } }];
+      },
+    });
+    const outcome = await explore({
+      cwd: project.dir,
+      rawConfig: {
+        targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never,
+        agents: { default: { model } },
+        credentials: { ada: { username: 'ada@example.test', password: 'bookworm' } },
+      },
+      goal: 'Sign in and look around',
+      maxSteps: 1,
+      timeoutMs: 180_000,
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.status).toBe('passed');
+    expect(planPrompts[0]).toContain('- ada (username: ada@example.test)');
+    expect(loopCalls[0]!.toolNames).toContain('type_secret');
+    expect(loopCalls[0]!.prompt).toContain('"kind":"secret","name":"ada"');
+    expect(fillResult).toContain('Filled secret "ada"');
+    // The plaintext reaches neither the planner nor the explorer.
+    expect(planPrompts.join('\n')).not.toContain('bookworm');
+    expect(loopCalls.map((call) => call.prompt).join('\n')).not.toContain('bookworm');
+  }, 120_000);
+
   it('rejects a goal past the ceiling before anything starts', async () => {
     await expect(explore({ cwd: project.dir, rawConfig: {}, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
     await expect(explore({ cwd: project.dir, rawConfig: {}, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });

@@ -42,9 +42,17 @@ export type PlanDecision =
   | { readonly kind: 'step'; readonly title: string; readonly instruction: string }
   | { readonly kind: 'finish'; readonly summary: string };
 
+/** One configured credential the explorer can sign in with, by name; the password stays out of every prompt. */
+export interface PlanAccount {
+  readonly name: string;
+  readonly username: string;
+}
+
 export interface PlanRequest {
   /** The run must end now; the planner is asked for the closing assessment only. */
   readonly mustFinish: boolean;
+  /** The accounts the explorer can sign in with. */
+  readonly accounts?: readonly PlanAccount[] | undefined;
   /** Why it must end, in the planner's prompt. */
   readonly reason?: string | undefined;
   readonly remainingMs: number;
@@ -116,6 +124,13 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '',
     'Findings so far:',
     findings,
+    ...(request.accounts === undefined || request.accounts.length === 0
+      ? []
+      : [
+          '',
+          'Accounts the agent can sign in with (it fills the password itself, by name):',
+          ...request.accounts.map((account) => `- ${account.name} (username: ${account.username})`),
+        ]),
     '',
   ];
   if (request.mustFinish) {
@@ -133,7 +148,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '  self-contained charter for an agent that sees only the screen and that text: which flow to exercise, what inputs',
     '  to try, what to check. One flow or screen per step, sized for five to fifteen actions; split anything bigger.',
     '  Ask the agent to interact, not only to look: submit forms with made-up test data, save and revisit, sign in with',
-    '  made-up credentials when none are configured, act on a non-first item of a list. Prefer breadth: touch the main',
+    '  the accounts listed above (or made-up credentials when none are configured), act on a non-first item of a list. Prefer breadth: touch the main',
     '  flows the goal names before drilling deeper into one. Do not re-test an area a passed step already covered, and',
     '  never plan a step to re-confirm a finding already recorded above. When a step ended at its limit, continue where',
     '  it stopped or move on. When a step summary mentions something odd that is not among the findings, spend the next',

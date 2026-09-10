@@ -122,9 +122,14 @@ Explore reads your `e2e.config.ts`. The target's engine, app command, allowed
 origins, and the agent's `context`, `vision`, and provider options all apply.
 `--agent <name>` builds the explorer from another configured agent, so a
 UX-review agent and a functional one can explore the same app in turn.
-Configured `credentials` do not reach the explorer yet: a secret is filled only
-through a step that declares it in its params, and exploration steps declare
-none, so a sign-in behind a real credential is out of reach for now. An agent built with `createAgent({ tools, system })` lends its
+
+Configured `credentials` reach the explorer the way they reach a test: every
+charter carries them as step secrets, the planner is told which accounts
+exist (name and username, never the password), and the agent signs in by
+typing the username and filling the password with `type_secret` by the
+account's name. The password never enters a prompt, a transcript, or a
+finding, and once one is filled the run's screenshots are withheld, as in any
+test. An agent built with `createAgent({ tools, system })` lends its
 tools and guidance to the explorer, so a `seedCart` tool is available while
 exploring too. A hand-rolled `StepExecutor` has no vocabulary the explorer
 can reuse; it is replaced by the built-in agent for the run, with a notice.

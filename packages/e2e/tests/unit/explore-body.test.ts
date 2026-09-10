@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError, isAgentError } from '../../src/agent/error.ts';
+import { setCredentialRegistry } from '../../src/credentials.ts';
+import { isSecret } from '../../src/locator/screen.ts';
 import { CONSECUTIVE_FAILURE_LIMIT, createExploreBody } from '../../src/explore/body.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 import type { Agent, App, TestFixtures } from '../../src/types.ts';
@@ -221,6 +223,37 @@ describe('the exploration body', () => {
     expect(acts).toEqual([]);
     expect(state.steps).toEqual([]);
     expect(state.ended).toBe('time');
+  });
+
+  it('hands the configured credentials to every charter as secrets and tells the planner which accounts exist', async () => {
+    setCredentialRegistry(new Map([['ada', { name: 'ada', username: 'ada@example.test', password: 'bookworm', allowedOrigins: undefined }]]));
+    try {
+      const state = new ExploreState('goal', budgets);
+      const planInstructions: string[] = [];
+      const actParams: unknown[] = [];
+      let plans = 0;
+      const agent = {
+        extract: async (instruction: string) => {
+          planInstructions.push(instruction);
+          plans += 1;
+          return plans === 1 ? { decision: 'step', title: 'Sign in', instruction: 'sign in as ada' } : { decision: 'finish', summary: 'Signed in fine.' };
+        },
+        act: async (_instruction: string, options?: { params?: unknown }) => {
+          actParams.push(options?.params);
+          return { summary: 'signed in', modelCalls: 2, actions: 3 };
+        },
+      } as unknown as Agent;
+      const app = { open: async () => undefined } as unknown as App;
+      await createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true, credentials: ['ada'] })({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures);
+      expect(planInstructions[0]).toContain('- ada (username: ada@example.test)');
+      expect(planInstructions[0]).not.toContain('bookworm');
+      const params = actParams[0] as { credentials: { ada: { username: string; password: unknown } } };
+      expect(params.credentials.ada.username).toBe('ada@example.test');
+      expect(isSecret(params.credentials.ada.password)).toBe(true);
+      expect(JSON.stringify(params)).not.toContain('bookworm');
+    } finally {
+      setCredentialRegistry(undefined);
+    }
   });
 
   it('fails the run for issues, naming them', async () => {

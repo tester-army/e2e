@@ -11,7 +11,7 @@
  *   B4  wrong target    "Remove" always removes the first cart row
  *   B5  persistence     saving the account profile reports success but keeps the old name
  *   B6  dates           the order confirmation is dated 1970 and delivers before it was placed
- *   B7  security        the password field is a plain text input
+ *   B7  security        the password field is a plain text input (the shop's one account is ada@example.test / bookworm)
  *   B8  copy            the home greeting leaks the template token {{userName}}
  *   B9  data            Neuromancer shows a negative stock count
  *   B10 inconsistency   the orders page says "2 orders" above a list of one
@@ -28,6 +28,9 @@ const BOOKS = [
   { id: 'hyperion', title: 'Hyperion', author: 'Dan Simmons', price: 14.0, stock: 7 },
   { id: 'solaris', title: 'Solaris', author: 'Stanisław Lem', price: 11.25, stock: 2 },
 ];
+
+/** The shop's one account; the testbed config hands it to the explorer as a credential. */
+const ACCOUNT = { email: 'ada@example.test', password: 'bookworm' };
 
 const state = {
   /** Cart rows in insertion order: { id, qty }. */
@@ -203,6 +206,7 @@ const pages = {
       'Sign in',
       `<h1>Sign in</h1>
        ${request.failed ? '<p role="alert">Enter your email and password.</p>' : ''}
+       ${request.rejected ? '<p role="alert">Invalid email or password.</p>' : ''}
        <form method="post" action="/login">
          <label for="login-email">Email</label>
          <input id="login-email" name="email" type="email" autocomplete="username" />
@@ -276,6 +280,9 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/login') {
       if ((form.get('email') ?? '') === '' || (form.get('password') ?? '') === '') {
         return html(pages['/login']({ failed: true }));
+      }
+      if (form.get('email') !== ACCOUNT.email || form.get('password') !== ACCOUNT.password) {
+        return html(pages['/login']({ rejected: true }));
       }
       state.signedIn = true;
       return redirect('/account');

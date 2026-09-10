@@ -106,7 +106,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     cwd: projectRoot,
     rawConfig,
     env,
-    tests: { file: EXPLORE_FILE, registration: exploreRegistration(state, target.openApp) },
+    tests: { file: EXPLORE_FILE, registration: exploreRegistration(state, target.openApp, credentialNames(raw)) },
     targetIds: target.ids,
     headed: options.headed,
     reporters: options.reporters,
@@ -251,7 +251,7 @@ export function pickTarget(
 }
 
 /** The one-test registration: the goal is the title, the body is the exploration loop. */
-function exploreRegistration(state: ExploreState, openApp: boolean): ModuleRegistration {
+function exploreRegistration(state: ExploreState, openApp: boolean, credentials: readonly string[]): ModuleRegistration {
   const title = state.goal;
   const test: RegisteredTest = {
     kind: 'test',
@@ -264,12 +264,19 @@ function exploreRegistration(state: ExploreState, openApp: boolean): ModuleRegis
       agentContext: `Exploration goal: ${state.goal}`,
     },
     sessions: [],
-    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp }),
+    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, credentials }),
     group: undefined,
     mode: 'normal',
     source: undefined,
   };
   return { tests: [test], hooks: [] };
+}
+
+/** The configured credential names; anything but a plain object is left for config resolution to reject. */
+function credentialNames(raw: E2EConfig): readonly string[] {
+  const value = raw.credentials;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  return Object.keys(value);
 }
 
 function resolveArtifactsRoot(projectRoot: string, override: string | undefined): string {

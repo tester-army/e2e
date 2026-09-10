@@ -28,8 +28,9 @@ E2E_MODEL=provider/model-id npx --no-install e2e explore 'Hunt for broken forms'
 
 A failed step does not end the run: it is recorded, and only findings the
 agent reported count toward the verdict. A step that hits its action or time
-budget ended at its limit and counts as neither. Configured `credentials` do
-not reach the explorer yet.
+budget ended at its limit and counts as neither. Configured `credentials`
+reach the explorer as step secrets: the planner knows the account names and
+usernames, and the agent fills passwords with `type_secret` by name.
 
 ## Flags
 
