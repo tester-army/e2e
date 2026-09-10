@@ -1,8 +1,10 @@
 /**
- * Trace archive redaction: every text entry is rewritten through the redactor
- * in every encoding a trace spells a value, binary entries and untouched
- * archives are carried byte for byte, sibling segments are covered, and an
- * archive that cannot be rewritten takes the whole trace with it.
+ * Trace archive redaction: JSON records are rewritten value by value and other
+ * text as text, in every encoding a trace spells a value; binary entries are
+ * carried byte for byte unless they hold a secret, in which case they are
+ * dropped; an untouched archive keeps its bytes; every listed segment is
+ * covered; an archive that cannot be rewritten takes the whole trace with it;
+ * a path outside the attempt directory is refused before anything is touched.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -26,32 +28,34 @@ function attemptDir(): string {
   return dir;
 }
 
+const FRAME_WITH_SECRET = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from(SECRET), Buffer.from([0x80])]);
+const FRAME_CLEAN = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x80]);
+
 /** What a Playwright trace holds after a secret fill, in each of its encodings. */
-function traceArchive(): Buffer {
-  const jsonBody = JSON.stringify({ password: SECRET });
+function traceArchive(secret = SECRET): Buffer {
+  const jsonBody = JSON.stringify({ password: secret });
   return writeZip([
     zipEntry(
       'trace.trace',
       Buffer.from(
         [
-          JSON.stringify({ type: 'before', method: 'fill', params: { value: SECRET } }),
-          JSON.stringify({ type: 'frame-snapshot', html: ['INPUT', { __playwright_value_: SECRET }] }),
+          JSON.stringify({ type: 'before', method: 'fill', params: { value: secret } }),
+          JSON.stringify({ type: 'frame-snapshot', html: ['INPUT', { __playwright_value_: secret }] }),
         ].join('\n'),
       ),
     ),
     zipEntry(
       'trace.network',
-      Buffer.from(JSON.stringify({ postData: { text: jsonBody, params: [{ name: 'password', value: SECRET }] } })),
+      Buffer.from(JSON.stringify({ postData: { text: jsonBody, params: [{ name: 'password', value: secret }] } })),
     ),
-    zipEntry('resources/form.dat', Buffer.from(new URLSearchParams({ user: 'ada', password: SECRET }).toString())),
+    zipEntry('resources/form.dat', Buffer.from(new URLSearchParams({ user: 'ada', password: secret }).toString())),
     zipEntry(
       'resources/page.html',
       Buffer.from(
-        `<input value="${SECRET.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')}">`,
+        `<input value="${secret.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')}">`,
       ),
     ),
-    // A screencast frame: not UTF-8, so never text, even with the secret's bytes inside.
-    zipEntry('screencast/frame.jpeg', Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from(SECRET), Buffer.from([0x80])])),
+    zipEntry('screencast/clean.jpeg', FRAME_CLEAN),
     zipEntry('trace.stacks', Buffer.from('{"files":[]}')),
   ]);
 }
@@ -67,12 +71,12 @@ describe('redactTraceArchives', () => {
     writeFileSync(file, traceArchive());
     const before = entriesOf(file);
 
-    await redactTraceArchives(dir, 'trace/trace.zip', new SecretLedger([['member', SECRET]]).redact);
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', SECRET]]));
 
     const after = entriesOf(file);
     expect([...after.keys()]).toEqual([...before.keys()]);
     for (const [name, bytes] of after) {
-      if (name === 'screencast/frame.jpeg') {
+      if (name === 'screencast/clean.jpeg') {
         expect(bytes.equals(before.get(name)!)).toBe(true);
         continue;
       }
@@ -82,16 +86,53 @@ describe('redactTraceArchives', () => {
       expect(text, name).not.toContain(encodeURIComponent(SECRET));
       expect(text, name).not.toContain('p%40ss+%22word');
     }
-    expect(after.get('trace.trace')!.toString()).toContain('"value":"<secret:member>"');
-    expect(after.get('trace.trace')!.toString()).toContain('"__playwright_value_":"<secret:member>"');
-    expect(after.get('trace.network')!.toString()).toContain('<secret:member>');
+    const trace = after.get('trace.trace')!.toString().split('\n').map((line) => JSON.parse(line) as unknown);
+    expect(trace).toEqual([
+      { type: 'before', method: 'fill', params: { value: '<secret:member>' } },
+      { type: 'frame-snapshot', html: ['INPUT', { __playwright_value_: '<secret:member>' }] },
+    ]);
+    expect(JSON.parse(after.get('trace.network')!.toString())).toEqual({
+      postData: { text: '{"password":"<secret:member>"}', params: [{ name: 'password', value: '<secret:member>' }] },
+    });
     expect(after.get('resources/form.dat')!.toString()).toBe('user=ada&password=<secret:member>');
     expect(after.get('resources/page.html')!.toString()).toBe('<input value="<secret:member>">');
-    // The redacted archive is still a well-formed trace with the same members.
     expect(after.get('trace.stacks')!.toString()).toBe('{"files":[]}');
   });
 
-  it('leaves an archive with nothing to redact untouched, and rewrites sibling segments too', async () => {
+  it('keeps JSON records well-formed when the secret is JSON syntax itself', async () => {
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    writeFileSync(file, traceArchive('"'));
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['quote', '"']]));
+
+    const lines = entriesOf(file).get('trace.trace')!.toString().split('\n');
+    expect(lines.map((line) => JSON.parse(line) as unknown)).toEqual([
+      { type: 'before', method: 'fill', params: { value: '<secret:quote>' } },
+      { type: 'frame-snapshot', html: ['INPUT', { __playwright_value_: '<secret:quote>' }] },
+    ]);
+  });
+
+  it('drops a binary entry that holds a secret and keeps one that does not', async () => {
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    writeFileSync(
+      file,
+      writeZip([
+        zipEntry('trace.trace', Buffer.from('{"type":"before"}')),
+        zipEntry('resources/body.bin', FRAME_WITH_SECRET),
+        zipEntry('screencast/clean.jpeg', FRAME_CLEAN),
+      ]),
+    );
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', SECRET]]));
+
+    const after = entriesOf(file);
+    expect([...after.keys()]).toEqual(['trace.trace', 'screencast/clean.jpeg']);
+    expect(after.get('screencast/clean.jpeg')!.equals(FRAME_CLEAN)).toBe(true);
+  });
+
+  it('leaves an archive with nothing to redact untouched, and rewrites every listed segment', async () => {
     const dir = attemptDir();
     const clean = path.join(dir, 'trace', 'trace.zip');
     writeFileSync(clean, writeZip([zipEntry('trace.trace', Buffer.from('{"type":"before"}'))]));
@@ -100,7 +141,11 @@ describe('redactTraceArchives', () => {
     const cleanBefore = readFileSync(clean);
     const cleanStat = statSync(clean);
 
-    await redactTraceArchives(dir, 'trace/trace.zip', new SecretLedger([['member', SECRET]]).redact);
+    await redactTraceArchives(
+      dir,
+      ['trace/trace-part1.zip', 'trace/trace.zip'],
+      new SecretLedger([['member', SECRET]]),
+    );
 
     expect(readFileSync(clean).equals(cleanBefore)).toBe(true);
     expect(statSync(clean).mtimeMs).toBe(cleanStat.mtimeMs);
@@ -115,9 +160,28 @@ describe('redactTraceArchives', () => {
     writeFileSync(broken, Buffer.from('this is not an archive'));
 
     await expect(
-      redactTraceArchives(dir, 'trace/trace.zip', new SecretLedger([['member', SECRET]]).redact),
+      redactTraceArchives(
+        dir,
+        ['trace/trace-part1.zip', 'trace/trace.zip'],
+        new SecretLedger([['member', SECRET]]),
+      ),
     ).rejects.toMatchObject({ code: 'TRACE_WITHHELD', category: 'infrastructure' });
     expect(existsSync(good)).toBe(false);
     expect(existsSync(broken)).toBe(false);
+  });
+
+  it('refuses a path outside the attempt directory without touching anything', async () => {
+    const dir = attemptDir();
+    const outside = path.join(dir, '..', `e2e-outside-${path.basename(dir)}.zip`);
+    writeFileSync(outside, traceArchive());
+    dirs.push(outside);
+    const inside = path.join(dir, 'trace', 'trace.zip');
+    writeFileSync(inside, traceArchive());
+
+    await expect(
+      redactTraceArchives(dir, ['trace/trace.zip', `../${path.basename(outside)}`], new SecretLedger([['member', SECRET]])),
+    ).rejects.toMatchObject({ code: 'TRACE_WITHHELD' });
+    expect(existsSync(outside)).toBe(true);
+    expect(entriesOf(inside).get('resources/form.dat')!.toString()).toContain('p%40ss+%22word');
   });
 });

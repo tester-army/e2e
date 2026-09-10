@@ -11,10 +11,7 @@
 export function createRedactor(
   secrets: Iterable<readonly [string, string]>,
 ): (text: string) => string {
-  const entries = [...secrets]
-    .filter(([, value]) => value.length > 0)
-    .flatMap(([name, value]) => encodedForms(value).map((form) => [name, form] as const))
-    .toSorted((a, b) => b[1].length - a[1].length);
+  const entries = secretForms(secrets);
   if (entries.length === 0) return (text) => text;
   return (text) => {
     let out = text;
@@ -23,13 +20,21 @@ export function createRedactor(
   };
 }
 
+/** Every (name, form) pair the secrets take in text, longest form first; empty values contribute none. */
+function secretForms(secrets: Iterable<readonly [string, string]>): (readonly [string, string])[] {
+  return [...secrets]
+    .filter(([, value]) => value.length > 0)
+    .flatMap(([name, value]) => encodedForms(value).map((form) => [name, form] as const))
+    .toSorted((a, b) => b[1].length - a[1].length);
+}
+
 /**
  * The forms one value takes in captured text: as is; as the body of a JSON
  * string (a trace records action parameters and DOM snapshots as JSON) and
  * of a JSON string quoted inside another (a JSON request body inside a HAR
- * field); HTML-escaped (a serialized page); and URL-encoded both ways a form
- * body or a query string spells it. Forms the value does not change under
- * collapse into one.
+ * field); HTML-escaped (a serialized page); and URL-encoded the three ways a
+ * path, a query component, or a form body spell it. Forms the value does not
+ * change under collapse into one.
  */
 function encodedForms(value: string): string[] {
   const json = JSON.stringify(value).slice(1, -1);
@@ -40,6 +45,7 @@ function encodedForms(value: string): string[] {
       JSON.stringify(json).slice(1, -1),
       escapeHtml(value),
       encodeURIComponent(value),
+      encodeURI(value),
       new URLSearchParams([['v', value]]).toString().slice(2),
     ]),
   ];
@@ -70,7 +76,7 @@ export class SecretLedger {
    * captures, and an earlier value that stopped redacting would leak there.
    */
   private readonly values: [string, string][] = [];
-  private redactor: ((text: string) => string) | undefined;
+  private compiled: { redact: (text: string) => string; forms: Buffer[] } | undefined;
 
   constructor(initial: Iterable<readonly [string, string]> = []) {
     for (const [name, value] of initial) this.register(name, value);
@@ -80,12 +86,27 @@ export class SecretLedger {
   register(name: string, value: string): void {
     if (this.values.some(([n, v]) => n === name && v === value)) return;
     this.values.push([name, value]);
-    this.redactor = undefined;
+    this.compiled = undefined;
   }
 
   /** Bound so it can be handed out as a plain function. */
-  readonly redact = (text: string): string => {
-    this.redactor ??= createRedactor(this.values);
-    return this.redactor(text);
-  };
+  readonly redact = (text: string): string => this.compile().redact(text);
+
+  /**
+   * Whether any registered value, in any of its forms, occurs in `bytes`.
+   * The check for content that is not text and so cannot be rewritten: what
+   * holds a secret has to be withheld instead.
+   */
+  appearsIn(bytes: Uint8Array): boolean {
+    const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return this.compile().forms.some((form) => buffer.includes(form));
+  }
+
+  private compile(): { redact: (text: string) => string; forms: Buffer[] } {
+    this.compiled ??= {
+      redact: createRedactor(this.values),
+      forms: secretForms(this.values).map(([, form]) => Buffer.from(form, 'utf8')),
+    };
+    return this.compiled;
+  }
 }

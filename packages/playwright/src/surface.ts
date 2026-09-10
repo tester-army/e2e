@@ -213,6 +213,8 @@ export class PlaywrightSurface {
   private tracing = false;
   /** Trace segments already written for this attempt; a trace cannot span two contexts. */
   private traceSegments = 0;
+  /** Relative paths of the trace segments closed so far this attempt, in order. */
+  private traceParts: string[] = [];
   /** The attempt's recording; every hook is a no-op without one. */
   private readonly video: VideoRecorder;
   /**
@@ -337,6 +339,7 @@ export class PlaywrightSurface {
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     this.traceSegments = 0;
+    this.traceParts = [];
     this.video.reset(context.artifactsDir);
     this.routes.length = 0;
     this.dialogs.reset();
@@ -551,15 +554,20 @@ export class PlaywrightSurface {
    * and reports whether one was active. `tracing` is cleared before anything
    * awaits, so a segment that fails to write cannot leave the surface
    * believing a trace still records; the segment itself is best-effort, the
-   * final trace still records from where tracing resumes.
+   * final trace still records from where tracing resumes. A segment that was
+   * written is returned from `stopTrace` ahead of the final archive.
    */
   private async closeTraceSegment(context: BrowserContext): Promise<boolean> {
     if (!this.tracing) return false;
     this.tracing = false;
     this.traceSegments += 1;
-    await context.tracing
-      .stop({ path: this.tracePath(`trace-part${String(this.traceSegments)}`).absolute })
-      .catch(() => undefined);
+    const { relative, absolute } = this.tracePath(`trace-part${String(this.traceSegments)}`);
+    await context.tracing.stop({ path: absolute }).then(
+      () => {
+        this.traceParts.push(relative);
+      },
+      () => undefined,
+    );
     return true;
   }
 
@@ -827,13 +835,16 @@ export class PlaywrightSurface {
     });
   }
 
-  stopTrace(operation: OperationContext): Promise<string> {
+  /** Every segment closed this attempt, in order, then the final archive; one path when the trace was never cut. */
+  stopTrace(operation: OperationContext): Promise<string | readonly string[]> {
     return this.guard(operation, 'trace', async () => {
       const context = this.requireContext();
       const { relative, absolute } = this.tracePath('trace');
       await context.tracing.stop({ path: absolute });
       this.tracing = false;
-      return relative;
+      const parts = this.traceParts;
+      this.traceParts = [];
+      return parts.length === 0 ? relative : [...parts, relative];
     });
   }
 

@@ -6,34 +6,36 @@
  * that carried it. The runner owns the secret ledger, so the runner rewrites.
  */
 
-import { readdir, readFile, rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { errorMessage, InfrastructureError } from '../internal/errors.ts';
-import { inflateEntry, readZip, writeZip, zipEntry } from '../internal/zip.ts';
+import type { SecretLedger } from '../internal/redact.ts';
+import { inflateEntry, readZip, writeZip, zipEntry, type ZipEntry } from '../internal/zip.ts';
 
 /**
- * Rewrites every archive of one trace through `redact`, in place. `relative`
- * is the path the engine returned for its trace; the archives beside it are
- * rewritten too, since an engine that had to cut its trace mid-attempt (a
- * replaced browser context) leaves the earlier segment there as well, and the
- * secret is in whichever segment saw the fill.
- *
- * An archive that cannot be rewritten is deleted, together with the rest of
- * the trace, and the failure is thrown: the runner keeps no trace it cannot
- * vouch for.
+ * Rewrites the archives of one trace in place. `paths` are what the engine
+ * returned from `stopTrace`, relative to `dir`; one that resolves outside
+ * `dir` is refused before anything is touched. An archive that cannot be
+ * rewritten is deleted together with the rest of the trace, and the failure
+ * is thrown: the runner keeps no trace it cannot vouch for.
  */
 export async function redactTraceArchives(
   dir: string,
-  relative: string,
-  redact: (text: string) => string,
+  paths: readonly string[],
+  ledger: SecretLedger,
 ): Promise<void> {
-  const traceDir = path.join(dir, path.dirname(relative));
-  const archives = (await readdir(traceDir))
-    .filter((name) => name.endsWith('.zip'))
-    .map((name) => path.join(traceDir, name));
+  const root = path.resolve(dir);
+  const archives = paths.map((relative) => path.resolve(root, relative));
+  const outside = archives.find((absolute) => !isInside(root, absolute));
+  if (outside !== undefined) {
+    throw new InfrastructureError(
+      'TRACE_WITHHELD',
+      `the trace was not registered: ${outside} is outside the attempt's artifact directory`,
+    );
+  }
   try {
-    for (const archive of archives) await redactArchive(archive, redact);
+    for (const archive of archives) await redactArchive(archive, ledger);
   } catch (cause) {
     await Promise.all(archives.map((archive) => rm(archive, { force: true })));
     throw new InfrastructureError(
@@ -44,24 +46,95 @@ export async function redactTraceArchives(
   }
 }
 
+function isInside(root: string, absolute: string): boolean {
+  const relative = path.relative(root, absolute);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
 /**
- * Every text entry passes through `redact`; an entry that is not UTF-8 text
- * (a screencast frame, a font, an image) is carried as stored, and so is a
- * text entry the redactor left unchanged, so an archive with nothing to
- * redact is not rewritten at all.
+ * Every text entry is rewritten through the ledger; one the redactor left
+ * unchanged is carried as stored, so an archive with nothing to redact is not
+ * rewritten at all. An entry that is not UTF-8 text (a screencast frame, a
+ * font, an image) cannot be rewritten: it is carried as stored unless a
+ * secret's bytes occur in it, in which case it is dropped from the archive.
  */
-async function redactArchive(absolute: string, redact: (text: string) => string): Promise<void> {
+async function redactArchive(absolute: string, ledger: SecretLedger): Promise<void> {
   const entries = readZip(await readFile(absolute));
   let changed = false;
-  const redacted = entries.map((entry) => {
-    const text = decodeText(inflateEntry(entry));
-    if (text === undefined) return entry;
-    const clean = redact(text);
-    if (clean === text) return entry;
+  const kept: ZipEntry[] = [];
+  for (const entry of entries) {
+    const bytes = inflateEntry(entry);
+    const text = decodeText(bytes);
+    if (text === undefined) {
+      if (ledger.appearsIn(bytes)) {
+        changed = true;
+        continue;
+      }
+      kept.push(entry);
+      continue;
+    }
+    const clean = redactText(text, ledger.redact);
+    if (clean === text) {
+      kept.push(entry);
+      continue;
+    }
     changed = true;
-    return zipEntry(entry.name, Buffer.from(clean, 'utf8'), entry);
-  });
-  if (changed) await writeFileAtomic(absolute, writeZip(redacted));
+    kept.push(zipEntry(entry.name, Buffer.from(clean, 'utf8'), entry));
+  }
+  if (changed) await writeFileAtomic(absolute, writeZip(kept));
+}
+
+/**
+ * A trace's own members are JSON, one record per line; a resource is whatever
+ * the page served. A line that parses as JSON is redacted value by value and
+ * re-serialized only when something changed, so a secret that happens to
+ * spell JSON syntax cannot break a record; any other line is redacted as text.
+ */
+function redactText(text: string, redact: (text: string) => string): string {
+  return text
+    .split('\n')
+    .map((line) => redactLine(line, redact))
+    .join('\n');
+}
+
+function redactLine(line: string, redact: (text: string) => string): string {
+  if (!line.startsWith('{') && !line.startsWith('[')) return redact(line);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return redact(line);
+  }
+  const { value, changed } = redactValues(parsed, redact);
+  return changed ? JSON.stringify(value) : line;
+}
+
+/** Redacts every string in a parsed JSON value, keys included; reports whether any changed. */
+function redactValues(value: unknown, redact: (text: string) => string): { value: unknown; changed: boolean } {
+  if (typeof value === 'string') {
+    const clean = redact(value);
+    return { value: clean, changed: clean !== value };
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item) => {
+      const result = redactValues(item, redact);
+      changed ||= result.changed;
+      return result.value;
+    });
+    return { value: changed ? items : value, changed };
+  }
+  if (value !== null && typeof value === 'object') {
+    let changed = false;
+    const entries = Object.entries(value).map(([key, item]) => {
+      const cleanKey = redact(key);
+      const result = redactValues(item, redact);
+      changed ||= cleanKey !== key || result.changed;
+      return [cleanKey, result.value] as const;
+    });
+    return { value: changed ? Object.fromEntries(entries) : value, changed };
+  }
+  return { value, changed: false };
 }
 
 const utf8 = new TextDecoder('utf-8', { fatal: true });

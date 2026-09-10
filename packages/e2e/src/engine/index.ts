@@ -283,8 +283,14 @@ export interface EngineArtifacts {
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   /** Starts recording an execution trace for the attempt. */
   startTrace?(context: OperationContext): Promise<void>;
-  /** Stops the trace and returns its relative path. */
-  stopTrace?(context: OperationContext): Promise<string>;
+  /**
+   * Stops the trace and returns its relative path, or every archive written,
+   * in order, when the trace had to be cut: a trace bound to one context
+   * closes as a segment when a restart or a state reset replaces the
+   * context, and a new one records on from there. The harness registers and
+   * redacts each returned archive.
+   */
+  stopTrace?(context: OperationContext): Promise<string | readonly string[]>;
   /**
    * Starts recording the surface for the attempt. Declared together with
    * `stopVideo`. A surface that has nothing to show yet (no page open) may

@@ -577,25 +577,28 @@ export class TargetExecutor implements SerialHost {
     }
     if (stopTrace !== undefined) {
       await this.stopRecording('trace', attemptId, record, secondaryErrors, async (operation) => {
-        const relative = await stopTrace(operation);
+        const stopped = await stopTrace(operation);
+        const archives = typeof stopped === 'string' ? [stopped] : stopped;
         // An engine records what happened, filled secrets included, so the
         // trace is the runner's to redact before anything hashes or stores
         // it. Only a session a secret was filled on can have recorded one:
         // the taint is the fill's own mark, so an untainted trace needs no
         // rewriting, and a tainted one is kept only once rewritten.
         const secrecy = sessionSecrecy(session, this.config.credentials);
-        if (!secrecy.taint.value) {
-          artifactSink.register('trace', relative, { redaction: 'not-required' });
-          return;
+        let redaction: 'complete' | 'not-required' = 'not-required';
+        if (secrecy.taint.value) {
+          try {
+            await redactTraceArchives(artifactSink.dir, archives, secrecy.ledger);
+          } catch (cause) {
+            // The trace is gone. The report says why whatever the policy, and
+            // a required trace that is missing is a cleanup failure.
+            secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+            if (this.config.artifacts.get('trace') === 'required') record.cleanup = 'failed';
+            return;
+          }
+          redaction = 'complete';
         }
-        try {
-          await redactTraceArchives(artifactSink.dir, relative, secrecy.ledger.redact);
-        } catch (cause) {
-          // The trace is gone; the report says why, whatever the policy.
-          secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
-          return;
-        }
-        artifactSink.register('trace', relative, { redaction: 'complete' });
+        for (const relative of archives) artifactSink.register('trace', relative, { redaction });
       });
     }
     try {
