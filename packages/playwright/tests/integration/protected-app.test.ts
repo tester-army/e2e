@@ -98,6 +98,32 @@ describe('playwright({ headers, basicAuth })', () => {
     }
   });
 
+  it('blocks service workers under headers, since routing never sees a worker\'s requests', async () => {
+    // Registers the fixture's worker and counts what the browser now holds:
+    // a blocked registration resolves like a real one but registers nothing.
+    const registrations = async (): Promise<number> => {
+      await navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+      return (await navigator.serviceWorker.getRegistrations()).length;
+    };
+    const plain = playwright({ url: app.url });
+    try {
+      await boot(plain, app, artifactsDir, 's0');
+      await headingAt(plain, 's0', `${app.url}/`);
+      // The fixture itself can register one: 127.0.0.1 is a secure context.
+      expect(await surfaceOf(plain)!.page().evaluate(registrations)).toBe(1);
+    } finally {
+      await shutdown(plain);
+    }
+    const engine = playwright({ url: app.url, headers: { 'x-fixture-header': 'no-workers' } });
+    try {
+      await boot(engine, app, artifactsDir, 's1');
+      await headingAt(engine, 's1', `${app.url}/`);
+      expect(await surfaceOf(engine)!.page().evaluate(registrations)).toBe(0);
+    } finally {
+      await shutdown(engine);
+    }
+  });
+
   it('answers a basic-auth challenge from the allowed origin and from no other', async () => {
     const unauthenticated = playwright({ url: app.url });
     try {

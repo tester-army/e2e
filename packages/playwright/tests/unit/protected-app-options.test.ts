@@ -21,21 +21,34 @@ describe('playwright({ headers })', () => {
     }
   });
 
-  it('rejects a value that is not a string or carries a line break', () => {
+  it('rejects a value that is not a string or carries a control character, tab excepted', () => {
     expect(() => playwright({ headers: { 'x-a': 1 as unknown as string } })).toThrowError(/must be a string/);
-    expect(() => playwright({ headers: { 'x-a': 'v\r\nx-b: injected' } })).toThrowError(/line break/);
+    expect(() => playwright({ headers: { 'x-a': 'v\r\nx-b: injected' } })).toThrowError(/control character/);
+    expect(() => playwright({ headers: { 'x-a': 'token\u0000suffix' } })).toThrowError(/control character/);
+    expect(() => playwright({ headers: { 'x-a': '\u007f' } })).toThrowError(/control character/);
+    expect(() => playwright({ headers: { 'x-a': 'a\tb' } })).not.toThrow();
   });
 
-  it('rejects headers that are not an object', () => {
-    expect(() => playwright({ headers: ['x-a'] as unknown as Record<string, string> })).toThrowError(
-      /must be an object/,
-    );
+  it('rejects headers that are not a plain object, null included', () => {
+    for (const headers of [['x-a'], null, 'x-a: v', 3]) {
+      expect(() => playwright({ headers: headers as unknown as Record<string, string> })).toThrowError(
+        /must be an object/,
+      );
+    }
   });
 });
 
 describe('playwright({ basicAuth })', () => {
   it('accepts a username and password', () => {
     expect(() => playwright({ basicAuth: { username: 'ada', password: '' } })).not.toThrow();
+  });
+
+  it('rejects credentials that are not a plain object, null included', () => {
+    for (const basicAuth of [null, ['ada', 'x'], 'ada:x']) {
+      expect(() =>
+        playwright({ basicAuth: basicAuth as unknown as { username: string; password: string } }),
+      ).toThrowError(/must be an object/);
+    }
   });
 
   it('rejects a missing or colon-bearing username and a non-string password', () => {

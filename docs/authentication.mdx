@@ -201,7 +201,7 @@ The app under test is often not public: a Vercel preview behind deployment
 protection, a tunnel with an interstitial page, a staging host behind HTTP
 basic authentication. The gate stands in front of the app, so no test step
 can pass it. The engine declares how to get through, and every path onto the
-page - a deterministic step, `agent.act`, `e2e explore` - goes through with it.
+page, a deterministic step or `agent.act`, goes through with it.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
@@ -248,10 +248,12 @@ engine: playwright({
 ```
 
 <Note>
-**Two costs of `headers`**
+**Three costs of `headers`**
 
 Injecting headers routes every request of the attempt through the runner,
-which turns the browser's HTTP cache off for that target. And a Playwright
+which turns the browser's HTTP cache off for that target. Service workers are
+blocked for the same reason: routing never sees a worker's requests, so a page
+one controlled would reach the gate without the headers. And a Playwright
 trace records the requests it saw, headers included, so the trace of a
 protected preview carries the bypass secret; share it as you would the secret.
 </Note>

@@ -169,9 +169,11 @@ export interface PlaywrightOptions extends EngineAppDeclaration {
    * provider) never carry them, so a header that is a secret stays with the
    * app it unlocks. Names are case-insensitive; a header the page already
    * sends under the same name is replaced. Applies to every path onto the
-   * page - deterministic, `agent.act`, and explore alike. Injecting headers
-   * routes every request of the attempt, which turns the browser's HTTP cache
-   * off, and a Playwright trace records request headers.
+   * page, deterministic and agent-driven alike. Injecting headers routes
+   * every request of the attempt, which turns the browser's HTTP cache off
+   * and blocks service workers (a worker's requests bypass routing, so a
+   * page it controlled would reach the gate bare), and a Playwright trace
+   * records request headers.
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
@@ -403,6 +405,9 @@ export class PlaywrightSurface {
         acceptDownloads: true,
         ...(storageState === undefined ? {} : { storageState }),
         ...(httpCredentials === undefined ? {} : { httpCredentials }),
+        // Routing never sees a request a service worker made, so under
+        // injected headers a worker would carry the page past the gate bare.
+        ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
       });
       this.context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
       this.context.on('dialog', (dialog) => {

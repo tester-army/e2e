@@ -175,6 +175,11 @@ export function startFixtureApp(): Promise<FixtureApp> {
       request.on('close', () => clearTimeout(timer));
       return;
     }
+    if (url.pathname === '/sw.js') {
+      response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      response.end("self.addEventListener('fetch', () => {});");
+      return;
+    }
     if (url.pathname === '/headers') {
       const value = request.headers['x-fixture-header'];
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
