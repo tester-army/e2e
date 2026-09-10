@@ -36,7 +36,8 @@ safety rules, so what it finds is what a test would find.
 5. **Repeats** until the planner decides the goal is covered, or a budget ends
    the run, then asks the model for a closing assessment.
 
-The run's model comes from `agent.model` or `E2E_MODEL`, like any run. To try
+The explorer is built from `agents.default`, or from the agent `--agent` names,
+so its model comes from that agent or `E2E_MODEL`, like any run. To try
 another model on the same goal:
 
 ```bash
@@ -84,7 +85,8 @@ the app is fine when nothing was checked.
 
 A planner answer outside the grammar is not an error. The first time, the run
 falls back to a survey step (visit each top-level screen once); a later time,
-the exploration ends with the record so far and `ended: 'aborted'`. The clock
+the exploration ends with the record so far and `ended: 'aborted'`; when the
+run had to finish anyway, it ends for that reason, without an assessment. The clock
 running out is a normal ending too (`ended: 'time'`), judged like any other.
 A provider failure that stops the planner is the run's error.
 
@@ -115,7 +117,9 @@ in its timeline. `--reporter json`, `--reporter junit`, reporter objects,
 ## Your config applies
 
 Explore reads your `e2e.config.ts`. The target's engine, app command, allowed
-origins, `agent.context`, `agent.vision`, and provider options all apply.
+origins, and the agent's `context`, `vision`, and provider options all apply.
+`--agent <name>` builds the explorer from another configured agent, so a
+UX-review agent and a functional one can explore the same app in turn.
 Configured `credentials` do not reach the explorer yet: a secret is filled only
 through a step that declares it in its params, and exploration steps declare
 none, so a sign-in behind a real credential is out of reach for now. An agent built with `createAgent({ tools, system })` lends its

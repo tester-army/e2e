@@ -20,7 +20,8 @@ virtual file `explore`, so reporters, `.e2e/report.json`, artifacts,
 `--video`, `--ai-trace`, `--debug`, and Ctrl-C behave as for `e2e run`; the
 report gains `run.explore` with the goal, budgets, steps, findings, and
 assessment, and the `list` reporter prints the findings under the summary. The
-model is `agent.model` or `E2E_MODEL`. An agent built with
+explorer is built from `agents.default`, or from the agent `--agent` names, so
+the model is that agent's or `E2E_MODEL`. An agent built with
 `createAgent({ tools, system })` lends its vocabulary to the explorer:
 `createAgent` now returns a `DefaultAgent` whose `tools`, `system`,
 `maxTurns`, and `providerOptions` are readable. `e2e guide explore` prints the

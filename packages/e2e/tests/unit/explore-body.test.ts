@@ -284,6 +284,21 @@ describe('the exploration body', () => {
     expect(later.steps).toHaveLength(1);
     expect(later.ended).toBe('aborted');
     expect(later.summary).toBeUndefined();
+
+    // Asked to finish, the model answers outside the grammar: the run ends for its own reason, without an assessment.
+    const closing = new ExploreState('goal', { maxSteps: 1, timeoutMs: 600_000 });
+    let closingPlans = 0;
+    await run(closing, {
+      extract: async () => {
+        closingPlans += 1;
+        if (closingPlans === 1) return { decision: 'step', title: 'Only', instruction: 'the one step' };
+        throw invalid();
+      },
+      act: async () => ({ summary: 'done', modelCalls: 1, actions: 1 }),
+    } as unknown as Agent);
+    expect(closing.steps).toHaveLength(1);
+    expect(closing.ended).toBe('step-limit');
+    expect(closing.summary).toBeUndefined();
   });
 
   it('surfaces a cancelled step and a planner failure as the run error', async () => {

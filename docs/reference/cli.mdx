@@ -286,13 +286,14 @@ A run with no test file: the agent gets a goal, plans one exploration step at
 a time, drives the app, reports every defect it has evidence of through its
 `report_finding` tool, and ends with an assessment. The goal is one quoted
 sentence; without one it is `Explore the app and find bugs`. The model comes
-from `agent.model` or `E2E_MODEL`, as for `run`. [Exploring without a
+from the agent the explorer is built from, or `E2E_MODEL`, as for `run`. [Exploring without a
 test](/explore) describes what a run does and how to read it.
 
 | Flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `--config <path>` | string | discovered | Explicit config path, with the same errors as `run`. |
 | `--target <id>` | string | the first configured target | The one target to explore. Several targets and no flag explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
+| `--agent <name>` | string | `default` | The configured agent (`agents.<name>`) the explorer is built from: its model, tools, guidance, and context. An unknown name is `INVALID_CONFIG` before anything starts. |
 | `--max-steps <n>` | integer 1-12 | `8` | Exploration steps at most. Out of range exits 2. |
 | `--timeout <ms>` | integer 180000-900000 | `600000` | The run's wall clock. The last minute is kept for the closing assessment. Out of range exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it. |

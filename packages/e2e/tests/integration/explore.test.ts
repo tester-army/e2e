@@ -57,15 +57,15 @@ async function runExplore(
   project: FixtureProject,
   app: FixtureApp,
   model: ModelInstance,
-  options: Partial<ExploreOptions> & { agent?: StepExecutor | undefined } = {},
+  options: Partial<ExploreOptions> & { projectAgent?: StepExecutor | undefined } = {},
 ): Promise<ExploreOutcome> {
-  const { agent, ...rest } = options;
+  const { projectAgent, ...rest } = options;
   const notices: string[] = [];
   const outcome = await explore({
     cwd: project.dir,
     rawConfig: {
       targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never,
-      agent: agent ?? { model },
+      agents: { default: projectAgent ?? { model } },
       // The scripted loop answers instantly; the deterministic engine budget is the one that matters.
       actionTimeout: 10_000,
     },
@@ -172,7 +172,7 @@ describe('e2e explore', () => {
       { mutates: false },
     );
     const outcome = await runExplore(project, app, model, {
-      agent: createAgent({ model: model as never, tools: { ping }, system: 'Project guidance line.' }),
+      projectAgent: createAgent({ model: model as never, tools: { ping }, system: 'Project guidance line.' }),
     });
     expect(outcome.exitCode).toBe(0);
     expect(outcome.status).toBe('passed');
@@ -193,7 +193,7 @@ describe('e2e explore', () => {
       runStep: async () => ({ status: 'passed', summary: 'never runs' }),
     };
     const outcome = await runExplore(project, app, model, {
-      agent: { model, executor: custom } as never,
+      projectAgent: { model, executor: custom } as never,
     });
     expect(outcome.status).toBe('blocked');
     expect(outcome.report.run.explore).toMatchObject({ ended: 'finished', steps: [], findings: [] });
@@ -214,7 +214,7 @@ describe('e2e explore', () => {
       cwd: project.dir,
       rawConfig: {
         targets: [{ engine: playwright({ url: app.url }) }, { name: 'second', engine: playwright({ url: app.url }) }] as never,
-        agent: { model },
+        agents: { default: { model } },
       },
       goal: 'Look around',
       maxSteps: 1,
@@ -227,11 +227,49 @@ describe('e2e explore', () => {
 
     const malformed = await explore({
       cwd: project.dir,
-      rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agent: { model }, reporters: 'json' as never },
+      rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } }, reporters: 'json' as never },
       goal: 'Look around',
     });
     expect(malformed.exitCode).toBe(2);
     expect(malformed.report.run.errors[0]).toMatchObject({ code: 'INVALID_CONFIG' });
+  }, 120_000);
+
+  it('builds the explorer from the agent --agent names, keeps the other agents, and rejects an unknown name before anything starts', async () => {
+    let plans = 0;
+    const seen: string[][] = [];
+    const model = installExploreModel({
+      plan: () => {
+        plans += 1;
+        return plans === 1 ? { decision: 'step', title: 'Look', instruction: 'Look around' } : { decision: 'finish', summary: 'Seen everything there was.' };
+      },
+      loop: (call) => {
+        seen.push([...call.toolNames]);
+        return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'looked' } }];
+      },
+    });
+    const ping = defineTool({ description: 'answers pong', inputSchema: z.object({}), execute: async () => 'pong' }, { mutates: false });
+    const notices: string[] = [];
+    const outcome = await explore({
+      cwd: project.dir,
+      rawConfig: {
+        targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never,
+        agents: { default: { model }, ux: createAgent({ model: model as never, tools: { ping } }) },
+      },
+      goal: 'Look around',
+      agent: 'ux',
+      maxSteps: 1,
+      timeoutMs: 180_000,
+      notice: (message) => notices.push(message),
+    });
+    expect(outcome.status).toBe('passed');
+    expect(notices).toEqual(['exploring with agent "ux"']);
+    // The ux agent's tool is in the explorer's vocabulary.
+    expect(seen[0]).toContain('ping');
+    expect(seen[0]).toContain(FINDING_TOOL_NAME);
+
+    await expect(
+      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } } }, agent: 'nope' }),
+    ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'unknown agent "nope"; configured: default' });
   }, 120_000);
 
   it('rejects a goal past the ceiling before anything starts', async () => {

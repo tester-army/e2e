@@ -100,7 +100,7 @@ declare const seedCart: ReturnType<typeof defineTool>;
 const projectAgent: DefaultAgent = createAgent({ tools: { seedCart }, system: 'Be thorough.' });
 projectAgent.tools.seedCart satisfies ReturnType<typeof defineTool> | undefined;
 projectAgent.system satisfies string | undefined;
-({ agent: projectAgent }) satisfies E2EConfig;
+({ agents: { default: projectAgent } }) satisfies E2EConfig;
 // @ts-expect-error the vocabulary is read-only
 projectAgent.tools = {};
 

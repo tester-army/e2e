@@ -33,11 +33,13 @@ export default {
   ],
   timeout: 900_000,
   actionTimeout: 60_000,
-  agent: {
-    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
-    context: [
-      'Bookshelf is a small online bookshop: a catalog, a cart, checkout, an account page, an orders page, and sign-in.',
-      'Sign-in is a demo: any email with any password signs you in, which is intended.',
-    ].join(' '),
+  agents: {
+    default: {
+      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      context: [
+        'Bookshelf is a small online bookshop: a catalog, a cart, checkout, an account page, an orders page, and sign-in.',
+        'Sign-in is a demo: any email with any password signs you in, which is intended.',
+      ].join(' '),
+    },
   },
 } satisfies E2EConfig;

@@ -92,12 +92,17 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
       } catch (cause) {
         // A model that cannot produce a plan in the grammar, even after the
         // repair round, is a model shortcoming, not the end of the world: the
-        // first step falls back to a survey of the app, and a later failure
-        // ends the exploration with the record so far. Anything else (the
-        // provider, the clock, a cancellation) is the run's error.
-        if (!isAgentError(cause) || cause.code !== 'MODEL_OUTPUT_INVALID' || stop !== undefined) {
+        // first step falls back to a survey of the app; a later failure ends
+        // the exploration with the record so far; a failed closing assessment
+        // leaves the run to end for the reason it had to, without one. Anything
+        // else (the provider, the clock, a cancellation) is the run's error.
+        if (!isAgentError(cause) || cause.code !== 'MODEL_OUTPUT_INVALID') {
           state.ended = 'aborted';
           throw cause;
+        }
+        if (stop !== undefined) {
+          state.ended = stop.ended;
+          break;
         }
         if (state.steps.length > 0) {
           state.ended = 'aborted';

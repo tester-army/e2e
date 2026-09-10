@@ -3,7 +3,7 @@
 `e2e explore` runs the agent against the app with a goal instead of a test
 file. Use it to see what the agent can do with an app before tests exist, to
 hunt for regressions on a branch, or to find what is worth turning into a
-test. It needs a config with a target and a model (`agent.model` or
+test. It needs a config with a target and a model (on the agent, or
 `E2E_MODEL`), nothing else.
 
 ```bash
@@ -37,6 +37,7 @@ not reach the explorer yet.
 | --- | --- | --- |
 | `[goal]` | `Explore the app and find bugs` | One quoted sentence: the area and the posture. |
 | `--target <id>` | first configured target | The one target to explore. |
+| `--agent <name>` | `default` | Build the explorer from another configured agent (`agents.<name>`). |
 | `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
 | `--headed`, `--reporter`, `--artifacts`, `--debug`, `--ai-trace`, `--video` | as `run` | Same meaning as for `e2e run`. |

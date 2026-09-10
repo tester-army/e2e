@@ -323,6 +323,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <id>', 'the target to explore (default: the first configured target)')
+    .option('--agent <name>', 'the configured agent to explore with (default: agents.default)')
     .optionsGroup('Budgets:')
     .option(
       '--max-steps <n>',
@@ -350,6 +351,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e explore',
           "e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'",
           'e2e explore --target web --max-steps 4 --headed',
+          "e2e explore --agent ux 'Review onboarding as a first-time user'",
           "E2E_MODEL=provider/model-id e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
@@ -371,6 +373,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         options: {
           config?: string;
           target?: string;
+          agent?: string;
           maxSteps?: number;
           timeout?: number;
           headed?: boolean;
@@ -389,6 +392,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             goal,
             configPath: options.config,
             target: options.target,
+            agent: options.agent,
             maxSteps: options.maxSteps,
             timeoutMs: options.timeout,
             headed: options.headed,

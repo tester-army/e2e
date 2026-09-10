@@ -44,6 +44,8 @@ export interface ExploreOptions {
   readonly configPath?: string | undefined;
   /** The target to explore; with several configured and none named, the first is explored. */
   readonly target?: string | undefined;
+  /** The configured agent (`agents.<name>`) the explorer is built from; default: `agents.default`. */
+  readonly agent?: string | undefined;
   readonly maxSteps?: number | undefined;
   readonly timeoutMs?: number | undefined;
   readonly headed?: boolean | undefined;
@@ -91,7 +93,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const target = pickTarget(base, { projectRoot, env }, options.target, notice);
   const rawConfig: E2EConfig = {
     ...base,
-    agent: exploreAgentConfig(raw.agent, { state, evidence, notice }),
+    agents: exploreAgents(raw.agents, options.agent, { state, evidence, notice }),
     // A malformed value is left as it is, for config resolution to reject.
     reporters: Array.isArray(raw.reporters)
       ? [...raw.reporters, exploreReporter(state)]
@@ -150,17 +152,47 @@ function resolveBounded(
   return value;
 }
 
+type AgentEntry = AgentConfig | StepExecutor;
+type ExplorerOptions = { state: ExploreState; evidence: (index: number, pixels: Uint8Array) => Promise<string | undefined>; notice: (message: string) => void };
+
 /**
- * The agent block the exploration runs with. A project agent built by
- * `createAgent` lends its tools, guidance, model, and provider options; a
- * hand-rolled executor has no readable vocabulary and is replaced, with a
- * notice. Every other agent option keeps the project's value; the per-step
- * budgets default higher than a scripted step's.
+ * The `agents` block the exploration runs with: the project's agents as they
+ * are, and `default` replaced by the explorer, since the exploration is the
+ * run's one test and runs with the run's default agent. The explorer is built
+ * from the agent `--agent` named, else from the project's own `default`. An
+ * unknown name is a config error before anything starts; an `agents` value
+ * that is not an object is left for config resolution to reject.
  */
-function exploreAgentConfig(
-  value: E2EConfig['agent'],
-  options: { state: ExploreState; evidence: (index: number, pixels: Uint8Array) => Promise<string | undefined>; notice: (message: string) => void },
-): AgentConfig | StepExecutor {
+function exploreAgents(
+  agents: E2EConfig['agents'],
+  selected: string | undefined,
+  options: ExplorerOptions,
+): NonNullable<E2EConfig['agents']> {
+  if (agents !== undefined && (typeof agents !== 'object' || agents === null || Array.isArray(agents) || isStepExecutor(agents))) {
+    return agents;
+  }
+  const entries: Record<string, AgentEntry> = { ...agents };
+  const name = selected ?? 'default';
+  const chosen = entries[name];
+  if (selected !== undefined && chosen === undefined) {
+    const names = Object.keys(entries);
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `unknown agent "${selected}"; configured: ${names.length === 0 ? 'default' : names.join(', ')}`,
+    );
+  }
+  if (selected !== undefined && selected !== 'default') options.notice(`exploring with agent "${selected}"`);
+  return { ...entries, default: exploreAgentConfig(chosen, options) };
+}
+
+/**
+ * The agent the exploration runs with. A project agent built by `createAgent`
+ * lends its tools, guidance, model, and provider options; a hand-rolled
+ * executor has no readable vocabulary and is replaced, with a notice. Every
+ * other agent option keeps the project's value; the per-step budgets default
+ * higher than a scripted step's.
+ */
+function exploreAgentConfig(value: AgentEntry | undefined, options: ExplorerOptions): AgentEntry {
   const bare = isStepExecutor(value) ? value : undefined;
   const block = bare === undefined ? (value as AgentConfig | undefined) : undefined;
   // A block that is not an object is left for config resolution to reject.
