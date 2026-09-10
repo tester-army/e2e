@@ -22,24 +22,29 @@ interface Call {
 }
 
 /** A fetch that records calls and answers from a script keyed by `METHOD path`. */
-function fakeFetch(script: Record<string, (call: Call) => Response>): { fetch: typeof fetch; calls: Call[] } {
+/**
+ * A fetch that records calls and answers from a script keyed by `METHOD path`.
+ * A streamed body is drained the way storage would read it, except for the
+ * routes in `refusing`, which answer without touching the body: how storage
+ * behaves when it rejects a request up front.
+ */
+function fakeFetch(
+  script: Record<string, (call: Call) => Response>,
+  refusing: readonly string[] = [],
+): { fetch: typeof fetch; calls: Call[] } {
   const calls: Call[] = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     const method = init?.method ?? 'GET';
     const headers = Object.fromEntries(new Headers(init?.headers).entries());
+    const key = `${method} ${new URL(url).pathname}`;
     const raw = init?.body;
-    // A streamed body is drained here, the way storage would.
+    const drain = raw instanceof ReadableStream && !refusing.includes(key);
     const body =
-      typeof raw === 'string'
-        ? JSON.parse(raw)
-        : raw instanceof ReadableStream
-          ? new Uint8Array(await new Response(raw).arrayBuffer())
-          : raw;
+      typeof raw === 'string' ? JSON.parse(raw) : drain ? new Uint8Array(await new Response(raw).arrayBuffer()) : raw;
     const call: Call = { url, method, headers, body };
     calls.push(call);
     if (init?.signal?.aborted) throw init.signal.reason ?? new Error('aborted');
-    const key = `${method} ${new URL(url).pathname}`;
     const answer = script[key] ?? script[`${method} *`];
     if (answer === undefined) throw new Error(`unexpected request ${key}`);
     return answer(call);
@@ -237,17 +242,21 @@ describe('uploadRun', () => {
   });
 
   it('names the file and the real cause when a streamed upload fails, and closes every file', async () => {
-    const { fetch } = fakeFetch({
-      [`PUT /api/v1/e2e/runs/${RUN_ID}`]: () =>
-        json(200, { url: 'u', uploads: [{ sha256: 'aaa', url: 'https://r2.test/aaa' }, { sha256: 'bbb', url: 'https://r2.test/bbb' }] }),
-      // Storage refuses before reading a byte, the way an expired signature does.
-      'PUT /aaa': () => new Response('expired', { status: 403 }),
-      'PUT /bbb': () => new Response(null, { status: 200 }),
-    });
+    const { fetch } = fakeFetch(
+      {
+        [`PUT /api/v1/e2e/runs/${RUN_ID}`]: () =>
+          json(200, { url: 'u', uploads: [{ sha256: 'aaa', url: 'https://r2.test/aaa' }, { sha256: 'bbb', url: 'https://r2.test/bbb' }] }),
+        'PUT /aaa': () => new Response('expired', { status: 403 }),
+        'PUT /bbb': () => new Response(null, { status: 200 }),
+      },
+      // Storage refuses shot.png before reading a byte, the way an expired signature does.
+      ['PUT /aaa'],
+    );
     await expect(
       uploadRun(finished(report([shot, trace])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, { ...deps, fetch }),
     ).rejects.toThrow('TesterArmy storage responded 403 while uploading shot.png');
-    expect(opened.length).toBeGreaterThan(0);
+    // Both files closed: the drained one at its end, the refused one because its request ended.
+    expect(opened).toHaveLength(2);
     expect(opened.every((stream) => stream.destroyed)).toBe(true);
 
     // A transport failure surfaces its root cause, not undici's "fetch failed".
