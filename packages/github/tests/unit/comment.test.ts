@@ -114,6 +114,14 @@ describe('renderComment', () => {
     expect(body).not.toContain('\u0007');
   });
 
+  it('rounds a duration to whole seconds before splitting off the minutes', () => {
+    const at = (finishedAt: string) =>
+      renderComment({ ...report({ results: [passing] }), run: { ...report().run, results: [passing], finishedAt } } as never);
+    expect(at('2026-07-24T12:01:59.500Z')).toContain('· 2m 0s ·');
+    expect(at('2026-07-24T12:01:29.400Z')).toContain('· 1m 29s ·');
+    expect(at('2026-07-24T12:00:59.940Z')).toContain('· 59.9s ·');
+  });
+
   it('names the target only when the run has several', () => {
     const body = renderComment(
       report({ status: 'failed', results: [failing, passing], targets: ['web', 'mobile'] }),

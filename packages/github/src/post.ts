@@ -23,8 +23,12 @@ export interface PostParams {
 }
 
 const PER_PAGE = 100;
-/** Comments past this many pages are not searched; a new comment is posted instead. */
-const MAX_PAGES = 10;
+/**
+ * The list is followed until a short page says it is exhausted. The cap is a
+ * guard against a server that never sends one, not a limit any pull request
+ * reaches: ten thousand comments.
+ */
+const MAX_PAGES = 100;
 const USER_AGENT = '@e2edev/github';
 
 interface CommentRecord {

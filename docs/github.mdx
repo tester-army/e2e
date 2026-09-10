@@ -51,9 +51,10 @@ jobs:
           path: .e2e/artifacts
 ```
 
-Upload the artifacts on every outcome, not only on failure: the comment links
-to the workflow run as the place to fetch them, and a flaky test that passed
-on its second attempt still left a recording worth watching.
+Upload the artifacts on every outcome but a cancellation, not only on
+failure: the comment links to the workflow run as the place to fetch them, and
+a flaky test that passed on its second attempt still left a recording worth
+watching.
 
 ## The comment
 
@@ -117,7 +118,7 @@ post, it says why in one row under the summary:
 | Not on GitHub Actions | Nothing is written. Another CI has no ambient token; the TesterArmy reporter (`@e2edev/testerarmy`) posts from any provider through the GitHub App. |
 | A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written; there is no pull request to comment on. |
 | No `GITHUB_TOKEN` in the step's `env` | The job summary is written; the row shows the line to add. `GH_TOKEN` is read too. |
-| A pull request from a fork | The token is read-only on `pull_request` events, so the comment fails and the run prints the reason. The job summary is still written. |
+| A `pull_request` event from a fork | Its token is read-only, so the comment fails and the run prints the reason. The job summary is still written. A `pull_request_target` workflow has a writable token, with the care that event demands around secrets. |
 | An `issue_comment` event | The comment is posted, without source links: on this event the checked-out commit is the default branch, not the pull request's head. |
 | Missing `pull-requests: write` | The same failure, with the permission named. |
 

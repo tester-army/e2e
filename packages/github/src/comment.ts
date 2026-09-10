@@ -64,9 +64,9 @@ function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '0ms';
   if (ms < 1_000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
-  const minutes = Math.floor(ms / 60_000);
-  const seconds = Math.round((ms % 60_000) / 1_000);
-  return `${minutes}m ${seconds}s`;
+  // Round to whole seconds first, so 119.5 s is 2m 0s and never 1m 60s.
+  const total = Math.round(ms / 1_000);
+  return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
 function plural(count: number, noun: string): string {

@@ -28,10 +28,14 @@ permissions:
   contents: read
   pull-requests: write
 
-steps:
-  - run: npx --no-install e2e run
-    env:
-      GITHUB_TOKEN: ${{ github.token }}
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      # ...checkout, install, browsers
+      - run: npx --no-install e2e run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 ```
 
 ## What the comment holds
@@ -48,8 +52,9 @@ the previous comment instead of adding one. Matrix replicas of one job need a
 
 The reporter says why in one summary row and never changes the run's exit
 code: off GitHub Actions, on an event that is not a pull request (the job
-summary is still written), without `GITHUB_TOKEN`, or on a pull request from
-a fork, whose token is read-only. To post from another CI, or as an identity
+summary is still written), without `GITHUB_TOKEN` or `GH_TOKEN`, or on a
+`pull_request` event from a fork, whose token is read-only. To post from
+another CI, or as an identity
 that is not the workflow, use the TesterArmy reporter, `@e2edev/testerarmy`.
 
 ## License
