@@ -41,7 +41,7 @@ HTTP tests and agents using their own tools can use a target without one.
 Config and test modules run as ESM. e2e loads the `.ts`, `.mts`, and `.tsx`
 files a project reaches by path (the config, the tests, their relative imports,
 and tsconfig `paths` aliases) as ES modules whatever the nearest `package.json`
-`type` says, so a CommonJS package keeps its manifest. Packages imported by
+`type` says, so a CommonJS package keeps its module type. Packages imported by
 name keep the format their own manifest declares, and `.cts` files stay
 CommonJS. A config, test, or helper written with `require` or `module.exports`
 fails to load: use `import`. In a directory without a package manifest, `init`

@@ -8,7 +8,7 @@
  * carries e2e's cache-busting query. Registered before tsx, this hook runs
  * inside tsx's chain: tsx's resolve receives `format: 'module'` from it and
  * transforms the file as ESM. A Next.js app, or any package without
- * `"type": "module"`, keeps its manifest.
+ * `"type": "module"`, keeps its module type.
  *
  * Only path specifiers are forced: the entry file URL, `./helper.ts`, and
  * tsconfig `paths` aliases, which tsx maps to paths before calling this hook.
