@@ -81,6 +81,15 @@ the JUnit plugin on Jenkins) and failures show up as test results instead of a
 red step. A startup failure such as `APP_UNREACHABLE` appears there too, as a
 `run` suite, so nobody has to open `report.json` to see why nothing ran.
 
+## Comment on the pull request
+
+`.e2e/junit.xml` gets failures into the checks tab. For the failure itself on
+the pull request, with the error, the evidence, and a link to the source line,
+add the [GitHub reporter](/github): `reporters: ['list', github()]` in the
+config, `pull-requests: write` in the job's permissions, and
+`GITHUB_TOKEN: ${{ github.token }}` in the step's `env`. One comment per run,
+edited in place on a rerun.
+
 ## What CI changes automatically
 
 CI mode is active when the `CI` environment variable is set and is not empty,

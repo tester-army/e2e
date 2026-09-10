@@ -54,6 +54,7 @@
         "pages": [
           "authentication",
           "ci",
+          "github",
           "coding-agents",
           "telemetry"
         ]

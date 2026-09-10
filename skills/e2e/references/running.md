@@ -78,6 +78,9 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.
 - `json`: the report document on stdout.
+- `github()` from `@e2edev/github`: on GitHub Actions, one pull request comment per
+  run (edited on rerun) and the job summary; needs `pull-requests: write` and
+  `GITHUB_TOKEN` in the step's env.
 - Artifacts (screenshots, Playwright traces, `--video` recordings, `--debug`
   transcripts, downloads) live under `.e2e/artifacts/`; every path is
   recorded in the report.

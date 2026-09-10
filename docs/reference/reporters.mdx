@@ -63,7 +63,9 @@ reporter in `e2e.config.ts` types its handlers from one import.
 The built-in `junit` reporter is the smallest complete example: it reads
 `run.report`, writes `junit.xml` beside `run.reportPath`, and returns one row
 naming the file relative to `run.projectRoot`. `json` is an `onRunFinished`
-that writes the document to stdout; `list` is an `onEvent`.
+that writes the document to stdout; `list` is an `onEvent`. The first reporter
+package is [`@e2edev/github`](/github), which comments on the pull request
+from GitHub Actions.
 
 A name and at least one handler are required; the resolver rejects anything
 else with `INVALID_CONFIG`.
