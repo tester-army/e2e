@@ -27,6 +27,10 @@ export interface LoopCall {
   readonly toolResults: readonly string[];
   /** The newest tool result, or '' on the first turn. */
   readonly lastToolResult: string;
+  /** The system prompt of the request. */
+  readonly system: string;
+  /** How the loop asked for tools: `required`, `auto`, or `tool:<name>` for a named tool. */
+  readonly toolChoice: string;
 }
 
 export interface LoopToolCall {
@@ -34,7 +38,8 @@ export interface LoopToolCall {
   readonly input: Record<string, unknown>;
 }
 
-export type LoopResponder = (call: LoopCall) => readonly LoopToolCall[];
+/** A turn's scripted answer: tool calls, or prose without any (`{ text }`). */
+export type LoopResponder = (call: LoopCall) => readonly LoopToolCall[] | { readonly text: string };
 
 /** Recorded calls, newest last. Cleared by every installFakeLoopModel call. */
 export const loopCalls: LoopCall[] = [];
@@ -54,6 +59,7 @@ interface RawMessage {
 interface RawOptions {
   readonly prompt: readonly RawMessage[];
   readonly tools?: readonly { readonly name: string }[];
+  readonly toolChoice?: { readonly type: string; readonly toolName?: string };
 }
 
 /** Builds the scripted tool-loop model and clears the call log. */
@@ -72,9 +78,24 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
       userMessages: options.prompt.filter((message) => message.role === 'user').length,
       toolResults,
       lastToolResult: toolResults[toolResults.length - 1] ?? '',
+      system: options.prompt
+        .filter((message) => message.role === 'system')
+        .map(userText)
+        .join('\n'),
+      toolChoice:
+        options.toolChoice === undefined
+          ? 'auto'
+          : options.toolChoice.type === 'tool'
+            ? `tool:${options.toolChoice.toolName ?? ''}`
+            : options.toolChoice.type,
     };
     loopCalls.push(call);
-    const content = respond(call).map((toolCall) => ({
+    const answer = respond(call);
+    if (!Array.isArray(answer)) {
+      const { text } = answer as { readonly text: string };
+      return scriptedResult([{ type: 'text', text }], 'stop');
+    }
+    const content = answer.map((toolCall) => ({
       type: 'tool-call' as const,
       toolCallId: `scripted_${(callCounter += 1)}`,
       toolName: toolCall.toolName,

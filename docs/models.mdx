@@ -155,6 +155,19 @@ gateway models and `OPENAI_API_KEY` for the vision one. Two agents that hold
 the same instance share one adapter; two instances of the same id are two
 models as far as the runner can tell.
 
+## Models that refuse forced tool calls
+
+`agent.act` asks the model for a tool call on every turn and names
+`complete_step` on the final ones. Some models reject that request shape:
+Anthropic's Claude Fable 5.1 answers HTTP 400 to any forced tool choice. The
+runner recognizes the refusal, sends the same request again with the choice
+left to the model and a tool-calls-only rule added to its instructions, and
+keeps that mode for the rest of the process on that model instance. The
+refused request is not counted as a model call. A turn such a model answers in
+prose, without a tool call, is kept in the history and followed by a notice to
+act; it spends a turn like any other, so a model that keeps talking still ends
+in `STEP_NO_CONCLUSION` when the turn budget runs out.
+
 ## In CI
 
 The secret is named after the variable the provider reads, and the job passes

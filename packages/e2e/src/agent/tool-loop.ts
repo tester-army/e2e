@@ -18,6 +18,7 @@ import { withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
 import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
+import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
 import { promptCacheHints, type CacheModelRef, type PromptCacheHints } from './model/prompt-cache.ts';
 import { compactScreenHistory } from './screen-update.ts';
 import { AgentError, isAgentError } from './error.ts';
@@ -55,6 +56,25 @@ const FORCED_CONCLUSION_TURNS = 2;
 
 /** Transcript ceiling per step; enough for every turn without unbounded logs. */
 const MAX_TRANSCRIPT_CHARS = 262_144;
+
+/**
+ * Models that refused a forced tool choice once. The loop asks every model
+ * for a tool call on each turn; a model that answers HTTP 400 to that request
+ * shape gets `auto` plus an instruction for the rest of the process, so the
+ * refusal costs one round trip per model, not one per step.
+ */
+const FREE_TOOL_CHOICE_MODELS = new WeakSet<object>();
+
+/** How the loop asks for tool calls: the SDK's forced modes, or `auto` for a model that rejects them. */
+type ToolChoiceMode = 'required' | 'auto';
+
+/** Appended to the instructions when the model cannot be forced to call tools. */
+const TOOL_CALLS_ONLY_RULE =
+  'Reply with tool calls only. A reply without a tool call does nothing and spends a turn; the step ends only through complete_step.';
+
+/** Sent when a turn came back as text without a tool call. */
+const TEXT_REPLY_NOTICE =
+  '[SYSTEM] Your last reply had no tool call, so nothing happened. Continue with a tool call, or call complete_step with your verdict.';
 
 /** Loop services the executor's tool bodies run under. */
 export interface ToolLoopHelpers {
@@ -173,6 +193,10 @@ class LoopRun {
    * verdict, and the note completes its message.
    */
   private overflowNote: string | undefined;
+  /** How this step asks for tool calls; flips to `auto` when the model rejects a forced choice. */
+  private toolChoice: ToolChoiceMode;
+  /** The last turn that ran, for continuing after a reply without tool calls. */
+  private lastStep: StepResult<ToolSet> | undefined;
 
   constructor(
     private readonly ai: AiSdk,
@@ -180,6 +204,7 @@ class LoopRun {
     private readonly context: StepExecutorContext,
     private readonly model: LanguageModel,
   ) {
+    this.toolChoice = typeof model === 'object' && FREE_TOOL_CHOICE_MODELS.has(model) ? 'auto' : 'required';
     this.cache = promptCacheHints(model as CacheModelRef);
     // Capped, never raised: the harness budget is the ceiling for any turns
     // setting, so the loop cannot spend past what the step was given.
@@ -199,35 +224,17 @@ class LoopRun {
       ...this.options.tools(this.context, helpers),
       complete_step: this.conclusion.tool,
     };
-    const system = this.instructions();
-    const providerOptions = this.cache.providerOptions(
-      this.options.providerOptions ?? this.context.providerOptions,
-      system,
-    );
-    const loop = new this.ai.ToolLoopAgent({
-      model: this.model,
-      instructions: this.cache.instructions(system),
-      tools,
-      toolChoice: 'required',
-      ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
-      maxRetries: TRANSPORT_RETRIES,
-      stopWhen: [
-        () => this.conclusion.concluded() || this.hardStop !== undefined,
-        // Counted across every generate call of the step, so a retry after an
-        // overflow continues the same turn budget rather than starting a new one.
-        ({ steps }) => this.turnOffset + steps.length >= this.maxTurns,
-      ],
-      prepareStep: ({ messages, stepNumber, steps }) =>
-        this.prepareTurn(messages, this.turnOffset + stepNumber, steps.at(-1)),
-    });
     const tracker = trackModelCalls(
       this.context,
       this.model as { provider?: string; modelId?: string },
     );
     let prompt = await this.options.buildPrompt(this.context);
     for (;;) {
+      // Built per attempt: the instructions and the tool-choice mode can
+      // change between a refused request and its retry.
+      const loop = this.buildLoop(tools);
       try {
-        await loop.generate({
+        const result = await loop.generate({
           prompt,
           abortSignal: this.context.signal,
           // The whole loop, retries included, ends with the step's clock; the
@@ -235,15 +242,26 @@ class LoopRun {
           timeout: Math.max(1, this.context.budgets.remainingMs()),
           onStepStart: tracker.onStepStart,
           onStepEnd: (step) => {
+            this.lastStep = step;
             this.recordTurn(step);
             tracker.onStepEnd(step);
           },
         });
+        const continued = this.continueAfterTextReply(result.responseMessages);
+        if (continued !== undefined) {
+          prompt = continued;
+          continue;
+        }
         break;
       } catch (cause) {
         const shrunk = this.overflowRetry(cause);
         if (shrunk !== undefined) {
           prompt = shrunk;
+          continue;
+        }
+        const freed = this.freeToolChoiceRetry(cause);
+        if (freed !== undefined) {
+          prompt = freed;
           continue;
         }
         this.attachTranscript();
@@ -282,6 +300,71 @@ class LoopRun {
       summary: `the agent used ${this.turnsUsed} of ${this.maxTurns} turn(s) without calling complete_step`,
       errorCode: 'STEP_NO_CONCLUSION',
     };
+  }
+
+  private buildLoop(tools: ToolSet) {
+    const system = this.instructions();
+    const providerOptions = this.cache.providerOptions(
+      this.options.providerOptions ?? this.context.providerOptions,
+      system,
+    );
+    return new this.ai.ToolLoopAgent({
+      model: this.model,
+      instructions: this.cache.instructions(system),
+      tools,
+      toolChoice: this.toolChoice,
+      ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
+      maxRetries: TRANSPORT_RETRIES,
+      stopWhen: [
+        () => this.conclusion.concluded() || this.hardStop !== undefined,
+        // Counted across every generate call of the step, so a retry after an
+        // overflow continues the same turn budget rather than starting a new one.
+        ({ steps }) => this.turnOffset + steps.length >= this.maxTurns,
+      ],
+      prepareStep: ({ messages, stepNumber, steps }) =>
+        this.prepareTurn(messages, this.turnOffset + stepNumber, steps.at(-1)),
+    });
+  }
+
+  /**
+   * A generate call that returned without a verdict and without a hard stop
+   * ended on a turn that made no tool call: the SDK loop stops when there is
+   * nothing to execute. Under `required` that cannot happen; under `auto` the
+   * model may answer in prose. While turns remain, the reply is kept in the
+   * history and the model is told to act, on the same turn budget.
+   */
+  private continueAfterTextReply(responseMessages: readonly ModelMessage[]): ModelMessage[] | undefined {
+    if (this.conclusion.concluded() || this.hardStop !== undefined || this.context.signal.aborted) return undefined;
+    if (this.turnsUsed >= this.maxTurns || this.lastRequest === undefined) return undefined;
+    if (this.lastStep === undefined || this.lastStep.toolCalls.length > 0) return undefined;
+    this.turnOffset = this.turnsUsed;
+    this.transcript.push(`--- turn ${String(this.turnsUsed)} made no tool call: asking for one ---`);
+    const reply = responseMessages.at(-1);
+    return [
+      ...this.lastRequest,
+      ...(reply !== undefined && reply.role === 'assistant' ? [reply] : []),
+      { role: 'user', content: TEXT_REPLY_NOTICE },
+    ];
+  }
+
+  /**
+   * A model that refuses a forced tool choice (HTTP 400 naming
+   * `tool_choice`) is asked again with `auto` and a tool-calls-only rule in
+   * its instructions, on the same turn budget. The refusal is remembered per
+   * model instance, so later steps start in that mode.
+   */
+  private freeToolChoiceRetry(cause: unknown): ModelMessage[] | undefined {
+    if (this.toolChoice === 'auto' || this.lastRequest === undefined) return undefined;
+    if (this.context.signal.aborted || this.hardStop !== undefined || !isForcedToolChoiceRejected(cause)) {
+      return undefined;
+    }
+    this.toolChoice = 'auto';
+    if (typeof this.model === 'object') FREE_TOOL_CHOICE_MODELS.add(this.model);
+    this.turnOffset = this.turnsUsed;
+    this.transcript.push(
+      `--- the model rejected a forced tool choice before turn ${String(this.turnsUsed + 1)}: retrying with auto ---`,
+    );
+    return this.lastRequest;
   }
 
   /**
@@ -351,7 +434,7 @@ class LoopRun {
   ): Promise<{
     messages?: ModelMessage[];
     activeTools?: string[];
-    toolChoice?: { type: 'tool'; toolName: string };
+    toolChoice?: ToolChoiceMode | { type: 'tool'; toolName: string };
   }> {
     let prepared = messages;
     if (this.options.prepareMessages !== undefined) {
@@ -440,14 +523,17 @@ class LoopRun {
     // next turn moves it again.
     const outgoing = this.cache.markLatest(prepared);
     this.lastRequest = outgoing;
+    // A model that rejects forced choices is offered the conclusion tool
+    // alone under `auto`; the notices above already tell it to call it.
     return {
       ...(outgoing === messages ? {} : { messages: outgoing }),
       ...(forced
         ? {
             activeTools: ['complete_step'],
-            toolChoice: { type: 'tool' as const, toolName: 'complete_step' },
+            toolChoice:
+              this.toolChoice === 'required' ? { type: 'tool' as const, toolName: 'complete_step' } : 'auto',
           }
-        : {}),
+        : { toolChoice: this.toolChoice }),
     };
   }
 
@@ -460,7 +546,7 @@ class LoopRun {
     if (project !== undefined && project.trim() !== '') {
       parts.push(`Project context:\n${project}`);
     }
-    parts.push(VERDICT_RULES);
+    parts.push(this.toolChoice === 'auto' ? `${VERDICT_RULES}\n- ${TOOL_CALLS_ONLY_RULE}` : VERDICT_RULES);
     return parts.join('\n\n');
   }
 
