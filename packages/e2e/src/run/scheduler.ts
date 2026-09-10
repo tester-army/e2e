@@ -25,6 +25,7 @@ import {
   unstartedResult,
   type TargetWorkPlan,
   type WorkUnit,
+  pairKey,
 } from './units.ts';
 import {
   type PairStart,
@@ -41,8 +42,8 @@ export interface SchedulerEvents {
   onRunAbort(error: RunError): void;
   /** A worker began executing one test-target pair. */
   onTestStart?(start: PairStart, targetName: string): void;
-  /** Live step progress of one running attempt. */
-  onProgress?(testId: string, targetName: string, progress: StepProgress): void;
+  /** Live step progress of one running pair, identified by test id and agent. */
+  onProgress?(pair: { testId: string; agent: string }, targetName: string, progress: StepProgress): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
   /** Model calls a child-process worker drained after one unit. */
@@ -102,9 +103,10 @@ class SchedulerWorker {
   /** Unit handed over but not yet acknowledged, while the worker starts up. */
   queued: WorkUnit | undefined;
   unit: WorkUnit | undefined;
-  /** Test ids already reported for `unit`, used to synthesize crash results. */
+  /** Pairs (`pairKey`) already reported for `unit`, used to synthesize crash results. */
   readonly reported = new Set<string>();
-  inFlightTestId: string | undefined;
+  /** The pair (`pairKey`) executing now, when one is. */
+  inFlightPair: string | undefined;
   sawFailure = false;
   becameReady = false;
   /** Told to tear down at once by a forced interrupt; its exit is then the one asked for. */
@@ -132,10 +134,11 @@ class SchedulerWorker {
     this.state = 'busy';
     this.unit = unit;
     this.reported.clear();
-    this.inFlightTestId = undefined;
+    this.inFlightPair = undefined;
     this.sawFailure = false;
     const pairs: WirePair[] = unit.pairs.map((pair) => ({
       test: pair.test,
+      agent: pair.agent,
       options: pair.options,
     }));
     this.runner.send({
@@ -485,19 +488,23 @@ class Scheduler {
         break;
       }
       case 'pair-start': {
-        worker.inFlightTestId = message.testId;
+        worker.inFlightPair = pairKey(message.testId, message.agent);
         const { type: _type, ...start } = message;
         this.options.events.onTestStart?.(start, worker.targetName);
         break;
       }
       case 'progress': {
-        this.options.events.onProgress?.(message.testId, worker.targetName, message.progress);
+        this.options.events.onProgress?.(
+          { testId: message.testId, agent: message.agent },
+          worker.targetName,
+          message.progress,
+        );
         break;
       }
       case 'result': {
         const state = this.targetState(worker);
         const result = decodeResult(message.result, state.target);
-        worker.reported.add(result.test.id);
+        worker.reported.add(pairKey(result.test.id, result.agent));
         if (result.status !== 'passed' && result.status !== 'flaky' && result.status !== 'skipped') {
           worker.sawFailure = true;
         }
@@ -515,7 +522,7 @@ class Scheduler {
         if (message.aiTrace !== undefined) this.options.events.onAiTrace?.(message.aiTrace);
         const unit = worker.unit;
         worker.unit = undefined;
-        worker.inFlightTestId = undefined;
+        worker.inFlightPair = undefined;
         if (unit !== undefined && unit.id !== message.unitId) {
           this.options.events.onRunError({
             error: serializeError(
@@ -600,7 +607,8 @@ class Scheduler {
   ): void {
     const interrupted = this.options.interruptSignal.aborted;
     for (const pair of unit.pairs) {
-      if (worker.reported.has(pair.test.id)) continue;
+      const key = pairKey(pair.test.id, pair.agent);
+      if (worker.reported.has(key)) continue;
       if (interrupted) {
         this.options.events.onResult(unstartedResult(pair, INTERRUPTED_BEFORE_START));
         continue;
@@ -611,8 +619,7 @@ class Scheduler {
           state.failedSessions.set(session, pair.test.id);
         }
       }
-      const wasRunning =
-        pair.test.id === worker.inFlightTestId && pair.test.serialId === undefined;
+      const wasRunning = key === worker.inFlightPair && pair.test.serialId === undefined;
       if (!wasRunning) {
         this.options.events.onResult(
           unstartedResult(pair, {

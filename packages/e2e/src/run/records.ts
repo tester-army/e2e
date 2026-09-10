@@ -84,6 +84,8 @@ export interface SerialGroupRecord {
   titlePath: string[];
   targetId: string;
   platform: string;
+  /** The configured agent this variant of the group ran as. */
+  agent: string;
   memberTestIds: string[];
   status: 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
   skip?: SkipInfo;
@@ -95,6 +97,8 @@ export type ResultStatus = 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interr
 export interface ResultRecord {
   test: TestIdentity;
   target: ResolvedTarget;
+  /** The configured agent the test ran as; with a test run as several, one record each. */
+  agent: string;
   status: ResultStatus;
   selected: boolean;
   skip?: SkipInfo | undefined;

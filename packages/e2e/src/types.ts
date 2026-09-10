@@ -451,19 +451,23 @@ export interface TestOptions {
   agentContext?: string;
   /**
    * The configured agent (`agents.<name>`) this test or group runs with, in
-   * place of the run's agent. Innermost wins; a call's own `agent` option wins
-   * over it.
+   * place of the run's agents. A list runs the test once per agent named, as
+   * one result each. Innermost wins; a call's own `agent` option wins over
+   * it. `--agent` narrows a list to the names both name and never overrides
+   * a pin the flag does not name.
    */
-  agent?: string;
+  agent?: string | readonly string[];
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
   serial?: boolean;
 }
 
-export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip'> {
+export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'agent'> {
   /** Session names this setup test MUST save. */
   sessions: readonly string[];
+  /** A setup test runs once per target, so it pins at most one agent. */
+  agent?: string;
 }
 
 export type TestFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;

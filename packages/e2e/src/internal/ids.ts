@@ -105,9 +105,9 @@ export function canonicalDigest(value: unknown): string {
   return sha256Hex(canonicalJson(value));
 }
 
-/** Result ID: SHA-256/JCS of `{ testId, targetId }`. */
-export function resultId(test: string, targetId: string): string {
-  return canonicalDigest({ testId: test, targetId });
+/** Result ID: SHA-256/JCS of `{ testId, targetId, agent }`; a test run as several agents has one per agent. */
+export function resultId(test: string, targetId: string, agent: string): string {
+  return canonicalDigest({ testId: test, targetId, agent });
 }
 
 /** Generates one lowercase UUIDv7 string. */

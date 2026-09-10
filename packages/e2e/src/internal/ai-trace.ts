@@ -65,6 +65,8 @@ export interface AiTraceScope {
   readonly test: string;
   readonly testId: string;
   readonly target: string;
+  /** The configured agent the attempt runs as. */
+  readonly agent: string;
   /** Zero-based attempt index. */
   readonly attempt: number;
   readonly api?: string;
@@ -498,6 +500,8 @@ function promptMessages(instructions: unknown, messages: unknown[]): unknown[] {
 function runName(scope: AiTraceScope | undefined, functionId: string | undefined): string | null {
   if (scope === undefined) return functionId ?? null;
   const parts = [scope.test];
+  // A test run as several agents is several runs; the name tells them apart.
+  if (scope.agent !== 'default') parts.push(`as ${scope.agent}`);
   if (scope.attempt > 0) parts.push(`attempt ${scope.attempt + 1}`);
   if (scope.api !== undefined) {
     const label =

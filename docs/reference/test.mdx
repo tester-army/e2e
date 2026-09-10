@@ -128,7 +128,7 @@ export interface TestOptions {
   requires?: readonly Capability[];
   session?: string;
   agentContext?: string;
-  agent?: string;
+  agent?: string | readonly string[];
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
@@ -136,8 +136,9 @@ export interface DescribeOptions extends Omit<TestOptions, 'only'> {
 }
 
 export interface SetupOptions
-  extends Omit<TestOptions, 'session' | 'only' | 'skip'> {
+  extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'agent'> {
   sessions: readonly string[];
+  agent?: string;
 }
 ```
 
@@ -152,7 +153,7 @@ export interface SetupOptions
 | `requires` | `readonly Capability[]` | `[]` | - | Innermost wins, replace |
 | `session` | `string` | unset | - | Innermost wins |
 | `agentContext` | `string` | unset | - | Concatenated outermost first, joined with a newline |
-| `agent` | `string` | the run's agent | a name in `agents`; unknown is `COLLECTION_ERROR` | Innermost wins. Pins the test or group to a configured agent; `--agent` re-points the run's default and never overrides a pin. A call's own `agent` option wins over it. |
+| `agent` | `string \| readonly string[]` | the run's agents | names in `agents`, each once; unknown is `COLLECTION_ERROR` | Innermost wins, replace. Pins the test or group to configured agents; a list runs the test once per name, one result each. `--agent` narrows a pin to the names it also gives and never overrides a pin it does not name. A call's own `agent` option wins over it. Members of a serial group share the group's pin; a setup test pins one name. |
 | `serial` | `boolean` | `false` | groups only | Nesting inside a serial group is a `COLLECTION_ERROR` |
 | `sessions` | `readonly string[]` | - | required on `test.setup`, static non-empty array of unique names | - |
 

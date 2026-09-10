@@ -15,8 +15,13 @@ export interface ResolvedTestOptions {
   readonly requires: readonly Capability[];
   readonly session: string | undefined;
   readonly agentContext: string | undefined;
-  /** The configured agent the test is pinned to; undefined runs the run's agent. */
-  readonly agent: string | undefined;
+  /**
+   * The configured agents the test runs as, one pair (and one result) each,
+   * in order: its pin narrowed to the names `--agent` also names, the whole
+   * pin when the flag names none of them, or the run's agents when it has no
+   * pin. Never empty; a setup test has exactly one.
+   */
+  readonly agents: readonly string[];
   readonly skipReason: string | undefined;
   readonly serial: boolean;
 }
@@ -38,6 +43,8 @@ export interface SkipInfo {
 export interface TestTargetPair {
   readonly test: CollectedTest;
   readonly target: ResolvedTarget;
+  /** The configured agent this pair runs as: one of `options.agents`. */
+  readonly agent: string;
   readonly options: ResolvedTestOptions;
   /** run: execute; skip: report skipped; filtered: report as unselected. */
   readonly disposition: 'run' | 'skip' | 'filtered';
@@ -73,7 +80,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   let platforms: readonly Platform[] | undefined;
   let requires: readonly Capability[] = [];
   let session: string | undefined;
-  let agent: string | undefined;
+  let pin: readonly string[] | undefined;
   let skipReason: string | undefined;
   const tags = new Set<string>();
   const agentContextParts: string[] = [];
@@ -84,7 +91,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     if (layer.platforms !== undefined) platforms = layer.platforms;
     if (layer.requires !== undefined) requires = layer.requires;
     if (layer.session !== undefined) session = layer.session;
-    if (layer.agent !== undefined) agent = layer.agent;
+    if (layer.agent !== undefined) pin = typeof layer.agent === 'string' ? [layer.agent] : layer.agent;
     if (layer.tags !== undefined) for (const tag of layer.tags) tags.add(tag);
     if (layer.agentContext !== undefined) agentContextParts.push(layer.agentContext);
     if (layer.skip !== undefined && layer.skip !== false) {
@@ -102,11 +109,12 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     retries = serialRetries;
   }
 
-  // A pin names a configured agent, or the test never runs: the error lands
+  // A pin names configured agents, or the test never runs: the error lands
   // at selection, before any process starts, like every other config fact.
-  if (agent !== undefined && !config.agents.has(agent)) {
+  for (const name of pin ?? []) {
+    if (config.agents.has(name)) continue;
     throw new CollectionError(
-      `test "${test.titlePath.join(' > ')}" in ${test.file} names agent "${agent}", which agents does not define; configured: ${[...config.agents.keys()].join(', ')}${didYouMean(agent, [...config.agents.keys()])}`,
+      `test "${test.titlePath.join(' > ')}" in ${test.file} names agent "${name}", which agents does not define; configured: ${[...config.agents.keys()].join(', ')}${didYouMean(name, [...config.agents.keys()])}`,
     );
   }
 
@@ -117,11 +125,55 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     platforms,
     requires,
     session,
-    agent,
+    agents: effectiveAgents(test, pin, config.agentNames),
     agentContext: agentContextParts.length === 0 ? undefined : agentContextParts.join('\n'),
     skipReason,
     serial: serialRoot !== undefined,
   };
+}
+
+/**
+ * The agents one test runs as. `--agent` selects among what a pin allows
+ * and never adds to it: a pin naming none of the run's agents stands whole,
+ * which is the old "a pin is never overridden" rule with a pin of one. A
+ * setup test produces its sessions once per target, so it runs as one agent:
+ * its pin, else the first the run names.
+ */
+function effectiveAgents(
+  test: CollectedTest,
+  pin: readonly string[] | undefined,
+  runAgents: readonly string[],
+): readonly string[] {
+  if (test.kind === 'setup') return [pin?.[0] ?? runAgents[0]!];
+  if (pin === undefined) return runAgents;
+  const narrowed = pin.filter((name) => runAgents.includes(name));
+  return narrowed.length === 0 ? pin : narrowed;
+}
+
+/**
+ * A serial group runs as one unit per agent, so every member must run as
+ * the same agents; a member pinned elsewhere would leave its variant of the
+ * flow with a hole. The fix is the pin on the serial describe, with a call's
+ * own `agent` option for a step under another brain.
+ */
+function assertSerialAgentsAgree(
+  tests: readonly CollectedTest[],
+  optionsByTest: ReadonlyMap<string, ResolvedTestOptions>,
+): void {
+  const agentsByGroup = new Map<string, readonly string[]>();
+  for (const test of tests) {
+    if (test.serialId === undefined) continue;
+    const agents = optionsByTest.get(test.id)!.agents;
+    const groupAgents = agentsByGroup.get(test.serialId);
+    if (groupAgents === undefined) {
+      agentsByGroup.set(test.serialId, agents);
+      continue;
+    }
+    if (groupAgents.length === agents.length && groupAgents.every((name, i) => name === agents[i])) continue;
+    throw new CollectionError(
+      `serial group "${test.serialRoot?.title ?? test.serialId}" in ${test.file} runs as agents [${groupAgents.join(', ')}] but its member "${test.title}" pins [${agents.join(', ')}]; pin the agent on the serial describe and name another per call with { agent }`,
+    );
+  }
 }
 
 function matchesTags(
@@ -180,13 +232,18 @@ export function select(
     optionsByTest.set(test.id, resolveOptions(test, config));
   }
 
+  assertSerialAgentsAgree(collection.tests, optionsByTest);
   const sessionProducers = collectSessionProducers(collection.tests);
 
+  // One pair per target, test, and agent the test runs as, in that order,
+  // so a persona sweep reports its variants side by side.
   const pairs: TestTargetPair[] = [];
   for (const target of targets) {
     for (const test of collection.tests) {
       const options = optionsByTest.get(test.id)!;
-      pairs.push(classifyPair(test, target, options, focused, filters, tagMode));
+      for (const agent of options.agents) {
+        pairs.push(classifyPair(test, target, agent, options, focused, filters, tagMode));
+      }
     }
   }
 
@@ -316,12 +373,13 @@ function collectSessionProducers(
 function classifyPair(
   test: CollectedTest,
   target: ResolvedTarget,
+  agent: string,
   options: ResolvedTestOptions,
   focused: readonly CollectedTest[],
   filters: SelectionFilters,
   tagMode: 'any' | 'all',
 ): TestTargetPair {
-  const base = { test, target, options };
+  const base = { test, target, agent, options };
 
   if (test.kind === 'test') {
     if (focused.length > 0 && test.mode !== 'only') {
@@ -383,15 +441,17 @@ function classifyPair(
 }
 
 function applySerialClosure(pairs: readonly TestTargetPair[]): TestTargetPair[] {
+  // A serial group is one unit per target and agent; members of one variant
+  // are selected together and never pull another variant in.
   const selectedSerialUnits = new Set<string>();
   for (const pair of pairs) {
     if (pair.disposition === 'run' && pair.test.serialId !== undefined) {
-      selectedSerialUnits.add(`${pair.target.name}::${pair.test.serialId}`);
+      selectedSerialUnits.add(`${pair.target.name}::${pair.agent}::${pair.test.serialId}`);
     }
   }
   return pairs.map((pair) => {
     if (pair.test.serialId === undefined) return pair;
-    const key = `${pair.target.name}::${pair.test.serialId}`;
+    const key = `${pair.target.name}::${pair.agent}::${pair.test.serialId}`;
     if (!selectedSerialUnits.has(key)) return pair;
     if (pair.disposition === 'run') return pair;
     if (pair.disposition === 'filtered' && pair.skip?.cause === 'filtered') {

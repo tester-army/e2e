@@ -76,9 +76,14 @@ describe('e2e run argument parsing', () => {
     expect(lastRunOptions().files).toEqual(['tests/a.e2e.ts', 'tests/b.e2e.ts']);
   });
 
-  it('passes --agent through as the agent of the run', async () => {
+  it('passes --agent through as the agents of the run', async () => {
     await invoke('run', '--agent', 'ux');
-    expect(lastRunOptions().agent).toBe('ux');
+    expect(lastRunOptions().agent).toEqual(['ux']);
+  });
+
+  it('collects repeated and comma-separated --agent names in order', async () => {
+    await invoke('run', '--agent', 'buyer, admin', '--agent', 'guest');
+    expect(lastRunOptions().agent).toEqual(['buyer', 'admin', 'guest']);
   });
 
   it('leaves the agent to the config without --agent', async () => {

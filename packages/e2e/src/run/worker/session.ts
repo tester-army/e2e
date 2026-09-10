@@ -5,7 +5,6 @@
  * run-error forwarding exist exactly once.
  */
 
-import type { TestIdentity } from '../../collect/collect.ts';
 import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
@@ -14,13 +13,13 @@ import { TargetExecutor } from '../execute.ts';
 import type { RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
 import { disappearedResult } from '../units.ts';
-import { encodeResult, type MainToWorker, type RunUnitMessage, type WorkerToMain } from './protocol.ts';
+import { encodeResult, type MainToWorker, type RunUnitMessage, type WirePair, type WorkerToMain } from './protocol.ts';
 
 /** Pairs resolved locally for one unit, plus identities that vanished. */
 export interface ResolvedUnitPairs {
   readonly pairs: readonly TestTargetPair[];
-  /** Planned tests absent from this worker's view of the file. */
-  readonly missing: readonly TestIdentity[];
+  /** Planned pairs whose test is absent from this worker's view of the file. */
+  readonly missing: readonly WirePair[];
   /**
    * The module registration the resolver imported to resolve the pairs, when
    * it imported one. Nothing has run in it, so the executor adopts it as the
@@ -98,11 +97,13 @@ export class TargetWorker {
             this.host.emit({
               type: 'pair-start',
               testId: pair.test.id,
+              agent: pair.agent,
               title: pair.test.titlePath.join(' > '),
               file: pair.test.file,
               serialId: pair.test.serialId,
             }),
-          onProgress: (testId, progress) => this.host.emit({ type: 'progress', testId, progress }),
+          onProgress: (pair, progress) =>
+            this.host.emit({ type: 'progress', testId: pair.test.id, agent: pair.agent, progress }),
           onRunAbort: (runError) => {
             this.interruptController.abort();
             this.host.emit({ type: 'run-abort', error: runError.error });
@@ -161,11 +162,11 @@ export class TargetWorker {
     // failed results for every pair it never heard about. Reporting the unit
     // done first would clear that bookkeeping and drop those tests silently.
     const { pairs, missing, registration } = await deps.resolvePairs(message);
-    for (const test of missing) {
+    for (const wire of missing) {
       executor.recordDisappeared(
-        `test ${test.id} disappeared before execution; registration must be deterministic`,
+        `test ${wire.test.id} disappeared before execution; registration must be deterministic`,
       );
-      executor.emit(disappearedResult(test, deps.target));
+      executor.emit(disappearedResult(wire, deps.target));
     }
     if (message.kind === 'setup') {
       // The imported registration has run nothing yet, so only the first

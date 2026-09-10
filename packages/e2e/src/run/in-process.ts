@@ -6,7 +6,6 @@
  * scheduler is capped at one worker so nothing overlaps in this process.
  */
 
-import type { TestIdentity } from '../collect/collect.ts';
 import type { ModuleRegistration } from '../collect/registry.ts';
 import type { Selection, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
@@ -14,7 +13,8 @@ import { classifyError, ConfigurationError, serializeError } from '../internal/e
 import type { DebugTrace } from '../internal/debug.ts';
 import type { SessionStore } from './sessions.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from './unit-runner.ts';
-import type { MainToWorker, RunUnitMessage } from './worker/protocol.ts';
+import { pairKey } from './units.ts';
+import type { MainToWorker, RunUnitMessage, WirePair } from './worker/protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './worker/session.ts';
 
 export interface InProcessRunnerOptions {
@@ -146,13 +146,13 @@ async function resolveFromSelection(
 ): Promise<ResolvedUnitPairs> {
   const selected = selection.perTarget.find((entry) => entry.target.name === target.name);
   const available = new Map<string, TestTargetPair>();
-  for (const pair of selected?.pairs ?? []) available.set(pair.test.id, pair);
+  for (const pair of selected?.pairs ?? []) available.set(pairKey(pair.test.id, pair.agent), pair);
 
   const pairs: TestTargetPair[] = [];
-  const missing: TestIdentity[] = [];
+  const missing: WirePair[] = [];
   for (const wire of unit.pairs) {
-    const pair = available.get(wire.test.id);
-    if (pair === undefined) missing.push(wire.test);
+    const pair = available.get(pairKey(wire.test.id, wire.agent));
+    if (pair === undefined) missing.push(wire);
     else pairs.push(pair);
   }
   return { pairs, missing, ...(registration === undefined ? {} : { registration }) };

@@ -80,6 +80,7 @@ export function reportResult(overrides: Partial<ReportResult> = {}): ReportResul
     source: SOURCE,
     targetId: 'web',
     platform: 'web',
+    agent: 'default',
     status: 'passed',
     attempts: [reportAttempt()],
     ...overrides,

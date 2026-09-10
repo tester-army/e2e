@@ -66,9 +66,15 @@ export type RunEventFact =
       readonly artifactsRoot: string;
       readonly ci: boolean;
       readonly targets: readonly string[];
-      /** The configured agent the run uses, when it is not `default`. */
-      readonly agent?: string;
-      /** The configured agent model as the AI SDK instance's `provider/model-id`; absent when none is configured. */
+      /**
+       * The configured agents unpinned tests run as, when they are not
+       * `default` alone: `--agent` named them, one result per test each.
+       */
+      readonly agents?: readonly string[];
+      /**
+       * The run agent's model as the AI SDK instance's `provider/model-id`;
+       * absent when none is configured or the run names several agents.
+       */
       readonly model?: string;
       /**
        * The model calls with `vision` use, in the same form; absent when
@@ -131,6 +137,8 @@ export type RunEventFact =
   | {
       readonly type: 'test-started';
       readonly testId: string;
+      /** The configured agent the test runs as; a test run as several starts once per agent. */
+      readonly agent: string;
       readonly title: string;
       /** Project-root-relative test file, so reporters can group by file. */
       readonly file: string;
@@ -145,6 +153,7 @@ export type RunEventFact =
   | {
       readonly type: 'step';
       readonly testId: string;
+      readonly agent: string;
       readonly target: string;
       readonly progress: StepProgress;
     }

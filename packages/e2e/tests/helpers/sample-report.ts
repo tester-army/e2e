@@ -62,6 +62,7 @@ export function sampleReport(): Report1Document {
         titlePath: ['Secret Title', 'checkout'],
         targetId: 'web',
         platform: 'web',
+        agent: 'default',
         memberTestIds: ['tests/secret.e2e.ts::Secret%20Title::pays'],
         status: 'passed',
         attempts: [

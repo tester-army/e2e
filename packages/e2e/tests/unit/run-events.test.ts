@@ -95,6 +95,7 @@ describe('toEventResult', () => {
         file: 'tests/a.e2e.ts',
       } as unknown as ResultRecord['test'],
       target,
+      agent: 'default',
       status: 'passed',
       selected: true,
       attempts: [],

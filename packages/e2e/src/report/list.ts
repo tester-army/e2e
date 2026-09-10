@@ -76,9 +76,12 @@ export interface ListReporterOptions {
   colors?: boolean;
 }
 
-/** The identity of one test-target pair across `test-started`, `step`, and `test-finished`. */
-function pairKey(testId: string, target: string): string {
-  return `${testId}@${target}`;
+/**
+ * The identity of one pair across `test-started`, `step`, and `test-finished`:
+ * a test runs once per agent it is pinned to, on each target.
+ */
+function pairKey(testId: string, agent: string, target: string): string {
+  return `${testId}@${agent}@${target}`;
 }
 
 /** What a test line and a failure entry need from a result's execution. */
@@ -278,6 +281,16 @@ export class ListReporter implements Reporter {
     this.window.redraw();
   }
 
+  /**
+   * A test's title with the agent it ran as, `[buyer]`, when that is not
+   * `default`: a test pinned to several agents lists once per agent, and the
+   * tag is what tells the lines apart.
+   */
+  private titledAs(title: string, agent: string): string {
+    const bare = bounded(title);
+    return agent === 'default' ? bare : `${bare} ${this.pc.dim(`[${bounded(agent)}]`)}`;
+  }
+
   /** A target's colored badge, `|web|` when colors are off (vitest's convention). */
   private badge(target: string): string {
     const name = bounded(target);
@@ -316,7 +329,9 @@ export class ListReporter implements Reporter {
       `${pc.bold(pc.black(pc.bgCyan(' RUN ')))} ${pc.cyan(`e2e v${version}`)} ${pc.gray(event.projectRoot)}`,
     );
     const details = [`run ${event.runId}`, `targets: ${event.targets.join(', ')}`];
-    if (event.agent !== undefined) details.push(`agent: ${event.agent}`);
+    if (event.agents !== undefined) {
+      details.push(`${event.agents.length === 1 ? 'agent' : 'agents'}: ${event.agents.map(bounded).join(', ')}`);
+    }
     if (event.ci) details.push('CI');
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {
@@ -403,11 +418,11 @@ export class ListReporter implements Reporter {
         if (test.serialId === event.serialId && test.group.target === event.target) test.executing = false;
       }
     }
-    const key = pairKey(event.testId, event.target);
+    const key = pairKey(event.testId, event.agent, event.target);
     this.pairs.set(key, {
       group: this.group(event.file, event.target),
       serialId: event.serialId,
-      title: bounded(event.title),
+      title: this.titledAs(event.title, event.agent),
       startedMs: Date.now(),
       executing: true,
       current: undefined,
@@ -425,7 +440,7 @@ export class ListReporter implements Reporter {
    * steps are fast and many, so they only ever show in the live window.
    */
   private step(event: RunEventOf<'step'>): void {
-    const running = this.pairs.get(pairKey(event.testId, event.target));
+    const running = this.pairs.get(pairKey(event.testId, event.agent, event.target));
     if (running === undefined) return;
     const { progress } = event;
     switch (progress.phase) {
@@ -492,13 +507,13 @@ export class ListReporter implements Reporter {
     // Unselected pairs are report-only: they never print and the plan never
     // counted them.
     if (!result.selected) return;
-    const key = pairKey(result.test.id, result.target.name);
+    const key = pairKey(result.test.id, result.agent, result.target.name);
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
     const group = this.group(result.test.file, result.target.name);
     const { durationMs, usage, error, videos } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
-    const title = bounded(result.test.titlePath.join(' > '));
+    const title = this.titledAs(result.test.titlePath.join(' > '), result.agent);
     const line: TestLine = {
       title,
       declarationIndex: result.test.declarationIndex,

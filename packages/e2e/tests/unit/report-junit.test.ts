@@ -85,6 +85,13 @@ describe('renderJunitReport', () => {
     expect(rootAttributes(xml)).toMatchObject({ tests: '1', failures: '0', errors: '0', skipped: '0' });
   });
 
+  it('appends the agent to the case name when it is not default, so a persona sweep keeps one case per persona', () => {
+    const xml = render(reportDocument({ results: [reportResult({ agent: 'buyer' }), reportResult({ id: 'result-2', agent: 'admin' })] }));
+    expect(xml).toContain('<testcase name="auth &gt; signs in [web] [buyer]"');
+    expect(xml).toContain('<testcase name="auth &gt; signs in [web] [admin]"');
+    expect(rootAttributes(xml)).toMatchObject({ tests: '2' });
+  });
+
   it('uses the final attempt for time and notes flaky passes in system-out', () => {
     const xml = render(
       reportDocument({
@@ -302,6 +309,7 @@ describe('renderJunitReport', () => {
       titlePath: ['checkout'],
       targetId: 'web',
       platform: 'web',
+      agent: 'default',
       memberTestIds: ['test-1', 'test-2'],
       status: 'failed',
       attempts: [

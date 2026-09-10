@@ -26,7 +26,7 @@ const defaultOptions: ResolvedTestOptions = {
   platforms: undefined,
   requires: [],
   session: undefined,
-  agent: undefined,
+  agents: ['default'],
   agentContext: undefined,
   skipReason: undefined,
   serial: false,
@@ -81,7 +81,7 @@ function makePair(
   target: ResolvedTarget,
   overrides: Partial<TestTargetPair> = {},
 ): TestTargetPair {
-  return { test, target, options: defaultOptions, disposition: 'run', skip: undefined, ...overrides };
+  return { test, target, agent: 'default', options: defaultOptions, disposition: 'run', skip: undefined, ...overrides };
 }
 
 function makeCollection(files: readonly string[], pairs: readonly TestTargetPair[]): Collection {
@@ -206,6 +206,7 @@ class FakeRunner implements UnitRunner {
         this.events.onMessage({
           type: 'pair-start',
           testId: pair.test.id,
+          agent: pair.agent,
           title: pair.test.id,
           file: pair.test.file,
           serialId: pair.test.serialId,
@@ -216,7 +217,7 @@ class FakeRunner implements UnitRunner {
       const status = this.behaviour.status?.[pair.test.id] ?? 'passed';
       this.events.onMessage({
         type: 'result',
-        result: { test: pair.test, status, selected: true, attempts: [] },
+        result: { test: pair.test, agent: pair.agent, status, selected: true, attempts: [] },
       });
     }
     this.events.onMessage({ type: 'unit-done', unitId: message.unitId, runErrors: [] });

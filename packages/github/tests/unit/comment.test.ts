@@ -160,6 +160,7 @@ describe('renderComment', () => {
       titlePath: ['group'],
       targetId: 'web',
       platform: 'web',
+      agent: 'default',
       memberTestIds: [member.testId],
       status: 'failed' as const,
       attempts: [

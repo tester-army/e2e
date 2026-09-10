@@ -39,7 +39,7 @@ import type {
 } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
-import { INTERRUPTED_BEFORE_START, pairResult, unstartedResult } from './units.ts';
+import { INTERRUPTED_BEFORE_START, pairKey, pairResult, unstartedResult } from './units.ts';
 import { sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
@@ -53,7 +53,7 @@ export interface ExecutionEvents {
   /** Fires before a runnable pair starts; a serial unit announces each member as it begins. */
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
-  onProgress?(testId: string, progress: StepProgress): void;
+  onProgress?(pair: TestTargetPair, progress: StepProgress): void;
   /**
    * A run-level configuration failure met mid-run, such as an unusable model
    * on the first `agent` acquisition. The run should stop; the error is
@@ -300,9 +300,14 @@ export class TargetExecutor implements SerialHost {
         continue;
       }
       if (pair.test.serialId !== undefined) {
-        if (!executedSerialUnits.has(pair.test.serialId)) {
-          executedSerialUnits.add(pair.test.serialId);
-          const members = ordered.filter((member) => member.test.serialId === pair.test.serialId);
+        // One serial unit per agent the group runs as: its members are the
+        // group's pairs under that agent, in declaration order.
+        const unitKey = pairKey(pair.test.serialId, pair.agent);
+        if (!executedSerialUnits.has(unitKey)) {
+          executedSerialUnits.add(unitKey);
+          const members = ordered.filter(
+            (member) => member.test.serialId === pair.test.serialId && member.agent === pair.agent,
+          );
           // A serial group owns its realm; whatever realm ordinary tests were
           // sharing ends here, afterAll included.
           if (realm !== null) await this.realms.leave(realm);
@@ -655,6 +660,7 @@ export class TargetExecutor implements SerialHost {
         test: pair.test.titlePath.join(' › '),
         testId: pair.test.id,
         target: this.target.name,
+        agent: pair.agent,
         attempt: attemptIndex,
       },
       () => this.executeAttempt(pair, registered, realm, attemptIndex, context),
@@ -679,7 +685,7 @@ export class TargetExecutor implements SerialHost {
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
       ...(onProgress === undefined
         ? {}
-        : { onProgress: (progress: StepProgress) => onProgress(pair.test.id, progress) }),
+        : { onProgress: (progress: StepProgress) => onProgress(pair, progress) }),
     });
     // Agent prompts quote completed steps as prior context. Serial-group
     // members prepend the steps earlier members already contributed.
@@ -709,10 +715,11 @@ export class TargetExecutor implements SerialHost {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: this.artifactsRoot,
       // Serial members share the group's session, and therefore its artifact
-      // directory; registering under their own would not resolve on disk.
+      // directory; registering under their own would not resolve on disk. The
+      // agent segment keeps a test run as several agents from overwriting itself.
       segments:
         shared?.artifactSegments ??
-        [this.target.name, sanitizePathSegment(pair.test.id), `attempt-${attemptIndex}`],
+        [this.target.name, sanitizePathSegment(pair.test.id), pair.agent, `attempt-${attemptIndex}`],
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
@@ -790,7 +797,7 @@ export class TargetExecutor implements SerialHost {
         artifacts: artifacts.sink,
         priorSteps,
         agentContext: pair.options.agentContext,
-        agent: pair.options.agent,
+        agent: pair.agent,
         saveSession,
         ...(cache === undefined ? {} : { cache }),
         debug: this.debug,

@@ -114,6 +114,11 @@ class Collector {
       if (sessions.length === 0) {
         throw new CollectionError('setup tests must declare at least one session');
       }
+      if (Array.isArray(options.agent)) {
+        throw new CollectionError(
+          'a setup test runs once per target and pins at most one agent; agent must be a single name',
+        );
+      }
       for (const name of sessions) {
         if (!SESSION_NAME_PATTERN.test(name)) {
           throw new CollectionError(
@@ -222,8 +227,27 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
       throw new CollectionError(`${label}: retries must be an integer from 0 through 10`);
     }
   }
-  if (options.agent !== undefined && (typeof options.agent !== 'string' || options.agent === '')) {
-    throw new CollectionError(`${label}: agent must be the name of a configured agent`);
+  if (options.agent !== undefined) validateAgentOption(options.agent, label);
+}
+
+/** `agent` names one configured agent, or lists several distinct ones to run the test once each. */
+function validateAgentOption(agent: unknown, label: string): void {
+  if (typeof agent === 'string') {
+    if (agent === '') throw new CollectionError(`${label}: agent must be the name of a configured agent`);
+    return;
+  }
+  if (!Array.isArray(agent) || agent.length === 0) {
+    throw new CollectionError(
+      `${label}: agent must be the name of a configured agent, or a non-empty list of names`,
+    );
+  }
+  for (const name of agent) {
+    if (typeof name !== 'string' || name === '') {
+      throw new CollectionError(`${label}: every entry of agent must be the name of a configured agent`);
+    }
+  }
+  if (new Set(agent).size !== agent.length) {
+    throw new CollectionError(`${label}: agent lists each name once`);
   }
 }
 

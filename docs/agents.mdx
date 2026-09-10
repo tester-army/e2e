@@ -81,8 +81,9 @@ and a single call can name another. A signed-in persona adds `session` on the
 same block to start from state a setup test saved; a first-time visitor needs
 nothing more than the pin. Innermost wins: a call's `agent` beats
 the test's, which beats its groups, which beat the run. `--agent` re-points
-what unpinned tests use and never overrides a pin, so a persona stays itself
-while you benchmark a model across everything that has no opinion.
+what unpinned tests use and never overrides a pin it does not name, so a
+persona stays itself while you benchmark a model across everything that has
+no opinion.
 
 ```ts title="tests/checkout.e2e.ts"
 test.describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
@@ -108,6 +109,45 @@ starts, and a call's unknown name is `INVALID_ARGUMENT`. Every agent step in
 the report records the agent it ran with, so two personas in one test stay
 distinguishable afterwards. Each agent's model is checked once per worker, on
 its first use, and shared with every other agent that names the same model.
+
+## One flow, several personas
+
+A pin can be a list. The test then runs once per agent named, as one result
+each, in one run: the same checkout as a first-time buyer and as an admin,
+side by side in the report.
+
+```ts title="tests/checkout.e2e.ts"
+test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
+  test('pays for one item', async ({ app, agent }) => { /* runs once per persona */ });
+  test('applies a promo code', async ({ app, agent }) => { /* ... */ });
+});
+```
+
+Every result carries the agent it ran as: `agent` in the report, `[admin]`
+after the title in the terminal and in JUnit case names, its own result id,
+and its own artifact directory. A reporter can group a sweep by persona and a
+dashboard can follow each persona's history. A serial group runs as one unit
+per agent, so its members share the group's pin; a member pinned elsewhere is
+a collection error. A setup test runs once per target and pins at most one
+agent.
+
+`--agent` selects among what a pin allows and never adds to it. With the list
+above, `--agent admin` runs the checkout as the admin alone, while `--agent
+thorough` leaves it running as both personas and points every unpinned test
+at `thorough`. The flag takes several names, comma-separated or repeated:
+
+```bash
+npx --no-install e2e run --agent buyer,admin
+```
+
+runs every unpinned test once per agent, a whole-suite sweep without touching
+a file. A run that names several agents lists them in its header and names no
+single model; each step reports its own.
+
+A persona that must be signed in pairs its pin with a `session`. A session is
+one name per block, so a sweep over signed-in personas is a loop over describe
+blocks: [Authentication](/authentication#personas) shows the setup test that
+produces one session per persona and the loop that consumes them.
 
 ## Add project tools
 

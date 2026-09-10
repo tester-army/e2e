@@ -161,7 +161,8 @@ test.only('just this one while I work', async () => {}); // rejected in CI
 Common options: `timeout` (default 120 s), `retries`, `tags` (filter with
 `--tag`), `session` (state from a setup test), `agentContext` (extra context
 for `agent.*` calls in this test), and `agent` (which of the configured
-[agents](/agents#several-agents) this test runs with). Group options apply to
+[agents](/agents#several-agents) this test runs with, or a list to run it
+[once per persona](/agents#one-flow-several-personas)). Group options apply to
 their tests; the [test reference](/reference/test) has every rule.
 
 Tests are independent and start from clean state. When a flow genuinely must

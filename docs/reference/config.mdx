@@ -411,8 +411,10 @@ agents?: Record<string, StepExecutor | {
 Agents by name. `default` is the one tests run with, and it exists even when
 the config names none: the built-in agent, which then needs a model from `createAgent({ model })`.
 Other names are other brains for the same suite: a run re-points its default
-with `e2e run --agent <name>`, a test or describe block pins one with
-`{ agent: 'name' }`, and any `agent.*` call can name one for that call. An
+with `e2e run --agent <name>` (several names run every unpinned test once per
+agent), a test or describe block pins one with `{ agent: 'name' }` or several
+with `{ agent: ['buyer', 'admin'] }` to run once per agent, and any `agent.*`
+call can name one for that call. An
 unknown name fails by where it was written, always naming the configured ones:
 `--agent` is `INVALID_CONFIG` and a test or describe pin is `COLLECTION_ERROR`,
 both before anything starts; a call's `agent` is `INVALID_ARGUMENT`, before its

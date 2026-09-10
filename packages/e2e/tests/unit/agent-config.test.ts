@@ -386,21 +386,21 @@ describe('named agents', () => {
     });
     const config = resolve({ agents: agents() });
     expect([...config.agents.keys()]).toEqual(['default', 'ux']);
-    expect(config.agentName).toBe('default');
+    expect(config.agentNames).toEqual(['default']);
     expect(config.agent.model).toMatchObject({ provider: 'gateway', id: 'openai/gpt-5.4-mini' });
-    const picked = resolve({ agents: agents() }, BASE_ENV, { agent: 'ux' });
-    expect(picked.agentName).toBe('ux');
+    const picked = resolve({ agents: agents() }, BASE_ENV, { agents: ['ux'] });
+    expect(picked.agentNames).toEqual(['ux']);
     expect(picked.agent.model).toMatchObject({ provider: 'gateway', id: 'google/gemini-3.6-flash' });
     expect(picked.agent.context).toBe('Review the UX.');
     // The limits carry the largest observation budget any agent may use, whichever runs.
     const uneven = resolve({ agents: { default: { maxObservationBytes: 4_096 }, ux: { maxObservationBytes: 65_536 } } });
     expect(uneven.limits.maxObservationBytes).toBe(65_536);
-    expect(resolve({ agents: { default: { maxObservationBytes: 4_096 }, ux: { maxObservationBytes: 65_536 } } }, BASE_ENV, { agent: 'ux' }).limits.maxObservationBytes).toBe(65_536);
+    expect(resolve({ agents: { default: { maxObservationBytes: 4_096 }, ux: { maxObservationBytes: 65_536 } } }, BASE_ENV, { agents: ['ux'] }).limits.maxObservationBytes).toBe(65_536);
   });
 
   it('always has a default agent, the built-in one without a model, even when only others are named', () => {
     const config = resolve({ agents: { ux: named('ux-brain') } });
-    expect(config.agentName).toBe('default');
+    expect(config.agentNames).toEqual(['default']);
     expect(config.agent.executor).toBeUndefined();
     expect(config.agent.model).toBeUndefined();
     expect(config.agents.get('ux')?.executor?.name).toBe('ux-brain');
@@ -413,7 +413,7 @@ describe('named agents', () => {
   });
 
   it('rejects an unknown --agent before anything starts, naming the configured ones', () => {
-    expect(() => resolve({ agents: { default: {}, ux: {} } }, BASE_ENV, { agent: 'uxx' })).toThrow(
+    expect(() => resolve({ agents: { default: {}, ux: {} } }, BASE_ENV, { agents: ['uxx'] })).toThrow(
       /unknown agent "uxx"; configured: default, ux; did you mean "ux"\?/,
     );
   });

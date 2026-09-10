@@ -19,6 +19,8 @@ import type { StepProgress } from '../steps.ts';
 /** One runnable pair on the wire; the worker resolves the test function. */
 export interface WirePair {
   readonly test: TestIdentity;
+  /** The configured agent this pair runs as; one test may appear once per agent. */
+  readonly agent: string;
   readonly options: ResolvedTestOptions;
 }
 
@@ -102,6 +104,8 @@ export interface ReadyMessage {
 /** One pair about to execute, as reporters see it. */
 export interface PairStart {
   readonly testId: string;
+  /** The configured agent the pair runs as; with the test id, the pair's identity. */
+  readonly agent: string;
   /** Joined title path, so reporters need no side lookup by test ID. */
   readonly title: string;
   /** Project-root-relative test file. */
@@ -123,6 +127,7 @@ export interface PairStartMessage extends PairStart {
 export interface ProgressMessage {
   readonly type: 'progress';
   readonly testId: string;
+  readonly agent: string;
   readonly progress: StepProgress;
 }
 

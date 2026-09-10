@@ -88,9 +88,10 @@ describe('canonicalJson (RFC 8785)', () => {
 });
 
 describe('resultId', () => {
-  it('is SHA-256/JCS of { testId, targetId }', () => {
-    expect(resultId('t.ts::a', 'web')).toBe(canonicalDigest({ testId: 't.ts::a', targetId: 'web' }));
-    expect(resultId('t.ts::a', 'web')).toMatch(/^[0-9a-f]{64}$/);
+  it('is SHA-256/JCS of { testId, targetId, agent }, so a test run as two agents has two ids', () => {
+    expect(resultId('t.ts::a', 'web', 'default')).toBe(canonicalDigest({ testId: 't.ts::a', targetId: 'web', agent: 'default' }));
+    expect(resultId('t.ts::a', 'web', 'default')).toMatch(/^[0-9a-f]{64}$/);
+    expect(resultId('t.ts::a', 'web', 'buyer')).not.toBe(resultId('t.ts::a', 'web', 'admin'));
   });
 });
 

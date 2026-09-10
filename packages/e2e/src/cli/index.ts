@@ -268,7 +268,11 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
     .optionsGroup('Execution:')
     .option('--headed', 'show the UI while tests run, when the engine supports it')
-    .option('--agent <name>', 'the configured agent to run with (default: agents.default)')
+    .option(
+      '--agent <names>',
+      'the configured agent unpinned tests run with (default: agents.default); comma-separated or repeated names run each such test once per agent',
+      (value: string, previous: string[] = []) => [...previous, ...parseList(value)],
+    )
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
     .option('--no-cache', 'run with the trace cache off, whatever the config says')
@@ -288,6 +292,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --agent ux tests/onboarding.e2e.ts',
+          'e2e run --agent buyer,admin tests/checkout.e2e.ts',
           'AI_GATEWAY_API_KEY=... e2e run --no-cache',
         ]),
         '',
@@ -306,7 +311,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           tag?: string[];
           tagMode: TagMode;
           headed?: boolean;
-          agent?: string;
+          agent?: string[];
           retries?: number;
           workers?: number;
           reporter?: Reporter[];

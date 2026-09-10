@@ -6,7 +6,7 @@ transcript between calls. Deterministic tests never load a model.
 
 ## Configure a model
 
-Agents live under `agents` by name; `default` is the one tests use, `e2e run --agent <name>` re-points that default, a test or describe pins one with `{ agent: 'name' }`, and any `agent.*` call can name one with `{ agent: 'name' }` (innermost wins). There is no default model. Pick one of three shapes for an entry:
+Agents live under `agents` by name; `default` is the one tests use, `e2e run --agent <name>` re-points that default, a test or describe pins one with `{ agent: 'name' }` or several with `{ agent: ['buyer', 'admin'] }` (the test runs once per agent, one result each, tagged `[admin]` in the terminal and `agent` in the report), and any `agent.*` call can name one with `{ agent: 'name' }` (innermost wins). `--agent buyer,admin` runs every unpinned test once per agent; on a pinned list it narrows to the names both give and never overrides a pin it does not name. A signed-in persona pairs the pin with a `session`, one per describe block, so a loop over describe blocks sweeps signed-in personas. There is no default model. Pick one of three shapes for an entry:
 
 ```ts
 // e2e.config.ts

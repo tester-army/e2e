@@ -83,6 +83,67 @@ in runner memory, and the whole directory is deleted during cleanup. They are
 deliberately not reused across runs: a session file is a bearer credential, and a
 long-lived one is a credential with no expiry story.
 
+## Personas
+
+The same flow as several signed-in users is one setup test that saves a
+session per persona, and a loop over describe blocks that consumes them. Each
+block pins the persona's [agent](/agents#one-flow-several-personas) and its
+session; the titles differ, so every persona has results of its own.
+
+<Tabs>
+  <Tab title="tests/personas.setup.e2e.ts">
+
+```ts
+import { test } from '@e2edev/playwright';
+import { expect, credentials } from '@e2edev/e2e';
+
+const PERSONAS = ['buyer', 'admin'] as const;
+
+test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, screen, session, web }) => {
+  for (const name of PERSONAS) {
+    const user = credentials.user(name);
+    await app.open('/login');
+    await screen.getByLabel('Username').fill(user.username);
+    await screen.getByLabel('Password').fill(user.password);
+    await screen.getByRole('button', { name: 'Sign in' }).tap();
+    await expect(web).toHaveURL('/dashboard');
+    await session.save(name);
+    await app.open('/logout');
+  }
+});
+```
+
+  </Tab>
+  <Tab title="tests/checkout.e2e.ts">
+
+```ts
+import { test } from '@e2edev/playwright';
+
+for (const persona of ['buyer', 'admin'] as const) {
+  test.describe(`checkout as ${persona}`, { agent: persona, session: persona, tags: [persona] }, () => {
+    test('pays for one item', async ({ app, agent }) => {
+      await app.open('/cart');
+      await agent.act('pay for the item in the cart');
+      await agent.assert('the order confirmation is shown');
+    });
+  });
+}
+```
+
+  </Tab>
+</Tabs>
+
+The flow is written once. The `agents` entry gives a persona its voice
+(`buyer: { context: 'You are a first-time buyer who has never seen this site.' }`),
+the `credentials` entry its account, and the session its signed-in state.
+Module evaluation is plain code, so the loop registers two groups; the tag
+lets `--tag admin` run one persona's block alone.
+
+A persona that needs no sign-in skips the session and the loop: a list pin,
+`{ agent: ['buyer', 'admin'] }`, runs the block once per agent, and
+`--agent admin` narrows it. [Your own agent](/agents#one-flow-several-personas)
+covers that form.
+
 ## Credentials
 
 Never hardcode a password in a test. Declare it in config and source the value

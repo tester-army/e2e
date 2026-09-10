@@ -131,8 +131,11 @@ function errorBody(error: ReportError): string {
 
 function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): RenderedCase {
   const final = finalAttempt(result, groups);
+  // The agent joins the name only when it is not `default`, so a suite that
+  // never names one keeps the case names its CI history is keyed on.
+  const agent = result.agent === 'default' ? '' : ` [${result.agent}]`;
   const open = `<testcase ${attributes({
-    name: `${result.titlePath.join(' > ')} [${result.targetId}]`,
+    name: `${result.titlePath.join(' > ')} [${result.targetId}]${agent}`,
     classname: result.file,
     time: seconds(final.durationMs),
   })}`;

@@ -101,7 +101,10 @@ export async function runSerialUnit(
 ): Promise<SerialGroupRecord> {
   const first = members[0]!;
   const serialId = first.test.serialId!;
-  const groupRecordId = canonicalDigest({ serialId, targetId: host.target.name });
+  // Every member of a unit runs as the same agent (selection guarantees it),
+  // so the group is one variant of the flow and is identified as such.
+  const agent = first.agent;
+  const groupRecordId = canonicalDigest({ serialId, targetId: host.target.name, agent });
 
   const group: SerialGroupRecord = {
     id: groupRecordId,
@@ -111,6 +114,7 @@ export async function runSerialUnit(
     titlePath: serialTitlePath(first.test),
     targetId: host.target.name,
     platform: host.target.platform,
+    agent,
     memberTestIds: members.map((member) => member.test.id),
     status: 'failed',
     attempts: [],
@@ -182,6 +186,7 @@ async function runSerialAttempt(
   const artifactSegments = [
     host.target.name,
     sanitizePathSegment(first.test.serialId ?? first.test.id),
+    first.agent,
     `attempt-${attemptIndex}`,
   ];
   const artifacts = createAttemptArtifacts({

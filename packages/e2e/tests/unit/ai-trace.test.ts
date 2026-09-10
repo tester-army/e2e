@@ -8,7 +8,7 @@ import {
   withAiTraceStep,
 } from '../../src/internal/ai-trace.ts';
 
-const SCOPE = { test: 'todos › adds one', testId: 't1', target: 'web', attempt: 0 };
+const SCOPE = { test: 'todos › adds one', testId: 't1', target: 'web', agent: 'default', attempt: 0 };
 
 /** Drives one two-step generation through the recorder the way the SDK does. */
 async function generation(recorder: AiTraceRecorder, callId: string, options: { fail?: boolean } = {}) {

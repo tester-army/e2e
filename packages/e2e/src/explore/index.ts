@@ -99,10 +99,12 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const { raw, projectRoot } = await loadRawConfig(options, cwd);
   // Nothing replays an exploration, and a retry would explore twice.
   const rawConfig: E2EConfig = { ...raw, cache: 'off', retries: 0 };
-  const resolved = resolveConfig(rawConfig, { projectRoot, env, cli: options.agent === undefined ? {} : { agent: options.agent } });
+  const resolved = resolveConfig(rawConfig, { projectRoot, env, cli: options.agent === undefined ? {} : { agents: [options.agent] } });
   const target = pickTarget(resolved.targets, options.target, notice);
   const accounts = credentialAccounts(resolved.credentials);
-  if (resolved.agentName !== 'default') notice(`exploring with agent "${resolved.agentName}"`);
+  // An exploration runs as exactly one agent: the one named, else `default`.
+  const agentName = resolved.agentNames[0]!;
+  if (agentName !== 'default') notice(`exploring with agent "${agentName}"`);
 
   const state = new ExploreState(goal, budgets);
   const explorer = createExplorer({ state, from: resolved.agent.executor, notice });
@@ -110,7 +112,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     cwd: projectRoot,
     rawConfig: {
       ...rawConfig,
-      agents: { ...rawConfig.agents, [resolved.agentName]: exploreAgentConfig(rawConfig.agents?.[resolved.agentName], explorer) },
+      agents: { ...rawConfig.agents, [agentName]: exploreAgentConfig(rawConfig.agents?.[agentName], explorer) },
       reporters: [...(rawConfig.reporters ?? ['list']), exploreReporter(state)],
     },
     agent: options.agent,

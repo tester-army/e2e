@@ -162,7 +162,7 @@ platform, skipped, or is a setup test.
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it |
-| `--agent <name>` | string | `default` | Re-points the run's agent: every test and call that names no `agent` of its own runs with `agents.<name>`; a test or group pinned with `{ agent }` keeps its pin. An unknown name is `INVALID_CONFIG` before any process starts, naming the configured agents. |
+| `--agent <names>` | list of strings | `default` | The configured agents unpinned tests run as, comma-separated or repeated: every test and call that names no `agent` of its own runs once per name, one result each. A test or group pinned with `{ agent }` runs as the pinned names the flag also gives, or as its whole pin when the flag names none of them. An unknown name is `INVALID_CONFIG` before any process starts, naming the configured agents. |
 | `--retries <n>` | integer 0-10 | resolved config value | Replaces `config.retries`; out of range is `INVALID_CONFIG` |
 | `--workers <n>` | integer 1-1024 | resolved config value | Replaces `config.workers`; `--workers 0` is `INVALID_CONFIG` |
 | `--reporter <ids>` | comma-separated list | resolved config value | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. [Reporter objects](/reference/reporters) in the config keep running. |

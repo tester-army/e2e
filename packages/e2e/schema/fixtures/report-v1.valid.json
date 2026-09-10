@@ -69,6 +69,7 @@
         },
         "targetId": "web",
         "platform": "web",
+        "agent": "default",
         "status": "passed",
         "attempts": [
           {

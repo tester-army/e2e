@@ -92,10 +92,13 @@ export interface ResolvedConfig {
   /** The reporter objects the config names; `--reporter` never removes one. */
   readonly customReporters: readonly Reporter[];
   readonly testIdAttribute: string;
-  /** The agent this run uses: `agents.default`, or the one `--agent` named. */
+  /**
+   * The agents unpinned tests run as, one result each: `agents.default`, or
+   * the names `--agent` gave, in order and deduplicated. Never empty.
+   */
+  readonly agentNames: readonly string[];
+  /** The first of `agentNames`: the run's agent where exactly one is wanted (`e2e explore`). */
   readonly agent: ResolvedAgentConfig;
-  /** Its name in the config. */
-  readonly agentName: string;
   /** Every configured agent, `default` included, by name. */
   readonly agents: ReadonlyMap<string, ResolvedAgentConfig>;
   readonly cache: ResolvedCacheConfig;
@@ -130,8 +133,8 @@ export interface CliOverrides {
   cache?: CacheMode;
   /** `--video`: adds the `video` artifact kind to whatever the config asks for. */
   video?: boolean;
-  /** `--agent`: the configured agent the run uses instead of `default`. */
-  agent?: string;
+  /** `--agent`: the configured agents unpinned tests run as, instead of `default` alone. */
+  agents?: readonly string[];
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -264,7 +267,7 @@ export function resolveConfig(
   // Limits first: the agent context budget is a limits key, and the resolved
   // observation budget is agent-owned, so the dependency runs one way.
   const baseLimits = resolveLimits(raw);
-  const { agents, agentName, agent } = resolveAgents(raw.agents, env, ci, baseLimits, cli.agent);
+  const { agents, agentNames, agent } = resolveAgents(raw.agents, env, ci, baseLimits, cli.agents);
   // The report's ceiling is the largest any configured agent may use: a
   // pinned agent's calls are bounded by its own value, and the run-level
   // number must not read lower than what a step could actually send.
@@ -295,8 +298,8 @@ export function resolveConfig(
     reporters,
     customReporters,
     testIdAttribute,
+    agentNames,
     agent,
-    agentName,
     agents,
     cache,
     limits,
@@ -720,8 +723,8 @@ const AGENT_NAME_PATTERN = TARGET_NAME_PATTERN;
 
 /**
  * Resolves `agents`: every named entry, and `default` even when the config
- * names none (the built-in agent, which then needs `createAgent({ model })`). The run's agent is
- * `default` unless `--agent` picked another; an unknown name is a config
+ * names none (the built-in agent, which then needs `createAgent({ model })`). The run's agents are
+ * `default` alone unless `--agent` named others; an unknown name is a config
  * error before anything starts.
  */
 function resolveAgents(
@@ -729,8 +732,8 @@ function resolveAgents(
   env: NodeJS.ProcessEnv,
   ci: boolean,
   limits: ResolvedBaseLimits,
-  selected: string | undefined,
-): { agents: ReadonlyMap<string, ResolvedAgentConfig>; agentName: string; agent: ResolvedAgentConfig } {
+  selected: readonly string[] | undefined,
+): { agents: ReadonlyMap<string, ResolvedAgentConfig>; agentNames: readonly string[]; agent: ResolvedAgentConfig } {
   if (raw !== undefined && (typeof raw !== 'object' || raw === null || Array.isArray(raw) || isStepExecutor(raw))) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -750,15 +753,16 @@ function resolveAgents(
   if (!agents.has(DEFAULT_AGENT_NAME)) {
     agents.set(DEFAULT_AGENT_NAME, resolveAgentConfig(undefined, env, ci, limits));
   }
-  const agentName = selected ?? DEFAULT_AGENT_NAME;
-  const agent = agents.get(agentName);
-  if (agent === undefined) {
+  // `--agent a --agent a` is one agent, not two results per test.
+  const agentNames = selected === undefined || selected.length === 0 ? [DEFAULT_AGENT_NAME] : [...new Set(selected)];
+  for (const name of agentNames) {
+    if (agents.has(name)) continue;
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `unknown agent "${agentName}"; configured: ${[...agents.keys()].join(', ')}${didYouMean(agentName, [...agents.keys()])}`,
+      `unknown agent "${name}"; configured: ${[...agents.keys()].join(', ')}${didYouMean(name, [...agents.keys()])}`,
     );
   }
-  return { agents, agentName, agent };
+  return { agents, agentNames, agent: agents.get(agentNames[0]!)! };
 }
 
 /** The artifact kinds as the digest sees them: no store, no video. */

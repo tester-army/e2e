@@ -5,7 +5,7 @@
  * actual execution to `TargetWorker`.
  */
 
-import { collectFromRegistration, type TestIdentity } from '../../collect/collect.ts';
+import { collectFromRegistration } from '../../collect/collect.ts';
 import { collectModule } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
@@ -16,7 +16,7 @@ import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trac
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
 import { SessionStore } from '../sessions.ts';
-import type { ChildProcessInbound, RunUnitMessage, WorkerBootstrap, WorkerToMain } from './protocol.ts';
+import type { ChildProcessInbound, RunUnitMessage, WirePair, WorkerBootstrap, WorkerToMain } from './protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './session.ts';
 
 /**
@@ -96,14 +96,14 @@ async function bootstrap(
     const collected = collectFromRegistration(config.projectRoot, unit.absolutePath, registration);
     const byId = new Map(collected.tests.map((test) => [test.id, test]));
     const pairs: TestTargetPair[] = [];
-    const missing: TestIdentity[] = [];
+    const missing: WirePair[] = [];
     for (const wire of unit.pairs) {
       const test = byId.get(wire.test.id);
       if (test === undefined) {
-        missing.push(wire.test);
+        missing.push(wire);
         continue;
       }
-      pairs.push({ test, target, options: wire.options, disposition: 'run', skip: undefined });
+      pairs.push({ test, target, agent: wire.agent, options: wire.options, disposition: 'run', skip: undefined });
     }
     return { pairs, missing, registration };
   };

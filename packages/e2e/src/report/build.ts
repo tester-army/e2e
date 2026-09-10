@@ -210,6 +210,8 @@ export interface ReportSerialGroup {
   titlePath: readonly string[];
   targetId: string;
   platform: string;
+  /** The configured agent this variant of the group ran as. */
+  agent: string;
   memberTestIds: readonly string[];
   status: SerialGroupRecord['status'];
   skip?: SkipInfo | undefined;
@@ -226,6 +228,12 @@ export interface ReportResult {
   source: ReportSource;
   targetId: string;
   platform: string;
+  /**
+   * The configured agent the test ran as. A test pinned to several agents,
+   * or a run with several `--agent` names, yields one result per agent, each
+   * with its own `id`.
+   */
+  agent: string;
   serialGroupId?: string | undefined;
   status: ResultRecord['status'];
   skip?: SkipInfo | undefined;
@@ -390,6 +398,7 @@ function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
     titlePath: group.titlePath,
     targetId: group.targetId,
     platform: group.platform,
+    agent: group.agent,
     memberTestIds: group.memberTestIds,
     status: group.status,
     skip: group.status === 'skipped' ? group.skip : undefined,
@@ -399,7 +408,7 @@ function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
 
 function serializeResult(config: ResolvedConfig | undefined, result: ResultRecord): ReportResult {
   return {
-    id: resultId(result.test.id, result.target.name),
+    id: resultId(result.test.id, result.target.name, result.agent),
     testId: result.test.id,
     kind: result.test.kind,
     declarationIndex: result.test.declarationIndex,
@@ -408,6 +417,7 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     source: relativeSource(config, result.test.source, result.test.file),
     targetId: result.target.name,
     platform: result.target.platform,
+    agent: result.agent,
     serialGroupId: result.serialGroupId,
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,

@@ -29,6 +29,11 @@ function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.Proce
   return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: '/root', env });
 }
 
+/** `config()` with command-line overrides, the way `--agent` reaches selection. */
+function configWith(raw: Parameters<typeof resolveConfig>[0], cli: NonNullable<Parameters<typeof resolveConfig>[1]['cli']>) {
+  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: '/root', env: ENV, cli });
+}
+
 describe('resolveOptions', () => {
   it('pins a test to a configured agent, innermost wins, and rejects a name agents does not define', async () => {
     const agents = { agents: { default: {}, buyer: { context: 'buyer' }, admin: { context: 'admin' } } };
@@ -43,8 +48,8 @@ describe('resolveOptions', () => {
       test('unpinned', noop);
     });
     const cfg = config(agents);
-    const pins = col.tests.map((entry) => resolveOptions(entry, cfg).agent);
-    expect(pins).toEqual(['buyer', 'admin', 'buyer', undefined]);
+    const pins = col.tests.map((entry) => resolveOptions(entry, cfg).agents);
+    expect(pins).toEqual([['buyer'], ['admin'], ['buyer'], ['default']]);
 
     const unknown = await collection(() => {
       test('elsewhere', { agent: 'buyr' }, noop);
@@ -56,6 +61,75 @@ describe('resolveOptions', () => {
 
   it('rejects an empty agent name at registration', async () => {
     await expect(collection(() => { test('x', { agent: '' }, noop); })).rejects.toThrow(/test options: agent must be the name of a configured agent/);
+  });
+
+  it('rejects an empty, repeated, or blank-entry agent list at registration', async () => {
+    await expect(collection(() => { test('x', { agent: [] }, noop); })).rejects.toThrow(/non-empty list of names/);
+    await expect(collection(() => { test('x', { agent: ['a', 'a'] }, noop); })).rejects.toThrow(/agent lists each name once/);
+    await expect(collection(() => { test('x', { agent: ['a', ''] }, noop); })).rejects.toThrow(/every entry of agent must be the name/);
+  });
+
+  it('runs a test once per pinned agent; --agent narrows a pin to the names both give and leaves a pin it misses whole', async () => {
+    const agents = { agents: { default: {}, buyer: {}, admin: {}, guest: {}, thorough: {} } };
+    const col = await collection(() => {
+      test.describe('as each persona', { agent: ['buyer', 'admin', 'guest'] }, () => {
+        test('checks out', noop);
+        test('as the admin only', { agent: 'admin' }, noop);
+      });
+      test('unpinned', noop);
+    });
+    const agentsOf = (cfg: ReturnType<typeof config>) => col.tests.map((entry) => resolveOptions(entry, cfg).agents);
+
+    // No flag: the pin as written, and `default` for the rest.
+    expect(agentsOf(config(agents))).toEqual([['buyer', 'admin', 'guest'], ['admin'], ['default']]);
+    const pairs = select(col, config(agents)).pairs;
+    expect(pairs.filter((pair) => pair.test.title === 'checks out').map((pair) => pair.agent)).toEqual(['buyer', 'admin', 'guest']);
+    expect(pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run', 'run', 'run']);
+
+    // The flag names some of the pin: the pin narrows to those, in pin order.
+    expect(agentsOf(configWith(agents, { agents: ['guest', 'admin'] }))).toEqual([['admin', 'guest'], ['admin'], ['guest', 'admin']]);
+
+    // The flag names none of the pin: the pin stands, the unpinned test follows the flag.
+    expect(agentsOf(configWith(agents, { agents: ['thorough'] }))).toEqual([['buyer', 'admin', 'guest'], ['admin'], ['thorough']]);
+  });
+
+  it('runs a setup test once per target, as its pin or the first run agent, and rejects a list on it', async () => {
+    const col = await collection(() => {
+      test.setup('sign in', { sessions: ['s'] }, noop);
+      test.setup('sign in as admin', { sessions: ['a'], agent: 'admin' }, noop);
+    });
+    const cfg = configWith({ agents: { default: {}, buyer: {}, admin: {} } }, { agents: ['buyer', 'admin'] });
+    expect(col.tests.map((entry) => resolveOptions(entry, cfg).agents)).toEqual([['buyer'], ['admin']]);
+    await expect(
+      collection(() => { test.setup('x', { sessions: ['s'], agent: ['a', 'b'] } as never, noop); }),
+    ).rejects.toThrow(/setup test runs once per target and pins at most one agent/);
+  });
+
+  it('fans a serial group out per agent and rejects a member pinned away from its group', async () => {
+    const agents = { agents: { default: {}, buyer: {}, admin: {} } };
+    const col = await collection(() => {
+      test.describe('wizard', { serial: true, agent: ['buyer', 'admin'] }, () => {
+        test('step 1', noop);
+        test('step 2', noop);
+      });
+    });
+    const pairs = select(col, config(agents)).pairs;
+    expect(pairs.map((pair) => [pair.test.title, pair.agent])).toEqual([
+      ['step 1', 'buyer'],
+      ['step 1', 'admin'],
+      ['step 2', 'buyer'],
+      ['step 2', 'admin'],
+    ]);
+
+    const uneven = await collection(() => {
+      test.describe('wizard', { serial: true, agent: ['buyer', 'admin'] }, () => {
+        test('step 1', noop);
+        test('step 2', { agent: 'admin' }, noop);
+      });
+    });
+    expect(() => select(uneven, config(agents))).toThrow(
+      /serial group "wizard" in tests\/a\.e2e\.ts runs as agents \[buyer, admin\] but its member "step 2" pins \[admin\]; pin the agent on the serial describe/,
+    );
   });
 
   it('resolves precedence: test > inner group > outer group > config', async () => {

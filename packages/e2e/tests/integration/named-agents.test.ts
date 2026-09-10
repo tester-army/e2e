@@ -48,6 +48,23 @@ test('an unknown agent on a call fails that call', async ({ app, agent }) => {
 });
 `;
 
+const PERSONA_SUITE = `
+import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
+  test('pays for one item', async ({ app, agent }) => {
+    await app.open();
+    expect((await agent.act('pay')).summary).toMatch(/^done by (buyer|admin)-brain$/);
+  });
+});
+
+test('unpinned follows the run', async ({ app, agent }) => {
+  await app.open();
+  expect((await agent.act('whatever')).summary).toContain('done by');
+});
+`;
+
 /** An executor that signs its verdict, so the report shows which one ran. */
 function signing(name: string): StepExecutor {
   return { name, async runStep() { return { status: 'passed', summary: `done by ${name}` }; } };
@@ -73,12 +90,12 @@ describe('named agents', () => {
     const byDefault = await runExisting(project, { appUrl: app.url, config, runOptions: { onEvent: (event) => { if (event.type === 'run-started') started.push(event); } } });
     expect(byDefault.status).toBe('passed');
     expect(stepSummary(byDefault)).toBe('done by house');
-    expect(started[0]).not.toHaveProperty('agent');
+    expect(started[0]).not.toHaveProperty('agents');
 
     const byName = await runExisting(project, { appUrl: app.url, config, runOptions: { agent: 'ux', onEvent: (event) => { if (event.type === 'run-started') started.push(event); } } });
     expect(byName.status).toBe('passed');
     expect(stepSummary(byName)).toBe('done by ux-review');
-    expect(started[1]).toMatchObject({ type: 'run-started', agent: 'ux' });
+    expect(started[1]).toMatchObject({ type: 'run-started', agents: ['ux'] });
   }, 120_000);
 
   it('pins suites and calls to agents, records each step\'s agent, and keeps pins under --agent', async () => {
@@ -116,6 +133,44 @@ describe('named agents', () => {
       expect(outcome.exitCode).toBe(1);
     } finally {
       pinned.cleanup();
+    }
+  }, 120_000);
+
+  it('runs a test once per pinned agent, with its own result and steps, and --agent narrows the pin or fans unpinned tests out', async () => {
+    const personas = createProject({ 'tests/personas.e2e.ts': PERSONA_SUITE });
+    try {
+      const config = {
+        tests: 'tests/**/*.e2e.ts',
+        cache: 'off' as const,
+        agents: { default: signing('house'), buyer: signing('buyer-brain'), admin: signing('admin-brain'), thorough: signing('thorough-brain') },
+      };
+      const summarize = (outcome: Awaited<ReturnType<typeof runExisting>>) =>
+        outcome.report.run.results.map((result) => [result.titlePath.at(-1), result.agent, result.status, agentSteps(result)[0]?.explanation]);
+
+      // No flag: the pinned test runs as each persona, the unpinned one as default.
+      const started: RunEvent[] = [];
+      const sweep = await runExisting(personas, { appUrl: app.url, config, runOptions: { onEvent: (event) => { if (event.type === 'run-started') started.push(event); } } });
+      expect(sweep.status).toBe('passed');
+      expect(summarize(sweep)).toEqual([
+        ['pays for one item', 'buyer', 'passed', 'done by buyer-brain'],
+        ['pays for one item', 'admin', 'passed', 'done by admin-brain'],
+        ['unpinned follows the run', 'default', 'passed', 'done by house'],
+      ]);
+      expect(new Set(sweep.report.run.results.map((result) => result.id)).size).toBe(3);
+      expect(started[0]).not.toHaveProperty('agents');
+
+      // --agent admin,thorough: the pin narrows to admin; the unpinned test runs once per flag name.
+      const narrowed = await runExisting(personas, { appUrl: app.url, config, runOptions: { agent: ['admin', 'thorough'], onEvent: (event) => { if (event.type === 'run-started') started.push(event); } } });
+      expect(narrowed.status).toBe('passed');
+      expect(summarize(narrowed)).toEqual([
+        ['pays for one item', 'admin', 'passed', 'done by admin-brain'],
+        ['unpinned follows the run', 'admin', 'passed', 'done by admin-brain'],
+        ['unpinned follows the run', 'thorough', 'passed', 'done by thorough-brain'],
+      ]);
+      expect(started[1]).toMatchObject({ type: 'run-started', agents: ['admin', 'thorough'] });
+      expect(started[1]).not.toHaveProperty('model');
+    } finally {
+      personas.cleanup();
     }
   }, 120_000);
 

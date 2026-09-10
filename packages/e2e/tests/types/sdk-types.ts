@@ -89,6 +89,13 @@ await agent.extract('read total', { schema: z.object({ total: z.number() }), max
 test.describe('synchronous', () => {});
 // @ts-expect-error describe registration must be synchronous
 test.describe('asynchronous', async () => {});
+
+// A pin names one configured agent, or lists several to run the test once per agent.
+test.describe('as one persona', { agent: 'buyer' }, () => {});
+test.describe('as each persona', { agent: ['buyer', 'admin'] }, () => {});
+test('as each persona', { agent: ['buyer', 'admin'] }, async () => {});
+// @ts-expect-error a setup test runs once per target, so it pins at most one agent
+test.setup('sign in', { sessions: ['buyer'], agent: ['buyer', 'admin'] }, async () => {});
 declare const condition: boolean;
 // @ts-expect-error a conditionally async describe is still asynchronous
 test.describe('conditionally asynchronous', () => condition ? undefined : Promise.resolve());

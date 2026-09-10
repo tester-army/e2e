@@ -59,14 +59,14 @@ const defaultOptions: ResolvedTestOptions = {
   platforms: undefined,
   requires: [],
   session: undefined,
-  agent: undefined,
+  agents: ['default'],
   agentContext: undefined,
   skipReason: undefined,
   serial: false,
 };
 
 function makePair(test: CollectedTest, overrides: Partial<TestTargetPair> = {}): TestTargetPair {
-  return { test, target, options: defaultOptions, disposition: 'run', skip: undefined, ...overrides };
+  return { test, target, agent: 'default', options: defaultOptions, disposition: 'run', skip: undefined, ...overrides };
 }
 
 function makeFile(file: string, tests: CollectedTest[]): CollectedFile {
@@ -177,6 +177,7 @@ describe('wire protocol', () => {
     const record: ResultRecord = {
       test,
       target,
+      agent: 'default',
       status: 'passed',
       selected: true,
       attempts: [],
@@ -193,6 +194,7 @@ describe('wire protocol', () => {
     const record = nonRunResult({
       test: makeTest('tests/a.e2e.ts', 'x', 0),
       target,
+      agent: 'default',
       options: defaultOptions,
       disposition: 'skip',
       skip: { cause: 'explicit', reason: 'skipped' },

@@ -69,7 +69,7 @@ export interface AttemptEnvironment {
   readonly priorSteps: () => readonly StepRecord[];
   /** Trusted test/group agent context appended after the agent's own `context`. */
   readonly agentContext: string | undefined;
-  /** The configured agent the test is pinned to; undefined runs the run's agent. */
+  /** The configured agent the pair runs as; undefined falls back to the run's first agent. */
   readonly agent?: string | undefined;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
@@ -139,7 +139,7 @@ export function createFixtures(
    * credential surfaces where it is first needed, as one run-level failure.
    */
   const { config } = environment;
-  const attemptAgentName = environment.agent ?? config.agentName;
+  const attemptAgentName = environment.agent ?? config.agentNames[0]!;
   const selections = new Map<string, AgentSelection>();
   const select = (requested: string | undefined): AgentSelection => {
     if (requested !== undefined && (typeof requested !== 'string' || requested === '')) {
