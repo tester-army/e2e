@@ -3,8 +3,8 @@
  * when the first test acquires that agent: adapter construction validates the
  * provider shape and the credential without a live request. A failure is
  * reported once, to abort the run, instead of surfacing as one blocked step
- * per test. Adapters are shared by model across every agent that names the
- * same one.
+ * per test. Adapters are shared across every agent that names the same
+ * model: same provider, id, endpoint, and credential variable.
  */
 
 import type { ModelAdapter } from '../agent/model/adapter.ts';
@@ -13,7 +13,7 @@ import type { ResolvedAgentConfig, ResolvedModel } from '../config/agent.ts';
 import { classifyError, type E2EError } from '../internal/errors.ts';
 
 export class WorkerModels {
-  private readonly adapters = new Map<ResolvedModel, ModelAdapter>();
+  private readonly adapters = new Map<unknown, ModelAdapter>();
   private readonly checked = new Set<ResolvedAgentConfig>();
   private failure: E2EError | undefined;
 
@@ -39,14 +39,26 @@ export class WorkerModels {
     if (this.failure !== undefined) throw this.failure;
   };
 
-  /** Adapter for one resolved model; each configured model is built once per worker. */
+  /** Adapter for one resolved model; each distinct model is built once per worker. */
   readonly build = (model: ResolvedModel | undefined): ModelAdapter => {
     if (model === undefined) return createModelAdapter(model);
-    let adapter = this.adapters.get(model);
+    const key = modelKey(model);
+    let adapter = this.adapters.get(key);
     if (adapter === undefined) {
       adapter = createModelAdapter(model);
-      this.adapters.set(model, adapter);
+      this.adapters.set(key, adapter);
     }
     return adapter;
   };
+}
+
+/**
+ * What makes two resolved models the same adapter. Every agent resolves its
+ * own model object, so two agents naming `openai/gpt-5.6-luna-fast` must
+ * share by what the reference says, not by object identity: provider, id,
+ * endpoint, and the credential variable. A live instance is its own key.
+ */
+function modelKey(model: ResolvedModel): unknown {
+  if (model.kind === 'instance') return model.model;
+  return `${model.provider}\u0000${model.id}\u0000${model.endpoint ?? ''}\u0000${model.apiKeyEnv}`;
 }

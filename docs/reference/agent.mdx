@@ -51,7 +51,6 @@ blocked one throws an `AgentError` whose `code` and `blocked` flag say why.
 | `options.timeout` | `number` | `config.timeout` | positive safe integer |
 | `options.maxSteps` | `number` | `config.agent.maxSteps` | positive integer, at most the resolved limit |
 | `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
-| `options.agent` | `string` | the test's agent | a name in `agents` |
 | `options.agent` | `string` | the test's agent | a name in `agents`; unknown is `INVALID_ARGUMENT` before the step opens |
 
 Values come from your code through `options.params`, never from the model. A
@@ -267,6 +266,7 @@ returns the validated value. It performs no app actions.
 | `instruction` | `string` | - | - |
 | `options.schema` | `Schema` | - | any Standard Schema v1 validator |
 | `options.timeout` | `number` | `30000` | positive safe integer |
+| `options.agent` | `string` | the test's agent | a name in `agents` |
 
 The budget is fixed at two model calls: one extraction and one repair round
 for output that failed validation. Throws `INVALID_ARGUMENT` for a schema that
@@ -291,17 +291,23 @@ export type VisionMode = boolean | 'fallback' | 'only';
 export interface AssertOptions extends VisionOption {
   timeout?: number;
   screenshot?: boolean;
+  /** The configured agent this call runs with; defaults to the test's. */
+  agent?: string;
 }
 
 export interface WaitForOptions extends VisionOption {
   timeout?: number;
   interval?: number;
   maxModelCalls?: number;
+  /** The configured agent this call runs with; defaults to the test's. */
+  agent?: string;
 }
 
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption {
   schema: Schema;
   timeout?: number;
+  /** The configured agent this call runs with; defaults to the test's. */
+  agent?: string;
 }
 
 export interface ActOptions {
@@ -309,6 +315,8 @@ export interface ActOptions {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
+  /** The configured agent this call runs with; defaults to the test's. */
+  agent?: string;
 }
 
 export interface ActResult {

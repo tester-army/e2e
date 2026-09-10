@@ -99,10 +99,15 @@ test.describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
   test.describe('refunds', { agent: 'admin' }, () => {
     test('refunds the order', async ({ agent }) => { /* ... */ });
   });
-});
 
-// One step under another brain, inside any test; the ledger carries what came before.
-await agent.act('approve the pending reorder', { agent: 'admin' });
+  test('reorders, and the admin approves', async ({ app, agent }) => {
+    await app.open('/orders');
+    await agent.act('reorder the most recent order');
+    // One step under another brain; the ledger carries what the buyer did.
+    await agent.act('approve the pending reorder', { agent: 'admin' });
+    await agent.assert('the reorder shows as approved');
+  });
+});
 ```
 
 An `agent` naming nothing in `agents` fails at collection, before any process
