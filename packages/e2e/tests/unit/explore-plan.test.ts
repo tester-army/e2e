@@ -47,6 +47,14 @@ describe('normalizeStep', () => {
     expect(plan).toEqual({ kind: 'step', title: 'Do the thing', instruction: 'Do the thing' });
   });
 
+  it('strips the digit runs a provider pads a field with', () => {
+    const padded = `Browse catalog and manage cart nav flow${'1234567890'.repeat(60)}`;
+    expect(normalizeStep(padded, undefined)).toEqual({ kind: 'step', title: 'Browse catalog and manage cart nav flow', instruction: 'Browse catalog and manage cart nav flow' });
+    expect(normalizeStep('Sign in', `Open the sign in page ${'0123456789'.repeat(3)} and sign in`)).toEqual({ kind: 'step', title: 'Sign in', instruction: 'Open the sign in page and sign in' });
+    // Short numbers are content, not padding.
+    expect(normalizeStep('Order 1042', 'Check order #1042 for $28.00')).toEqual({ kind: 'step', title: 'Order 1042', instruction: 'Check order #1042 for $28.00' });
+  });
+
   it('accepts a charter far past the report ceiling and clips it instead of rejecting it', () => {
     const huge = `Open the catalog. ${'Check every price and stock count carefully. '.repeat(120)}`;
     expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: huge }).success).toBe(true);

@@ -72,7 +72,7 @@ export async function planNext(agent: Agent, state: ExploreState, request: PlanR
     schema: PLAN_SCHEMA,
     timeout: request.timeoutMs,
   });
-  if (plan.decision === 'finish') return { kind: 'finish', summary: clip(plan.summary!, MAX_SUMMARY_CHARS) };
+  if (plan.decision === 'finish') return { kind: 'finish', summary: clip(unpad(plan.summary!), MAX_SUMMARY_CHARS) };
   return normalizeStep(plan.title, plan.instruction);
 }
 
@@ -82,14 +82,23 @@ export async function planNext(agent: Agent, state: ExploreState, request: PlanR
  * title with no charter is the charter.
  */
 export function normalizeStep(title: string | undefined, instruction: string | undefined): PlanDecision {
-  const givenTitle = (title ?? '').trim();
-  const givenInstruction = (instruction ?? '').trim();
+  const givenTitle = unpad(title ?? '');
+  const givenInstruction = unpad(instruction ?? '');
   // The charter is bounded like the report records it; the act instruction it becomes has room for it.
   const charter = clip(givenInstruction === '' ? givenTitle : givenInstruction, MAX_INSTRUCTION_CHARS);
   // A title that stood in for the charter is a heading only while it is short.
   const longest = givenInstruction === '' ? DERIVED_TITLE_CHARS : MAX_TITLE_CHARS;
   const heading = givenTitle !== '' && givenTitle.length <= longest ? givenTitle : deriveTitle(charter);
   return { kind: 'step', title: heading, instruction: charter };
+}
+
+/**
+ * Removes the digit runs a provider sometimes pads a field with (seen live:
+ * a title followed by hundreds of `1234567890`), which carry no meaning and
+ * would otherwise become the charter's tail.
+ */
+function unpad(text: string): string {
+  return text.replace(/\s*\d{10,}\s*/g, ' ').trim();
 }
 
 function deriveTitle(charter: string): string {

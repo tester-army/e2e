@@ -304,6 +304,7 @@ describe('the exploration body', () => {
     expect(first.steps.map((step) => step.title)).toEqual(['Survey the app']);
     expect(first.ended).toBe('finished');
 
+    // One mid-run failure is covered by a continuation charter; a second in a row ends the exploration.
     const later = new ExploreState('goal', budgets);
     let laterPlans = 0;
     await run(later, {
@@ -314,9 +315,25 @@ describe('the exploration body', () => {
       },
       act: async () => ({ summary: 'opened', modelCalls: 1, actions: 1 }),
     } as unknown as Agent);
-    expect(later.steps).toHaveLength(1);
+    expect(later.steps.map((step) => step.title)).toEqual(['Cart', 'Continue exploring']);
     expect(later.ended).toBe('aborted');
     expect(later.summary).toBeUndefined();
+
+    // A planner that recovers after one failure keeps going.
+    const recovering = new ExploreState('goal', budgets);
+    let recoveringPlans = 0;
+    await run(recovering, {
+      extract: async () => {
+        recoveringPlans += 1;
+        if (recoveringPlans === 1) return { decision: 'step', title: 'Cart', instruction: 'open the cart' };
+        if (recoveringPlans === 2) throw invalid();
+        if (recoveringPlans === 3) return { decision: 'step', title: 'Orders', instruction: 'open orders' };
+        return { decision: 'finish', summary: 'Recovered and done.' };
+      },
+      act: async () => ({ summary: 'ok', modelCalls: 1, actions: 1 }),
+    } as unknown as Agent);
+    expect(recovering.steps.map((step) => step.title)).toEqual(['Cart', 'Continue exploring', 'Orders']);
+    expect(recovering.ended).toBe('finished');
 
     // Asked to finish, the model answers outside the grammar: the run ends for its own reason, without an assessment.
     const closing = new ExploreState('goal', { maxSteps: 1, timeoutMs: 600_000 });

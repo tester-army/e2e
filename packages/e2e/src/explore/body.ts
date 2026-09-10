@@ -72,6 +72,14 @@ const SURVEY_STEP: PlanDecision = {
     'Survey the app: visit each top-level page or screen the navigation offers once, note what each one is for and which controls it has, and try one obvious action on each. Report any defect you see on the way.',
 };
 
+/** A later charter when the planner could not write one: carry on with what the goal names and no step covered. */
+const CONTINUE_STEP: PlanDecision = {
+  kind: 'step',
+  title: 'Continue exploring',
+  instruction:
+    'Continue the exploration: from the goal in the project context and the previously completed steps, pick the flow or screen the goal names that no step has covered yet, exercise it end to end with realistic inputs, and report any defect you see on the way.',
+};
+
 /** Builds the test body for one exploration. */
 export function createExploreBody(options: ExploreBodyOptions): TestFn {
   const { state } = options;
@@ -97,6 +105,8 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
             ]),
           );
 
+    /** Planner answers outside the grammar in a row; one is covered, two end the run. */
+    let plannerFailures = 0;
     for (;;) {
       const stop = mustFinish(state, remaining());
       if (stop !== undefined && remaining() < MIN_PLAN_TIMEOUT_MS) {
@@ -112,13 +122,15 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
           remainingMs: remaining(),
           timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
         });
+        plannerFailures = 0;
       } catch (cause) {
         // A model that cannot produce a plan in the grammar, even after the
-        // repair round, is a model shortcoming, not the end of the world: the
-        // first step falls back to a survey of the app; a later failure ends
-        // the exploration with the record so far; a failed closing assessment
-        // leaves the run to end for the reason it had to, without one. Anything
-        // else (the provider, the clock, a cancellation) is the run's error.
+        // repair round, is a model shortcoming, not the end of the world: one
+        // failure is covered by a built-in charter (a survey first, a
+        // continuation later); two in a row end the exploration with the
+        // record so far; a failed closing assessment leaves the run to end for
+        // the reason it had to, without one. Anything else (the provider, the
+        // clock, a cancellation) is the run's error.
         if (!isAgentError(cause) || cause.code !== 'MODEL_OUTPUT_INVALID') {
           state.ended = 'aborted';
           throw cause;
@@ -127,11 +139,12 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
           state.ended = stop.ended;
           break;
         }
-        if (state.steps.length > 0) {
+        plannerFailures += 1;
+        if (plannerFailures > 1) {
           state.ended = 'aborted';
           break;
         }
-        plan = SURVEY_STEP;
+        plan = state.steps.length === 0 ? SURVEY_STEP : CONTINUE_STEP;
       }
       if (plan.kind === 'finish') {
         state.summary = plan.summary;

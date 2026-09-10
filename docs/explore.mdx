@@ -84,10 +84,11 @@ cosmetic or polish and never fails the run. A run that explored nothing and
 found nothing is blocked rather than passed: a zero-coverage pass would say
 the app is fine when nothing was checked.
 
-A planner answer outside the grammar is not an error. The first time, the run
-falls back to a survey step (visit each top-level screen once); a later time,
-the exploration ends with the record so far and `ended: 'aborted'`; when the
-run had to finish anyway, it ends for that reason, without an assessment. The
+A planner answer outside the grammar is not an error. One is covered by a
+built-in charter: a survey of the app (visit each top-level screen once) when
+nothing has run yet, a continuation of the goal later. Two in a row end the
+exploration with the record so far and `ended: 'aborted'`; when the run had to
+finish anyway, it ends for that reason, without an assessment. The
 run's own clock running out is a normal ending too (`ended: 'time'`), judged
 like any other. A provider failure, or a single planner call exceeding its own
 deadline (`STEP_TIMEOUT`), is the run's error.
