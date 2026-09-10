@@ -49,7 +49,7 @@ it('withholds a device screenshot after a secret fill without capturing pixels',
       tests: '*.e2e.ts', targets: [{ name: 'ios', platform: 'ios', engine }], cache: 'off',
       artifacts: [],
       credentials: { audit: { username: 'audit', password: () => 'synthetic-device-secret' } },
-      agent: { executor: createAgent({ tools: agentDeviceTools(engine) }), model },
+      agents: { default: { executor: createAgent({ tools: agentDeviceTools(engine) }), model } },
     } });
     expect(outcome.status).toBe('passed');
     expect(seenToolResult).toContain('PIXEL_TAINTED');

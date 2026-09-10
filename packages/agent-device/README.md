@@ -36,7 +36,7 @@ export default {
     { name: 'pixel', engine: pixel },
   ],
   workers: 1,
-  agent: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) },
+  agents: { default: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) } },
 } satisfies E2EConfig;
 ```
 

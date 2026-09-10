@@ -55,7 +55,7 @@ A custom executor with no model is exempt: its `act` steps need none, and a
 judgment call without a model still fails with `MODEL_UNAVAILABLE`.
 
 An agent also accepts an options block when you have nothing to
-construct: `agent: { model: 'anthropic/claude-sonnet-4.5', context: '...' }`
+construct: `agents: { default: { model: 'anthropic/claude-sonnet-4.5', context: '...' } }`
 runs `createAgent()` with those settings. `context` is a sentence or two of
 project vocabulary and reaches every `agent.*` call; `visionModel` pins a
 separate model for calls that carry pixels. The AI SDK (`ai`) is an optional

@@ -105,7 +105,7 @@ Deterministic tests need no model. Agent steps — `agent.act`, `assert`,
 
 ```ts
 export default {
-  agent: { model: 'anthropic/claude-sonnet-4.5' },
+  agents: { default: { model: 'anthropic/claude-sonnet-4.5' } },
 } satisfies E2EConfig;
 ```
 
@@ -121,7 +121,7 @@ directly, pass any AI SDK model instance instead:
 import { openai } from '@ai-sdk/openai';
 
 export default {
-  agent: { model: openai('gpt-5.4-mini') },
+  agents: { default: { model: openai('gpt-5.4-mini') } },
 } satisfies E2EConfig;
 ```
 
