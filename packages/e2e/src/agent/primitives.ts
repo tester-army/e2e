@@ -43,6 +43,9 @@ const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
 const MAX_SCROLL_TIMES = 5;
 
+/** Longest description a pixel verb takes; a target is named in a sentence, not a paragraph. */
+const MAX_DESCRIPTION_CHARS = 500;
+
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
  * tree does not record. An unchanged screen after one of these is the normal
@@ -297,6 +300,47 @@ export function createGrammarTools(
       description: 'Navigate to a URL or app-relative path within the allowed origins.',
       inputSchema: z.object({ url: z.string().min(1) }),
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
+    });
+  }
+  // The pixel verbs are offered while pixels can still leave the runner. Once
+  // a secret was filled in the attempt they could only decline, and a verb
+  // that is absent costs the model nothing where one that declines costs a turn.
+  if (verbs.has('tapVisual') && !context.vision.tainted) {
+    const bare = verbs.has('tapAt');
+    tools['tap_visual'] = schemaTool({
+      description:
+        'Tap a visible target the screen does not list, located in a screenshot by a vision model: a shape or pin painted on a canvas or map, a region of an image, a control inside a system sheet. Last resort: when the screen lists the target, tap it by id. Describe the target by its exact visible text and where it sits, e.g. "the red pin near the top right of the map" or "blue Continue button at the bottom of the sheet".' +
+        (bare ? '' : ' On this engine the located point must land on a listed control.'),
+      inputSchema: z.object({ description: z.string().min(1).max(MAX_DESCRIPTION_CHARS) }),
+      execute: ({ description }) =>
+        inOrder(() =>
+          guard(async () => {
+            let result;
+            try {
+              result = await context.actions.tapVisual(description);
+            } catch (cause) {
+              if (isRuntimeHardStop(cause)) throw cause;
+              const message = cause instanceof Error ? cause.message : String(cause);
+              return screen.update(await context.observe(), { lead: `tap_visual failed: ${message}` });
+            }
+            if (result.outcome === 'skipped') return result.summary;
+            return screen.update(await context.observe(), { lead: result.summary, expectChange: true });
+          }),
+        ),
+    });
+    tools['look'] = schemaTool({
+      description:
+        'Describe the screen from its pixels through a vision model: the top layer (a sheet, dialog, or keyboard), the main content, the visible controls by their exact text and position, form fields, errors, and an answer to your question when you ask one. Use it when the screen lists too little (a canvas, an image, a system sheet) or contradicts what you expect. It names no node ids and costs a model call.',
+      inputSchema: z.object({
+        question: z.string().max(MAX_DESCRIPTION_CHARS).optional().describe('What to answer from the pixels, e.g. "which tab is highlighted?"'),
+      }),
+      execute: ({ question }) =>
+        inOrder(() =>
+          guard(async () => {
+            const result = await context.vision.look(question === undefined ? {} : { question });
+            return `${result.description}\n\n${screen.update(result.observation)}`;
+          }),
+        ),
     });
   }
   // Offered only when the step declared secrets and the surface can fill: an

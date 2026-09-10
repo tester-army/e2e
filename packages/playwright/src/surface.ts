@@ -31,6 +31,7 @@ import {
   type ScrollDirection,
   type SemanticNode,
   type VideoSegment,
+  type ViewportPoint,
 } from '@e2edev/e2e/engine';
 import { matchesText } from '@e2edev/e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
@@ -773,6 +774,15 @@ export class PlaywrightSurface {
     return this.guard(operation, 'swipe', () =>
       performViewportSwipe(this.requirePage(), direction, momentum ?? 'none'),
     );
+  }
+
+  /**
+   * A click at one viewport point in CSS pixels, with nothing resolved behind
+   * it: no actionability wait, because there is no element to wait on, and the
+   * page decides what the click lands on, as it does for a person.
+   */
+  tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'tapAt', () => this.requirePage().mouse.click(point.x, point.y));
   }
 
   private async validateFrames(expression: LocatorExpression): Promise<void> {

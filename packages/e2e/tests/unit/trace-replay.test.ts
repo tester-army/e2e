@@ -38,6 +38,11 @@ function makeHost(options: {
     select: (t, value) => act('select', { t, value }),
     scroll: (direction, t) => act('scroll', { direction, t }),
     navigate: (url) => act('navigate', url),
+    tapAt: (point) => act('tapAt', point),
+    tapVisual: async (description) => {
+      await act('tapVisual', description);
+      return { outcome: 'skipped', summary: 'scripted' };
+    },
   };
   const host = {
     calls,

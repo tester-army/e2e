@@ -45,6 +45,12 @@ describe('defineEngine', () => {
     expect(() => defineEngine({ ...bare, perform: async () => undefined })).toThrow(/perform without observe/);
     expect(() => defineEngine({ ...bare, locate: async () => [] })).toThrow(/locate without observe/);
     expect(() => defineEngine({ ...bare, swipe: async () => undefined })).toThrow(/swipe without observe/);
+    expect(() => defineEngine({ ...bare, tapAt: async () => undefined })).toThrow(/tapAt without observe/);
+  });
+
+  it('computes the pointer capability from tapAt', () => {
+    const handle = defineEngine(observingEngine({ tapAt: async () => undefined }));
+    expect([...handle.capabilities].toSorted()).toEqual(['observation', 'pointer']);
   });
 
   it('rejects unknown keys, pointing tools at the agent', () => {
@@ -182,8 +188,9 @@ describe('createEngineSession', () => {
     const verbs = (extra: Partial<Engine>) =>
       [...createEngineSession({ engine: defineEngine(observingEngine(extra)), targetName: 't' }).verbs].toSorted();
     expect(verbs({})).toEqual([]);
-    expect(verbs({ perform: async () => undefined })).toEqual(['press', 'select', 'tap', 'type', 'typeSecret']);
+    expect(verbs({ perform: async () => undefined })).toEqual(['press', 'select', 'tap', 'tapVisual', 'type', 'typeSecret']);
     expect(verbs({ swipe: async () => undefined })).toEqual(['scroll']);
+    expect(verbs({ tapAt: async () => undefined })).toEqual(['tapAt']);
     expect(verbs({ app: { navigate: async () => undefined } })).toEqual(['navigate']);
   });
 

@@ -167,6 +167,10 @@ export class TraceRecorder {
         };
       case 'navigate':
         return { name: 'navigate', summary, url: this.verbatim(action.url) };
+      case 'tapAt':
+        // A bare point is this screen's geometry, not something replay can
+        // re-find; recorded as a gap, the same way a project-tool mutation is.
+        return { name: 'tool', summary };
     }
   }
 

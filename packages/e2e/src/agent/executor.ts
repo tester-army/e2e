@@ -17,7 +17,7 @@
  * matter whose brain runs the step.
  */
 
-import type { ObservationPixels, SemanticNode } from '../engine/surface.ts';
+import type { ObservationPixels, SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 import type {
   AgentErrorCode,
@@ -165,6 +165,74 @@ export interface ExecutorActions {
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
   /** Navigates within the configured allowed origins. */
   navigate(url: string): Promise<void>;
+  /**
+   * Taps one viewport point, in the CSS pixels of the newest observation
+   * (`SemanticNode.rect` space), with no node behind it. Offered only by an
+   * engine with a `pointer` capability. The trace cache records a gap: a bare
+   * point is not a descriptor replay can re-find.
+   */
+  tapAt(point: ViewportPoint): Promise<void>;
+  /**
+   * Taps the one control a description names, located in the screen's pixels
+   * by the agent's vision model. The harness captures masked pixels, asks the
+   * vision model for a point, hit-tests the point against the newest
+   * observation, and taps the control it lands on through `tap` — or the bare
+   * point through `tapAt` when nothing the tree lists is there. Nothing runs
+   * when the model abstains or pixels are withheld; the result says which.
+   */
+  tapVisual(description: string): Promise<VisualTapResult>;
+}
+
+/** What one `tapVisual` did, for the executor to relay to its model. */
+export interface VisualTapResult {
+  /**
+   * `tapped`: one action ran at `point`. `skipped`: nothing ran, because the
+   * vision model abstained, pixels were withheld, or the point sat on no
+   * listed node and the engine cannot tap a bare point.
+   */
+  readonly outcome: 'tapped' | 'skipped';
+  /** Where the tap landed, in the newest observation's CSS pixels. */
+  readonly point?: ViewportPoint;
+  /** The listed node the point resolved to, when a control contained it. */
+  readonly target?: ExecutorTarget;
+  /** Prose for a model: what happened, what was under the point, and what to do instead when skipped. */
+  readonly summary: string;
+}
+
+/** What one `look` returned: a description of the pixels, or why there were none. */
+export interface LookResult {
+  /**
+   * The vision model's account of the screen as text, or, when pixels were
+   * withheld, the reason. Always model-safe prose.
+   */
+  readonly description: string;
+  /** Set when no pixels reached the vision model; `description` then names it. */
+  readonly withheld?: VisionDegradation;
+  /** The observation the pixels were captured with, so a presenter can report its tree changes too. */
+  readonly observation: ExecutorObservation;
+}
+
+/**
+ * Pixel-backed reads the harness performs on the executor's behalf with the
+ * agent's vision model (`agent.visionModel`, else `agent.model`). Every call
+ * counts against the step's model-call budget and is recorded like an
+ * executor-made call.
+ */
+export interface ExecutorVision {
+  /**
+   * True once a secret was filled in this attempt: pixels are withheld for
+   * the rest of it, so `look` and `actions.tapVisual` can only report that.
+   * An executor reads it when assembling its vocabulary, to leave the pixel
+   * verbs out rather than offer tools that can only decline.
+   */
+  readonly tainted: boolean;
+  /**
+   * Describes the current screen from masked pixels: the top layer, the main
+   * content, visible controls by their verbatim text and region, form fields,
+   * and errors, plus an answer when `question` is given. Descriptive only;
+   * node ids never come from pixels.
+   */
+  look(options?: { readonly question?: string }): Promise<LookResult>;
 }
 
 /** Usage detail of one executor-made model call, all fields optional. */
@@ -301,6 +369,8 @@ export interface StepExecutorContext {
    */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
+  /** Pixel-backed reads through the agent's vision model. */
+  readonly vision: ExecutorVision;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a
    * `log` artifact when the run collects debug detail (`--debug`); a no-op

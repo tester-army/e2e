@@ -58,7 +58,7 @@ function fail(issue: string): { ok: false; issue: string } {
 }
 
 /** Accepts a plain object whose keys are exactly within the allowed set. */
-function asClosedRecord(
+export function asClosedRecord(
   value: unknown,
   allowed: readonly string[],
 ): Record<string, unknown> | null {
@@ -71,7 +71,7 @@ function asClosedRecord(
   return value as Record<string, unknown>;
 }
 
-function asBoundedString(value: unknown, min: number, max: number): string | null {
+export function asBoundedString(value: unknown, min: number, max: number): string | null {
   if (typeof value !== 'string') return null;
   if (value.length < min || value.length > max) return null;
   return value;

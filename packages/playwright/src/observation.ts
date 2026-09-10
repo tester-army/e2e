@@ -250,12 +250,29 @@ function assembleTree(
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
     const raw = nodes[index]!;
     const embedded = frameChildren.get(index);
-    if (embedded !== undefined) childLists[index]!.unshift(embedded);
+    // A child document measured its nodes against its own viewport. Shifted by
+    // the boundary element's box, every box in the tree is in the top-level
+    // viewport's CSS pixels, the space the screenshot and a point tap share.
+    // The shift is the frame's border box; a bordered iframe is off by its
+    // border width, which is within a tap target.
+    if (embedded !== undefined) childLists[index]!.unshift(offsetTree(embedded, raw.rect.x, raw.rect.y));
     const node = toSemanticNode({ id: ids[index]!, revision: '' }, raw, childLists[index]!, framePath);
     built[index] = node;
     if (raw.parent >= 0) childLists[raw.parent]!.unshift(node);
   }
   return built[0]!;
+}
+
+/** The tree with every box translated by (dx, dy); unchanged when the shift is zero. */
+function offsetTree(node: SemanticNode, dx: number, dy: number): SemanticNode {
+  if (dx === 0 && dy === 0) return node;
+  return {
+    ...node,
+    ...(node.rect === undefined
+      ? {}
+      : { rect: { x: node.rect.x + dx, y: node.rect.y + dy, width: node.rect.width, height: node.rect.height } }),
+    ...(node.children === undefined ? {} : { children: node.children.map((child) => offsetTree(child, dx, dy)) }),
+  };
 }
 
 export function toSemanticNode(

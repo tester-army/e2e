@@ -16,6 +16,7 @@ import type {
   ObservationPixels,
   OperationContext,
   SemanticNode,
+  ViewportPoint,
 } from './contract.ts';
 import type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
 
@@ -26,8 +27,20 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
 /**
  * The agent's action grammar, by verb. A session declares which verbs its
  * engine can honor so the agent offers the model exactly that vocabulary.
+ * `tapVisual` is the vision-located tap: it rides `perform` when the located
+ * point sits on a node the tree lists, and `tapAt` when it does not, so it is
+ * declared with `tap` and honors bare points only when `tapAt` is too.
  */
-export type GrammarVerb = 'tap' | 'type' | 'typeSecret' | 'press' | 'select' | 'scroll' | 'navigate';
+export type GrammarVerb =
+  | 'tap'
+  | 'type'
+  | 'typeSecret'
+  | 'press'
+  | 'select'
+  | 'scroll'
+  | 'navigate'
+  | 'tapVisual'
+  | 'tapAt';
 
 export interface Observation {
   /** Location captured with this tree, when the engine can provide it. */
@@ -93,6 +106,8 @@ export interface TargetSession {
     momentum: Momentum | undefined,
     operation: OperationContext,
   ): Promise<void>;
+  /** Taps one viewport point, in CSS pixels, with no node behind it. */
+  tapAt(point: ViewportPoint, operation: OperationContext): Promise<void>;
   readonly app: SessionApp;
   readonly artifacts: SessionArtifacts;
   /** Captures immutable app state for a session envelope. */

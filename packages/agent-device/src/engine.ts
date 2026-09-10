@@ -32,6 +32,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
+    tapAt: (point, operation) => surface.tapAt(point, operation),
     app: {
       ...declaredApp(surface.options),
       back: (operation) => surface.back(operation),

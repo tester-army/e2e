@@ -80,8 +80,13 @@ verdict.
 Options: `params` (the values the instruction refers to; a `Secret` is filled
 by the runner), `timeout` (default the test timeout), `maxSteps` (default 25
 actions), `maxModelCalls` (default 25). Per-call budgets can only lower the
-configured limits. `act` takes no `schema` and no `vision`: structured output
-is `extract({ schema })`, and `vision` belongs to the judgments.
+configured limits. `act` takes no `schema` and no `vision` option: structured
+output is `extract({ schema })`, and pixels reach an `act` step through the
+`tap_visual` and `look` tools the agent offers while no secret has been filled.
+`tap_visual` taps a target the tree does not list (a canvas shape, a map pin,
+an image region, a control in a system sheet) at a point the `visionModel`
+locates in a screenshot, hit-tested against the tree first; `look` describes
+the screen from pixels as text. Each costs one model call of the step.
 
 ## assert, waitFor, extract: one question
 
@@ -150,8 +155,9 @@ every action result after it reports what changed, keyed by node ids that
 stay stable while an element exists, or the whole screen again when most of
 it changed, and is read after the action's effect landed. Never raw HTML,
 cookies, headers, environment
-values, or a `Secret`'s value; password fields arrive masked. Pixels only
-with `vision`, and only while no secret has been filled. Nothing the model
+values, or a `Secret`'s value; password fields arrive masked. Pixels reach a
+model only through `vision` on a judgment or the act loop's `tap_visual` and
+`look`, always via `visionModel`, and only while no secret has been filled. Nothing the model
 returns runs as code or selectors: the runner validates and authorizes every
 tool call before it executes.
 

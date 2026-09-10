@@ -9,7 +9,7 @@
  * summary, a live event line, and a relocation candidate can never drift.
  */
 
-import type { SemanticNode } from '../engine/surface.ts';
+import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import {
   bound,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -29,7 +29,9 @@ export type RecordableAction =
   | ({ readonly name: 'press'; readonly node: SemanticNode; readonly key: string } & Placement)
   | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
   | ({ readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode } & Placement)
-  | { readonly name: 'navigate'; readonly url: string };
+  | { readonly name: 'navigate'; readonly url: string }
+  /** A tap on a bare viewport point, from a vision-located target the tree did not list. */
+  | { readonly name: 'tapAt'; readonly point: ViewportPoint; readonly description?: string };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
 interface Placement {
@@ -147,6 +149,10 @@ export function describeAction(
         return target === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
       case 'navigate':
         return `navigate to ${safe(action.url)}`;
+      case 'tapAt':
+        return `tap the point (${String(action.point.x)}, ${String(action.point.y)})${
+          action.description === undefined ? '' : ` for ${safe(action.description)}`
+        }`;
     }
   })();
   return { target, summary: bound(prose, MAX_TRACE_SUMMARY_CHARS) };

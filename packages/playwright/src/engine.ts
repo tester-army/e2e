@@ -65,6 +65,7 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
+    tapAt: (point, operation) => surface.tapAt(point, operation),
     app: {
       ...declaredApp(options),
       navigate: (url, operation) => surface.navigate(url, operation),

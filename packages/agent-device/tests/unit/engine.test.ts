@@ -109,7 +109,7 @@ function* walk(nodes: readonly SemanticNode[]): Generator<SemanticNode> {
 describe('manifest', () => {
   it('declares observation, actions, location, artifacts, the device fixture, and app hooks by option', () => {
     const pinned = harness().engine;
-    expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'location', 'observation']);
+    expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'location', 'observation', 'pointer']);
     expect(pinned.name).toBe('agent-device');
     expect(pinned.version).not.toBe('unknown');
     expect(Object.keys(pinned.app!).toSorted()).toEqual(['back', 'clearState', 'identity', 'restart']);

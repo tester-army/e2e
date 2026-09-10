@@ -29,6 +29,7 @@ import {
   type VideoSegment,
   type ScrollDirection,
   type SemanticNode,
+  type ViewportPoint,
 } from '@e2edev/e2e/engine';
 import { runCommand, staleOr } from './errors.ts';
 import { resolveExpression } from './locate.ts';
@@ -579,6 +580,19 @@ export class AgentDeviceSurface {
 
   async swipe(direction: ScrollDirection, _momentum: Momentum | undefined, operation: OperationContext): Promise<void> {
     await this.command('swipe', (client) => client.interactions.scroll({ direction }), operation.signal);
+  }
+
+  /**
+   * A tap at one screen point in logical pixels, the space every node's
+   * bounds are in, with no element resolved behind it. `settle` waits for the
+   * UI to go quiet, as the node taps do.
+   */
+  async tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
+    await this.command(
+      'tapAt',
+      (client) => client.interactions.press({ x: point.x, y: point.y, settle: true }),
+      operation.signal,
+    );
   }
 
   async back(operation: OperationContext): Promise<void> {

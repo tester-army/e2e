@@ -142,8 +142,9 @@ export interface SemanticNode {
 }
 
 /**
- * Viewport point in CSS pixels, origin at the top-left of the viewport.
- * Reserved for coordinate-addressed actions; no runner surface consumes it yet.
+ * Viewport point in CSS pixels, origin at the top-left of the viewport: the
+ * space `SemanticNode.rect` is in, and the space `Engine.tapAt` dispatches in.
+ * A point read off `ObservationPixels` is divided by its `scale` to get here.
  */
 export interface ViewportPoint {
   readonly x: number;

@@ -29,3 +29,11 @@ test('act signs in with a secret credential', async ({ web, agent, screen }) => 
   });
   await expect(screen.getByRole('status')).toHaveText('Welcome back, admin!');
 });
+
+test('act taps a pin painted on a canvas through the pixel tier', async ({ web, agent, screen }) => {
+  await web.goto('/canvas');
+  // The pins exist only as canvas pixels: nothing in the tree names them, so
+  // the model has to describe the target and let the vision tier place the tap.
+  await agent.act('pick the red pin on the map');
+  await expect(screen.getByRole('status')).toHaveText('picked the red pin');
+});

@@ -197,7 +197,11 @@ const PAGES: Record<string, string> = {
 <body style="margin:0">
   <canvas id="map" width="400" height="200" style="position:fixed;left:0;top:0"></canvas>
   <output id="hit" role="status" aria-label="Hit" style="position:fixed;left:0;top:220px">none</output>
+  <button id="reset" style="position:fixed;left:0;top:260px;width:100px;height:30px">Reset</button>
   <script>
+    document.getElementById('reset').addEventListener('click', () => {
+      document.getElementById('hit').textContent = 'reset';
+    });
     const canvas = document.getElementById('map');
     const context = canvas.getContext('2d');
     context.fillStyle = '#dddddd';

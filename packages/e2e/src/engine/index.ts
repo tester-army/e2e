@@ -57,6 +57,7 @@ import {
   type ObservationPixels,
   type OperationContext,
   type SemanticNode,
+  type ViewportPoint,
 } from './contract.ts';
 
 export type * from './contract.ts';
@@ -83,13 +84,16 @@ export type {
 
 /**
  * Capability names: the closed harness capabilities plus one name per
- * contributed fixture. `actions` is `perform`; `location` is `locate`. Both
+ * contributed fixture. `actions` is `perform`; `location` is `locate`; both
  * require observation, because their refs live in the observation's id space.
+ * `pointer` is `tapAt`, a tap addressed by a viewport point rather than a
+ * node, and requires observation because the point is read off its pixels.
  */
 export type EngineCapability =
   | 'observation'
   | 'actions'
   | 'location'
+  | 'pointer'
   | 'state'
   | 'artifacts'
   | (string & {});
@@ -522,6 +526,15 @@ export interface Engine {
     context: OperationContext,
   ): Promise<void>;
   /**
+   * capability: pointer - requires observation. Taps one viewport point, in
+   * the CSS pixels of `SemanticNode.rect`, with no node behind it: the
+   * agent's `tap_visual` verb lands here when the point a vision model
+   * located sits on nothing the tree lists (a shape on a canvas, a pin on a
+   * map, a control in a system sheet). Dispatch the pointer at the point as
+   * given; the harness has already clamped it to the viewport.
+   */
+  tapAt?(point: ViewportPoint, context: OperationContext): Promise<void>;
+  /**
    * Named deterministic surfaces this engine contributes to TestFixtures
    * (a device fixture, a document fixture - anything). Keys become fixture and
    * capability names; `requires: ['<name>']` gates at selection.
@@ -590,6 +603,7 @@ const KNOWN_KEYS = [
   'locate',
   'perform',
   'swipe',
+  'tapAt',
   'fixtures',
   'state',
   'artifacts',
@@ -628,6 +642,7 @@ const FUNCTION_MEMBERS = [
   'locate',
   'perform',
   'swipe',
+  'tapAt',
   'url',
   'prepare',
   'init',
@@ -754,6 +769,12 @@ export function defineEngine(spec: Engine): EngineHandle {
   }
   if (spec.swipe !== undefined && !capabilities.has('observation')) {
     throw invalid(name, 'declares swipe without observe');
+  }
+  if (spec.tapAt !== undefined) {
+    if (!capabilities.has('observation')) {
+      throw invalid(name, 'declares tapAt without observe: a tapped point is read off the observation pixels');
+    }
+    capabilities.add('pointer');
   }
 
   const handle: Record<string, unknown> = obj({

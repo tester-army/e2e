@@ -152,6 +152,7 @@ describe('playwright engine lifecycle', () => {
       'artifacts',
       'location',
       'observation',
+      'pointer',
       'state',
       'web',
     ]);
