@@ -48,7 +48,14 @@ export function github(options: GitHubOptions = {}): Reporter {
   };
 }
 
-/** The marker one job's comment carries, so two workflows or jobs each keep their own. */
+/** Marker fields are clipped to this many code points before encoding, so the marker stays under its cap. */
+const MAX_MARKER_FIELD_CHARS = 128;
+
+/**
+ * The marker one job's comment carries, so two workflows or jobs each keep
+ * their own. Every field is clipped the same way on every run, so a rerun
+ * derives the same marker and finds its comment.
+ */
 function commentMarker(run: FinishedRun, context: ActionsContext, key: string | undefined): string {
   const fields: Record<string, string | undefined> = {
     project: run.report.run.project.id,
@@ -57,7 +64,9 @@ function commentMarker(run: FinishedRun, context: ActionsContext, key: string | 
     key,
   };
   const parts = Object.entries(fields).flatMap(([name, value]) =>
-    value === undefined || value === '' ? [] : [`${name}=${encodeURIComponent(value)}`],
+    value === undefined || value === ''
+      ? []
+      : [`${name}=${encodeURIComponent([...value].slice(0, MAX_MARKER_FIELD_CHARS).join(''))}`],
   );
   return `<!-- e2e-github ${parts.join(' ')} -->`;
 }

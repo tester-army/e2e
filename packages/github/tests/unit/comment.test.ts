@@ -240,9 +240,15 @@ describe('renderComment', () => {
     expect(body).toContain('> and 20 more');
     expect(body).toContain("_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._");
     expect(body.trimEnd().endsWith('</sub>')).toBe(true);
-    // Neither a caller's oversized marker nor a run with hundreds of targets escapes the cap.
+    // A run with hundreds of targets does not escape the cap either.
     const targets = Array.from({ length: 300 }, (_, index) => `target-${index}-${'t'.repeat(60)}`);
-    const crowded = renderComment(report({ results: [passing], targets }), { marker: `<!-- ${'m'.repeat(70_000)} -->` });
-    expect(crowded.length).toBeLessThanOrEqual(60_000);
+    expect(renderComment(report({ results: [passing], targets }), { marker: '<!-- m -->' }).length).toBeLessThanOrEqual(60_000);
+  });
+
+  it('refuses a marker it could not keep whole, since a rerun finds the comment by it', () => {
+    expect(() => renderComment(report(), { marker: `<!-- ${'m'.repeat(1_024)} -->` })).toThrow(
+      'marker must be at most 1024 characters, got 1033',
+    );
+    expect(renderComment(report(), { marker: `<!-- ${'m'.repeat(1_000)} -->` })).toContain('<!-- mmm');
   });
 });

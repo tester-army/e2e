@@ -35,6 +35,12 @@ const MAX_PASSED_LINES = 200;
 const MAX_FOOTER_TARGETS = 8;
 const MAX_CELL_CHARS = 240;
 const TRUNCATED_NOTE = "_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._";
+/**
+ * A marker is what a rerun finds the comment by, so it can never be cut. With
+ * it bounded, the head and footer together stay far under the budget and the
+ * body is the only part that ever gives way.
+ */
+export const MAX_MARKER_CHARS = 1_024;
 
 /** C0/C1 control characters except tab and newline; ANSI sequences are stripped first. */
 // oxlint-disable-next-line no-control-regex -- the control range is the point
@@ -175,6 +181,9 @@ function footer(run: ReportRun, options: CommentOptions): string[] {
 
 /** Renders the run as a pull request comment body. */
 export function renderComment(report: Report, options: CommentOptions = {}): string {
+  if (options.marker !== undefined && options.marker.length > MAX_MARKER_CHARS) {
+    throw new Error(`renderComment: marker must be at most ${MAX_MARKER_CHARS} characters, got ${options.marker.length}`);
+  }
   const run = report.run;
   const serialGroups = new Map(run.serialGroups.map((group) => [group.id, group]));
   const groups = groupByBucket(run.results);
@@ -242,7 +251,5 @@ export function renderComment(report: Report, options: CommentOptions = {}): str
     body.push('');
     size += 1;
   }
-  const rendered = render(cut ? [...body, TRUNCATED_NOTE] : body);
-  // A caller's own marker is unbounded; cutting at the limit beats a rejected post.
-  return rendered.length <= MAX_BODY_CHARS ? rendered : `${rendered.slice(0, MAX_BODY_CHARS - 1)}…`;
+  return render(cut ? [...body, TRUNCATED_NOTE] : body);
 }

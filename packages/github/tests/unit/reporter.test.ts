@@ -87,6 +87,10 @@ describe('reportRun', () => {
     const blank = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: '' }, blank.deps);
     expect(postedBody(blank.calls).startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test -->\n')).toBe(true);
+    // A long key is clipped the same way every run, so the marker stays bounded and findable.
+    const long = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
+    await reportRun(failedRun, signal, { key: 'k'.repeat(5_000) }, long.deps);
+    expect(postedBody(long.calls).startsWith(`<!-- e2e-github project=dev.example.shop workflow=e2e job=test key=${'k'.repeat(128)} -->\n`)).toBe(true);
   });
 
   it.each([

@@ -140,4 +140,6 @@ report or the trace cache. GitHub Enterprise Server works through
 
 `renderComment(report, { marker, artifactsUrl, sourceUrl })` is exported: it
 takes a report-1 document and returns the comment body, so a service that
-receives the report can post the same comment under its own identity.
+receives the report can post the same comment under its own identity. The
+marker is what a rerun finds the comment by, so it is never cut: one longer
+than `MAX_MARKER_CHARS` (1024) is rejected rather than posted incomplete.
