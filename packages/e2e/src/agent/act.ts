@@ -1,135 +1,42 @@
 /**
  * Harness-owned dispatch of one `agent.act()` step.
  *
- * The harness opens the step, owns the deadline, the action budget, origin
- * policy, observation redaction, and recording — then hands the step to the
- * configured executor and maps its verdict back onto the runner's error
- * taxonomy. The executor never touches the engine: everything bottoms out in
- * the context built here, on the same accounting core (phases.ts) the
- * locate/judgment tier runs on. Trace-cache participation — replay, live
- * recording, staging — lives beside the dispatch in `StepTraceSession`.
+ * The harness opens the step and hands only the thinking to the configured
+ * executor; everything the executor can touch is built here from four
+ * collaborators, each owning one concern of the step:
+ *
+ * - `StepAccounting`: the clock, the budgets, the hard stop, the metrics.
+ * - `ObservationFeed`: every capture, the settle, the id ring, the pixel decision.
+ * - `ActionDispatcher`: the verb table, target resolution, recording.
+ * - `StepTraceSession`: replay, live recording, and the stage-or-evict decision.
+ *
+ * Capabilities beyond the grammar (the pixel tier, secret fills) are modules
+ * over those collaborators, borrowed through a small host each. What stays in
+ * this file is the wiring, the executor's context, and the mapping of the
+ * executor's verdict onto the runner's error taxonomy.
  */
 
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { OperationContext, SemanticNode, ViewportPoint } from '../engine/surface.ts';
-import { asEngineError, ConfigurationError, TestError } from '../internal/errors.ts';
-import { timestamp } from '../internal/ids.ts';
-import type { Deadline } from '../internal/time.ts';
-import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { StepMetrics, StepModelInfo, VisionDegradation } from '../run/steps.ts';
-import type {
-  ActOptions,
-  ActResult,
-  AgentErrorCode,
-  JsonValue,
-  ModelInstance,
-  Momentum,
-  ScrollDirection,
-  Secret,
-} from '../types.ts';
+import { ConfigurationError } from '../internal/errors.ts';
+import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
-import {
-  validateActOptions,
-  validateInstruction,
-  validateParams,
-  validateVerdict,
-} from './act-validation.ts';
+import { validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
+import { ActionDispatcher } from './action-dispatcher.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
-import {
-  RUNTIME_CODES,
-  type ExecutorActions,
-  type ExecutorModelCall,
-  type ExecutorObservation,
-  type ExecutorObserveOptions,
-  type ExecutorTarget,
-  type ExecutorVision,
-  type StepExecutorContext,
-  type StepVerdict,
-} from './executor.ts';
+import { RUNTIME_CODES, type ExecutorPixels, type ExecutorVision, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import type { AgentContext, AgentSelection } from './invocation.ts';
-import { isDerivedValue } from './derived.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
-import { ModelOutputInvalidError, type ModelImage } from './model/adapter.ts';
-import { buildSystem } from './prompts.ts';
-import { look, tapVisual, type VisionHost, type VisionRequest } from './vision-tier.ts';
-import {
-  isTransitionalObservation,
-  observationShape,
-  pixelsForModel,
-  prepareObservation,
-  projectTree,
-  settleObservation,
-  type AgentObservation,
-} from './observation.ts';
-import { observationByteBudget } from './observation-budget.ts';
-import { boundedOperation, checkStepClock, instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
-import { containerKey, describeAction, describeTarget, type RecordableAction } from './actions.ts';
-import { describePosition, relocateDescriptor } from '../cache/relocate.ts';
-import { authorizeSecretFill } from './secrets.ts';
-import { ModelUsage, tokenFields } from './usage.ts';
+import { ObservationFeed } from './observation-feed.ts';
+import { OperationQueue } from './operation-queue.ts';
+import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
-
-/**
- * Ceiling on one targeted grammar action: the time the engine may wait for a
- * node to become actionable before the failure goes back to the model.
- * `actionTimeout` bounds every engine operation and doubles as the judgment
- * tier's clock, so projects raise it for slow models; a tap under a consent
- * overlay then sits in the engine's actionability retry for the whole budget
- * (90 s in the testbed) before the model learns anything, when the useful
- * answer — what is in the way — is known within seconds. Navigation keeps the
- * full budget: a slow page really can take that long to load.
- */
-const MAX_TARGETED_ACTION_MS = 15_000;
-
-/**
- * How many times a targeted action re-finds its node after the engine reports
- * it stale. One relocation covers a re-render between the observation and the
- * action; the second covers a render tick landing between the fresh look and
- * the action itself. A control that keeps vanishing faster than that is
- * reported to the model as gone.
- */
-const MAX_STALE_RELOCATIONS = 2;
-
-/**
- * The change wait after a scroll or a mutating project tool. A scroll moves
- * nothing the tree records and a tool usually changes state the screen shows
- * only after a reload, so most of these change no shape at all and a long
- * wait is pure cost; a windowed list rendering its next rows, or a tool the
- * page reacts to, does so within a few hundred milliseconds.
- */
-const BRIEF_CHANGE_WAIT_MS = 500;
-
-/**
- * Observations kept for resolving an id the newest one no longer carries.
- * A turn that batches actions addresses the screen it saw, while every
- * action's own look re-observes; on an engine that mints ids per observation
- * (a device), each look renumbers the tree. A few looks back is as far as one
- * turn can reach.
- */
-const MAX_RECENT_OBSERVATIONS = 8;
-
-/**
- * How far one grammar scroll moves. The engine's default flick is half the
- * scrolled box; a deliberate scroll of three quarters keeps every row on
- * screen at least once while covering a long feed in fewer actions.
- */
-const SCROLL_MOMENTUM: Momentum = 'slow';
+import { askVisionModel, look, tapVisual, type VisionHost } from './vision-tier.ts';
 
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
 export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
-
-/**
- * Ceiling on one harness-made vision call. A localization is one short
- * structured answer and lands in a few seconds; a provider that takes longer
- * is stalling, and the step's own clock should not be spent waiting on it.
- */
-const VISION_CALL_TIMEOUT_MS = 30_000;
-
-/** Output ceiling for one vision call; a reasoning model spends part of it before the answer. */
-const VISION_MAX_OUTPUT_TOKENS = 8192;
 
 /** Everything one dispatched step is, resolved before the step opens. */
 export interface DispatchSpec {
@@ -243,81 +150,19 @@ export async function dispatchAgentStep(
   }, { verifies: spec.kind === 'assert', agent: agent.name });
 }
 
-/**
- * One step's harness-side state: budgets, the newest observation, and the
- * fatal error (if any) that must outrank whatever the executor reports.
- */
+/** One step's wiring: the collaborators, the executor's context, and the verdict mapping. */
 class ActDispatch {
-  private readonly timeoutMs: number;
-  private readonly deadline: Deadline;
-  private readonly maxActions: number;
-  private readonly maxModelCalls: number;
-  private readonly metrics: StepMetrics = {
-    modelCalls: 0,
-    actionSteps: 0,
-    observationBytes: 0,
-    contextBytes: 0,
-    ledgerBytes: 0,
-  };
-  private latest: AgentObservation | undefined;
-  /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
-  private readonly recent: AgentObservation[] = [];
-  private explanation: string | undefined;
-  /** First budget/timeout/cancel failure; runtime truth outranks the verdict. */
-  private hardStop: AgentError | undefined;
-  /** Aborts the executor on any hard stop, so a step never outlives its clock. */
-  private readonly stepAbort = new AbortController();
-  /**
-   * The one signal everything inside the step aborts with: the attempt's
-   * cancellation or the step's own hard stop. Built once in the constructor
-   * so the executor context, the replay host, and the settle clock can never
-   * disagree about what "the step's signal" means.
-   */
-  private readonly stepSignal: AbortSignal;
-  /**
-   * Serializes observations and actions in call order. An executor (or an AI
-   * SDK loop running parallel tool calls) that issues a second action before
-   * the first settles would otherwise resolve both targets against the same
-   * pre-action observation — exactly the wrong-node hazard the staleness rule
-   * exists to prevent. Queued, the second call sees the newest observation
-   * and a stale id fails loud instead of acting on the wrong node.
-   *
-   * Invariant: a serialized body must never call `observe()` or `runAction()`
-   * itself — the inner call would queue behind its own caller and deadlock.
-   * Grammar bodies call the session directly, and secret authorization
-   * never observes; keep it that way.
-   */
-  private grammarChain: Promise<unknown> = Promise.resolve();
-  private sdkModel: ModelInstance | undefined;
-  private sdkModelResolved = false;
-  private transcript: string | undefined;
-  /** Set by `finish()`: late executor accounting must not land on the next step. */
-  private closed = false;
-  private readonly usage = new ModelUsage();
-  private modelProvider: string | undefined;
-  private modelId: string | undefined;
-  private readonly redact: (text: string) => string;
+  private readonly accounting: StepAccounting;
+  private readonly feed: ObservationFeed;
+  private readonly dispatcher: ActionDispatcher;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
   private readonly stepCache: StepTraceSession | undefined;
   /** Timeline index of the step being dispatched. */
   private readonly stepIndex: number;
-  /** The last pixel decision recorded on this step: `allowed`, or the withheld reason. */
-  private pixelsDecided: string | undefined;
-  /** True once a harness-made vision call sent pixels to a model this step. */
-  private visionInput = false;
-  /** Why requested pixels did not become model input, when they did not. */
-  private visionDegraded: VisionDegradation | undefined;
-  /**
-   * The screen shape the newest committed action was resolved against, kept
-   * until the next settled observation has waited for the screen to leave it.
-   * Armed by actions whose effect shows in the tree; a secret fill leaves no
-   * visible trace and a scroll moves nothing the tree records, so neither
-   * arms it. Without this, the observation after a tap on a link reads the
-   * old page, stable and wrong, and the model repairs what already worked.
-   */
-  private pendingChange: string | undefined;
-  /** The change wait the pending action asked for; undefined takes the default. */
-  private pendingChangeWaitMs: number | undefined;
+  private explanation: string | undefined;
+  private transcript: string | undefined;
+  private sdkModel: ModelInstance | undefined;
+  private sdkModelResolved = false;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -325,31 +170,35 @@ class ActDispatch {
     /** The agent this step runs with. */
     private readonly agent: DispatchAgent,
   ) {
-    this.stepSignal = AbortSignal.any([runtime.engine.signal, this.stepAbort.signal]);
-    this.timeoutMs = resolveTimeout(spec.timeout, runtime.config.timeout);
-    this.deadline = runtime.engine.deadline(this.timeoutMs);
-    this.maxActions = resolveBoundedBudget(
-      spec.maxSteps,
-      agent.config.maxSteps,
-      'maxSteps',
-    );
-    this.maxModelCalls = resolveBoundedBudget(
-      spec.maxModelCalls,
-      agent.config.maxModelCalls,
-      'maxModelCalls',
-    );
-    this.metrics.contextBytes = new TextEncoder().encode(agent.agentContext ?? '').byteLength;
-    this.redact = runtime.redact;
-    // The dispatch always runs inside a recorded step (`dispatchAct` opens
-    // one); the index names the step to the executor and to the trace cache.
+    this.accounting = new StepAccounting(runtime, {
+      api: spec.api,
+      timeoutMs: resolveTimeout(spec.timeout, runtime.config.timeout),
+      maxActions: resolveBoundedBudget(spec.maxSteps, agent.config.maxSteps, 'maxSteps'),
+      maxModelCalls: resolveBoundedBudget(spec.maxModelCalls, agent.config.maxModelCalls, 'maxModelCalls'),
+      contextBytes: new TextEncoder().encode(agent.agentContext ?? '').byteLength,
+    });
+    // One queue for observations and actions alike: call order is what keeps
+    // a batched turn from resolving two targets against one stale screen.
+    const queue = new OperationQueue();
+    this.feed = new ObservationFeed(runtime, this.accounting, queue, {
+      maxObservationBytes: agent.config.maxObservationBytes,
+    });
+    this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
+      instruction: spec.instruction,
+      params: spec.params,
+      secrets: spec.secrets,
+      trace: () => this.stepCache,
+      tapVisual: (description) => tapVisual(this.visionHost(), description),
+    });
+    // The dispatch always runs inside a recorded step (`dispatchAgentStep`
+    // opens one); the index names the step to the executor and to the trace cache.
     const stepIndex = runtime.steps.currentStepIndex;
     if (stepIndex === undefined) throw new Error('agent step dispatched outside a recorded step');
     this.stepIndex = stepIndex;
     // Only act steps are cacheable: an assert must not change state, so its
     // trace would be empty — nothing to replay, nothing worth a read. An
     // executor that declared `cache: 'off'` sees every step itself.
-    const cache =
-      spec.kind === 'act' && agent.executor.cache !== 'off' ? runtime.cache : undefined;
+    const cache = spec.kind === 'act' && agent.executor.cache !== 'off' ? runtime.cache : undefined;
     this.stepCache =
       cache === undefined
         ? undefined
@@ -359,13 +208,11 @@ class ActDispatch {
             params: spec.params,
             executor: {
               name: agent.executor.name,
-              ...(agent.executor.version === undefined
-                ? {}
-                : { version: agent.executor.version }),
+              ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
             },
-            redact: this.redact,
+            redact: runtime.redact,
             testIdAttribute: runtime.config.testIdAttribute,
-            maxActions: this.maxActions,
+            maxActions: this.accounting.maxActions,
             stepIndex,
           });
   }
@@ -379,7 +226,7 @@ class ActDispatch {
       projectPriorSteps(this.runtime.priorSteps()),
       this.runtime.config.limits.maxLedgerBytes,
     );
-    this.metrics.ledgerBytes = ledger.bytes;
+    this.accounting.metrics.ledgerBytes = ledger.bytes;
     const replayedPrefix = this.stepCache?.replayedPrefix;
     return {
       step: {
@@ -395,7 +242,7 @@ class ActDispatch {
       target: this.runtime.target,
       attempt: this.runtime.attempt,
       ...(replayedPrefix === undefined ? {} : { replayedPrefix }),
-      signal: this.stepSignal,
+      signal: this.accounting.signal,
       // Resolved on first read, so executors that bring their own model (or
       // none) never pay for — or fail on — config model resolution.
       get model() {
@@ -405,14 +252,14 @@ class ActDispatch {
       ledger: ledger.text,
       agentContext: this.agent.agentContext,
       budgets: {
-        maxActions: this.maxActions,
-        maxModelCalls: this.maxModelCalls,
-        actionsUsed: () => this.metrics.actionSteps,
-        remainingMs: () => this.deadline.remaining(),
-        recordModelCall: (usage) => this.recordModelCall(usage),
-        runTool: (call, body) => this.runTool(call, body),
+        maxActions: this.accounting.maxActions,
+        maxModelCalls: this.accounting.maxModelCalls,
+        actionsUsed: () => this.accounting.metrics.actionSteps,
+        remainingMs: () => this.accounting.remainingMs(),
+        recordModelCall: (usage) => this.accounting.recordModelCall(usage),
+        runTool: (call, body) => this.dispatcher.runTool(call, body),
       },
-      observe: (options) => this.observe(options),
+      observe: async (options = {}) => this.feed.view(await this.feed.observeSettled(options?.pixels === true), options),
       vision: this.buildVision(),
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
@@ -421,97 +268,8 @@ class ActDispatch {
         }
       },
       attachScreenshot: (pixels, label) => this.attachScreenshot(pixels, label),
-      actions: this.buildActions(),
+      actions: this.dispatcher.actions,
     };
-  }
-
-  /**
-   * The action grammar, shared verbatim by the executor context and the
-   * replay engine: a replayed action runs under exactly the same deadline,
-   * budget, policy, and recording as a live one. Committed actions are
-   * recorded into the step trace with the node they actually acted on —
-   * capture at commit time is what makes the descriptor durable evidence
-   * rather than a guess.
-   */
-  private buildActions(): ExecutorActions {
-    return {
-      tap: (target) => this.tapNode(target),
-      type: (target, value) => {
-        if (typeof value !== 'string') {
-          throw new TestError('INVALID_ARGUMENT', 'type value must be a string');
-        }
-        return this.commitTargeted('type', target, async (node) => {
-          await this.session.perform(
-            node.ref,
-            { kind: 'fill', value, sensitive: false },
-            this.actionOperation(),
-          );
-          return { name: 'type', node, value };
-        });
-      },
-      typeSecret: (target, name) => this.typeSecret(target, name),
-      press: (target, key) => {
-        if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
-          throw new TestError('INVALID_ARGUMENT', 'press key must be a short non-empty string');
-        }
-        return this.commitTargeted('press', target, async (node) => {
-          await this.session.perform(node.ref, { kind: 'press', key }, this.actionOperation());
-          return { name: 'press', node, key };
-        });
-      },
-      select: (target, value) => {
-        if (typeof value !== 'string' || value === '') {
-          throw new TestError('INVALID_ARGUMENT', 'select value must be a non-empty option label');
-        }
-        return this.commitTargeted('selectOption', target, async (node) => {
-          await this.session.perform(node.ref, { kind: 'selectOption', value }, this.actionOperation());
-          return { name: 'select', node, value };
-        });
-      },
-      scroll: (direction, target) => this.scroll(direction, target),
-      navigate: (url) => this.navigate(url),
-      tapAt: (point) => this.tapAt(point),
-      tapVisual: (description) => tapVisual(this.visionHost(), description),
-    };
-  }
-
-  /** The pixel-backed reads an executor may ask the harness for. */
-  private buildVision(): ExecutorVision {
-    // oxlint-disable-next-line typescript/no-this-alias
-    const dispatch = this;
-    return {
-      get tainted() {
-        return dispatch.runtime.taint.value;
-      },
-      look: (options) => look(this.visionHost(), options),
-    };
-  }
-
-  /**
-   * What the pixel tier (`vision-tier.ts`) borrows from this dispatch: its
-   * settled observation, its counted model call, and its two taps. A further
-   * capability gets a host of its own here and a module of its own there.
-   */
-  private visionHost(): VisionHost {
-    return {
-      platform: this.runtime.target.platform,
-      verbs: this.runtime.target.verbs,
-      observePixels: async () => {
-        const observation = await this.observeSettled(true);
-        return { observation, view: await this.projectObservation(observation, { pixels: true }) };
-      },
-      ask: (request) => this.askVision(request),
-      tap: (id) => this.tapNode({ id }),
-      tapAt: (point, description) => this.tapAt(point, description),
-    };
-  }
-
-  /** The tap verb: one committed tap on a resolved node. */
-  private tapNode(target: ExecutorTarget): Promise<void> {
-    return this.commitTargeted('tap', target, async (node) => {
-      await this.session.perform(node.ref, { kind: 'tap' }, this.actionOperation());
-      return { name: 'tap', node };
-    });
   }
 
   /**
@@ -522,16 +280,17 @@ class ActDispatch {
    * the promise is abandoned, never awaited past the deadline.
    */
   async run(): Promise<StepVerdict> {
+    const { accounting } = this;
     const timer = setTimeout(() => {
-      this.fatalize(
-        new AgentError('STEP_TIMEOUT', `${this.spec.api} exceeded its ${this.timeoutMs} ms timeout`),
+      accounting.fatalize(
+        new AgentError('STEP_TIMEOUT', `${this.spec.api} exceeded its ${accounting.timeoutMs} ms timeout`),
       );
-    }, Math.max(1, this.deadline.remaining()));
+    }, Math.max(1, accounting.remainingMs()));
     try {
       return await Promise.race([
         this.dispatchStep(),
         new Promise<never>((_, reject) => {
-          const signal = this.stepAbort.signal;
+          const { signal } = accounting;
           if (signal.aborted) {
             reject(signal.reason as Error);
             return;
@@ -544,39 +303,6 @@ class ActDispatch {
     }
   }
 
-  private async dispatchStep(): Promise<StepVerdict> {
-    const replayed = await this.stepCache?.begin();
-    if (replayed !== undefined) return replayed;
-    return this.agent.executor.runStep(this.context());
-  }
-
-  /** The cache session's narrow view of this dispatch. */
-  private cacheHost(): StepCacheHost {
-    return {
-      observe: async () => (await this.observeLatest()).nodes,
-      observeSettled: async () => (await this.observeSettled()).nodes,
-      actions: this.buildActions(),
-      signal: this.stepSignal,
-      remainingMs: () => this.deadline.remaining(),
-      redact: this.redact,
-      testIdAttribute: this.runtime.config.testIdAttribute,
-      currentPath: (nodes) => this.currentPath(nodes !== undefined && nodes === this.latest?.nodes ? this.latest : undefined),
-      replaying: (active) => this.runtime.steps.replaying(active),
-    };
-  }
-
-  /** Best-effort current location path + query, for trace preconditions. */
-  private async currentPath(observation?: AgentObservation): Promise<string | undefined> {
-    const currentUrl = this.session.url;
-    if (observation?.url === undefined && currentUrl === undefined) return undefined;
-    try {
-      const url = new URL(observation?.url ?? await currentUrl!(this.operation()));
-      return `${url.pathname}${url.search}`;
-    } catch {
-      return undefined;
-    }
-  }
-
   /** Hands the settled outcome to the cache session, which stages, evicts, or does nothing. */
   async conclude(outcome: StepOutcome): Promise<void> {
     await this.stepCache?.conclude(outcome, this.explanation);
@@ -585,26 +311,23 @@ class ActDispatch {
   /** Maps the executor's verdict onto the runner outcome. Fail-closed on hard stops. */
   settle(verdict: StepVerdict): void {
     let settled = verdict;
-    if (this.hardStop !== undefined) {
-      if (this.hardStop.code === 'CANCELLED') throw this.hardStop;
+    const hardStop = this.accounting.hardStop;
+    if (hardStop !== undefined) {
+      if (hardStop.code === 'CANCELLED') throw hardStop;
       if (settled.status === 'passed') {
         // The step ran out of budget or time mid-flight; an executor cannot
         // declare success over the runtime's own accounting.
-        settled = {
-          status: 'blocked',
-          summary: this.hardStop.message,
-          errorCode: this.hardStop.code,
-        };
+        settled = { status: 'blocked', summary: hardStop.message, errorCode: hardStop.code };
       } else if (settled.errorCode === undefined) {
         // The executor's analysis stands, but runtime exhaustion is never
         // hidden from the report: a code-less failure inherits the hard stop.
-        settled = { ...settled, errorCode: this.hardStop.code };
+        settled = { ...settled, errorCode: hardStop.code };
       }
     }
     if (
       settled.errorCode !== undefined &&
       RUNTIME_CODES.has(settled.errorCode) &&
-      !this.vouches(settled.errorCode)
+      !this.accounting.vouches(settled.errorCode)
     ) {
       throw this.invented(settled.errorCode);
     }
@@ -626,125 +349,10 @@ class ActDispatch {
    */
   settleThrown(error: AgentError): AgentError {
     if (!RUNTIME_CODES.has(error.code)) return error;
-    if (this.hardStop !== undefined) return this.hardStop;
-    if (this.vouches(error.code)) return error;
+    const hardStop = this.accounting.hardStop;
+    if (hardStop !== undefined) return hardStop;
+    if (this.accounting.vouches(error.code)) return error;
     return this.invented(error.code, error);
-  }
-
-  /**
-   * Whether the runtime's own accounting corroborates a runtime code. Codes
-   * are runtime-assigned: the recorded hard stop vouches directly, and the
-   * clock, the budgets, and the abort signal vouch for an executor that
-   * observed exhaustion before the context machinery did.
-   */
-  private vouches(code: AgentErrorCode): boolean {
-    if (this.hardStop?.code === code) return true;
-    switch (code) {
-      case 'CANCELLED':
-        return this.runtime.engine.signal.aborted;
-      case 'STEP_TIMEOUT':
-        return this.deadline.expired();
-      case 'STEP_BUDGET_EXHAUSTED':
-        return (
-          this.metrics.actionSteps >= this.maxActions ||
-          this.metrics.modelCalls >= this.maxModelCalls
-        );
-      default:
-        return false;
-    }
-  }
-
-  private invented(code: AgentErrorCode, cause?: AgentError): AgentError {
-    return new AgentError(
-      'MODEL_OUTPUT_INVALID',
-      `executor "${this.agent.executor.name}" reported runtime code ${code}, which the runtime never assigned`,
-      cause === undefined ? {} : { cause },
-    );
-  }
-
-  /**
-   * Records the first hard stop. Timeout and cancellation also abort the step
-   * signal — there is nothing left for the executor to say. Budget exhaustion
-   * does not: the executor may still catch it and conclude with its own
-   * analysis (which `settle` stamps with the runtime code), bounded by the
-   * deadline either way.
-   */
-  private fatalize(error: AgentError): AgentError {
-    this.hardStop ??= error;
-    if (error.code !== 'STEP_BUDGET_EXHAUSTED' && !this.stepAbort.signal.aborted) {
-      this.stepAbort.abort(this.hardStop);
-    }
-    return error;
-  }
-
-  /**
-   * Counts and accounts one executor-made model call. The budget is enforced:
-   * the call past the limit records, then hard-stops the step.
-   */
-  private recordModelCall(usage: ExecutorModelCall | undefined): void {
-    // An executor abandoned by a hard stop can still report late; the step it
-    // belonged to is closed, and the recorder's active step is now another.
-    if (this.closed) return;
-    this.metrics.modelCalls += 1;
-    const tokens = this.usage.record(usage);
-    if (usage?.provider !== undefined) this.modelProvider = usage.provider;
-    if (usage?.modelId !== undefined) this.modelId = usage.modelId;
-    this.runtime.steps.recordEvent({
-      kind: 'model',
-      startedAt: usage?.startedAt ?? timestamp(),
-      durationMs: Math.max(0, Math.round(usage?.durationMs ?? 0)),
-      status: 'passed',
-      name: 'executor',
-      count: tokens,
-      ...tokenFields(usage),
-    });
-    this.runtime.debug?.record('agent.model', Math.max(0, Math.round(usage?.durationMs ?? 0)));
-    if (this.metrics.modelCalls > this.maxModelCalls) {
-      throw this.fatalize(
-        new AgentError(
-          'STEP_BUDGET_EXHAUSTED',
-          `${this.spec.api} exhausted its model-call budget of ${this.maxModelCalls}`,
-        ),
-      );
-    }
-  }
-
-  /** Claims a mutation slot before any side effect, for both grammar and project tools. */
-  private reserveAction(): void {
-    this.checkpoint();
-    if (this.closed) throw new AgentError('CANCELLED', 'the step has ended');
-    if (this.metrics.actionSteps >= this.maxActions) {
-      throw this.fatalize(
-        new AgentError(
-          'STEP_BUDGET_EXHAUSTED',
-          `${this.spec.api} exhausted its action budget of ${this.maxActions}`,
-        ),
-      );
-    }
-    // The budget slot is consumed either way: a failed dispatch was an attempt.
-    this.metrics.actionSteps += 1;
-  }
-
-  /** Records project tools through the same budget and operation queue as grammar actions. */
-  private runTool<T>(call: { name: string; mutates: boolean }, body: () => Promise<T>): Promise<T> {
-    const run = async (): Promise<T> => {
-      this.checkpoint();
-      if (this.closed) throw new AgentError('CANCELLED', 'the step has ended');
-      if (call.mutates) {
-        this.reserveAction();
-        this.stepCache?.recordGap(call.name);
-      }
-      const value = await instrumentPhase(
-        this.runtime,
-        { api: this.spec.api, kind: 'engine', phase: 'agent.action', name: `tool:${call.name}` },
-        body,
-      );
-      // A tool the page reacts to at once is read after the reaction; one
-      // whose effect shows only after a reload costs the brief wait, not two seconds.
-      if (call.mutates) this.armChange(BRIEF_CHANGE_WAIT_MS);
-      return value;
-    };
-    return call.mutates ? this.serialized(run) : run();
   }
 
   /** What the settled step did, for the caller of `agent.act()`. */
@@ -753,25 +361,96 @@ class ActDispatch {
     return {
       summary: this.explanation ?? '',
       ...(cache === undefined ? {} : { cache }),
-      modelCalls: this.metrics.modelCalls,
-      actions: this.metrics.actionSteps,
+      modelCalls: this.accounting.metrics.modelCalls,
+      actions: this.accounting.metrics.actionSteps,
     };
   }
 
-  /** Attaches metrics, model provenance, and the verdict explanation to the step. */
+  /** Closes the books and attaches metrics, model provenance, and the verdict explanation to the step. */
   finish(): void {
-    this.closed = true;
+    this.accounting.close();
+    const { metrics } = this.accounting;
     const cacheInfo = this.stepCache?.cacheInfo;
+    const latest = this.feed.latest;
     this.runtime.steps.attachAgentDetails({
-      metrics: { ...this.metrics },
-      ...(this.metrics.modelCalls > 0 ? { model: this.modelInfo() } : {}),
+      metrics: { ...metrics },
+      ...(metrics.modelCalls > 0 ? { model: this.accounting.modelInfo(this.agent.executor) } : {}),
       ...(cacheInfo === undefined ? {} : { cache: cacheInfo }),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
-      ...(this.latest !== undefined ? { observationRevision: this.latest.revision } : {}),
-      ...(this.visionInput ? { visionInput: true } : {}),
-      ...(this.visionDegraded === undefined ? {} : { visionDegraded: this.visionDegraded }),
+      ...(latest !== undefined ? { observationRevision: latest.revision } : {}),
+      ...this.feed.visionReport(),
     });
     this.writeTranscript();
+  }
+
+  private async dispatchStep(): Promise<StepVerdict> {
+    const replayed = await this.stepCache?.begin();
+    if (replayed !== undefined) return replayed;
+    return this.agent.executor.runStep(this.context());
+  }
+
+  /** The cache session's narrow view of this step. */
+  private cacheHost(): StepCacheHost {
+    return {
+      observe: async () => (await this.feed.observeLatest()).nodes,
+      observeSettled: async () => (await this.feed.observeSettled()).nodes,
+      actions: this.dispatcher.actions,
+      signal: this.accounting.signal,
+      remainingMs: () => this.accounting.remainingMs(),
+      redact: this.runtime.redact,
+      testIdAttribute: this.runtime.config.testIdAttribute,
+      currentPath: (nodes) => {
+        const latest = this.feed.latest;
+        return this.feed.currentPath(nodes !== undefined && nodes === latest?.nodes ? latest : undefined);
+      },
+      replaying: (active) => this.runtime.steps.replaying(active),
+    };
+  }
+
+  /** The pixel-backed reads an executor may ask the harness for. */
+  private buildVision(): ExecutorVision {
+    // oxlint-disable-next-line typescript/no-this-alias
+    const dispatch = this;
+    return {
+      get tainted() {
+        return dispatch.runtime.taint.value;
+      },
+      look: (options) => look(this.visionHost(), options),
+    };
+  }
+
+  /**
+   * What the pixel tier (`vision-tier.ts`) borrows from this step: a settled
+   * pixel observation, a counted model call, and the two taps. A further
+   * capability gets a host of its own here and a module of its own there.
+   */
+  private visionHost(): VisionHost {
+    return {
+      platform: this.runtime.target.platform,
+      verbs: this.runtime.target.verbs,
+      observePixels: async () => {
+        const observation = await this.feed.observeSettled(true);
+        return { observation, view: await this.feed.view(observation, { pixels: true }) };
+      },
+      ask: async (request) => {
+        const answer = await askVisionModel(
+          { runtime: this.runtime, agent: this.agent, accounting: this.accounting },
+          request,
+        );
+        this.feed.notePixelsSent();
+        return answer;
+      },
+      tap: (id) => this.dispatcher.tap({ id }),
+      tapAt: (point, description) => this.dispatcher.tapAt(point, description),
+    };
+  }
+
+  private invented(code: AgentErrorCode, cause?: AgentError): AgentError {
+    return new AgentError(
+      'MODEL_OUTPUT_INVALID',
+      `executor "${this.agent.executor.name}" reported runtime code ${code}, which the runtime never assigned`,
+      cause === undefined ? {} : { cause },
+    );
   }
 
   /**
@@ -795,45 +474,11 @@ class ActDispatch {
     try {
       // Model prose and project-tool output are not model input, but they
       // are a log: the same redactor that guards the tree guards the file.
-      writeFileSync(join(this.runtime.artifacts.dir, name), this.redact(this.transcript), 'utf8');
+      writeFileSync(join(this.runtime.artifacts.dir, name), this.runtime.redact(this.transcript), 'utf8');
       this.runtime.steps.attachArtifact(this.runtime.artifacts.register('log', name));
     } catch {
       // The transcript is best-effort debug detail; never fail the step for it.
     }
-  }
-
-  /**
-   * Model provenance for the report. The executor is the authority on which
-   * model answered; an executor that reports nothing is still identified, so a
-   * step's model calls are never attributed to the wrong tier.
-   */
-  private modelInfo(): StepModelInfo {
-    const executor = this.agent.executor;
-    const executorVersion = executor.version ?? '0';
-    return this.usage.report({
-      provider: this.modelProvider ?? executor.name,
-      model: this.modelId ?? executor.name,
-      endpoint: 'provider-default',
-      adapterVersion: `executor/${executor.name}@${executorVersion}`,
-      policyVersion: `${executor.name}/${executorVersion}`,
-    }, this.metrics.modelCalls);
-  }
-
-  private get session() {
-    return this.runtime.engine.session;
-  }
-
-  private operation(): OperationContext {
-    return boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline);
-  }
-
-  /** The operation context of one targeted action; see MAX_TARGETED_ACTION_MS. */
-  private actionOperation(): OperationContext {
-    return boundedOperation(
-      this.runtime.engine,
-      Math.min(this.runtime.config.actionTimeout, MAX_TARGETED_ACTION_MS),
-      this.deadline,
-    );
   }
 
   /** Resolves the configured model once; executors that never read it never pay. */
@@ -844,537 +489,5 @@ class ActDispatch {
       this.sdkModelResolved = true;
     }
     return this.sdkModel;
-  }
-
-  /** Fails when the step is cancelled or out of time; records the hard stop. */
-  private checkpoint(cause?: unknown): void {
-    try {
-      checkStepClock({
-        signal: this.runtime.engine.signal,
-        deadline: this.deadline,
-        api: this.spec.api,
-        timeoutMs: this.timeoutMs,
-        ...(cause === undefined ? {} : { cause }),
-      });
-    } catch (error) {
-      if (isAgentError(error)) this.fatalize(error);
-      throw error;
-    }
-  }
-
-  /** Chains one grammar operation behind every earlier one, in call order. */
-  private serialized<T>(body: () => Promise<T>): Promise<T> {
-    // The chain is always already settled-to-undefined, so failures propagate
-    // to their own caller and never poison the queue.
-    const run = this.grammarChain.then(body);
-    this.grammarChain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  }
-
-  /**
-   * The executor-facing observe: always settled. An executor observation is
-   * followed by a model call measured in seconds, so the bounded settle wait
-   * is noise there — and it guarantees the model never reads a snapshot the
-   * app is still reacting to, which a fast model turns into a repeated action
-   * (double-committing a toggle) and a verdict judged on pre-render state.
-   * Replay's pre-action looks and the cache session's probes settle through
-   * the same path (`observeSettled`); only replay's polls between retries
-   * read raw (`observeLatest`).
-   */
-  private async observe(options: ExecutorObserveOptions = {}): Promise<ExecutorObservation> {
-    if (options === null || typeof options !== 'object') {
-      throw new TestError('INVALID_ARGUMENT', 'observe options must be an object');
-    }
-
-    const observation = await this.observeSettled(options.pixels === true);
-    return this.projectObservation(observation, options);
-  }
-
-  /** The executor's view of one captured observation: redacted text, and the tree and pixels it asked for. */
-  private async projectObservation(
-    observation: AgentObservation,
-    options: ExecutorObserveOptions,
-  ): Promise<ExecutorObservation> {
-    const wantPixels = options.pixels === true;
-    // Prefer location from this capture; only engines without it need a separate probe.
-    const path = await this.currentPath(observation);
-    return {
-      revision: observation.revision,
-      text: observation.text,
-      truncated: observation.truncated,
-      viewport: observation.viewport,
-      ...(path === undefined ? {} : { path: this.redact(path) }),
-      ...(options.tree === true ? { tree: projectTree(observation.tree, this.redact) } : {}),
-      ...(wantPixels ? this.pixelsFor(observation) : {}),
-    };
-  }
-
-  /**
-   * Pixels for an executor that asked for them, or the reason they are
-   * withheld — the same decision the judgment tier makes, recorded as a
-   * policy event whenever it changes within the step.
-   */
-  private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
-    const outcome = pixelsForModel(observation, this.runtime.taint.value);
-    if ('withheld' in outcome) {
-      this.recordPixelDecision('denied', outcome.withheld);
-      this.visionDegraded = outcome.withheld;
-      return { pixelsWithheld: outcome.withheld };
-    }
-    this.recordPixelDecision('allowed');
-    this.metrics.pixelBytes = Math.max(this.metrics.pixelBytes ?? 0, outcome.pixels.data.byteLength);
-    return { pixels: outcome.pixels };
-  }
-
-  private recordPixelDecision(decision: 'allowed' | 'denied', code?: string): void {
-    const key = code ?? decision;
-    if (this.pixelsDecided === key) return;
-    this.pixelsDecided = key;
-    this.recordPolicy('vision.pixels', decision, code);
-  }
-
-  private observeLatest(): Promise<AgentObservation> {
-    return this.serialized(() => this.observeNow(false, false));
-  }
-
-  private observeSettled(pixels = false): Promise<AgentObservation> {
-    return this.serialized(() => this.observeNow(true, pixels));
-  }
-
-  /** One recorded observation; when `settle`, the captures loop inside it. */
-  private async observeNow(settle: boolean, pixels: boolean): Promise<AgentObservation> {
-    this.checkpoint();
-    // A tainted viewport never captures pixels: the engine would mask what it
-    // knows about, and the secret may be anywhere on screen by now.
-    const capturePixels = pixels && !this.runtime.taint.value;
-    // A settled look consumes the pending change: it waits for the screen to
-    // leave the pre-action shape once, and later looks read the screen as is.
-    const changedFrom = settle ? this.pendingChange : undefined;
-    const changeWaitMs = settle ? this.pendingChangeWaitMs : undefined;
-    if (settle) {
-      this.pendingChange = undefined;
-      this.pendingChangeWaitMs = undefined;
-    }
-    const observation = await instrumentPhase(
-      this.runtime,
-      { api: this.spec.api, kind: 'observation', phase: 'agent.observe' },
-      () =>
-        settle
-          ? settleObservation(
-              () => this.captureObservation(capturePixels),
-              observationShape,
-              {
-                remainingMs: () => this.deadline.remaining(),
-                // The step's own hard stop must interrupt a settle sleep too —
-                // the attempt signal alone would let settling outlive the step
-                // by one poll interval.
-                signal: this.stepSignal,
-              },
-              { changedFrom, changeWaitMs, transitional: isTransitionalObservation },
-            )
-          : this.captureObservation(capturePixels),
-      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
-    );
-    this.publish(observation);
-    this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
-    return observation;
-  }
-
-  /** Makes an observation the newest and remembers it among the recent ones. */
-  private publish(observation: AgentObservation): void {
-    this.latest = observation;
-    this.recent.push(observation);
-    if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
-  }
-
-  /**
-   * Arms the change wait: the next settled observation waits for the screen
-   * to leave the newest observation's shape, for the default two seconds or
-   * the given brief window.
-   */
-  private armChange(waitMs?: number): void {
-    if (this.latest === undefined) return;
-    this.pendingChange = observationShape(this.latest);
-    this.pendingChangeWaitMs = waitMs;
-  }
-
-  /** One raw observation capture: retried at the engine, then redacted and bounded. */
-  private async captureObservation(pixels: boolean): Promise<AgentObservation> {
-    const raw = await retryingObserve({
-      observe: (operation) => this.session.observe(operation, { pixels }),
-      operation: () => this.operation(),
-      guard: (cause) => this.checkpoint(cause),
-      signal: this.runtime.engine.signal,
-      api: this.spec.api,
-    });
-    return prepareObservation(raw, {
-      redact: this.runtime.redact,
-      maxBytes: this.observationByteBudget(pixels),
-      testIdAttribute: this.runtime.config.testIdAttribute,
-    });
-  }
-
-  /**
-   * Bytes one act observation may contribute to a model turn, clamped like a
-   * judgment's. The loop's history grows past what any one observation costs,
-   * so the fixed part counted here is what every turn resends: the project
-   * context and the prior-step ledger.
-   */
-  private observationByteBudget(pixels: boolean): number {
-    const { config } = this.runtime;
-    return observationByteBudget(
-      {
-        maxObservationBytes: this.agent.config.maxObservationBytes,
-        maxModelTokensPerCall: config.limits.maxModelTokensPerCall,
-      },
-      { fixedBytes: this.metrics.contextBytes + this.metrics.ledgerBytes, pixels },
-    );
-  }
-
-  /**
-   * Resolves an executor target against the newest observation. An id the
-   * newest observation no longer carries, but a recent one did, is re-found
-   * in the newest one by its descriptor: a turn that batches actions keeps
-   * addressing the screen it saw while each action's own look re-observes,
-   * and an engine that mints ids per observation renumbers the tree between
-   * them. Exactly one match, or the id counts as gone.
-   */
-  private resolveTarget(target: ExecutorTarget): SemanticNode {
-    if (typeof target?.id !== 'string' || target.id === '') {
-      throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
-    }
-    const id = target.id.replace(/^#/, '');
-    const latest = this.latest;
-    if (latest === undefined) {
-      throw new AgentError(
-        'LOCATOR_NOT_FOUND',
-        'no observation has been captured yet; observe before acting',
-      );
-    }
-    const node = latest.nodes.get(id) ?? this.refound(id, latest);
-    if (node === undefined) {
-      throw new AgentError(
-        'LOCATOR_NOT_FOUND',
-        `node #${id} is not on the current screen (observation ${latest.revision}); it was removed or never existed`,
-      );
-    }
-    return node;
-  }
-
-  /** The newest node matching the descriptor of what `id` named in a recent observation, if exactly one. */
-  private refound(id: string, latest: AgentObservation): SemanticNode | undefined {
-    let earlier: SemanticNode | undefined;
-    for (let index = this.recent.length - 1; index >= 0 && earlier === undefined; index -= 1) {
-      earlier = this.recent[index]!.nodes.get(id);
-    }
-    if (earlier === undefined) return undefined;
-    const descriptor = describeTarget(earlier, this.redact, this.runtime.config.testIdAttribute);
-    if (descriptor === undefined) return undefined;
-    const relocated = relocateDescriptor(descriptor, latest.nodes, {
-      redact: this.redact,
-      testIdAttribute: this.runtime.config.testIdAttribute,
-    });
-    return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
-  }
-
-  /**
-   * Runs one grammar action against the action budget, recorded as an engine
-   * event. The body performs the engine call and returns the committed
-   * action's recordable descriptor — one value carries both concerns: the
-   * event's `detail` prose derives from it in a pure hook, and the dispatch
-   * writes it to the trace cache after the phase settles.
-   */
-  private runAction(name: string, body: () => Promise<RecordableAction>): Promise<void> {
-    return this.serialized(() => this.runActionNow(name, body));
-  }
-
-  private async runActionNow(name: string, body: () => Promise<RecordableAction>): Promise<void> {
-    this.reserveAction();
-    let action: RecordableAction;
-    try {
-      action = await instrumentPhase(
-        this.runtime,
-        { api: this.spec.api, kind: 'engine', phase: 'agent.action', name },
-        body,
-        (committed) => ({
-          detail: describeAction(committed, this.redact, this.runtime.config.testIdAttribute).summary,
-        }),
-      );
-    } catch (cause) {
-      this.checkpoint(cause);
-      throw cause;
-    }
-    // The effect may still be arriving: the next settled observation waits for
-    // the screen to leave the shape this action was resolved against. A secret
-    // fill leaves no visible trace and arms nothing; a scroll waits briefly for
-    // rows a windowed or lazy list renders.
-    if (name !== 'typeSecret') this.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
-    if (this.stepCache === undefined) return;
-    // A typed value the step derived at run time is this run's data, not the
-    // flow's: it is recorded as a gap so replay hands over before it rather
-    // than typing a value the app may not issue again.
-    if (action.name === 'type' && isDerivedValue(action.value, this.spec.instruction, this.spec.params)) {
-      this.stepCache.recordGap('type (run-time value)');
-      return;
-    }
-    // A bare point is this screen's geometry, not a descriptor replay could
-    // re-find; the flow hands off here rather than tapping where nothing may be.
-    if (action.name === 'tapAt') {
-      this.stepCache.recordGap('tap_visual (point)');
-      return;
-    }
-    this.stepCache.record(action);
-  }
-
-  /**
-   * One action against a resolved node. A node the engine reports stale is
-   * re-found by its descriptor against a fresh capture and the action retried
-   * (`MAX_STALE_RELOCATIONS` times): a list that remounts its rows between
-   * the observation and the action keeps the control on screen under a dead
-   * handle, and the control, not the handle, is what the model asked for. A
-   * descriptor that matches nothing or several nodes fails the action instead.
-   */
-  private commitTargeted(
-    name: string,
-    target: ExecutorTarget,
-    perform: (node: SemanticNode) => Promise<RecordableAction>,
-  ): Promise<void> {
-    return this.runAction(name, async () => {
-      let node = this.resolveTarget(target);
-      // resolveTarget guarantees an observation; it is the one the node came from.
-      let observation = this.latest!;
-      for (let relocations = 0; ; relocations += 1) {
-        // The container the node sits in is captured with it: that is what
-        // tells this row's "Delete" from the next row's when the flow replays.
-        const within = containerKey(node.ref.id, observation.nodes, observation.parents, this.redact);
-        // When the description still matches several controls, the position among
-        // them is recorded too; a replay that finds the same number picks the same one.
-        const position = describePosition(node, within, observation.nodes, {
-          redact: this.redact,
-          testIdAttribute: this.runtime.config.testIdAttribute,
-        });
-        try {
-          const action = await perform(node);
-          return {
-            ...action,
-            ...(within === undefined ? {} : { within }),
-            ...(position === undefined ? {} : { position }),
-          };
-        } catch (cause) {
-          if (asEngineError(cause)?.code !== 'NODE_STALE') throw cause;
-          const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.relocateStale(node) : undefined;
-          if (relocated === undefined) {
-            throw new AgentError(
-              'LOCATOR_NOT_FOUND',
-              'the target node left the screen before the action reached it',
-              { cause },
-            );
-          }
-          node = relocated.node;
-          observation = relocated.observation;
-        }
-      }
-    });
-  }
-
-  /**
-   * Re-finds a node that went stale: one fresh capture, then the trace
-   * recorder's own descriptor matching (`cache/relocate.ts`) against it,
-   * exactly one match or nothing. The capture is taken directly rather than
-   * through the serialized observe: this runs inside a serialized action
-   * body, and a queued observation would wait on its own caller.
-   */
-  private async relocateStale(
-    stale: SemanticNode,
-  ): Promise<{ node: SemanticNode; observation: AgentObservation } | undefined> {
-    const options = { redact: this.redact, testIdAttribute: this.runtime.config.testIdAttribute };
-    const descriptor = describeTarget(stale, this.redact, this.runtime.config.testIdAttribute);
-    if (descriptor === undefined) return undefined;
-    this.checkpoint();
-    const observation = await instrumentPhase(
-      this.runtime,
-      { api: this.spec.api, kind: 'observation', phase: 'agent.observe', name: 'relocate' },
-      () => this.captureObservation(false),
-      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
-    );
-    this.publish(observation);
-    this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
-    const relocated = relocateDescriptor(descriptor, observation.nodes, options);
-    if (relocated.kind !== 'found') return undefined;
-    const node = observation.nodes.get(relocated.id);
-    return node === undefined ? undefined : { node, observation };
-  }
-
-  private async scroll(direction: ScrollDirection, target: ExecutorTarget | undefined): Promise<void> {
-    if (!['up', 'down', 'left', 'right'].includes(direction)) {
-      throw new TestError('INVALID_ARGUMENT', `invalid scroll direction "${String(direction)}"`);
-    }
-    if (target === undefined) {
-      await this.runAction('scroll', async () => {
-        await this.session.swipe(direction, SCROLL_MOMENTUM, this.actionOperation());
-        return { name: 'scroll', direction };
-      });
-      return;
-    }
-    await this.commitTargeted('scroll', target, async (node) => {
-      await this.session.perform(
-        node.ref,
-        { kind: 'swipe', direction, momentum: SCROLL_MOMENTUM },
-        this.actionOperation(),
-      );
-      return { name: 'scroll', direction, node };
-    });
-  }
-
-  /**
-   * Fills one declared secret. The name must come from the step's own params
-   * — an executor can never fill a credential the test did not hand it — and
-   * the fill itself runs the full secret authorization policy: registered credential, origin allowlists, and an editable sink
-   * whose purpose matches. Pixel evidence is tainted from here on.
-   */
-  private async typeSecret(target: ExecutorTarget, name: string): Promise<void> {
-    const secret = this.spec.secrets.get(name);
-    if (secret === undefined) {
-      throw new AgentError(
-        'POLICY_DENIED',
-        `secret "${name}" was not declared in this step's params; only declared secrets can be filled`,
-      );
-    }
-    await this.commitTargeted('typeSecret', target, async (node) => {
-      const plaintext = await authorizeSecretFill(
-        {
-          session: this.session,
-          operation: () => this.actionOperation(),
-          recordPolicy: (policy, decision, code) => this.recordPolicy(policy, decision, code),
-        },
-        this.runtime,
-        secret,
-        node,
-      );
-      await this.session.perform(
-        node.ref,
-        { kind: 'fill', value: plaintext, sensitive: true },
-        this.actionOperation(),
-      );
-      this.runtime.taint.value = true;
-      // Recorded by stable name only; replay re-runs the full authorization.
-      return { name: 'typeSecret', node, secret: name };
-    });
-  }
-
-  private recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void {
-    recordPolicyEvent(this.runtime.steps, name, decision, code);
-  }
-
-  /**
-   * Taps one bare viewport point. Clamped to the newest observation's
-   * viewport, so a point the model placed off the edge lands on the edge
-   * rather than failing the engine.
-   */
-  private async tapAt(point: ViewportPoint, description?: string): Promise<void> {
-    if (
-      typeof point?.x !== 'number' ||
-      typeof point.y !== 'number' ||
-      !Number.isFinite(point.x) ||
-      !Number.isFinite(point.y)
-    ) {
-      throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
-    }
-    const viewport = this.latest?.viewport;
-    const clamped: ViewportPoint =
-      viewport === undefined
-        ? { x: Math.round(point.x), y: Math.round(point.y) }
-        : {
-            x: Math.min(Math.max(0, Math.round(point.x)), Math.max(0, viewport.width - 1)),
-            y: Math.min(Math.max(0, Math.round(point.y)), Math.max(0, viewport.height - 1)),
-          };
-    await this.runAction('tapAt', async () => {
-      await this.session.tapAt(clamped, this.actionOperation());
-      return { name: 'tapAt', point: clamped, ...(description === undefined ? {} : { description }) };
-    });
-  }
-
-  /**
-   * One harness-made call to the agent's vision model, counted against the
-   * step's model-call budget and recorded like an executor's own call. The
-   * response is validated against a closed grammar; an answer outside it is
-   * reported to the caller as no answer rather than repaired, since the
-   * executor's model can rephrase and ask again.
-   */
-  private async askVision<Value>(request: VisionRequest<Value>): Promise<Value | undefined> {
-    this.checkpoint();
-    const adapter = this.agent.models.select(true);
-    const images: ModelImage[] = [
-      {
-        data: request.pixels.data,
-        mediaType: request.pixels.mediaType,
-        width: request.pixels.width,
-        height: request.pixels.height,
-      },
-    ];
-    try {
-      const result = await instrumentPhase(
-        this.runtime,
-        { api: this.spec.api, kind: 'model', phase: 'agent.model', name: request.schemaName },
-        () =>
-          adapter.generate({
-            system: `${buildSystem(request.task, this.agent.agentContext)}\n\n${request.rules}`,
-            prompt: request.prompt,
-            images,
-            schemaName: request.schemaName,
-            schema: request.schema,
-            validate: request.validate,
-            maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
-            maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
-            providerOptions: this.agent.config.providerOptions,
-            signal: this.stepSignal,
-            timeoutMs: Math.max(1, Math.min(this.deadline.remaining(), VISION_CALL_TIMEOUT_MS)),
-          }),
-        (generated) => ({
-          count: this.usage.record(generated.usage),
-          ...tokenFields(generated.usage),
-        }),
-      );
-      this.visionInput = true;
-      this.countVisionCall();
-      return result.value;
-    } catch (cause) {
-      this.countVisionCall();
-      if (cause instanceof ModelOutputInvalidError) return undefined;
-      throw cause;
-    }
-  }
-
-  /** Counts one vision call against the model-call budget, enforced like an executor's. */
-  private countVisionCall(): void {
-    this.metrics.modelCalls += 1;
-    if (this.metrics.modelCalls > this.maxModelCalls) {
-      throw this.fatalize(
-        new AgentError(
-          'STEP_BUDGET_EXHAUSTED',
-          `${this.spec.api} exhausted its model-call budget of ${this.maxModelCalls}`,
-        ),
-      );
-    }
-  }
-
-  private async navigate(url: string): Promise<void> {
-    if (typeof url !== 'string' || url.trim() === '') {
-      throw new TestError('INVALID_ARGUMENT', 'navigate requires a URL');
-    }
-    const resolved = resolveNavigationUrl(
-      url,
-      this.runtime.app.base,
-      this.runtime.app.allowedOrigins,
-    ).url;
-    // The raw argument is recorded, not the resolved URL: replay re-resolves
-    // through the same base and origin policy this call just passed.
-    await this.runAction('navigate', async () => {
-      await this.session.app.open(resolved, this.operation());
-      return { name: 'navigate', url };
-    });
   }
 }

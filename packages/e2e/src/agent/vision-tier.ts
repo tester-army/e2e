@@ -23,8 +23,14 @@ import type {
   LookResult,
   VisualTapResult,
 } from './executor.ts';
+import type { AgentContext, AgentSelection } from './invocation.ts';
+import { ModelOutputInvalidError, type ModelImage } from './model/adapter.ts';
 import type { AgentObservation } from './observation.ts';
+import { instrumentPhase } from './phases.ts';
+import { buildSystem } from './prompts.ts';
 import type { ProtocolValidation } from './protocol.ts';
+import type { StepAccounting } from './step-accounting.ts';
+import { tokenFields } from './usage.ts';
 import {
   abstainAdvice,
   describeVisualTap,
@@ -43,6 +49,16 @@ import {
   type LookResponse,
   type PointResponse,
 } from './vision.ts';
+
+/**
+ * Ceiling on one harness-made vision call. A localization is one short
+ * structured answer and lands in a few seconds; a provider that takes longer
+ * is stalling, and the step's own clock should not be spent waiting on it.
+ */
+const VISION_CALL_TIMEOUT_MS = 30_000;
+
+/** Output ceiling for one vision call; a reasoning model spends part of it before the answer. */
+const VISION_MAX_OUTPUT_TOKENS = 8192;
 
 /** One bounded, closed-grammar call to the agent's vision model. */
 export interface VisionRequest<Value> {
@@ -186,6 +202,67 @@ export async function look(host: VisionHost, options: { readonly question?: stri
     };
   }
   return { description: renderLook(response, view), observation: view };
+}
+
+/** What one harness-made vision call is charged to and reported through. */
+export interface VisionModelDeps {
+  readonly runtime: AgentContext;
+  readonly agent: AgentSelection;
+  readonly accounting: StepAccounting;
+}
+
+/**
+ * One harness-made call to the agent's vision model, counted against the
+ * step's model-call budget and recorded like an executor's own call. The
+ * response is validated against a closed grammar; an answer outside it is
+ * reported to the caller as no answer rather than repaired, since the
+ * executor's model can rephrase and ask again.
+ */
+export async function askVisionModel<Value>(
+  deps: VisionModelDeps,
+  request: VisionRequest<Value>,
+): Promise<Value | undefined> {
+  const { runtime, agent, accounting } = deps;
+  accounting.checkpoint();
+  const adapter = agent.models.select(true);
+  const images: ModelImage[] = [
+    {
+      data: request.pixels.data,
+      mediaType: request.pixels.mediaType,
+      width: request.pixels.width,
+      height: request.pixels.height,
+    },
+  ];
+  try {
+    const result = await instrumentPhase(
+      runtime,
+      { api: accounting.api, kind: 'model', phase: 'agent.model', name: request.schemaName },
+      () =>
+        adapter.generate({
+          system: `${buildSystem(request.task, agent.agentContext)}\n\n${request.rules}`,
+          prompt: request.prompt,
+          images,
+          schemaName: request.schemaName,
+          schema: request.schema,
+          validate: request.validate,
+          maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
+          maxInputTokens: runtime.config.limits.maxModelTokensPerCall,
+          providerOptions: agent.config.providerOptions,
+          signal: accounting.signal,
+          timeoutMs: Math.max(1, Math.min(accounting.remainingMs(), VISION_CALL_TIMEOUT_MS)),
+        }),
+      (generated) => ({
+        count: accounting.usage.record(generated.usage),
+        ...tokenFields(generated.usage),
+      }),
+    );
+    accounting.countModelCall();
+    return result.value;
+  } catch (cause) {
+    accounting.countModelCall();
+    if (cause instanceof ModelOutputInvalidError) return undefined;
+    throw cause;
+  }
 }
 
 /** Why pixels did not reach the vision model, and what the executor's model can do instead. */
