@@ -197,5 +197,11 @@ describe('renderComment', () => {
     expect(body).toContain('> and 20 more');
     expect(body).toContain("_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._");
     expect(body.trimEnd().endsWith('</sub>')).toBe(true);
+    // Neither a caller's oversized marker nor a run with hundreds of targets escapes the cap.
+    const targets = Array.from({ length: 300 }, (_, index) => `target-${index}-${'t'.repeat(60)}`);
+    const crowded = renderComment(report({ results: [passing], targets }), { marker: `<!-- ${'m'.repeat(70_000)} -->` });
+    expect(crowded.length).toBeLessThanOrEqual(60_000);
+    expect(renderComment(report({ results: [passing], targets }))).toContain('300 targets (target-0-');
+    expect(renderComment(report({ results: [passing], targets }))).toContain(', and 292 more)</sub>');
   });
 });

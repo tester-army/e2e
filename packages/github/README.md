@@ -46,7 +46,9 @@ its source at the pull request's head), the passed tests folded away, and a
 link to the workflow run, where `actions/upload-artifact` put the evidence.
 The comment carries a hidden marker per workflow and job, so a rerun edits
 the previous comment instead of adding one. Matrix replicas of one job need a
-`key` to tell their comments apart: `github({ key: process.env.MATRIX_BROWSER })`.
+`key` to tell their comments apart: `github({ key: process.env.MATRIX_BROWSER })`
+in the config, with `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`;
+without the mapping every replica passes `undefined` and they share one comment.
 
 ## When nothing is posted
 

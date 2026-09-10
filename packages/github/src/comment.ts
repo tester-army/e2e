@@ -30,6 +30,7 @@ export interface CommentOptions {
 const MAX_BODY_CHARS = 60_000;
 const MAX_TABLE_ROWS = 50;
 const MAX_RUN_ERRORS = 20;
+const MAX_FOOTER_TARGETS = 8;
 const TRUNCATED_NOTE = '_Comment truncated to fit GitHub\'s size limit; the full report is in the run artifacts._';
 const MAX_PASSED_LINES = 200;
 const MAX_CELL_CHARS = 240;
@@ -216,9 +217,11 @@ function footer(run: ReportRun, options: CommentOptions): string[] {
   if (options.artifactsUrl !== undefined) {
     lines.push(`Screenshots, traces, and recordings: [run artifacts](${options.artifactsUrl}).`);
   }
-  const targets = run.targets.map((target) => plain(target.id)).join(', ');
+  const shown = run.targets.slice(0, MAX_FOOTER_TARGETS).map((target) => cell(target.id, 64));
+  if (run.targets.length > shown.length) shown.push(`and ${run.targets.length - shown.length} more`);
+  const targets = shown.join(', ');
   lines.push(
-    `<sub>e2e ${plain(run.runner.version)} · ${duration} · ${plural(run.targets.length, 'target')}${targets === '' ? '' : ` (${targets})`}</sub>`,
+    `<sub>e2e ${cell(run.runner.version, 64)} · ${duration} · ${plural(run.targets.length, 'target')}${targets === '' ? '' : ` (${targets})`}</sub>`,
   );
   return lines;
 }
@@ -279,5 +282,8 @@ export function renderComment(report: Report, options: CommentOptions = {}): str
   // Still too long: drop body lines from the end until it fits, and say so.
   const body = [...withoutPassed];
   while (body.length > 0 && join([...body, TRUNCATED_NOTE]).length > MAX_BODY_CHARS) body.pop();
-  return join([...body, TRUNCATED_NOTE]);
+  const truncated = join([...body, TRUNCATED_NOTE]);
+  // The head and footer are bounded by the caps above; a caller's own marker is
+  // not, so the last resort is a cut at the limit rather than a rejected post.
+  return truncated.length <= MAX_BODY_CHARS ? truncated : `${truncated.slice(0, MAX_BODY_CHARS - 1)}…`;
 }
