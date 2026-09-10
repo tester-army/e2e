@@ -1,6 +1,7 @@
 /** CLI scaffold presets. Engine packages are referenced as generated source, never imported. */
 
 import os from 'node:os';
+import { readJson } from '../../internal/package-version.ts';
 
 export interface EnginePreset {
   readonly id: string;
@@ -14,8 +15,28 @@ export interface EnginePreset {
   readonly runCommand: string;
 }
 
-/** Engines version independently of the runner and pin the runner through their own peer range. */
-const ENGINE_RANGE = '0.x';
+/**
+ * Engine versions the build records next to this module, in
+ * `engine-versions.json`, from the sibling packages' manifests. Absent when
+ * running from source.
+ */
+const ENGINE_VERSIONS = readJson(import.meta.url, './engine-versions.json') as Readonly<Record<string, string>> | undefined;
+
+/**
+ * The range init writes for an engine. Engines version independently of the
+ * runner and pin it through their own peer range, so init asks for the minor
+ * of the engine released alongside this runner. Package managers resolve a
+ * range to the registry's `latest` tag whenever it satisfies, and `latest`
+ * can trail the tag the runner came from by several minors, so a bare `0.x`
+ * installed engines whose peer range rejected the runner.
+ */
+export function engineRange(version: string | undefined): string {
+  return version === undefined ? '0.x' : `^${version}`;
+}
+
+function engineDependency(name: string): Readonly<Record<string, string>> {
+  return { [name]: engineRange(ENGINE_VERSIONS?.[name]) };
+}
 
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
 export function getEnginePresets() {
@@ -25,7 +46,7 @@ export function getEnginePresets() {
       id: 'playwright',
       label: 'Playwright',
       hint: 'browser testing',
-      dependencies: { '@e2edev/playwright': ENGINE_RANGE },
+      dependencies: engineDependency('@e2edev/playwright'),
       imports: ["import { playwright } from '@e2edev/playwright';"],
       config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
   targets: [{
@@ -75,7 +96,7 @@ test('app responds', async () => {
       id: 'agent-device',
       label: 'agent-device',
       hint: 'mobile testing: iOS and Android',
-      dependencies: { '@e2edev/agent-device': ENGINE_RANGE },
+      dependencies: engineDependency('@e2edev/agent-device'),
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
         ? `  // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.

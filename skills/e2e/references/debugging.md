@@ -23,7 +23,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `CONFIG_LOAD_FAILED` mentioning ES modules | `package.json` lacks `"type": "module"` | `npm pkg set type=module`, or rename the config to `.mts` and keep the tests in an ESM package |
+| `CONFIG_LOAD_FAILED` | The config throws while loading, or imports a package that is not installed or a subpath that does not exist | The message names the cause: install the dependency, or fix the import it quotes |
 | `INVALID_CONFIG` | Unknown key or a stale shape: a top-level `app`, `defineConfig`, a `backend` key, `json` combined with `list` reporters | Move app options into `playwright({ ... })`; use `satisfies E2EConfig`; the message names the key |
 | `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one config file |
 | `NO_TESTS` | The glob or a positional matched nothing | The message names each positional that matched nothing. Check `tests` in the config and the `.e2e.ts` suffix |

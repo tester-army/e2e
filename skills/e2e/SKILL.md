@@ -90,7 +90,7 @@ one. Without them, the installed CLI prints the same text:
 - Import `test`, `expect`, and `credentials` from `@e2edev/e2e`. A test that
   uses the `web` fixture imports `test` from `@e2edev/playwright` instead: the
   same runtime `test`, typed with `web`.
-- Config and tests are ES modules. `package.json` needs `"type": "module"`.
+- Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
 - Nothing waits explicitly: queries poll, actions wait, `expect` retries.
   Reads such as `textContent()` and `count()` do not retry, so assert with a
   matcher when a value has to settle.

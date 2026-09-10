@@ -1,13 +1,14 @@
 /** Config discovery and ESM/TypeScript loading. */
 
 import { existsSync } from 'node:fs';
+import nodeModule from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register, type NamespacedUnregister } from 'tsx/esm/api';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
-import { esmPackageHint } from './esm.ts';
+import { resolveSync } from './esm-hooks.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 
@@ -91,6 +92,55 @@ let loader: NamespacedUnregister | undefined;
 let imports = 0;
 
 /**
+ * Node.js floors per major above which tsx registers synchronous hooks,
+ * mirroring tsx 4.23.13's `supportsRegisterHooks`: `module.registerHooks`
+ * exists and CommonJS can reload from a sync hook. Earlier releases, and
+ * Node 23, get asynchronous hooks.
+ */
+const TSX_SYNC_HOOK_FLOORS: ReadonlyArray<readonly [number, number, number]> = [
+  [22, 22, 3],
+  [24, 11, 1],
+  [25, 1, 0],
+  [26, 0, 0],
+];
+
+/**
+ * Whether tsx registers synchronous hooks on this Node.js. Hook chains only
+ * compose within a kind, so e2e's hook has to be registered the same way.
+ * A TypeScript `--import` in NODE_OPTIONS makes tsx fall back to async hooks.
+ */
+export function tsxUsesSyncHooks(
+  version = process.versions.node,
+  hasRegisterHooks = typeof nodeModule.registerHooks === 'function',
+  nodeOptions = process.env.NODE_OPTIONS ?? '',
+): boolean {
+  if (!hasRegisterHooks) return false;
+  if (/(?:^|\s)--import(?:=|\s+)\S+\.(?:[cm]?ts|tsx)(?:[?#]\S*)?(?=\s|$)/.test(nodeOptions)) return false;
+  const [major = 0, minor = 0, patch = 0] = version.split('.').map(Number);
+  const last = TSX_SYNC_HOOK_FLOORS.length - 1;
+  const floor = TSX_SYNC_HOOK_FLOORS.find((entry, index) => index === last || entry[0] === major);
+  if (floor === undefined) return false;
+  if (major !== floor[0]) return major > floor[0];
+  if (minor !== floor[1]) return minor > floor[1];
+  return patch >= floor[2];
+}
+
+/**
+ * Registers e2e's ESM hook, then tsx. The last registered hook runs first, so
+ * tsx's resolve calls e2e's and receives `format: 'module'` for project
+ * TypeScript; see esm-hooks.ts.
+ */
+function registerLoader(): NamespacedUnregister {
+  if (tsxUsesSyncHooks()) {
+    nodeModule.registerHooks({ resolve: resolveSync });
+  } else {
+    // The emitted sibling of this module: tsc rewrites import specifiers, not URLs.
+    nodeModule.register(new URL('./esm-hooks.js', import.meta.url).href);
+  }
+  return register({ namespace: 'e2e' });
+}
+
+/**
  * Imports a TypeScript/ESM module with erasable-syntax support. Every call
  * evaluates the module afresh: the query carries the caller's key (what the
  * instance is for) plus a process-unique sequence, so a realm never receives
@@ -98,11 +148,9 @@ let imports = 0;
  * the config file as it is now.
  */
 export async function importModule(absolutePath: string, cacheKey = 'module'): Promise<unknown> {
-  const hint = esmPackageHint(absolutePath);
-  if (hint !== undefined) throw new Error(hint);
   imports += 1;
   const url = `${pathToFileURL(absolutePath).href}?e2e=${cacheKey}-${imports}`;
-  loader ??= register({ namespace: 'e2e' });
+  loader ??= registerLoader();
   return loader.import(url, import.meta.url);
 }
 

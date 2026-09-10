@@ -11,3 +11,12 @@ export function packageVersion(fromUrl: string, specifier: string, fallback: str
     return fallback;
   }
 }
+
+/** Reads a JSON file through require resolution relative to the caller's module URL, or undefined when absent. */
+export function readJson(fromUrl: string, specifier: string): unknown {
+  try {
+    return createRequire(fromUrl)(specifier) as unknown;
+  } catch {
+    return undefined;
+  }
+}

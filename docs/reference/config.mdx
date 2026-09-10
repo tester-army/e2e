@@ -38,15 +38,12 @@ A config file is required. Targets that drive an app name an engine;
 HTTP tests and agents using their own tools can use a target without one.
 `npx --no-install e2e init` offers optional engine and AI setup.
 
-Config and test modules run as ESM. For `.ts` files, the nearest `package.json`
-must set `"type": "module"`. In a directory without a package manifest, `init`
-creates one with this setting. Existing module types are preserved, and `init`
-prints the command to opt into ESM when needed. Loading a `.ts` config or
-collecting a `.ts` test outside an ESM package reports this requirement with
-instructions to fix it.
-
-An `.mts` config is always ESM, but renaming the config alone does not change
-the module type of `.ts` test files or helpers.
+Config and test modules run as ESM. e2e loads `.ts`, `.mts`, and `.tsx` files
+outside `node_modules` as ES modules whatever the nearest `package.json` `type`
+says, so a CommonJS package keeps its manifest; `.cts` files stay CommonJS. A
+config, test, or helper written with `require` or `module.exports` fails to
+load: use `import`. In a directory without a package manifest, `init` creates
+one with `"type": "module"`.
 
 ## Top level
 

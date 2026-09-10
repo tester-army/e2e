@@ -3,11 +3,10 @@
 ## Requirements
 
 - Node.js 22.12 or newer.
-- ES modules. The `package.json` nearest to the config and the tests must set
-  `"type": "module"`. An `e2e.config.mts` is ESM on its own, but `.ts` tests
-  still follow their package. In a CommonJS package either run
-  `npm pkg set type=module` (this also changes how its `.js` files run) or put
-  the tests in their own ESM package directory.
+- ES modules. e2e loads `.ts` config, tests, and helpers as ES modules
+  whatever the nearest `package.json` `type` says, so a CommonJS package (a
+  Next.js app, for instance) needs no change. Write them with `import`, never
+  `require` or `module.exports`.
 - For browser tests, `@e2edev/playwright`. Missing browsers download when the
   engine first boots. In CI install them up front:
   `npx playwright install chromium --with-deps`.
