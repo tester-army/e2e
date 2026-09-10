@@ -705,6 +705,36 @@ describe('playwright engine lifecycle', () => {
     });
   });
 
+  it('masks a password inside a closed shadow root in artifact screenshots', async () => {
+    const engine = playwright();
+    const shotDir = mkdtempSync(path.join(tmpdir(), 'e2e-shot-'));
+    try {
+      await boot(engine, app);
+      await engine.startAttempt!(attempt('cm1', shotDir));
+      await engine.app!.navigate!(`${app.url}/closed-login`, operation('cm1'));
+      const snapshot = await engine.observe!(operation('cm1'));
+      const nodes = [...walk(snapshot.nodes[0]!)];
+      const user = nodes.find((node) => node.role === 'textbox' && node.name === 'User');
+      const password = nodes.find((node) => node.states?.secure === true);
+      expect(user?.rect).toBeDefined();
+      expect(password?.rect).toBeDefined();
+      await engine.perform!(password!.ref, { kind: 'fill', value: 'hunter2', sensitive: true }, operation('cm1'));
+
+      const relative = await engine.artifacts!.screenshot('closed', operation('cm1'));
+      const image = decodePng(new Uint8Array(readFileSync(path.join(shotDir, relative))));
+      const centre = (rect: NonNullable<SemanticNode['rect']>) =>
+        [Math.round(rect.x + rect.width / 2), Math.round(rect.y + rect.height / 2)] as const;
+      const [px, py] = centre(password!.rect!);
+      const [ux, uy] = centre(user!.rect!);
+      expect(image.pixelAt(px, py).slice(0, 3)).toEqual([0, 0, 0]);
+      expect(image.pixelAt(ux, uy).slice(0, 3)).toEqual([255, 255, 255]);
+    } finally {
+      await engine.endAttempt!(cleanup());
+      await engine.dispose!(cleanup());
+      rmSync(shotDir, { recursive: true, force: true });
+    }
+  });
+
   it('keeps tracing across clearState: the earlier segment is kept and the trace still stops', async () => {
     const engine = playwright();
     const traceDir = mkdtempSync(path.join(tmpdir(), 'e2e-trace-'));

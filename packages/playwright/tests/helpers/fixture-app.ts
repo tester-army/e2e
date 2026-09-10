@@ -91,6 +91,21 @@ const CONTENTS = `<!doctype html>
 </body>
 </html>`;
 
+/** `/login` with the password field inside a closed shadow root, as embedded auth widgets render it. */
+const CLOSED_LOGIN = `<!doctype html>
+<html>
+<head><title>Fixture Closed Login</title></head>
+<body style="margin:0;background:#fff">
+<h1>Login</h1>
+<label>User <input name="user" value="ada" style="width:200px;height:40px;background:#fff;border:1px solid #fff"></label>
+<x-auth></x-auth>
+<script>
+  const root = document.querySelector('x-auth').attachShadow({ mode: 'closed' });
+  root.innerHTML = '<label>Password <input type="password" name="password" style="width:200px;height:40px;background:#fff;border:1px solid #fff"></label>';
+</script>
+</body>
+</html>`;
+
 /** Shows the stored token; `?set=<value>` stores one first. */
 const STATE = `<!doctype html>
 <html>
@@ -188,6 +203,7 @@ const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/closed-shadow': CLOSED_SHADOW,
   '/contents': CONTENTS,
+  '/closed-login': CLOSED_LOGIN,
   '/form': FORM,
   '/values': VALUES,
   '/login': LOGIN,

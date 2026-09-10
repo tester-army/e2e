@@ -45,10 +45,48 @@ export const CLOSED_SHADOW_ROOTS_INIT_SCRIPT = `(() => {
   const attachShadow = Element.prototype.attachShadow;
   Element.prototype.attachShadow = function (init) {
     const root = attachShadow.call(this, init);
-    if (init && init.mode === 'closed') roots.set(this, root);
+    if (root.mode === 'closed') roots.set(this, root);
     return root;
   };
 })();`;
+
+/** Playwright selector engine name; `e2e-closed=<css>` matches inside recorded closed shadow roots. */
+export const CLOSED_SHADOW_SELECTOR_ENGINE = 'e2e-closed';
+
+/**
+ * The engine behind `e2e-closed=<css>`: every element matching the CSS
+ * selector inside a closed shadow root the init script recorded, reached from
+ * the query root through light DOM and open roots, and through roots of either
+ * kind nested below a closed one. Playwright's own selectors stop at a closed
+ * root, so this is what lets a screenshot mask cover a secure field the reader
+ * now reports there. It runs in the page's main world (not as a content
+ * script) because that is where the record lives.
+ */
+export const CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE = `() => {
+  const roots = globalThis[Symbol.for(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)})];
+  const closedRootsUnder = (root, out) => {
+    for (const el of root.querySelectorAll('*')) {
+      const closed = roots === undefined ? undefined : roots.get(el);
+      if (closed !== undefined) out.push(closed);
+      if (el.shadowRoot !== null) closedRootsUnder(el.shadowRoot, out);
+    }
+    return out;
+  };
+  const matchesIn = (root, selector, out) => {
+    for (const el of root.querySelectorAll(selector)) out.push(el);
+    for (const el of root.querySelectorAll('*')) {
+      const nested = el.shadowRoot !== null ? el.shadowRoot : roots === undefined ? undefined : roots.get(el);
+      if (nested !== undefined && nested !== null) matchesIn(nested, selector, out);
+    }
+    return out;
+  };
+  const queryAll = (root, selector) => {
+    const out = [];
+    for (const closed of closedRootsUnder(root, [])) matchesIn(closed, selector, out);
+    return out;
+  };
+  return { queryAll, query: (root, selector) => queryAll(root, selector)[0] ?? null };
+}`;
 
 export interface RawNodeData {
   role: string | null;

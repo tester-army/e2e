@@ -1,7 +1,8 @@
 /** Shares one browser process connection across a worker's attempts. */
 
 import type { Browser } from 'playwright';
-import { chromium, firefox, webkit } from 'playwright';
+import { chromium, firefox, selectors, webkit } from 'playwright';
+import { CLOSED_SHADOW_SELECTOR_ENGINE, CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE } from './read-node.ts';
 
 export type BrowserName = 'chromium' | 'firefox' | 'webkit';
 
@@ -35,6 +36,7 @@ export class BrowserConnection {
       if (this.pending !== cached) return this.acquire(name, headed, timeoutMs, connect);
       this.pending = undefined;
     }
+    await registerSelectorEngines();
     const launching =
       connect !== undefined ? connect() : browserType(name).launch({ headless: !headed, timeout: timeoutMs });
     this.pending = launching;
@@ -73,4 +75,21 @@ export function browserType(name: BrowserName): typeof chromium {
  */
 export function connectCdp(endpoint: string, timeoutMs: number): Promise<Browser> {
   return chromium.connectOverCDP(endpoint, { timeout: timeoutMs });
+}
+
+/** Registration is process-wide and rejected twice; one shared promise serves every connection. */
+let selectorEngines: Promise<void> | undefined;
+
+/**
+ * Registers the engine's selector engines. Playwright requires it before the
+ * first page of the process exists, and a name registers once, so every
+ * acquire awaits the same registration.
+ */
+function registerSelectorEngines(): Promise<void> {
+  // Playwright serializes a function argument with `toString()` and invokes it
+  // in the page, so the factory is materialized from its source here to keep the
+  // in-page code self-contained, the same way the reader is assembled.
+  const factory = new Function(`return ${CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE};`)() as () => unknown;
+  selectorEngines ??= selectors.register(CLOSED_SHADOW_SELECTOR_ENGINE, factory);
+  return selectorEngines;
 }

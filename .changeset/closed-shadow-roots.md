@@ -11,10 +11,10 @@ widgets (returns, upsell, consent) render checkout buttons and links this way,
 and until now every model scrolled for a control that could not appear until
 the step budget ran out. Node ids and refs work inside these roots as
 everywhere else, so `tap`, `fill`, and the other actions reach them. Playwright
-locators (`screen.getByRole`) still cannot, as before. A secure field inside a
-closed root is marked `secure` in the tree but cannot be masked in pixels, so
-the runner withholds the screenshot for that observation rather than risk an
-unmasked password. Declarative `<template shadowrootmode="closed">` roots are
+locators (`screen.getByRole`) still cannot, as before. Screenshot masking
+follows: a registered selector engine, `e2e-closed=<css>`, matches inside the
+recorded roots, so a password field there is covered in observation pixels and
+artifact screenshots like any other. Declarative `<template shadowrootmode="closed">` roots are
 not attached by script and stay out of reach.
 
 `display: contents` elements: such an element generates no box, so its empty

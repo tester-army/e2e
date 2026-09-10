@@ -2,7 +2,7 @@
 
 import type { Locator, Page } from 'playwright';
 import type { ObservationPixels, OperationContext } from '@e2edev/e2e/engine';
-import { SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { CLOSED_SHADOW_SELECTOR_ENGINE, SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /**
  * Budget for one masked screenshot, still capped by the operation timeout. A
@@ -16,14 +16,21 @@ const PIXEL_CAPTURE_TIMEOUT_MS = 10_000;
 const MASK_COLOR = '#000000';
 
 /**
- * One mask locator per frame Playwright can reach, covering every secure
- * field. Sweeping every frame rather than only the frames an observation
- * walked makes the masked set a superset of the observed secure set - the
- * direction that is safe. Shared by the observation pixels and the artifact
- * screenshot so both are redacted at the source by the same rule.
+ * Two mask locators per frame Playwright can reach, covering every secure
+ * field: one through light DOM and open shadow roots, one through the closed
+ * roots the reader also walks. Sweeping every frame rather than only the
+ * frames an observation walked makes the masked set a superset of the observed
+ * secure set - the direction that is safe. Shared by the observation pixels
+ * and the artifact screenshot so both are redacted at the source by the same
+ * rule.
  */
 export function secureFieldMasks(page: Page): Locator[] {
-  return page.frames().map((frame) => frame.locator(SECURE_FIELD_SELECTOR));
+  return page
+    .frames()
+    .flatMap((frame) => [
+      frame.locator(SECURE_FIELD_SELECTOR),
+      frame.locator(`${CLOSED_SHADOW_SELECTOR_ENGINE}=${SECURE_FIELD_SELECTOR}`),
+    ]);
 }
 
 /** Screenshot options that apply the secure-field masks; empty when there is no frame to mask. */
