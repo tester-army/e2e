@@ -78,6 +78,13 @@ export interface StepModelInfo {
   peakTokensPerCall: number;
   inputTokens: number;
   outputTokens: number;
+  /**
+   * Input tokens the provider served from its prompt cache and wrote to it,
+   * summed over the step's calls; present only when the provider reports the
+   * split. Cached reads are part of `inputTokens`, not in addition to it.
+   */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   estimatedCostUsd?: number;
 }
 

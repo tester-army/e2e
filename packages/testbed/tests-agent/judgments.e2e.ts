@@ -26,7 +26,7 @@ test('waitFor polls until the loaded users appear', async ({ web, agent, screen 
   await web.goto('/network');
   await screen.getByRole('button', { name: 'Load users' }).click();
   await agent.waitFor('the list shows the three users Ada, Grace, and Margaret', {
-    intervalMs: 250,
+    interval: 250,
   });
   await expect(screen.getByRole('status')).toHaveText('loaded 3');
 });

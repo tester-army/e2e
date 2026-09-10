@@ -22,6 +22,7 @@ import { compactScreenHistory, ScreenPresenter } from './screen-update.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool, toolAppliesTo, withToolContext } from './tool.ts';
+import { boundToolOutput } from './tool-output.ts';
 
 const BASE_RULES = `You are an autonomous end-to-end testing agent executing exactly one test step against a real application.
 
@@ -73,7 +74,7 @@ export function createAgent(options: CreateAgentOptions = {}): StepExecutor {
     system,
     ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
     ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
-    prepareMessages: compactScreenHistory,
+    prepareMessages: (messages) => compactScreenHistory(messages),
     tools: (context, helpers) => ({
       ...wrapUserTools(context, helpers, userTools),
       ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
@@ -175,7 +176,7 @@ function wrapUserTools(
       execute: async (input: never, executionOptions: ToolExecutionOptions<unknown>) => {
         if (helpers.concluding()) return 'The step is already concluding; no further actions run.';
         try {
-          return await context.budgets.runTool({ name, mutates }, async () =>
+          const result: unknown = await context.budgets.runTool({ name, mutates }, async () =>
             execute(input, withToolContext(executionOptions, {
               observe: (options) => {
                 if (mutates) {
@@ -185,6 +186,9 @@ function wrapUserTools(
               },
             })),
           );
+          // A text result is bounded like every other thing the model reads;
+          // structured results are the tool's own contract and pass through.
+          return typeof result === 'string' ? boundToolOutput(result).text : result;
         } catch (cause) {
           if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
             helpers.reportHardStop(cause);

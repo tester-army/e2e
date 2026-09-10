@@ -449,6 +449,7 @@ describe('telemetry events', () => {
       model_id: 'claude-sonnet-4-5',
       model_calls: 4,
       model_tokens: 2850,
+      model_cached_tokens: null,
       estimated_cost_usd: 0.01,
       artifact_bytes: 4096,
       errors: 1,

@@ -131,6 +131,8 @@
         "peakTokensPerCall": { "type": "integer", "minimum": 0 },
         "inputTokens": { "type": "integer", "minimum": 0 },
         "outputTokens": { "type": "integer", "minimum": 0 },
+        "cacheReadTokens": { "type": "integer", "minimum": 0 },
+        "cacheWriteTokens": { "type": "integer", "minimum": 0 },
         "estimatedCostUsd": { "type": "number", "minimum": 0 }
       }
     },
@@ -516,6 +518,7 @@
         "downloads": { "type": "integer", "minimum": 0 },
         "events": { "type": "integer", "minimum": 0 },
         "modelTokens": { "type": "integer", "minimum": 0 },
+        "modelCachedTokens": { "type": "integer", "minimum": 0 },
         "maxModelCallsInStep": { "type": "integer", "minimum": 0 },
         "maxActionStepsInStep": { "type": "integer", "minimum": 0 },
         "estimatedCostUsd": { "type": "number", "minimum": 0 }

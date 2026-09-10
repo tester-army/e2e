@@ -171,6 +171,10 @@ export interface ExecutorActions {
 export interface ExecutorModelCall {
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  /** Input tokens served from the provider's prompt cache, when it reports the split. */
+  readonly cacheReadTokens?: number;
+  /** Input tokens written to the provider's prompt cache, when it reports the split. */
+  readonly cacheWriteTokens?: number;
   /**
    * ISO 8601 instant the request went out. The `model` step event takes it
    * as `startedAt`, so a tool-using loop that reports a turn after its tools

@@ -125,6 +125,7 @@
       "downloads": 0,
       "events": 0,
       "modelTokens": 0,
+      "modelCachedTokens": 0,
       "maxModelCallsInStep": 0,
       "maxActionStepsInStep": 0
     }

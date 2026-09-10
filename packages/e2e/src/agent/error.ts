@@ -38,6 +38,7 @@ export const AGENT_CODE_TABLE: Readonly<
   AUTOMATION_UNSUPPORTED: { category: 'test', blockedCategory: 'automation' },
   STEP_BUDGET_EXHAUSTED: { category: 'test', blockedCategory: 'automation' },
   STEP_TIMEOUT: { category: 'test', blockedCategory: 'automation' },
+  CONTEXT_OVERFLOW: { category: 'test', blockedCategory: 'automation' },
   MODEL_PROVIDER_FAILED: { category: 'infrastructure' },
   CANCELLED: { category: 'infrastructure' },
   AUTHENTICATION_FAILED: { category: 'test' },

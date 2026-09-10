@@ -9,6 +9,9 @@ import type { ProtocolValidation } from '../protocol.ts';
 export interface ModelUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
+  /** Prompt-cache split of `inputTokens`, when the provider reports one. */
+  readonly cacheReadTokens?: number | undefined;
+  readonly cacheWriteTokens?: number | undefined;
   readonly accounting: 'provider' | 'adapter-upper-bound';
   readonly estimatedCostUsd: number | undefined;
 }

@@ -13,6 +13,8 @@ import { GATEWAY_API_KEY_ENV, type ResolvedModel, type SdkLanguageModel } from '
 import { aiSdk, loadAiSdk } from '../ai-sdk.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
+import { isContextOverflow } from './overflow.ts';
+import { promptCacheHints, type CacheModelRef } from './prompt-cache.ts';
 import {
   imageTokenUpperBound,
   ModelOutputInvalidError,
@@ -66,6 +68,9 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
     async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
       const { generateText, jsonSchema, Output } = await loadAiSdk();
       languageModel ??= instantiate(model).languageModel;
+      const cache = promptCacheHints(
+        model.kind === 'gateway' ? { provider: model.provider, modelId: model.id } : (languageModel as CacheModelRef),
+      );
       const images = call.images ?? [];
       const inputBound =
         tokenUpperBound(call.system) +
@@ -79,9 +84,12 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       }
       let issue: string | undefined;
       const schema = call.schema;
+      // The policy prefix is what every judgment call of a run shares, so it
+      // is where the prompt cache is addressed; the prompt itself is one-off.
+      const providerOptions = cache.providerOptions(call.providerOptions, call.system);
       const settings = {
         model: languageModel,
-        system: call.system,
+        instructions: cache.instructions(call.system),
         // Text-only calls keep the plain prompt form; images require the
         // multi-part message form, and both must carry the same instruction
         // text in the same position relative to the system policy.
@@ -89,9 +97,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
           ? { prompt: call.prompt }
           : { messages: [userMessage(call.prompt, images)] }),
         maxOutputTokens: call.maxOutputTokens,
-        ...(call.providerOptions === undefined
-          ? {}
-          : { providerOptions: call.providerOptions as never }),
+        ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
         maxRetries: TRANSPORT_RETRIES,
         abortSignal: call.signal,
         timeout: call.timeoutMs,
@@ -208,23 +214,52 @@ function instantiate(model: ResolvedModel): { languageModel: SdkLanguageModel } 
 }
 
 interface UsageCarrier {
-  readonly usage?: { readonly inputTokens?: number | undefined; readonly outputTokens?: number | undefined } | undefined;
+  readonly usage?: SdkUsage | undefined;
   readonly text?: string | undefined;
   readonly providerMetadata?:
     | Readonly<Record<string, Readonly<Record<string, unknown>>>>
     | undefined;
 }
 
+/** The AI SDK usage fields the runner reads, structurally. */
+export interface SdkUsage {
+  readonly inputTokens?: number | undefined;
+  readonly outputTokens?: number | undefined;
+  readonly inputTokenDetails?:
+    | {
+        readonly cacheReadTokens?: number | undefined;
+        readonly cacheWriteTokens?: number | undefined;
+      }
+    | undefined;
+}
+
+/**
+ * The prompt-cache split of one call's input, when the provider reported it.
+ * Providers that cache nothing report zeros; providers that do not report the
+ * split leave the fields undefined, and so does the report.
+ */
+export function cacheTokenFields(
+  usage: SdkUsage | undefined,
+): { cacheReadTokens?: number; cacheWriteTokens?: number } {
+  const details = usage?.inputTokenDetails;
+  return {
+    ...(typeof details?.cacheReadTokens === 'number' ? { cacheReadTokens: details.cacheReadTokens } : {}),
+    ...(typeof details?.cacheWriteTokens === 'number' ? { cacheWriteTokens: details.cacheWriteTokens } : {}),
+  };
+}
+
 function readUsage(result: UsageCarrier, inputBound: number): ModelUsage {
   const inputTokens = result.usage?.inputTokens;
   const outputTokens = result.usage?.outputTokens;
   const estimatedCostUsd = readCost(result.providerMetadata);
+  const cache = cacheTokenFields(result.usage);
   if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
-    return { inputTokens, outputTokens, accounting: 'provider', estimatedCostUsd };
+    return { inputTokens, outputTokens, ...cache, accounting: 'provider', estimatedCostUsd };
   }
   return {
     inputTokens: inputBound,
     outputTokens: tokenUpperBound(result.text ?? ''),
+    ...cache,
     accounting: 'adapter-upper-bound',
     estimatedCostUsd,
   };
@@ -297,6 +332,15 @@ function translateModelError(
     return new ModelOutputInvalidError(
       issue ?? 'provider response did not match the closed response grammar',
       { ...(cause.text !== undefined ? { rawText: cause.text } : {}), cause },
+    );
+  }
+  // Too big a request is not a provider outage: the observation budget or
+  // the step is what needs to shrink, and the code says so.
+  if (isContextOverflow(cause)) {
+    return new AgentError(
+      'CONTEXT_OVERFLOW',
+      `the model request exceeded the context window: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
     );
   }
   if (APICallError.isInstance(cause)) {

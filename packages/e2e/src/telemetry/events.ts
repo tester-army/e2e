@@ -127,6 +127,7 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       model_id: first === undefined ? null : plainToken(first.model),
       model_calls: models.reduce((total, model) => total + model.calls, 0),
       model_tokens: run.usage.modelTokens,
+      model_cached_tokens: run.usage.modelCachedTokens ?? null,
       estimated_cost_usd: run.usage.estimatedCostUsd ?? null,
       artifact_bytes: run.usage.artifactBytes,
       errors: run.errors.length,

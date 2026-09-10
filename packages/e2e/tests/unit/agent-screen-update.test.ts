@@ -178,7 +178,13 @@ describe('compactScreenHistory', () => {
     expect(compactScreenHistory(messages)).toBe(messages);
   });
 
-  it('elides the older full screen once a newer one arrives, and never a change update', () => {
+  it('keeps small superseded screens verbatim so the request prefix stays cacheable', () => {
+    const messages = [opening, changesResult('c1'), fullScreenResult('c2', 'b2'), fullScreenResult('c4', 'b4')];
+    expect(compactScreenHistory(messages)).toBe(messages);
+    expect(compactScreenHistory(messages, { keepStaleBytes: 1024 })).toBe(messages);
+  });
+
+  it('elides the older full screens in one batch once they outgrow the budget, and never a change update', () => {
     const messages = [
       opening,
       changesResult('c1'),
@@ -186,7 +192,8 @@ describe('compactScreenHistory', () => {
       changesResult('c3'),
       fullScreenResult('c4', 'b4'),
     ];
-    const compacted = compactScreenHistory(messages);
+    expect(compactScreenHistory(messages, { keepStaleBytes: 1024 })).toBe(messages);
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
     expect(compacted).not.toBe(messages);
     expect(compacted[0]!.content).toBe(
       'Execute this test step: do the thing\n[earlier screen elided; the newest "Current screen" plus the changes after it describe the screen]',

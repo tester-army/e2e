@@ -204,10 +204,17 @@ $ npx --no-install e2e run --debug
   engine.init             1    74ms    74ms    74ms
 
 [e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
-  step                                   total   model  observe  action  calls  tokens in/out     cost
-  act "add a todo named groceries"       3.9s    2.8s    410ms   620ms      3  9412/388       $0.0198
-  assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        $0.0114
+  step                                   total   model  observe  action  calls  tokens in/out  cached       cost
+  act "add a todo named groceries"       3.9s    2.8s    410ms   620ms      3  9412/388       61% (5740)   $0.0198
+  assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        0% (0)       $0.0114
 ```
+
+`cached` is the share of the step's input tokens the provider served from its
+prompt cache, with the count in parentheses; `-` when the provider reports no
+cache split. The `list` reporter's usage line carries the same share for the
+run (`12.4k tokens · 38% cached · $0.01`), and the report records it per step
+(`model.cacheReadTokens`, `model.cacheWriteTokens`) and per run
+(`usage.modelCachedTokens`).
 
 ```bash
 npx --no-install e2e run

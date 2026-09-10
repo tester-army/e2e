@@ -210,6 +210,8 @@ export interface ReportUsage {
   downloads: number;
   events: number;
   modelTokens: number;
+  /** Input tokens served from provider prompt caches; present once any step reports the split. */
+  modelCachedTokens?: number;
   maxModelCallsInStep: number;
   maxActionStepsInStep: number;
   estimatedCostUsd?: number;
@@ -489,6 +491,7 @@ function computeUsage(options: {
   };
   let cost = 0;
   let costSeen = false;
+  let cachedTokens: number | undefined;
 
   const countStep = (step: StepRecord): void => {
     usage.events += step.events.length;
@@ -503,6 +506,9 @@ function computeUsage(options: {
     const model = step.model;
     if (model !== undefined) {
       usage.modelTokens = Math.min(Number.MAX_SAFE_INTEGER, usage.modelTokens + model.inputTokens + model.outputTokens);
+      if (model.cacheReadTokens !== undefined) {
+        cachedTokens = Math.min(Number.MAX_SAFE_INTEGER, (cachedTokens ?? 0) + model.cacheReadTokens);
+      }
       if (model.estimatedCostUsd !== undefined) {
         cost += model.estimatedCostUsd;
         costSeen = true;
@@ -532,7 +538,11 @@ function computeUsage(options: {
     }
   }
 
-  return costSeen && Number.isFinite(cost) ? { ...usage, estimatedCostUsd: cost } : usage;
+  return {
+    ...usage,
+    ...(cachedTokens === undefined ? {} : { modelCachedTokens: cachedTokens }),
+    ...(costSeen && Number.isFinite(cost) ? { estimatedCostUsd: cost } : {}),
+  };
 }
 
 /** Builds the complete report-1 document. */

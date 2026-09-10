@@ -63,6 +63,7 @@ try {
 | `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
 | `STEP_BUDGET_EXHAUSTED` | The model-call or action-step budget ran out before a conclusion | test | 1 |
 | `STEP_TIMEOUT` | The invocation deadline expired. Carries the last judgment where one exists. | test | 1 |
+| `CONTEXT_OVERFLOW` | A model request exceeded the model's context window. The act loop shrinks the step's history (superseded screens elided, long texts cut) and retries once before reporting this; a smaller `agent.maxObservationBytes` or a shorter step is the fix (blocked: automation) | test | 1 |
 | `ASSERTION_FAILED` | `agent.assert` judged false, or a locator, `web`, or value matcher failed | test | 1 |
 | `AUTHENTICATION_FAILED` | The executor concluded that signing in failed inside the app: a product verdict. `AUTH_CREDENTIAL_INVALID` is the blocked counterpart for a configured credential the app rejects | test | 1 |
 | `STEP_NO_CONCLUSION` | The executor used every turn without calling `complete_step`; the step fails with the agent's last summary | test | 1 |

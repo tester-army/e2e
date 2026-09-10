@@ -17,6 +17,9 @@ import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
 import { withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
 import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
+import { isContextOverflow } from './model/overflow.ts';
+import { promptCacheHints, type CacheModelRef, type PromptCacheHints } from './model/prompt-cache.ts';
+import { compactScreenHistory } from './screen-update.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -158,6 +161,14 @@ class LoopRun {
   private readonly maxTurns: number;
   /** Remaining step time under which the loop forces a verdict. */
   private readonly clockWindDownMs: number;
+  /** Prompt-cache hints for the model's provider; a no-op for providers without any. */
+  private readonly cache: PromptCacheHints;
+  /** The history the last request went out with, for shrinking after an overflow. */
+  private lastRequest: ModelMessage[] | undefined;
+  /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
+  private turnOffset = 0;
+  /** An overflow is recovered from once; a second one is the step's verdict. */
+  private overflowRecovered = false;
 
   constructor(
     private readonly ai: AiSdk,
@@ -165,6 +176,7 @@ class LoopRun {
     private readonly context: StepExecutorContext,
     private readonly model: LanguageModel,
   ) {
+    this.cache = promptCacheHints(model as CacheModelRef);
     // Capped, never raised: the harness budget is the ceiling for any turns
     // setting, so the loop cannot spend past what the step was given.
     this.maxTurns = Math.min(
@@ -183,57 +195,78 @@ class LoopRun {
       ...this.options.tools(this.context, helpers),
       complete_step: this.conclusion.tool,
     };
-    const providerOptions = this.options.providerOptions ?? this.context.providerOptions;
+    const system = this.instructions();
+    const providerOptions = this.cache.providerOptions(
+      this.options.providerOptions ?? this.context.providerOptions,
+      system,
+    );
     const loop = new this.ai.ToolLoopAgent({
       model: this.model,
-      instructions: this.instructions(),
+      instructions: this.cache.instructions(system),
       tools,
       toolChoice: 'required',
       ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
       maxRetries: TRANSPORT_RETRIES,
       stopWhen: [
         () => this.conclusion.concluded() || this.hardStop !== undefined,
-        this.ai.stepCountIs(this.maxTurns),
+        // Counted across every generate call of the step, so a retry after an
+        // overflow continues the same turn budget rather than starting a new one.
+        ({ steps }) => this.turnOffset + steps.length >= this.maxTurns,
       ],
       prepareStep: ({ messages, stepNumber, steps }) =>
-        this.prepareTurn(messages, stepNumber, steps.at(-1)),
+        this.prepareTurn(messages, this.turnOffset + stepNumber, steps.at(-1)),
     });
     const tracker = trackModelCalls(
       this.context,
       this.model as { provider?: string; modelId?: string },
     );
-    const prompt = await this.options.buildPrompt(this.context);
-    try {
-      await loop.generate({
-        prompt,
-        abortSignal: this.context.signal,
-        // The whole loop, retries included, ends with the step's clock; the
-        // judgment adapter bounds its calls the same way.
-        timeout: Math.max(1, this.context.budgets.remainingMs()),
-        onStepStart: tracker.onStepStart,
-        onStepEnd: (step) => {
-          this.recordTurn(step);
-          tracker.onStepEnd(step);
-        },
-      });
-    } catch (cause) {
-      this.attachTranscript();
-      if (this.context.signal.aborted) {
-        throw new AgentError('CANCELLED', 'the step was cancelled', { cause });
+    let prompt = await this.options.buildPrompt(this.context);
+    for (;;) {
+      try {
+        await loop.generate({
+          prompt,
+          abortSignal: this.context.signal,
+          // The whole loop, retries included, ends with the step's clock; the
+          // judgment adapter bounds its calls the same way.
+          timeout: Math.max(1, this.context.budgets.remainingMs()),
+          onStepStart: tracker.onStepStart,
+          onStepEnd: (step) => {
+            this.recordTurn(step);
+            tracker.onStepEnd(step);
+          },
+        });
+        break;
+      } catch (cause) {
+        const shrunk = this.overflowRetry(cause);
+        if (shrunk !== undefined) {
+          prompt = shrunk;
+          continue;
+        }
+        this.attachTranscript();
+        if (this.context.signal.aborted) {
+          throw new AgentError('CANCELLED', 'the step was cancelled', { cause });
+        }
+        if (this.hardStop !== undefined) throw this.hardStop;
+        if (isAgentError(cause)) throw cause;
+        if (isAbort(cause)) {
+          throw new AgentError('STEP_TIMEOUT', 'model call exceeded the remaining step timeout', { cause });
+        }
+        const message = cause instanceof Error ? cause.message : String(cause);
+        if (isContextOverflow(cause)) {
+          throw new AgentError(
+            'CONTEXT_OVERFLOW',
+            `the model request exceeded the context window${
+              this.overflowRecovered ? ' again after the history was shrunk once' : ''
+            }: ${message}`,
+            { cause },
+          );
+        }
+        throw new AgentError(
+          'MODEL_PROVIDER_FAILED',
+          withHint(`the model provider failed: ${message}`, credentialHint(cause, this.model)),
+          { cause },
+        );
       }
-      if (this.hardStop !== undefined) throw this.hardStop;
-      if (isAgentError(cause)) throw cause;
-      if (isAbort(cause)) {
-        throw new AgentError('STEP_TIMEOUT', 'model call exceeded the remaining step timeout', { cause });
-      }
-      throw new AgentError(
-        'MODEL_PROVIDER_FAILED',
-        withHint(
-          `the model provider failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-          credentialHint(cause, this.model),
-        ),
-        { cause },
-      );
     }
     this.attachTranscript();
     const verdict = this.conclusion.verdict();
@@ -247,6 +280,26 @@ class LoopRun {
       summary: `the agent used ${this.turnsUsed} of ${this.maxTurns} turn(s) without calling complete_step`,
       errorCode: 'STEP_NO_CONCLUSION',
     };
+  }
+
+  /**
+   * The one recovery the loop attempts on its own: a request the provider
+   * refused as too large is sent again with the history shrunk — superseded
+   * screens elided, long texts cut — on the same turn budget. Anything else,
+   * a second overflow included, is left to the caller's error translation.
+   */
+  private overflowRetry(cause: unknown): ModelMessage[] | undefined {
+    if (this.overflowRecovered || this.lastRequest === undefined) return undefined;
+    if (this.context.signal.aborted || this.hardStop !== undefined || !isContextOverflow(cause)) return undefined;
+    this.overflowRecovered = true;
+    this.turnOffset = this.turnsUsed;
+    const shrunk = shrinkForOverflow(this.lastRequest);
+    this.transcript.push(
+      `--- context overflow before turn ${String(this.turnsUsed + 1)}: history shrunk from ${String(
+        textChars(this.lastRequest),
+      )} to ${String(textChars(shrunk))} chars, retrying once ---`,
+    );
+    return shrunk;
   }
 
   private helpers(): ToolLoopHelpers {
@@ -370,8 +423,13 @@ class LoopRun {
     }
 
     const forced = turnsLeft <= FORCED_CONCLUSION_TURNS || this.guardStop !== undefined || lowClock;
+    // The cache breakpoint rides on the newest message, whatever the turn
+    // added; the history the SDK carries forward keeps it there until the
+    // next turn moves it again.
+    const outgoing = this.cache.markLatest(prepared);
+    this.lastRequest = outgoing;
     return {
-      ...(prepared === messages ? {} : { messages: prepared }),
+      ...(outgoing === messages ? {} : { messages: outgoing }),
       ...(forced
         ? {
             activeTools: ['complete_step'],
@@ -417,6 +475,57 @@ class LoopRun {
 
 function appendNotice(messages: ModelMessage[], content: string): ModelMessage[] {
   return [...messages, { role: 'user', content }];
+}
+
+/** Longest text a message part keeps after an overflow; the head of a screen still names its controls. */
+const OVERFLOW_TEXT_CLIP_CHARS = 16_384;
+
+/**
+ * Shrinks a history the provider refused as too large: every superseded full
+ * screen is elided regardless of the cache-friendly budget, then any text
+ * part still longer than the clip is cut to its head with a notice, so the
+ * model knows to observe again for what it no longer sees.
+ */
+function shrinkForOverflow(messages: ModelMessage[]): ModelMessage[] {
+  return compactScreenHistory(messages, { keepStaleBytes: 0 }).map((message) => {
+    if (message.role === 'user') {
+      if (typeof message.content === 'string') return { ...message, content: clip(message.content) };
+      return {
+        ...message,
+        content: message.content.map((part) => (part.type === 'text' ? { ...part, text: clip(part.text) } : part)),
+      };
+    }
+    if (message.role !== 'tool') return message;
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (part.type !== 'tool-result' || part.output.type !== 'text') return part;
+        return { ...part, output: { type: 'text' as const, value: clip(part.output.value) } };
+      }),
+    };
+  });
+}
+
+function clip(text: string): string {
+  if (text.length <= OVERFLOW_TEXT_CLIP_CHARS) return text;
+  const cut = text.length - OVERFLOW_TEXT_CLIP_CHARS;
+  return `${text.slice(0, OVERFLOW_TEXT_CLIP_CHARS)}\n[${String(cut)} more characters cut: the request exceeded the model's context window; observe again for what is missing]`;
+}
+
+/** Characters of text a history carries, for the transcript's account of a shrink. */
+function textChars(messages: readonly ModelMessage[]): number {
+  let total = 0;
+  for (const message of messages) {
+    if (typeof message.content === 'string') {
+      total += message.content.length;
+      continue;
+    }
+    for (const part of message.content) {
+      if (part.type === 'text') total += part.text.length;
+      else if (part.type === 'tool-result' && part.output.type === 'text') total += part.output.value.length;
+    }
+  }
+  return total;
 }
 
 function truncate(text: string, max: number): string {

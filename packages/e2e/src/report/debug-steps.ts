@@ -39,6 +39,7 @@ export function agentStepTable(
     formatMs(eventMs(step, 'engine')),
     String(step.model?.calls ?? 0),
     `${String(step.model?.inputTokens ?? 0)}/${String(step.model?.outputTokens ?? 0)}`,
+    cachedShare(step),
     step.model?.estimatedCostUsd === undefined ? '-' : formatUsd(step.model.estimatedCostUsd),
   ]);
 
@@ -64,6 +65,7 @@ export function agentStepTable(
       'action',
       'calls',
       'tokens in/out',
+      'cached',
       'cost',
     ],
     rows,
@@ -96,6 +98,18 @@ function eventMs(step: StepRecord, kind: 'model' | 'observation' | 'engine'): nu
   return step.events
     .filter((event) => event.kind === kind)
     .reduce((total, event) => total + event.durationMs, 0);
+}
+
+/**
+ * The share of the step's input the provider served from its prompt cache,
+ * `38% (5.7k)`; `-` when the provider reports no cache split.
+ */
+function cachedShare(step: StepRecord): string {
+  const model = step.model;
+  if (model?.cacheReadTokens === undefined) return '-';
+  if (model.inputTokens === 0) return '0%';
+  const share = Math.round((model.cacheReadTokens / model.inputTokens) * 100);
+  return `${String(share)}% (${String(model.cacheReadTokens)})`;
 }
 
 function truncate(value: string, maxLength: number): string {

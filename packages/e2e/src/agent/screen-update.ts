@@ -187,18 +187,36 @@ function diffScreens(previous: ShownScreen, next: ShownScreen): string[] {
 }
 
 /**
+ * Bytes of superseded full screens a transcript carries before they are
+ * elided. Rewriting an earlier message changes the request prefix, and the
+ * provider's prompt cache serves only an unchanged prefix, so a stale screen
+ * that still fits under this budget stays verbatim: re-reading it from the
+ * cache costs a tenth of sending its replacement, and the elision is then
+ * one batch rather than one rewrite per turn. A two-turn step never elides.
+ */
+const KEEP_STALE_SCREEN_BYTES = 32 * 1024;
+
+export interface CompactScreenHistoryOptions {
+  /** Stale full-screen bytes tolerated before elision; defaults to the cache-friendly budget. */
+  readonly keepStaleBytes?: number;
+}
+
+/**
  * Elides full screens the transcript no longer needs: every full screen but
  * the newest few is reduced to its lead and a notice, in the opening prompt
- * and in tool results alike. Diffs are never touched. Returns the input array
- * unchanged when nothing qualifies, so the caller can skip the override.
+ * and in tool results alike, once the stale screens together outgrow the
+ * budget. Diffs are never touched. Returns the input array unchanged when
+ * nothing qualifies, so the caller can skip the override.
  */
-export function compactScreenHistory(messages: ModelMessage[]): ModelMessage[] {
-  const total = messages.reduce(
-    (count, message) => count + screenParts(message).filter((text) => text !== undefined).length,
-    0,
-  );
-  let stale = total - FULL_SCREEN_PRESERVE_COUNT;
+export function compactScreenHistory(
+  messages: ModelMessage[],
+  options: CompactScreenHistoryOptions = {},
+): ModelMessage[] {
+  const screens = messages.flatMap((message) => screenParts(message).filter((text) => text !== undefined));
+  let stale = screens.length - FULL_SCREEN_PRESERVE_COUNT;
   if (stale <= 0) return messages;
+  const staleBytes = screens.slice(0, stale).reduce((bytes, text) => bytes + text.length, 0);
+  if (staleBytes <= (options.keepStaleBytes ?? KEEP_STALE_SCREEN_BYTES)) return messages;
   return messages.map((message) => {
     if (stale <= 0) return message;
     if (message.role === 'user') {

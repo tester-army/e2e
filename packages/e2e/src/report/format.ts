@@ -137,16 +137,19 @@ export function stateString(pc: Colors, counters: Counters): string {
 export interface AiUsage {
   calls: number;
   tokens: number;
+  /** Input tokens the provider served from its prompt cache; part of `tokens`. */
+  cachedTokens: number;
   costUsd: number | undefined;
 }
 
 export function emptyUsage(): AiUsage {
-  return { calls: 0, tokens: 0, costUsd: undefined };
+  return { calls: 0, tokens: 0, cachedTokens: 0, costUsd: undefined };
 }
 
 export function addUsage(into: AiUsage, usage: AiUsage): void {
   into.calls += usage.calls;
   into.tokens += usage.tokens;
+  into.cachedTokens += usage.cachedTokens;
   if (usage.costUsd !== undefined) into.costUsd = (into.costUsd ?? 0) + usage.costUsd;
 }
 
@@ -156,6 +159,7 @@ function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
     if (step.model === undefined) continue;
     usage.calls += step.model.calls;
     usage.tokens += step.model.inputTokens + step.model.outputTokens;
+    usage.cachedTokens += step.model.cacheReadTokens ?? 0;
     if (step.model.estimatedCostUsd !== undefined) {
       usage.costUsd = (usage.costUsd ?? 0) + step.model.estimatedCostUsd;
     }
@@ -176,11 +180,19 @@ export function sumUsage(items: readonly { readonly usage: AiUsage }[]): AiUsage
   return total;
 }
 
-/** Tokens and cost, `12.4k tokens · $0.01`, or undefined when no model was used. */
+/**
+ * Tokens, cached share, and cost, `12.4k tokens · 38% cached · $0.01`, or
+ * undefined when no model was used. The cached share appears only when the
+ * provider served some of the input from its prompt cache.
+ */
 export function usageText(usage: AiUsage): string | undefined {
   if (usage.calls === 0) return undefined;
+  const cached =
+    usage.cachedTokens > 0 && usage.tokens > 0
+      ? ` · ${String(Math.round((usage.cachedTokens / usage.tokens) * 100))}% cached`
+      : '';
   const cost = usage.costUsd === undefined ? '' : ` · ${formatCost(usage.costUsd)}`;
-  return `${formatTokens(usage.tokens)} tokens${cost}`;
+  return `${formatTokens(usage.tokens)} tokens${cached}${cost}`;
 }
 
 /** `usageText` labeled `ai …` for lines where nothing else names it. */

@@ -13,7 +13,7 @@ import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { AgentErrorCode } from '../types.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
-import { readCost } from './model/sdk.ts';
+import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { ScreenPresenter } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
@@ -349,6 +349,7 @@ export function trackModelCalls(
       context.budgets.recordModelCall({
         ...(step.usage.inputTokens === undefined ? {} : { inputTokens: step.usage.inputTokens }),
         ...(step.usage.outputTokens === undefined ? {} : { outputTokens: step.usage.outputTokens }),
+        ...cacheTokenFields(step.usage),
         startedAt: new Date(turnStartedMs).toISOString(),
         durationMs: Date.now() - turnStartedMs,
         ...(typeof model?.provider === 'string' ? { provider: model.provider } : {}),

@@ -6,6 +6,10 @@ type Provenance = Pick<StepModelInfo, 'provider' | 'model' | 'endpoint' | 'adapt
 interface Usage {
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  /** Input tokens the provider served from its prompt cache, when it reports the split. */
+  readonly cacheReadTokens?: number | undefined;
+  /** Input tokens the provider wrote to its prompt cache, when it reports the split. */
+  readonly cacheWriteTokens?: number | undefined;
   readonly accounting?: StepModelInfo['tokenAccounting'];
   readonly estimatedCostUsd?: number | undefined;
 }
@@ -16,6 +20,9 @@ export class ModelUsage {
   private inputTokens = 0;
   private outputTokens = 0;
   private peakTokensPerCall = 0;
+  /** Undefined until a provider reports the cache split; a run that never does omits the fields. */
+  private cacheReadTokens: number | undefined;
+  private cacheWriteTokens: number | undefined;
   private accounting: StepModelInfo['tokenAccounting'] = 'provider';
   /** Null means the total overflowed and must remain omitted for this step. */
   private estimatedCostUsd: number | null | undefined;
@@ -29,6 +36,10 @@ export class ModelUsage {
     this.outputTokens = this.addTokens(this.outputTokens, output ?? 0);
     const tokens = this.addTokens(input ?? 0, output ?? 0);
     this.peakTokensPerCall = Math.max(this.peakTokensPerCall, tokens);
+    const cacheRead = tokenCount(usage.cacheReadTokens);
+    if (cacheRead !== undefined) this.cacheReadTokens = this.addTokens(this.cacheReadTokens ?? 0, cacheRead);
+    const cacheWrite = tokenCount(usage.cacheWriteTokens);
+    if (cacheWrite !== undefined) this.cacheWriteTokens = this.addTokens(this.cacheWriteTokens ?? 0, cacheWrite);
     if (input === undefined || output === undefined || usage.accounting === 'adapter-upper-bound') {
       this.accounting = 'adapter-upper-bound';
     }
@@ -57,6 +68,8 @@ export class ModelUsage {
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
       peakTokensPerCall: this.peakTokensPerCall,
+      ...(this.cacheReadTokens === undefined ? {} : { cacheReadTokens: this.cacheReadTokens }),
+      ...(this.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: this.cacheWriteTokens }),
       ...(typeof this.estimatedCostUsd === 'number' ? { estimatedCostUsd: this.estimatedCostUsd } : {}),
     };
   }
