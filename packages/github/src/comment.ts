@@ -29,6 +29,8 @@ export interface CommentOptions {
 /** GitHub rejects a comment body past 65536 characters; stay clear of it. */
 const MAX_BODY_CHARS = 60_000;
 const MAX_TABLE_ROWS = 50;
+const MAX_RUN_ERRORS = 20;
+const TRUNCATED_NOTE = '_Comment truncated to fit GitHub\'s size limit; the full report is in the run artifacts._';
 const MAX_PASSED_LINES = 200;
 const MAX_CELL_CHARS = 240;
 
@@ -71,7 +73,11 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-/** What one result's final attempt left behind, wherever the report keeps it. */
+/**
+ * What one result's final attempt left behind, wherever the report keeps it.
+ * The evidence is the union over every attempt: a flaky test's failure
+ * screenshot belongs to the attempt that failed, not to the one that passed.
+ */
 interface FinalAttempt {
   readonly durationMs: number;
   readonly error: ReportError | undefined;
@@ -91,7 +97,7 @@ function finalAttempt(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       durationMs: last?.durationMs ?? 0,
       error: last?.error,
       attempts: result.attempts.length,
-      artifactKinds: kinds(last?.artifacts ?? []),
+      artifactKinds: kinds(result.attempts.flatMap((attempt) => attempt.artifacts)),
     };
   }
   const group = groups.get(result.serialGroupId);
@@ -101,7 +107,7 @@ function finalAttempt(result: ReportResult, groups: ReadonlyMap<string, ReportSe
     durationMs: member?.durationMs ?? 0,
     error: member?.error ?? last?.error,
     attempts: group?.attempts.length ?? 0,
-    artifactKinds: kinds(last?.artifacts ?? []),
+    artifactKinds: kinds((group?.attempts ?? []).flatMap((attempt) => attempt.artifacts)),
   };
 }
 
@@ -244,12 +250,17 @@ export function renderComment(report: Report, options: CommentOptions = {}): str
     }
   }
 
-  const build = (withPassed: boolean): string => {
+  const head: string[] = [];
+  if (options.marker !== undefined) head.push(options.marker);
+  head.push(headline(run, counts), '');
+  const tail = footer(run, options);
+
+  const build = (withPassed: boolean): string[] => {
     const lines: string[] = [];
-    if (options.marker !== undefined) lines.push(options.marker);
-    lines.push(headline(run, counts), '');
-    for (const error of run.errors) lines.push(`> ${errorText(error)}`);
-    if (run.errors.length > 0) lines.push('');
+    const errors = run.errors.slice(0, MAX_RUN_ERRORS);
+    for (const error of errors) lines.push(`> ${errorText(error)}`);
+    if (run.errors.length > errors.length) lines.push(`> and ${run.errors.length - errors.length} more`);
+    if (errors.length > 0) lines.push('');
     const shown = rows.slice(0, MAX_TABLE_ROWS);
     lines.push(...table(shown, rows.length - shown.length));
     if (shown.length > 0) lines.push('');
@@ -257,10 +268,16 @@ export function renderComment(report: Report, options: CommentOptions = {}): str
       const section = passedSection(passed, manyTargets);
       if (section.length > 0) lines.push(...section, '');
     }
-    lines.push(...footer(run, options));
-    return `${lines.join('\n')}\n`;
+    return lines;
   };
+  const join = (body: readonly string[]): string => `${[...head, ...body, ...tail].join('\n')}\n`;
 
-  const full = build(true);
-  return full.length <= MAX_BODY_CHARS ? full : build(false);
+  const full = join(build(true));
+  if (full.length <= MAX_BODY_CHARS) return full;
+  const withoutPassed = build(false);
+  if (join(withoutPassed).length <= MAX_BODY_CHARS) return join(withoutPassed);
+  // Still too long: drop body lines from the end until it fits, and say so.
+  const body = [...withoutPassed];
+  while (body.length > 0 && join([...body, TRUNCATED_NOTE]).length > MAX_BODY_CHARS) body.pop();
+  return join([...body, TRUNCATED_NOTE]);
 }

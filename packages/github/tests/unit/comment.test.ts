@@ -24,7 +24,10 @@ const failing = result({
 const flaky = result({
   title: 'todos survive a filter round-trip',
   status: 'flaky',
-  attempts: [attempt({ status: 'failed', error: { code: 'STEP_TIMEOUT', message: 'slow' } }), attempt({ status: 'passed' })],
+  attempts: [
+    attempt({ status: 'failed', error: { code: 'STEP_TIMEOUT', message: 'slow' }, artifacts: ['screenshot'] }),
+    attempt({ status: 'passed' }),
+  ],
 });
 const skipped = result({
   title: 'not ready yet',
@@ -47,7 +50,10 @@ describe('renderComment', () => {
       '| ❌ | [tests/billing.e2e.ts:12](https://github.com/o/r/blob/abc/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/o/r/actions/runs/9) |',
     );
     expect(body).toContain('| ⚠️ | [tests/example.e2e.ts:3]');
-    expect(body).toContain('| flaky: passed on attempt 2 after 1 failed attempt |');
+    // The failed attempt's evidence counts: the passing retry recorded none.
+    expect(body).toContain(
+      '| flaky: passed on attempt 2 after 1 failed attempt | [screenshot](https://github.com/o/r/actions/runs/9) |',
+    );
     expect(body).toContain('| ⏭️ | ');
     expect(body).toContain('| skipped: waiting on the API |');
     expect(body).toContain(
@@ -160,5 +166,28 @@ describe('renderComment', () => {
     const withPassed = renderComment(report({ results: passes.slice(0, 250).map((pass) => ({ ...pass, titlePath: ['short'] })) }));
     expect(withPassed).toContain('<summary>250 passed tests</summary>');
     expect(withPassed).toContain('- and 50 more');
+  });
+
+  it('never returns a body GitHub would reject, whatever the report holds', () => {
+    // Fifty rows whose titles alone are longer than the whole budget allows.
+    const wide = Array.from({ length: 60 }, (_, index) =>
+      result({
+        title: Array.from({ length: 30 }, (__, part) => `segment ${index}-${part} `.repeat(8)),
+        status: 'failed',
+        attempts: [attempt({ status: 'failed', error: { code: 'E', message: 'm'.repeat(240) } })],
+      }),
+    );
+    const errors = Array.from({ length: 40 }, (_, index) => ({
+      category: 'infrastructure',
+      code: `RUN_ERROR_${index}`,
+      message: 'e'.repeat(240),
+      retryable: false,
+    }));
+    const body = renderComment(report({ status: 'error', results: wide, errors }), { marker: '<!-- m -->' });
+    expect(body.length).toBeLessThanOrEqual(60_000);
+    expect(body.startsWith('<!-- m -->\n### ❌ e2e: 60 failed\n')).toBe(true);
+    expect(body).toContain('> and 20 more');
+    expect(body).toContain("_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._");
+    expect(body.trimEnd().endsWith('</sub>')).toBe(true);
   });
 });

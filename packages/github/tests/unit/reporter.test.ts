@@ -63,7 +63,7 @@ describe('github()', () => {
 describe('reportRun', () => {
   it('posts nothing off GitHub Actions and says where to post from instead', async () => {
     const d = deps({ CI: '1', GITLAB_CI: 'true' });
-    await expect(reportRun(failedRun, signal, d)).resolves.toEqual([
+    await expect(reportRun(failedRun, signal, {}, d)).resolves.toEqual([
       { label: 'GitHub', text: 'not posted: not running on GitHub Actions; @e2edev/testerarmy posts results from any CI' },
     ]);
     expect(d.calls).toHaveLength(0);
@@ -72,7 +72,7 @@ describe('reportRun', () => {
 
   it('writes the job summary and posts one comment carrying the marker, source links, and the run link', async () => {
     const d = deps({ ...actions, GITHUB_TOKEN: 'ghs' });
-    await expect(reportRun(failedRun, signal, d)).resolves.toEqual([
+    await expect(reportRun(failedRun, signal, {}, d)).resolves.toEqual([
       { label: 'GitHub', text: 'https://github.com/octo/app/pull/41#issuecomment-5' },
     ]);
     const summary = d.written['/summary.md'];
@@ -87,9 +87,16 @@ describe('reportRun', () => {
     expect(body).toContain('[run artifacts](https://github.com/octo/app/actions/runs/99)');
   });
 
+  it('adds the key to the marker so matrix replicas keep their own comments', async () => {
+    const d = deps({ ...actions, GITHUB_TOKEN: 'ghs' });
+    await reportRun(failedRun, signal, { key: 'firefox' }, d);
+    const body = (d.calls[1]?.body as { body: string } | undefined)?.body ?? '';
+    expect(body.startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test key=firefox -->\n')).toBe(true);
+  });
+
   it('on a push it writes the summary only and says so', async () => {
     const d = deps({ ...actions, GITHUB_TOKEN: 'ghs', GITHUB_EVENT_NAME: 'push', GITHUB_EVENT_PATH: '/push.json', GITHUB_REF: 'refs/heads/main' });
-    await expect(reportRun(failedRun, signal, d)).resolves.toEqual([
+    await expect(reportRun(failedRun, signal, {}, d)).resolves.toEqual([
       { label: 'GitHub', text: 'not posted: push is not a pull request; written to the job summary' },
     ]);
     expect(d.calls).toHaveLength(0);
@@ -98,7 +105,7 @@ describe('reportRun', () => {
 
   it('without a token it names the line to add to the step', async () => {
     const d = deps({ ...actions });
-    await expect(reportRun(failedRun, signal, d)).resolves.toEqual([
+    await expect(reportRun(failedRun, signal, {}, d)).resolves.toEqual([
       { label: 'GitHub', text: "not posted: set GITHUB_TOKEN in the step's env (GITHUB_TOKEN: ${{ github.token }}); written to the job summary" },
     ]);
     expect(d.calls).toHaveLength(0);
@@ -106,7 +113,7 @@ describe('reportRun', () => {
 
   it('a summary that cannot be written is its own row and does not stop the comment', async () => {
     const d = deps({ ...actions, GITHUB_TOKEN: 'ghs', GITHUB_STEP_SUMMARY: '/readonly.md' });
-    await expect(reportRun(failedRun, signal, d)).resolves.toEqual([
+    await expect(reportRun(failedRun, signal, {}, d)).resolves.toEqual([
       { label: 'GitHub', text: 'https://github.com/octo/app/pull/41#issuecomment-5' },
       { label: 'GitHub', text: 'job summary not written: EACCES: permission denied' },
     ]);
@@ -115,7 +122,7 @@ describe('reportRun', () => {
   it('lets a GitHub failure surface as the one error the runner prints', async () => {
     const forbidden = (async () => new Response('{}', { status: 403 })) as typeof fetch;
     const d = deps({ ...actions, GITHUB_TOKEN: 'ghs' }, forbidden);
-    await expect(reportRun(failedRun, signal, d)).rejects.toThrow('the token cannot comment on octo/app#41');
+    await expect(reportRun(failedRun, signal, {}, d)).rejects.toThrow('the token cannot comment on octo/app#41');
     expect(d.written['/summary.md']).toContain('### ❌ e2e');
   });
 });

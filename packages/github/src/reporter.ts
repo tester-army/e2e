@@ -27,11 +27,21 @@ export interface ReportDeps {
  * event, the repository) is read when the run finishes, never when the config
  * loads, so constructing it has no side effects.
  */
-export function github(): Reporter {
+export interface GitHubOptions {
+  /**
+   * Tells one job's comment apart from another's when the workflow, job, and
+   * project are the same, as in a matrix: `key: process.env.MATRIX_BROWSER`.
+   * Without it, matrix replicas of one job share a comment and the last one
+   * to finish wins. Never the run id: a rerun must find the old comment.
+   */
+  key?: string;
+}
+
+export function github(options: GitHubOptions = {}): Reporter {
   return {
     name: 'github',
     onRunFinished: (run, signal) =>
-      reportRun(run, signal, {
+      reportRun(run, signal, options, {
         fetch: globalThis.fetch,
         env: process.env,
         readFile: (file) => readFile(file, 'utf8'),
@@ -41,11 +51,12 @@ export function github(): Reporter {
 }
 
 /** The marker one job's comment carries, so two workflows or jobs each keep their own. */
-function commentMarker(run: FinishedRun, context: ActionsContext): string {
+function commentMarker(run: FinishedRun, context: ActionsContext, key: string | undefined): string {
   const parts = [
     `project=${encodeURIComponent(run.report.run.project.id)}`,
     ...(context.workflow === undefined ? [] : [`workflow=${encodeURIComponent(context.workflow)}`]),
     ...(context.job === undefined ? [] : [`job=${encodeURIComponent(context.job)}`]),
+    ...(key === undefined || key === '' ? [] : [`key=${encodeURIComponent(key)}`]),
   ];
   return `<!-- e2e-github ${parts.join(' ')} -->`;
 }
@@ -55,13 +66,18 @@ function row(text: string): { label: string; text: string } {
 }
 
 /** Reports one finished run and resolves with the summary rows describing what happened. */
-export async function reportRun(run: FinishedRun, signal: AbortSignal, deps: ReportDeps): Promise<ReporterSummary> {
+export async function reportRun(
+  run: FinishedRun,
+  signal: AbortSignal,
+  options: GitHubOptions,
+  deps: ReportDeps,
+): Promise<ReporterSummary> {
   const context = await detectActions(deps);
   if (context === undefined) {
     return [row('not posted: not running on GitHub Actions; @e2edev/testerarmy posts results from any CI')];
   }
 
-  const marker = commentMarker(run, context);
+  const marker = commentMarker(run, context, options.key);
   const sha = context.sha;
   const links = {
     ...(context.runUrl === undefined ? {} : { artifactsUrl: context.runUrl }),

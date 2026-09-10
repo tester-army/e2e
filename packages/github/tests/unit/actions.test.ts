@@ -51,8 +51,11 @@ describe('detectActions', () => {
     });
   });
 
-  it('takes an issue_comment on a pull request, and not one on an issue', async () => {
-    expect((await detectActions({ env: { ...base, GITHUB_EVENT_PATH: '/event/comment.json' }, readFile }))?.pullRequest).toBe(7);
+  it('takes an issue_comment on a pull request without a commit to link, and not one on an issue', async () => {
+    const comment = await detectActions({ env: { ...base, GITHUB_EVENT_PATH: '/event/comment.json' }, readFile });
+    expect(comment?.pullRequest).toBe(7);
+    // GITHUB_SHA is the default branch on this event, not the pull request's head.
+    expect(comment?.sha).toBeUndefined();
     expect((await detectActions({ env: { ...base, GITHUB_EVENT_PATH: '/event/issue.json' }, readFile }))?.pullRequest).toBeUndefined();
   });
 

@@ -18,7 +18,12 @@ export interface ActionsContext {
   readonly apiUrl: string;
   /** The workflow run page, where uploaded artifacts live. */
   readonly runUrl: string | undefined;
-  /** The commit sources are linked at: the PR head when the payload names it, else the checked-out SHA. */
+  /**
+   * The commit sources are linked at: the pull request's head when the event
+   * payload names it, the checked-out SHA when the event is not about a pull
+   * request, and nothing on an `issue_comment`, whose SHA is the default
+   * branch and would link every source line to the wrong revision.
+   */
   readonly sha: string | undefined;
   readonly eventName: string | undefined;
   readonly pullRequest: number | undefined;
@@ -45,6 +50,8 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
 interface EventFacts {
   readonly pullRequest: number | undefined;
   readonly headSha: string | undefined;
+  /** True when the payload is about a pull request, whether or not it named the head. */
+  readonly aboutPullRequest: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,7 +68,7 @@ function positiveInteger(value: unknown): number | undefined {
  * caller falls back to the ref.
  */
 async function readEvent(path: string | undefined, deps: ActionsDeps): Promise<EventFacts> {
-  const none: EventFacts = { pullRequest: undefined, headSha: undefined };
+  const none: EventFacts = { pullRequest: undefined, headSha: undefined, aboutPullRequest: false };
   if (path === undefined) return none;
   let payload: unknown;
   try {
@@ -74,12 +81,13 @@ async function readEvent(path: string | undefined, deps: ActionsDeps): Promise<E
   if (isRecord(pull)) {
     const head = pull['head'];
     const headSha = isRecord(head) && typeof head['sha'] === 'string' ? head['sha'] : undefined;
-    return { pullRequest: positiveInteger(pull['number']), headSha };
+    return { pullRequest: positiveInteger(pull['number']), headSha, aboutPullRequest: true };
   }
-  // An `issue_comment` on a pull request: the issue carries a `pull_request` link.
+  // An `issue_comment` on a pull request: the issue carries a `pull_request`
+  // link but not the head commit, and GITHUB_SHA is the default branch here.
   const issue = payload['issue'];
   if (isRecord(issue) && isRecord(issue['pull_request'])) {
-    return { pullRequest: positiveInteger(issue['number']), headSha: undefined };
+    return { pullRequest: positiveInteger(issue['number']), headSha: undefined, aboutPullRequest: true };
   }
   return none;
 }
@@ -110,7 +118,7 @@ export async function detectActions(deps: ActionsDeps): Promise<ActionsContext |
     serverUrl,
     apiUrl,
     runUrl: runId === undefined ? undefined : `${serverUrl}/${repository}/actions/runs/${runId}`,
-    sha: event.headSha ?? value('GITHUB_SHA'),
+    sha: event.aboutPullRequest ? event.headSha : value('GITHUB_SHA'),
     eventName: value('GITHUB_EVENT_NAME'),
     pullRequest: event.pullRequest ?? pullFromRef(value('GITHUB_REF')),
     token: value('GITHUB_TOKEN') ?? value('GH_TOKEN'),

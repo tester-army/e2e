@@ -81,7 +81,25 @@ many more there are, and the passed list is dropped before anything else.
 
 The comment carries a hidden marker naming the config's `projectId`, the
 workflow, and the job, so two configs or two jobs on one pull request each
-keep their own comment, and a rerun edits the previous one.
+keep their own comment, and a rerun edits the previous one. Matrix replicas of
+one job share all three, so give each its own `key`:
+
+```ts
+reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
+```
+
+with `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. Never use
+the run id as the key: a rerun has a new one and would post a second comment.
+
+The evidence column is the union over every attempt, so a flaky test shows
+the screenshot its failed attempt left even though the passing retry recorded
+none.
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `key` | unset | Joins the comment marker, so concurrent jobs with the same workflow, job, and project (a matrix) each keep their own comment |
 
 ## When nothing is posted
 
@@ -100,6 +118,7 @@ post, it says why in one row under the summary:
 | A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written; there is no pull request to comment on. |
 | No `GITHUB_TOKEN` in the step's `env` | The job summary is written; the row shows the line to add. `GH_TOKEN` is read too. |
 | A pull request from a fork | The token is read-only on `pull_request` events, so the comment fails and the run prints the reason. The job summary is still written. |
+| An `issue_comment` event | The comment is posted, without source links: on this event the checked-out commit is the default branch, not the pull request's head. |
 | Missing `pull-requests: write` | The same failure, with the permission named. |
 
 The reporter reads the token, the event payload, and the repository when the

@@ -41,7 +41,8 @@ pass (its error, the screenshots, traces, and recordings it left, a link to
 its source at the pull request's head), the passed tests folded away, and a
 link to the workflow run, where `actions/upload-artifact` put the evidence.
 The comment carries a hidden marker per workflow and job, so a rerun edits
-the previous comment instead of adding one.
+the previous comment instead of adding one. Matrix replicas of one job need a
+`key` to tell their comments apart: `github({ key: process.env.MATRIX_BROWSER })`.
 
 ## When nothing is posted
 

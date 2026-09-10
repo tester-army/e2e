@@ -6,5 +6,6 @@
  */
 
 export { github } from './reporter.ts';
+export type { GitHubOptions } from './reporter.ts';
 export { renderComment } from './comment.ts';
 export type { CommentOptions } from './comment.ts';
