@@ -45,7 +45,8 @@ describe('agent config defaults', () => {
   it('accepts every vision mode as a project default and rejects anything else', () => {
     expect(resolve({ agents: { default: { vision: true } } }).agent.vision).toBe(true);
     expect(resolve({ agents: { default: { vision: false } } }).agent.vision).toBe(false);
-    expect(resolve({ agents: { default: { vision: 'fallback' } } }).agent.vision).toBe('fallback');
+    expect(resolve({ agents: { default: { vision: 'only' } } }).agent.vision).toBe('only');
+    expect(() => resolve({ agents: { default: { vision: 'fallback' } } } as never)).toThrow(/agents\.default\.vision/);
     expect(() => resolve({ agents: { default: { vision: 'yes' } } } as never)).toThrow(/agents\.default\.vision/);
     expect(() => resolve({ agents: { default: { vision: 1 } } } as never)).toThrow(/agents\.default\.vision/);
   });

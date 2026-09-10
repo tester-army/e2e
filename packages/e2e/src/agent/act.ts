@@ -43,40 +43,18 @@ import {
   type ExecutorModelCall,
   type ExecutorObservation,
   type ExecutorObserveOptions,
-  type ExecutorPixels,
   type ExecutorTarget,
   type ExecutorVision,
-  type LookResult,
   type StepExecutorContext,
   type StepVerdict,
-  type VisualTapResult,
 } from './executor.ts';
 import type { AgentContext, AgentSelection } from './invocation.ts';
 import { isDerivedValue } from './derived.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import { ModelOutputInvalidError, type ModelImage } from './model/adapter.ts';
-import type { JSONSchema7 } from 'ai';
-import type { ProtocolValidation } from './protocol.ts';
 import { buildSystem } from './prompts.ts';
-import {
-  abstainAdvice,
-  describeVisualTap,
-  hitTest,
-  imagePointToViewport,
-  LOOK_SCHEMA,
-  lookPrompt,
-  lookSystemRules,
-  nodeLine,
-  POINT_SCHEMA,
-  pointPrompt,
-  pointSystemRules,
-  renderLook,
-  validateLookResponse,
-  validatePointResponse,
-  type LookResponse,
-  type PointResponse,
-} from './vision.ts';
+import { look, tapVisual, type VisionHost, type VisionRequest } from './vision-tier.ts';
 import {
   isTransitionalObservation,
   observationShape,
@@ -457,11 +435,7 @@ class ActDispatch {
    */
   private buildActions(): ExecutorActions {
     return {
-      tap: (target) =>
-        this.commitTargeted('tap', target, async (node) => {
-          await this.session.perform(node.ref, { kind: 'tap' }, this.actionOperation());
-          return { name: 'tap', node };
-        }),
+      tap: (target) => this.tapNode(target),
       type: (target, value) => {
         if (typeof value !== 'string') {
           throw new TestError('INVALID_ARGUMENT', 'type value must be a string');
@@ -497,7 +471,7 @@ class ActDispatch {
       scroll: (direction, target) => this.scroll(direction, target),
       navigate: (url) => this.navigate(url),
       tapAt: (point) => this.tapAt(point),
-      tapVisual: (description) => this.tapVisual(description),
+      tapVisual: (description) => tapVisual(this.visionHost(), description),
     };
   }
 
@@ -509,8 +483,35 @@ class ActDispatch {
       get tainted() {
         return dispatch.runtime.taint.value;
       },
-      look: (options) => this.look(options),
+      look: (options) => look(this.visionHost(), options),
     };
+  }
+
+  /**
+   * What the pixel tier (`vision-tier.ts`) borrows from this dispatch: its
+   * settled observation, its counted model call, and its two taps. A further
+   * capability gets a host of its own here and a module of its own there.
+   */
+  private visionHost(): VisionHost {
+    return {
+      platform: this.runtime.target.platform,
+      verbs: this.runtime.target.verbs,
+      observePixels: async () => {
+        const observation = await this.observeSettled(true);
+        return { observation, view: await this.projectObservation(observation, { pixels: true }) };
+      },
+      ask: (request) => this.askVision(request),
+      tap: (id) => this.tapNode({ id }),
+      tapAt: (point, description) => this.tapAt(point, description),
+    };
+  }
+
+  /** The tap verb: one committed tap on a resolved node. */
+  private tapNode(target: ExecutorTarget): Promise<void> {
+    return this.commitTargeted('tap', target, async (node) => {
+      await this.session.perform(node.ref, { kind: 'tap' }, this.actionOperation());
+      return { name: 'tap', node };
+    });
   }
 
   /**
@@ -1297,128 +1298,13 @@ class ActDispatch {
   }
 
   /**
-   * The vision-located tap. Pixels are captured with a settled observation,
-   * the vision model names a point in them, the point is scaled into the
-   * observation's CSS pixels and hit-tested against its tree. A control the
-   * tree lists there is tapped by id, so the ordinary tap path — policy, stale
-   * relocation, the trace descriptor — runs unchanged; a point on nothing
-   * listed goes to the engine as a bare point, when it can take one. The
-   * localizer's abstain is relayed with what to do about it and taps nothing:
-   * a wrong tap costs more than a declined one.
-   */
-  private async tapVisual(description: string): Promise<VisualTapResult> {
-    if (typeof description !== 'string' || description.trim() === '') {
-      throw new TestError('INVALID_ARGUMENT', 'tapVisual requires a description of the target');
-    }
-    const observation = await this.observeSettled(true);
-    const granted = this.pixelsFor(observation);
-    if (granted.pixels === undefined) {
-      const code = granted.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY';
-      return { outcome: 'skipped', summary: `tap_visual is unavailable: ${withheldAdvice(code)}` };
-    }
-    const pixels = granted.pixels;
-    const located = await this.visionCall<PointResponse>({
-      task: 'locate one tap target in a screenshot',
-      schemaName: 'agent-point-1',
-      schema: POINT_SCHEMA,
-      validate: validatePointResponse,
-      rules: pointSystemRules(this.runtime.target.platform, pixels),
-      prompt: pointPrompt(description, observation.revision),
-      pixels,
-    });
-    if (located === undefined) {
-      return {
-        outcome: 'skipped',
-        summary: `tap_visual skipped: the vision model gave no usable answer for "${description}". Describe the target by its exact visible text and screen region, or tap a node by id.`,
-      };
-    }
-    if (!located.found || located.x === null || located.y === null) {
-      const why = located.reason === null || located.reason.trim() === '' ? '' : ` (${located.reason.trim()})`;
-      return {
-        outcome: 'skipped',
-        summary: `tap_visual skipped: no safe target for "${description}"${why}. ${abstainAdvice(located.abstainReason)}`,
-      };
-    }
-    const point = imagePointToViewport({ x: located.x, y: located.y }, pixels, observation.viewport);
-    const hit = hitTest(observation, point);
-    if (hit.control !== undefined) {
-      const id = hit.control.ref.id;
-      await this.commitTargeted('tap', { id }, async (node) => {
-        await this.session.perform(node.ref, { kind: 'tap' }, this.actionOperation());
-        return { name: 'tap', node };
-      });
-      return {
-        outcome: 'tapped',
-        point,
-        target: { id },
-        summary: describeVisualTap({ description, point, control: hit.control, under: hit.under, observation, kind: located.kind }),
-      };
-    }
-    if (!this.runtime.target.verbs.has('tapAt')) {
-      const under = hit.under === undefined ? '' : ` (under it: ${nodeLine(observation, hit.under.ref.id)})`;
-      return {
-        outcome: 'skipped',
-        point,
-        summary: `tap_visual skipped: the point (${String(point.x)}, ${String(point.y)}) for "${description}" is on nothing the screen lists${under}, and this engine taps listed nodes only. Tap a node by id instead.`,
-      };
-    }
-    await this.tapAt(point, description);
-    return {
-      outcome: 'tapped',
-      point,
-      summary: describeVisualTap({ description, point, control: undefined, under: hit.under, observation, kind: located.kind }),
-    };
-  }
-
-  /** The executor's look at the pixels, as text from the vision model. */
-  private async look(options: { readonly question?: string } = {}): Promise<LookResult> {
-    if (options === null || typeof options !== 'object') {
-      throw new TestError('INVALID_ARGUMENT', 'look options must be an object');
-    }
-    const question = options.question;
-    if (question !== undefined && typeof question !== 'string') {
-      throw new TestError('INVALID_ARGUMENT', 'look question must be a string');
-    }
-    const observation = await this.observeSettled(true);
-    const projected = await this.projectObservation(observation, { pixels: true });
-    if (projected.pixels === undefined) {
-      const code = projected.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY';
-      return { description: `look is unavailable: ${withheldAdvice(code)}`, withheld: code, observation: projected };
-    }
-    const response = await this.visionCall<LookResponse>({
-      task: 'describe the screen from a screenshot',
-      schemaName: 'agent-look-1',
-      schema: LOOK_SCHEMA,
-      validate: validateLookResponse,
-      rules: lookSystemRules(projected.pixels),
-      prompt: lookPrompt(question, observation.revision),
-      pixels: projected.pixels,
-    });
-    if (response === undefined) {
-      return {
-        description: 'look returned nothing usable: the vision model did not answer in the expected shape. Try again or ask a narrower question.',
-        observation: projected,
-      };
-    }
-    return { description: renderLook(response, projected), observation: projected };
-  }
-
-  /**
    * One harness-made call to the agent's vision model, counted against the
    * step's model-call budget and recorded like an executor's own call. The
    * response is validated against a closed grammar; an answer outside it is
    * reported to the caller as no answer rather than repaired, since the
    * executor's model can rephrase and ask again.
    */
-  private async visionCall<Value>(request: {
-    readonly task: string;
-    readonly schemaName: string;
-    readonly schema: JSONSchema7;
-    readonly validate: (value: unknown) => ProtocolValidation<Value>;
-    readonly rules: string;
-    readonly prompt: string;
-    readonly pixels: ExecutorPixels;
-  }): Promise<Value | undefined> {
+  private async askVision<Value>(request: VisionRequest<Value>): Promise<Value | undefined> {
     this.checkpoint();
     const adapter = this.agent.models.select(true);
     const images: ModelImage[] = [
@@ -1490,17 +1376,5 @@ class ActDispatch {
       await this.session.app.open(resolved, this.operation());
       return { name: 'navigate', url };
     });
-  }
-}
-
-/** Why pixels did not reach the vision model, and what the executor's model can do instead. */
-function withheldAdvice(code: VisionDegradation): string {
-  switch (code) {
-    case 'PIXEL_TAINTED':
-      return 'a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED). Tap listed nodes by id instead.';
-    case 'MASKING_UNPROVEN':
-      return 'the engine could not prove every secure field on screen masked (MASKING_UNPROVEN). Tap listed nodes by id instead.';
-    default:
-      return 'this engine captures no pixels (UNSUPPORTED_CAPABILITY). Tap listed nodes by id instead.';
   }
 }

@@ -118,8 +118,6 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  *
  * - `false` — the tree.
  * - `true` — the tree and a screenshot, on every call.
- * - `'fallback'` — the tree, escalating to add a screenshot once the tree turns
- *   out not to describe the target.
  * - `'only'` — the screenshot, and not the tree.
  *
  * `'only'` exists because a tree sent alongside pixels is a cheaper path to an
@@ -128,17 +126,13 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * answer yes, while the pixels show the overlay. For a judgment that is about
  * what the screen presents, the tree is a distractor, so the mode that means it
  * removes it. It also costs fewer input tokens than `true`, not more.
- *
- * A judgment always produces an answer from the tree, so `'fallback'` behaves
- * like `false` for `assert`, `waitFor`, and `extract`; use `true` or `'only'`
- * to have pixels judged.
- *
+ * *
  * In every mode that sends pixels but also the tree, pixel evidence degrades
  * away rather than failing the call when it cannot be proven redacted. `'only'`
  * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
  * answering the wrong question from the tree.
  */
-export type VisionMode = boolean | 'fallback' | 'only';
+export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
   vision?: VisionMode;

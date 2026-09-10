@@ -118,7 +118,7 @@ export interface InvocationOptions {
    * Whether masked viewport pixels travel alongside the semantic tree.
    * Additive in every mode: the tree is always sent, and pixel evidence
    * degrades away under taint or unprovable masking rather than failing the
-   * call. `'fallback'` behaves as `false` for the judgment methods.
+   * call.
    */
   readonly vision: VisionMode;
 }
@@ -184,11 +184,7 @@ export class Invocation {
     return this.runtime.engine.session;
   }
 
-  /**
-   * The model this invocation talks to. It follows the pixel tier, so an
-   * escalated fallback invocation asks the pinned vision model — the reason
-   * for escalating is that the cheaper model's tree-only answer missed.
-   */
+  /** The model this invocation talks to: the pinned vision model when it sends pixels. */
   private get adapter(): ModelAdapter {
     return this.agent.models.select(this.pixelTier);
   }

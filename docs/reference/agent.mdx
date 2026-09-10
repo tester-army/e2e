@@ -131,29 +131,17 @@ await agent.assert('the search form is visible and not covered', { vision: 'only
 
 | Name | Type | Default |
 | --- | --- | --- |
-| `options.vision` | `boolean \| 'fallback' \| 'only'` | `config.agent.vision`, `false` |
+| `options.vision` | `boolean \| 'only'` | `config.agent.vision`, `false` |
 
 | Mode | What the model sees | Cost |
 | --- | --- | --- |
 | `false` | the tree | no image tokens |
 | `true` | the tree and a screenshot, every call | image tokens on every call |
-| `'fallback'` | the tree; behaves like `false` for `assert`, `waitFor`, and `extract` | no image tokens |
 | `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
 
 Set `agent.vision` in config to make a mode the project default; a per-call value
 always wins. Images are billed as input tokens, so `true` costs more than the
 same call without it on every call.
-
-<Warning>
-**'fallback' behaves like false**
-
-`'fallback'` exists for calls that can discover mid-flight that the tree was
-not enough. A judgment never does: `assert`, `waitFor`, and `extract` always
-produce an answer from the tree, so there is no miss to escalate on;
-escalating on a `false` judgment would just bias it toward `true`. Under
-`'fallback'` they run tree-only, exactly like `false`. Use `vision: true` or
-`'only'` when you need pixels judged.
-</Warning>
 
 ### Judging pixels and nothing else
 
@@ -372,6 +360,8 @@ export type VisionMode = boolean | 'fallback' | 'only';
 export interface VisionOption {
   vision?: VisionMode;
 }
+
+export type VisionMode = boolean | 'only';
 
 export interface AssertOptions extends VisionOption {
   timeout?: number;

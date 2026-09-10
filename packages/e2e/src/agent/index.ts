@@ -64,7 +64,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   const resolveVision = (requested: VisionMode | undefined, agent: string | undefined): VisionMode => {
     if (requested === undefined) return runtime.select(agent).config.vision;
     if (!isVisionMode(requested)) {
-      throw new TestError('INVALID_ARGUMENT', "vision must be true, false, 'fallback', or 'only'");
+      throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
     }
     return requested;
   };

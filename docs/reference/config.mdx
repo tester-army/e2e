@@ -257,7 +257,7 @@ agents?: Record<string, StepExecutor | {
   maxModelCalls?: number;
   maxObservationBytes?: number;
   context?: string;
-  vision?: boolean | 'fallback' | 'only';
+  vision?: boolean | 'only';
   providerOptions?: Record<string, Record<string, unknown>>;
 }>;
 ```
@@ -298,10 +298,10 @@ Each agent takes three shapes: an options object, an options object with an
 | `visionModel` | `ModelInstance` | the agent's `model` | an AI SDK model instance | Model used by calls with `vision` |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
-| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike |
-| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts |
-| `vision` | `boolean \| 'fallback' \| 'only'` | `false` | | Project-wide default for the per-call `vision` option; see [Vision](/reference/agent#vision) |
-| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call, e.g. `{ openai: { reasoningEffort: 'low' } }`. `createAgent({ providerOptions })` overrides it for `act` |
+| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike; the per-call token limit clamps it lower on a dense screen. Not a `limits` key. |
+| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
+| `vision` | `boolean \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option; `'only'` sends pixels instead of the tree. A per-call value wins. |
+| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call of both `act` and the judgments, e.g. `{ openai: { reasoningEffort: 'low' } }`. Values pass through unchecked; a non-object provider entry is `INVALID_CONFIG`. `createAgent({ providerOptions })` overrides it for `act`. |
 
 Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
 and set no temperature.

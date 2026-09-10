@@ -29,11 +29,6 @@ test('degrades to tree-only input after a secret fill', async ({ app, agent, scr
   await agent.assert('the password field has a value', { vision: true });
 });
 
-test('fallback leaves a judgment on the tree', async ({ app, agent }) => {
-  await app.open();
-  await agent.assert('the page has a heading', { vision: 'fallback' });
-});
-
 test('judges on pixels alone, with no tree in the request', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the chart trends upward', { vision: 'only' });
@@ -154,14 +149,6 @@ describe('agent vision (judgments)', () => {
     )!;
     expect(judged.images).toHaveLength(0);
     expect(judged.observation).not.toBe('');
-  });
-
-  it('leaves a judgment tree-only under fallback, having no miss to detect', () => {
-    const title = 'fallback leaves a judgment on the tree';
-    expect(resultByTitle(outcome, title).status).toBe('passed');
-    const step = stepOf(title, 'agent.assert');
-    expect(step.visionInput).toBeUndefined();
-    expect(step.model!.model).toBe('scripted-text');
   });
 
   it('sends pixels alone, with no observation in the request', () => {
