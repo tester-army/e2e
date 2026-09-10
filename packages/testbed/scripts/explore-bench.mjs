@@ -56,6 +56,8 @@ const arms = (args.arms ?? 'baseline').split(',').map((value) => value.trim()).f
 for (const arm of arms) if (!(arm in ARMS)) throw new Error(`unknown arm "${arm}"; arms: ${Object.keys(ARMS).join(', ')}`);
 const repeats = Number(args.repeats ?? '1');
 const concurrency = Number(args.concurrency ?? '6');
+if (!Number.isInteger(repeats) || repeats < 1) throw new Error(`--repeats must be a positive integer, got "${args.repeats}"`);
+if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error(`--concurrency must be a positive integer, got "${args.concurrency}"`);
 const steps = args.steps ?? '8';
 const timeout = args.timeout ?? '600000';
 const goal =
@@ -193,7 +195,7 @@ function aggregate(scored) {
   for (const result of scored) {
     if (result.error !== undefined) continue;
     const key = `${result.model} | ${result.arm}`;
-    const group = groups.get(key) ?? { model: result.model, arm: result.arm, runs: 0, recall: 0, other: 0, duplicates: 0, steps: 0, calls: 0, tokens: 0, cost: 0, seconds: 0, firstFinding: [], stuck: 0 };
+    const group = groups.get(key) ?? { model: result.model, arm: result.arm, runs: 0, recall: 0, other: 0, duplicates: 0, steps: 0, calls: 0, tokens: 0, cost: 0, costKnown: 0, seconds: 0, firstFinding: [], stuck: 0 };
     group.runs += 1;
     group.recall += result.found.length / BUGS.length;
     group.other += result.other.length;
@@ -201,7 +203,10 @@ function aggregate(scored) {
     group.steps += result.steps.length;
     group.calls += result.modelCalls;
     group.tokens += result.modelTokens;
-    group.cost += result.costUsd ?? 0;
+    if (result.costUsd !== undefined) {
+      group.cost += result.costUsd;
+      group.costKnown += 1;
+    }
     group.seconds += result.durationMs / 1000;
     if (result.firstFindingMs !== undefined) group.firstFinding.push(result.firstFindingMs / 1000);
     if (result.ended === 'aborted' || result.ended === 'stuck') group.stuck += 1;
@@ -217,7 +222,10 @@ function aggregate(scored) {
     steps: group.steps / group.runs,
     calls: group.calls / group.runs,
     tokens: group.tokens / group.runs,
-    costUsd: group.cost / group.runs,
+    // A mean over the runs that priced themselves; undefined when none did,
+    // and marked partial when some did not, so a missing estimate never reads as free.
+    costUsd: group.costKnown === 0 ? undefined : group.cost / group.costKnown,
+    costPartial: group.costKnown > 0 && group.costKnown < group.runs,
     seconds: group.seconds / group.runs,
     firstFindingSeconds: group.firstFinding.length === 0 ? undefined : group.firstFinding.reduce((a, b) => a + b, 0) / group.firstFinding.length,
     abortedOrStuck: group.stuck,
@@ -240,7 +248,7 @@ function printAggregate(rows) {
       row.steps.toFixed(1).padEnd(5),
       row.calls.toFixed(0).padEnd(5),
       `${Math.round(row.tokens / 1000)}k`.padEnd(6),
-      `$${row.costUsd.toFixed(3)}`,
+      row.costUsd === undefined ? '  -   ' : `$${row.costUsd.toFixed(3)}${row.costPartial ? '?' : ''}`,
       `${Math.round(row.seconds)}s`.padEnd(4),
       row.firstFindingSeconds === undefined ? '  -  ' : `${Math.round(row.firstFindingSeconds)}s`.padEnd(5),
       String(row.abortedOrStuck),

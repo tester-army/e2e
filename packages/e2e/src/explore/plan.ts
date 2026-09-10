@@ -98,10 +98,12 @@ export function normalizeStep(title: string | undefined, instruction: string | u
 /**
  * Removes the digit runs a provider sometimes pads a field with (seen live:
  * a title followed by hundreds of `1234567890`), which carry no meaning and
- * would otherwise become the charter's tail.
+ * would otherwise become the charter's tail. The threshold sits past any
+ * number a charter can mean: phone numbers, order ids, card numbers, and
+ * amounts all stop short of twenty digits.
  */
 function unpad(text: string): string {
-  return text.replace(/\s*\d{10,}\s*/g, ' ').trim();
+  return text.replace(/\s*\d{20,}\s*/g, ' ').trim();
 }
 
 function deriveTitle(charter: string): string {
@@ -139,7 +141,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     `Goal: ${state.goal}`,
     `Budget: ${used} of ${state.budgets.maxSteps} steps used, about ${minutesLeft} minute(s) left.`,
     ...(request.history === false
-      ? ['', 'The ledger below lists the steps completed so far.']
+      ? ['', `${String(used)} step(s) ran and ${String(state.findings.length)} finding(s) were recorded; the record itself is withheld from this prompt, so plan from the goal and the budget alone.`]
       : ['', 'Steps so far:', steps, '', 'Findings so far:', findings]),
     ...(request.accounts === undefined || request.accounts.length === 0
       ? []

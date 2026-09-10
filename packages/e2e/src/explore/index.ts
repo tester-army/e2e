@@ -285,11 +285,34 @@ function exploreRegistration(state: ExploreState, openApp: boolean, credentials:
   return { tests: [test], hooks: [] };
 }
 
+/**
+ * Every charter carries every configured account as a step parameter, and
+ * step parameters have a size limit. The inventory is bounded here, before
+ * anything starts, well under that limit and with room left for the findings
+ * that ride along, so an oversized one is a configuration error and not a
+ * failed first step.
+ */
+const MAX_CREDENTIAL_BYTES = 16_384;
+
 /** The configured credential names; anything but a plain object is left for config resolution to reject. */
-function credentialNames(raw: E2EConfig): readonly string[] {
+export function credentialNames(raw: E2EConfig): readonly string[] {
   const value = raw.credentials;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
-  return Object.keys(value);
+  const names = Object.keys(value);
+  const carried = Object.fromEntries(
+    Object.entries(value).map(([name, credential]) => [
+      name,
+      { username: typeof credential.username === 'string' ? credential.username : '', password: name },
+    ]),
+  );
+  const bytes = Buffer.byteLength(JSON.stringify({ credentials: carried }));
+  if (bytes > MAX_CREDENTIAL_BYTES) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `explore carries every configured credential into each step: ${String(names.length)} account(s) serialize to ${String(bytes)} bytes, the maximum is ${String(MAX_CREDENTIAL_BYTES)}; explore with a config that declares fewer`,
+    );
+  }
+  return names;
 }
 
 function resolveArtifactsRoot(projectRoot: string, override: string | undefined): string {

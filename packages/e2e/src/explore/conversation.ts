@@ -142,8 +142,12 @@ export function createConversationBody(options: ConversationBodyOptions): TestFn
         ...(params === undefined ? {} : { params }),
       });
     } catch (cause) {
-      if (!isAgentError(cause) || cause.code === 'CANCELLED') throw cause;
       // Out of turns or time mid-conversation: the record so far stands.
+      // Anything else (the provider, the app, a cancellation) is the run's error.
+      if (!isAgentError(cause) || (cause.code !== 'STEP_BUDGET_EXHAUSTED' && cause.code !== 'STEP_TIMEOUT')) {
+        state.ended = 'aborted';
+        throw cause;
+      }
       if (state.ended !== 'finished') state.ended = cause.code === 'STEP_TIMEOUT' ? 'time' : 'step-limit';
     }
     if (state.currentStepOpen()) state.endStep('exhausted', 'the conversation ended with this step open');
