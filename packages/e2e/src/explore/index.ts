@@ -20,8 +20,6 @@ import type { ReportExplore } from '../report/build.ts';
 import { run, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, ModelInstance } from '../types.ts';
 import { createExploreBody } from './body.ts';
-import { CONVERSATION_STEP_BUDGET, createConversationBody, createConversationExplorer } from './conversation.ts';
-import { readExperiment, type ExploreExperiment } from './experiment.ts';
 import { createExplorer } from './executor.ts';
 import { exploreReporter } from './reporter.ts';
 import { ExploreState } from './state.ts';
@@ -88,7 +86,6 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const { raw, projectRoot } = await loadRawConfig(options, cwd);
 
   const state = new ExploreState(goal, budgets);
-  const experiment = readExperiment(env);
   const evidence = evidenceWriter(resolveArtifactsRoot(projectRoot, options.artifactsDir));
   // Nothing replays an exploration, and a retry would explore twice. The
   // target is picked from this same config, so what resolves for the pick is
@@ -97,7 +94,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const target = pickTarget(base, { projectRoot, env }, options.target, notice);
   const rawConfig: E2EConfig = {
     ...base,
-    agents: exploreAgents(raw.agents, options.agent, { state, evidence, notice, experiment }),
+    agents: exploreAgents(raw.agents, options.agent, { state, evidence, notice }),
     // A malformed value is left as it is, for config resolution to reject.
     reporters: Array.isArray(raw.reporters)
       ? [...raw.reporters, exploreReporter(state)]
@@ -109,7 +106,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     cwd: projectRoot,
     rawConfig,
     env,
-    tests: { file: EXPLORE_FILE, registration: exploreRegistration(state, target.openApp, credentialNames(raw), experiment) },
+    tests: { file: EXPLORE_FILE, registration: exploreRegistration(state, target.openApp, credentialNames(raw)) },
     targetIds: target.ids,
     headed: options.headed,
     reporters: options.reporters,
@@ -157,7 +154,7 @@ function resolveBounded(
 }
 
 type AgentEntry = AgentConfig | StepExecutor;
-type ExplorerOptions = { state: ExploreState; evidence: (index: number, pixels: Uint8Array) => Promise<string | undefined>; notice: (message: string) => void; experiment: ExploreExperiment };
+type ExplorerOptions = { state: ExploreState; evidence: (index: number, pixels: Uint8Array) => Promise<string | undefined>; notice: (message: string) => void };
 
 /**
  * The `agents` block the exploration runs with: the project's agents as they
@@ -216,14 +213,6 @@ function exploreAgentConfig(value: AgentEntry | undefined, options: ExplorerOpti
       );
     }
   }
-  if (options.experiment.conversation) {
-    return {
-      ...block,
-      executor: createConversationExplorer({ state: options.state, base, model: carried, evidence: options.evidence }),
-      maxSteps: CONVERSATION_STEP_BUDGET,
-      maxModelCalls: CONVERSATION_STEP_BUDGET,
-    };
-  }
   const explorer = createExplorer({ state: options.state, base, model: carried, evidence: options.evidence });
   return {
     ...block,
@@ -262,7 +251,7 @@ export function pickTarget(
 }
 
 /** The one-test registration: the goal is the title, the body is the exploration loop. */
-function exploreRegistration(state: ExploreState, openApp: boolean, credentials: readonly string[], experiment: ExploreExperiment): ModuleRegistration {
+function exploreRegistration(state: ExploreState, openApp: boolean, credentials: readonly string[]): ModuleRegistration {
   const title = state.goal;
   const test: RegisteredTest = {
     kind: 'test',
@@ -275,9 +264,7 @@ function exploreRegistration(state: ExploreState, openApp: boolean, credentials:
       agentContext: `Exploration goal: ${state.goal}`,
     },
     sessions: [],
-    fn: experiment.conversation
-      ? createConversationBody({ state, openApp, credentials })
-      : createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, credentials, experiment }),
+    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, credentials }),
     group: undefined,
     mode: 'normal',
     source: undefined,

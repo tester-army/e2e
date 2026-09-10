@@ -1,14 +1,9 @@
 /**
  * Scores `e2e explore` against the bug garden's planted defects, across
- * models and context-management arms, each run on its own app instance, a
- * few at a time.
+ * models, each run on its own app instance, a few at a time.
  *
  *   AI_GATEWAY_API_KEY=... node scripts/explore-bench.mjs \
- *     --models openai/gpt-5.6-luna-fast,google/gemini-3.6-flash --steps 8 --timeout 600000 \
- *     --arms baseline,no-findings-params,planner-no-history,ledger-small,conversation --repeats 3 --concurrency 6
- *
- * Arms map onto `E2E_EXPLORE_EXPERIMENT` knobs the explore module reads, plus
- * `EXPLORE_LEDGER_BYTES` the testbed config reads. `baseline` is the product.
+ *     --models openai/gpt-5.6-luna-fast,google/gemini-3.6-flash --steps 8 --timeout 600000 --repeats 3 --concurrency 6
  *
  * Each run writes under .e2e/explore-bench/<label>/ (report.json, artifacts,
  * cli.log); the matrix and the per-bug hits land in summary.json and on
@@ -41,19 +36,8 @@ const BUGS = [
   { id: 'W1', kind: 'copy (minor)', patterns: [/recieve|misspell|typo|spelling/i] },
 ];
 
-/** Each arm's environment; `baseline` is the shipped behavior. */
-const ARMS = {
-  baseline: {},
-  'no-findings-params': { E2E_EXPLORE_EXPERIMENT: 'no-findings-params' },
-  'planner-no-history': { E2E_EXPLORE_EXPERIMENT: 'planner-no-history' },
-  'ledger-small': { EXPLORE_LEDGER_BYTES: '1024' },
-  conversation: { E2E_EXPLORE_EXPERIMENT: 'conversation' },
-};
-
 const args = parseArgs(process.argv.slice(2));
 const models = (args.models ?? 'openai/gpt-5.6-luna-fast').split(',').map((value) => value.trim()).filter(Boolean);
-const arms = (args.arms ?? 'baseline').split(',').map((value) => value.trim()).filter(Boolean);
-for (const arm of arms) if (!(arm in ARMS)) throw new Error(`unknown arm "${arm}"; arms: ${Object.keys(ARMS).join(', ')}`);
 const repeats = Number(args.repeats ?? '1');
 const concurrency = Number(args.concurrency ?? '6');
 if (!Number.isInteger(repeats) || repeats < 1) throw new Error(`--repeats must be a positive integer, got "${args.repeats}"`);
@@ -67,18 +51,15 @@ const goal =
 const firstPort = Number(args.port ?? 4300);
 const runs = [];
 for (const model of models) {
-  for (const arm of arms) {
-    for (let repeat = 1; repeat <= repeats; repeat += 1) {
-      const index = runs.length;
-      // The index keeps two ids that slug alike apart.
-      runs.push({
-        model,
-        arm,
-        repeat,
-        port: firstPort + index,
-        label: `${String(index + 1).padStart(2, '0')}-${model.replace(/[^A-Za-z0-9.-]+/g, '_')}-${arm}-r${repeat}`,
-      });
-    }
+  for (let repeat = 1; repeat <= repeats; repeat += 1) {
+    const index = runs.length;
+    // The index keeps two ids that slug alike apart.
+    runs.push({
+      model,
+      repeat,
+      port: firstPort + index,
+      label: `${String(index + 1).padStart(2, '0')}-${model.replace(/[^A-Za-z0-9.-]+/g, '_')}-r${repeat}`,
+    });
   }
 }
 
@@ -91,7 +72,7 @@ const results = await pool(runs, concurrency, async (run) => {
     return { ...run, exitCode: -1, durationMs: 0, error: String(cause?.message ?? cause) };
   }
 });
-const summary = { goal, steps: Number(steps), timeoutMs: Number(timeout), arms, repeats, runs: results, aggregate: aggregate(results) };
+const summary = { goal, steps: Number(steps), timeoutMs: Number(timeout), repeats, runs: results, aggregate: aggregate(results) };
 writeFileSync(path.join(OUT, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
 print(results);
 printAggregate(summary.aggregate);
@@ -127,7 +108,7 @@ async function execute(run) {
       [CLI, 'explore', goal, '--config', 'e2e.explore.config.ts', '--max-steps', steps, '--timeout', timeout, '--artifacts', path.join(dir, 'artifacts'), '--debug'],
       {
         cwd: ROOT,
-        env: { ...process.env, ...ARMS[run.arm], E2E_MODEL: run.model, EXPLORE_APP_URL: `http://127.0.0.1:${run.port}`, FORCE_COLOR: '0' },
+        env: { ...process.env, E2E_MODEL: run.model, EXPLORE_APP_URL: `http://127.0.0.1:${run.port}`, FORCE_COLOR: '0' },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
@@ -156,7 +137,7 @@ function score(run, dir, exitCode, durationMs) {
     if (bug === undefined) other.push(`[${finding.kind} S${finding.severity}] ${finding.title}`);
     else (hits[bug.id] ??= []).push(finding.title);
   }
-  // A planted defect reported more than once is a duplicate; the dedupe arms are about this number.
+  // A planted defect reported more than once is a duplicate.
   const duplicates = Object.values(hits).reduce((sum, titles) => sum + titles.length - 1, 0);
   const startedAt = Date.parse(report.run.startedAt);
   const firstFinding = explore.findings.map((finding) => Date.parse(finding.reportedAt)).filter(Number.isFinite).toSorted((a, b) => a - b)[0];
@@ -189,13 +170,13 @@ function countModelCalls(report) {
   return calls;
 }
 
-/** Means per model and arm over the repeats. */
+/** Means per model over the repeats. */
 function aggregate(scored) {
   const groups = new Map();
   for (const result of scored) {
     if (result.error !== undefined) continue;
-    const key = `${result.model} | ${result.arm}`;
-    const group = groups.get(key) ?? { model: result.model, arm: result.arm, runs: 0, recall: 0, other: 0, duplicates: 0, steps: 0, calls: 0, tokens: 0, cost: 0, costKnown: 0, seconds: 0, firstFinding: [], stuck: 0 };
+    const key = result.model;
+    const group = groups.get(key) ?? { model: result.model, runs: 0, recall: 0, other: 0, duplicates: 0, steps: 0, calls: 0, tokens: 0, cost: 0, costKnown: 0, seconds: 0, firstFinding: [], stuck: 0 };
     group.runs += 1;
     group.recall += result.found.length / BUGS.length;
     group.other += result.other.length;
@@ -214,7 +195,6 @@ function aggregate(scored) {
   }
   return [...groups.values()].map((group) => ({
     model: group.model,
-    arm: group.arm,
     runs: group.runs,
     recall: group.recall / group.runs,
     other: group.other / group.runs,
@@ -236,11 +216,10 @@ function printAggregate(rows) {
   if (rows.length === 0) return;
   const line = (cells) => process.stdout.write(`${cells.join('  ')}\n`);
   process.stdout.write('\n== means over repeats\n');
-  line(['model'.padEnd(28), 'arm'.padEnd(20), 'runs', 'recall', 'other', 'dupes', 'steps', 'calls', 'tokens', 'cost', 'time', 'first', 'cut']);
+  line(['model'.padEnd(28), 'runs', 'recall', 'other', 'dupes', 'steps', 'calls', 'tokens', 'cost', 'time', 'first', 'cut']);
   for (const row of rows) {
     line([
       row.model.padEnd(28),
-      row.arm.padEnd(20),
       String(row.runs).padEnd(4),
       `${Math.round(row.recall * 100)}%`.padEnd(6),
       row.other.toFixed(1).padEnd(5),

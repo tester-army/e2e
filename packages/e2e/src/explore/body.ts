@@ -13,7 +13,6 @@ import { AgentError, isAgentError } from '../agent/error.ts';
 import { credentials } from '../credentials.ts';
 import type { ReportExplore } from '../report/build.ts';
 import type { TestFn } from '../types.ts';
-import type { ExploreExperiment } from './experiment.ts';
 import { planNext, type PlanAccount, type PlanDecision } from './plan.ts';
 import type { ExploreState } from './state.ts';
 
@@ -44,8 +43,6 @@ export interface ExploreBodyOptions {
    * password itself never reaches the model.
    */
   readonly credentials?: readonly string[] | undefined;
-  /** Benchmark knobs; the defaults are the product behavior. */
-  readonly experiment?: Pick<ExploreExperiment, 'findingsInParams' | 'plannerHistory'> | undefined;
   readonly now?: (() => number) | undefined;
 }
 
@@ -122,7 +119,6 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
           mustFinish: stop !== undefined,
           reason: stop?.reason,
           accounts,
-          history: options.experiment?.plannerHistory ?? true,
           remainingMs: remaining(),
           timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
         });
@@ -173,7 +169,7 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
       // The findings so far ride along as step parameters, so the agent
       // neither reports one twice nor spends the step re-confirming it; the
       // configured credentials ride along as secrets it can fill by name.
-      const reported = options.experiment?.findingsInParams === false ? [] : state.findings.map((finding) => finding.title);
+      const reported = state.findings.map((finding) => finding.title);
       const params = {
         ...(reported.length === 0 ? {} : { reportedFindings: reported }),
         ...(secrets === undefined ? {} : { credentials: secrets }),

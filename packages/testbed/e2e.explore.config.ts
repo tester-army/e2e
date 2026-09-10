@@ -42,6 +42,4 @@ export default {
   credentials: {
     ada: { username: 'ada@example.test', password: 'bookworm' },
   },
-  // The context benchmark shrinks the ledger handoff to measure what it carries.
-  ...(process.env.EXPLORE_LEDGER_BYTES === undefined ? {} : { limits: { maxLedgerBytes: Number(process.env.EXPLORE_LEDGER_BYTES) } }),
 } satisfies E2EConfig;

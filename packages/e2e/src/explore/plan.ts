@@ -61,8 +61,6 @@ export interface PlanRequest {
   readonly mustFinish: boolean;
   /** The accounts the explorer can sign in with. */
   readonly accounts?: readonly PlanAccount[] | undefined;
-  /** Include the explicit record of steps and findings; false leaves the planner the ledger alone (benchmark knob). */
-  readonly history?: boolean | undefined;
   /** Why it must end, in the planner's prompt. */
   readonly reason?: string | undefined;
   readonly remainingMs: number;
@@ -140,9 +138,12 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '',
     `Goal: ${state.goal}`,
     `Budget: ${used} of ${state.budgets.maxSteps} steps used, about ${minutesLeft} minute(s) left.`,
-    ...(request.history === false
-      ? ['', `${String(used)} step(s) ran and ${String(state.findings.length)} finding(s) were recorded; the record itself is withheld from this prompt, so plan from the goal and the budget alone.`]
-      : ['', 'Steps so far:', steps, '', 'Findings so far:', findings]),
+    '',
+    'Steps so far:',
+    steps,
+    '',
+    'Findings so far:',
+    findings,
     ...(request.accounts === undefined || request.accounts.length === 0
       ? []
       : [
