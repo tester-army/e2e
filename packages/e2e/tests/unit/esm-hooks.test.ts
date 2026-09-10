@@ -6,30 +6,41 @@ const context = { conditions: [], importAttributes: {}, parentURL: undefined };
 
 describe('asModule', () => {
   it.each([
-    ['a typeless .ts entry', 'file:///app/e2e.config.ts?e2e=module-1', undefined],
-    ['a CommonJS-scoped .ts test', 'file:///app/tests/example.e2e.ts', 'commonjs-typescript'],
+    ['the config entry in a typeless package', 'file:///app/e2e.config.ts?e2e=module-1', undefined],
+    ['a CommonJS-scoped test', 'file:///app/tests/example.e2e.ts', 'commonjs-typescript'],
     ['a .tsx helper', 'file:///app/tests/helper.tsx', 'commonjs'],
     ['an .mts file Node left untyped', 'file:///app/e2e.config.mts', null],
   ])('marks %s as an ES module', (_case, url, format) => {
-    expect(asModule({ url, format })).toEqual({ url, format: 'module' });
+    expect(asModule(url, { url, format })).toEqual({ url, format: 'module' });
   });
 
+  it.each(['./helper.ts', '../shared/seed.ts', '/app/tests/helper.ts'])(
+    'marks a file reached by the path %s as an ES module',
+    (specifier) => {
+      const resolution = { url: 'file:///app/tests/helper.ts', format: 'commonjs-typescript' };
+      expect(asModule(specifier, resolution)).toEqual({ ...resolution, format: 'module' });
+    },
+  );
+
   it.each([
-    ['an ES module', { url: 'file:///app/a.ts', format: 'module' }],
-    ['module-typescript', { url: 'file:///app/a.ts', format: 'module-typescript' }],
-    ['a .cts file', { url: 'file:///app/a.cts', format: 'commonjs' }],
-    ['JavaScript', { url: 'file:///app/a.js', format: 'commonjs' }],
-    ['a dependency', { url: 'file:///app/node_modules/dep/index.ts', format: 'commonjs' }],
-    ['a builtin', { url: 'node:path', format: 'builtin' }],
-    ['a data: URL', { url: 'data:text/javascript,export%20{}', format: undefined }],
-  ])('leaves %s alone', (_case, resolution) => {
-    expect(asModule(resolution)).toBe(resolution);
+    ['an ES module', './a.ts', { url: 'file:///app/a.ts', format: 'module' }],
+    ['module-typescript', './a.ts', { url: 'file:///app/a.ts', format: 'module-typescript' }],
+    ['a .cts file', './a.cts', { url: 'file:///app/a.cts', format: 'commonjs' }],
+    ['JavaScript', './a.js', { url: 'file:///app/a.js', format: 'commonjs' }],
+    ['an installed package', 'dep', { url: 'file:///app/node_modules/dep/index.ts', format: 'commonjs' }],
+    ['a linked package shipping TypeScript source', 'cjs-helper', { url: 'file:///work/cjs-helper/index.ts', format: 'commonjs-typescript' }],
+    ['a scoped package', '@scope/dep', { url: 'file:///work/dep/src/index.ts', format: 'commonjs' }],
+    ['a subpath import', '#internal/helper', { url: 'file:///app/src/helper.ts', format: 'commonjs' }],
+    ['a builtin', 'node:path', { url: 'node:path', format: 'builtin' }],
+    ['a data: URL', 'data:text/javascript,export%20{}', { url: 'data:text/javascript,export%20{}', format: undefined }],
+  ])('leaves %s alone', (_case, specifier, resolution) => {
+    expect(asModule(specifier, resolution)).toBe(resolution);
   });
 
   it('serves both hook kinds', async () => {
-    const next = (specifier: string) => ({ url: specifier, format: 'commonjs-typescript' });
-    expect(resolveSync('file:///app/a.ts', context, next)).toEqual({ url: 'file:///app/a.ts', format: 'module' });
-    await expect(resolve('file:///app/a.ts', context, async (specifier) => next(specifier))).resolves.toEqual({
+    const next = (specifier: string) => ({ url: `file:///app/${specifier.slice(2)}`, format: 'commonjs-typescript' });
+    expect(resolveSync('./a.ts', context, next)).toEqual({ url: 'file:///app/a.ts', format: 'module' });
+    await expect(resolve('./a.ts', context, async (specifier) => next(specifier))).resolves.toEqual({
       url: 'file:///app/a.ts',
       format: 'module',
     });

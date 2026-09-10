@@ -134,8 +134,9 @@ function registerLoader(): NamespacedUnregister {
   if (tsxUsesSyncHooks()) {
     nodeModule.registerHooks({ resolve: resolveSync });
   } else {
-    // The emitted sibling of this module: tsc rewrites import specifiers, not URLs.
-    nodeModule.register(new URL('./esm-hooks.js', import.meta.url).href);
+    // The sibling module with this module's own extension: .js in dist, .ts when
+    // tests run from source (tsc rewrites import specifiers, not URLs).
+    nodeModule.register(import.meta.url.replace(/load(\.[jt]s)$/, 'esm-hooks$1'));
   }
   return register({ namespace: 'e2e' });
 }
