@@ -58,12 +58,12 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@clack/prompts": "1.7.0",
+    "@clack/prompts": "1.8.0",
     "@vitest/expect": "5.0.0",
     "commander": "15.0.0",
     "picocolors": "1.1.1",
     "tsx": "4.23.13",
-    "zod": "4.5.4"
+    "zod": "4.6.1"
   },
   "peerDependencies": {
     "ai": "^7.0.0"
@@ -78,7 +78,7 @@
     "@e2edev/playwright": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.0.0",
     "@types/node": "26.4.1",
-    "ai": "7.0.93",
+    "ai": "7.0.97",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",

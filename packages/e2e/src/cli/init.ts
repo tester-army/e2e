@@ -103,7 +103,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       initialValue: DEFAULT_ENGINE_ID,
       options: getEnginePresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
     });
-    if (clack.isCancel(selectedEngine)) return cancelled();
+    if (isCancelled(selectedEngine)) return cancelled();
     engine = selectedEngine;
 
     // The gateway is a visible choice, not a runner default: the config imports
@@ -116,7 +116,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
         { value: 'none', label: 'None', hint: 'deterministic tests only; add a gateway later' },
       ],
     });
-    if (clack.isCancel(gateway)) return cancelled();
+    if (isCancelled(gateway)) return cancelled();
     if (gateway === 'none') {
       model = undefined;
     } else if (gateway === 'openai-compatible') {
@@ -125,7 +125,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
         placeholder: 'http://127.0.0.1:11434/v1',
         validate: validateEndpoint,
       });
-      if (clack.isCancel(endpoint)) return cancelled();
+      if (isCancelled(endpoint)) return cancelled();
       model = { gateway, endpoint: endpoint.trim() };
     } else {
       model = { gateway };
@@ -144,7 +144,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
         initialValues: SKILL_LOCATIONS.map((location) => location.dir),
         required: false,
       });
-      if (clack.isCancel(selected)) return cancelled();
+      if (isCancelled(selected)) return cancelled();
       skillDirs = selected;
     }
   }
@@ -180,14 +180,14 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
     const proceed = await clack.confirm({ message: `${actions.join(', ')}?` });
-    if (clack.isCancel(proceed) || !proceed) return cancelled();
+    if (isCancelled(proceed) || !proceed) return cancelled();
   }
 
   const manager = detectPackageManager(cwd, manifest.packageManager);
   let install = false;
   if (!options.yes) {
     const selected = await clack.confirm({ message: `Install dependencies with ${manager}?`, initialValue: true });
-    if (clack.isCancel(selected)) return cancelled();
+    if (isCancelled(selected)) return cancelled();
     install = selected;
   }
 
@@ -264,6 +264,15 @@ function validateEndpoint(value: string | undefined): string | undefined {
 }
 
 /** Cancellation is only reachable before the first write, so nothing needs undoing. */
+/**
+ * `@clack/core` 1.5 narrows `isCancel` to its unique cancel symbol while the
+ * prompts still resolve to `Value | symbol`, so the guard alone no longer
+ * removes `symbol` from a prompt result. This one does.
+ */
+function isCancelled<Value>(value: Value | symbol): value is symbol {
+  return clack.isCancel(value);
+}
+
 function cancelled(): number {
   clack.cancel('cancelled; no changes were made');
   return 0;

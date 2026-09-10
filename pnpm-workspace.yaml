@@ -2,8 +2,20 @@ packages:
   - packages/*
   - docs
 
-onlyBuiltDependencies:
-  - esbuild
+# pnpm 12 refuses versions published less than a day ago by default. Exact pins
+# already decide what we install, so the delay only blocks deliberate bumps.
+minimumReleaseAge: 0
+
+# @e2edev/e2e and @e2edev/playwright develop against each other; pnpm 12 would
+# otherwise refuse to run recursive scripts across that cycle.
+ignoreWorkspaceCycles: true
+
+allowBuilds:
+  esbuild: true
+  '@scarf/scarf': false
+  keytar: false
+  puppeteer: false
+  sharp: false
 
 overrides:
   'fast-uri@>=3.0.0 <3.1.6': 3.1.6

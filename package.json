@@ -29,17 +29,17 @@
     "test:device": "pnpm run build && pnpm --filter @e2edev/testbed test:device"
   },
   "contributors": [
-    "Oskar Kwa\u015bniewski <oskar@tester.army>",
+    "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.2",
     "@types/node": "26.4.1",
-    "fallow": "3.22.0",
-    "oxlint": "1.81.0",
+    "fallow": "3.24.1",
+    "oxlint": "1.82.0",
     "typescript": "7.0.2",
-    "zod": "4.5.4"
+    "zod": "4.6.1"
   },
-  "packageManager": "pnpm@10.34.5"
+  "packageManager": "pnpm@12.3.4"
 }

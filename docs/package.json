@@ -12,8 +12,8 @@
     "@e2edev/e2e": "workspace:*",
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.4.1",
-    "ai": "7.0.93",
-    "mint": "4.2.881",
+    "ai": "7.0.97",
+    "mint": "4.2.883",
     "typescript": "7.0.2"
   },
   "engines": {

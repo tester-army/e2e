@@ -55,9 +55,9 @@
     "test:simulator": "E2E_AGENT_DEVICE_SIMULATOR=1 vitest run tests/integration"
   },
   "dependencies": {
-    "agent-device": "0.20.10",
+    "agent-device": "0.21.0",
     "pngjs": "7.0.0",
-    "zod": "4.5.4"
+    "zod": "4.6.1"
   },
   "peerDependencies": {
     "ai": "^7.0.0",
@@ -71,7 +71,7 @@
   "devDependencies": {
     "@types/node": "26.4.1",
     "@types/pngjs": "6.0.5",
-    "ai": "7.0.93",
+    "ai": "7.0.97",
     "@e2edev/e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
