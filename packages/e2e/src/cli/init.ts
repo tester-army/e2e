@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { detectPackageManager } from '../internal/package-manager.ts';
+import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { DOCS_URL } from './docs-url.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
@@ -43,7 +43,8 @@ const GITIGNORE_ENTRIES = [
   '.e2e/logs/',
 ];
 
-const SCRIPTS = { 'test:e2e': 'e2e run' };
+const RUN_SCRIPT = 'test:e2e';
+const SCRIPTS = { [RUN_SCRIPT]: 'e2e run' };
 
 /** The gateway `--yes` picks; the choice is written into the config either way. */
 const DEFAULT_GATEWAY: GatewayId = 'vercel';
@@ -207,7 +208,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     clack.log.success(`${skill.existing ? 'updated' : 'created'} ${skill.relative}/ (${skill.files.length} files)`);
   }
   if (skillDirs.length === 0) {
-    clack.log.info('skipped the agent skill; agents can still print it with npx --no-install e2e guide');
+    clack.log.info(`skipped the agent skill; agents can still print it with ${execCommand(manager, 'e2e guide')}`);
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
@@ -230,10 +231,14 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   if (!existsSync(path.join(cwd, 'tsconfig.json'))) {
     clack.log.info('no tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
   }
+  // The script init adds, unless the project already had one of its own under that name.
+  const runCommand = manifest.scripts?.[RUN_SCRIPT]?.startsWith('e2e run')
+    ? runScriptCommand(manager, RUN_SCRIPT)
+    : execCommand(manager, 'e2e run');
   const next = [
     options.directory === undefined ? undefined : `cd ${shellArgument(options.directory)}`,
     install ? undefined : `${manager} install`,
-    scaffold.runCommand,
+    `${scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : ''}${runCommand}`,
   ].filter((step) => step !== undefined);
   clack.outro(`next: ${next.join(', then ')}`);
   return 0;

@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/tester-army/e2e/security/advisories/new
     about: Report privately. See SECURITY.md for the trust model and response times.
   - name: Documentation
-    url: https://e2e-docs.vercel.app
+    url: https://e2e.mintlify.app
     about: Guides and reference for the SDK, config, CLI, and engines.

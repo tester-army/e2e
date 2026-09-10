@@ -21,14 +21,15 @@ pnpm dlx @e2edev/e2e@beta init  # pnpm
 When `@e2edev/e2e` is already installed, run `npx --no-install e2e init`
 instead, so the installed version scaffolds.
 
-The wizard asks for the engine (Playwright by default; None and agent-device
-are the alternatives), whether to enable AI testing (adds `ai@^7.0.0` and
-`createAgent` to the config), which agent directories receive this skill
+The wizard asks for the engine (Web with Playwright by default; Mobile with
+agent-device and None are the alternatives), which model gateway agent steps
+use (adds AI SDK v7 and the provider package), which agent directories receive this skill
 (`.agents/skills/` and `.claude/skills/`), a confirmation of the files it
 will write, and whether to install. `--yes` skips every prompt (use it from
-scripts and from a shell without a TTY): Playwright, AI on, no installation,
-skill in both directories. The closing line prints the run command,
-`APP_URL=http://localhost:3000 npx --no-install e2e run` for Playwright, and
+scripts and from a shell without a TTY): Playwright, the Vercel AI Gateway,
+no installation, skill in both directories. The closing line prints the run
+command through the project's package manager,
+`APP_URL=http://localhost:3000 npm run test:e2e` for Playwright under npm, and
 suggests a `tsconfig.json` when the project has none.
 
 Init writes `package.json` (a private ESM package when missing; otherwise

@@ -36,6 +36,34 @@ export function detectPackageManager(
   return isPackageManager(invoking) ? invoking : 'npm';
 }
 
+/** The command that runs the package.json script `name` with the given manager. */
+export function runScriptCommand(manager: PackageManager, name: string): string {
+  switch (manager) {
+    case 'npm':
+      return `npm run ${name}`;
+    case 'pnpm':
+      return `pnpm ${name}`;
+    case 'yarn':
+      return `yarn ${name}`;
+    case 'bun':
+      return `bun run ${name}`;
+  }
+}
+
+/** The command that runs an installed binary, never a registry download, with the given manager. */
+export function execCommand(manager: PackageManager, command: string): string {
+  switch (manager) {
+    case 'npm':
+      return `npm exec ${command}`;
+    case 'pnpm':
+      return `pnpm exec ${command}`;
+    case 'yarn':
+      return `yarn ${command}`;
+    case 'bun':
+      return `bun run ${command}`;
+  }
+}
+
 /** The command that adds `name` as a dev dependency with the given manager. */
 export function addDevDependencyCommand(manager: PackageManager, name: string): string {
   switch (manager) {

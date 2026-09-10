@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addDevDependencyCommand, detectPackageManager } from '../../src/internal/package-manager.ts';
+import { addDevDependencyCommand, detectPackageManager, execCommand, runScriptCommand } from '../../src/internal/package-manager.ts';
 
 let dir: string;
 
@@ -24,6 +24,24 @@ describe('detectPackageManager', () => {
     expect(detectPackageManager(dir, undefined, { npm_config_user_agent: 'bun/1.2.0' })).toBe('bun');
     expect(detectPackageManager(dir, undefined, { npm_config_user_agent: 'cargo/1' })).toBe('npm');
     expect(detectPackageManager(dir, undefined, {})).toBe('npm');
+  });
+});
+
+describe('runScriptCommand', () => {
+  it('spells the script run for each manager', () => {
+    expect(runScriptCommand('npm', 'test:e2e')).toBe('npm run test:e2e');
+    expect(runScriptCommand('pnpm', 'test:e2e')).toBe('pnpm test:e2e');
+    expect(runScriptCommand('yarn', 'test:e2e')).toBe('yarn test:e2e');
+    expect(runScriptCommand('bun', 'test:e2e')).toBe('bun run test:e2e');
+  });
+});
+
+describe('execCommand', () => {
+  it('runs the installed binary with each manager', () => {
+    expect(execCommand('npm', 'e2e guide')).toBe('npm exec e2e guide');
+    expect(execCommand('pnpm', 'e2e guide')).toBe('pnpm exec e2e guide');
+    expect(execCommand('yarn', 'e2e guide')).toBe('yarn e2e guide');
+    expect(execCommand('bun', 'e2e guide')).toBe('bun run e2e guide');
   });
 });
 

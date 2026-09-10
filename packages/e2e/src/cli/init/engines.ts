@@ -12,7 +12,8 @@ export interface EnginePreset {
   readonly config: string;
   readonly example: string;
   readonly aiExample?: string;
-  readonly runCommand: string;
+  /** Whether the run hint sets APP_URL, for engines that drive a URL. */
+  readonly needsAppUrl: boolean;
 }
 
 /**
@@ -44,8 +45,8 @@ export function getEnginePresets() {
   return [
     {
       id: 'playwright',
-      label: 'Playwright',
-      hint: 'browser testing',
+      label: 'Web',
+      hint: 'Playwright',
       dependencies: engineDependency('@e2edev/playwright'),
       imports: ["import { playwright } from '@e2edev/playwright';"],
       config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
@@ -73,29 +74,12 @@ test('app opens', async ({ app, web }) => {
 //   await agent.assert('one question about the screen');
 // });
 `,
-      runCommand: 'APP_URL=http://localhost:3000 npx --no-install e2e run',
-    },
-    {
-      id: 'none',
-      label: 'None',
-      hint: 'HTTP tests or your own engine',
-      dependencies: {},
-      imports: [],
-      config: `  // Add an engine here when your tests need to drive an app.
-  targets: [{ name: 'default', platform: 'custom' }],`,
-      example: `import { test, expect } from '@e2edev/e2e';
-
-test('app responds', async () => {
-  const response = await fetch(process.env.APP_URL ?? 'http://localhost:3000');
-  expect(response.ok).toBe(true);
-});
-`,
-      runCommand: 'APP_URL=http://localhost:3000 npx --no-install e2e run',
+      needsAppUrl: true,
     },
     {
       id: 'agent-device',
-      label: 'agent-device',
-      hint: 'mobile testing: iOS and Android',
+      label: 'Mobile (iOS/Android)',
+      hint: 'agent-device',
       dependencies: engineDependency('@e2edev/agent-device'),
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
@@ -127,7 +111,24 @@ test('Settings opens', async ({ screen }) => {
 //   await expect(device.locator('id=com.android.settings:id/collapsing_toolbar')).toHaveText('Network & internet');
 // });
 `,
-      runCommand: 'npx --no-install e2e run',
+      needsAppUrl: false,
+    },
+    {
+      id: 'none',
+      label: 'None',
+      hint: 'HTTP tests or your own engine',
+      dependencies: {},
+      imports: [],
+      config: `  // Add an engine here when your tests need to drive an app.
+  targets: [{ name: 'default', platform: 'custom' }],`,
+      example: `import { test, expect } from '@e2edev/e2e';
+
+test('app responds', async () => {
+  const response = await fetch(process.env.APP_URL ?? 'http://localhost:3000');
+  expect(response.ok).toBe(true);
+});
+`,
+      needsAppUrl: true,
     },
   ] as const satisfies readonly EnginePreset[];
 }

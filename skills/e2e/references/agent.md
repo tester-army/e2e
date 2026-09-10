@@ -222,7 +222,7 @@ arbitrary tool result JSON or other fields are preserved.
   can be the `agent`; the runner still owns observations, actions, budgets,
   and the report.
 
-Full reference: https://e2e-docs.vercel.app/agents
+Full reference: https://e2e.mintlify.app/agents
 
 ## In CI
 

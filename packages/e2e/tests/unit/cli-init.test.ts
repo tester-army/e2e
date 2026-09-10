@@ -73,7 +73,7 @@ describe('e2e init', () => {
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(read('.gitignore')).toContain('.e2e/cache/');
-    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e-docs.vercel.app/reference/config#commit-your-traces');
+    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.mintlify.app/reference/config#commit-your-traces');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
     expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(clack.confirm).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe('e2e init', () => {
     expect(spawnSync).not.toHaveBeenCalled();
     expect(output()).toContain('add scripts: test:e2e (e2e run)');
     expect(output()).toContain('no tsconfig.json');
-    expect(output()).toContain('next: npm install, then APP_URL=http://localhost:3000 npx --no-install e2e run');
+    expect(output()).toContain('next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
   it('keeps quiet about tsconfig.json when the project has one', async () => {
@@ -122,7 +122,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts').includes('@e2edev/agent-device')).toBe(device);
     expect(read('tests/example.e2e.ts').includes('@e2edev/agent-device')).toBe(device);
     expect(read('e2e.config.ts').includes('APP_URL')).toBe(engine === 'playwright');
-    expect(output()).toContain(`next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npx --no-install e2e run`);
+    expect(output()).toContain(`next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npm run test:e2e`);
     expect(spawnSync).not.toHaveBeenCalled();
   });
 
@@ -140,9 +140,9 @@ describe('e2e init', () => {
     expect(clack.select).toHaveBeenCalledWith(expect.objectContaining({
       initialValue: 'playwright',
       options: [
-        expect.objectContaining({ value: 'playwright' }),
-        expect.objectContaining({ value: 'none' }),
-        expect.objectContaining({ value: 'agent-device' }),
+        expect.objectContaining({ value: 'playwright', label: 'Web', hint: 'Playwright' }),
+        expect.objectContaining({ value: 'agent-device', label: 'Mobile (iOS/Android)', hint: 'agent-device' }),
+        expect.objectContaining({ value: 'none', label: 'None' }),
       ],
     }));
     expect(read('e2e.config.ts')).toContain(`agentDevice({ platform: '${platform}', app: '${app}' })`);
@@ -204,7 +204,7 @@ describe('e2e init', () => {
     expect(spawnSync).toHaveBeenCalledExactlyOnceWith('npm', ['install'], {
       cwd: dir, stdio: 'inherit', shell: process.platform === 'win32',
     });
-    expect(output()).toContain('next: APP_URL=http://localhost:3000 npx --no-install e2e run');
+    expect(output()).toContain('next: APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
   it('writes the selected dependencies when installation is declined', async () => {
@@ -302,7 +302,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(target, 'e2e.config.ts'))).toBe(true);
     expect(existsSync(path.join(target, 'tests', 'example.e2e.ts'))).toBe(true);
     expect(output()).toContain('e2e init apps/web');
-    expect(output()).toContain('next: cd apps/web, then npm install, then APP_URL=http://localhost:3000 npx --no-install e2e run');
+    expect(output()).toContain('next: cd apps/web, then npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
   it('quotes a directory the shell would otherwise split, for the platform it runs on', async () => {
@@ -423,7 +423,7 @@ describe('e2e init', () => {
     expect(clack.multiselect).toHaveBeenCalledTimes(1);
     expect(existsSync(path.join(dir, '.agents'))).toBe(false);
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
-    expect(output()).toContain('npx --no-install e2e guide');
+    expect(output()).toContain('npm exec e2e guide');
   });
 
   it('is idempotent', async () => {

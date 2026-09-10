@@ -80,7 +80,7 @@ variables, and credentials are never sent. Engine names, platforms, and model
 ids are sent as your config declares them when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
-is listed at [e2e-docs.vercel.app/telemetry](https://e2e-docs.vercel.app/telemetry),
+is listed at [e2e.mintlify.app/telemetry](https://e2e.mintlify.app/telemetry),
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
 
 Opt out with `e2e telemetry disable`, `E2E_TELEMETRY_DISABLED=1`, or

@@ -144,4 +144,4 @@ through a deterministic `screen` action in a setup step instead.
 
 ## Documentation
 
-Full documentation lives at [e2e-docs.vercel.app](https://e2e-docs.vercel.app).
+Full documentation lives at [e2e.mintlify.app](https://e2e.mintlify.app).

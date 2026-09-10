@@ -51,18 +51,18 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 - Runs locally. No account, no hosted runner. The CLI sends anonymous usage
   counts to improve the framework, never your tests or your app's data;
   `e2e telemetry disable` turns that off
-  ([what is sent](https://e2e-docs.vercel.app/telemetry)).
+  ([what is sent](https://e2e.mintlify.app/telemetry)).
 
 ## Documentation
 
-[e2e-docs.vercel.app](https://e2e-docs.vercel.app)
+[e2e.mintlify.app](https://e2e.mintlify.app)
 
 ## Coding agents
 
 `e2e init` installs an agent skill into `.agents/skills/` and
 `.claude/skills/`, and `npx skills add tester-army/e2e` installs it
 anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
-See [Coding agents](https://e2e-docs.vercel.app/coding-agents).
+See [Coding agents](https://e2e.mintlify.app/coding-agents).
 
 ## Packages
 
@@ -71,7 +71,7 @@ See [Coding agents](https://e2e-docs.vercel.app/coding-agents).
   to a target as `engine: playwright()`.
 - [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
   simulators and Android emulators; see the
-  [device reference](https://e2e-docs.vercel.app/reference/device).
+  [device reference](https://e2e.mintlify.app/reference/device).
 
 ## Contributing
 

@@ -25,7 +25,7 @@ of one job pass a `key` so their comments stay apart. When the reporter cannot
 post (another CI, a push, a fork's read-only token) it says why in one summary
 row and never changes the run's exit code.
 
-Full documentation lives at [e2e-docs.vercel.app/github](https://e2e-docs.vercel.app/github).
+Full documentation lives at [e2e.mintlify.app/github](https://e2e.mintlify.app/github).
 
 ## License
 

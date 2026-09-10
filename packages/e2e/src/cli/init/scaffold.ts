@@ -57,6 +57,6 @@ ${configFields.join('\n')}
 } satisfies E2EConfig;
 `,
     example: engine.example + (gateway === undefined ? '' : engine.aiExample ?? ''),
-    runCommand: engine.runCommand,
+    needsAppUrl: engine.needsAppUrl,
   };
 }
