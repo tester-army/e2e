@@ -22,7 +22,16 @@ export interface BoundToolOutput {
   readonly totalBytes: number;
 }
 
-/** Cuts a tool result to the limits, on a line boundary, with a notice naming what is missing. */
+/** Bytes and lines set aside for the notice, so the whole result stays inside the limits. */
+const NOTICE_RESERVE_BYTES = 256;
+const NOTICE_RESERVE_LINES = 1;
+
+/**
+ * Cuts a tool result to the limits, with a notice naming what is missing. The
+ * cut lands on a line boundary, except for a first line that alone exceeds
+ * the byte budget, which keeps its head. The result, notice included, fits the
+ * limits it advertises.
+ */
 export function boundToolOutput(text: string, limits = { maxLines: MAX_TOOL_OUTPUT_LINES, maxBytes: MAX_TOOL_OUTPUT_BYTES }): BoundToolOutput {
   const totalBytes = Buffer.byteLength(text, 'utf8');
   const lines = text.split('\n');
@@ -30,13 +39,15 @@ export function boundToolOutput(text: string, limits = { maxLines: MAX_TOOL_OUTP
   if (totalLines <= limits.maxLines && totalBytes <= limits.maxBytes) {
     return { text, truncated: false, totalLines, totalBytes };
   }
+  const lineBudget = Math.max(1, limits.maxLines - NOTICE_RESERVE_LINES);
+  const byteBudget = Math.max(64, limits.maxBytes - NOTICE_RESERVE_BYTES);
   const kept: string[] = [];
   let bytes = 0;
   let by: 'lines' | 'bytes' = 'lines';
   for (const line of lines) {
-    if (kept.length >= limits.maxLines) break;
+    if (kept.length >= lineBudget) break;
     const lineBytes = Buffer.byteLength(line, 'utf8') + (kept.length === 0 ? 0 : 1);
-    if (bytes + lineBytes > limits.maxBytes) {
+    if (bytes + lineBytes > byteBudget) {
       by = 'bytes';
       break;
     }
@@ -46,7 +57,7 @@ export function boundToolOutput(text: string, limits = { maxLines: MAX_TOOL_OUTP
   // A first line longer than the whole byte budget keeps nothing of the text;
   // its head is better than an empty result, and the notice still says so.
   if (kept.length === 0) {
-    const head = Buffer.from(text, 'utf8').subarray(0, limits.maxBytes).toString('utf8').replace(/�+$/u, '');
+    const head = Buffer.from(text, 'utf8').subarray(0, byteBudget).toString('utf8').replace(/�+$/u, '');
     kept.push(head);
     bytes = Buffer.byteLength(head, 'utf8');
   }

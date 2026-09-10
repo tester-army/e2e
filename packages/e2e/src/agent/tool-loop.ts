@@ -167,8 +167,12 @@ class LoopRun {
   private lastRequest: ModelMessage[] | undefined;
   /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
   private turnOffset = 0;
-  /** An overflow is recovered from once; a second one is the step's verdict. */
-  private overflowRecovered = false;
+  /**
+   * Set once an overflow was handled: the retry note when the history was
+   * shrunk and resent, or why it was not. A second overflow is the step's
+   * verdict, and the note completes its message.
+   */
+  private overflowNote: string | undefined;
 
   constructor(
     private readonly ai: AiSdk,
@@ -255,9 +259,7 @@ class LoopRun {
         if (isContextOverflow(cause)) {
           throw new AgentError(
             'CONTEXT_OVERFLOW',
-            `the model request exceeded the context window${
-              this.overflowRecovered ? ' again after the history was shrunk once' : ''
-            }: ${message}`,
+            `the model request exceeded the context window${this.overflowNote ?? ''}: ${message}`,
             { cause },
           );
         }
@@ -289,15 +291,25 @@ class LoopRun {
    * a second overflow included, is left to the caller's error translation.
    */
   private overflowRetry(cause: unknown): ModelMessage[] | undefined {
-    if (this.overflowRecovered || this.lastRequest === undefined) return undefined;
+    if (this.overflowNote !== undefined || this.lastRequest === undefined) return undefined;
     if (this.context.signal.aborted || this.hardStop !== undefined || !isContextOverflow(cause)) return undefined;
-    this.overflowRecovered = true;
-    this.turnOffset = this.turnsUsed;
+    const before = textChars(this.lastRequest);
     const shrunk = shrinkForOverflow(this.lastRequest);
+    const after = textChars(shrunk);
+    // Nothing to elide and nothing to clip: the system prompt, the tool
+    // definitions, or the sheer number of messages is what does not fit, and
+    // sending the same request again would only spend another call on it.
+    if (after >= before) {
+      this.overflowNote = ' and the step history had nothing left to shrink';
+      this.transcript.push(`--- context overflow before turn ${String(this.turnsUsed + 1)}: nothing to shrink ---`);
+      return undefined;
+    }
+    this.overflowNote = ' again after the history was shrunk once';
+    this.turnOffset = this.turnsUsed;
     this.transcript.push(
-      `--- context overflow before turn ${String(this.turnsUsed + 1)}: history shrunk from ${String(
-        textChars(this.lastRequest),
-      )} to ${String(textChars(shrunk))} chars, retrying once ---`,
+      `--- context overflow before turn ${String(this.turnsUsed + 1)}: history shrunk from ${String(before)} to ${String(
+        after,
+      )} chars, retrying once ---`,
     );
     return shrunk;
   }

@@ -49,6 +49,23 @@ describe('isContextOverflow', () => {
     ).toBe(true);
   });
 
+  it('vetoes per field: a throttling message does not hide an overflow in the body, and 413 stands alone', () => {
+    expect(
+      isContextOverflow(
+        Object.assign(new Error('Rate limit reached'), {
+          statusCode: 400,
+          responseBody: '{"error":{"message":"prompt is too long: 250000 tokens > 200000 maximum"}}',
+        }),
+      ),
+    ).toBe(true);
+    expect(isContextOverflow(Object.assign(new Error('Too many requests'), { statusCode: 413 }))).toBe(true);
+    expect(
+      isContextOverflow(
+        Object.assign(new Error('prompt is too long'), { responseBody: 'ThrottlingException: Too many tokens' }),
+      ),
+    ).toBe(true);
+  });
+
   it('looks through wrappers: a cause chain and a spent retry chain', () => {
     const provider = new Error('prompt is too long: 250000 tokens > 200000 maximum');
     expect(isContextOverflow(new Error('gateway failed', { cause: provider }))).toBe(true);

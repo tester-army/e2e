@@ -41,33 +41,41 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
 
 const engine = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
 
+/** A screen whose text is far longer than the overflow clip, as a dense page is. */
+const bigScreen = () =>
+  defineEngine({
+    name: 'fake',
+    version: '1',
+    spiVersion: 1,
+    observe: async () => ({
+      nodes: Array.from({ length: 600 }, (_, i) => ({ ref: { id: `n${String(i)}`, revision: '' }, role: 'text', name: `row ${String(i)} ${'x'.repeat(40)}` })),
+    }),
+  });
+
 const OVERFLOW = 'prompt is too long: 300000 tokens > 200000 maximum';
 
-/** A read-only project tool whose output is far longer than the overflow clip. */
-const bigTool = defineTool(
-  { inputSchema: z.object({}), execute: async () => Array.from({ length: 800 }, (_, i) => `row ${String(i)} ${'x'.repeat(40)}`).join('\n') },
-  { mutates: false },
-);
+/** A read-only project tool, so the loop has a first turn to spend before the refusal. */
+const look = defineTool({ inputSchema: z.object({}), execute: async () => 'looked' }, { mutates: false });
 
 describe('tool loop context overflow', () => {
   it('shrinks the history and retries once when the provider refuses the request as too large', async () => {
     const model = installFakeLoopModel(({ turn }) => {
-      if (turn === 1) return [{ toolName: 'big', input: {} }];
+      if (turn === 1) return [{ toolName: 'look', input: {} }];
       if (turn === 2) throw new Error(OVERFLOW);
       return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'read the rows' } }];
     });
-    const executor = createAgent({ tools: { big: bigTool } });
-    const { fixtures, steps } = runtime(engine(), { agents: { default: { executor, model } } });
+    const executor = createAgent({ tools: { look } });
+    const { fixtures, steps } = runtime(bigScreen(), { agents: { default: { executor, model } } });
 
     await fixtures.agent.act('read the big output');
 
     expect(loopCalls).toHaveLength(3);
-    // The second request carried the whole tool output; the retried request
-    // carries its head and a notice, and nothing else about the step changed.
-    expect(loopCalls[1]!.lastToolResult.length).toBeGreaterThan(16_384);
-    expect(loopCalls[2]!.lastToolResult.length).toBeLessThan(16_384 + 200);
-    expect(loopCalls[2]!.lastToolResult).toContain("more characters cut: the request exceeded the model's context window");
-    expect(loopCalls[2]!.prompt).toBe(loopCalls[1]!.prompt);
+    // The second request carried the whole opening screen; the retried request
+    // carries its head and a notice, and the tool result it follows is unchanged.
+    expect(loopCalls[1]!.prompt.length).toBeGreaterThan(16_384);
+    expect(loopCalls[2]!.prompt.length).toBeLessThan(16_384 + 200);
+    expect(loopCalls[2]!.prompt).toContain("more characters cut: the request exceeded the model's context window");
+    expect(loopCalls[2]!.lastToolResult).toBe(loopCalls[1]!.lastToolResult);
     const step = steps.all()[0]!;
     expect(step.status).toBe('passed');
     // The refused request never answered, so it is not a model call the step paid for.
@@ -76,11 +84,11 @@ describe('tool loop context overflow', () => {
 
   it('reports CONTEXT_OVERFLOW when the shrunk request is refused again', async () => {
     const model = installFakeLoopModel(({ turn }) => {
-      if (turn === 1) return [{ toolName: 'big', input: {} }];
+      if (turn === 1) return [{ toolName: 'look', input: {} }];
       throw new Error(OVERFLOW);
     });
-    const executor = createAgent({ tools: { big: bigTool } });
-    const { fixtures } = runtime(engine(), { agents: { default: { executor, model } } });
+    const executor = createAgent({ tools: { look } });
+    const { fixtures } = runtime(bigScreen(), { agents: { default: { executor, model } } });
 
     await expect(fixtures.agent.act('read the big output')).rejects.toMatchObject({
       code: 'CONTEXT_OVERFLOW',
@@ -89,12 +97,27 @@ describe('tool loop context overflow', () => {
     expect(loopCalls).toHaveLength(3);
   });
 
+  it('does not resend a request that shrinking would not change', async () => {
+    const model = installFakeLoopModel(() => {
+      throw new Error(OVERFLOW);
+    });
+    const { fixtures } = runtime(engine(), { agents: { default: { executor: createAgent(), model } } });
+
+    await expect(fixtures.agent.act('do the thing')).rejects.toMatchObject({
+      code: 'CONTEXT_OVERFLOW',
+      message: expect.stringContaining('had nothing left to shrink'),
+    });
+    // The opening request has no superseded screen and no long text: one
+    // refusal is the verdict, not two.
+    expect(loopCalls).toHaveLength(1);
+  });
+
   it('leaves other provider failures to the ordinary error translation', async () => {
     const model = installFakeLoopModel(({ turn }) => {
-      if (turn === 1) return [{ toolName: 'big', input: {} }];
+      if (turn === 1) return [{ toolName: 'look', input: {} }];
       throw new Error('Rate limit reached for requests');
     });
-    const executor = createAgent({ tools: { big: bigTool } });
+    const executor = createAgent({ tools: { look } });
     const { fixtures } = runtime(engine(), { agents: { default: { executor, model } } });
 
     await expect(fixtures.agent.act('read the big output')).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED' });

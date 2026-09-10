@@ -102,7 +102,7 @@ function eventMs(step: StepRecord, kind: 'model' | 'observation' | 'engine'): nu
 
 /**
  * The share of the step's input the provider served from its prompt cache,
- * `38% (5.7k)`; `-` when the provider reports no cache split.
+ * `38% (5700)`; `-` when the provider reports no cache split.
  */
 function cachedShare(step: StepRecord): string {
   const model = step.model;

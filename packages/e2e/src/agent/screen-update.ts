@@ -215,7 +215,7 @@ export function compactScreenHistory(
   const screens = messages.flatMap((message) => screenParts(message).filter((text) => text !== undefined));
   let stale = screens.length - FULL_SCREEN_PRESERVE_COUNT;
   if (stale <= 0) return messages;
-  const staleBytes = screens.slice(0, stale).reduce((bytes, text) => bytes + text.length, 0);
+  const staleBytes = screens.slice(0, stale).reduce((bytes, text) => bytes + Buffer.byteLength(text, 'utf8'), 0);
   if (staleBytes <= (options.keepStaleBytes ?? KEEP_STALE_SCREEN_BYTES)) return messages;
   return messages.map((message) => {
     if (stale <= 0) return message;

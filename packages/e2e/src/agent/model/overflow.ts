@@ -66,12 +66,20 @@ export function isContextOverflow(error: unknown): boolean {
   return false;
 }
 
+/**
+ * One error object, read on its own. HTTP 413 is an overflow whatever the
+ * text says. A text field counts when it matches an overflow pattern and no
+ * throttling pattern; the veto is per field, so a wrapper's "rate limit"
+ * message cannot hide the provider's "prompt is too long" in the body.
+ */
 function describesOverflow(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const record = error as { message?: unknown; statusCode?: unknown; status?: unknown; responseBody?: unknown };
-  const texts = [record.message, record.responseBody].filter((text): text is string => typeof text === 'string');
-  if (texts.some((text) => NON_OVERFLOW_PATTERNS.some((pattern) => pattern.test(text)))) return false;
-  if (texts.some((text) => OVERFLOW_PATTERNS.some((pattern) => pattern.test(text)))) return true;
-  const status = record.statusCode ?? record.status;
-  return status === 413;
+  if ((record.statusCode ?? record.status) === 413) return true;
+  return [record.message, record.responseBody].some(
+    (text) =>
+      typeof text === 'string' &&
+      OVERFLOW_PATTERNS.some((pattern) => pattern.test(text)) &&
+      !NON_OVERFLOW_PATTERNS.some((pattern) => pattern.test(text)),
+  );
 }
