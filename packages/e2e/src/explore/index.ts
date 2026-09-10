@@ -15,6 +15,7 @@ import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts'
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig, type ResolvedTarget } from '../config/resolve.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { didYouMean } from '../internal/suggest.ts';
 import type { ReportExplore } from '../report/build.ts';
 import { run, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, ModelInstance } from '../types.ts';
@@ -163,7 +164,7 @@ type ExplorerOptions = { state: ExploreState; evidence: (index: number, pixels: 
  * unknown name is a config error before anything starts; an `agents` value
  * that is not an object is left for config resolution to reject.
  */
-function exploreAgents(
+export function exploreAgents(
   agents: E2EConfig['agents'],
   selected: string | undefined,
   options: ExplorerOptions,
@@ -174,14 +175,15 @@ function exploreAgents(
   const entries: Record<string, AgentEntry> = { ...agents };
   const name = selected ?? 'default';
   const chosen = entries[name];
-  if (selected !== undefined && chosen === undefined) {
-    const names = Object.keys(entries);
+  // `default` always exists, as the built-in agent when the config names none; any other name must be configured.
+  if (name !== 'default' && chosen === undefined) {
+    const names = ['default', ...Object.keys(entries).filter((entry) => entry !== 'default')];
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `unknown agent "${selected}"; configured: ${names.length === 0 ? 'default' : names.join(', ')}`,
+      `unknown agent "${name}"; configured: ${names.join(', ')}${didYouMean(name, names)}`,
     );
   }
-  if (selected !== undefined && selected !== 'default') options.notice(`exploring with agent "${selected}"`);
+  if (name !== 'default') options.notice(`exploring with agent "${name}"`);
   return { ...entries, default: exploreAgentConfig(chosen, options) };
 }
 

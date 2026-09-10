@@ -37,8 +37,9 @@ safety rules, so what it finds is what a test would find.
    the run, then asks the model for a closing assessment.
 
 The explorer is built from `agents.default`, or from the agent `--agent` names,
-so its model comes from that agent or `E2E_MODEL`, like any run. To try
-another model on the same goal:
+so its model is that agent's, with `E2E_MODEL` filling in when the agent sets
+none, like any run. To try another model on the same goal with an agent that
+sets none:
 
 ```bash
 E2E_MODEL=anthropic/claude-sonnet-4.5 npx --no-install e2e explore 'Hunt for broken forms and dead links'
