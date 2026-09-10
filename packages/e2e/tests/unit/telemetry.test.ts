@@ -365,8 +365,15 @@ describe('Telemetry', () => {
   });
 
   it('gives up at the flush deadline and swallows transport failures', async () => {
+    // Like the real fetch, a request on a signal that already fired rejects at
+    // once: on a slow machine the project lookup can outlive the 50 ms budget,
+    // and the abort event a listener waits for has then already happened.
     const hanging = ((_input: string | URL | Request, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
+        if (init?.signal?.aborted) {
+          reject(init.signal.reason);
+          return;
+        }
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
       })) as typeof fetch;
     const slow = create({ fetch: hanging });
