@@ -290,8 +290,13 @@ function requireCollector(api: string): Collector {
   return collector;
 }
 
-/** The runner's own source root (`src/` or `dist/`), whose frames are never a test's location. */
-const RUNNER_ROOT = `${path.dirname(path.dirname(fileURLToPath(import.meta.url)))}${path.sep}`;
+const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+/**
+ * The runner's own source roots, whose frames are never a test's location.
+ * `dist/` is where the published module runs; `src/` is where tsx's source maps
+ * relocate those very frames (and where the module runs in this repository).
+ */
+const RUNNER_ROOTS = ['src', 'dist'].map((dir) => `${path.join(PACKAGE_ROOT, dir)}${path.sep}`);
 
 function captureSource(): SourceLocation | undefined {
   const stack = new Error().stack;
@@ -300,8 +305,9 @@ function captureSource(): SourceLocation | undefined {
   for (const line of lines) {
     const match = /\(?(?:file:\/\/)?([^()\s]+?):(\d+):(\d+)\)?$/.exec(line.trim());
     if (match === null) continue;
-    const file = decodeURIComponent(match[1]!);
-    if (file.startsWith(RUNNER_ROOT) || file.startsWith('node:')) continue;
+    // The loader imports every module with a cache-busting query, which is not part of the file.
+    const file = decodeURIComponent(match[1]!).replace(/[?#].*$/, '');
+    if (RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
     return { file, line: Number(match[2]), column: Number(match[3]) };
   }
   return undefined;
