@@ -98,6 +98,18 @@ interface StoredRoute {
   readonly handler: RouteHandler;
 }
 
+/** One entry of Playwright's per-origin credential list. */
+interface PlaywrightHttpCredential {
+  readonly username: string;
+  readonly password: string;
+  readonly origin: string;
+}
+
+/** Header names lowercased, as Playwright reports a request's own headers. */
+function lowercaseNames(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
+  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
+}
+
 /** True for the storage-state object shape; a string (a file path) or anything else is refused. */
 function isStorageState(data: unknown): data is StorageState {
   return (
@@ -128,6 +140,13 @@ export interface PlaywrightConnectOptions {
   readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
 }
 
+/** HTTP basic authentication the browser answers a challenge from an allowed origin with. */
+export interface PlaywrightBasicAuth {
+  /** The user name; `:` is not allowed in one (RFC 7617). */
+  readonly username: string;
+  readonly password: string;
+}
+
 /**
  * Options of the browser engine: the app it drives (`url`, `command`,
  * `services`, `allowedOrigins`, `environment`, `identity`, `readyUrl` - the
@@ -143,6 +162,25 @@ export interface PlaywrightOptions extends EngineAppDeclaration {
    * the chromium browser (the default). Wired by a hosted-browser engine.
    */
   readonly connect?: PlaywrightConnectOptions;
+  /**
+   * HTTP headers added to every request the browser sends to an allowed
+   * origin: a preview-protection bypass token, a tunnel's interstitial skip.
+   * Requests to any other origin (a CDN, an analytics endpoint, an identity
+   * provider) never carry them, so a header that is a secret stays with the
+   * app it unlocks. Names are case-insensitive; a header the page already
+   * sends under the same name is replaced. Applies to every path onto the
+   * page - deterministic, `agent.act`, and explore alike. Injecting headers
+   * routes every request of the attempt, which turns the browser's HTTP cache
+   * off, and a Playwright trace records request headers.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * HTTP basic authentication for a staging app behind a browser challenge.
+   * The browser answers a `401` from an allowed origin with these credentials
+   * and a challenge from any other origin with nothing, so a third-party page
+   * cannot collect them. Applies to every path onto the page.
+   */
+  readonly basicAuth?: PlaywrightBasicAuth;
 }
 
 export class PlaywrightSurface {
@@ -157,6 +195,9 @@ export class PlaywrightSurface {
   private readonly connection = new BrowserConnection();
   private readonly connect: PlaywrightConnectOptions | undefined;
   private readonly viewport: { readonly width: number; readonly height: number };
+  /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
+  private readonly headers: Readonly<Record<string, string>> | undefined;
+  private readonly basicAuth: PlaywrightBasicAuth | undefined;
   private browser: Browser | null = null;
   /** True once init provisioned a browser; a later disconnect may then reconnect. */
   private booted = false;
@@ -186,6 +227,8 @@ export class PlaywrightSurface {
     this.browserName = options.browser ?? 'chromium';
     this.connect = options.connect;
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
+    this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
+    this.basicAuth = options.basicAuth;
     this.video = new VideoRecorder(this.viewport);
   }
 
@@ -354,15 +397,22 @@ export class PlaywrightSurface {
     try {
       const browser =
         reacquire === undefined ? this.requireBrowser() : await this.ensureBrowser(reacquire);
+      const httpCredentials = this.httpCredentials();
       this.context = await browser.newContext({
         viewport: this.viewport,
         acceptDownloads: true,
         ...(storageState === undefined ? {} : { storageState }),
+        ...(httpCredentials === undefined ? {} : { httpCredentials }),
       });
       this.context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
       this.context.on('dialog', (dialog) => {
         void this.dialogs.dispatch(dialog);
       });
+      // Registered before any attempt route: Playwright runs handlers newest
+      // first, so the header route is the last stop before the network and a
+      // `web.route` handler that continues still sends the headers, while one
+      // that fulfills or aborts never reaches it.
+      await this.installHeaders(this.context);
       for (const stored of this.routes) await this.context.route(stored.predicate, stored.handler);
     } catch (cause) {
       await this.context?.close().catch(() => undefined);
@@ -374,6 +424,45 @@ export class PlaywrightSurface {
         cause,
       });
     }
+  }
+
+  // --- protected-app access, scoped to the allowed origins ---
+
+  /** True for a request the app's origin policy admits; the only requests that carry headers or credentials. */
+  private isAllowedOrigin(url: URL): boolean {
+    return this.app.allowedOrigins.includes(url.origin);
+  }
+
+  /**
+   * Adds the configured headers to every request bound for an allowed
+   * origin, via a context route that falls back to the network. A request for
+   * any other origin is not routed at all. Nothing awaits a route handler, so
+   * a fallback that fails (the page closed under the request) is dropped
+   * rather than left to surface as an unhandled rejection.
+   */
+  private async installHeaders(context: BrowserContext): Promise<void> {
+    const headers = this.headers;
+    if (headers === undefined) return;
+    await context.route(
+      (url) => this.isAllowedOrigin(url),
+      async (route) => {
+        await route
+          .fallback({ headers: { ...route.request().headers(), ...headers } })
+          .catch(() => undefined);
+      },
+    );
+  }
+
+  /**
+   * The basic-auth credentials the context answers challenges with, one entry
+   * per allowed origin so Playwright itself withholds them from every other
+   * origin. With no allowed origins there is nothing to scope them to and no
+   * origin the runner lets the attempt reach, so none are set.
+   */
+  private httpCredentials(): PlaywrightHttpCredential[] | undefined {
+    if (this.basicAuth === undefined || this.app.allowedOrigins.length === 0) return undefined;
+    const { username, password } = this.basicAuth;
+    return this.app.allowedOrigins.map((origin) => ({ username, password, origin }));
   }
 
   // --- network routes shared with the web fixture ---

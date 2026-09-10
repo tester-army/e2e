@@ -195,6 +195,67 @@ stops attaching screenshot evidence for the rest of that attempt, because a page
 is free to mirror a typed value anywhere on screen. Fill secrets in a setup test
 and consume the session elsewhere to keep full evidence in the tests that matter.
 
+## Protected previews
+
+The app under test is often not public: a Vercel preview behind deployment
+protection, a tunnel with an interstitial page, a staging host behind HTTP
+basic authentication. The gate stands in front of the app, so no test step
+can pass it. The engine declares how to get through, and every path onto the
+page - a deterministic step, `agent.act`, `e2e explore` - goes through with it.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default {
+  targets: [
+    {
+      name: 'preview',
+      engine: playwright({
+        url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
+        identity: 'storefront',
+        headers: {
+          'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '',
+        },
+      }),
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+`headers` go on every request the browser sends to an allowed origin and on no
+request to any other, so a bypass secret never reaches a CDN, an analytics
+endpoint, or an identity provider the page also talks to. Header names are
+case-insensitive. A preview origin changes with every deploy; `identity` keeps
+cache and session entries keyed by what the app is (see
+[identity](/reference/config#the-app-under-test)).
+
+The same option skips ngrok's interstitial:
+
+```ts
+headers: { 'ngrok-skip-browser-warning': '1' },
+```
+
+A host behind HTTP basic authentication takes `basicAuth`. The browser answers
+a `401` challenge from an allowed origin with the credentials and a challenge
+from any other origin with nothing.
+
+```ts
+engine: playwright({
+  url: 'https://staging.example.com',
+  basicAuth: { username: 'preview', password: process.env.PREVIEW_PASSWORD ?? '' },
+}),
+```
+
+<Note>
+**Two costs of `headers`**
+
+Injecting headers routes every request of the attempt through the runner,
+which turns the browser's HTTP cache off for that target. And a Playwright
+trace records the requests it saw, headers included, so the trace of a
+protected preview carries the bypass secret; share it as you would the secret.
+</Note>
+
 <CardGroup cols={2}>
   <Card title="app and web reference" href="/reference/app-web">
     Cookies, routes, dialogs, frames, and downloads.

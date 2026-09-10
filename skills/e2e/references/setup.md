@@ -110,6 +110,8 @@ process, and identity. `playwright()` accepts:
 | `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`. |
 | `viewport` | `{ width, height }`, default 1280x720. |
 | `connect` | `{ cdpEndpoint }` to attach to a remote Chromium over CDP instead of launching. |
+| `headers` | Request headers sent to allowed origins only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off. |
+| `basicAuth` | `{ username, password }` answering a `401` challenge from an allowed origin; never sent to any other. |
 
 Two browsers are two targets sharing one app declaration:
 

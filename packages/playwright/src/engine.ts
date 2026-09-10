@@ -48,6 +48,8 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       `playwright({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
     );
   }
+  if (options.headers !== undefined) validateHeaders(options.headers);
+  if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   const surface = new PlaywrightSurface(options);
   const handle = defineEngine({
     name: 'playwright',
@@ -88,6 +90,51 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
   });
   surfaces.set(handle, surface);
   return handle;
+}
+
+/** An HTTP header field name: one or more `token` characters (RFC 9110). */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * Refuses a header the browser could not send, at config load rather than at
+ * the first request: a name outside the token grammar, a value carrying a line
+ * break (a header-injection vector), or a value that is not a string at all.
+ */
+function validateHeaders(headers: PlaywrightOptions['headers'] & object): void {
+  if (typeof headers !== 'object' || Array.isArray(headers)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ headers }) must be an object of header name to value');
+  }
+  for (const [name, value] of Object.entries(headers)) {
+    if (!HEADER_NAME.test(name)) {
+      throw new ConfigurationError('INVALID_CONFIG', `playwright({ headers }) has an invalid header name: "${name}"`);
+    }
+    if (typeof value !== 'string') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `playwright({ headers }) header "${name}" must be a string, got ${typeof value}`,
+      );
+    }
+    if (/[\r\n]/.test(value)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `playwright({ headers }) header "${name}" must not contain a line break`,
+      );
+    }
+  }
+}
+
+/** Refuses credentials the browser could not present: a missing field, or a `:` in the user name (RFC 7617). */
+function validateBasicAuth(basicAuth: PlaywrightOptions['basicAuth'] & object): void {
+  const { username, password } = basicAuth;
+  if (typeof username !== 'string' || username === '') {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) requires a non-empty username string');
+  }
+  if (username.includes(':')) {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) username must not contain ":"');
+  }
+  if (typeof password !== 'string') {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) requires a password string');
+  }
 }
 
 /** The app-declaration half of the options, so browser knobs never reach the manifest. */
