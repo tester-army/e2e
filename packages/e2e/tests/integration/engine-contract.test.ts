@@ -561,7 +561,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(true, 'the Submit button is visible'));
       const { outcome, project } = await runProject(
         { 'tests/observe-race.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
       );
       expect(resultByTitle(outcome, 'asserts a node').status).toBe('passed');
       expect(observeCalls).toBe(2);
@@ -581,7 +581,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(true, 'unreachable'));
       const { outcome, project } = await runProject(
         { 'tests/observe-broken.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
       );
       const result = resultByTitle(outcome, 'asserts a node');
       expect(result.status).toBe('failed');
@@ -609,7 +609,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(false, 'the Submit button is disabled'));
       const { outcome, project } = await runProject(
         { 'tests/observe-deadline.e2e.ts': WAIT_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agent: { model } }) },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
       );
       const result = resultByTitle(outcome, 'waits for a condition');
       expect(result.status).toBe('failed');

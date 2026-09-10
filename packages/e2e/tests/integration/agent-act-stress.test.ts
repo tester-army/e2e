@@ -40,7 +40,7 @@ describe('secret fill policy under a hostile executor', () => {
       { 'tests/secret.e2e.ts': SECRET_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: executor, credentials: CREDS },
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor }, credentials: CREDS },
       },
     );
 
@@ -81,7 +81,7 @@ describe('secret fill policy under a hostile executor', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: executor,
+          agents: { default: executor },
           credentials: {
             admin: { ...CREDS.admin, allowedOrigins: ['https://elsewhere.example'] },
           },
@@ -115,7 +115,7 @@ describe('secret fill policy under a hostile executor', () => {
       { 'tests/secret.e2e.ts': SECRET_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { model }, credentials: CREDS },
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } }, credentials: CREDS },
         runOptions: { debug: true },
       },
     );
@@ -176,7 +176,7 @@ test('too-deep params', async ({ app, agent }) => {
     };
     const { outcome, project } = await runProject(
       { 'tests/bounds.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       expect(resultByTitle(outcome, 'oversized params').attempts.at(-1)!.error?.message).toContain(
@@ -206,7 +206,7 @@ test('defiant model', async ({ app, agent }) => {
     const startedMs = Date.now();
     const { outcome, project } = await runProject(
       { 'tests/defiant.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     try {
       const result = resultByTitle(outcome, 'defiant model');
@@ -245,7 +245,7 @@ ${calls}
 `;
     const { outcome, project } = await runProject(
       { 'tests/ten.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'ten steps');
@@ -308,7 +308,7 @@ test('genuinely broken', async ({ app, agent }) => {
     };
     const { outcome, project } = await runProject(
       { 'tests/mixed.e2e.ts': suite },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const blocked = resultByTitle(outcome, 'blocked by seed data');
@@ -355,7 +355,7 @@ const executor: StepExecutor = {
 export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: 2,
-  agent: executor,
+  agents: { default: executor },
 } satisfies E2EConfig;
 `;
     const testFile = (name: string) => `import { test } from '@e2edev/e2e';

@@ -78,7 +78,7 @@ describe('--ai-trace on the in-process transport', () => {
       { 'tests/loop.e2e.ts': SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { model } },
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } },
         runOptions: { aiTrace: true },
       },
     );
@@ -164,7 +164,7 @@ import { installFakeLoopModel } from ${JSON.stringify(helper)};
 export default {
   targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
   workers: 2,
-  agent: { model: installFakeLoopModel(${RESPONDER_SOURCE}) },
+  agents: { default: { model: installFakeLoopModel(${RESPONDER_SOURCE}) } },
 } satisfies E2EConfig;
 `;
     const result = await runProjectWithConfigFile(

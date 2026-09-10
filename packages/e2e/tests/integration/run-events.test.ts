@@ -52,7 +52,7 @@ describe('run events', () => {
       config: {
         tests: 'tests/**/*.e2e.ts',
         reporters: ['json'] as const,
-        agent: oneTapExecutor,
+        agents: { default: oneTapExecutor },
         cache: 'off' as const,
       },
       runOptions: { onEvent: (event) => {
@@ -153,7 +153,7 @@ describe('run events: run lifecycle hygiene', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['junit'] as const,
-          agent: oneTapExecutor,
+          agents: { default: oneTapExecutor },
           cache: 'off' as const,
         },
         runOptions: { onEvent: (event) => {
@@ -192,7 +192,7 @@ describe('run events: run lifecycle hygiene', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'] as const,
-          agent: oneTapExecutor,
+          agents: { default: oneTapExecutor },
           cache: 'off' as const,
         },
         runOptions: { onEvent: (event) => {
@@ -228,7 +228,7 @@ describe('run events: run lifecycle hygiene', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'] as const,
-          agent: oneTapExecutor,
+          agents: { default: oneTapExecutor },
           cache: 'off' as const,
         },
         runOptions: {
@@ -260,7 +260,7 @@ describe('run events: run lifecycle hygiene', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'] as const,
-          agent: oneTapExecutor,
+          agents: { default: oneTapExecutor },
           cache: 'off' as const,
           credentials: { member: { username: 'member', password: 'hunter2' } },
         },
@@ -284,7 +284,7 @@ describe('run events: quarantined sink', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'] as const,
-          agent: oneTapExecutor,
+          agents: { default: oneTapExecutor },
           cache: 'off' as const,
         },
         runOptions: {

@@ -208,7 +208,7 @@ describe('engine targets', () => {
         cwd: project.dir,
         rawConfig: {
           targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
-          agent: { executor: tapper, maxModelCalls: 10 },
+          agents: { default: { executor: tapper, maxModelCalls: 10 } },
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },
@@ -234,7 +234,7 @@ describe('engine targets', () => {
         cwd: project.dir,
         rawConfig: {
           targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
-          agent: { executor: tapper },
+          agents: { default: { executor: tapper } },
           cache: 'off',
         },
         env: { ...process.env, APP_URL: '', CI: '' },

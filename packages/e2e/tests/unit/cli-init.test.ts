@@ -55,7 +55,7 @@ describe('e2e init', () => {
       devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', ai: '^7.0.0' },
       scripts: { 'test:e2e': 'e2e run' },
     });
-    expect(read('e2e.config.ts')).toContain('agent: createAgent({');
+    expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
     expect(read('e2e.config.ts')).toContain('// To call a provider directly, pass an AI SDK model: createAgent({ model:');
     expect(read('e2e.config.ts')).toContain("playwright({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
     expect(read('e2e.config.ts')).toContain('// command: {');

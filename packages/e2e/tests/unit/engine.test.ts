@@ -296,7 +296,7 @@ describe('engine targets in config', () => {
     const config = resolveConfig(
       {
         targets: [{ name: 'ios', platform: 'ios' }],
-        agent: { executor, maxModelCalls: 40, context: 'device hints' },
+        agents: { default: { executor, maxModelCalls: 40, context: 'device hints' } },
       },
       { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
     );

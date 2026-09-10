@@ -71,7 +71,7 @@ describe('the executor context: attempt and memory', () => {
     app = await startFixtureApp();
     const result = await runProject(
       { 'tests/context.e2e.ts': TWO_TESTS_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: probing } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: probing } } },
     );
     outcome = result.outcome;
     project = result.project;
@@ -128,7 +128,7 @@ describe('observe() with the tree and pixels', () => {
     app = await startFixtureApp();
     const result = await runProject(
       { 'tests/look.e2e.ts': ONE_STEP_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: looking } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: looking } } },
     );
     outcome = result.outcome;
     project = result.project;
@@ -196,7 +196,7 @@ describe('an executor that opts out of the trace cache', () => {
         { 'tests/cache.e2e.ts': ONE_STEP_SUITE },
         {
           appUrl: app.url,
-          config: { tests: 'tests/**/*.e2e.ts', cache: 'read-write', agent: passing(mode) },
+          config: { tests: 'tests/**/*.e2e.ts', cache: 'read-write', agents: { default: passing(mode) } },
         },
       );
       sink(result.outcome);

@@ -30,6 +30,9 @@ declare const engine: EngineHandle;
 ({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
 // A target inherits its platform from the engine; the resolver rejects one with neither.
 ({ targets: [{ engine }] }) satisfies E2EConfig;
+({ agents: { default: { model: 'openai/gpt-5.6-luna-fast' }, ux: { context: 'Review the UX.' } } }) satisfies E2EConfig;
+// @ts-expect-error agents are named: agents.default is what agent held
+({ agent: { model: 'openai/gpt-5.6-luna-fast' } }) satisfies E2EConfig;
 ({ targets: [{ name: 'phone', engine }] }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
 ({ cache: 'sometimes' }) satisfies E2EConfig;

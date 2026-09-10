@@ -143,12 +143,13 @@ type LimitKey = keyof typeof LIMIT_BOUNDS;
  * in exactly one direction.
  */
 export function resolveAgentConfig(
-  raw: E2EConfig,
+  value: E2EConfig['agents'] extends Readonly<Record<string, infer Entry>> | undefined ? Entry | undefined : never,
   env: NodeJS.ProcessEnv,
   ci: boolean,
   limits: ResolvedBaseLimits,
+  /** The config path of this agent in diagnostics: `agents.default`, `agents.ux`. */
+  label = 'agents.default',
 ): ResolvedAgentConfig {
-  const value = raw.agent;
   // Three accepted shapes: the agent itself, an options object, or
   // an options object carrying `executor` — a custom brain no longer forfeits
   // the model, budgets, or context.
@@ -159,14 +160,14 @@ export function resolveAgentConfig(
     if (typeof agent !== 'object' || agent === null || Array.isArray(agent)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        'agent must be an options object or the agent itself: createAgent(...) or any { name, runStep(context) }',
+        `${label} must be an options object or the agent itself: createAgent(...) or any { name, runStep(context) }`,
       );
     }
     for (const key of Object.keys(agent)) {
       if (!AGENT_KEYS.has(key)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `unknown agent config key "${key}"${didYouMean(key, [...AGENT_KEYS])}`,
+          `unknown ${label} key "${key}"${didYouMean(key, [...AGENT_KEYS])}`,
         );
       }
     }
@@ -174,39 +175,39 @@ export function resolveAgentConfig(
       if (!isStepExecutor(agent.executor)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          'agent.executor must be a StepExecutor: createAgent(...) or any { name, runStep(context) }',
+          `${label}.executor must be a StepExecutor: createAgent(...) or any { name, runStep(context) }`,
         );
       }
       executor = agent.executor;
     }
   }
 
-  const maxSteps = boundedInt(agent?.maxSteps, 'agent.maxSteps', 1, 100) ?? 25;
-  const maxModelCalls = boundedInt(agent?.maxModelCalls, 'agent.maxModelCalls', 1, 100) ?? 25;
+  const maxSteps = boundedInt(agent?.maxSteps, `${label}.maxSteps`, 1, 100) ?? 25;
+  const maxModelCalls = boundedInt(agent?.maxModelCalls, `${label}.maxModelCalls`, 1, 100) ?? 25;
   const maxObservationBytes =
-    boundedInt(agent?.maxObservationBytes, 'agent.maxObservationBytes', 1_024, 16_777_216) ??
+    boundedInt(agent?.maxObservationBytes, `${label}.maxObservationBytes`, 1_024, 16_777_216) ??
     DEFAULT_OBSERVATION_BYTES;
 
 
-  const context = resolveContext(agent?.context, limits.maxAgentContextBytes);
+  const context = resolveContext(agent?.context, limits.maxAgentContextBytes, label);
   const vision = agent?.vision ?? false;
   if (!isVisionMode(vision)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      "agent.vision must be true, false, 'fallback', or 'only'",
+      `${label}.vision must be true, false, 'fallback', or 'only'`,
     );
   }
 
   return {
     executor,
-    model: resolveCanonicalModel(agent?.model, executor?.model, env),
-    visionModel: resolveModel(agent?.visionModel, env, 'agent.visionModel', 'E2E_VISION_MODEL'),
+    model: resolveCanonicalModel(agent?.model, executor?.model, env, label),
+    visionModel: resolveModel(agent?.visionModel, env, `${label}.visionModel`, 'E2E_VISION_MODEL'),
     maxSteps,
     maxModelCalls,
     maxObservationBytes,
     context,
     vision,
-    providerOptions: resolveProviderOptions(agent?.providerOptions),
+    providerOptions: resolveProviderOptions(agent?.providerOptions, label),
   };
 }
 
@@ -215,19 +216,19 @@ export function resolveAgentConfig(
  * records, the shape the AI SDK reads. Option values are the provider's own
  * business and pass through untouched.
  */
-function resolveProviderOptions(value: unknown): ProviderOptions | undefined {
+function resolveProviderOptions(value: unknown, label: string): ProviderOptions | undefined {
   if (value === undefined) return undefined;
   if (!isPlainObject(value)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'agent.providerOptions must be an object keyed by provider name',
+      `${label}.providerOptions must be an object keyed by provider name`,
     );
   }
   for (const [provider, options] of Object.entries(value)) {
     if (!isPlainObject(options)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `agent.providerOptions.${provider} must be an object of provider options`,
+        `${label}.providerOptions.${provider} must be an object of provider options`,
       );
     }
   }
@@ -309,8 +310,9 @@ function resolveCanonicalModel(
   configured: string | ModelConfig | ModelInstance | undefined,
   executorModel: ModelInstance | undefined,
   env: NodeJS.ProcessEnv,
+  label: string,
 ): ResolvedModel | undefined {
-  if (executorModel === undefined) return resolveModel(configured, env);
+  if (executorModel === undefined) return resolveModel(configured, env, `${label}.model`);
   const own: ResolvedModel = {
     kind: 'instance',
     provider: executorModel.provider,
@@ -318,11 +320,11 @@ function resolveCanonicalModel(
     model: asSdkLanguageModel(executorModel),
   };
   if (configured === undefined) return own;
-  const explicit = resolveModel(configured, env);
+  const explicit = resolveModel(configured, env, `${label}.model`);
   if (explicit !== undefined && (explicit.provider !== own.provider || explicit.id !== own.id)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `agent.model (${explicit.provider}/${explicit.id}) and the executor's own model (${own.provider}/${own.id}) differ; configure the model in one place`,
+      `${label}.model (${explicit.provider}/${explicit.id}) and the executor's own model (${own.provider}/${own.id}) differ; configure the model in one place`,
     );
   }
   return own;
@@ -339,7 +341,7 @@ function resolveCanonicalModel(
 function resolveModel(
   model: string | ModelConfig | ModelInstance | undefined,
   env: NodeJS.ProcessEnv,
-  label = 'agent.model',
+  label = 'agents.default.model',
   envName = 'E2E_MODEL',
 ): ResolvedModel | undefined {
   if (model === undefined) {
@@ -466,16 +468,16 @@ function validateApiKeyEnv(apiKeyEnv: string | undefined, label: string): string
   return apiKeyEnv;
 }
 
-function resolveContext(context: string | undefined, maxBytes: number): string | undefined {
+function resolveContext(context: string | undefined, maxBytes: number, label: string): string | undefined {
   if (context === undefined) return undefined;
   if (typeof context !== 'string') {
-    throw new ConfigurationError('INVALID_CONFIG', 'agent.context must be a string');
+    throw new ConfigurationError('INVALID_CONFIG', `${label}.context must be a string`);
   }
   const bytes = new TextEncoder().encode(context).byteLength;
   if (bytes > maxBytes) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `agent.context is ${bytes} bytes; the resolved maximum is ${maxBytes}`,
+      `${label}.context is ${bytes} bytes; the resolved maximum is ${maxBytes}`,
     );
   }
   return context;

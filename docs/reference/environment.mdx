@@ -18,11 +18,11 @@ lowercased first, so `FALSE` is off and `no` and `off` are on.
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
-| `E2E_MODEL` | value | `provider/model-id` used when `agent.model` is unset and `createAgent` brought no model. Without any of the three, acquiring `agent` is `MODEL_UNAVAILABLE` |
-| `E2E_VISION_MODEL` | value | `provider/model-id` used when `agent.visionModel` is unset; without either the vision model is `agent.model` |
-| `E2E_MODEL_API_KEY` | value | Default gateway credential. `agent.model.apiKeyEnv` names another variable to read in its place |
+| `E2E_MODEL` | value | `provider/model-id` used when the agent's `model` is unset and `createAgent` brought no model. Without any of the three, acquiring `agent` is `MODEL_UNAVAILABLE` |
+| `E2E_VISION_MODEL` | value | `provider/model-id` used when the agent's `visionModel` is unset; without either the vision model is `agent.model` |
+| `E2E_MODEL_API_KEY` | value | Default gateway credential. the agent's `model.apiKeyEnv` names another variable to read in its place |
 | `AI_GATEWAY_API_KEY` | value | Read when the named key variable (`E2E_MODEL_API_KEY` or `apiKeyEnv`) is blank |
-| `E2E_MODEL_ENDPOINT` | value | Gateway endpoint when `agent.model.endpoint` is unset. Must parse as a URL, else `INVALID_CONFIG` |
+| `E2E_MODEL_ENDPOINT` | value | Gateway endpoint when the agent's `model.endpoint` is unset. Must parse as a URL, else `INVALID_CONFIG` |
 
 The order is spelled out under [Resolution order](/reference/config#resolution-order).
 

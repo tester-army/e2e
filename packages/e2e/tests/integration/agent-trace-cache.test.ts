@@ -100,7 +100,7 @@ describe('trace cache: record then zero-turn replay', () => {
       appUrl: app.url,
       config: {
         tests: 'tests/**/*.e2e.ts',
-        agent: twoTapExecutor(record),
+        agents: { default: twoTapExecutor(record) },
         cache: 'read-write' as const,
       },
     });
@@ -179,7 +179,7 @@ describe('trace cache: divergence hands the step over mid-step', () => {
       appUrl: app.url,
       config: {
         tests: 'tests/**/*.e2e.ts',
-        agent: twoTapExecutor(record),
+        agents: { default: twoTapExecutor(record) },
         cache: 'read-write' as const,
       },
     });
@@ -254,7 +254,7 @@ describe('trace cache: unconfirmed traces are withheld and poisoned entries evic
       appUrl: app.url,
       config: {
         tests: 'tests/**/*.e2e.ts',
-        agent: twoTapExecutor(record),
+        agents: { default: twoTapExecutor(record) },
         cache: 'read-write' as const,
       },
     };
@@ -354,7 +354,7 @@ describe('trace cache: the recorded end state gates self-finalization', () => {
       config: {
         tests: 'tests/**/*.e2e.ts',
         reporters: ['json'] as const,
-        agent: saveMarkerExecutor(record, executor),
+        agents: { default: saveMarkerExecutor(record, executor) },
         cache: 'read-write' as const,
       },
     };
@@ -459,7 +459,7 @@ describe('trace cache: only a verification step confirms a write', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'] as const,
-          agent: twoTapExecutor(record),
+          agents: { default: twoTapExecutor(record) },
           cache: 'read-write' as const,
         },
       });
@@ -519,12 +519,14 @@ describe('trace cache: an engine-independent executor is not gated by the cache'
           targets: [{ name: 'toy', platform: 'web', engine }],
           cache: 'read-write',
           artifacts: [],
-          agent: {
-            name: 'observation-only-executor',
-            async runStep(context) {
-              await context.observe();
-              executorFinished = true;
-              return { status: 'passed', summary: 'the screen already matches' };
+          agents: {
+            default: {
+              name: 'observation-only-executor',
+              async runStep(context) {
+                await context.observe();
+                executorFinished = true;
+                return { status: 'passed', summary: 'the screen already matches' };
+              },
             },
           },
         },
@@ -549,7 +551,7 @@ describe('trace cache: an engine-independent executor is not gated by the cache'
         config: {
           tests: 'tests/**/*.e2e.ts',
           reporters: ['json'] as const,
-          agent: toolsOnlyExecutor(record),
+          agents: { default: toolsOnlyExecutor(record) },
           cache: 'read-write' as const,
         },
       });
@@ -582,7 +584,7 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: twoTapExecutor(record),
+          agents: { default: twoTapExecutor(record) },
         },
       });
       expect(outcome.exitCode).toBe(0);
@@ -600,7 +602,7 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: twoTapExecutor(record),
+          agents: { default: twoTapExecutor(record) },
           cache: 'read-write' as const,
         },
         runOptions: { noCache: true },
@@ -623,7 +625,7 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: twoTapExecutor(record),
+          agents: { default: twoTapExecutor(record) },
           cache: 'read-only' as const,
         },
       });
@@ -643,7 +645,7 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: twoTapExecutor(record),
+          agents: { default: twoTapExecutor(record) },
         },
         runOptions: {
           env: { ...process.env, APP_URL: app.url, CI: '1' },
@@ -664,7 +666,7 @@ describe('trace cache: modes that never write', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: twoTapExecutor(record),
+          agents: { default: twoTapExecutor(record) },
           cache: 'read-write' as const,
         },
         runOptions: {

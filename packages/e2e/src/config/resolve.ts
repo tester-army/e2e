@@ -31,6 +31,7 @@ import {
   resolveLimits,
   type ResolvedAgentConfig,
   type ResolvedLimits,
+  type ResolvedBaseLimits,
 } from './agent.ts';
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
 
@@ -91,7 +92,12 @@ export interface ResolvedConfig {
   /** The reporter objects the config names; `--reporter` never removes one. */
   readonly customReporters: readonly Reporter[];
   readonly testIdAttribute: string;
+  /** The agent this run uses: `agents.default`, or the one `--agent` named. */
   readonly agent: ResolvedAgentConfig;
+  /** Its name in the config. */
+  readonly agentName: string;
+  /** Every configured agent, `default` included, by name. */
+  readonly agents: ReadonlyMap<string, ResolvedAgentConfig>;
   readonly cache: ResolvedCacheConfig;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
@@ -124,6 +130,8 @@ export interface CliOverrides {
   cache?: CacheMode;
   /** `--video`: adds the `video` artifact kind to whatever the config asks for. */
   video?: boolean;
+  /** `--agent`: the configured agent the run uses instead of `default`. */
+  agent?: string;
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -145,7 +153,7 @@ const TOP_LEVEL_KEYS = new Set([
   'artifacts',
   'reporters',
   'screen',
-  'agent',
+  'agents',
   'cache',
   'limits',
   'credentials',
@@ -168,6 +176,7 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   webServer: 'the runner starts the app from the engine options: playwright({ url, command: { executable, args } })',
   use: 'browser and app options are engine options: engine: playwright({ ... })',
   projects: 'one target per browser or device: targets: [{ engine }]',
+  agent: 'agents are named: agents: { default: <what agent held> }; e2e run --agent <name> runs with another',
 };
 
 /** Keys authors put on a target that belong to its engine. */
@@ -255,7 +264,7 @@ export function resolveConfig(
   // Limits first: the agent context budget is a limits key, and the resolved
   // observation budget is agent-owned, so the dependency runs one way.
   const baseLimits = resolveLimits(raw);
-  const agent = resolveAgentConfig(raw, env, ci, baseLimits);
+  const { agents, agentName, agent } = resolveAgents(raw.agents, env, ci, baseLimits, cli.agent);
   const limits: ResolvedLimits = { ...baseLimits, maxObservationBytes: agent.maxObservationBytes };
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache);
 
@@ -281,6 +290,8 @@ export function resolveConfig(
     customReporters,
     testIdAttribute,
     agent,
+    agentName,
+    agents,
     cache,
     limits,
     credentials,
@@ -698,6 +709,52 @@ function modelIdentity(model: ModelInstance): Record<string, string> {
   };
 }
 
+const DEFAULT_AGENT_NAME = 'default';
+const AGENT_NAME_PATTERN = TARGET_NAME_PATTERN;
+
+/**
+ * Resolves `agents`: every named entry, and `default` even when the config
+ * names none (the built-in agent with `E2E_MODEL`). The run's agent is
+ * `default` unless `--agent` picked another; an unknown name is a config
+ * error before anything starts.
+ */
+function resolveAgents(
+  raw: E2EConfig['agents'],
+  env: NodeJS.ProcessEnv,
+  ci: boolean,
+  limits: ResolvedBaseLimits,
+  selected: string | undefined,
+): { agents: ReadonlyMap<string, ResolvedAgentConfig>; agentName: string; agent: ResolvedAgentConfig } {
+  if (raw !== undefined && (typeof raw !== 'object' || raw === null || Array.isArray(raw) || isStepExecutor(raw))) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'agents must be an object of agents by name: agents: { default: createAgent(...) }',
+    );
+  }
+  const agents = new Map<string, ResolvedAgentConfig>();
+  for (const [name, value] of Object.entries(raw ?? {})) {
+    if (!AGENT_NAME_PATTERN.test(name)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `invalid agent name ${JSON.stringify(name)}: names are ASCII letters, numbers, "_", "-", or "."`,
+      );
+    }
+    agents.set(name, resolveAgentConfig(value, env, ci, limits, `agents.${name}`));
+  }
+  if (!agents.has(DEFAULT_AGENT_NAME)) {
+    agents.set(DEFAULT_AGENT_NAME, resolveAgentConfig(undefined, env, ci, limits));
+  }
+  const agentName = selected ?? DEFAULT_AGENT_NAME;
+  const agent = agents.get(agentName);
+  if (agent === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `unknown agent "${agentName}"; configured: ${[...agents.keys()].join(', ')}${didYouMean(agentName, [...agents.keys()])}`,
+    );
+  }
+  return { agents, agentName, agent };
+}
+
 /** The artifact kinds as the digest sees them: no store, no video. */
 function digestedArtifactKinds(artifacts: NonNullable<E2EConfig['artifacts']>): ConfiguredArtifactKind[] {
   const kinds = isArtifactsObject(artifacts) ? artifacts.kinds : artifacts;
@@ -705,7 +762,7 @@ function digestedArtifactKinds(artifacts: NonNullable<E2EConfig['artifacts']>): 
 }
 
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
-  // `agent` may be the executor itself; its digest identity is name/version,
+  // An agent may be the executor itself; its digest identity is name/version,
   // which is exactly what survives the function-stripping JSON clone below.
   // Every model slot is reduced to its identity: a live instance carries
   // provider settings (and possibly credentials) that must never be digested.
@@ -720,23 +777,27 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // object changes nothing about what a run records, so it never enters the
   // digest either; the built-in ids digest as they always have, so adding a
   // reporter to a config leaves its cache valid.
-  const rawAgent = raw.agent;
   const forClone: Record<string, unknown> = {
     ...raw,
     ...(raw.artifacts === undefined ? {} : { artifacts: digestedArtifactKinds(raw.artifacts) }),
     ...(Array.isArray(raw.reporters)
       ? { reporters: raw.reporters.filter((reporter) => typeof reporter === 'string') }
       : {}),
-    ...(rawAgent === undefined || isStepExecutor(rawAgent)
+    ...(raw.agents === undefined
       ? {}
       : {
-          agent: {
-            ...rawAgent,
-            ...(isModelInstance(rawAgent.model) ? { model: modelIdentity(rawAgent.model) } : {}),
-            ...(isModelInstance(rawAgent.visionModel)
-              ? { visionModel: modelIdentity(rawAgent.visionModel) }
-              : {}),
-          },
+          agents: Object.fromEntries(
+            Object.entries(raw.agents).map(([name, entry]) => [
+              name,
+              isStepExecutor(entry)
+                ? entry
+                : {
+                    ...entry,
+                    ...(isModelInstance(entry.model) ? { model: modelIdentity(entry.model) } : {}),
+                    ...(isModelInstance(entry.visionModel) ? { visionModel: modelIdentity(entry.visionModel) } : {}),
+                  },
+            ]),
+          ),
         }),
   };
   const sanitized: Record<string, unknown> = {

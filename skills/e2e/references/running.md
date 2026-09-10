@@ -20,6 +20,7 @@ npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: sta
 | `--target <ids>` | Comma-separated target names. Only selected targets start app commands and services; unknown names fail before startup. |
 | `--tag <tag>` | Repeatable tag filter; `--tag-mode all` requires every tag. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
+| `--agent <name>` | Run with another configured agent (`agents.<name>`); default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |
 | `--reporter <ids>` | `list`, `json`, `junit`, comma-separated. `json` cannot combine with `list`. |
 | `--artifacts <dir>` | Artifact root, default `.e2e/artifacts`. |

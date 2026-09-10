@@ -29,7 +29,7 @@ export default {
     },
   ],
   // Only needed for agent.* steps; the model comes from E2E_MODEL.
-  agent: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }),
+  agents: { default: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
 } satisfies E2EConfig;
 ```
 

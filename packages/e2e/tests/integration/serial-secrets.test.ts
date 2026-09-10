@@ -38,14 +38,16 @@ describe('serial session secrecy', () => {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
         targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off',
         credentials: { audit: { username: 'audit', password: source === 'static' ? SENTINEL : () => SENTINEL } },
-        agent: { executor: { name: 'probe', async runStep(context) {
-          const observation = await context.observe({ pixels: true });
-          observations.push({ step: context.step.instruction, secretVisible: observation.text.includes(SENTINEL),
-            pixels: observation.pixels !== undefined, withheld: observation.pixelsWithheld });
-          return context.step.instruction === 'next member' && launches === 1
-            ? { status: 'failed', summary: 'retry once' }
-            : { status: 'passed', summary: 'observed' };
-        } } },
+        agents: {
+          default: { executor: { name: 'probe', async runStep(context) {
+            const observation = await context.observe({ pixels: true });
+            observations.push({ step: context.step.instruction, secretVisible: observation.text.includes(SENTINEL),
+              pixels: observation.pixels !== undefined, withheld: observation.pixelsWithheld });
+            return context.step.instruction === 'next member' && launches === 1
+              ? { status: 'failed', summary: 'retry once' }
+              : { status: 'passed', summary: 'observed' };
+          } } },
+        },
       } });
       expect(outcome.status).toBe('passed');
       expect(launches).toBe(2);

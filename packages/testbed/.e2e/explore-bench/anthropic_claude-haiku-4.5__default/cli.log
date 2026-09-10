@@ -1,0 +1,61 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36me2e v0.8.0[39m [90m/Users/okwasniewski/.t3/worktrees/e2e/t3code-7ab0927b/packages/testbed[39m
+      [2mrun 01a08772-f1b0-794c-a9e4-1ec6be04f732 · targets: web[22m
+      [2mmodel anthropic/claude-haiku-4.5[22m
+
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m4.28s · 1 model call[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.act[22m "Navigate to the Catalog page. Examine the available books and their det…" [2m36.70s · 18 model calls[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m5.66s · 1 model call[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.act[22m "Navigate to the Cart page (#n277). Examine the cart contents, line item…" [2m74.98s · 39 model calls[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m7.20s · 1 model call[22m
+ [31m❯[39m [30m[103m web [49m[39m explore [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m [2m129.20s[22m [2mai 396.9k tokens · $0.42[22m
+   [31m× Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[39m [2m129.20s[22m [2mai 396.9k tokens · $0.42[22m
+     [31m→ exploration found 8 issue(s): [severity 4] Neuromancer shows negative in…[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m
+
+[1m[41m FAIL [49m[22m [30m[103m web [49m[39m explore[2m > [22mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.
+[31m[1mASSERTION_FAILED[22m: exploration found 8 issue(s): [severity 4] Neuromancer shows negative inventory (-3 in stock); [severity 5] Cart total shows $14.00 when line total is $28.00 for 2 Hyperion books; [severity 5] Cart total is $25.25 but sum of line totals is $39.25 (Hyperion $28.00 + Solaris $11.25); [severity 4] Cart now shows Hyperion quantity as 5 instead of 2; [severity 5] Cart total shows $14.00 when Hyperion quantity is 4 with $56.00 line total; [severity 5] Cart total calculation remains incorrect: $25.25 displayed when line totals sum to $53.25; [severity 4] Hyperion completely removed from cart instead of being removed along with Solaris; [severity 4] Order placed with epoch/invalid timestamp: 1970-01-01 and future delivery date 1969-12-29[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files  [22m[1m[31m1 failed[39m[22m[2m | [22m[1m[32m0 passed[39m[22m[90m (1)[39m
+[2m      Tests  [22m[1m[31m1 failed[39m[22m[2m | [22m[1m[32m0 passed[39m[22m[90m (1)[39m
+[2m         AI  [22m396.9k tokens · $0.42 · 60 model calls · anthropic/claude-haiku-4.5
+[2m   Start at  [22m20:34:12
+[2m   Duration  [22m129.22s
+[2m     Report  [22m.e2e/explore-bench/anthropic_claude-haiku-4.5__default/report.json
+
+[e2e debug] phase timings (wall 129.2s)
+  phase           count   total     avg     max
+  scheduler           1  129.2s  129.2s  129.2s
+  test.body           1  128.9s  128.9s  128.9s
+  agent.model        60  128.5s  2141ms  7177ms
+  agent.observe      60   19.1s   319ms  2211ms
+  agent.action       49  2646ms    54ms   187ms
+  engine.init         1   110ms   110ms   110ms
+  session.launch      1     9ms     9ms     9ms
+  session.close       1     4ms     4ms     4ms
+  config.load         1     1ms     1ms     1ms
+  collect             1     0ms     0ms     0ms
+  engine.prepare      1     0ms     0ms     0ms
+[e2e debug] agent steps (execution order, total $0.42)
+  step                                                                                             via   total   model  observe  action  calls  tokens in/out       cost
+  agent.extract "Plan the next step of an exploratory test run, o…          anthropic/claude-haiku-4.5  4277ms  4236ms     17ms     0ms      1       1531/105  $0.002056
+  agent.act "Navigate to the Catalog page. Examine the available …  gateway/anthropic/claude-haiku-4.5   36.7s   36.6s   8286ms   925ms     18    101539/1453      $0.11
+  agent.extract "Plan the next step of an exploratory test run, o…          anthropic/claude-haiku-4.5  5656ms  5634ms     20ms     0ms      1       2486/171  $0.003341
+  agent.act "Navigate to the Cart page (#n277). Examine the cart …  gateway/anthropic/claude-haiku-4.5   75.0s   74.8s    10.8s  1719ms     39    283587/2921       $0.3
+  agent.extract "Plan the next step of an exploratory test run, o…          anthropic/claude-haiku-4.5  7197ms  7177ms     18ms     0ms      1       2892/226  $0.004022
+[2m   Explored  [22m2 steps (2 passed); ended: the agent covered the goal
+[2m   Findings  [22m8 issues, 0 warnings
+[2m   S5 issue  [22mCart total shows $14.00 when line total is $28.00 for 2 Hyperion books (/cart?added=Hyperion)
+[2m   S5 issue  [22mCart total is $25.25 but sum of line totals is $39.25 (Hyperion $28.00 + Solaris $11.25) (/cart?added=Solaris)
+[2m   S5 issue  [22mCart total shows $14.00 when Hyperion quantity is 4 with $56.00 line total (/cart)
+[2m   S5 issue  [22mCart total calculation remains incorrect: $25.25 displayed when line totals sum to $53.25 (/cart)
+[2m   S4 issue  [22mNeuromancer shows negative inventory (-3 in stock) (/catalog)
+[2m   S4 issue  [22mCart now shows Hyperion quantity as 5 instead of 2 (/cart?added=Hyperion)
+[2m   S4 issue  [22mHyperion completely removed from cart instead of being removed along with Solaris (/cart)
+[2m   S4 issue  [22mOrder placed with epoch/invalid timestamp: 1970-01-01 and future delivery date 1969-12-29 (/checkout)
+[2m Assessment  [22mExplored the Bookshelf bookshop across all major flows: browsed catalog (4 books), added items to cart, manipulated quantities and removed items, completed checkout with order placement, and visited Orders, Account, and Sign-in pages. Identified 8 distinct defects: (1) Neuromancer shows negative inventory (-3), (2–5) cart total calculations persistently incorrect across multiple states ($14.00, $25.25, $53.25 shown instead of correct amounts), (6) cart quantity unexpectedly changed to 5 for Hyperion, (7) wrong item removed from cart (Hyperion disappeared when Solaris was removed), and (8) order confirmation displayed invalid epoch timestamp (1970-01-01) with impossible delivery date (1969-12-29). All core user flows have been exercised as chartered. The application is functionally navigable but has critical calculation and state management bugs in cart operations and order processing.
+

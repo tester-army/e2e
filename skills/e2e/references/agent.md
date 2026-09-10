@@ -6,7 +6,7 @@ transcript between calls. Deterministic tests never load a model.
 
 ## Configure a model
 
-There is no default model. Pick one of three shapes:
+Agents live under `agents` by name; `default` is the one tests use, and `e2e run --agent <name>` picks another. There is no default model. Pick one of three shapes for an entry:
 
 ```ts
 // e2e.config.ts
@@ -14,13 +14,13 @@ import { createAgent } from '@e2edev/e2e/agent';
 
 export default {
   // 1. The built-in agent; the model comes from E2E_MODEL at run time.
-  agent: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }),
+  agents: { default: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
 
   // 2. An options block: a gateway model string plus project vocabulary.
-  // agent: { model: 'anthropic/claude-sonnet-4.5', context: 'A billing dashboard. Plans are Free, Team, and Pro.' },
+  // agents: { default: { model: 'anthropic/claude-sonnet-4.5', context: 'A billing dashboard. Plans are Free, Team, and Pro.' } },
 
   // 3. A live AI SDK model instance for a provider called directly.
-  // agent: createAgent({ model: openai('gpt-5.4-mini') }),
+  // agents: { default: createAgent({ model: openai('gpt-5.4-mini') }) },
 } satisfies E2EConfig;
 ```
 
@@ -30,7 +30,7 @@ E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e
 
 - A `provider/model-id` string is routed through the Vercel AI Gateway; one
   `E2E_MODEL_API_KEY` (or `AI_GATEWAY_API_KEY`) reaches every provider.
-- With no `agent` key at all, the built-in agent still runs and takes its
+- With no `agents` key at all, the built-in agent still runs as `default` and takes its
   model from `E2E_MODEL`. Use `createAgent` for a `system` prompt, tools, or
   a pinned model.
 - `ai@^7` must be installed for any `agent.*` step; the runner loads it
@@ -40,7 +40,7 @@ E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e
 - `visionModel` (or `E2E_VISION_MODEL`) serves the calls that send pixels.
 - The model passed to `createAgent({ model })` is the one model for every
   `agent.*` call, `act` and the judgments alike, and outranks `E2E_MODEL`.
-  An `agent.model` naming a different model is `INVALID_CONFIG`.
+  An agent `model` naming a different model is `INVALID_CONFIG`.
 - Missing model or key: checked once per run when the first test acquires
   the `agent` fixture. One run-level `MODEL_UNAVAILABLE` (exit 2) stops the
   run; the remaining tests are skipped, not failed one by one.

@@ -39,22 +39,24 @@ export default {
   timeout: 300_000,
   actionTimeout: 90_000,
   workers: 1,
-  agent: {
-    executor: createAgent({ tools: agentDeviceTools(ios, android) }),
-    model: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
-      process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
-    ),
-    maxModelCalls: 40,
-    context: [
-      'The surface is a real mobile device (an iOS simulator or an Android',
-      'emulator) observed through its accessibility tree; its Settings app is',
-      'already open when a step starts. The device keeps its state between',
-      'steps: when the right screen is already up, continue from it instead of',
-      'reopening. The system may interrupt with sheets (Siri or Dictation',
-      'onboarding, privacy panes, setup wizards): dismiss them and resume; a',
-      'dismissible interrupt is never a reason to conclude blocked. Settings',
-      'rows are named after their label; tap them to navigate, and use the back',
-      'button in the top bar to return.',
-    ].join(' '),
+  agents: {
+    default: {
+      executor: createAgent({ tools: agentDeviceTools(ios, android) }),
+      model: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
+        process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      ),
+      maxModelCalls: 40,
+      context: [
+        'The surface is a real mobile device (an iOS simulator or an Android',
+        'emulator) observed through its accessibility tree; its Settings app is',
+        'already open when a step starts. The device keeps its state between',
+        'steps: when the right screen is already up, continue from it instead of',
+        'reopening. The system may interrupt with sheets (Siri or Dictation',
+        'onboarding, privacy panes, setup wizards): dismiss them and resume; a',
+        'dismissible interrupt is never a reason to conclude blocked. Settings',
+        'rows are named after their label; tap them to navigate, and use the back',
+        'button in the top bar to return.',
+      ].join(' '),
+    },
   },
 } satisfies E2EConfig;

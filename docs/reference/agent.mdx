@@ -173,7 +173,7 @@ pixel-tainted by a secret fill, or masking cannot be proven complete, `'only'`
 fails with `POLICY_DENIED`. Every other mode degrades to the tree; `'only'` will
 not answer a question about pixels from the tree instead.
 
-Calls that send pixels use `agent.visionModel` when it is set, and `agent.model`
+Calls that send pixels use the agent's `visionModel` when it is set, and its `model`
 otherwise, and keep it for the rest of the invocation, including polling rounds
 whose pixels were withheld, so a polling method never switches models between
 rounds.

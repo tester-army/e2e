@@ -3,9 +3,11 @@ import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
 
 export default {
-  agent: createAgent({
-    system: 'You are a thorough QA agent. Verify every outcome.',
-  }),
+  agents: {
+    default: createAgent({
+      system: 'You are a thorough QA agent. Verify every outcome.',
+    }),
+  },
   targets: [{
     name: 'web',
     platform: 'web',

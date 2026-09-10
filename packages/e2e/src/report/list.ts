@@ -316,6 +316,7 @@ export class ListReporter implements Reporter {
       `${pc.bold(pc.black(pc.bgCyan(' RUN ')))} ${pc.cyan(`e2e v${version}`)} ${pc.gray(event.projectRoot)}`,
     );
     const details = [`run ${event.runId}`, `targets: ${event.targets.join(', ')}`];
+    if (event.agent !== undefined) details.push(`agent: ${event.agent}`);
     if (event.ci) details.push('CI');
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {

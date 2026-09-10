@@ -69,7 +69,7 @@ export default {
     },
   ],
   // Only for agent.* steps. The model comes from E2E_MODEL unless set here.
-  agent: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }),
+  agents: { default: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
   credentials: {
     admin: { username: 'admin@example.test', password: process.env.ADMIN_PASSWORD ?? '' },
   },
@@ -209,7 +209,7 @@ const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
 export default {
   targets: [{ engine: iphone }],
   workers: 1,
-  agent: createAgent({ tools: agentDeviceTools(iphone) }),
+  agents: { default: createAgent({ tools: agentDeviceTools(iphone) }) },
 } satisfies E2EConfig;
 ```
 

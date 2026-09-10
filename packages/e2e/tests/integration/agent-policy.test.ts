@@ -109,7 +109,7 @@ describe('agent policy and error classification', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: { model },
+          agents: { default: { model } },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },
       },
@@ -143,9 +143,11 @@ describe('agent policy and error classification', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: createAgent({
-            model: installFakeModel(() => ({ counter: '0' })) as unknown as SdkLanguageModel,
-          }),
+          agents: {
+            default: createAgent({
+              model: installFakeModel(() => ({ counter: '0' })) as unknown as SdkLanguageModel,
+            }),
+          },
         },
       },
     );
@@ -244,7 +246,7 @@ test.describe('group', { serial: true }, () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: { model },
+          agents: { default: { model } },
         },
       },
     );

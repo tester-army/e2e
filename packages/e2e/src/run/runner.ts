@@ -63,6 +63,8 @@ export interface RunOptions {
   passWithNoTests?: boolean | undefined;
   /** Runs with the trace cache off (`--no-cache`), overriding the config. */
   noCache?: boolean | undefined;
+  /** The configured agent to run with (`--agent`), instead of `agents.default`. */
+  agent?: string | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
   /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
@@ -207,6 +209,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
   if (options.video === true) cli.video = true;
+  if (options.agent !== undefined) cli.agent = options.agent;
 
   // Config resolves before anything is emitted, and its failure is kept rather
   // than thrown: the reporter set is config truth (CLI overrides merge during
@@ -416,6 +419,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     artifactsRoot: resolveArtifactsRoot(config, options.artifactsDir),
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
+    ...(config.agentName === 'default' ? {} : { agent: config.agentName }),
     ...(config.agent.model === undefined ? {} : { model: modelName(config.agent.model) }),
     ...(config.agent.visionModel === undefined ? {} : { visionModel: modelName(config.agent.visionModel) }),
   });

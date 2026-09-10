@@ -1,0 +1,67 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36me2e v0.8.0[39m [90m/Users/okwasniewski/.t3/worktrees/e2e/t3code-7ab0927b/packages/testbed[39m
+      [2mrun 01a08772-f1b3-7baf-87b4-4ff909c3f428 · targets: web[22m
+      [2mmodel google/gemini-3.6-flash[22m
+
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m4.39s · 1 model call[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.act[22m "Browse catalog and add books to cart" [2m29.14s · 10 model calls[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m5.99s · 1 model call[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.act[22m "Manage cart and proceed to checkoutKey flow testing on cart page and tr…" [2m23.51s · 10 model calls[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m39.07s · 2 model calls[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.act[22m "Explore Account, Orders, and Sign-in pages联动 Test User Account and Orde…" [2m23.68s · 11 model calls[22m
+   [32m✓[39m [2mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[22m[2m > [22m[2magent.extract[22m "Plan the next step of an exploratory test run, or finish it. Goal: Expl…" [2m4.01s · 1 model call[22m
+ [31m❯[39m [30m[103m web [49m[39m explore [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m [2m130.13s[22m [2mai 145.9k tokens · $0.13[22m
+   [31m× Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.[39m [2m130.13s[22m [2mai 145.9k tokens · $0.13[22m
+     [31m→ exploration found 8 issue(s): [severity 3] Negative in-stock quantity sh…[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m
+
+[1m[41m FAIL [49m[22m [30m[103m web [49m[39m explore[2m > [22mExplore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.
+[31m[1mASSERTION_FAILED[22m: exploration found 8 issue(s): [severity 3] Negative in-stock quantity shown for Neuromancer in catalog; [severity 4] 'Add to cart' button for Dune is unresponsive / broken; [severity 4] Cart total does not update when item quantity is changed; [severity 4] "Remove" button in cart removes the wrong item; [severity 3] Order confirmation displays Unix epoch default dates (1970-01-01 and 1969-12-29); [severity 3] Account profile save claims success but fails to update display name; [severity 3] Order count states 3 orders but only 2 orders are displayed; [severity 3] "Help" navigation link points to misspelled "/hlep" URL resulting in 404 Page Not Found[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files  [22m[1m[31m1 failed[39m[22m[2m | [22m[1m[32m0 passed[39m[22m[90m (1)[39m
+[2m      Tests  [22m[1m[31m1 failed[39m[22m[2m | [22m[1m[32m0 passed[39m[22m[90m (1)[39m
+[2m         AI  [22m145.9k tokens · $0.13 · 36 model calls · google/gemini-3.6-flash
+[2m   Start at  [22m20:34:12
+[2m   Duration  [22m130.14s
+[2m     Report  [22m.e2e/explore-bench/google_gemini-3.6-flash__default/report.json
+
+[e2e debug] phase timings (wall 130.1s)
+  phase           count   total     avg     max
+  scheduler           1  130.1s  130.1s  130.1s
+  test.body           1  129.9s  129.9s  129.9s
+  agent.model        36  129.3s  3592ms   33.6s
+  agent.observe      38  8222ms   216ms  2179ms
+  agent.action       31  2202ms    71ms   174ms
+  engine.init         1   108ms   108ms   108ms
+  session.launch      1     8ms     8ms     8ms
+  session.close       1     3ms     3ms     3ms
+  config.load         1     1ms     1ms     1ms
+  collect             1     0ms     0ms     0ms
+  engine.prepare      1     0ms     0ms     0ms
+[e2e debug] agent steps (execution order, total $0.13)
+  step                                                                                          via   total   model  observe  action  calls  tokens in/out       cost
+  agent.extract "Plan the next step of an exploratory test run, o…          google/gemini-3.6-flash  4390ms  4349ms     18ms     0ms      1       1344/452  $0.002703
+  agent.act "Browse catalog and add books to cart"                  gateway/google/gemini-3.6-flash   29.1s   29.0s   5305ms   682ms     10     40127/2044   $0.03776
+  agent.extract "Plan the next step of an exploratory test run, o…          google/gemini-3.6-flash  5993ms  5963ms     28ms     0ms      1       1991/689  $0.004077
+  agent.act "Manage cart and proceed to checkoutKey flow testing …  gateway/google/gemini-3.6-flash   23.5s   23.4s   1286ms   799ms     10     40464/1940  $0.037623
+  agent.extract "Plan the next step of an exploratory test run, o…          google/gemini-3.6-flash   39.1s   39.1s     10ms     0ms      2       4031/616  $0.005333
+  agent.act "Explore Account, Orders, and Sign-in pages联动 Test Us…  gateway/google/gemini-3.6-flash   23.7s   23.6s   1558ms   721ms     11     47534/1783  $0.042337
+  agent.extract "Plan the next step of an exploratory test run, o…          google/gemini-3.6-flash  4012ms  3995ms     17ms     0ms      1       2276/595  $0.003938
+[2m   Explored  [22m3 steps (3 passed); ended: the agent covered the goal
+[2m   Findings  [22m8 issues, 2 warnings
+[2m   S4 issue  [22m'Add to cart' button for Dune is unresponsive / broken (/cart?added=Solaris)
+[2m   S4 issue  [22mCart total does not update when item quantity is changed (/cart)
+[2m   S4 issue  [22m"Remove" button in cart removes the wrong item (/cart)
+[2m   S3 issue  [22mNegative in-stock quantity shown for Neuromancer in catalog (/catalog)
+[2m   S3 issue  [22mOrder confirmation displays Unix epoch default dates (1970-01-01 and 1969-12-29) (/checkout)
+[2m   S3 issue  [22mAccount profile save claims success but fails to update display name (/account?saved=1)
+[2m   S3 issue  [22mOrder count states 3 orders but only 2 orders are displayed (/orders)
+[2m   S3 issue  [22m"Help" navigation link points to misspelled "/hlep" URL resulting in 404 Page Not Found (/hlep)
+[2m  S2 warning  [22mUnrendered template token {{userName}} displayed in home page greeting (/)
+[2m  S1 warning  [22mMisspelled "Recieve" on checkout page (/checkout)
+[2m Assessment  [22mExplored all primary user flows of the Bookshelf web application, including catalog browsing, cart management, checkout, account settings, order history, and sign-in pages. Discovered multiple defects including broken cart total calculations, incorrect item removal from the cart, broken 'Add to cart' functionality for specific books, unrendered UI template tokens, order date formatting bugs, and broken navigation links. While basic page routing works, core e-commerce features suffer from severe functional and data integrity defects.
+

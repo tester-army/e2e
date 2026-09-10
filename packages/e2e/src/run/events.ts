@@ -66,6 +66,8 @@ export type RunEventFact =
       readonly artifactsRoot: string;
       readonly ci: boolean;
       readonly targets: readonly string[];
+      /** The configured agent the run uses, when it is not `default`. */
+      readonly agent?: string;
       /** The configured agent model as `provider/model-id`; absent when none is configured. */
       readonly model?: string;
       /**

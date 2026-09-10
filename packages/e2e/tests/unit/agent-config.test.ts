@@ -31,24 +31,24 @@ describe('agent config defaults', () => {
   });
 
   it('accepts every vision mode as a project default and rejects anything else', () => {
-    expect(resolve({ agent: { vision: true } }).agent.vision).toBe(true);
-    expect(resolve({ agent: { vision: false } }).agent.vision).toBe(false);
-    expect(resolve({ agent: { vision: 'fallback' } }).agent.vision).toBe('fallback');
-    expect(() => resolve({ agent: { vision: 'yes' } } as never)).toThrow(/agent.vision/);
-    expect(() => resolve({ agent: { vision: 1 } } as never)).toThrow(/agent.vision/);
+    expect(resolve({ agents: { default: { vision: true } } }).agent.vision).toBe(true);
+    expect(resolve({ agents: { default: { vision: false } } }).agent.vision).toBe(false);
+    expect(resolve({ agents: { default: { vision: 'fallback' } } }).agent.vision).toBe('fallback');
+    expect(() => resolve({ agents: { default: { vision: 'yes' } } } as never)).toThrow(/agents\.default\.vision/);
+    expect(() => resolve({ agents: { default: { vision: 1 } } } as never)).toThrow(/agents\.default\.vision/);
   });
 
   it('resolves a separate vision model, defaulting to none', () => {
     expect(resolve({}).agent.visionModel).toBeUndefined();
     const config = resolve({
-      agent: { model: 'fake/text', visionModel: 'fake/grounding' },
+      agents: { default: { model: 'fake/text', visionModel: 'fake/grounding' } },
     });
     expect(config.agent.model).toMatchObject({ provider: 'fake', id: 'text' });
     expect(config.agent.visionModel).toMatchObject({ provider: 'fake', id: 'grounding' });
   });
 
   it('overrides the vision model from E2E_VISION_MODEL', () => {
-    const config = resolve({ agent: { model: 'fake/text' } }, {
+    const config = resolve({ agents: { default: { model: 'fake/text' } } }, {
       ...BASE_ENV,
       E2E_VISION_MODEL: 'fake/grounding',
     } as NodeJS.ProcessEnv);
@@ -56,9 +56,9 @@ describe('agent config defaults', () => {
   });
 
   it('names agent.visionModel in its own diagnostics', () => {
-    expect(() => resolve({ agent: { visionModel: 'nope' } })).toThrow(/agent\.visionModel/);
-    expect(() => resolve({ agent: { visionModel: { id: 'x' } } } as never)).toThrow(
-      /agent\.visionModel\.provider/,
+    expect(() => resolve({ agents: { default: { visionModel: 'nope' } } })).toThrow(/agents\.default\.visionModel/);
+    expect(() => resolve({ agents: { default: { visionModel: { id: 'x' } } } } as never)).toThrow(
+      /agents\.default\.visionModel\.provider/,
     );
   });
 
@@ -67,81 +67,81 @@ describe('agent config defaults', () => {
   it('passes agent.providerOptions through untouched, defaulting to none', () => {
     expect(resolve({}).agent.providerOptions).toBeUndefined();
     const providerOptions = { openai: { reasoningEffort: 'low' }, google: { thinkingConfig: { thinkingBudget: 0 } } };
-    expect(resolve({ agent: { providerOptions } }).agent.providerOptions).toEqual(providerOptions);
+    expect(resolve({ agents: { default: { providerOptions } } }).agent.providerOptions).toEqual(providerOptions);
   });
 
   it('rejects agent.providerOptions that is not a record of provider records', () => {
-    expect(() => resolve({ agent: { providerOptions: 'low' } } as never)).toThrow(
-      /agent\.providerOptions must be an object/,
+    expect(() => resolve({ agents: { default: { providerOptions: 'low' } } } as never)).toThrow(
+      /agents\.default\.providerOptions must be an object/,
     );
-    expect(() => resolve({ agent: { providerOptions: [] } } as never)).toThrow(/agent\.providerOptions/);
-    expect(() => resolve({ agent: { providerOptions: { openai: 'low' } } } as never)).toThrow(
-      /agent\.providerOptions\.openai must be an object/,
+    expect(() => resolve({ agents: { default: { providerOptions: [] } } } as never)).toThrow(/agents\.default\.providerOptions/);
+    expect(() => resolve({ agents: { default: { providerOptions: { openai: 'low' } } } } as never)).toThrow(
+      /agents\.default\.providerOptions\.openai must be an object/,
     );
   });
 
   it('bounds budgets to 1 through 100 and observation bytes to 1 KiB through 16 MiB', () => {
-    expect(() => resolve({ agent: { maxSteps: 0 } })).toThrow(/maxSteps/);
-    expect(() => resolve({ agent: { maxSteps: 101 } })).toThrow(/maxSteps/);
-    expect(() => resolve({ agent: { maxModelCalls: 101 } })).toThrow(/maxModelCalls/);
-    expect(() => resolve({ agent: { maxObservationBytes: 1023 } })).toThrow(/maxObservationBytes/);
-    expect(() => resolve({ agent: { maxObservationBytes: 16_777_217 } })).toThrow(
+    expect(() => resolve({ agents: { default: { maxSteps: 0 } } })).toThrow(/maxSteps/);
+    expect(() => resolve({ agents: { default: { maxSteps: 101 } } })).toThrow(/maxSteps/);
+    expect(() => resolve({ agents: { default: { maxModelCalls: 101 } } })).toThrow(/maxModelCalls/);
+    expect(() => resolve({ agents: { default: { maxObservationBytes: 1023 } } })).toThrow(/maxObservationBytes/);
+    expect(() => resolve({ agents: { default: { maxObservationBytes: 16_777_217 } } })).toThrow(
       /maxObservationBytes/,
     );
   });
 
   it('rejects unknown agent keys, including the removed cache mode', () => {
-    expect(() => resolve({ agent: { retries: 2 } } as never)).toThrow(/unknown agent config key/);
-    expect(() => resolve({ agent: { cache: 'always' } } as never)).toThrow(
-      /unknown agent config key/,
+    expect(() => resolve({ agents: { default: { retries: 2 } } } as never)).toThrow(/unknown agents\.default key/);
+    expect(() => resolve({ agents: { default: { cache: 'always' } } } as never)).toThrow(
+      /unknown agents\.default key/,
     );
   });
 
   it('rejects context larger than the resolved agent-context limit', () => {
-    expect(() => resolve({ agent: { context: 'x'.repeat(16_385) } })).toThrow(/agent.context is/);
-    expect(resolve({ agent: { context: 'be terse' } }).agent.context).toBe('be terse');
+    expect(() => resolve({ agents: { default: { context: 'x'.repeat(16_385) } } })).toThrow(/agents\.default\.context is/);
+    expect(resolve({ agents: { default: { context: 'be terse' } } }).agent.context).toBe('be terse');
     expect(() =>
-      resolve({ agent: { context: 'x'.repeat(2_000) }, limits: { maxAgentContextBytes: 1_024 } }),
-    ).toThrow(/agent.context is/);
+      resolve({ agents: { default: { context: 'x'.repeat(2_000) } }, limits: { maxAgentContextBytes: 1_024 } }),
+    ).toThrow(/agents\.default\.context is/);
   });
 });
 
 describe('agent as the executor itself', () => {
   it('accepts a step executor as the agent value, options staying at defaults', () => {
-    const config = resolve({ agent: brain() });
+    const config = resolve({ agents: { default: brain() } });
     expect(config.agent.executor).toMatchObject({ name: 'custom-brain' });
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.maxSteps).toBe(25);
   });
 
   it('still resolves the model from E2E_MODEL alongside a custom agent', () => {
-    const config = resolve({ agent: brain() }, { ...BASE_ENV, E2E_MODEL: 'openai/gpt-5.4-mini' });
+    const config = resolve({ agents: { default: brain() } }, { ...BASE_ENV, E2E_MODEL: 'openai/gpt-5.4-mini' });
     expect(config.agent.model).toMatchObject({ provider: 'openai', id: 'gpt-5.4-mini' });
   });
 
   it('digests a custom agent by name and version, deterministically', () => {
-    const first = resolve({ agent: brain() });
-    const again = resolve({ agent: brain() });
+    const first = resolve({ agents: { default: brain() } });
+    const again = resolve({ agents: { default: brain() } });
     expect(again.configDigest).toBe(first.configDigest);
-    const renamed = resolve({ agent: { ...brain(), name: 'other-brain' } });
+    const renamed = resolve({ agents: { default: { ...brain(), name: 'other-brain' } } });
     expect(renamed.configDigest).not.toBe(first.configDigest);
   });
 
   it('accepts an executor alongside the agent options', () => {
-    const config = resolve({ agent: { executor: brain(), maxModelCalls: 40 } } as never);
+    const config = resolve({ agents: { default: { executor: brain(), maxModelCalls: 40 } } } as never);
     expect(config.agent.executor?.name).toBe('custom-brain');
     expect(config.agent.maxModelCalls).toBe(40);
   });
 
   it('rejects an executor value that is not a StepExecutor', () => {
-    expect(() => resolve({ agent: { executor: { name: 'x' } } } as never)).toThrow(
-      /agent\.executor must be a StepExecutor/,
+    expect(() => resolve({ agents: { default: { executor: { name: 'x' } } } } as never)).toThrow(
+      /agents\.default\.executor must be a StepExecutor/,
     );
   });
 
   it('rejects an agent value that is neither options nor an executor', () => {
-    expect(() => resolve({ agent: { runStep: 'nope' } } as never)).toThrow(
-      /unknown agent config key/,
+    expect(() => resolve({ agents: { default: { runStep: 'nope' } } } as never)).toThrow(
+      /unknown agents\.default key/,
     );
   });
 });
@@ -159,14 +159,14 @@ describe('one canonical model', () => {
 
   it('uses the model createAgent brought for the judgment tier too', () => {
     const model = instance('gpt-5.4-mini');
-    const config = resolve({ agent: createAgent({ model }) });
+    const config = resolve({ agents: { default: createAgent({ model }) } });
     expect(config.agent.executor?.model).toBe(model);
     expect(config.agent.model).toMatchObject({ kind: 'instance', provider: 'openai', id: 'gpt-5.4-mini' });
   });
 
   it('prefers the executor model over E2E_MODEL', () => {
     const config = resolve(
-      { agent: createAgent({ model: instance('gpt-5.4-mini') }) },
+      { agents: { default: createAgent({ model: instance('gpt-5.4-mini') }) } },
       { ...BASE_ENV, E2E_MODEL: 'anthropic/claude-sonnet-4.5' },
     );
     expect(config.agent.model).toMatchObject({ kind: 'instance', provider: 'openai', id: 'gpt-5.4-mini' });
@@ -174,27 +174,27 @@ describe('one canonical model', () => {
 
   it('accepts agent.model naming the same model as the executor', () => {
     const model = instance('gpt-5.4-mini');
-    const config = resolve({ agent: { executor: createAgent({ model }), model: 'openai/gpt-5.4-mini' } });
+    const config = resolve({ agents: { default: { executor: createAgent({ model }), model: 'openai/gpt-5.4-mini' } } });
     expect(config.agent.model).toMatchObject({ kind: 'instance', model });
   });
 
   it('rejects agent.model and an executor model that differ', () => {
     expect(() =>
-      resolve({ agent: { executor: createAgent({ model: instance('gpt-5.4-mini') }), model: 'openai/gpt-5.4' } }),
-    ).toThrow(/agent\.model \(openai\/gpt-5\.4\) and the executor's own model \(openai\/gpt-5\.4-mini\) differ/);
+      resolve({ agents: { default: { executor: createAgent({ model: instance('gpt-5.4-mini') }), model: 'openai/gpt-5.4' } } }),
+    ).toThrow(/agents\.default\.model \(openai\/gpt-5\.4\) and the executor's own model \(openai\/gpt-5\.4-mini\) differ/);
     expect(() =>
-      resolve({ agent: { executor: createAgent({ model: instance('gpt-5.4-mini') }), model: instance('gpt-5.4') } }),
+      resolve({ agents: { default: { executor: createAgent({ model: instance('gpt-5.4-mini') }), model: instance('gpt-5.4') } } }),
     ).toThrow(/differ; configure the model in one place/);
   });
 
   it('leaves a custom executor without a model to E2E_MODEL', () => {
-    expect(resolve({ agent: brain() }).agent.model).toBeUndefined();
+    expect(resolve({ agents: { default: brain() } }).agent.model).toBeUndefined();
   });
 });
 
 describe('model resolution', () => {
   it('splits "provider/model-id" at the first slash', () => {
-    const config = resolve({ agent: { model: 'anthropic/claude-sonnet-4.5' } });
+    const config = resolve({ agents: { default: { model: 'anthropic/claude-sonnet-4.5' } } });
     expect(config.agent.model).toEqual({
       kind: 'gateway',
       provider: 'anthropic',
@@ -215,19 +215,19 @@ describe('model resolution', () => {
       doGenerate: () => Promise.reject(new Error('not called')),
       doStream: () => Promise.reject(new Error('not called')),
     };
-    const config = resolve({ agent: { model: instance } });
+    const config = resolve({ agents: { default: { model: instance } } });
     expect(config.agent.model).toMatchObject({
       kind: 'instance',
       provider: 'openai',
       id: 'gpt-5.4-mini',
     });
     // The live object never enters the digest, and the digest stays stable.
-    const again = resolve({ agent: { model: instance } });
+    const again = resolve({ agents: { default: { model: instance } } });
     expect(again.configDigest).toBe(config.configDigest);
   });
 
   it('keeps later slashes in the model ID', () => {
-    expect(resolve({ agent: { model: 'vendor/family/model' } }).agent.model).toMatchObject({
+    expect(resolve({ agents: { default: { model: 'vendor/family/model' } } }).agent.model).toMatchObject({
       provider: 'vendor',
       id: 'family/model',
     });
@@ -239,7 +239,7 @@ describe('model resolution', () => {
   });
 
   it('prefers the config model over the environment', () => {
-    const config = resolve({ agent: { model: 'google/gemini-2.5-flash' } }, {
+    const config = resolve({ agents: { default: { model: 'google/gemini-2.5-flash' } } }, {
       ...BASE_ENV,
       E2E_MODEL: 'openai/gpt-5.4-mini',
     });
@@ -247,44 +247,44 @@ describe('model resolution', () => {
   });
 
   it('rejects references without a provider or model ID', () => {
-    expect(() => resolve({ agent: { model: 'gpt-5.4-mini' } })).toThrow(/provider\/model-id/);
-    expect(() => resolve({ agent: { model: '/gpt' } })).toThrow(/provider\/model-id/);
-    expect(() => resolve({ agent: { model: 'openai/' } })).toThrow(/provider\/model-id/);
+    expect(() => resolve({ agents: { default: { model: 'gpt-5.4-mini' } } })).toThrow(/provider\/model-id/);
+    expect(() => resolve({ agents: { default: { model: '/gpt' } } })).toThrow(/provider\/model-id/);
+    expect(() => resolve({ agents: { default: { model: 'openai/' } } })).toThrow(/provider\/model-id/);
     expect(() => resolve({}, { ...BASE_ENV, E2E_MODEL: 'nope' })).toThrow(/E2E_MODEL/);
   });
 
   it('accepts an explicit model object with a credential variable name', () => {
     const config = resolve({
-      agent: { model: { provider: 'openai', id: 'gpt-5.4-mini', apiKeyEnv: 'MY_KEY' } },
+      agents: { default: { model: { provider: 'openai', id: 'gpt-5.4-mini', apiKeyEnv: 'MY_KEY' } } },
     });
     expect(config.agent.model).toMatchObject({ apiKeyEnv: 'MY_KEY', apiKeySource: undefined });
     const withKey = resolve(
-      { agent: { model: { provider: 'openai', id: 'gpt-5.4-mini', apiKeyEnv: 'MY_KEY' } } },
+      { agents: { default: { model: { provider: 'openai', id: 'gpt-5.4-mini', apiKeyEnv: 'MY_KEY' } } } },
       { ...BASE_ENV, MY_KEY: 'custom', AI_GATEWAY_API_KEY: 'gateway-key' },
     );
     expect(withKey.agent.model).toMatchObject({ apiKeySource: 'MY_KEY', apiKey: 'custom' });
   });
 
   it('resolves the credential for the adapter without leaking it into the digest', () => {
-    const config = resolve({ agent: { model: 'openai/gpt-5.4-mini' } }, {
+    const config = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' } } }, {
       ...BASE_ENV,
       E2E_MODEL_API_KEY: 'secret-value',
     });
     expect(config.agent.model).toMatchObject({ apiKey: 'secret-value', apiKeySource: 'E2E_MODEL_API_KEY' });
-    const withoutKey = resolve({ agent: { model: 'openai/gpt-5.4-mini' } });
+    const withoutKey = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' } } });
     expect(withoutKey.agent.model).toMatchObject({ apiKey: undefined, apiKeySource: undefined });
     // Environment values never affect the digest.
     expect(withoutKey.configDigest).toBe(config.configDigest);
   });
 
   it('falls back to the gateway credential variable', () => {
-    const config = resolve({ agent: { model: 'openai/gpt-5.4-mini' } }, {
+    const config = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' } } }, {
       ...BASE_ENV,
       AI_GATEWAY_API_KEY: 'gateway-key',
     });
     expect(config.agent.model).toMatchObject({ apiKey: 'gateway-key', apiKeySource: 'AI_GATEWAY_API_KEY' });
     // An empty primary variable is absent, not a credential.
-    const blank = resolve({ agent: { model: 'openai/gpt-5.4-mini' } }, {
+    const blank = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' } } }, {
       ...BASE_ENV,
       E2E_MODEL_API_KEY: '  ',
       AI_GATEWAY_API_KEY: 'gateway-key',
@@ -294,14 +294,14 @@ describe('model resolution', () => {
 
   it('requires HTTPS for nonlocal model endpoints', () => {
     expect(() =>
-      resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'http://example.test/v1' } } }),
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm', endpoint: 'http://example.test/v1' } } } }),
     ).toThrow(/HTTPS/);
     expect(
-      resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'http://127.0.0.1:11434/v1' } } })
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm', endpoint: 'http://127.0.0.1:11434/v1' } } } })
         .agent.model,
     ).toMatchObject({ endpoint: 'http://127.0.0.1:11434/v1' });
     expect(
-      resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'https://gw.example/v1' } } })
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm', endpoint: 'https://gw.example/v1' } } } })
         .agent.model,
     ).toMatchObject({ endpoint: 'https://gw.example/v1' });
   });
@@ -314,47 +314,47 @@ describe('model resolution', () => {
     };
     expect(resolve({}, env).agent.model).toMatchObject({ endpoint: 'https://llm.example/v1' });
     expect(
-      resolve({ agent: { model: { provider: 'p', id: 'm' } } }, env).agent.model,
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm' } } } }, env).agent.model,
     ).toMatchObject({ endpoint: 'https://llm.example/v1' });
   });
 
   it('prefers agent.model.endpoint over E2E_MODEL_ENDPOINT', () => {
     const env = { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'https://env.example/v1' };
     expect(
-      resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'https://gw.example/v1' } } }, env)
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm', endpoint: 'https://gw.example/v1' } } } }, env)
         .agent.model,
     ).toMatchObject({ endpoint: 'https://gw.example/v1' });
   });
 
   it('ignores a blank E2E_MODEL_ENDPOINT and validates a set one', () => {
     expect(
-      resolve({ agent: { model: 'p/m' } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: '  ' }).agent.model,
+      resolve({ agents: { default: { model: 'p/m' } } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: '  ' }).agent.model,
     ).toMatchObject({ endpoint: undefined });
     expect(() =>
-      resolve({ agent: { model: 'p/m' } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'http://example.test/v1' }),
+      resolve({ agents: { default: { model: 'p/m' } } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'http://example.test/v1' }),
     ).toThrow(/E2E_MODEL_ENDPOINT must use HTTPS/);
     expect(() =>
-      resolve({ agent: { model: 'p/m' } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'not-a-url' }),
+      resolve({ agents: { default: { model: 'p/m' } } }, { ...BASE_ENV, E2E_MODEL_ENDPOINT: 'not-a-url' }),
     ).toThrow(/invalid E2E_MODEL_ENDPOINT/);
   });
 
   it('rejects malformed keys and endpoints', () => {
     expect(() =>
-      resolve({ agent: { model: { provider: 'p', id: 'm', apiKeyEnv: '9-bad name' } } }),
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm', apiKeyEnv: '9-bad name' } } } }),
     ).toThrow(/apiKeyEnv/);
     expect(() =>
-      resolve({ agent: { model: { provider: 'p', id: 'm', endpoint: 'not-a-url' } } }),
+      resolve({ agents: { default: { model: { provider: 'p', id: 'm', endpoint: 'not-a-url' } } } }),
     ).toThrow(/endpoint/);
-    expect(() => resolve({ agent: { model: { provider: 'p' } } } as never)).toThrow(/model.id/);
-    expect(() => resolve({ agent: { model: { provider: 'p', id: 'm', region: 'eu' } } } as never)).toThrow(
-      /unknown agent.model key/,
+    expect(() => resolve({ agents: { default: { model: { provider: 'p' } } } } as never)).toThrow(/model.id/);
+    expect(() => resolve({ agents: { default: { model: { provider: 'p', id: 'm', region: 'eu' } } } } as never)).toThrow(
+      /unknown agents\.default\.model key/,
     );
   });
 });
 
 describe('resource limits', () => {
   it('applies documented defaults and mirrors observation bytes from agent config', () => {
-    const config = resolve({ agent: { maxObservationBytes: 4_096 } });
+    const config = resolve({ agents: { default: { maxObservationBytes: 4_096 } } });
     expect(config.limits.maxObservationBytes).toBe(4_096);
     expect(config.limits.maxLedgerBytes).toBe(8_192);
     expect(config.limits.maxAgentContextBytes).toBe(16_384);
@@ -519,3 +519,61 @@ function modelCall() {
     signal: new AbortController().signal,
   };
 }
+
+describe('named agents', () => {
+  const named = (name: string) => ({ name, async runStep() { return { status: 'passed' as const, summary: 'ok' }; } });
+
+  it('resolves every named agent and runs with default unless --agent picks another', () => {
+    const config = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' }, ux: { model: 'google/gemini-3.6-flash', context: 'Review the UX.' } } });
+    expect([...config.agents.keys()]).toEqual(['default', 'ux']);
+    expect(config.agentName).toBe('default');
+    expect(config.agent.model).toMatchObject({ provider: 'openai', id: 'gpt-5.4-mini' });
+    const picked = resolve(
+      { agents: { default: { model: 'openai/gpt-5.4-mini' }, ux: { model: 'google/gemini-3.6-flash', context: 'Review the UX.' } } },
+      BASE_ENV,
+      { agent: 'ux' },
+    );
+    expect(picked.agentName).toBe('ux');
+    expect(picked.agent.model).toMatchObject({ provider: 'google', id: 'gemini-3.6-flash' });
+    expect(picked.agent.context).toBe('Review the UX.');
+    // The selection also decides the observation budget the limits carry.
+    expect(picked.limits.maxObservationBytes).toBe(picked.agent.maxObservationBytes);
+  });
+
+  it('always has a default agent, the built-in one with E2E_MODEL, even when only others are named', () => {
+    const config = resolve({ agents: { ux: named('ux-brain') } }, { ...BASE_ENV, E2E_MODEL: 'openai/gpt-5.4-mini' });
+    expect(config.agentName).toBe('default');
+    expect(config.agent.executor).toBeUndefined();
+    expect(config.agent.model).toMatchObject({ provider: 'openai', id: 'gpt-5.4-mini' });
+    expect(config.agents.get('ux')?.executor?.name).toBe('ux-brain');
+  });
+
+  it('names the agent in every diagnostic', () => {
+    expect(() => resolve({ agents: { ux: { vision: 'yes' } } } as never)).toThrow(/agents\.ux\.vision/);
+    expect(() => resolve({ agents: { ux: { retries: 1 } } } as never)).toThrow(/unknown agents\.ux key/);
+    expect(() => resolve({ agents: { ux: 'gpt' } } as never)).toThrow(/agents\.ux must be an options object or the agent itself/);
+  });
+
+  it('rejects an unknown --agent before anything starts, naming the configured ones', () => {
+    expect(() => resolve({ agents: { default: {}, ux: {} } }, BASE_ENV, { agent: 'uxx' })).toThrow(
+      /unknown agent "uxx"; configured: default, ux; did you mean "ux"\?/,
+    );
+  });
+
+  it('rejects the removed agent key with the replacement, bad names, and a non-object agents', () => {
+    expect(() => resolve({ agent: { model: 'openai/gpt-5.4-mini' } } as never)).toThrow(/agents: \{ default: <what agent held> \}/);
+    expect(() => resolve({ agents: { 'u x': {} } })).toThrow(/invalid agent name "u x"/);
+    expect(() => resolve({ agents: [] } as never)).toThrow(/agents must be an object of agents by name/);
+    expect(() => resolve({ agents: named('x') } as never)).toThrow(/agents must be an object of agents by name/);
+  });
+
+  it('digests every named agent, so changing one changes the digest and a live model is reduced to its identity', () => {
+    const base = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' }, ux: { context: 'a' } } });
+    const changed = resolve({ agents: { default: { model: 'openai/gpt-5.4-mini' }, ux: { context: 'b' } } });
+    expect(changed.configDigest).not.toBe(base.configDigest);
+    const instance = (modelId: string) => ({ specificationVersion: 'v4', provider: 'openai', modelId, doGenerate: () => undefined }) as never;
+    const first = resolve({ agents: { ux: { model: instance('gpt-5.4-mini') } } });
+    const again = resolve({ agents: { ux: { model: instance('gpt-5.4-mini') } } });
+    expect(again.configDigest).toBe(first.configDigest);
+  });
+});

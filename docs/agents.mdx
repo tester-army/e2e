@@ -3,7 +3,7 @@ title: Your own agent
 description: Pick a model, add project tools, or replace the executor.
 ---
 
-The `agent` in your config is a **step executor**: one step in, one
+Each entry of `agents` in your config is a **step executor**: one step in, one
 verdict out. The runner owns everything around it: redacted observations,
 every action, budgets, origin policy, secrets, the report. Customizing the
 agent changes how it decides, not what it is allowed to do.
@@ -37,7 +37,7 @@ import { openai } from '@ai-sdk/openai';
 import { createAgent } from '@e2edev/e2e/agent';
 
 export default {
-  agent: createAgent({ model: openai('gpt-5.4-mini') }),
+  agents: { default: createAgent({ model: openai('gpt-5.4-mini') }) },
 } satisfies E2EConfig;
 ```
 
@@ -54,17 +54,39 @@ without a model request, so a missing model or key is one run-level
 A custom executor with no model is exempt: its `act` steps need none, and a
 judgment call without a model still fails with `MODEL_UNAVAILABLE`.
 
-The `agent` key also accepts an options block when you have nothing to
+An agent also accepts an options block when you have nothing to
 construct: `agent: { model: 'anthropic/claude-sonnet-4.5', context: '...' }`
 runs `createAgent()` with those settings. `context` is a sentence or two of
 project vocabulary and reaches every `agent.*` call; `visionModel` pins a
 separate model for calls that carry pixels. The AI SDK (`ai`) is an optional
 peer dependency; deterministic suites and model-free executors never load it.
 
+## Several agents
+
+`agents` is a record, and `default` is the entry tests run with. Other entries
+are other brains for the same suite: a model that reads screens more carefully,
+a playbook for a UX review, a tool set only one kind of run needs. A run picks
+one with `--agent`; without the flag it is `default`, and the run summary names
+any other.
+
+```ts title="e2e.config.ts"
+export default {
+  agents: {
+    default: { model: 'openai/gpt-5.6-luna-fast' },
+    thorough: { model: 'anthropic/claude-opus-5', context: 'Verify every claim on screen before concluding.' },
+    ux: createAgent({ system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
+  },
+} satisfies E2EConfig;
+```
+
+```bash
+npx --no-install e2e run --agent thorough tests/checkout.e2e.ts
+```
+
 ## Add project tools
 
 `createAgent` builds the built-in agent extended with your tools (AI SDK
-tools with declared semantics), and the `agent` config value accepts the agent
+tools with declared semantics), and an `agents` entry accepts the agent
 itself:
 
 ```ts title="e2e.config.ts"
@@ -85,7 +107,7 @@ const seedCart = defineTool(
 
 export default {
   targets: [{ name: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
-  agent: createAgent({ tools: { seedCart } }),
+  agents: { default: createAgent({ tools: { seedCart } }) },
 } satisfies E2EConfig;
 ```
 
@@ -181,28 +203,30 @@ import { z } from 'zod';
 import { device } from './my-device'; // e.g. a computer-use / device SDK
 
 export default {
-  agent: createToolLoopExecutor({
-    name: 'device-agent',
-    system: 'You control a device. Address elements by their visible label.',
-    buildPrompt: (ctx) => ctx.step.instruction,
-    tools: (ctx, { guard }) => ({
-      screenshot: tool({
-        description: 'Look at the device screen',
-        inputSchema: z.object({}),
-        execute: () =>
-          guard(() => ctx.budgets.runTool({ name: 'screenshot', mutates: false }, async () => {
-            const observation = await ctx.observe();
-            return observation.text;
-          })),
-      }),
-      tap: tool({
-        description: 'Tap an element by label',
-        inputSchema: z.object({ label: z.string() }),
-        execute: ({ label }) =>
-          guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, () => device.tap(label))),
+  agents: {
+    default: createToolLoopExecutor({
+      name: 'device-agent',
+      system: 'You control a device. Address elements by their visible label.',
+      buildPrompt: (ctx) => ctx.step.instruction,
+      tools: (ctx, { guard }) => ({
+        screenshot: tool({
+          description: 'Look at the device screen',
+          inputSchema: z.object({}),
+          execute: () =>
+            guard(() => ctx.budgets.runTool({ name: 'screenshot', mutates: false }, async () => {
+              const observation = await ctx.observe();
+              return observation.text;
+            })),
+        }),
+        tap: tool({
+          description: 'Tap an element by label',
+          inputSchema: z.object({ label: z.string() }),
+          execute: ({ label }) =>
+            guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, () => device.tap(label))),
+        }),
       }),
     }),
-  }),
+  },
 } satisfies E2EConfig;
 ```
 
@@ -217,7 +241,7 @@ short and interruptible.
 
 ## Replace the executor
 
-`agent` accepts anything implementing `StepExecutor`: no AI SDK, no model,
+An agent is anything implementing `StepExecutor`: no AI SDK, no model,
 any decision process you like.
 
 ```ts
@@ -234,7 +258,7 @@ const scripted: StepExecutor = {
   },
 };
 
-export default { agent: scripted } satisfies E2EConfig;
+export default { agents: { default: scripted } } satisfies E2EConfig;
 ```
 
 The context tells the executor where it is: `ctx.step.index` in the attempt's

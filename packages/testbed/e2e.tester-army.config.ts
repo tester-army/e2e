@@ -27,15 +27,17 @@ export default {
   ],
   timeout: 600_000,
   actionTimeout: 90_000,
-  agent: {
-    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
-    maxSteps: 40,
-    maxModelCalls: 40,
-    context: [
-      'You are touring the production tester.army marketing site READ-ONLY.',
-      'Never sign up, never submit any form, never type into inputs, and never',
-      'follow links that leave tester.army (partner logos, social links).',
-      'Navigate with the header menus and in-page links only.',
-    ].join('\n'),
+  agents: {
+    default: {
+      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      maxSteps: 40,
+      maxModelCalls: 40,
+      context: [
+        'You are touring the production tester.army marketing site READ-ONLY.',
+        'Never sign up, never submit any form, never type into inputs, and never',
+        'follow links that leave tester.army (partner logos, social links).',
+        'Navigate with the header menus and in-page links only.',
+      ].join('\n'),
+    },
   },
 } satisfies E2EConfig;

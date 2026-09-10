@@ -23,7 +23,7 @@ describe('reported model usage', () => {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
         targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
           name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }),
-        }) }], agent: { model }, cache: 'off',
+        }) }], agents: { default: { model } }, cache: 'off',
       } });
       expect(outcome.status).toBe('passed');
       assertValidReport(outcome.report);
@@ -49,7 +49,7 @@ describe('reported model usage', () => {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
         targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
           name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }),
-        }) }], agent: { model }, cache: 'off',
+        }) }], agents: { default: { model } }, cache: 'off',
       } });
       expect(outcome.status).toBe('passed');
       assertValidReport(outcome.report);

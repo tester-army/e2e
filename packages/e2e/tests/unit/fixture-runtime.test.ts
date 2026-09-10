@@ -171,7 +171,7 @@ describe('project tool dispatch', () => {
         return 'done';
       } }, { mutates: true }),
     } });
-    const { fixtures, steps } = runtime(empty(), { agent: { executor, model } });
+    const { fixtures, steps } = runtime(empty(), { agents: { default: { executor, model } } });
     await expect(fixtures.agent.act('perform one mutation', { maxSteps: 1 })).rejects.toMatchObject({ code: 'STEP_BUDGET_EXHAUSTED' });
     expect(started).toBe(1);
     expect(steps.all()[0]?.metrics?.actionSteps).toBe(1);
@@ -184,7 +184,7 @@ describe('project tool dispatch', () => {
       observe: async () => ({ nodes: [{ ref: { id: 'button', revision: '' }, role: 'button' }] }),
       perform: async () => { order.push('tap'); },
     });
-    const { fixtures, steps } = runtime(engine, { agent: { executor: { name: 'test', async runStep(context) {
+    const { fixtures, steps } = runtime(engine, { agents: { default: { executor: { name: 'test', async runStep(context) {
       await context.observe();
       const tool = context.budgets.runTool({ name: 'mutation', mutates: true }, async () => {
         order.push('start');
@@ -196,7 +196,7 @@ describe('project tool dispatch', () => {
       await expect(tool).rejects.toThrow('failed mutation');
       await tap;
       return { status: 'passed', summary: 'checked' };
-    } } } });
+    } } } } });
     await fixtures.agent.act('sequence');
     expect(order).toEqual(['start', 'end', 'tap']);
     expect(steps.all()[0]?.metrics?.actionSteps).toBe(2);
@@ -220,7 +220,7 @@ describe('project tool dispatch', () => {
         return observation.pixelsWithheld;
       } }, { mutates: false }),
     } });
-    await runtime(engine, { agent: { executor, model } }).fixtures.agent.act('inspect');
+    await runtime(engine, { agents: { default: { executor, model } } }).fixtures.agent.act('inspect');
     expect(path).toBe('/settings/general');
     expect(urlReads).toBe(0);
   });

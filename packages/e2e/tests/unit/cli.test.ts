@@ -76,6 +76,16 @@ describe('e2e run argument parsing', () => {
     expect(lastRunOptions().files).toEqual(['tests/a.e2e.ts', 'tests/b.e2e.ts']);
   });
 
+  it('passes --agent through as the agent of the run', async () => {
+    await invoke('run', '--agent', 'ux');
+    expect(lastRunOptions().agent).toBe('ux');
+  });
+
+  it('leaves the agent to the config without --agent', async () => {
+    await invoke('run');
+    expect(lastRunOptions().agent).toBeUndefined();
+  });
+
   it('splits comma-separated targets and trims whitespace', async () => {
     await invoke('run', '--target', 'chromium, firefox , ,webkit');
     expect(lastRunOptions().targetIds).toEqual(['chromium', 'firefox', 'webkit']);
@@ -374,6 +384,7 @@ describe('e2e --version and --help', () => {
       '--tag-mode',
       '--pass-with-no-tests',
       '--headed',
+      '--agent',
       '--workers',
       '--retries',
       '--no-cache',

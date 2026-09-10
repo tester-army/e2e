@@ -165,6 +165,7 @@ platform, skipped, or is a setup test.
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it |
+| `--agent <name>` | string | `default` | Runs the suite with another configured agent (`agents.<name>` in the config). An unknown name is `INVALID_CONFIG` before any process starts, naming the configured agents. |
 | `--retries <n>` | integer 0-10 | resolved config value | Replaces `config.retries`; out of range is `INVALID_CONFIG` |
 | `--workers <n>` | integer 1-1024 | resolved config value | Replaces `config.workers`; `--workers 0` is `INVALID_CONFIG` |
 | `--reporter <ids>` | comma-separated list | resolved config value | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. [Reporter objects](/reference/reporters) in the config keep running. |
@@ -408,7 +409,7 @@ failure carries its `cause` chain (`fetch failed: connect ECONNREFUSED
 `APP_UNREACHABLE` with the URL and the three ways to fix it, not an opaque
 engine failure. A model credential the gateway rejects is reported with the
 variable the runner read it from (`E2E_MODEL_API_KEY`, `AI_GATEWAY_API_KEY`,
-or the one `agent.model.apiKeyEnv` names), and color codes in provider
+or the one the agent's `model.apiKeyEnv` names), and color codes in provider
 messages are stripped before they reach the terminal or the report.
 
 <CardGroup cols={2}>

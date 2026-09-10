@@ -115,7 +115,7 @@ describe('agent.act with a hand-rolled step executor', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: scriptedExecutor(),
+          agents: { default: scriptedExecutor() },
         },
       },
     );
@@ -193,7 +193,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/blocked.e2e.ts': BLOCKED_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'executor reports a blocked step');
@@ -234,7 +234,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/budget.e2e.ts': BUDGET_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'executor overruns the action budget');
@@ -252,7 +252,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/hang.e2e.ts': HANG_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'executor hangs past the step timeout');
@@ -277,7 +277,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/overspend.e2e.ts': OVERSPEND_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'executor overspends the model-call budget');
@@ -305,7 +305,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/inherit.e2e.ts': INHERIT_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'failed verdict inherits the runtime code');
@@ -335,7 +335,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/assert.e2e.ts': ASSERT_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'custom executor judges assertions');
@@ -381,7 +381,7 @@ describe('agent.act verdict mapping', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: executor,
+          agents: { default: executor },
           credentials: { admin: { username: 'admin', password: 'admin-pass' } },
         },
       },
@@ -420,7 +420,7 @@ describe('agent.act verdict mapping', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: executor,
+          agents: { default: executor },
           credentials: {
             admin: {
               username: 'admin',
@@ -452,7 +452,7 @@ describe('agent.act verdict mapping', () => {
     };
     const { outcome, project } = await runProject(
       { 'tests/blocked.e2e.ts': BLOCKED_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: executor } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: executor } } },
     );
     try {
       const result = resultByTitle(outcome, 'executor reports a blocked step');
@@ -488,7 +488,7 @@ describe('agent.act engine operations are bounded by actionTimeout', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: executor,
+          agents: { default: executor },
           actionTimeout: 1_000,
         },
       },
@@ -572,7 +572,7 @@ describe('loop guards and transcripts', () => {
       { 'tests/loop-guard.e2e.ts': LOOP_GUARD_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agent: { model } },
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } },
         runOptions: { debug: true },
       },
     );
@@ -635,7 +635,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agent: { model, context: 'This is the e2e fixture application.' },
+          agents: { default: { model, context: 'This is the e2e fixture application.' } },
         },
       },
     );
@@ -744,7 +744,7 @@ describe('the default agent reads action results after their effect', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/delayed.e2e.ts': DELAYED_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     try {
       expect(resultByTitle(outcome, 'default agent reads the second view').status).toBe('passed');
@@ -775,7 +775,7 @@ describe('the default agent reads action results after their effect', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/dead-end.e2e.ts': DEAD_END_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     try {
       expect(resultByTitle(outcome, 'default agent taps a control with no effect').status).toBe('passed');
@@ -805,7 +805,7 @@ describe('the default agent reads action results after their effect', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/batch.e2e.ts': BATCH_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     try {
       const result = resultByTitle(outcome, 'default agent fills two fields in one turn');
@@ -854,7 +854,7 @@ describe('a targeted action re-finds a node that went stale', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/churn.e2e.ts': CHURN_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     try {
       const result = resultByTitle(outcome, 'default agent taps a control that remounts under it');
@@ -891,7 +891,7 @@ describe('a targeted action re-finds a node that went stale', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/churn.e2e.ts': CHURN_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agent: { model } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     try {
       const result = resultByTitle(outcome, 'default agent taps a control that remounts under it');

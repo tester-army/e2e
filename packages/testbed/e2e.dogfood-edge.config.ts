@@ -24,7 +24,9 @@ export default {
   ],
   timeout: 300_000,
   actionTimeout: 90_000,
-  agent: {
-    model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+  agents: {
+    default: {
+      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+    },
   },
 } satisfies E2EConfig;

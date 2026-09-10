@@ -105,7 +105,7 @@ prior steps, and your `agent.context`. Never raw HTML, cookies, headers, or
 environment values; password fields arrive masked. Add `vision: true` to a
 judgment when the answer lives in pixels a snapshot cannot describe, like a
 canvas chart or a layout, or `vision: 'only'` to judge the screenshot alone. Pin a
-separate `agent.visionModel` when your text model reads pixels poorly.
+separate `visionModel` on the agent when your text model reads pixels poorly.
 
 ```ts
 await agent.assert('the chart trends upward', { vision: true });

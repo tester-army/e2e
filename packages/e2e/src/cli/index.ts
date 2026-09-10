@@ -213,6 +213,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
     .optionsGroup('Execution:')
     .option('--headed', 'show the UI while tests run, when the engine supports it')
+    .option('--agent <name>', 'the configured agent to run with (default: agents.default)')
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
     .option('--no-cache', 'run with the trace cache off, whatever the config says')
@@ -231,6 +232,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run tests/signup.e2e.ts --headed',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --reporter list,junit --workers 4 --retries 2',
+          'e2e run --agent ux tests/onboarding.e2e.ts',
           'E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... e2e run --no-cache',
         ]),
         '',
@@ -252,6 +254,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           tag?: string[];
           tagMode: TagMode;
           headed?: boolean;
+          agent?: string;
           retries?: number;
           workers?: number;
           reporter?: Reporter[];
@@ -275,6 +278,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             tags: options.tag,
             tagMode: options.tagMode,
             headed: options.headed,
+            agent: options.agent,
             retries: options.retries,
             workers: options.workers,
             reporters: options.reporter,

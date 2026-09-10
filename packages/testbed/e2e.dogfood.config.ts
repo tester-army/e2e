@@ -56,11 +56,13 @@ export default {
   ],
   timeout: 300_000,
   actionTimeout: 90_000,
-  agent: createAgent({
-    model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
-    tools: { seed_expenses: seedExpenses, reset_expenses: resetExpenses },
-    system:
-      'The app under test is a small expense-claims tool. Saves are asynchronous: ' +
-      'after submitting, a "Saving…" indicator shows until the save lands.',
-  }),
+  agents: {
+    default: createAgent({
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
+      tools: { seed_expenses: seedExpenses, reset_expenses: resetExpenses },
+      system:
+        'The app under test is a small expense-claims tool. Saves are asynchronous: ' +
+        'after submitting, a "Saving…" indicator shows until the save lands.',
+    }),
+  },
 } satisfies E2EConfig;

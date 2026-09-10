@@ -23,7 +23,7 @@ export default {
 ```
 
 Unknown keys are rejected with `INVALID_CONFIG` at every level: top level,
-`agent`, `agent.model`, and `limits`. There is no top-level `app` key: the
+`agents`, `agents.<name>.model`, and `limits`. There is no top-level `app` key: the
 engine declares the app it drives (see [the app under test](#the-app-under-test)).
 
 ## Loading
@@ -66,7 +66,7 @@ the module type of `.ts` test files or helpers.
 | `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | `screenshot`, `trace`, and the opt-in `video`; `store` is an [`ArtifactStore`](#artifacts); `video` holds the [recording options](#video) |
 | `reporters` | `readonly ('list' \| 'json' \| 'junit' \| Reporter)[]` | `['list']` | the three IDs and [reporter objects](/reference/reporters); `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml`; `--reporter` replaces the IDs and keeps the objects |
 | `screen` | object | see [screen](#screen) | - |
-| `agent` | object or `StepExecutor` | see [agent](#agent) | - |
+| `agents` | object of agents by name | see [agents](#agents) | `default` is the agent tests run with; `e2e run --agent <name>` runs them with another |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | - |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
@@ -387,10 +387,10 @@ screen?: {
 | --- | --- | --- | --- |
 | `testIdAttribute` | `string` | `'data-testid'` | Attribute read by `screen.getByTestId` |
 
-## agent
+## agents
 
 ```ts
-agent?: StepExecutor | {
+agents?: Record<string, StepExecutor | {
   executor?: StepExecutor;
   model?: string | ModelConfig | ModelInstance;
   visionModel?: string | ModelConfig | ModelInstance;
@@ -400,19 +400,38 @@ agent?: StepExecutor | {
   context?: string;
   vision?: boolean | 'fallback' | 'only';
   providerOptions?: Record<string, Record<string, unknown>>;
-};
+}>;
 ```
 
-The block takes three shapes: an options object, an options object with an
-`executor`, or the executor itself (`agent: createAgent({ model })`). The bare
-form is shorthand for `{ executor }`; every other key then takes its default.
-An unknown key is `INVALID_CONFIG` with the nearest valid name.
+Agents by name. `default` is the one tests run with, and it exists even when
+the config names none: the built-in agent with the model from `E2E_MODEL`.
+Other names are other brains for the same suite, picked per run with
+`e2e run --agent <name>`; an unknown name is `INVALID_CONFIG` before anything
+starts, naming the configured ones. Names are ASCII letters, numbers, `_`,
+`-`, or `.`.
+
+```ts title="e2e.config.ts"
+export default {
+  agents: {
+    default: { model: 'openai/gpt-5.6-luna-fast' },
+    ux: createAgent({ system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
+    thorough: { model: 'anthropic/claude-opus-5', context: 'Verify every claim on screen.' },
+  },
+} satisfies E2EConfig;
+```
+
+Each agent takes three shapes: an options object, an options object with an
+`executor`, or the executor itself (`default: createAgent({ model })`). The
+bare form is shorthand for `{ executor }`; every other key then takes its
+default. An unknown key is `INVALID_CONFIG` with the nearest valid name, and
+every diagnostic names the agent: `agents.ux.model`. The `agent` key of
+earlier releases is rejected with the replacement, `agents: { default: ... }`.
 
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
 | `executor` | `StepExecutor` | the built-in AI SDK executor | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Anything else is `INVALID_CONFIG`. Like a model instance it never crosses a process boundary; workers rebuild it from the config module. See [Your own agent](/agents). |
 | `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
-| `visionModel` | `string \| ModelConfig \| ModelInstance` | `agent.model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
+| `visionModel` | `string \| ModelConfig \| ModelInstance` | the agent's `model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
 | `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike; the per-call token limit clamps it lower on a dense screen. Not a `limits` key. |
@@ -424,7 +443,7 @@ Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
 and set no temperature, so a reasoning model keeps its default sampling and
 has room to think before the answer.
 
-### agent.model
+### model
 
 ```ts
 export interface ModelConfig {
@@ -621,11 +640,11 @@ resolves to:
 
 | Variable | Effect |
 | --- | --- |
-| `E2E_MODEL` | `provider/model-id` fallback when `agent.model` is unset |
-| `E2E_VISION_MODEL` | `provider/model-id` fallback when `agent.visionModel` is unset |
+| `E2E_MODEL` | `provider/model-id` fallback when the agent's `model` is unset |
+| `E2E_VISION_MODEL` | `provider/model-id` fallback when the agent's `visionModel` is unset |
 | `E2E_MODEL_API_KEY` | Default provider credential |
 | `AI_GATEWAY_API_KEY` | Gateway credential, used when the named key variable holds no value |
-| `E2E_MODEL_ENDPOINT` | Gateway endpoint when `agent.model.endpoint` is unset |
+| `E2E_MODEL_ENDPOINT` | Gateway endpoint when the agent's `model.endpoint` is unset |
 | `E2E_USER_<NAME>_USERNAME` | Overrides `credentials.<name>.username` |
 | `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
 | `CI` | Switches CI defaults and rejects focused tests |
@@ -636,9 +655,9 @@ resolves to:
 | --- | --- |
 | Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself (`url: process.env.APP_URL ?? ...`) |
 | Model | the model passed to `createAgent({ model })`, then `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls |
-| Vision model | `agent.visionModel`, then `E2E_VISION_MODEL`, then `agent.model` |
-| Model credential | the variable named by `agent.model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
-| Model endpoint | `agent.model.endpoint`, then `E2E_MODEL_ENDPOINT`, then the gateway default |
+| Vision model | the agent's `visionModel`, then `E2E_VISION_MODEL`, then its `model` |
+| Model credential | the variable named by the agent's `model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
+| Model endpoint | the agent's `model.endpoint`, then `E2E_MODEL_ENDPOINT`, then the gateway default |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
 "First non-empty" ignores values that are undefined or whitespace only. Naming

@@ -8,9 +8,11 @@ export default {
   // To call a provider directly, pass an AI SDK model: createAgent({ model: openai('gpt-5.4-mini') }).
   // That model is the one model for every agent.* call, checked once when the
   // first test acquires the agent fixture.
-  agent: createAgent({
-    system: 'You are a thorough QA agent. Verify every outcome.',
-  }),
+  agents: {
+    default: createAgent({
+      system: 'You are a thorough QA agent. Verify every outcome.',
+    }),
+  },
   // The engine declares the app it drives; APP_URL overrides the default at run time.
   targets: [{
     name: 'web',

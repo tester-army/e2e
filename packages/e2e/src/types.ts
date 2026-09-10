@@ -848,14 +848,15 @@ export interface E2EConfig {
     testIdAttribute?: string;
   };
   /**
-   * Either the agent options block, or the agent itself: `createAgent(...)`
-   * from `@e2edev/e2e/agent`, or any hand-rolled `StepExecutor`.
-   * With an agent value, the model falls back to `E2E_MODEL` and every other
-   * option keeps its default. Agents never cross a process boundary: workers
-   * re-resolve the config module and construct their own, exactly like model
-   * instances.
+   * The agents by name. Each is either an options block or the agent itself:
+   * `createAgent(...)` from `@e2edev/e2e/agent`, or any hand-rolled
+   * `StepExecutor`. `default` is the one tests run with; `e2e run --agent
+   * <name>` runs them with another. With an agent value, the model falls back
+   * to `E2E_MODEL` and every other option keeps its default. Agents never
+   * cross a process boundary: workers re-resolve the config module and
+   * construct their own, exactly like model instances.
    */
-  agent?: AgentConfig | StepExecutor;
+  agents?: Readonly<Record<string, AgentConfig | StepExecutor>>;
   /**
    * The adaptive trace cache. Opt-out: unset means
    * `read-write`, and `'off'` — or the `--no-cache` flag, which wins over the
