@@ -75,6 +75,22 @@ const CLOSED_SHADOW = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * A form that generates no box of its own, the way Shopify's one-page checkout
+ * form is styled: `getClientRects()` is empty for it while every field paints.
+ */
+const CONTENTS = `<!doctype html>
+<html>
+<head><title>Fixture Contents</title></head>
+<body>
+<h1>Checkout</h1>
+<form id="checkout" style="display:contents">
+  <label>Email <input name="email"></label>
+  <label>First name <input name="first"></label>
+</form>
+</body>
+</html>`;
+
 /** Shows the stored token; `?set=<value>` stores one first. */
 const STATE = `<!doctype html>
 <html>
@@ -171,6 +187,7 @@ const PROTECTED_AUTHORIZATION = `Basic ${Buffer.from(
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/closed-shadow': CLOSED_SHADOW,
+  '/contents': CONTENTS,
   '/form': FORM,
   '/values': VALUES,
   '/login': LOGIN,

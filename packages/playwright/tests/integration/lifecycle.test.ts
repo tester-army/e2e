@@ -695,6 +695,16 @@ describe('playwright engine lifecycle', () => {
     });
   });
 
+  it('walks through a display:contents element to the fields it lays out', async () => {
+    const engine = playwright();
+    await withAttempt(engine, app, artifactsDir, 'dc1', async () => {
+      await engine.app!.navigate!(`${app.url}/contents`, operation('dc1'));
+      const snapshot = await engine.observe!(operation('dc1'));
+      const fields = [...walk(snapshot.nodes[0]!)].filter((node) => node.role === 'textbox').map((node) => node.name);
+      expect(fields).toEqual(['Email', 'First name']);
+    });
+  });
+
   it('keeps tracing across clearState: the earlier segment is kept and the trace still stops', async () => {
     const engine = playwright();
     const traceDir = mkdtempSync(path.join(tmpdir(), 'e2e-trace-'));

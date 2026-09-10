@@ -430,6 +430,10 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     if (style !== undefined && (style.visibility === 'hidden' || style.display === 'none')) {
       return true;
     }
+    // `display: contents` generates no box of its own while every child still
+    // paints (Shopify's one-page checkout form is one), so an empty rect list
+    // says nothing about what a person sees; the children decide for themselves.
+    if (style !== undefined && style.display === 'contents') return false;
     return el.getClientRects().length === 0;
   };
 
