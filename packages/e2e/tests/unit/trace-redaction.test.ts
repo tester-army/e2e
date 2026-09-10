@@ -113,6 +113,27 @@ describe('redactTraceArchives', () => {
     ]);
   });
 
+  it('re-serializes a changed record without touching its numbers or its line ending', async () => {
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    const lines = [
+      `{"type":"before","params":{"value":${JSON.stringify(SECRET)}},"wallTime":1789029024778.5,"big":12345678901234567890,"zero":-0}\r`,
+      '{"type":"after","big":98765432109876543210}\r',
+      '',
+    ];
+    writeFileSync(file, writeZip([zipEntry('trace.trace', Buffer.from(lines.join('\n')))]));
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', SECRET]]));
+
+    expect(entriesOf(file).get('trace.trace')!.toString()).toBe(
+      [
+        '{"type":"before","params":{"value":"<secret:member>"},"wallTime":1789029024778.5,"big":12345678901234567890,"zero":-0}\r',
+        '{"type":"after","big":98765432109876543210}\r',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('drops a binary entry that holds a secret and keeps one that does not', async () => {
     const dir = attemptDir();
     const file = path.join(dir, 'trace', 'trace.zip');

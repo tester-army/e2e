@@ -97,17 +97,35 @@ function redactText(text: string, redact: (text: string) => string): string {
     .join('\n');
 }
 
+/**
+ * Numbers are carried as their source text (`JSON.rawJSON`), so an integer
+ * past 2^53 or a negative zero survives the round trip untouched, and the
+ * line's trailing whitespace (a CR before the LF) is kept as it was.
+ */
 function redactLine(line: string, redact: (text: string) => string): string {
   if (!line.startsWith('{') && !line.startsWith('[')) return redact(line);
+  const body = line.trimEnd();
   let parsed: unknown;
   try {
-    parsed = JSON.parse(line);
+    parsed = PARSE_WITH_SOURCE(body, (_key, value, context) =>
+      typeof value === 'number' && context.source !== undefined ? RAW_JSON(context.source) : value,
+    );
   } catch {
     return redact(line);
   }
   const { value, changed } = redactValues(parsed, redact);
-  return changed ? JSON.stringify(value) : line;
+  return changed ? JSON.stringify(value) + line.slice(body.length) : line;
 }
+
+/**
+ * `JSON.rawJSON` and the reviver's source-text argument (ES2025, Node 21+),
+ * which the ES2023 lib does not type.
+ */
+const RAW_JSON = (JSON as unknown as { rawJSON(text: string): object }).rawJSON.bind(JSON);
+const PARSE_WITH_SOURCE = JSON.parse as unknown as (
+  text: string,
+  reviver: (key: string, value: unknown, context: { source?: string }) => unknown,
+) => unknown;
 
 /** Redacts every string in a parsed JSON value, keys included; reports whether any changed. */
 function redactValues(value: unknown, redact: (text: string) => string): { value: unknown; changed: boolean } {

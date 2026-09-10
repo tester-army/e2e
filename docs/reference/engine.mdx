@@ -342,10 +342,13 @@ recording is bound to a page returns one segment per page the attempt showed
 (a restart or a state reset opens a new one), and an attempt that never showed
 anything returns none. `stopTrace` returns the trace's path, or every archive
 written in order when the trace had to be cut: a browser trace is bound to one
-context, so a restart or a state reset closes the running trace as a segment
-and a new one records on from there. The harness registers each returned
-archive, and when a secret was filled in the attempt it rewrites every text
-entry of each one through the secret redactor before registering it (see
+context, so replacing the context closes the running trace as a segment and a
+new one records on from there (in the Playwright engine a state reset always
+replaces the context; a restart does so only while a recording is armed). The
+harness registers each returned archive once it is safe to keep: when a secret
+was filled in the attempt, every text entry of each archive is rewritten
+through the secret redactor first, and if that fails the archives are deleted
+and the attempt records `TRACE_WITHHELD` instead (see
 [authentication](/authentication)). Recordings are the one
 artifact the harness cannot vouch for: it records them with
 `redaction: 'incomplete'`, since a screencast masks nothing.

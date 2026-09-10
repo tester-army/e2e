@@ -835,15 +835,22 @@ export class PlaywrightSurface {
     });
   }
 
-  /** Every segment closed this attempt, in order, then the final archive; one path when the trace was never cut. */
+  /**
+   * Every segment closed this attempt, in order, then the final archive; one
+   * path when the trace was never cut. A context replacement that wrote its
+   * segment and then failed leaves segments but no running trace: what was
+   * written is still returned, so the harness redacts and registers it rather
+   * than leaving it on disk unaccounted for.
+   */
   stopTrace(operation: OperationContext): Promise<string | readonly string[]> {
     return this.guard(operation, 'trace', async () => {
+      const parts = this.traceParts;
+      this.traceParts = [];
+      if (parts.length > 0 && (this.context === null || !this.tracing)) return parts;
       const context = this.requireContext();
       const { relative, absolute } = this.tracePath('trace');
       await context.tracing.stop({ path: absolute });
       this.tracing = false;
-      const parts = this.traceParts;
-      this.traceParts = [];
       return parts.length === 0 ? relative : [...parts, relative];
     });
   }
