@@ -129,7 +129,7 @@ export async function tapVisual(host: VisionHost, description: string): Promise<
   }
   const point = imagePointToViewport({ x: located.x, y: located.y }, pixels, observation.viewport);
   const hit = hitTest(observation, point);
-  if (hit.control !== undefined) {
+  if (hit.control !== undefined && host.verbs.has('tap')) {
     const id = hit.control.ref.id;
     await host.tap(id);
     return {

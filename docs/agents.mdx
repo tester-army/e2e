@@ -150,7 +150,12 @@ export default {
 Now `agent.act('seed three items and check out')` can call your test API
 mid-flow. A tool that only makes sense on some targets declares them:
 `{ ..., platforms: ['ios', 'android'] }` keeps a swipe tool off a web target,
-and the model never sees a verb the surface cannot honor. `createAgent()` with no arguments is exactly what runs by default;
+and the model never sees a verb the surface cannot honor. Tool names are the
+model's vocabulary, and the agent's own names (`observe`, `tap`, `type`,
+`type_secret`, `press`, `select`, `scroll`, `navigate`, `tap_visual`, `look`,
+`complete_step`) are reserved: `createAgent` rejects a project tool that
+reuses one, since it would be shadowed on one engine and live on another.
+`createAgent()` with no arguments is exactly what runs by default;
 `system` appends guidance, `model` overrides the config-resolved one.
 
 The harness reserves a mutating tool's action slot before executing it and

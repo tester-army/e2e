@@ -166,6 +166,24 @@ export interface GrammarToolOptions {
  * that batches several actions gets one coherent result per action rather
  * than every result describing the state after the last one.
  */
+/**
+ * Every name `createGrammarTools` may hand out. The grammar owns these in the
+ * model's vocabulary whatever the engine declares, so a project tool cannot
+ * take one: it would be silently shadowed on one engine and live on another.
+ */
+export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'observe',
+  'tap',
+  'type',
+  'type_secret',
+  'press',
+  'select',
+  'scroll',
+  'navigate',
+  'tap_visual',
+  'look',
+]);
+
 export function createGrammarTools(
   context: StepExecutorContext,
   options: GrammarToolOptions = {},
@@ -302,11 +320,13 @@ export function createGrammarTools(
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
     });
   }
-  // The pixel verbs ride `tap` (a located point on a listed control is an
-  // ordinary tap) and are offered while pixels can still leave the runner.
-  // Once a secret was filled in the attempt they could only decline, and a
-  // verb that is absent costs the model nothing where one that declines costs a turn.
-  if (verbs.has('tap') && !context.vision.tainted) {
+  // The pixel verbs are offered while pixels can still leave the runner. Once
+  // a secret was filled in the attempt they could only decline, and a verb
+  // that is absent costs the model nothing where one that declines costs a
+  // turn. tap_visual lands either as a tap by id or as a bare point, so it
+  // needs one of the two; look needs only the observation every step has.
+  const pixelVerbs = !context.vision.tainted;
+  if (pixelVerbs && (verbs.has('tap') || verbs.has('tapAt'))) {
     const bare = verbs.has('tapAt');
     tools['tap_visual'] = schemaTool({
       description:
@@ -329,6 +349,8 @@ export function createGrammarTools(
           }),
         ),
     });
+  }
+  if (pixelVerbs) {
     tools['look'] = schemaTool({
       description:
         'Describe the screen from its pixels through a vision model: the top layer (a sheet, dialog, or keyboard), the main content, the visible controls by their exact text and position, form fields, errors, and an answer to your question when you ask one. Use it when the screen lists too little (a canvas, an image, a system sheet) or contradicts what you expect. It names no node ids and costs a model call.',

@@ -47,7 +47,7 @@ const REJECTION = Object.assign(new Error('tool_choice: type "tool" and "any" ar
 });
 
 /** A read-only project tool, so a turn can do something other than conclude. */
-const look = defineTool({ inputSchema: z.object({}), execute: async () => 'looked' }, { mutates: false });
+const peek = defineTool({ inputSchema: z.object({}), execute: async () => 'looked' }, { mutates: false });
 
 const conclude = { toolName: 'complete_step', input: { status: 'passed', summary: 'done' } };
 
@@ -62,9 +62,9 @@ function refusingForcedChoice(respond: LoopResponder): LoopResponder {
 describe('tool loop forced tool choice', () => {
   it('retries with auto and a tool-calls-only rule when the model rejects a forced choice', async () => {
     const model = installFakeLoopModel(
-      refusingForcedChoice(({ turn }) => (turn === 2 ? [{ toolName: 'look', input: {} }] : [conclude])),
+      refusingForcedChoice(({ turn }) => (turn === 2 ? [{ toolName: 'peek', input: {} }] : [conclude])),
     );
-    const { fixtures, steps } = runtime({ agents: { default: { executor: createAgent({ tools: { look } }), model } } });
+    const { fixtures, steps } = runtime({ agents: { default: { executor: createAgent({ tools: { peek } }), model } } });
 
     await fixtures.agent.act('look around');
 
@@ -92,11 +92,11 @@ describe('tool loop forced tool choice', () => {
   it('offers only complete_step under auto on the forced-conclusion turns', async () => {
     const model = installFakeLoopModel(
       refusingForcedChoice(({ toolNames }) =>
-        toolNames.length === 1 && toolNames[0] === 'complete_step' ? [conclude] : [{ toolName: 'look', input: {} }],
+        toolNames.length === 1 && toolNames[0] === 'complete_step' ? [conclude] : [{ toolName: 'peek', input: {} }],
       ),
     );
     const { fixtures, steps } = runtime({
-      agents: { default: { executor: createAgent({ tools: { look } }), model, maxModelCalls: 4 } },
+      agents: { default: { executor: createAgent({ tools: { peek } }), model, maxModelCalls: 4 } },
     });
 
     await fixtures.agent.act('look until told to stop');

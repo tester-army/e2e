@@ -273,10 +273,10 @@ describe('project tool dispatch', () => {
       url: async () => { urlReads += 1; return 'app://device/wrong'; },
     });
     const model = installFakeLoopModel(({ turn }) => turn === 1
-      ? [{ toolName: 'look', input: {} }]
+      ? [{ toolName: 'inspect', input: {} }]
       : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'looked' } }]);
     const executor = createAgent({ tools: {
-      look: defineTool({ inputSchema: z.object({}), execute: async (_input, options) => {
+      inspect: defineTool({ inputSchema: z.object({}), execute: async (_input, options) => {
         const observation = await getToolContext(options).observe({ pixels: true });
         path = observation.path;
         return observation.pixelsWithheld;
@@ -285,5 +285,12 @@ describe('project tool dispatch', () => {
     await runtime(engine, { agents: { default: { executor, model } } }).fixtures.agent.act('inspect');
     expect(path).toBe('/settings/general');
     expect(urlReads).toBe(0);
+  });
+
+  it("rejects a project tool that takes one of the agent's own tool names", () => {
+    const tool = defineTool({ inputSchema: z.object({}), execute: async () => 'shadowed' }, { mutates: false });
+    for (const name of ['look', 'tap', 'observe', 'complete_step']) {
+      expect(() => createAgent({ tools: { [name]: tool } })).toThrow(`the ${name} tool name is reserved`);
+    }
   });
 });

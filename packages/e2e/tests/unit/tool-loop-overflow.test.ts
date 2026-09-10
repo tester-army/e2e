@@ -55,16 +55,16 @@ const bigScreen = () =>
 const OVERFLOW = 'prompt is too long: 300000 tokens > 200000 maximum';
 
 /** A read-only project tool, so the loop has a first turn to spend before the refusal. */
-const look = defineTool({ inputSchema: z.object({}), execute: async () => 'looked' }, { mutates: false });
+const peek = defineTool({ inputSchema: z.object({}), execute: async () => 'looked' }, { mutates: false });
 
 describe('tool loop context overflow', () => {
   it('shrinks the history and retries once when the provider refuses the request as too large', async () => {
     const model = installFakeLoopModel(({ turn }) => {
-      if (turn === 1) return [{ toolName: 'look', input: {} }];
+      if (turn === 1) return [{ toolName: 'peek', input: {} }];
       if (turn === 2) throw new Error(OVERFLOW);
       return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'read the rows' } }];
     });
-    const executor = createAgent({ tools: { look } });
+    const executor = createAgent({ tools: { peek } });
     const { fixtures, steps } = runtime(bigScreen(), { agents: { default: { executor, model } } });
 
     await fixtures.agent.act('read the big output');
@@ -84,10 +84,10 @@ describe('tool loop context overflow', () => {
 
   it('reports CONTEXT_OVERFLOW when the shrunk request is refused again', async () => {
     const model = installFakeLoopModel(({ turn }) => {
-      if (turn === 1) return [{ toolName: 'look', input: {} }];
+      if (turn === 1) return [{ toolName: 'peek', input: {} }];
       throw new Error(OVERFLOW);
     });
-    const executor = createAgent({ tools: { look } });
+    const executor = createAgent({ tools: { peek } });
     const { fixtures } = runtime(bigScreen(), { agents: { default: { executor, model } } });
 
     await expect(fixtures.agent.act('read the big output')).rejects.toMatchObject({
@@ -114,10 +114,10 @@ describe('tool loop context overflow', () => {
 
   it('leaves other provider failures to the ordinary error translation', async () => {
     const model = installFakeLoopModel(({ turn }) => {
-      if (turn === 1) return [{ toolName: 'look', input: {} }];
+      if (turn === 1) return [{ toolName: 'peek', input: {} }];
       throw new Error('Rate limit reached for requests');
     });
-    const executor = createAgent({ tools: { look } });
+    const executor = createAgent({ tools: { peek } });
     const { fixtures } = runtime(engine(), { agents: { default: { executor, model } } });
 
     await expect(fixtures.agent.act('read the big output')).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED' });

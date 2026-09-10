@@ -12,7 +12,7 @@ import type { ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import { AgentError } from './error.ts';
 import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
-import { createGrammarTools } from './primitives.ts';
+import { createGrammarTools, GRAMMAR_TOOL_NAMES } from './primitives.ts';
 import { compactScreenHistory, ScreenPresenter } from './screen-update.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
@@ -160,8 +160,8 @@ function validateUserTools(
         `tool "${name}" was not created with defineTool; undeclared semantics are not trusted`,
       );
     }
-    if (name === 'complete_step') {
-      throw new AgentError('POLICY_DENIED', 'the complete_step tool name is reserved');
+    if (name === 'complete_step' || GRAMMAR_TOOL_NAMES.has(name)) {
+      throw new AgentError('POLICY_DENIED', `the ${name} tool name is reserved for the agent's own tools`);
     }
     if (defined.tool.execute === undefined) {
       throw new AgentError('POLICY_DENIED', `tool "${name}" has no execute function`);
