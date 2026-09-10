@@ -4,5 +4,5 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "noEmit": true
   },
-  "include": ["e2e.config.ts", "e2e.agent.config.ts", "tests/**/*.ts", "tests-agent/**/*.ts"]
+  "include": ["e2e.config.ts", "e2e.*.config.ts", "tests/**/*.ts", "tests-agent/**/*.ts", "tests-judgment/**/*.ts"]
 }

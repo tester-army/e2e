@@ -1,0 +1,12 @@
+[
+  {
+    "pattern": "cart (navigation|link).*(item[- ]count|count|badge|indicator)",
+    "verdict": "false-positive",
+    "note": "The Cart link has no badge by design; a missing feature is not a defect. Reported by luna-fast on 2026-09-10 against the planted and the clean garden alike."
+  },
+  {
+    "pattern": "empty cart.*(punctuation|period|full stop)",
+    "verdict": "false-positive",
+    "note": "\"Your cart is empty. Browse the catalog.\" is punctuated correctly; the link sits before the final period."
+  }
+]

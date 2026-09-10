@@ -1,0 +1,20 @@
+{
+  "name": "@e2edev/bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "E2E Bench: runs the agentic suites across models and releases, scores the reports, and keeps the results",
+  "type": "module",
+  "scripts": {
+    "bench": "node src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@e2edev/e2e": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

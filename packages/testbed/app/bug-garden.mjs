@@ -3,7 +3,7 @@
  * `e2e explore` runs can be scored against known ground truth. No
  * dependencies; state lives in memory and resets when the process starts.
  *
- * Planted defects (`scripts/explore-bench.mjs` keys on these ids):
+ * Planted defects (`packages/bench/src/score-explore.ts` keys on these ids):
  *
  *   B1  navigation      the "Help" link in the header goes to /hlep, a 404
  *   B2  dead control    "Add to cart" on Dune does nothing
@@ -16,15 +16,21 @@
  *   B9  data            Neuromancer shows a negative stock count
  *   B10 inconsistency   the orders page says "2 orders" above a list of one
  *   W1  copy (minor)    "Recieve" is misspelled on the checkout form
+ *
+ * `BUG_GARDEN_CLEAN=1` starts the same shop with every defect fixed: the
+ * control for a benchmark's false-positive rate, since any finding against
+ * the clean garden is a finding about working software.
  */
 
 import { createServer } from 'node:http';
 
 const PORT = Number(process.env.PORT ?? 4275);
+/** Every defect below is written as `CLEAN ? correct : planted`. */
+const CLEAN = process.env.BUG_GARDEN_CLEAN === '1';
 
 const BOOKS = [
   { id: 'dune', title: 'Dune', author: 'Frank Herbert', price: 12.5, stock: 4 },
-  { id: 'neuromancer', title: 'Neuromancer', author: 'William Gibson', price: 9.99, stock: -3 },
+  { id: 'neuromancer', title: 'Neuromancer', author: 'William Gibson', price: 9.99, stock: CLEAN ? 3 : -3 },
   { id: 'hyperion', title: 'Hyperion', author: 'Dan Simmons', price: 14.0, stock: 7 },
   { id: 'solaris', title: 'Solaris', author: 'Stanisław Lem', price: 11.25, stock: 2 },
 ];
@@ -65,7 +71,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/account">Account</a>
     <a href="/orders">Orders</a>
     <a href="/login">${state.signedIn ? 'Sign out' : 'Sign in'}</a>
-    <a href="/hlep">Help</a>
+    <a href="${CLEAN ? '/help' : '/hlep'}">Help</a>
   </nav>
   <main>${body}</main>
 </body>
@@ -78,9 +84,16 @@ const pages = {
     layout(
       'Home',
       `<h1>Bookshelf</h1>
-       <p role="status" aria-label="Greeting">Welcome, {{userName}}! You have ${cartCount()} item(s) in your cart.</p>
+       <p role="status" aria-label="Greeting">Welcome, ${CLEAN ? escapeHtml(state.profile.name) : '{{userName}}'}! You have ${cartCount()} item(s) in your cart.</p>
        <p>Four science fiction classics, shipped anywhere.</p>
        <p><a href="/catalog">Browse the catalog</a></p>`,
+    ),
+
+  '/help': () =>
+    layout(
+      'Help',
+      `<h1>Help</h1>
+       <p>Orders ship within three days. Write to help@bookshelf.test with your order number for anything else.</p>`,
     ),
 
   '/catalog': () =>
@@ -94,7 +107,7 @@ const pages = {
                <h2>${book.title}</h2>
                <p class="muted">${book.author}</p>
                <p>Price: ${money(book.price)} · In stock: ${book.stock}</p>
-               <form method="post" action="/cart/add" ${book.id === 'dune' ? 'onsubmit="event.preventDefault()"' : ''}>
+               <form method="post" action="/cart/add" ${!CLEAN && book.id === 'dune' ? 'onsubmit="event.preventDefault()"' : ''}>
                  <input type="hidden" name="id" value="${book.id}" />
                  <button type="submit">Add to cart</button>
                </form>
@@ -107,7 +120,7 @@ const pages = {
   '/cart': (request) => {
     const rows = state.cart.map((row) => ({ ...row, book: BOOKS.find((book) => book.id === row.id) }));
     // B3: the total ignores quantities.
-    const total = rows.reduce((sum, row) => sum + row.book.price, 0);
+    const total = rows.reduce((sum, row) => sum + row.book.price * (CLEAN ? row.qty : 1), 0);
     return layout(
       'Cart',
       `<h1>Cart</h1>
@@ -160,7 +173,7 @@ const pages = {
        <form method="post" action="/checkout">
          <label for="address">Shipping address</label>
          <input id="address" name="address" autocomplete="street-address" required />
-         <label for="newsletter">Recieve the newsletter</label>
+         <label for="newsletter">${CLEAN ? 'Receive' : 'Recieve'} the newsletter</label>
          <input id="newsletter" name="newsletter" type="checkbox" />
          <button type="submit">Place order</button>
        </form>`,
@@ -170,7 +183,7 @@ const pages = {
     layout(
       'Orders',
       `<h1>Orders</h1>
-       <p role="status" aria-label="Order count">You have ${state.orders.length + 1} orders.</p>
+       <p role="status" aria-label="Order count">You have ${state.orders.length + (CLEAN ? 0 : 1)} order${state.orders.length + (CLEAN ? 0 : 1) === 1 ? '' : 's'}.</p>
        <ul>
          ${state.orders
            .map((order) => `<li>Order #${order.id} · ${money(order.total)} · placed ${order.placed}</li>`)
@@ -211,7 +224,7 @@ const pages = {
          <label for="login-email">Email</label>
          <input id="login-email" name="email" type="email" autocomplete="username" />
          <label for="password">Password</label>
-         <input id="password" name="password" type="text" autocomplete="current-password" />
+         <input id="password" name="password" type="${CLEAN ? 'password' : 'text'}" autocomplete="current-password" />
          <button type="submit">Sign in</button>
        </form>`,
     ),
@@ -256,7 +269,8 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === '/cart/remove') {
       // B4: the first row goes, whichever button was pressed.
-      state.cart.shift();
+      if (CLEAN) state.cart = state.cart.filter((row) => row.id !== form.get('id'));
+      else state.cart.shift();
       return redirect('/cart');
     }
     if (url.pathname === '/checkout') {
@@ -267,13 +281,19 @@ const server = createServer(async (request, response) => {
       state.orders.push(order);
       state.cart = [];
       // B6: the confirmation formats the epoch instead of the order date.
-      const shown = { ...order, placedShown: new Date(0).toISOString().slice(0, 10), delivery: new Date(-3 * 86_400_000).toISOString().slice(0, 10) };
+      const shown = CLEAN
+        ? { ...order, placedShown: order.placed, delivery: new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10) }
+        : { ...order, placedShown: new Date(0).toISOString().slice(0, 10), delivery: new Date(-3 * 86_400_000).toISOString().slice(0, 10) };
       return html(pages['/order-confirmation']({ order: shown }));
     }
     if (url.pathname === '/account') {
       // B5: the new name is stored as pending and shown only after the next save.
-      if (state.pendingName !== undefined) state.profile.name = state.pendingName;
-      state.pendingName = form.get('name') ?? state.profile.name;
+      if (CLEAN) {
+        state.profile.name = form.get('name') ?? state.profile.name;
+      } else {
+        if (state.pendingName !== undefined) state.profile.name = state.pendingName;
+        state.pendingName = form.get('name') ?? state.profile.name;
+      }
       state.profile.email = form.get('email') ?? state.profile.email;
       return redirect('/account?saved=1');
     }

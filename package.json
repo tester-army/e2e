@@ -23,14 +23,15 @@
     "canary": "node scripts/canary-changeset.ts && changeset version --snapshot canary && pnpm run build",
     "canary:publish": "changeset publish --tag canary --no-git-tag",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/github run test && pnpm --filter @e2edev/oauth run test",
+    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/github run test && pnpm --filter @e2edev/oauth run test && pnpm --filter @e2edev/bench run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:web-benchmark": "pnpm run build && pnpm --filter @e2edev/web-benchmark test",
     "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2edev/mobile-benchmark test",
-    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
+    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",
+    "bench": "pnpm --filter @e2edev/bench run bench"
   },
   "contributors": [
-    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Oskar Kwa\u015bniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "devDependencies": {

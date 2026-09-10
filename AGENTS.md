@@ -77,6 +77,11 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   Neither runs in CI: no simulator there. Scenario files are copies: keep
   diffs against the source minimal, and name no company a scenario was
   distilled from.
+- `packages/bench` (`@e2edev/bench`, private) — E2E Bench: runs the agentic
+  suites of the web benchmark and the testbed's bug garden across a catalog of
+  models and repeats, scores every report (pass rate, judgment confusion
+  matrix, explore recall, cost, speed), and commits compact summaries under
+  `results/`. Never gates a PR; `README.md` there has the commands.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
   `docs/style.css`; `docs/examples/` is typechecked and shown verbatim in the
@@ -98,6 +103,7 @@ pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors 
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios
+pnpm bench run --dry-run  # E2E Bench: print the matrix; without --dry-run it spends real model calls
 ```
 
 Focused work:

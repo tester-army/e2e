@@ -199,6 +199,22 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/bench:
+    dependencies:
+      '@e2edev/e2e':
+        specifier: workspace:*
+        version: link:../e2e
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
+
   packages/e2e:
     dependencies:
       '@clack/prompts':

@@ -1,0 +1,2 @@
+# Raw runs: reports, traces, artifacts, logs. Only results/ summaries are committed.
+.bench/

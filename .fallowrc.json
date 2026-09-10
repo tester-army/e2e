@@ -16,13 +16,16 @@
     "packages/mobile-benchmark/index.ts",
     "packages/e2e/tests/types/sdk-types.ts",
     "packages/playwright/tests/types/connection.ts",
-    "packages/oauth/tests/live/*.ts"
+    "packages/oauth/tests/live/*.ts",
+    "packages/bench/src/cli.ts",
+    "packages/bench/tests/**/*.ts"
   ],
   "ignorePatterns": [
     "docs/**",
     "**/next-env.d.ts",
     "**/.e2e/**",
-    "packages/e2e/tests/tmp-projects/**"
+    "packages/e2e/tests/tmp-projects/**",
+    "packages/bench/.bench/**"
   ],
   "ignoreDependencies": [
     "@ai-sdk/openai-compatible",
