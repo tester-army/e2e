@@ -5,8 +5,8 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createReadStream } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { createReadStream, type ReadStream } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import os from 'node:os';
 import path from 'node:path';
@@ -68,18 +68,25 @@ function report(artifacts: readonly Record<string, unknown>[]): Report {
 describe('uploadRun', () => {
   let dir: string;
   let deps: Omit<UploadDeps, 'fetch'>;
+  /** Every stream `openFile` handed out, so a test can check it was closed. */
+  let opened: ReadStream[];
 
   beforeEach(() => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'testerarmy-'));
     mkdirSync(path.join(dir, 'artifacts', 'web', 't1', 'attempt-1'), { recursive: true });
     writeFileSync(path.join(dir, 'artifacts', 'web', 't1', 'attempt-1', 'shot.png'), 'png-bytes');
     writeFileSync(path.join(dir, 'artifacts', 'web', 't1', 'attempt-1', 'trace.zip'), 'zip-bytes');
+    opened = [];
     deps = {
       env: { TESTERARMY_API_KEY: 'ta_secret' },
       homeDir: path.join(dir, 'home'),
-      fileExists: (file) => access(file).then(() => true, () => false),
-      readFile: (file) => readFile(file),
-      openFile: (file, signal) => Readable.toWeb(createReadStream(file, { signal })) as ReadableStream<Uint8Array>,
+      fileSize: (file) => stat(file).then((info) => info.size, () => undefined),
+      readTextFile: (file) => readFile(file, 'utf8'),
+      openFile: (file, signal) => {
+        const stream = createReadStream(file, { signal });
+        opened.push(stream);
+        return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+      },
     };
   });
 
@@ -103,6 +110,7 @@ describe('uploadRun', () => {
   const trace = { kind: 'trace', mediaType: 'application/zip', path: 'web/t1/attempt-1/trace.zip', size: 9, sha256: 'bbb' };
   const withheld = { kind: 'screenshot', mediaType: 'image/png', redaction: 'incomplete' };
   const gone = { kind: 'video', mediaType: 'video/webm', path: 'web/t1/attempt-1/video.webm', size: 9, sha256: 'ddd' };
+  const resized = { kind: 'log', mediaType: 'text/plain', path: 'web/t1/attempt-1/shot.png', size: 1234, sha256: 'fff' };
   const escaping = { kind: 'log', mediaType: 'text/plain', path: '../../../etc/passwd', size: 9, sha256: 'eee' };
 
   it('creates the run, uploads only the missing digests with the named headers, completes, and names the run', async () => {
@@ -116,7 +124,7 @@ describe('uploadRun', () => {
       [`POST /api/v1/e2e/runs/${RUN_ID}/complete`]: () => json(200, { url: 'https://tester.army/runs/x?done' }),
     });
     const rows = await uploadRun(
-      finished(report([shot, trace, withheld, gone, escaping])),
+      finished(report([shot, trace, withheld, gone, escaping, resized])),
       new AbortController().signal,
       { apiKeyEnv: 'TESTERARMY_API_KEY', project: 'prj_1' },
       { ...deps, fetch },
@@ -133,8 +141,9 @@ describe('uploadRun', () => {
     expect(create.body).toMatchObject({
       project: 'prj_1',
       report: { run: { id: RUN_ID } },
-      // The withheld artifact has no path, the recording's file is gone, and
-      // the escaping path leaves the artifacts root: none is offered.
+      // The withheld artifact has no path, the recording's file is gone, the
+      // escaping path leaves the artifacts root, and the resized one no longer
+      // matches its recorded size: none is offered.
       artifacts: [
         { sha256: 'aaa', size: 9, mediaType: 'image/png' },
         { sha256: 'bbb', size: 9, mediaType: 'application/zip' },
@@ -145,12 +154,15 @@ describe('uploadRun', () => {
     // The headers the server named plus the length storage needs up front, nothing else.
     expect(bytes.headers).toEqual({ 'content-type': 'application/zip', 'x-amz-checksum-sha256': 'u7s=', 'content-length': '9' });
     expect(Buffer.from(bytes.body as Uint8Array).toString()).toBe('zip-bytes');
+    // The file closed with its request.
+    expect(opened).toHaveLength(1);
+    expect(opened[0]!.destroyed).toBe(true);
   });
 
   it('offers each digest once, sends the CI context, and honors the API URL variable', async () => {
     const { fetch, calls } = fakeFetch({
       'PUT *': () => json(200, { url: 'https://staging.tester.army/runs/x', uploads: [] }),
-      'POST *': () => json(200, {}),
+      'POST *': () => json(200, { url: 'https://staging.tester.army/runs/x?done' }),
     });
     const duplicate = { ...shot, path: 'web/t1/attempt-1/trace.zip' };
     const rows = await uploadRun(
@@ -173,8 +185,7 @@ describe('uploadRun', () => {
         },
       },
     );
-    // Completion without a url falls back to the url the creation named.
-    expect(rows).toEqual([{ label: 'TesterArmy', text: 'https://staging.tester.army/runs/x' }]);
+    expect(rows).toEqual([{ label: 'TesterArmy', text: 'https://staging.tester.army/runs/x?done' }]);
     expect(calls[0]!.url).toBe(`https://staging.tester.army/api/v1/e2e/runs/${RUN_ID}`);
     expect(calls[0]!.body).toMatchObject({
       artifacts: [{ sha256: 'aaa' }],
@@ -225,6 +236,34 @@ describe('uploadRun', () => {
     expect(elsewhere.calls).toEqual([]);
   });
 
+  it('names the file and the real cause when a streamed upload fails, and closes every file', async () => {
+    const { fetch } = fakeFetch({
+      [`PUT /api/v1/e2e/runs/${RUN_ID}`]: () =>
+        json(200, { url: 'u', uploads: [{ sha256: 'aaa', url: 'https://r2.test/aaa' }, { sha256: 'bbb', url: 'https://r2.test/bbb' }] }),
+      // Storage refuses before reading a byte, the way an expired signature does.
+      'PUT /aaa': () => new Response('expired', { status: 403 }),
+      'PUT /bbb': () => new Response(null, { status: 200 }),
+    });
+    await expect(
+      uploadRun(finished(report([shot, trace])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, { ...deps, fetch }),
+    ).rejects.toThrow('TesterArmy storage responded 403 while uploading shot.png');
+    expect(opened.length).toBeGreaterThan(0);
+    expect(opened.every((stream) => stream.destroyed)).toBe(true);
+
+    // A transport failure surfaces its root cause, not undici's "fetch failed".
+    const failing = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/api/v1/')) {
+        return init?.method === 'PUT'
+          ? json(200, { url: 'u', uploads: [{ sha256: 'aaa', url: 'https://r2.test/aaa' }] })
+          : json(200, { url: 'u' });
+      }
+      throw new TypeError('fetch failed', { cause: new Error('ECONNRESET: socket hang up') });
+    }) as typeof fetch;
+    await expect(
+      uploadRun(finished(report([shot])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, { ...deps, fetch: failing }),
+    ).rejects.toThrow('uploading shot.png to TesterArmy storage failed: ECONNRESET: socket hang up');
+  });
+
   it('uploads missing digests at most four at a time', async () => {
     const digests = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
     for (const digest of digests) writeFileSync(path.join(dir, 'artifacts', 'web', 't1', 'attempt-1', `f${digest}.png`), digest);
@@ -270,6 +309,11 @@ describe('uploadRun', () => {
     await expect(uploadRun(run, new AbortController().signal, options, { ...deps, fetch: noUrl.fetch })).rejects.toThrow(
       'TesterArmy answered the run without its url',
     );
+
+    const completeNoUrl = fakeFetch({ 'PUT *': () => json(200, { url: 'u', uploads: [] }), 'POST *': () => json(200, {}) });
+    await expect(uploadRun(run, new AbortController().signal, options, { ...deps, fetch: completeNoUrl.fetch })).rejects.toThrow(
+      'TesterArmy answered the completed run without its url',
+    );
   });
 
   it('refuses to send the key over plain http to anything but a loopback host', async () => {
@@ -282,6 +326,14 @@ describe('uploadRun', () => {
       }),
     ).rejects.toThrow('TESTERARMY_BASE_URL must be https');
     expect(calls).toEqual([]);
+
+    await expect(
+      uploadRun(finished(report([])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, {
+        ...deps,
+        fetch,
+        env: { TESTERARMY_API_KEY: 'k', TESTERARMY_BASE_URL: 'tester.army' },
+      }),
+    ).rejects.toThrow('TESTERARMY_BASE_URL is not a URL (got "tester.army")');
 
     // Without a key nothing would be sent, so the host is not even judged.
     const keyless = await uploadRun(finished(report([])), new AbortController().signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, {
@@ -330,15 +382,21 @@ describe('uploadRun', () => {
     ).rejects.toThrow('TesterArmy storage responded 500 while uploading shot.png');
   });
 
-  it('passes the abort signal to every request', async () => {
-    const seen: (AbortSignal | null | undefined)[] = [];
-    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
-      seen.push(init?.signal);
+  it('passes the abort signal to every request, storage uploads through one of their own that follows it', async () => {
+    const seen: { url: string; signal: AbortSignal | null | undefined }[] = [];
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(input), signal: init?.signal });
       return json(200, { url: 'u', uploads: [{ sha256: 'aaa', url: 'https://r2.test/aaa' }] });
     }) as typeof fetch;
     const controller = new AbortController();
     await uploadRun(finished(report([shot])), controller.signal, { apiKeyEnv: 'TESTERARMY_API_KEY' }, { ...deps, fetch: fetchImpl });
     expect(seen).toHaveLength(3);
-    expect(seen.every((signal) => signal === controller.signal)).toBe(true);
+    const [create, storage, complete] = seen;
+    expect(create!.signal).toBe(controller.signal);
+    expect(complete!.signal).toBe(controller.signal);
+    // The storage PUT owns its signal, so the file closes with the request; it followed the outer one while in flight.
+    expect(storage!.url).toBe('https://r2.test/aaa');
+    expect(storage!.signal).not.toBe(controller.signal);
+    expect(storage!.signal?.aborted).toBe(true);
   });
 });

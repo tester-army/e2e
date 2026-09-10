@@ -6,13 +6,14 @@
  *    report's own, so a retry is idempotent. The response names the run's
  *    URL and, per digest the server lacks, a presigned upload URL with the
  *    headers to send.
- * 2. One `PUT` of the bytes per missing digest, straight to storage, with
- *    exactly the headers the server named.
+ * 2. One `PUT` of the bytes per missing digest, streamed straight to storage
+ *    with exactly the headers the server named, at most four at a time.
  * 3. `POST /api/v1/e2e/runs/{runId}/complete`, which verifies the uploads and
  *    returns the final URL.
  *
  * Every request carries the reporter's abort signal, so an abandoned upload
- * stops where it is. Anything the server does outside this protocol is an
+ * stops where it is, and every streamed file is closed when its request ends,
+ * however it ends. Anything the server does outside this protocol is an
  * error naming itself, never a silent skip: the runner prints one line.
  *
  * The key comes from the environment, or from the file `testerarmy auth`
@@ -45,13 +46,14 @@ export interface UploadDeps {
   readonly fetch: typeof fetch;
   readonly env: NodeJS.ProcessEnv;
   readonly homeDir: string;
-  readonly fileExists: (file: string) => Promise<boolean>;
-  readonly readFile: (file: string) => Promise<Uint8Array>;
-  /** Opens a file as a stream the request body consumes, so a recording is never held in memory whole. */
+  /** The file's size in bytes, or undefined when it is not there. */
+  readonly fileSize: (file: string) => Promise<number | undefined>;
+  readonly readTextFile: (file: string) => Promise<string>;
+  /** Opens a file as a stream the request body consumes; the signal closes it. */
   readonly openFile: (file: string, signal: AbortSignal) => ReadableStream<Uint8Array>;
 }
 
-/** An artifact the report names and the disk has: what the server may ask for. */
+/** An artifact the report names and the disk has at the recorded size: what the server may ask for. */
 interface UploadableArtifact {
   readonly sha256: string;
   readonly size: number;
@@ -140,16 +142,26 @@ export async function uploadRun(
     }
     return { artifact, upload };
   });
-  await inBatches(pending, UPLOAD_CONCURRENCY, async ({ artifact, upload }) => {
-    // Streamed, with the length the report recorded: storage needs the length
-    // up front, and four recordings in flight must not mean four in memory.
-    const response = await deps.fetch(upload.url, {
-      method: 'PUT',
-      headers: { ...upload.headers, 'content-length': String(artifact.size) },
-      body: deps.openFile(artifact.file, signal),
-      duplex: 'half',
-      signal,
-    } as RequestInit);
+  await inPool(pending, UPLOAD_CONCURRENCY, signal, async ({ artifact, upload }, uploadSignal) => {
+    // The stream and the request share one signal: whichever way the request
+    // ends, the file closes. Storage needs the length up front; the recorded
+    // size was checked against the file when it was offered.
+    let response: Response;
+    try {
+      response = await deps.fetch(upload.url, {
+        method: 'PUT',
+        headers: { ...upload.headers, 'content-length': String(artifact.size) },
+        body: deps.openFile(artifact.file, uploadSignal),
+        duplex: 'half',
+        signal: uploadSignal,
+      });
+    } catch (cause) {
+      if (uploadSignal.aborted && !signal.aborted) throw cause;
+      throw new Error(
+        `uploading ${path.basename(artifact.file)} to TesterArmy storage failed: ${rootMessage(cause)}`,
+        { cause },
+      );
+    }
     if (!response.ok) {
       throw new Error(
         `TesterArmy storage responded ${response.status} while uploading ${path.basename(artifact.file)}`,
@@ -158,19 +170,19 @@ export async function uploadRun(
   });
 
   const completed = await request('POST', `${runPath}/complete`, {});
-  const url = isRecord(completed) && typeof completed['url'] === 'string' ? completed['url'] : created.url;
-  return [{ label: SUMMARY_LABEL, text: url }];
+  return [{ label: SUMMARY_LABEL, text: parseUrl(completed, 'the completed run') }];
 }
 
 /**
- * Every artifact record with a digest whose file is on disk under the
- * artifacts root, once per digest. A record whose file is gone (a recording
- * that never finalized, a cleaned directory) is simply not offered.
+ * Every artifact record with a digest whose file is on disk at the size the
+ * report recorded, once per digest. A file that is gone (a recording that
+ * never finalized, a cleaned directory) or has changed since the run is not
+ * offered: storage would refuse a length that disagrees with the bytes.
  */
 async function collectArtifacts(
   report: Report,
   artifactsRoot: string,
-  deps: Pick<UploadDeps, 'fileExists'>,
+  deps: Pick<UploadDeps, 'fileSize'>,
 ): Promise<UploadableArtifact[]> {
   const root = path.resolve(artifactsRoot);
   const seen = new Map<string, UploadableArtifact>();
@@ -184,7 +196,7 @@ async function collectArtifacts(
       if (seen.has(artifact.sha256)) continue;
       const file = path.resolve(root, ...artifact.path.split('/'));
       if (!file.startsWith(`${root}${path.sep}`)) continue;
-      if (!(await deps.fileExists(file))) continue;
+      if ((await deps.fileSize(file)) !== artifact.size) continue;
       seen.set(artifact.sha256, {
         sha256: artifact.sha256,
         size: artifact.size,
@@ -197,13 +209,11 @@ async function collectArtifacts(
 }
 
 function parseCreateRunResponse(value: unknown): CreateRunResponse {
-  if (!isRecord(value) || typeof value['url'] !== 'string') {
-    throw new Error('TesterArmy answered the run without its url');
-  }
-  const uploads = value['uploads'] ?? [];
+  const url = parseUrl(value, 'the run');
+  const uploads = isRecord(value) ? (value['uploads'] ?? []) : [];
   if (!Array.isArray(uploads)) throw new Error('TesterArmy answered the run with malformed uploads');
   return {
-    url: value['url'],
+    url,
     uploads: uploads.map((entry: unknown): ArtifactUpload => {
       if (!isRecord(entry) || typeof entry['sha256'] !== 'string' || typeof entry['url'] !== 'string') {
         throw new Error('TesterArmy answered the run with a malformed uploads entry');
@@ -217,15 +227,65 @@ function parseCreateRunResponse(value: unknown): CreateRunResponse {
   };
 }
 
-async function inBatches<T>(items: readonly T[], size: number, work: (item: T) => Promise<void>): Promise<void> {
-  for (let start = 0; start < items.length; start += size) {
-    await Promise.all(items.slice(start, start + size).map(work));
+/** The `url` every run answer carries; both requests are held to it. */
+function parseUrl(value: unknown, what: string): string {
+  if (!isRecord(value) || typeof value['url'] !== 'string' || value['url'] === '') {
+    throw new Error(`TesterArmy answered ${what} without its url`);
   }
+  return value['url'];
+}
+
+/**
+ * Runs `work` over `items` with at most `width` in flight, each under its own
+ * signal that follows the outer one. The first failure aborts every sibling
+ * still running and is the error that surfaces; a slow item never holds a
+ * slot hostage for the others.
+ */
+async function inPool<T>(
+  items: readonly T[],
+  width: number,
+  signal: AbortSignal,
+  work: (item: T, signal: AbortSignal) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  const batch = new AbortController();
+  const follow = (): void => batch.abort(signal.reason);
+  if (signal.aborted) follow();
+  else signal.addEventListener('abort', follow, { once: true });
+  let failure: unknown;
+  const worker = async (): Promise<void> => {
+    for (let item = queue.shift(); item !== undefined && !batch.signal.aborted; item = queue.shift()) {
+      const own = new AbortController();
+      const forward = (): void => own.abort(batch.signal.reason);
+      batch.signal.addEventListener('abort', forward, { once: true });
+      try {
+        await work(item, own.signal);
+      } catch (cause) {
+        failure ??= cause;
+        batch.abort(cause);
+      } finally {
+        batch.signal.removeEventListener('abort', forward);
+        own.abort();
+      }
+    }
+  };
+  try {
+    await Promise.all(Array.from({ length: Math.min(width, items.length) }, worker));
+  } finally {
+    signal.removeEventListener('abort', follow);
+  }
+  if (failure !== undefined) throw failure;
+  if (signal.aborted) throw signal.reason;
 }
 
 /** Refuses to send a key in clear text: `http:` is for `localhost`, `127.0.0.1`, or `[::1]` only. */
 function assertEncryptedHost(baseUrl: string): void {
-  const url = new URL(baseUrl);
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error(`${BASE_URL_ENV} is not a URL (got "${baseUrl}")`);
+  }
   const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
   if (url.protocol !== 'https:' && !loopback) {
     throw new Error(
@@ -237,13 +297,24 @@ function assertEncryptedHost(baseUrl: string): void {
 /** The key `testerarmy auth` saved, when there is one; any unreadable file means none. */
 async function storedApiKey(deps: UploadDeps): Promise<string | undefined> {
   try {
-    const raw = await deps.readFile(path.join(deps.homeDir, ...CLI_CONFIG_FILE));
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(raw));
+    const parsed: unknown = JSON.parse(await deps.readTextFile(path.join(deps.homeDir, ...CLI_CONFIG_FILE)));
     const key = isRecord(parsed) ? parsed['apiKey'] : undefined;
     return typeof key === 'string' && key.trim() !== '' ? key.trim() : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** The innermost message of an error chain: undici wraps every failure in `fetch failed`. */
+function rootMessage(cause: unknown): string {
+  let current: unknown = cause;
+  let message = '';
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    message = current.message;
+    current = current.cause;
+  }
+  if (typeof current === 'string' && current !== '') message = current;
+  return message === '' ? String(cause) : message;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

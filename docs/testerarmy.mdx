@@ -48,7 +48,7 @@ With a key, the row is the run's URL.
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `project` | the key's default project | The TesterArmy project id the runs land in |
+| `project` | the team's only project | The TesterArmy project the runs land in, by id or short id; required when the team has several |
 | `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
 
 `TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
@@ -58,9 +58,10 @@ config that redirects the reporter never carries your key with it.
 
 ## What is uploaded
 
-The report-1 document the run wrote to `.e2e/report.json`, exactly as written,
-and every artifact it names that exists on disk: screenshots, traces, and, on
-an engine that records, `--video` recordings. Artifacts travel by content digest, so bytes TesterArmy
+The report-1 document the run wrote to `.e2e/report.json`, the same document
+even when that file could not be written, and every artifact it names that is
+on disk at the size the report recorded: screenshots, traces, and, on an
+engine that records, `--video` recordings. Artifacts travel by content digest, so bytes TesterArmy
 already holds for your team are not sent again, and a retried upload of the
 same run is idempotent because the run id is the report's own.
 

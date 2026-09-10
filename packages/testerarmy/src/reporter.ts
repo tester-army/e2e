@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import { Readable } from 'node:stream';
 import type { Reporter } from '@e2edev/e2e';
@@ -52,8 +52,12 @@ export function testerarmy(options: TesterArmyOptions = {}): Reporter {
           fetch: globalThis.fetch,
           env: process.env,
           homeDir: os.homedir(),
-          fileExists: (file) => access(file).then(() => true, () => false),
-          readFile: (file) => readFile(file),
+          fileSize: (file) =>
+            stat(file).then(
+              (info) => (info.isFile() ? info.size : undefined),
+              () => undefined,
+            ),
+          readTextFile: (file) => readFile(file, 'utf8'),
           openFile: (file, abort) =>
             Readable.toWeb(createReadStream(file, { signal: abort })) as ReadableStream<Uint8Array>,
         },

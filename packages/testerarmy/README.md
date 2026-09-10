@@ -32,7 +32,7 @@ config works on a laptop without an account and in CI with the secret.
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `project` | the key's default project | The TesterArmy project id the runs land in |
+| `project` | the team's only project | The TesterArmy project the runs land in, by id or short id; required when the team has several |
 | `apiKey` | `'TESTERARMY_API_KEY'` | The name of the environment variable holding the key, never the key itself |
 
 `TESTERARMY_BASE_URL` points the reporter at another host, as it does the CLI.
