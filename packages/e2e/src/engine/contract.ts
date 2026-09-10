@@ -114,6 +114,12 @@ export interface SemanticNode {
     >
   >;
   readonly attributes?: Readonly<Record<string, string>>;
+  /**
+   * The node's box in the top-level viewport's CSS pixels (`ViewportPoint`
+   * space), for every node, including those inside nested documents: an
+   * engine that measures a child document against its own viewport shifts
+   * the boxes by the boundary element's before reporting them.
+   */
   readonly rect?: {
     readonly x: number;
     readonly y: number;

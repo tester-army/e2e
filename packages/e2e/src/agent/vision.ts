@@ -253,9 +253,10 @@ export interface HitTest {
 
 /**
  * Finds what the newest observation lists at a viewport point. Innermost
- * wins (deepest in the tree, then the smallest box), hidden nodes and nodes
- * without a box are skipped. Nodes inside nested documents are skipped too:
- * their boxes are in their own document's coordinates.
+ * wins (deepest in the tree, then the smallest box); hidden nodes and nodes
+ * without a box are skipped. Every box is in the top-level viewport's CSS
+ * pixels, nested documents included (`SemanticNode.rect`), so a control
+ * inside an iframe is found like any other.
  */
 export function hitTest(observation: AgentObservation, point: ViewportPoint): HitTest {
   let control: { node: SemanticNode; depth: number; area: number } | undefined;
@@ -264,7 +265,6 @@ export function hitTest(observation: AgentObservation, point: ViewportPoint): Hi
     const rect = node.rect;
     if (rect === undefined || rect.width <= 0 || rect.height <= 0) continue;
     if (node.states?.hidden === true) continue;
-    if (node.framePath !== undefined && node.framePath.length > 0) continue;
     if (point.x < rect.x || point.x >= rect.x + rect.width) continue;
     if (point.y < rect.y || point.y >= rect.y + rect.height) continue;
     const candidate = { node, depth: depthOf(node.ref.id, observation.parents), area: rect.width * rect.height };

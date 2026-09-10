@@ -75,13 +75,16 @@ describe('hitTest', () => {
     expect(hit.under?.ref.id).toBe('n5');
   });
 
-  it('skips hidden and disabled controls, and nodes inside nested documents', () => {
+  it('skips hidden and disabled controls', () => {
     expect(hitTest(screen, { x: 250, y: 30 }).control).toBeUndefined();
     expect(hitTest(screen, { x: 250, y: 30 }).under?.ref.id).toBe('n1');
     expect(hitTest(screen, { x: 450, y: 30 }).control).toBeUndefined();
+  });
+
+  it('finds a control inside a nested document, whose box is in top-level viewport pixels too', () => {
     const framed = hitTest(screen, { x: 50, y: 220 });
-    expect(framed.control).toBeUndefined();
-    expect(framed.under?.ref.id).toBe('root');
+    expect(framed.control?.ref.id).toBe('n6');
+    expect(framed.under?.ref.id).toBe('n6');
   });
 
   it('treats the box as half-open so adjacent controls never share an edge', () => {
