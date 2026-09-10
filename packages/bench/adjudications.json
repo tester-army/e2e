@@ -1,12 +1,47 @@
 [
   {
-    "pattern": "cart (navigation|link).*(item[- ]count|count|badge|indicator)",
-    "verdict": "false-positive",
-    "note": "The Cart link has no badge by design; a missing feature is not a defect. Reported by luna-fast on 2026-09-10 against the planted and the clean garden alike."
+    "pattern": "(signed[- ]out|unauthenticated|while signed out|without (being )?signed|not signed in|another (user|customer)|other user|different user).*(account|profile|orders?|data)|(account|orders?|profile).*(signed[- ]out|unauthenticated|without (being )?signed|while signed out|another (user|customer)|other user|leak)",
+    "verdict": "valid-unplanted",
+    "note": "The garden never gates /account or /orders behind sign-in, so a visitor reads and edits Ada's profile and order history. Not planted, but a real flaw of the fixture; every model that reports it earns the finding."
   },
   {
-    "pattern": "empty cart.*(punctuation|period|full stop)",
+    "pattern": "cart (navigation|link).*(item[- ]count|count|badge|indicator)",
     "verdict": "false-positive",
-    "note": "\"Your cart is empty. Browse the catalog.\" is punctuated correctly; the link sits before the final period."
+    "note": "The Cart link has no badge by design; a missing feature is not a defect."
+  },
+  {
+    "pattern": "empty[- ]cart.*(punctuation|period|full stop|malformed|stray)",
+    "verdict": "false-positive",
+    "note": "\"Your cart is empty. Browse the catalog.\" is punctuated correctly; the accessibility tree separates the link text from the trailing period, so the flattened observation reads \"empty. .\". A harness artifact, reported by six models."
+  },
+  {
+    "pattern": "(title|book|row|order|item)s?.*(not (clickable|links?)|no (book |order )?detail page|cannot be opened|not link)",
+    "verdict": "false-positive",
+    "note": "There are no detail pages in the shop; a missing feature is not a defect."
+  },
+  {
+    "pattern": "orders? (list|rows?).*(status|item details)",
+    "verdict": "false-positive",
+    "note": "Order rows show id, total, and date by design."
+  },
+  {
+    "pattern": "(place order|checkout|form).*(does nothing|no validation|silently|no feedback|without validation|no (error|validation) message|enabled)",
+    "verdict": "false-positive",
+    "note": "The shipping address is a native `required` input: the browser blocks the submit and shows its own tooltip, which the accessibility tree does not carry. An empty cart redirects checkout back to the cart, which says so."
+  },
+  {
+    "pattern": "decrease quantity.*(remains active|boundary|at 1)",
+    "verdict": "false-positive",
+    "note": "The quantity floors at 1 server-side; a control that stays enabled at the floor is a design choice."
+  },
+  {
+    "pattern": "(profile|display name).*(omitted|empty|blank).*(accepts|success)",
+    "verdict": "false-positive",
+    "note": "The profile form has no name validation by design."
+  },
+  {
+    "pattern": "(signing in|sign in).*(different|another|other) user'?s? (profile )?email",
+    "verdict": "false-positive",
+    "note": "The explorer had edited the profile email itself earlier in the run; the page showed its own change."
   }
 ]

@@ -38,12 +38,18 @@ export interface MatrixOptions {
   readonly log: (line: string) => void;
 }
 
-/** Arms outermost, so a partial matrix still has whole arms to compare. */
+/**
+ * Repeats outermost, arms innermost: the runs in flight at any moment are
+ * different arms on the same track, so no provider sees several runs of one
+ * model at once (the first matrix ran one arm's tracks together and the
+ * newest model spent whole steps in rate-limit backoff), and a partial matrix
+ * still compares every arm on the tracks it finished.
+ */
 export function planRuns(options: Pick<MatrixOptions, 'arms' | 'tracks' | 'repeats' | 'outDir'>): PlannedRun[] {
   const runs: PlannedRun[] = [];
-  for (const arm of options.arms) {
+  for (let repeat = 1; repeat <= options.repeats; repeat += 1) {
     for (const track of options.tracks) {
-      for (let repeat = 1; repeat <= options.repeats; repeat += 1) {
+      for (const arm of options.arms) {
         runs.push({
           arm,
           track,

@@ -1,0 +1,6180 @@
+{
+  "schema": "e2e-bench-summary-1",
+  "id": "2026-09-10-calibration-r1",
+  "label": "calibration-r1",
+  "createdAt": "2026-09-10T18:19:01.808Z",
+  "taskSetVersion": 1,
+  "provenance": {
+    "e2eVersion": "0.11.0",
+    "commit": "07c5334d08167941b49aadb46945e54cb84cfd66",
+    "node": "v26.4.0",
+    "platform": "darwin-arm64"
+  },
+  "config": {
+    "arms": [
+      {
+        "id": "luna-fast",
+        "model": "openai/gpt-5.6-luna-fast",
+        "tier": "budget",
+        "pricing": {
+          "input": 0.4,
+          "output": 2.4,
+          "cacheRead": 0.04,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "luna",
+        "model": "openai/gpt-5.6-luna",
+        "tier": "budget",
+        "pricing": {
+          "input": 0.2,
+          "output": 1.2,
+          "cacheRead": 0.02,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "gpt-6-astra",
+        "model": "openai/gpt-6-astra",
+        "tier": "frontier",
+        "pricing": {
+          "input": 10,
+          "output": 50,
+          "cacheRead": 1,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "fable-5.1",
+        "model": "anthropic/claude-fable-5.1",
+        "tier": "frontier",
+        "pricing": {
+          "input": 10,
+          "output": 50,
+          "cacheRead": 0.25,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "opus-5",
+        "model": "anthropic/claude-opus-5",
+        "tier": "frontier",
+        "pricing": {
+          "input": 5,
+          "output": 25,
+          "cacheRead": 0.5,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "sonnet-5",
+        "model": "anthropic/claude-sonnet-5",
+        "tier": "premium",
+        "pricing": {
+          "input": 2,
+          "output": 10,
+          "cacheRead": 0.2,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "sol",
+        "model": "openai/gpt-5.6-sol",
+        "tier": "premium",
+        "pricing": {
+          "input": 2,
+          "output": 10,
+          "cacheRead": 0.2,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "grok-4.6",
+        "model": "spacexai/grok-4.6",
+        "tier": "premium",
+        "pricing": {
+          "input": 2,
+          "output": 6,
+          "cacheRead": 0.5,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "kimi-k3",
+        "model": "moonshotai/kimi-k3",
+        "tier": "premium",
+        "pricing": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "qwen3.8-max",
+        "model": "alibaba/qwen3.8-max-0902",
+        "tier": "premium",
+        "pricing": {
+          "input": 2,
+          "output": 6,
+          "cacheRead": 0.25,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "gemini-3.8-flash",
+        "model": "google/gemini-3.8-flash",
+        "tier": "mid",
+        "pricing": {
+          "input": 0.75,
+          "output": 3.75,
+          "cacheRead": 0.075,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "haiku-4.5",
+        "model": "anthropic/claude-haiku-4.5",
+        "tier": "mid",
+        "pricing": {
+          "input": 1,
+          "output": 5,
+          "cacheRead": 0.1,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "glm-5.3-flash",
+        "model": "zai/glm-5.3-flash",
+        "tier": "budget",
+        "pricing": {
+          "input": 0.15,
+          "output": 0.5,
+          "cacheRead": 0.03,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "deepseek-v4.1-flash",
+        "model": "deepseek/deepseek-v4.1-flash",
+        "tier": "budget",
+        "pricing": {
+          "input": 0.3,
+          "output": 1.2,
+          "cacheRead": 0.006,
+          "asOf": "2026-09-10"
+        }
+      },
+      {
+        "id": "qwen3.8-27b",
+        "model": "alibaba/qwen3.8-27b",
+        "tier": "budget",
+        "pricing": {
+          "input": 0.5,
+          "output": 3,
+          "cacheRead": 0.1,
+          "asOf": "2026-09-10"
+        }
+      }
+    ],
+    "tracks": [
+      "act",
+      "judgment",
+      "explore",
+      "explore-clean"
+    ],
+    "repeats": 1,
+    "referenceArm": "luna-fast"
+  },
+  "rows": [
+    {
+      "arm": "luna-fast",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 75,
+        "actions": 78,
+        "inputTokens": 189336,
+        "outputTokens": 4344,
+        "cacheShare": 0.801231672793341,
+        "reasoningTokens": 2000,
+        "costUsd": 0.03439568000000001,
+        "costPartial": false,
+        "tableCostUsd": 0.03154728,
+        "seconds": 172.017,
+        "modelSeconds": 146.407
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 73,
+        "actions": 80,
+        "inputTokens": 200844,
+        "outputTokens": 4356,
+        "cacheShare": 0.7632341518790703,
+        "reasoningTokens": 2013,
+        "costUsd": 0.019735970000000002,
+        "costPartial": false,
+        "tableCostUsd": 0.01780362,
+        "seconds": 190.509,
+        "modelSeconds": 164.939
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 0.7647058823529411,
+        "reliability": 0.7647058823529411,
+        "codes": {
+          "TEST_TIMEOUT": 1,
+          "AUTOMATION_UNSUPPORTED": 1,
+          "STEP_TIMEOUT": 2
+        }
+      },
+      "usage": {
+        "calls": 71,
+        "actions": 73,
+        "inputTokens": 191303,
+        "outputTokens": 2104,
+        "cacheShare": 0.7687490525501429,
+        "reasoningTokens": 52,
+        "costUsd": 0.7828864999999998,
+        "costPartial": false,
+        "tableCostUsd": 0.694654,
+        "seconds": 1075.681,
+        "modelSeconds": 1057.323
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 65,
+        "actions": 80,
+        "inputTokens": 300197,
+        "outputTokens": 6763,
+        "cacheShare": 0.8461643520754705,
+        "reasoningTokens": 982,
+        "costUsd": 0.9784965,
+        "costPartial": false,
+        "tableCostUsd": 0.863464,
+        "seconds": 382.672,
+        "modelSeconds": 364.954
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 0.9411764705882353,
+        "reliability": 0.9411764705882353,
+        "codes": {
+          "ACTION_FAILED": 1
+        }
+      },
+      "usage": {
+        "calls": 78,
+        "actions": 86,
+        "inputTokens": 353404,
+        "outputTokens": 5036,
+        "cacheShare": 0.8647921359124402,
+        "reasoningTokens": 0,
+        "costUsd": 0.5761842500000001,
+        "costPartial": false,
+        "tableCostUsd": 0.5176255,
+        "seconds": 239.131,
+        "modelSeconds": 208.894
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 0.9411764705882353,
+        "reliability": 0.9411764705882353,
+        "codes": {
+          "ACTION_FAILED": 1
+        }
+      },
+      "usage": {
+        "calls": 84,
+        "actions": 85,
+        "inputTokens": 391326,
+        "outputTokens": 5160,
+        "cacheShare": 0.8548959179814273,
+        "reasoningTokens": 0,
+        "costUsd": 0.2599621,
+        "costPartial": false,
+        "tableCostUsd": 0.2320746,
+        "seconds": 176.607,
+        "modelSeconds": 142.272
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 70,
+        "actions": 76,
+        "inputTokens": 187640,
+        "outputTokens": 3499,
+        "cacheShare": 0.784155830313366,
+        "reasoningTokens": 1189,
+        "costUsd": 0.3228006,
+        "costPartial": false,
+        "tableCostUsd": 0.1454198,
+        "seconds": 196.934,
+        "modelSeconds": 178.269
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 64,
+        "actions": 75,
+        "inputTokens": 231823,
+        "outputTokens": 8848,
+        "cacheShare": 0.49472226655681273,
+        "reasoningTokens": 6764,
+        "costUsd": 0.344702,
+        "costPartial": false,
+        "tableCostUsd": 0.344702,
+        "seconds": 262.865,
+        "modelSeconds": 240.66
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 63,
+        "actions": 74,
+        "inputTokens": 198542,
+        "outputTokens": 10191,
+        "cacheShare": 0.3707024206465131,
+        "reasoningTokens": 4411,
+        "costUsd": 0.549771,
+        "costPartial": false,
+        "tableCostUsd": 0.549771,
+        "seconds": 261.629,
+        "modelSeconds": 242.592
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 0.9411764705882353,
+        "reliability": 0.9411764705882353,
+        "codes": {
+          "ASSERTION_FAILED": 1
+        }
+      },
+      "usage": {
+        "calls": 83,
+        "actions": 80,
+        "inputTokens": 283298,
+        "outputTokens": 3094,
+        "cacheShare": 0.7518302282402276,
+        "reasoningTokens": 0,
+        "costUsd": 0.21242400000000003,
+        "costPartial": false,
+        "tableCostUsd": 0.212424,
+        "seconds": 162.129,
+        "modelSeconds": 130.181
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 65,
+        "actions": 78,
+        "inputTokens": 189043,
+        "outputTokens": 8939,
+        "cacheShare": 0.08401263204667721,
+        "reasoningTokens": 6956,
+        "costUsd": 0.16458315,
+        "costPartial": false,
+        "tableCostUsd": 0.16458314999999998,
+        "seconds": 195.652,
+        "modelSeconds": 171.83
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 0.9411764705882353,
+        "reliability": 0.9411764705882353,
+        "codes": {
+          "ACTION_FAILED": 1
+        }
+      },
+      "usage": {
+        "calls": 97,
+        "actions": 88,
+        "inputTokens": 363154,
+        "outputTokens": 5214,
+        "cacheShare": 0.1580431442308222,
+        "reasoningTokens": 0,
+        "costUsd": 0.34760065,
+        "costPartial": false,
+        "tableCostUsd": 0.3375694,
+        "seconds": 161.941,
+        "modelSeconds": 123.47
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 72,
+        "actions": 77,
+        "inputTokens": 226363,
+        "outputTokens": 4766,
+        "cacheShare": 0.35511103846476677,
+        "reasoningTokens": 1458,
+        "costUsd": 0.026691370000000002,
+        "costPartial": false,
+        "tableCostUsd": 0.02669137,
+        "seconds": 171.659,
+        "modelSeconds": 145.067
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 1,
+        "reliability": 1,
+        "codes": {}
+      },
+      "usage": {
+        "calls": 70,
+        "actions": 78,
+        "inputTokens": 231221,
+        "outputTokens": 7015,
+        "cacheShare": 0.19219707552514695,
+        "reasoningTokens": 2608,
+        "costUsd": 0.052767892,
+        "costPartial": false,
+        "tableCostUsd": 0.06471893999999999,
+        "seconds": 432.325,
+        "modelSeconds": 411.834
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "act",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 20,
+        "skipped": 3,
+        "passRate": 0.8823529411764706,
+        "reliability": 0.8823529411764706,
+        "codes": {
+          "AUTOMATION_UNSUPPORTED": 2
+        }
+      },
+      "usage": {
+        "calls": 103,
+        "actions": 102,
+        "inputTokens": 355469,
+        "outputTokens": 4052,
+        "cacheShare": 0.48071702455066406,
+        "reasoningTokens": 0,
+        "costUsd": 0.1215385,
+        "costPartial": false,
+        "tableCostUsd": 0.1215385,
+        "seconds": 276.502,
+        "modelSeconds": 224.663
+      }
+    },
+    {
+      "arm": "luna-fast",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.4375,
+        "reliability": 0.4375,
+        "codes": {
+          "ASSERTION_FAILED": 8,
+          "ACTION_FAILED": 1
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 1,
+        "correct": 7,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 50,
+        "actions": 35,
+        "inputTokens": 80239,
+        "outputTokens": 3834,
+        "cacheShare": 0.7374718029885716,
+        "reasoningTokens": 1849,
+        "costUsd": 0.020870960000000004,
+        "costPartial": false,
+        "tableCostUsd": 0.019994559999999998,
+        "seconds": 65.142,
+        "modelSeconds": 100.6
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.4375,
+        "reliability": 0.4375,
+        "codes": {
+          "ASSERTION_FAILED": 9
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 1,
+        "correct": 7,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 45,
+        "actions": 28,
+        "inputTokens": 69117,
+        "outputTokens": 3087,
+        "cacheShare": 0.6840429995514852,
+        "reasoningTokens": 1245,
+        "costUsd": 0.009539030000000002,
+        "costPartial": false,
+        "tableCostUsd": 0.00901758,
+        "seconds": 58.339,
+        "modelSeconds": 98.151
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.375,
+        "reliability": 0.375,
+        "codes": {
+          "ASSERTION_FAILED": 8,
+          "TEST_TIMEOUT": 2
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 6,
+        "inconclusive": 2
+      },
+      "usage": {
+        "calls": 41,
+        "actions": 23,
+        "inputTokens": 62584,
+        "outputTokens": 1786,
+        "cacheShare": 0.7149750735012144,
+        "reasoningTokens": 223,
+        "costUsd": 0.331471,
+        "costPartial": false,
+        "tableCostUsd": 0.312426,
+        "seconds": 646.228,
+        "modelSeconds": 702.037
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ASSERTION_FAILED": 8
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 53,
+        "actions": 24,
+        "inputTokens": 168957,
+        "outputTokens": 6049,
+        "cacheShare": 0.8648354315003226,
+        "reasoningTokens": 1133,
+        "costUsd": 0.6030999999999999,
+        "costPartial": false,
+        "tableCostUsd": 0.56735,
+        "seconds": 193.901,
+        "modelSeconds": 327.437
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ACTION_FAILED": 4,
+          "ASSERTION_FAILED": 4
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 79,
+        "actions": 43,
+        "inputTokens": 311138,
+        "outputTokens": 5133,
+        "cacheShare": 0.9085229062345326,
+        "reasoningTokens": 222,
+        "costUsd": 0.43610925,
+        "costPartial": false,
+        "tableCostUsd": 0.411973,
+        "seconds": 195.307,
+        "modelSeconds": 210.876
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ASSERTION_FAILED": 6,
+          "ACTION_FAILED": 2
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 87,
+        "actions": 33,
+        "inputTokens": 341747,
+        "outputTokens": 4905,
+        "cacheShare": 0.8880282782292164,
+        "reasoningTokens": 290,
+        "costUsd": 0.19513020000000003,
+        "costPartial": false,
+        "tableCostUsd": 0.1862782,
+        "seconds": 154.643,
+        "modelSeconds": 152.262
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ASSERTION_FAILED": 8
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 42,
+        "actions": 22,
+        "inputTokens": 62844,
+        "outputTokens": 2728,
+        "cacheShare": 0.6624021386289861,
+        "reasoningTokens": 958,
+        "costUsd": 0.16585019999999998,
+        "costPartial": false,
+        "tableCostUsd": 0.07803760000000001,
+        "seconds": 75.045,
+        "modelSeconds": 123.666
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ASSERTION_FAILED": 6,
+          "ACTION_FAILED": 2
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 60,
+        "actions": 60,
+        "inputTokens": 198292,
+        "outputTokens": 17548,
+        "cacheShare": 0.5990357654368306,
+        "reasoningTokens": 15128,
+        "costUsd": 0.32369600000000004,
+        "costPartial": false,
+        "tableCostUsd": 0.323696,
+        "seconds": 301.509,
+        "modelSeconds": 376.892
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ACTION_FAILED": 4,
+          "ASSERTION_FAILED": 4
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 70,
+        "actions": 46,
+        "inputTokens": 259981,
+        "outputTokens": 27205,
+        "cacheShare": 0.5497017089710402,
+        "reasoningTokens": 21813,
+        "costUsd": 0.8021555999999999,
+        "costPartial": false,
+        "tableCostUsd": 0.8021556,
+        "seconds": 416.708,
+        "modelSeconds": 447.293
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5625,
+        "reliability": 0.5625,
+        "codes": {
+          "ACTION_FAILED": 3,
+          "ASSERTION_FAILED": 4
+        }
+      },
+      "judgment": {
+        "caught": 7,
+        "missed": 1,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 48,
+        "actions": 21,
+        "inputTokens": 104535,
+        "outputTokens": 3988,
+        "cacheShare": 0.6612139474817047,
+        "reasoningTokens": 1808,
+        "costUsd": 0.112038,
+        "costPartial": false,
+        "tableCostUsd": 0.112038,
+        "seconds": 101.546,
+        "modelSeconds": 158.699
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ASSERTION_FAILED": 7,
+          "ACTION_FAILED": 1
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 59,
+        "actions": 30,
+        "inputTokens": 116419,
+        "outputTokens": 17832,
+        "cacheShare": 0,
+        "reasoningTokens": 15965,
+        "costUsd": 0.15418425000000005,
+        "costPartial": false,
+        "tableCostUsd": 0.15418425,
+        "seconds": 154.476,
+        "modelSeconds": 205.238
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5625,
+        "reliability": 0.5625,
+        "codes": {
+          "ACTION_FAILED": 2,
+          "ASSERTION_FAILED": 5
+        }
+      },
+      "judgment": {
+        "caught": 7,
+        "missed": 1,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 70,
+        "actions": 31,
+        "inputTokens": 200475,
+        "outputTokens": 4106,
+        "cacheShare": 0.02089038533482978,
+        "reasoningTokens": 0,
+        "costUsd": 0.2183018,
+        "costPartial": false,
+        "tableCostUsd": 0.21723579999999998,
+        "seconds": 71.364,
+        "modelSeconds": 109.177
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ACTION_FAILED": 4,
+          "ASSERTION_FAILED": 4
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 63,
+        "actions": 39,
+        "inputTokens": 161285,
+        "outputTokens": 9012,
+        "cacheShare": 0.32935486871066744,
+        "reasoningTokens": 4679,
+        "costUsd": 0.022324350000000003,
+        "costPartial": false,
+        "tableCostUsd": 0.02232435,
+        "seconds": 166.335,
+        "modelSeconds": 194.839
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5,
+        "reliability": 0.5,
+        "codes": {
+          "ASSERTION_FAILED": 6,
+          "ACTION_FAILED": 2
+        }
+      },
+      "judgment": {
+        "caught": 8,
+        "missed": 0,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 77,
+        "actions": 46,
+        "inputTokens": 282817,
+        "outputTokens": 16541,
+        "cacheShare": 0.2450559902693261,
+        "reasoningTokens": 12264,
+        "costUsd": 0.06248157399999999,
+        "costPartial": false,
+        "tableCostUsd": 0.084318336,
+        "seconds": 548.119,
+        "modelSeconds": 548.416
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "judgment",
+      "runs": 1,
+      "failedRuns": 0,
+      "tasks": {
+        "perRun": 16,
+        "skipped": 0,
+        "passRate": 0.5625,
+        "reliability": 0.5625,
+        "codes": {
+          "ASSERTION_FAILED": 5,
+          "ACTION_FAILED": 2
+        }
+      },
+      "judgment": {
+        "caught": 7,
+        "missed": 1,
+        "false-alarm": 0,
+        "correct": 8,
+        "inconclusive": 0
+      },
+      "usage": {
+        "calls": 52,
+        "actions": 23,
+        "inputTokens": 114052,
+        "outputTokens": 5221,
+        "cacheShare": 0.3344439378529092,
+        "reasoningTokens": 2714,
+        "costUsd": 0.0574314,
+        "costPartial": false,
+        "tableCostUsd": 0.0574314,
+        "seconds": 115.682,
+        "modelSeconds": 212.931
+      }
+    },
+    {
+      "arm": "luna-fast",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.8181818181818182,
+        "precision": 0.9,
+        "falsePositives": 1,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 2,
+        "stuck": 0,
+        "firstFindingSeconds": 7.904,
+        "evidenceRate": 0.8333333333333334
+      },
+      "usage": {
+        "calls": 46,
+        "actions": 27,
+        "inputTokens": 213329,
+        "outputTokens": 5803,
+        "cacheShare": 0.864472247092519,
+        "reasoningTokens": 2800,
+        "costUsd": 0.03525818,
+        "costPartial": false,
+        "tableCostUsd": 0.03286868,
+        "seconds": 121.706,
+        "modelSeconds": 106.964
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.8181818181818182,
+        "precision": 0.8333333333333334,
+        "falsePositives": 2,
+        "validUnplanted": 1,
+        "other": 0,
+        "duplicates": 1,
+        "stuck": 0,
+        "firstFindingSeconds": 9.159,
+        "evidenceRate": 0.6923076923076923
+      },
+      "usage": {
+        "calls": 45,
+        "actions": 22,
+        "inputTokens": 190366,
+        "outputTokens": 6564,
+        "cacheShare": 0.8088576741645042,
+        "reasoningTokens": 3317,
+        "costUsd": 0.019814329999999998,
+        "costPartial": false,
+        "tableCostUsd": 0.018233779999999998,
+        "seconds": 138.767,
+        "modelSeconds": 126.441
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.7272727272727273,
+        "precision": 1,
+        "falsePositives": 0,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 1,
+        "stuck": 0,
+        "firstFindingSeconds": 8.761,
+        "evidenceRate": 1
+      },
+      "usage": {
+        "calls": 59,
+        "actions": 37,
+        "inputTokens": 258352,
+        "outputTokens": 4053,
+        "cacheShare": 0.8272821576763485,
+        "reasoningTokens": 264,
+        "costUsd": 0.9577225000000001,
+        "costPartial": false,
+        "tableCostUsd": 0.8626,
+        "seconds": 234.891,
+        "modelSeconds": 203.663
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.7272727272727273,
+        "precision": 0.8888888888888888,
+        "falsePositives": 1,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 5,
+        "stuck": 0,
+        "firstFindingSeconds": 28.597,
+        "evidenceRate": 0.7857142857142857
+      },
+      "usage": {
+        "calls": 76,
+        "actions": 64,
+        "inputTokens": 733758,
+        "outputTokens": 17855,
+        "cacheShare": 0.8543089138380774,
+        "reasoningTokens": 3846,
+        "costUsd": 2.310319,
+        "costPartial": false,
+        "tableCostUsd": 2.118484,
+        "seconds": 540.748,
+        "modelSeconds": 510.87
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.7272727272727273,
+        "precision": 0.6,
+        "falsePositives": 6,
+        "validUnplanted": 1,
+        "other": 0,
+        "duplicates": 7,
+        "stuck": 0,
+        "firstFindingSeconds": 12.227,
+        "evidenceRate": 0.6363636363636364
+      },
+      "usage": {
+        "calls": 134,
+        "actions": 101,
+        "inputTokens": 1658196,
+        "outputTokens": 18816,
+        "cacheShare": 0.92705024014049,
+        "reasoningTokens": 1039,
+        "costUsd": 1.959553,
+        "costPartial": false,
+        "tableCostUsd": 1.8438405,
+        "seconds": 508.971,
+        "modelSeconds": 464.803
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.6363636363636364,
+        "precision": 0.7777777777777778,
+        "falsePositives": 2,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 5,
+        "stuck": 0,
+        "firstFindingSeconds": 10.352,
+        "evidenceRate": 1
+      },
+      "usage": {
+        "calls": 94,
+        "actions": 73,
+        "inputTokens": 1182417,
+        "outputTokens": 10524,
+        "cacheShare": 0.9477519352309718,
+        "reasoningTokens": 447,
+        "costUsd": 0.47562309999999997,
+        "costPartial": false,
+        "tableCostUsd": 0.4529256,
+        "seconds": 283.475,
+        "modelSeconds": 198.723
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.8181818181818182,
+        "precision": 0.7333333333333333,
+        "falsePositives": 4,
+        "validUnplanted": 2,
+        "other": 0,
+        "duplicates": 4,
+        "stuck": 0,
+        "firstFindingSeconds": 13.714,
+        "evidenceRate": 0.9473684210526315
+      },
+      "usage": {
+        "calls": 66,
+        "actions": 43,
+        "inputTokens": 326059,
+        "outputTokens": 8961,
+        "cacheShare": 0.8378023609224098,
+        "reasoningTokens": 3806,
+        "costUsd": 0.5457002,
+        "costPartial": false,
+        "tableCostUsd": 0.25001660000000003,
+        "seconds": 298.63,
+        "modelSeconds": 274.513
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.7272727272727273,
+        "precision": 1,
+        "falsePositives": 0,
+        "validUnplanted": 1,
+        "other": 0,
+        "duplicates": 2,
+        "stuck": 0,
+        "firstFindingSeconds": 27.139,
+        "evidenceRate": 0.8181818181818182
+      },
+      "usage": {
+        "calls": 53,
+        "actions": 40,
+        "inputTokens": 336474,
+        "outputTokens": 24539,
+        "cacheShare": 0.6208384600296011,
+        "reasoningTokens": 21246,
+        "costUsd": 0.506838,
+        "costPartial": false,
+        "tableCostUsd": 0.506838,
+        "seconds": 490.652,
+        "modelSeconds": 467.932
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.7272727272727273,
+        "precision": 0.8888888888888888,
+        "falsePositives": 1,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 7,
+        "stuck": 0,
+        "firstFindingSeconds": 30,
+        "evidenceRate": 0.875
+      },
+      "usage": {
+        "calls": 70,
+        "actions": 54,
+        "inputTokens": 680238,
+        "outputTokens": 29093,
+        "cacheShare": 0.7724355299174701,
+        "reasoningTokens": 18318,
+        "costUsd": 1.058421,
+        "costPartial": false,
+        "tableCostUsd": 1.058421,
+        "seconds": 539.151,
+        "modelSeconds": 503.663
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.8181818181818182,
+        "precision": 0.9,
+        "falsePositives": 1,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 4,
+        "stuck": 0,
+        "firstFindingSeconds": 34.337,
+        "evidenceRate": 0.7857142857142857
+      },
+      "usage": {
+        "calls": 61,
+        "actions": 35,
+        "inputTokens": 395283,
+        "outputTokens": 14014,
+        "cacheShare": 0.8373949803052496,
+        "reasoningTokens": 8976,
+        "costUsd": 0.2953859999999999,
+        "costPartial": false,
+        "tableCostUsd": 0.295386,
+        "seconds": 432.881,
+        "modelSeconds": 417.978
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.8181818181818182,
+        "precision": 1,
+        "falsePositives": 0,
+        "validUnplanted": 1,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 8.062,
+        "evidenceRate": 0.8
+      },
+      "usage": {
+        "calls": 54,
+        "actions": 41,
+        "inputTokens": 372506,
+        "outputTokens": 14263,
+        "cacheShare": 0.46318717013954136,
+        "reasoningTokens": 11208,
+        "costUsd": 0.21640125,
+        "costPartial": false,
+        "tableCostUsd": 0.21640125,
+        "seconds": 212.125,
+        "modelSeconds": 196.025
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.36363636363636365,
+        "precision": 1,
+        "falsePositives": 0,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 3,
+        "stuck": 0,
+        "firstFindingSeconds": 10.357,
+        "evidenceRate": 1
+      },
+      "usage": {
+        "calls": 32,
+        "actions": 20,
+        "inputTokens": 305450,
+        "outputTokens": 2936,
+        "cacheShare": 0.9332001964314945,
+        "reasoningTokens": 0,
+        "costUsd": 0.06757535,
+        "costPartial": false,
+        "tableCostUsd": 0.06358860000000001,
+        "seconds": 78.038,
+        "modelSeconds": 64.152
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.7272727272727273,
+        "precision": 0.75,
+        "falsePositives": 3,
+        "validUnplanted": 1,
+        "other": 0,
+        "duplicates": 3,
+        "stuck": 0,
+        "firstFindingSeconds": 36.47,
+        "evidenceRate": 0.7333333333333333
+      },
+      "usage": {
+        "calls": 127,
+        "actions": 107,
+        "inputTokens": 1083462,
+        "outputTokens": 32561,
+        "cacheShare": 0.6065298090749837,
+        "reasoningTokens": 16505,
+        "costUsd": 0.09994156000000001,
+        "costPartial": false,
+        "tableCostUsd": 0.09994156,
+        "seconds": 544.66,
+        "modelSeconds": 497.915
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.8181818181818182,
+        "precision": 0.8333333333333334,
+        "falsePositives": 2,
+        "validUnplanted": 1,
+        "other": 0,
+        "duplicates": 3,
+        "stuck": 0,
+        "firstFindingSeconds": 10.629,
+        "evidenceRate": 0.7333333333333333
+      },
+      "usage": {
+        "calls": 68,
+        "actions": 54,
+        "inputTokens": 554434,
+        "outputTokens": 20312,
+        "cacheShare": 0.31061587132102286,
+        "reasoningTokens": 12222,
+        "costUsd": 0.10769627199999998,
+        "costPartial": false,
+        "tableCostUsd": 0.14007309599999998,
+        "seconds": 418.388,
+        "modelSeconds": 396.469
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "explore",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0.36363636363636365,
+        "precision": 1,
+        "falsePositives": 0,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 1,
+        "firstFindingSeconds": 38.774,
+        "evidenceRate": 1
+      },
+      "usage": {
+        "calls": 12,
+        "actions": 7,
+        "inputTokens": 62725,
+        "outputTokens": 2365,
+        "cacheShare": 0.5387325627740136,
+        "reasoningTokens": 755,
+        "costUsd": 0.024940700000000003,
+        "costPartial": false,
+        "tableCostUsd": 0.0249407,
+        "seconds": 168.039,
+        "modelSeconds": 162.93
+      }
+    },
+    {
+      "arm": "luna-fast",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 1,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 40.41,
+        "evidenceRate": 0.5
+      },
+      "usage": {
+        "calls": 35,
+        "actions": 25,
+        "inputTokens": 151354,
+        "outputTokens": 4074,
+        "cacheShare": 0.8295122692495739,
+        "reasoningTokens": 2265,
+        "costUsd": 0.0273341,
+        "costPartial": false,
+        "tableCostUsd": 0.0251212,
+        "seconds": 91.396,
+        "modelSeconds": 83.89
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 4,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 41.656,
+        "evidenceRate": 0.8
+      },
+      "usage": {
+        "calls": 52,
+        "actions": 33,
+        "inputTokens": 229333,
+        "outputTokens": 6981,
+        "cacheShare": 0.7967845883496923,
+        "reasoningTokens": 4013,
+        "costUsd": 0.02341318,
+        "costPartial": false,
+        "tableCostUsd": 0.021352580000000003,
+        "seconds": 156.538,
+        "modelSeconds": 144.511
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "falsePositives": 0,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 98.031,
+        "evidenceRate": 1
+      },
+      "usage": {
+        "calls": 48,
+        "actions": 34,
+        "inputTokens": 197387,
+        "outputTokens": 2721,
+        "cacheShare": 0.8081484596250006,
+        "reasoningTokens": 234,
+        "costUsd": 0.7559630000000002,
+        "costPartial": false,
+        "tableCostUsd": 0.674258,
+        "seconds": 184.755,
+        "modelSeconds": 162.698
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 5,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 75.551,
+        "evidenceRate": 0.875
+      },
+      "usage": {
+        "calls": 72,
+        "actions": 64,
+        "inputTokens": 724146,
+        "outputTokens": 13903,
+        "cacheShare": 0.8931734760669809,
+        "reasoningTokens": 3114,
+        "costUsd": 1.7643620000000002,
+        "costPartial": false,
+        "tableCostUsd": 1.630427,
+        "seconds": 465.161,
+        "modelSeconds": 436.809
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 11,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 50.028,
+        "evidenceRate": 0.6428571428571429
+      },
+      "usage": {
+        "calls": 122,
+        "actions": 85,
+        "inputTokens": 1369727,
+        "outputTokens": 18114,
+        "cacheShare": 0.9162490043636433,
+        "reasoningTokens": 1159,
+        "costUsd": 1.7559254999999998,
+        "costPartial": false,
+        "tableCostUsd": 1.6539355,
+        "seconds": 484.888,
+        "modelSeconds": 447.573
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 3,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 18.338,
+        "evidenceRate": 0.6
+      },
+      "usage": {
+        "calls": 78,
+        "actions": 57,
+        "inputTokens": 703221,
+        "outputTokens": 9900,
+        "cacheShare": 0.8914964143562266,
+        "reasoningTokens": 1527,
+        "costUsd": 0.3989263,
+        "costPartial": false,
+        "tableCostUsd": 0.3769878,
+        "seconds": 235.831,
+        "modelSeconds": 211.666
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 6,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 63.366,
+        "evidenceRate": 0.8333333333333334
+      },
+      "usage": {
+        "calls": 46,
+        "actions": 32,
+        "inputTokens": 194214,
+        "outputTokens": 5230,
+        "cacheShare": 0.7974450863480491,
+        "reasoningTokens": 1876,
+        "costUsd": 0.35846600000000006,
+        "costPartial": false,
+        "tableCostUsd": 0.161953,
+        "seconds": 191.404,
+        "modelSeconds": 174.926
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 2,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 228.592,
+        "evidenceRate": 0.3333333333333333
+      },
+      "usage": {
+        "calls": 41,
+        "actions": 31,
+        "inputTokens": 229759,
+        "outputTokens": 24745,
+        "cacheShare": 0.540949429619732,
+        "reasoningTokens": 22061,
+        "costUsd": 0.42155599999999993,
+        "costPartial": false,
+        "tableCostUsd": 0.421556,
+        "seconds": 484.306,
+        "modelSeconds": 468.928
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 6,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 102.68,
+        "evidenceRate": 0.7142857142857143
+      },
+      "usage": {
+        "calls": 94,
+        "actions": 83,
+        "inputTokens": 839552,
+        "outputTokens": 26394,
+        "cacheShare": 0.7599100472633024,
+        "reasoningTokens": 15381,
+        "costUsd": 1.1920092,
+        "costPartial": false,
+        "tableCostUsd": 1.1920092,
+        "seconds": 524.038,
+        "modelSeconds": 479.196
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 4,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 115.014,
+        "evidenceRate": 0.8
+      },
+      "usage": {
+        "calls": 32,
+        "actions": 18,
+        "inputTokens": 170119,
+        "outputTokens": 8421,
+        "cacheShare": 0.8043310858869379,
+        "reasoningTokens": 5609,
+        "costUsd": 0.15130800000000003,
+        "costPartial": false,
+        "tableCostUsd": 0.151308,
+        "seconds": 263.725,
+        "modelSeconds": 254.142
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 1,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 67.431,
+        "evidenceRate": 0.5
+      },
+      "usage": {
+        "calls": 49,
+        "actions": 39,
+        "inputTokens": 259145,
+        "outputTokens": 12415,
+        "cacheShare": 0.2751625537826313,
+        "reasoningTokens": 10065,
+        "costUsd": 0.19278277500000002,
+        "costPartial": false,
+        "tableCostUsd": 0.192782775,
+        "seconds": 175.675,
+        "modelSeconds": 161.884
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "falsePositives": 0,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0
+      },
+      "usage": {
+        "calls": 39,
+        "actions": 27,
+        "inputTokens": 243502,
+        "outputTokens": 2662,
+        "cacheShare": 0.8096935548783993,
+        "reasoningTokens": 0,
+        "costUsd": 0.08755895,
+        "costPartial": false,
+        "tableCostUsd": 0.0793662,
+        "seconds": 79.962,
+        "modelSeconds": 72.005
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 4,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 68.819,
+        "evidenceRate": 0.6666666666666666
+      },
+      "usage": {
+        "calls": 59,
+        "actions": 49,
+        "inputTokens": 344409,
+        "outputTokens": 11430,
+        "cacheShare": 0.5180816993748711,
+        "reasoningTokens": 3279,
+        "costUsd": 0.03596451,
+        "costPartial": false,
+        "tableCostUsd": 0.03596451,
+        "seconds": 232.891,
+        "modelSeconds": 212.329
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "precision": 0,
+        "falsePositives": 2,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 0,
+        "firstFindingSeconds": 91.672,
+        "evidenceRate": 0.2
+      },
+      "usage": {
+        "calls": 73,
+        "actions": 55,
+        "inputTokens": 467002,
+        "outputTokens": 21349,
+        "cacheShare": 0.21159652421188774,
+        "reasoningTokens": 14602,
+        "costUsd": 0.10429369599999999,
+        "costPartial": false,
+        "tableCostUsd": 0.13666749599999997,
+        "seconds": 484.86,
+        "modelSeconds": 462.704
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "explore-clean",
+      "runs": 1,
+      "failedRuns": 0,
+      "explore": {
+        "recall": 0,
+        "falsePositives": 0,
+        "validUnplanted": 0,
+        "other": 0,
+        "duplicates": 0,
+        "stuck": 1,
+        "firstFindingSeconds": 124.382,
+        "evidenceRate": 1
+      },
+      "usage": {
+        "calls": 25,
+        "actions": 15,
+        "inputTokens": 136126,
+        "outputTokens": 5135,
+        "cacheShare": 0.6064969219693519,
+        "reasoningTokens": 2780,
+        "costUsd": 0.050443999999999996,
+        "costPartial": false,
+        "tableCostUsd": 0.050444,
+        "seconds": 255.532,
+        "modelSeconds": 249.75
+      }
+    }
+  ],
+  "runs": [
+    {
+      "arm": "luna-fast",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 172017,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 75,
+        "actions": 78,
+        "inputTokens": 189336,
+        "outputTokens": 4344,
+        "cacheReadTokens": 151702,
+        "reasoningTokens": 2000,
+        "costUsd": 0.03439568000000001,
+        "tableCostUsd": 0.03154728,
+        "modelMs": 146407
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 190509,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 73,
+        "actions": 80,
+        "inputTokens": 200844,
+        "outputTokens": 4356,
+        "cacheReadTokens": 153291,
+        "reasoningTokens": 2013,
+        "costUsd": 0.019735970000000002,
+        "tableCostUsd": 0.01780362,
+        "modelMs": 164939
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 1075681,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "timed-out",
+          "code": "TEST_TIMEOUT"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "failed",
+          "code": "AUTOMATION_UNSUPPORTED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "failed",
+          "code": "STEP_TIMEOUT"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "failed",
+          "code": "STEP_TIMEOUT"
+        }
+      ],
+      "usage": {
+        "calls": 71,
+        "actions": 73,
+        "inputTokens": 191303,
+        "outputTokens": 2104,
+        "cacheReadTokens": 147064,
+        "reasoningTokens": 52,
+        "costUsd": 0.7828864999999998,
+        "tableCostUsd": 0.694654,
+        "modelMs": 1057323
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 382672,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 65,
+        "actions": 80,
+        "inputTokens": 300197,
+        "outputTokens": 6763,
+        "cacheReadTokens": 254016,
+        "reasoningTokens": 982,
+        "costUsd": 0.9784965,
+        "tableCostUsd": 0.863464,
+        "modelMs": 364954
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 239131,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 78,
+        "actions": 86,
+        "inputTokens": 353404,
+        "outputTokens": 5036,
+        "cacheReadTokens": 305621,
+        "reasoningTokens": 0,
+        "costUsd": 0.5761842500000001,
+        "tableCostUsd": 0.5176255,
+        "modelMs": 208894
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 176607,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 84,
+        "actions": 85,
+        "inputTokens": 391326,
+        "outputTokens": 5160,
+        "cacheReadTokens": 334543,
+        "reasoningTokens": 0,
+        "costUsd": 0.2599621,
+        "tableCostUsd": 0.2320746,
+        "modelMs": 142272
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 196934,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 70,
+        "actions": 76,
+        "inputTokens": 187640,
+        "outputTokens": 3499,
+        "cacheReadTokens": 147139,
+        "reasoningTokens": 1189,
+        "costUsd": 0.3228006,
+        "tableCostUsd": 0.1454198,
+        "modelMs": 178269
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 262865,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 64,
+        "actions": 75,
+        "inputTokens": 231823,
+        "outputTokens": 8848,
+        "cacheReadTokens": 114688,
+        "reasoningTokens": 6764,
+        "costUsd": 0.344702,
+        "tableCostUsd": 0.344702,
+        "modelMs": 240660
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 261629,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 63,
+        "actions": 74,
+        "inputTokens": 198542,
+        "outputTokens": 10191,
+        "cacheReadTokens": 73600,
+        "reasoningTokens": 4411,
+        "costUsd": 0.549771,
+        "tableCostUsd": 0.549771,
+        "modelMs": 242592
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 162129,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 83,
+        "actions": 80,
+        "inputTokens": 283298,
+        "outputTokens": 3094,
+        "cacheReadTokens": 212992,
+        "reasoningTokens": 0,
+        "costUsd": 0.21242400000000003,
+        "tableCostUsd": 0.212424,
+        "modelMs": 130181
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 195652,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 65,
+        "actions": 78,
+        "inputTokens": 189043,
+        "outputTokens": 8939,
+        "cacheReadTokens": 15882,
+        "reasoningTokens": 6956,
+        "costUsd": 0.16458315,
+        "tableCostUsd": 0.16458314999999998,
+        "modelMs": 171830
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 161941,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 97,
+        "actions": 88,
+        "inputTokens": 363154,
+        "outputTokens": 5214,
+        "cacheReadTokens": 57394,
+        "reasoningTokens": 0,
+        "costUsd": 0.34760065,
+        "tableCostUsd": 0.3375694,
+        "modelMs": 123470
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 171659,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 72,
+        "actions": 77,
+        "inputTokens": 226363,
+        "outputTokens": 4766,
+        "cacheReadTokens": 80384,
+        "reasoningTokens": 1458,
+        "costUsd": 0.026691370000000002,
+        "tableCostUsd": 0.02669137,
+        "modelMs": 145067
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 432325,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 70,
+        "actions": 78,
+        "inputTokens": 231221,
+        "outputTokens": 7015,
+        "cacheReadTokens": 44440,
+        "reasoningTokens": 2608,
+        "costUsd": 0.052767892,
+        "tableCostUsd": 0.06471893999999999,
+        "modelMs": 411834
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "act",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 276502,
+      "runStatus": "blocked",
+      "tasks": [
+        {
+          "id": "tests-agent/login-form.e2e.ts#act signs in with the benchmark account",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes shadow-dom-form",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes lying-labels",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes iframe-form",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes infinite-scroll",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes virtualized-table",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes overlay-trap",
+          "status": "failed",
+          "code": "AUTOMATION_UNSUPPORTED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes sticky-chrome",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes async-states",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes debounced-search",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes hover-menu",
+          "status": "failed",
+          "code": "AUTOMATION_UNSUPPORTED"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes context-menu-trap",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes stale-dom",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes otp-auto-advance",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes date-picker",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes rich-text-editor",
+          "status": "skipped"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes playbook-cleanup",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes promo-storefront",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act completes gift-card-purchase",
+          "status": "passed"
+        },
+        {
+          "id": "tests-agent/scenarios.e2e.ts#act filters the list and the URL carries the filter",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 103,
+        "actions": 102,
+        "inputTokens": 355469,
+        "outputTokens": 4052,
+        "cacheReadTokens": 170880,
+        "reasoningTokens": 0,
+        "costUsd": 0.1215385,
+        "tableCostUsd": 0.1215385,
+        "modelMs": 224663
+      }
+    },
+    {
+      "arm": "luna-fast",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 65142,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 50,
+        "actions": 35,
+        "inputTokens": 80239,
+        "outputTokens": 3834,
+        "cacheReadTokens": 59174,
+        "reasoningTokens": 1849,
+        "costUsd": 0.020870960000000004,
+        "tableCostUsd": 0.019994559999999998,
+        "modelMs": 100600
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 58339,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 45,
+        "actions": 28,
+        "inputTokens": 69117,
+        "outputTokens": 3087,
+        "cacheReadTokens": 47279,
+        "reasoningTokens": 1245,
+        "costUsd": 0.009539030000000002,
+        "tableCostUsd": 0.00901758,
+        "modelMs": 98151
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 646228,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "timed-out",
+          "code": "TEST_TIMEOUT"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "timed-out",
+          "code": "TEST_TIMEOUT"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 41,
+        "actions": 23,
+        "inputTokens": 62584,
+        "outputTokens": 1786,
+        "cacheReadTokens": 44746,
+        "reasoningTokens": 223,
+        "costUsd": 0.331471,
+        "tableCostUsd": 0.312426,
+        "modelMs": 702037
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 193901,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 53,
+        "actions": 24,
+        "inputTokens": 168957,
+        "outputTokens": 6049,
+        "cacheReadTokens": 146120,
+        "reasoningTokens": 1133,
+        "costUsd": 0.6030999999999999,
+        "tableCostUsd": 0.56735,
+        "modelMs": 327437
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 195307,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 79,
+        "actions": 43,
+        "inputTokens": 311138,
+        "outputTokens": 5133,
+        "cacheReadTokens": 282676,
+        "reasoningTokens": 222,
+        "costUsd": 0.43610925,
+        "tableCostUsd": 0.411973,
+        "modelMs": 210876
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 154643,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 87,
+        "actions": 33,
+        "inputTokens": 341747,
+        "outputTokens": 4905,
+        "cacheReadTokens": 303481,
+        "reasoningTokens": 290,
+        "costUsd": 0.19513020000000003,
+        "tableCostUsd": 0.1862782,
+        "modelMs": 152262
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 75045,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 42,
+        "actions": 22,
+        "inputTokens": 62844,
+        "outputTokens": 2728,
+        "cacheReadTokens": 41628,
+        "reasoningTokens": 958,
+        "costUsd": 0.16585019999999998,
+        "tableCostUsd": 0.07803760000000001,
+        "modelMs": 123666
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 301509,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 60,
+        "actions": 60,
+        "inputTokens": 198292,
+        "outputTokens": 17548,
+        "cacheReadTokens": 118784,
+        "reasoningTokens": 15128,
+        "costUsd": 0.32369600000000004,
+        "tableCostUsd": 0.323696,
+        "modelMs": 376892
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 416708,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 70,
+        "actions": 46,
+        "inputTokens": 259981,
+        "outputTokens": 27205,
+        "cacheReadTokens": 142912,
+        "reasoningTokens": 21813,
+        "costUsd": 0.8021555999999999,
+        "tableCostUsd": 0.8021556,
+        "modelMs": 447293
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 101546,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 48,
+        "actions": 21,
+        "inputTokens": 104535,
+        "outputTokens": 3988,
+        "cacheReadTokens": 69120,
+        "reasoningTokens": 1808,
+        "costUsd": 0.112038,
+        "tableCostUsd": 0.112038,
+        "modelMs": 158699
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 154476,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 59,
+        "actions": 30,
+        "inputTokens": 116419,
+        "outputTokens": 17832,
+        "cacheReadTokens": 0,
+        "reasoningTokens": 15965,
+        "costUsd": 0.15418425000000005,
+        "tableCostUsd": 0.15418425,
+        "modelMs": 205238
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 71364,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 70,
+        "actions": 31,
+        "inputTokens": 200475,
+        "outputTokens": 4106,
+        "cacheReadTokens": 4188,
+        "reasoningTokens": 0,
+        "costUsd": 0.2183018,
+        "tableCostUsd": 0.21723579999999998,
+        "modelMs": 109177
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 166335,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 63,
+        "actions": 39,
+        "inputTokens": 161285,
+        "outputTokens": 9012,
+        "cacheReadTokens": 53120,
+        "reasoningTokens": 4679,
+        "costUsd": 0.022324350000000003,
+        "tableCostUsd": 0.02232435,
+        "modelMs": 194839
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 548119,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 77,
+        "actions": 46,
+        "inputTokens": 282817,
+        "outputTokens": 16541,
+        "cacheReadTokens": 69306,
+        "reasoningTokens": 12264,
+        "costUsd": 0.06248157399999999,
+        "tableCostUsd": 0.084318336,
+        "modelMs": 548416
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "judgment",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 115682,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: price-sorting sorts by the price actually charged",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: cart-totals keeps the summary in step with the lines",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: checkout-review renders its copy",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: saved-addresses removes a deleted address",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: newsletter-signup answers a subscription",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: order-history shows the orders",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: product-reviews match the product",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/planted-bugs.e2e.ts#bug: wishlist lists what was saved",
+          "status": "failed",
+          "code": "ACTION_FAILED"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: promo-storefront sells products behind its overlays",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: gift-card-purchase offers amounts and a recipient",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: login-form signs the benchmark account in",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: sticky-chrome accepts the terms",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: debounced-search finds trail mix",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: date-picker opens a calendar",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: iframe-form splits the coupon across two frames",
+          "status": "passed"
+        },
+        {
+          "id": "tests-judgment/working-software.e2e.ts#clean: hover-menu has an account menu",
+          "status": "passed"
+        }
+      ],
+      "usage": {
+        "calls": 52,
+        "actions": 23,
+        "inputTokens": 114052,
+        "outputTokens": 5221,
+        "cacheReadTokens": 38144,
+        "reasoningTokens": 2714,
+        "costUsd": 0.0574314,
+        "tableCostUsd": 0.0574314,
+        "modelMs": 212931
+      }
+    },
+    {
+      "arm": "luna-fast",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 121706,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B9",
+          "B2",
+          "B1",
+          "B3",
+          "W1",
+          "B6",
+          "B5",
+          "B10",
+          "B8"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[warning S1] Empty cart message has duplicate punctuation"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 46,
+        "actions": 27,
+        "inputTokens": 213329,
+        "outputTokens": 5803,
+        "cacheReadTokens": 184417,
+        "reasoningTokens": 2800,
+        "costUsd": 0.03525818,
+        "tableCostUsd": 0.03286868,
+        "modelMs": 106964
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 138767,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B9",
+          "B1",
+          "B2",
+          "B3",
+          "B4",
+          "W1",
+          "B6",
+          "B8",
+          "B10"
+        ],
+        "validUnplanted": [
+          "[issue S4] Signed-out Account page exposes Ada's profile data"
+        ],
+        "falsePositives": [
+          "[issue S3] Cart navigation has no item-count indicator",
+          "[warning S1] Empty cart confirmation has duplicated punctuation"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 45,
+        "actions": 22,
+        "inputTokens": 190366,
+        "outputTokens": 6564,
+        "cacheReadTokens": 153979,
+        "reasoningTokens": 3317,
+        "costUsd": 0.019814329999999998,
+        "tableCostUsd": 0.018233779999999998,
+        "modelMs": 126441
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 234891,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B9",
+          "B2",
+          "B3",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 59,
+        "actions": 37,
+        "inputTokens": 258352,
+        "outputTokens": 4053,
+        "cacheReadTokens": 213730,
+        "reasoningTokens": 264,
+        "costUsd": 0.9577225000000001,
+        "tableCostUsd": 0.8626,
+        "modelMs": 203663
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 540748,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "time",
+        "found": [
+          "B8",
+          "B1",
+          "B2",
+          "B3",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[warning S1] Empty cart message has a stray extra period: \"Your cart is empty. .\""
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 76,
+        "actions": 64,
+        "inputTokens": 733758,
+        "outputTokens": 17855,
+        "cacheReadTokens": 626856,
+        "reasoningTokens": 3846,
+        "costUsd": 2.310319,
+        "tableCostUsd": 2.118484,
+        "modelMs": 510870
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 508971,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "time",
+        "found": [
+          "B8",
+          "B2",
+          "B1",
+          "B3",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [
+          "[issue S4] Account page shows a signed-in user's data while signed out"
+        ],
+        "falsePositives": [
+          "[issue S3] Catalog book titles are not links; no book detail page is reachable",
+          "[issue S3] \"Place order\" button does nothing when shipping address is empty — no validation message, no submit",
+          "[warning S1] Empty-cart message has stray double period: \"Your cart is empty. .\"",
+          "[warning S1] Empty-cart message has stray double period: \"Your cart is empty. .\"",
+          "[issue S3] Order rows on /orders are not clickable and no order detail page exists (/orders/1042 and /order/1042 both 404)",
+          "[warning S2] Orders list rows show no status field"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 134,
+        "actions": 101,
+        "inputTokens": 1658196,
+        "outputTokens": 18816,
+        "cacheReadTokens": 1537231,
+        "reasoningTokens": 1039,
+        "costUsd": 1.959553,
+        "tableCostUsd": 1.8438405,
+        "modelMs": 464803
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 283475,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B1",
+          "B9",
+          "B2",
+          "B3",
+          "B6",
+          "B10"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S4] Book titles/list items are not clickable links to a detail page",
+          "[warning S1] Empty cart message has malformed text \"Your cart is empty. .\""
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 94,
+        "actions": 73,
+        "inputTokens": 1182417,
+        "outputTokens": 10524,
+        "cacheReadTokens": 1120638,
+        "reasoningTokens": 447,
+        "costUsd": 0.47562309999999997,
+        "tableCostUsd": 0.4529256,
+        "modelMs": 198723
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 298630,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B1",
+          "B9",
+          "B2",
+          "B3",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [
+          "[issue S5] Account exposes another user's profile details while signed out",
+          "[issue S4] Signing in as Ada shows a different user's profile email"
+        ],
+        "falsePositives": [
+          "[warning S1] Empty-cart message contains duplicated punctuation",
+          "[issue S2] Decrease quantity remains active at 1 but gives no boundary feedback",
+          "[issue S3] New order #1042 cannot be opened to inspect its details",
+          "[issue S3] Profile save accepts an omitted display name and reports success"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 66,
+        "actions": 43,
+        "inputTokens": 326059,
+        "outputTokens": 8961,
+        "cacheReadTokens": 273173,
+        "reasoningTokens": 3806,
+        "costUsd": 0.5457002,
+        "tableCostUsd": 0.25001660000000003,
+        "modelMs": 274513
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 490652,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B1",
+          "B9",
+          "B3",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [
+          "[issue S4] Unauthenticated Orders page lists another customer’s order #1041"
+        ],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 53,
+        "actions": 40,
+        "inputTokens": 336474,
+        "outputTokens": 24539,
+        "cacheReadTokens": 208896,
+        "reasoningTokens": 21246,
+        "costUsd": 0.506838,
+        "tableCostUsd": 0.506838,
+        "modelMs": 467932
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 539151,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "time",
+        "found": [
+          "B8",
+          "B9",
+          "B2",
+          "B1",
+          "B3",
+          "W1",
+          "B6",
+          "B10"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[warning S1] Empty cart message has duplicated punctuation: \"Your cart is empty. .\""
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 70,
+        "actions": 54,
+        "inputTokens": 680238,
+        "outputTokens": 29093,
+        "cacheReadTokens": 525440,
+        "reasoningTokens": 18318,
+        "costUsd": 1.058421,
+        "tableCostUsd": 1.058421,
+        "modelMs": 503663
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 432881,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B9",
+          "B2",
+          "B3",
+          "W1",
+          "B6",
+          "B5",
+          "B10",
+          "B1"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[warning S2] Empty cart message contains stray punctuation and extra space"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 61,
+        "actions": 35,
+        "inputTokens": 395283,
+        "outputTokens": 14014,
+        "cacheReadTokens": 331008,
+        "reasoningTokens": 8976,
+        "costUsd": 0.2953859999999999,
+        "tableCostUsd": 0.295386,
+        "modelMs": 417978
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 212125,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B9",
+          "B2",
+          "B3",
+          "B4",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [
+          "[issue S4] Account page is accessible and displays private user data when signed out"
+        ],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 54,
+        "actions": 41,
+        "inputTokens": 372506,
+        "outputTokens": 14263,
+        "cacheReadTokens": 172540,
+        "reasoningTokens": 11208,
+        "costUsd": 0.21640125,
+        "tableCostUsd": 0.21640125,
+        "modelMs": 196025
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 78038,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B9",
+          "B2",
+          "B3",
+          "B6"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 32,
+        "actions": 20,
+        "inputTokens": 305450,
+        "outputTokens": 2936,
+        "cacheReadTokens": 285046,
+        "reasoningTokens": 0,
+        "costUsd": 0.06757535,
+        "tableCostUsd": 0.06358860000000001,
+        "modelMs": 64152
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 544660,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "step-limit",
+        "found": [
+          "B2",
+          "B9",
+          "B8",
+          "B1",
+          "B3",
+          "W1",
+          "B6",
+          "B10"
+        ],
+        "validUnplanted": [
+          "[issue S4] Account page exposes and allows editing of ada's profile while signed out"
+        ],
+        "falsePositives": [
+          "[warning S1] Empty-cart message has doubled period: \"Your cart is empty. .\"",
+          "[issue S2] Checkout reachable with an empty cart and its \"Place order\" button silently does nothing",
+          "[issue S2] Checkout form shows no validation errors when submitted with empty required fields"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 127,
+        "actions": 107,
+        "inputTokens": 1083462,
+        "outputTokens": 32561,
+        "cacheReadTokens": 657152,
+        "reasoningTokens": 16505,
+        "costUsd": 0.09994156000000001,
+        "tableCostUsd": 0.09994156,
+        "modelMs": 497915
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 418388,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [
+          "B8",
+          "B9",
+          "B1",
+          "B3",
+          "B2",
+          "W1",
+          "B6",
+          "B10",
+          "B5"
+        ],
+        "validUnplanted": [
+          "[issue S4] Signed-out /orders leaks order history instead of redirecting to sign-in"
+        ],
+        "falsePositives": [
+          "[warning S1] Empty cart message shows stray extra period: \"Your cart is empty. .\"",
+          "[warning S2] Empty-cart Checkout keeps an enabled \"Place order\" button and gives no feedback on submit"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 68,
+        "actions": 54,
+        "inputTokens": 554434,
+        "outputTokens": 20312,
+        "cacheReadTokens": 172216,
+        "reasoningTokens": 12222,
+        "costUsd": 0.10769627199999998,
+        "tableCostUsd": 0.14007309599999998,
+        "modelMs": 396469
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "explore",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 168039,
+      "runStatus": "blocked",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "STEP_TIMEOUT"
+        }
+      ],
+      "explore": {
+        "ended": "aborted",
+        "found": [
+          "B8",
+          "B9",
+          "B2",
+          "B3"
+        ],
+        "validUnplanted": [],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 12,
+        "actions": 7,
+        "inputTokens": 62725,
+        "outputTokens": 2365,
+        "cacheReadTokens": 33792,
+        "reasoningTokens": 755,
+        "costUsd": 0.024940700000000003,
+        "tableCostUsd": 0.0249407,
+        "modelMs": 162930
+      }
+    },
+    {
+      "arm": "luna-fast",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 91396,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Account page shows Ada's profile while navigation indicates signed out"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 35,
+        "actions": 25,
+        "inputTokens": 151354,
+        "outputTokens": 4074,
+        "cacheReadTokens": 125550,
+        "reasoningTokens": 2265,
+        "costUsd": 0.0273341,
+        "tableCostUsd": 0.0251212,
+        "modelMs": 83890
+      }
+    },
+    {
+      "arm": "luna",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 156538,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Empty checkout submission gives no validation feedback",
+          "[issue S4] Account page exposes Ada profile without sign-in",
+          "[issue S4] Orders page exposes order history without sign-in",
+          "[issue S3] Order #1042 has no details control or item/status/delivery information"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 52,
+        "actions": 33,
+        "inputTokens": 229333,
+        "outputTokens": 6981,
+        "cacheReadTokens": 182729,
+        "reasoningTokens": 4013,
+        "costUsd": 0.02341318,
+        "tableCostUsd": 0.021352580000000003,
+        "modelMs": 144511
+      }
+    },
+    {
+      "arm": "gpt-6-astra",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 184755,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "passed"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 48,
+        "actions": 34,
+        "inputTokens": 197387,
+        "outputTokens": 2721,
+        "cacheReadTokens": 159518,
+        "reasoningTokens": 234,
+        "costUsd": 0.7559630000000002,
+        "tableCostUsd": 0.674258,
+        "modelMs": 162698
+      }
+    },
+    {
+      "arm": "fable-5.1",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 465161,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Cart allows Solaris quantity above its stock of 2 with no warning",
+          "[issue S3] Checkout page shows no order summary or total before placing the order",
+          "[issue S3] Account form saves an empty display name; home greeting then reads \"Welcome, !\"",
+          "[issue S3] Account form saves an empty email address with \"Profile saved.\"",
+          "[issue S3] After clicking \"Sign out\", home page still greets the signed-out user by name (\"Welcome, Test Buyer!\")"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 72,
+        "actions": 64,
+        "inputTokens": 724146,
+        "outputTokens": 13903,
+        "cacheReadTokens": 646788,
+        "reasoningTokens": 3114,
+        "costUsd": 1.7643620000000002,
+        "tableCostUsd": 1.630427,
+        "modelMs": 436809
+      }
+    },
+    {
+      "arm": "opus-5",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 484888,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] No book detail page: catalog titles are not links and /book/<id> returns \"Page not found\"",
+          "[issue S3] Cart lets quantity exceed stock (Hyperion stock 7, cart accepts 8) with no message",
+          "[issue S3] Neuromancer quantity can be raised to 4 although catalog stock is 3, with no warning",
+          "[issue S4] 'Place order' does nothing with empty shipping address — no validation message, no order",
+          "[issue S3] Checkout accepts a one-character shipping address \"x\" and places the order",
+          "[issue S3] No order detail: order rows are not clickable and /orders/1042 returns \"Page not found\"",
+          "[issue S4] Account page shows and lets you edit Ada's profile while signed out",
+          "[issue S3] Signed-out home page greets the user by name (\"Welcome, Ada Test Persona!\")",
+          "[issue S4] Orders page shows the same 2 personal orders to an anonymous (signed-out) visitor",
+          "[issue S3] Catalog stock never decrements after an order is placed (Solaris still \"In stock: 2\" after buying 2 copies)",
+          "[issue S3] Empty-cart checkout: 'Place order' silently does nothing and shows no message (0 items)"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 122,
+        "actions": 85,
+        "inputTokens": 1369727,
+        "outputTokens": 18114,
+        "cacheReadTokens": 1255011,
+        "reasoningTokens": 1159,
+        "costUsd": 1.7559254999999998,
+        "tableCostUsd": 1.6539355,
+        "modelMs": 447573
+      }
+    },
+    {
+      "arm": "sonnet-5",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 235831,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Home greeting shows \"Welcome, Ada Lovelace!\" while not signed in",
+          "[issue S5] Sign-in succeeded without entering a real password (no invalid-password test possible)",
+          "[issue S4] Account form accepts blank Email with no validation and persists it"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 78,
+        "actions": 57,
+        "inputTokens": 703221,
+        "outputTokens": 9900,
+        "cacheReadTokens": 626919,
+        "reasoningTokens": 1527,
+        "costUsd": 0.3989263,
+        "tableCostUsd": 0.3769878,
+        "modelMs": 211666
+      }
+    },
+    {
+      "arm": "sol",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 191404,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Checkout omits item and price summary",
+          "[issue S4] Checkout accepts an obviously incomplete shipping address",
+          "[issue S4] Unsigned-in buyer can see a pre-existing order",
+          "[issue S3] Orders page provides no item, quantity, delivery estimate, or detail view",
+          "[issue S5] Account page exposes and allows editing another user's profile while unsigned in",
+          "[issue S3] Signed-out home still greets the user as Ada Lovelace"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 46,
+        "actions": 32,
+        "inputTokens": 194214,
+        "outputTokens": 5230,
+        "cacheReadTokens": 154875,
+        "reasoningTokens": 1876,
+        "costUsd": 0.35846600000000006,
+        "tableCostUsd": 0.161953,
+        "modelMs": 174926
+      }
+    },
+    {
+      "arm": "grok-4.6",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 484306,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Orders list does not show item lines and order rows cannot be opened",
+          "[issue S3] Home still greets Ada Lovelace after Sign out"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 41,
+        "actions": 31,
+        "inputTokens": 229759,
+        "outputTokens": 24745,
+        "cacheReadTokens": 124288,
+        "reasoningTokens": 22061,
+        "costUsd": 0.42155599999999993,
+        "tableCostUsd": 0.421556,
+        "modelMs": 468928
+      }
+    },
+    {
+      "arm": "kimi-k3",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 524038,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "time",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Cart allows quantity beyond available stock (Dune stock 4, cart allows 5+)",
+          "[issue S3] Checkout accepts whitespace-only shipping address and places the order",
+          "[issue S3] Catalog stock count does not decrease after a completed purchase",
+          "[issue S3] Account profile accepts whitespace-only display name with no validation",
+          "[issue S3] Nav shows \"Sign in\" while user is already authenticated; \"Sign out\" only appears after re-submitting the login form",
+          "[issue S4] Sign out does not end the session — greeting, Orders, and Account still show Ada's data afterwards"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 94,
+        "actions": 83,
+        "inputTokens": 839552,
+        "outputTokens": 26394,
+        "cacheReadTokens": 637984,
+        "reasoningTokens": 15381,
+        "costUsd": 1.1920092,
+        "tableCostUsd": 1.1920092,
+        "modelMs": 479196
+      }
+    },
+    {
+      "arm": "qwen3.8-max",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 263725,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S3] Checkout shows wrong item count after removing an item in cart",
+          "[issue S3] Checkout accepts order without required customer name or email fields",
+          "[issue S3] Orders page shows 2 orders but only 1 was placed in this session",
+          "[issue S5] Account page shows signed-in user details without authentication"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 32,
+        "actions": 18,
+        "inputTokens": 170119,
+        "outputTokens": 8421,
+        "cacheReadTokens": 136832,
+        "reasoningTokens": 5609,
+        "costUsd": 0.15130800000000003,
+        "tableCostUsd": 0.151308,
+        "modelMs": 254142
+      }
+    },
+    {
+      "arm": "gemini-3.8-flash",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 175675,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S5] User session and personal data remain accessible after clicking 'Sign out'"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 49,
+        "actions": 39,
+        "inputTokens": 259145,
+        "outputTokens": 12415,
+        "cacheReadTokens": 71307,
+        "reasoningTokens": 10065,
+        "costUsd": 0.19278277500000002,
+        "tableCostUsd": 0.192782775,
+        "modelMs": 161884
+      }
+    },
+    {
+      "arm": "haiku-4.5",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 0,
+      "durationMs": 79962,
+      "runStatus": "passed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "passed"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 39,
+        "actions": 27,
+        "inputTokens": 243502,
+        "outputTokens": 2662,
+        "cacheReadTokens": 197162,
+        "reasoningTokens": 0,
+        "costUsd": 0.08755895,
+        "tableCostUsd": 0.0793662,
+        "modelMs": 72005
+      }
+    },
+    {
+      "arm": "glm-5.3-flash",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 232891,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "finished",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S4] Checkout accepts a whitespace-only shipping address and places an order",
+          "[issue S3] Empty checkout submit gives no validation feedback; screen stays unchanged",
+          "[issue S3] Account profile saves an empty display name with no validation",
+          "[issue S4] After 'Sign out', /account and /orders remain fully accessible with account and order data"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 59,
+        "actions": 49,
+        "inputTokens": 344409,
+        "outputTokens": 11430,
+        "cacheReadTokens": 178432,
+        "reasoningTokens": 3279,
+        "costUsd": 0.03596451,
+        "tableCostUsd": 0.03596451,
+        "modelMs": 212329
+      }
+    },
+    {
+      "arm": "deepseek-v4.1-flash",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 484860,
+      "runStatus": "failed",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "ASSERTION_FAILED"
+        }
+      ],
+      "explore": {
+        "ended": "step-limit",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [
+          "[issue S4] Account page still shows account details while signed out",
+          "[issue S3] Home greeting still names the user after signing out"
+        ],
+        "other": []
+      },
+      "usage": {
+        "calls": 73,
+        "actions": 55,
+        "inputTokens": 467002,
+        "outputTokens": 21349,
+        "cacheReadTokens": 98816,
+        "reasoningTokens": 14602,
+        "costUsd": 0.10429369599999999,
+        "tableCostUsd": 0.13666749599999997,
+        "modelMs": 462704
+      }
+    },
+    {
+      "arm": "qwen3.8-27b",
+      "track": "explore-clean",
+      "repeat": 1,
+      "exitCode": 1,
+      "durationMs": 255532,
+      "runStatus": "blocked",
+      "tasks": [
+        {
+          "id": "explore#Explore this bookshop like a careful first-time buyer: browse the catalog, add books to the cart, change quantities, remove one, check out, then visit the account, orders, and sign-in pages. Report every defect you have evidence of.",
+          "status": "failed",
+          "code": "STEP_TIMEOUT"
+        }
+      ],
+      "explore": {
+        "ended": "aborted",
+        "found": [],
+        "validUnplanted": [],
+        "falsePositives": [],
+        "other": []
+      },
+      "usage": {
+        "calls": 25,
+        "actions": 15,
+        "inputTokens": 136126,
+        "outputTokens": 5135,
+        "cacheReadTokens": 82560,
+        "reasoningTokens": 2780,
+        "costUsd": 0.050443999999999996,
+        "tableCostUsd": 0.050444,
+        "modelMs": 249750
+      }
+    }
+  ]
+}

@@ -22,10 +22,10 @@ export interface PlantedDefect {
 /** The garden's defects (`packages/testbed/app/bug-garden.mjs` documents them). */
 export const PLANTED_DEFECTS: readonly PlantedDefect[] = [
   { id: 'B1', kind: 'navigation', patterns: [/help/i, /hlep|404|not found|nothing at/i] },
-  { id: 'B2', kind: 'dead control', patterns: [/add to cart/i, /nothing|no effect|no visible|unresponsive|dead|does not|doesn.t|did not|didn.t|stays|remains|not added|never/i] },
+  { id: 'B2', kind: 'dead control', patterns: [/add to cart/i, /nothing|no effect|no visible|unresponsive|dead|does not|doesn.t|did not|didn.t|stays|remains|not added|never|wrong item|instead/i] },
   { id: 'B3', kind: 'calculation', patterns: [/total/i, /quantit|qty|line|sum|ignore|incorrect|wrong|mismatch|should be|expected/i] },
   { id: 'B4', kind: 'wrong target', patterns: [/remov/i, /wrong|first|different|other|instead|another/i] },
-  { id: 'B5', kind: 'persistence', patterns: [/name|profile|account/i, /sav|persist|revert/i, /old|previous|unchanged|revert|not (updated|changed|saved|persist|kept|applied|reflected)|still shows|did not (update|change|persist|stick)|lost|discard/i] },
+  { id: 'B5', kind: 'persistence', patterns: [/name|profile|account/i, /sav|persist|revert/i, /old|previous|unchanged|revert|not (updated|changed|saved|persist|kept|applied|reflected)|still shows|did not (update|change|persist|stick)|lost|discard|clears? it|instead of persist/i] },
   { id: 'B6', kind: 'dates', patterns: [/1970|1969|before (the|it was) (order|placed)|delivery date|placed on/i] },
   { id: 'B7', kind: 'security', patterns: [/password/i, /plain ?text|in (the )?clear|clear ?text|unmasked|not masked|no(t)? mask|readable|type="?text|visible (as|while) (you )?typ|exposed|echo|shows the (typed|entered)|displayed (as|in) (plain|clear)/i] },
   { id: 'B8', kind: 'copy', patterns: [/\{\{\s*userName\s*\}\}|template|placeholder token|unrendered|interpolat/i] },

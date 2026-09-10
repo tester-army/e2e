@@ -38,8 +38,8 @@ test('clean: sticky-chrome accepts the terms', async ({ app, agent }) => {
 
 test('clean: debounced-search finds trail mix', async ({ app, agent }) => {
   await app.open('/e/debounced-search');
-  await agent.act('search for trail mix');
-  await agent.assert('the search results list several trail mix items');
+  await agent.act('search for trail mix and add Trail Mix 500 g to the cart');
+  await agent.assert('the page confirms that Trail Mix 500 g was added to the cart');
 });
 
 test('clean: date-picker opens a calendar', async ({ app, agent }) => {

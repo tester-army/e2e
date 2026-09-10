@@ -56,7 +56,117 @@ one task-set version and one e2e release only; the history lists both.
 
 ## Results
 
-No matrix has been published yet.
+Newest matrix: `calibration-r1`, e2e 0.11.0 (`07c5334d`), task set v1, 1 repeat(s), 2026-09-10. Arms are named by their catalog id; the table under [Arms](#arms) maps them to model ids and prices.
+
+### act
+
+| arm | runs | tasks | pass rate | reliability | failure codes | calls | tokens in/out | cached | reasoning | cost | list cost | time | model time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| luna-fast | 1 | 17 (+3 gaps) | 100% | 100% | - | 75 | 189k/4k | 80% | 2k | $0.0344 | $0.0315 | 172s | 146s |
+| luna | 1 | 17 (+3 gaps) | 100% | 100% | - | 73 | 201k/4k | 76% | 2k | $0.0197 | $0.0178 | 191s | 165s |
+| gpt-6-astra | 1 | 17 (+3 gaps) | 76% | 76% | STEP_TIMEOUT 2, TEST_TIMEOUT 1, AUTOMATION_UNSUPPORTED 1 | 71 | 191k/2k | 77% | 0k | $0.783 | $0.695 | 1076s | 1057s |
+| fable-5.1 | 1 | 17 (+3 gaps) | 100% | 100% | - | 65 | 300k/7k | 85% | 1k | $0.978 | $0.863 | 383s | 365s |
+| opus-5 | 1 | 17 (+3 gaps) | 94% | 94% | ACTION_FAILED 1 | 78 | 353k/5k | 86% | 0k | $0.576 | $0.518 | 239s | 209s |
+| sonnet-5 | 1 | 17 (+3 gaps) | 94% | 94% | ACTION_FAILED 1 | 84 | 391k/5k | 85% | 0k | $0.260 | $0.232 | 177s | 142s |
+| sol | 1 | 17 (+3 gaps) | 100% | 100% | - | 70 | 188k/3k | 78% | 1k | $0.323 | $0.145 | 197s | 178s |
+| grok-4.6 | 1 | 17 (+3 gaps) | 100% | 100% | - | 64 | 232k/9k | 49% | 7k | $0.345 | $0.345 | 263s | 241s |
+| kimi-k3 | 1 | 17 (+3 gaps) | 100% | 100% | - | 63 | 199k/10k | 37% | 4k | $0.550 | $0.550 | 262s | 243s |
+| qwen3.8-max | 1 | 17 (+3 gaps) | 94% | 94% | ASSERTION_FAILED 1 | 83 | 283k/3k | 75% | 0k | $0.212 | $0.212 | 162s | 130s |
+| gemini-3.8-flash | 1 | 17 (+3 gaps) | 100% | 100% | - | 65 | 189k/9k | 8% | 7k | $0.165 | $0.165 | 196s | 172s |
+| haiku-4.5 | 1 | 17 (+3 gaps) | 94% | 94% | ACTION_FAILED 1 | 97 | 363k/5k | 16% | 0k | $0.348 | $0.338 | 162s | 123s |
+| glm-5.3-flash | 1 | 17 (+3 gaps) | 100% | 100% | - | 72 | 226k/5k | 36% | 1k | $0.0267 | $0.0267 | 172s | 145s |
+| deepseek-v4.1-flash | 1 | 17 (+3 gaps) | 100% | 100% | - | 70 | 231k/7k | 19% | 3k | $0.0528 | $0.0647 | 432s | 412s |
+| qwen3.8-27b | 1 | 17 (+3 gaps) | 88% | 88% | AUTOMATION_UNSUPPORTED 2 | 103 | 355k/4k | 48% | 0k | $0.122 | $0.122 | 277s | 225s |
+
+### judgment
+
+| arm | runs | caught | missed | false alarm | correct | inconclusive | calls | tokens in/out | cached | reasoning | cost | list cost | time | model time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| luna-fast | 1 | 8 | 0 | 1 | 7 | 0 | 50 | 80k/4k | 74% | 2k | $0.0209 | $0.0200 | 65s | 101s |
+| luna | 1 | 8 | 0 | 1 | 7 | 0 | 45 | 69k/3k | 68% | 1k | $0.0095 | $0.0090 | 58s | 98s |
+| gpt-6-astra | 1 | 8 | 0 | 0 | 6 | 2 | 41 | 63k/2k | 71% | 0k | $0.331 | $0.312 | 646s | 702s |
+| fable-5.1 | 1 | 8 | 0 | 0 | 8 | 0 | 53 | 169k/6k | 86% | 1k | $0.603 | $0.567 | 194s | 327s |
+| opus-5 | 1 | 8 | 0 | 0 | 8 | 0 | 79 | 311k/5k | 91% | 0k | $0.436 | $0.412 | 195s | 211s |
+| sonnet-5 | 1 | 8 | 0 | 0 | 8 | 0 | 87 | 342k/5k | 89% | 0k | $0.195 | $0.186 | 155s | 152s |
+| sol | 1 | 8 | 0 | 0 | 8 | 0 | 42 | 63k/3k | 66% | 1k | $0.166 | $0.0780 | 75s | 124s |
+| grok-4.6 | 1 | 8 | 0 | 0 | 8 | 0 | 60 | 198k/18k | 60% | 15k | $0.324 | $0.324 | 302s | 377s |
+| kimi-k3 | 1 | 8 | 0 | 0 | 8 | 0 | 70 | 260k/27k | 55% | 22k | $0.802 | $0.802 | 417s | 447s |
+| qwen3.8-max | 1 | 7 | 1 | 0 | 8 | 0 | 48 | 105k/4k | 66% | 2k | $0.112 | $0.112 | 102s | 159s |
+| gemini-3.8-flash | 1 | 8 | 0 | 0 | 8 | 0 | 59 | 116k/18k | 0% | 16k | $0.154 | $0.154 | 154s | 205s |
+| haiku-4.5 | 1 | 7 | 1 | 0 | 8 | 0 | 70 | 200k/4k | 2% | 0k | $0.218 | $0.217 | 71s | 109s |
+| glm-5.3-flash | 1 | 8 | 0 | 0 | 8 | 0 | 63 | 161k/9k | 33% | 5k | $0.0223 | $0.0223 | 166s | 195s |
+| deepseek-v4.1-flash | 1 | 8 | 0 | 0 | 8 | 0 | 77 | 283k/17k | 25% | 12k | $0.0625 | $0.0843 | 548s | 548s |
+| qwen3.8-27b | 1 | 7 | 1 | 0 | 8 | 0 | 52 | 114k/5k | 33% | 3k | $0.0574 | $0.0574 | 116s | 213s |
+
+### explore
+
+| arm | runs | recall (11) | precision | false pos. | unplanted | other | dupes | stuck | first finding | evidence | calls | tokens in/out | cached | reasoning | cost | list cost | time | model time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| luna-fast | 1 | 82% | 90% | 1 | 0 | 0 | 2 | 0 | 8s | 83% | 46 | 213k/6k | 86% | 3k | $0.0353 | $0.0329 | 122s | 107s |
+| luna | 1 | 82% | 83% | 2 | 1 | 0 | 1 | 0 | 9s | 69% | 45 | 190k/7k | 81% | 3k | $0.0198 | $0.0182 | 139s | 126s |
+| gpt-6-astra | 1 | 73% | 100% | 0 | 0 | 0 | 1 | 0 | 9s | 100% | 59 | 258k/4k | 83% | 0k | $0.958 | $0.863 | 235s | 204s |
+| fable-5.1 | 1 | 73% | 89% | 1 | 0 | 0 | 5 | 0 | 29s | 79% | 76 | 734k/18k | 85% | 4k | $2.310 | $2.118 | 541s | 511s |
+| opus-5 | 1 | 73% | 60% | 6 | 1 | 0 | 7 | 0 | 12s | 64% | 134 | 1658k/19k | 93% | 1k | $1.960 | $1.844 | 509s | 465s |
+| sonnet-5 | 1 | 64% | 78% | 2 | 0 | 0 | 5 | 0 | 10s | 100% | 94 | 1182k/11k | 95% | 0k | $0.476 | $0.453 | 283s | 199s |
+| sol | 1 | 82% | 73% | 4 | 2 | 0 | 4 | 0 | 14s | 95% | 66 | 326k/9k | 84% | 4k | $0.546 | $0.250 | 299s | 275s |
+| grok-4.6 | 1 | 73% | 100% | 0 | 1 | 0 | 2 | 0 | 27s | 82% | 53 | 336k/25k | 62% | 21k | $0.507 | $0.507 | 491s | 468s |
+| kimi-k3 | 1 | 73% | 89% | 1 | 0 | 0 | 7 | 0 | 30s | 88% | 70 | 680k/29k | 77% | 18k | $1.058 | $1.058 | 539s | 504s |
+| qwen3.8-max | 1 | 82% | 90% | 1 | 0 | 0 | 4 | 0 | 34s | 79% | 61 | 395k/14k | 84% | 9k | $0.295 | $0.295 | 433s | 418s |
+| gemini-3.8-flash | 1 | 82% | 100% | 0 | 1 | 0 | 0 | 0 | 8s | 80% | 54 | 373k/14k | 46% | 11k | $0.216 | $0.216 | 212s | 196s |
+| haiku-4.5 | 1 | 36% | 100% | 0 | 0 | 0 | 3 | 0 | 10s | 100% | 32 | 305k/3k | 93% | 0k | $0.0676 | $0.0636 | 78s | 64s |
+| glm-5.3-flash | 1 | 73% | 75% | 3 | 1 | 0 | 3 | 0 | 36s | 73% | 127 | 1083k/33k | 61% | 17k | $0.0999 | $0.0999 | 545s | 498s |
+| deepseek-v4.1-flash | 1 | 82% | 83% | 2 | 1 | 0 | 3 | 0 | 11s | 73% | 68 | 554k/20k | 31% | 12k | $0.108 | $0.140 | 418s | 396s |
+| qwen3.8-27b | 1 | 36% | 100% | 0 | 0 | 0 | 0 | 1 | 39s | 100% | 12 | 63k/2k | 54% | 1k | $0.0249 | $0.0249 | 168s | 163s |
+
+### explore-clean
+
+| arm | runs | false pos. | stuck | first finding | evidence | calls | tokens in/out | cached | reasoning | cost | list cost | time | model time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| luna-fast | 1 | 1 | 0 | 40s | 50% | 35 | 151k/4k | 83% | 2k | $0.0273 | $0.0251 | 91s | 84s |
+| luna | 1 | 4 | 0 | 42s | 80% | 52 | 229k/7k | 80% | 4k | $0.0234 | $0.0214 | 157s | 145s |
+| gpt-6-astra | 1 | 0 | 0 | 98s | 100% | 48 | 197k/3k | 81% | 0k | $0.756 | $0.674 | 185s | 163s |
+| fable-5.1 | 1 | 5 | 0 | 76s | 88% | 72 | 724k/14k | 89% | 3k | $1.764 | $1.630 | 465s | 437s |
+| opus-5 | 1 | 11 | 0 | 50s | 64% | 122 | 1370k/18k | 92% | 1k | $1.756 | $1.654 | 485s | 448s |
+| sonnet-5 | 1 | 3 | 0 | 18s | 60% | 78 | 703k/10k | 89% | 2k | $0.399 | $0.377 | 236s | 212s |
+| sol | 1 | 6 | 0 | 63s | 83% | 46 | 194k/5k | 80% | 2k | $0.358 | $0.162 | 191s | 175s |
+| grok-4.6 | 1 | 2 | 0 | 229s | 33% | 41 | 230k/25k | 54% | 22k | $0.422 | $0.422 | 484s | 469s |
+| kimi-k3 | 1 | 6 | 0 | 103s | 71% | 94 | 840k/26k | 76% | 15k | $1.192 | $1.192 | 524s | 479s |
+| qwen3.8-max | 1 | 4 | 0 | 115s | 80% | 32 | 170k/8k | 80% | 6k | $0.151 | $0.151 | 264s | 254s |
+| gemini-3.8-flash | 1 | 1 | 0 | 67s | 50% | 49 | 259k/12k | 28% | 10k | $0.193 | $0.193 | 176s | 162s |
+| haiku-4.5 | 1 | 0 | 0 | - | - | 39 | 244k/3k | 81% | 0k | $0.0876 | $0.0794 | 80s | 72s |
+| glm-5.3-flash | 1 | 4 | 0 | 69s | 67% | 59 | 344k/11k | 52% | 3k | $0.0360 | $0.0360 | 233s | 212s |
+| deepseek-v4.1-flash | 1 | 2 | 0 | 92s | 20% | 73 | 467k/21k | 21% | 15k | $0.104 | $0.137 | 485s | 463s |
+| qwen3.8-27b | 1 | 0 | 1 | 124s | 100% | 25 | 136k/5k | 61% | 3k | $0.0504 | $0.0504 | 256s | 250s |
+
+## Arms
+
+Gateway model ids, exact and never a moving alias, with list prices in USD per million tokens on the day of the matrix.
+
+| arm | model | tier | input | output | cache read |
+| --- | --- | --- | --- | --- | --- |
+| luna-fast (reference) | `openai/gpt-5.6-luna-fast` | budget | $0.40 | $2.40 | $0.04 |
+| luna | `openai/gpt-5.6-luna` | budget | $0.20 | $1.20 | $0.02 |
+| gpt-6-astra | `openai/gpt-6-astra` | frontier | $10.00 | $50.00 | $1.00 |
+| fable-5.1 | `anthropic/claude-fable-5.1` | frontier | $10.00 | $50.00 | $0.25 |
+| opus-5 | `anthropic/claude-opus-5` | frontier | $5.00 | $25.00 | $0.50 |
+| sonnet-5 | `anthropic/claude-sonnet-5` | premium | $2.00 | $10.00 | $0.20 |
+| sol | `openai/gpt-5.6-sol` | premium | $2.00 | $10.00 | $0.20 |
+| grok-4.6 | `spacexai/grok-4.6` | premium | $2.00 | $6.00 | $0.50 |
+| kimi-k3 | `moonshotai/kimi-k3` | premium | $3.00 | $15.00 | $0.30 |
+| qwen3.8-max | `alibaba/qwen3.8-max-0902` | premium | $2.00 | $6.00 | $0.25 |
+| gemini-3.8-flash | `google/gemini-3.8-flash` | mid | $0.75 | $3.75 | $0.07 |
+| haiku-4.5 | `anthropic/claude-haiku-4.5` | mid | $1.00 | $5.00 | $0.10 |
+| glm-5.3-flash | `zai/glm-5.3-flash` | budget | $0.15 | $0.50 | $0.03 |
+| deepseek-v4.1-flash | `deepseek/deepseek-v4.1-flash` | budget | $0.30 | $1.20 | $0.01 |
+| qwen3.8-27b | `alibaba/qwen3.8-27b` | budget | $0.50 | $3.00 | $0.10 |
+
+## History
+
+| date | label | e2e | task set | arms | tracks | repeats |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-10 | calibration-r1 | 0.11.0 (`07c5334d`) | v1 | 15 | act, judgment, explore, explore-clean | 1 |
+
+Every summary is a JSON file under `packages/bench/results/` in the repository, with the per-task outcome of every run.
 
 ## Reproduce
 
