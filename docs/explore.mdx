@@ -84,9 +84,9 @@ the app is fine when nothing was checked.
 
 A planner answer outside the grammar is not an error. The first time, the run
 falls back to a survey step (visit each top-level screen once); a later time,
-the exploration ends with the record so far and `ended: 'aborted'`. Anything
-else that stops the planner, a provider failure or the clock, is the run's
-error.
+the exploration ends with the record so far and `ended: 'aborted'`. The clock
+running out is a normal ending too (`ended: 'time'`), judged like any other.
+A provider failure that stops the planner is the run's error.
 
 ## What you get
 

@@ -203,7 +203,7 @@ describe('e2e explore', () => {
     ]);
   }, 120_000);
 
-  it('explores the first of several targets, opening the app only when it declares a URL, and leaves a malformed reporters value to config validation', async () => {
+  it('explores the first of several targets, opening its app first, and leaves a malformed reporters value to config validation', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'Looked around.' }),
       loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'unused' } }],

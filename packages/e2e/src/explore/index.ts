@@ -84,13 +84,14 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
 
   const state = new ExploreState(goal, budgets);
   const evidence = evidenceWriter(resolveArtifactsRoot(projectRoot, options.artifactsDir));
-  const target = pickTarget(raw, { projectRoot, env }, options.target, notice);
+  // Nothing replays an exploration, and a retry would explore twice. The
+  // target is picked from this same config, so what resolves for the pick is
+  // what resolves for the run.
+  const base: E2EConfig = { ...raw, cache: 'off', retries: 0 };
+  const target = pickTarget(base, { projectRoot, env }, options.target, notice);
   const rawConfig: E2EConfig = {
-    ...raw,
+    ...base,
     agent: exploreAgentConfig(raw.agent, { state, evidence, notice }),
-    // Nothing replays an exploration, and a retry would explore twice.
-    cache: 'off',
-    retries: 0,
     // A malformed value is left as it is, for config resolution to reject.
     reporters: Array.isArray(raw.reporters)
       ? [...raw.reporters, exploreReporter(state)]
@@ -195,7 +196,7 @@ function exploreAgentConfig(
  * for the run to report; a `--target` the config lacks reaches the run too,
  * as `UNKNOWN_TARGET`.
  */
-function pickTarget(
+export function pickTarget(
   raw: E2EConfig,
   options: { projectRoot: string; env: NodeJS.ProcessEnv },
   requested: string | undefined,

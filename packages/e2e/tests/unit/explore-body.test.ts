@@ -196,7 +196,7 @@ describe('the exploration body', () => {
     expect(state.summary).toBe('Time is up.');
   });
 
-  it('does not open the app for a target without a URL, and ends on the clock when a slow plan leaves no room for a step', async () => {
+  it('skips app.open when told the target has no URL, and ends on the clock when a slow plan leaves no room for a step', async () => {
     let clock = 0;
     const state = new ExploreState('goal', { maxSteps: 8, timeoutMs: 300_000 }, () => clock);
     const opened: string[] = [];
