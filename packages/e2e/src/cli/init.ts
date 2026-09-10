@@ -232,7 +232,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     clack.log.info('no tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
   }
   // The script init adds, unless the project already had one of its own under that name.
-  const runCommand = manifest.scripts?.[RUN_SCRIPT]?.startsWith('e2e run')
+  const runCommand = /^e2e run(?:\s|$)/u.test(manifest.scripts?.[RUN_SCRIPT] ?? '')
     ? runScriptCommand(manager, RUN_SCRIPT)
     : execCommand(manager, 'e2e run');
   const next = [

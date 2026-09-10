@@ -249,6 +249,19 @@ describe('e2e init', () => {
     },
   );
 
+  it.each([
+    ['e2e run --workers 1', 'npm run test:e2e'],
+    ['e2e runner --ci', 'npm exec e2e run'],
+    ['vitest', 'npm exec e2e run'],
+  ])('keeps an existing test:e2e script (%s) and points the run step at %s', async (script, step) => {
+    writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'existing-app', scripts: { 'test:e2e': script } })}\n`);
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('none');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect(await init(dir)).toBe(0);
+    expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': script });
+    expect(output()).toContain(`next: npm install, then APP_URL=http://localhost:3000 ${step}`);
+  });
+
   it('adds missing dependencies without changing existing fields, ranges, or formatting', async () => {
     const manifest = {
       name: 'existing-app', type: 'commonjs', scripts: { dev: 'vite' },
