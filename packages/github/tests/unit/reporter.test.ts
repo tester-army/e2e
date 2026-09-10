@@ -87,10 +87,17 @@ describe('reportRun', () => {
     const blank = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: '' }, blank.deps);
     expect(postedBody(blank.calls).startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test -->\n')).toBe(true);
-    // A long key is clipped the same way every run, so the marker stays bounded and findable.
+    // A long key is cut the same way every run, so the marker stays bounded and findable.
     const long = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: 'k'.repeat(5_000) }, long.deps);
-    expect(postedBody(long.calls).startsWith(`<!-- e2e-github project=dev.example.shop workflow=e2e job=test key=${'k'.repeat(128)} -->\n`)).toBe(true);
+    expect(postedBody(long.calls).startsWith(`<!-- e2e-github project=dev.example.shop workflow=e2e job=test key=${'k'.repeat(200)} -->\n`)).toBe(true);
+    // The cut is on the encoded form and never inside a percent escape, so emoji cannot outgrow the marker.
+    const emoji = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKFLOW: '💥'.repeat(300), GITHUB_JOB: 'ü'.repeat(300) });
+    await reportRun(failedRun, signal, { key: '💥'.repeat(300) }, emoji.deps);
+    const marker = /^<!-- e2e-github [^\n]* -->/.exec(postedBody(emoji.calls))?.[0] ?? '';
+    expect(marker.length).toBeGreaterThan(0);
+    expect(marker.length).toBeLessThanOrEqual(1_024);
+    expect(marker).toMatch(/ key=(?:%[0-9A-F]{2})+ -->$/);
   });
 
   it.each([

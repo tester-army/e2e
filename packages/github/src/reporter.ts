@@ -48,12 +48,22 @@ export function github(options: GitHubOptions = {}): Reporter {
   };
 }
 
-/** Marker fields are clipped to this many code points before encoding, so the marker stays under its cap. */
-const MAX_MARKER_FIELD_CHARS = 128;
+/**
+ * Each encoded marker field is cut to this many characters, so four fields
+ * and their names stay under `MAX_MARKER_CHARS` whatever the input. The cut
+ * never lands inside a percent escape, and it is the same on every run.
+ */
+const MAX_MARKER_FIELD_CHARS = 200;
+
+function markerField(value: string): string {
+  const encoded = encodeURIComponent(value);
+  if (encoded.length <= MAX_MARKER_FIELD_CHARS) return encoded;
+  return encoded.slice(0, MAX_MARKER_FIELD_CHARS).replace(/%[0-9A-F]?$/, '');
+}
 
 /**
  * The marker one job's comment carries, so two workflows or jobs each keep
- * their own. Every field is clipped the same way on every run, so a rerun
+ * their own. Every field is cut the same way on every run, so a rerun
  * derives the same marker and finds its comment.
  */
 function commentMarker(run: FinishedRun, context: ActionsContext, key: string | undefined): string {
@@ -64,9 +74,7 @@ function commentMarker(run: FinishedRun, context: ActionsContext, key: string | 
     key,
   };
   const parts = Object.entries(fields).flatMap(([name, value]) =>
-    value === undefined || value === ''
-      ? []
-      : [`${name}=${encodeURIComponent([...value].slice(0, MAX_MARKER_FIELD_CHARS).join(''))}`],
+    value === undefined || value === '' ? [] : [`${name}=${markerField(value)}`],
   );
   return `<!-- e2e-github ${parts.join(' ')} -->`;
 }

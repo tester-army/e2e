@@ -142,4 +142,6 @@ report or the trace cache. GitHub Enterprise Server works through
 takes a report-1 document and returns the comment body, so a service that
 receives the report can post the same comment under its own identity. The
 marker is what a rerun finds the comment by, so it is never cut: one longer
-than `MAX_MARKER_CHARS` (1024) is rejected rather than posted incomplete.
+than `MAX_MARKER_CHARS` (1024) is rejected rather than posted incomplete, and
+so is an `artifactsUrl` longer than `MAX_URL_CHARS` (2048); with both bounded
+the body is the only part that ever gives way to the size limit.

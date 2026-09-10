@@ -41,6 +41,8 @@ const TRUNCATED_NOTE = "_Comment truncated to fit GitHub's size limit; the full 
  * body is the only part that ever gives way.
  */
 export const MAX_MARKER_CHARS = 1_024;
+/** The artifacts link sits in the footer beside the marker, so it is bounded the same way. */
+export const MAX_URL_CHARS = 2_048;
 
 /** C0/C1 control characters except tab and newline; ANSI sequences are stripped first. */
 // oxlint-disable-next-line no-control-regex -- the control range is the point
@@ -183,6 +185,9 @@ function footer(run: ReportRun, options: CommentOptions): string[] {
 export function renderComment(report: Report, options: CommentOptions = {}): string {
   if (options.marker !== undefined && options.marker.length > MAX_MARKER_CHARS) {
     throw new Error(`renderComment: marker must be at most ${MAX_MARKER_CHARS} characters, got ${options.marker.length}`);
+  }
+  if (options.artifactsUrl !== undefined && options.artifactsUrl.length > MAX_URL_CHARS) {
+    throw new Error(`renderComment: artifactsUrl must be at most ${MAX_URL_CHARS} characters, got ${options.artifactsUrl.length}`);
   }
   const run = report.run;
   const serialGroups = new Map(run.serialGroups.map((group) => [group.id, group]));

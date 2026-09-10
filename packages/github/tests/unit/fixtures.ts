@@ -22,6 +22,17 @@ const BASE_RESULT = VALID.run.results[0] as ReportResult;
 const BASE_ATTEMPT = BASE_RESULT.attempts[0] as ReportAttempt;
 const BASE_TARGET = VALID.run.targets[0] as ReportTarget;
 
+/** The runner's test id: `file::title::title`, each title percent-encoded except RFC 3986 unreserved characters. */
+function testId(file: string, titlePath: readonly string[]): string {
+  const encode = (title: string): string =>
+    [...new TextEncoder().encode(title.normalize('NFC'))]
+      .map((byte) =>
+        /[A-Za-z0-9\-._~]/.test(String.fromCharCode(byte)) ? String.fromCharCode(byte) : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`,
+      )
+      .join('');
+  return `${file}::${titlePath.map(encode).join('::')}`;
+}
+
 export function attempt(
   input: {
     readonly status?: ReportAttempt['status'];
@@ -57,7 +68,7 @@ export function result(input: {
   const file = input.file ?? 'tests/example.e2e.ts';
   return {
     ...BASE_RESULT,
-    testId: `${file}::${encodeURIComponent(titlePath.join('/'))}`,
+    testId: testId(file, titlePath),
     titlePath,
     file,
     source: { file, line: input.line ?? 3, column: 1 },

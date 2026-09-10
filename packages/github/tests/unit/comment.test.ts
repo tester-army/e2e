@@ -250,5 +250,8 @@ describe('renderComment', () => {
       'marker must be at most 1024 characters, got 1033',
     );
     expect(renderComment(report(), { marker: `<!-- ${'m'.repeat(1_000)} -->` })).toContain('<!-- mmm');
+    expect(() => renderComment(report(), { artifactsUrl: `https://x.test/${'a'.repeat(2_048)}` })).toThrow(
+      'artifactsUrl must be at most 2048 characters, got 2063',
+    );
   });
 });
