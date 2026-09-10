@@ -84,13 +84,15 @@ npx --no-install e2e run --agent thorough tests/checkout.e2e.ts
 ```
 
 A suite pins its agent with the `agent` option on a test or a describe block,
-and a single call can name another. Innermost wins: a call's `agent` beats
+and a single call can name another. A signed-in persona adds `session` on the
+same block to start from state a setup test saved; a first-time visitor needs
+nothing more than the pin. Innermost wins: a call's `agent` beats
 the test's, which beats its groups, which beat the run. `--agent` re-points
 what unpinned tests use and never overrides a pin, so a persona stays itself
 while you benchmark a model across everything that has no opinion.
 
 ```ts title="tests/checkout.e2e.ts"
-test.describe('checkout as a first-time buyer', { agent: 'buyer', session: 'guest' }, () => {
+test.describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
   test('pays for one item', async ({ app, agent }) => { /* ... */ });
   test('applies a promo code', async ({ app, agent }) => { /* ... */ });
 
