@@ -44,10 +44,10 @@ describe('renderComment', () => {
       sourceUrl: (file, line) => `https://github.com/o/r/blob/abc/${file}#L${line}`,
     });
     expect(
-      body.startsWith('<!-- e2e-github project=x -->\n### ❌ e2e: 1 failed, 1 flaky, 1 passed, 1 skipped\n'),
+      body.startsWith('<!-- e2e-github project=x -->\n### 🔴 e2e: 1 failed, 1 flaky, 1 passed, 1 skipped\n'),
     ).toBe(true);
     expect(body).toContain(
-      '| ❌ | [tests/billing.e2e.ts:12](https://github.com/o/r/blob/abc/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/o/r/actions/runs/9) |',
+      '| 🔴 | [tests/billing.e2e.ts:12](https://github.com/o/r/blob/abc/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/o/r/actions/runs/9) |',
     );
     expect(body).toContain('| ⚠️ | [tests/example.e2e.ts:3]');
     // The failed attempt's evidence counts: the passing retry recorded none.
@@ -64,13 +64,13 @@ describe('renderComment', () => {
     );
     expect(body).toContain('<sub>e2e 0.9.0 · 8.4s · 1 target (web)</sub>');
     // Failed rows come before flaky and skipped ones whatever the report order.
-    expect(body.indexOf('| ❌ |')).toBeLessThan(body.indexOf('| ⚠️ |'));
+    expect(body.indexOf('| 🔴 |')).toBeLessThan(body.indexOf('| ⚠️ |'));
     expect(body.indexOf('| ⚠️ |')).toBeLessThan(body.indexOf('| ⏭️ |'));
   });
 
   it('is a passing headline with no table when everything passed', () => {
     const body = renderComment(report({ results: [passing] }));
-    expect(body).toContain('### ✅ e2e: 1 passed\n');
+    expect(body).toContain('### 🟢 e2e: 1 passed\n');
     expect(body).not.toContain('| Test |');
     expect(body).toContain('- tests/example.e2e.ts › opens the app (850ms)');
     expect(body).not.toContain('run artifacts');
@@ -92,7 +92,7 @@ describe('renderComment', () => {
       }),
     );
     expect(body).toContain(
-      '### ❌ e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) http://127.0.0.1:3000 did not answer\n',
+      '### 🔴 e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) http://127.0.0.1:3000 did not answer\n',
     );
   });
 
@@ -193,7 +193,7 @@ describe('renderComment', () => {
     }));
     const body = renderComment(report({ status: 'error', results: wide, errors }), { marker: '<!-- m -->' });
     expect(body.length).toBeLessThanOrEqual(60_000);
-    expect(body.startsWith('<!-- m -->\n### ❌ e2e: 60 failed\n')).toBe(true);
+    expect(body.startsWith('<!-- m -->\n### 🔴 e2e: 60 failed\n')).toBe(true);
     expect(body).toContain('> and 20 more');
     expect(body).toContain("_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._");
     expect(body.trimEnd().endsWith('</sub>')).toBe(true);

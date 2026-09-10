@@ -137,7 +137,7 @@ function bucket(status: ReportResult['status']): Bucket {
   }
 }
 
-const ICON: Record<Bucket, string> = { failed: '❌', flaky: '⚠️', skipped: '⏭️', passed: '✅' };
+const ICON: Record<Bucket, string> = { failed: '🔴', flaky: '⚠️', skipped: '⏭️', passed: '🟢' };
 
 function headline(run: ReportRun, counts: Record<Bucket, number>): string {
   const parts = (['failed', 'flaky', 'passed', 'skipped'] as const)

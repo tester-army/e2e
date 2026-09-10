@@ -76,7 +76,7 @@ describe('reportRun', () => {
       { label: 'GitHub', text: 'https://github.com/octo/app/pull/41#issuecomment-5' },
     ]);
     const summary = d.written['/summary.md'];
-    expect(summary).toContain('### ❌ e2e: 1 failed');
+    expect(summary).toContain('### 🔴 e2e: 1 failed');
     expect(summary).not.toContain('<!-- e2e-github');
     expect(d.calls.map((call) => call.method)).toEqual(['GET', 'POST']);
     const posted = d.calls[1]?.body as { body: string } | undefined;
@@ -100,7 +100,7 @@ describe('reportRun', () => {
       { label: 'GitHub', text: 'not posted: push is not a pull request; written to the job summary' },
     ]);
     expect(d.calls).toHaveLength(0);
-    expect(d.written['/summary.md']).toContain('### ❌ e2e');
+    expect(d.written['/summary.md']).toContain('### 🔴 e2e');
   });
 
   it('without a token it names the line to add to the step', async () => {
@@ -123,6 +123,6 @@ describe('reportRun', () => {
     const forbidden = (async () => new Response('{}', { status: 403 })) as typeof fetch;
     const d = deps({ ...actions, GITHUB_TOKEN: 'ghs' }, forbidden);
     await expect(reportRun(failedRun, signal, {}, d)).rejects.toThrow('the token cannot comment on octo/app#41');
-    expect(d.written['/summary.md']).toContain('### ❌ e2e');
+    expect(d.written['/summary.md']).toContain('### 🔴 e2e');
   });
 });
