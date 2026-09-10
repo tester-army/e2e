@@ -74,9 +74,11 @@
     }
   },
   "devDependencies": {
-    "ai": "7.0.93",
+    "@ai-sdk/openai-compatible": "3.0.47",
     "@e2edev/playwright": "workspace:*",
+    "@openrouter/ai-sdk-provider": "3.0.0",
     "@types/node": "26.4.1",
+    "ai": "7.0.93",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",

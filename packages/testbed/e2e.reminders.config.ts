@@ -15,7 +15,7 @@ import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
-import { createGateway } from 'ai';
+import { gateway } from 'ai';
 
 const device = agentDevice({ platform: 'ios', app: 'Reminders', session: 'e2e-testbed-reminders' });
 
@@ -30,9 +30,7 @@ export default {
   agents: {
     default: {
       executor: createAgent({ tools: agentDeviceTools(device) }),
-      model: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
-        process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
-      ),
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       maxModelCalls: 60,
       context: [
         'The surface is a real iOS simulator observed through its accessibility',

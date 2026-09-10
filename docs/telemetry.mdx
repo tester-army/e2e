@@ -67,7 +67,7 @@ Every event carries these properties:
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions, as your config declares them: `web`, `ios`, `playwright@0.6.1`, or your own engine's name and version. A name that is not a plain token of letters, digits, dots, dashes, and underscores is reported as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the trace cache served the agent steps, and how many used pixel evidence |
-| `model_provider`, `model_id`, `model_calls`, `model_tokens`, `estimated_cost_usd` | The provider and public model id of the first model-backed step (a fine-tuned or routed id is reported as `other`), and the run's totals |
+| `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id (a fine-tuned or routed id is reported as `other`); then the run's totals |
 | `artifact_bytes` | Size of the artifacts the run wrote |
 | `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...). A code that is not an upper-case token, the shape of every runner code, is reported as `OTHER` |
 

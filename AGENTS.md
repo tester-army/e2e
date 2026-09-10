@@ -136,8 +136,8 @@ pnpm --filter @e2edev/testbed run test:headed
   shares one registry. Stale `dist` means confusing failures — rebuild.
 - Testbed suites beyond the default one never gate a PR: `test:public` and
   `test:selenium` (real websites) run in no workflow, and `test:agent` /
-  `test:dogfood` (real model calls, need `E2E_MODEL_API_KEY`, optional
-  `E2E_MODEL=provider/model-id`) run only on the weekly
+  `test:dogfood` (real model calls, need `AI_GATEWAY_API_KEY`, optional
+  `E2E_MODEL=provider/model-id`, the testbed's own override) run only on the weekly
   `.github/workflows/agent.yml` schedule or by manual dispatch. Both run
   against local deterministic apps, so a failure there is ours.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
@@ -160,7 +160,7 @@ Use [unbox-ai](https://github.com/tester-army/unbox-ai) to read it — never
 agents: `npx skills add tester-army/unbox-ai`). Start wide, then drill:
 
 ```bash
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace --no-cache
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace --no-cache
 npx unbox-ai runs packages/testbed/.e2e/ai-trace.json            # one line per agent step
 npx unbox-ai summary packages/testbed/.e2e/ai-trace.json --run 3 # one step: turns, tokens, caching
 npx unbox-ai tools packages/testbed/.e2e/ai-trace.json --run 3   # what the agent called, and how often

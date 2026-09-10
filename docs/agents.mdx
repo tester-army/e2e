@@ -10,27 +10,43 @@ agent changes how it decides, not what it is allowed to do.
 
 ## Pick a model
 
-There is no default model. `createAgent()` reads `E2E_MODEL`, a
-`provider/model-id` string routed through the Vercel AI Gateway, so one
-`E2E_MODEL_API_KEY` (or `AI_GATEWAY_API_KEY`) reaches any provider:
+There is no default model and no runner-side gateway. The model is an AI SDK
+model instance your config constructs with the provider package of your
+choice; the runner takes the instance and knows nothing about who serves it.
+A gateway reaches every vendor's models with one key:
 
-```bash
-E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e run
+```ts title="e2e.config.ts"
+import { createAgent } from '@e2edev/e2e/agent';
+import { gateway } from 'ai';
+
+export default {
+  // The Vercel AI Gateway; reads AI_GATEWAY_API_KEY.
+  agents: { default: createAgent({ model: gateway('anthropic/claude-sonnet-4.5') }) },
+} satisfies E2EConfig;
 ```
 
-The gateway is only the default endpoint. `E2E_MODEL_ENDPOINT` routes the same
-reference to any OpenAI-compatible endpoint, so a self-hosted or third-party
-gateway needs nothing in the config file:
+```ts title="e2e.config.ts"
+import { openrouter } from '@openrouter/ai-sdk-provider';
 
-```bash
-E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_ENDPOINT=https://llm.example.com/v1 E2E_MODEL_API_KEY=... npx --no-install e2e run
+// OpenRouter; reads OPENROUTER_API_KEY.
+export default {
+  agents: { default: createAgent({ model: openrouter('anthropic/claude-sonnet-4.5') }) },
+} satisfies E2EConfig;
 ```
 
-The URL must be HTTPS unless the host is loopback. `agent.model.endpoint` in
-the config wins over the variable.
+```ts title="e2e.config.ts"
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
-To use a provider directly, pass a live AI SDK model instance. Any provider
-package works, including a local one:
+// Any OpenAI-compatible endpoint: Ollama, vLLM, LiteLLM, a vendor's own API.
+const local = createOpenAICompatible({ name: 'ollama', baseURL: 'http://127.0.0.1:11434/v1' });
+export default {
+  agents: { default: createAgent({ model: local.chatModel('llama3.2') }) },
+} satisfies E2EConfig;
+```
+
+`e2e init` asks which of these agent steps use and writes the import and the
+constructor into the config. To call a provider directly, construct its own
+model; any AI SDK provider package works, including a local one:
 
 ```ts title="e2e.config.ts"
 import { openai } from '@ai-sdk/openai';
@@ -41,21 +57,27 @@ export default {
 } satisfies E2EConfig;
 ```
 
+A string in a model slot (`model: 'openai/gpt-5.4-mini'`) is `INVALID_CONFIG`
+naming the constructor to write instead: the runner never guesses a gateway
+for it. Credentials are the provider package's business, read on the first
+model call; the runner reads no model variable and never sees the key.
+
 The model `createAgent` receives is the one model for the whole `agent`
 fixture: it plans `agent.act` and it judges `agent.assert`, `agent.waitFor`,
-and `agent.extract`. It outranks `E2E_MODEL`. Configure the model in one
+and `agent.extract`. Configure the model in one
 place: an `agent.model` that names a different model than the executor's is
 `INVALID_CONFIG` at config resolution.
 
-The runner checks the model once per run, when the first test acquires the
-`agent` fixture. Adapter construction validates the provider and the credential
-without a model request, so a missing model or key is one run-level
+The runner checks once per run, when the first test acquires the `agent`
+fixture, that a model is configured, so a missing model is one run-level
 `MODEL_UNAVAILABLE` (exit 2) that stops the run, not one failed step per test.
-A custom executor with no model is exempt: its `act` steps need none, and a
+A missing or rejected key is the provider's own error, reported on the first
+agent step as `MODEL_PROVIDER_FAILED` with a hint naming the credential. A
+custom executor with no model is exempt: its `act` steps need none, and a
 judgment call without a model still fails with `MODEL_UNAVAILABLE`.
 
 An agent also accepts an options block when you have nothing to
-construct: `agents: { default: { model: 'anthropic/claude-sonnet-4.5', context: '...' } }`
+construct: `agents: { default: { model: gateway('anthropic/claude-sonnet-4.5'), context: '...' } }`
 runs `createAgent()` with those settings. `context` is a sentence or two of
 project vocabulary and reaches every `agent.*` call; `visionModel` pins a
 separate model for calls that carry pixels. The AI SDK (`ai`) is an optional
@@ -399,7 +421,7 @@ repair round. A generation made inside a `defineTool` tool nests under the
 step that called it, and a step the trace cache replayed zero-turn makes no
 model call and so leaves no run. Each step carries the prompt as sent (system prompt first), the tool
 definitions with their JSON schemas, the response, usage, model latency, and
-the provider metadata — including the AI Gateway's per-request cost.
+the provider metadata — including the per-request cost where the gateway reports one.
 
 The trace records the model's view and nothing else. Observations are
 redacted before the model sees them, so the trace holds no secret the model

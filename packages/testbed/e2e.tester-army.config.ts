@@ -1,5 +1,6 @@
 import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 /**
  * Long-running agentic journey against the production tester.army site.
@@ -29,7 +30,7 @@ export default {
   actionTimeout: 90_000,
   agents: {
     default: {
-      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       maxSteps: 40,
       maxModelCalls: 40,
       context: [

@@ -163,7 +163,7 @@ describe('agent policy and error classification', () => {
     await app?.close();
   });
 
-  it('judges with the model createAgent brought, with no agent.model or E2E_MODEL', () => {
+  it('judges with the model createAgent brought, with no agent.model', () => {
     expect(canonical.exitCode).toBe(0);
     const result = resultByTitle(canonical, 'judges with the model createAgent brought');
     expect(result.status).toBe('passed');

@@ -12,6 +12,7 @@
     "@e2edev/e2e": "workspace:*",
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.4.1",
+    "ai": "7.0.93",
     "mint": "4.2.881",
     "typescript": "7.0.2"
   },

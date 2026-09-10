@@ -8,9 +8,11 @@ import path from 'node:path';
 import { detectPackageManager } from '../internal/package-manager.ts';
 import { DOCS_URL } from './docs-url.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
+import { isLoopbackHost } from '../internal/urls.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
+import { GATEWAYS, type GatewayId } from './init/gateways.ts';
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
-import { createScaffold } from './init/scaffold.ts';
+import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 
 export interface InitOptions {
@@ -43,6 +45,11 @@ const GITIGNORE_ENTRIES = [
 
 const SCRIPTS = { 'test:e2e': 'e2e run' };
 
+/** The gateway `--yes` picks; the choice is written into the config either way. */
+const DEFAULT_GATEWAY: GatewayId = 'vercel';
+
+type GatewayChoice = GatewayId | 'none';
+
 /**
  * Runs `e2e init`. Every prompt happens before the first write, existing
  * config and test files are never touched, and dependencies install only when
@@ -54,7 +61,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
 
   if (options.interactive === false && !options.yes) {
     clack.log.error(
-      'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (Playwright, AI on, no installation)',
+      'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (Playwright, the Vercel AI Gateway, no installation)',
     );
     return 2;
   }
@@ -87,9 +94,9 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const ignoreLines = existingIgnore.split(/\r?\n/);
   const missingIgnore = GITIGNORE_ENTRIES.filter((entry) => !ignoreLines.includes(entry));
 
-  // Engine and AI are choices for a new config only; an existing config keeps its own dependencies.
+  // Engine and model gateway are choices for a new config only; an existing config keeps its own dependencies.
   let engine: EngineId = existingConfig === undefined ? DEFAULT_ENGINE_ID : 'none';
-  let ai = existingConfig === undefined;
+  let model: ScaffoldModel | undefined = existingConfig === undefined ? { gateway: DEFAULT_GATEWAY } : undefined;
   if (existingConfig === undefined && !options.yes) {
     const selectedEngine = await clack.select<EngineId>({
       message: 'Which engine?',
@@ -99,9 +106,30 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     if (clack.isCancel(selectedEngine)) return cancelled();
     engine = selectedEngine;
 
-    const enableAi = await clack.confirm({ message: 'Enable AI testing? Adds AI SDK v7.', initialValue: true });
-    if (clack.isCancel(enableAi)) return cancelled();
-    ai = enableAi;
+    // The gateway is a visible choice, not a runner default: the config imports
+    // its provider package and constructs the model.
+    const gateway = await clack.select<GatewayChoice>({
+      message: 'Which model gateway for agent steps? Adds AI SDK v7.',
+      initialValue: DEFAULT_GATEWAY,
+      options: [
+        ...GATEWAYS.map(({ id, label, hint }) => ({ value: id, label, hint })),
+        { value: 'none', label: 'None', hint: 'deterministic tests only; add a gateway later' },
+      ],
+    });
+    if (clack.isCancel(gateway)) return cancelled();
+    if (gateway === 'none') {
+      model = undefined;
+    } else if (gateway === 'openai-compatible') {
+      const endpoint = await clack.text({
+        message: 'Base URL of the OpenAI-compatible API',
+        placeholder: 'http://127.0.0.1:11434/v1',
+        validate: validateEndpoint,
+      });
+      if (clack.isCancel(endpoint)) return cancelled();
+      model = { gateway, endpoint: endpoint.trim() };
+    } else {
+      model = { gateway };
+    }
   }
 
   // The skill goes where an earlier run put it; a project without one chooses.
@@ -122,7 +150,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   }
   const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
 
-  const scaffold = createScaffold(engine, ai);
+  const scaffold = createScaffold(engine, model);
   const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
   const { manifest, additions: scripts } = addScripts(dependencies.manifest, SCRIPTS);
   if (dependencies.additions.length > 0) {
@@ -219,6 +247,20 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
 function shellArgument(value: string): string {
   if (/^[A-Za-z0-9_./@%+=:,-]+$/.test(value)) return value;
   return os.platform() === 'win32' ? `"${value.replaceAll('"', '""')}"` : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** The same rule config resolution applies: HTTPS, or HTTP on a loopback host. */
+function validateEndpoint(value: string | undefined): string | undefined {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed === '') return 'enter the base URL, e.g. http://127.0.0.1:11434/v1';
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return `not a URL: ${trimmed}`;
+  }
+  if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname))) return undefined;
+  return 'must use HTTPS unless the host is loopback';
 }
 
 /** Cancellation is only reachable before the first write, so nothing needs undoing. */

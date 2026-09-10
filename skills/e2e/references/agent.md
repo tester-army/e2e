@@ -11,13 +11,14 @@ Agents live under `agents` by name; `default` is the one tests use, `e2e run --a
 ```ts
 // e2e.config.ts
 import { createAgent } from '@e2edev/e2e/agent';
+import { gateway } from 'ai';
 
 export default {
-  // 1. The built-in agent; the model comes from E2E_MODEL at run time.
-  agents: { default: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
+  // 1. The built-in agent with an AI SDK model: gateway() from 'ai' is the Vercel AI Gateway and reads AI_GATEWAY_API_KEY.
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.4-mini'), system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
 
-  // 2. An options block: a gateway model string plus project vocabulary.
-  // agents: { default: { model: 'anthropic/claude-sonnet-4.5', context: 'A billing dashboard. Plans are Free, Team, and Pro.' } },
+  // 2. An options block: a model plus project vocabulary. openrouter() from '@openrouter/ai-sdk-provider' reads OPENROUTER_API_KEY.
+  // agents: { default: { model: openrouter('anthropic/claude-sonnet-4.5'), context: 'A billing dashboard. Plans are Free, Team, and Pro.' } },
 
   // 3. A live AI SDK model instance for a provider called directly.
   // agents: { default: createAgent({ model: openai('gpt-5.4-mini') }) },
@@ -25,21 +26,25 @@ export default {
 ```
 
 ```bash
-E2E_MODEL=anthropic/claude-sonnet-4.5 E2E_MODEL_API_KEY=... npx --no-install e2e run
+AI_GATEWAY_API_KEY=... npx --no-install e2e run
 ```
 
-- A `provider/model-id` string is routed through the Vercel AI Gateway; one
-  `E2E_MODEL_API_KEY` (or `AI_GATEWAY_API_KEY`) reaches every provider.
-- With no `agents` key at all, the built-in agent still runs as `default` and takes its
-  model from `E2E_MODEL`. Use `createAgent` for a `system` prompt, tools, or
-  a pinned model.
+- The model is always an AI SDK instance the config constructs; the runner
+  implies no gateway and reads no model variable. `gateway()` from `ai` is the
+  Vercel AI Gateway, `openrouter()` from `@openrouter/ai-sdk-provider` is
+  OpenRouter, `createOpenAICompatible({ baseURL }).chatModel()` from
+  `@ai-sdk/openai-compatible` is any /v1 chat endpoint (Ollama, vLLM), and a
+  provider's own package (`openai()`) calls it directly. Each reads its own
+  key variable. A string in a model slot is `INVALID_CONFIG`.
+- With no model anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. Use
+  `createAgent` for the model, a `system` prompt, and tools.
 - `ai@^7` must be installed for any `agent.*` step; the runner loads it
   lazily and fails without it.
 - `context` in the config and `agentContext` on a test or group add trusted
   project vocabulary to every prompt.
-- `visionModel` (or `E2E_VISION_MODEL`) serves the calls that send pixels.
+- `visionModel` serves the calls that send pixels.
 - The model passed to `createAgent({ model })` is the one model for every
-  `agent.*` call, `act` and the judgments alike, and outranks `E2E_MODEL`.
+  `agent.*` call, `act` and the judgments alike.
   An agent `model` naming a different model is `INVALID_CONFIG`.
 - Missing model or key: checked once per run when the first test acquires
   the `agent` fixture. One run-level `MODEL_UNAVAILABLE` (exit 2) stops the
@@ -223,6 +228,6 @@ Full reference: https://e2e-docs.vercel.app/agents
 
 Deterministic tests gate merges; agentic tests are opt-in. Keep them in a
 separate config (`e2e.agent.config.ts` with its own `tests` glob and a larger
-`timeout`), run them on a schedule or `workflow_dispatch`, and pass the model
-through `env: { E2E_MODEL, E2E_MODEL_API_KEY }` from CI variables and
+`timeout`), run them on a schedule or `workflow_dispatch`, and pass the key
+the config's model reads (`env: { AI_GATEWAY_API_KEY }` for `gateway()`) from
 secrets.

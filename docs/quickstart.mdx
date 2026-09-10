@@ -31,8 +31,8 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   ```
   </CodeGroup>
 
-  Accept the defaults: Playwright, AI testing on, and the coding-agent
-  skill. `init` adds `@e2edev/e2e`, `@e2edev/playwright`, and `ai` to
+  Accept the defaults: Playwright, the Vercel AI Gateway for agent steps, and
+  the coding-agent skill. `init` adds `@e2edev/e2e`, `@e2edev/playwright`, and `ai` to
   `devDependencies`, a `test:e2e` script, `.e2e/` entries in `.gitignore`,
   and writes two files. It never overwrites a file that exists.
 
@@ -40,15 +40,15 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   import type { E2EConfig } from '@e2edev/e2e';
   import { createAgent } from '@e2edev/e2e/agent';
   import { playwright } from '@e2edev/playwright';
+  import { gateway } from 'ai';
 
   export default {
-    // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
-    // E2E_MODEL_ENDPOINT points at another OpenAI-compatible endpoint (default: the AI Gateway).
-    // To call a provider directly, pass an AI SDK model: createAgent({ model: openai('gpt-5.4-mini') }).
-    // That model is the one model for every agent.* call, checked once when the
-    // first test acquires the agent fixture.
+    // One model for every agent.* call, checked once when the first test acquires the agent fixture.
+    // The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.
+    // Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.
     agents: {
       default: createAgent({
+        model: gateway('openai/gpt-5.4-mini'),
         system: 'You are a thorough QA agent. Verify every outcome.',
       }),
     },
@@ -169,24 +169,28 @@ through the instruction. The final `expect` is deterministic: it costs no
 model calls and cannot vary. There are no waits or sleeps anywhere: queries
 poll, actions wait, assertions retry.
 
-Now the run needs a model. There is one, and it comes from the environment:
+Now the run needs a key. The model is an AI SDK instance the config
+constructs, `gateway('openai/gpt-5.4-mini')` from `ai`, and the Vercel AI
+Gateway behind it reads `AI_GATEWAY_API_KEY`:
 
 ```bash
-E2E_MODEL=openai/gpt-5.4-mini \
-E2E_MODEL_API_KEY=... \
+AI_GATEWAY_API_KEY=... \
 APP_URL=http://localhost:3000 npx --no-install e2e run
 ```
 
-`E2E_MODEL` is a `provider/model-id` string routed through the Vercel AI
-Gateway, so one `E2E_MODEL_API_KEY` reaches any provider. Set
-`E2E_MODEL_ENDPOINT` to point the same string at another OpenAI-compatible
-endpoint instead. To call a provider directly, pass an AI SDK model instance
-to `createAgent({ model: openai('gpt-5.4-mini') })`; then the variables are
-not read. Either way there is exactly one model: it drives `agent.act` and
-judges `agent.assert`, `agent.waitFor`, and `agent.extract`. The runner
-checks it once, when the first test acquires the `agent` fixture, and stops
-the run with `MODEL_UNAVAILABLE` (exit 2) if it is missing or has no
-credential.
+`init` asked which gateway to use and wrote its provider package into the
+config. The Vercel AI Gateway (`gateway()` from `ai`) and OpenRouter
+(`openrouter()` from `@openrouter/ai-sdk-provider`) reach every vendor's
+models with one key each; an OpenAI-compatible endpoint (Ollama, vLLM,
+LiteLLM, a vendor's own API) is `createOpenAICompatible({ baseURL })` from
+`@ai-sdk/openai-compatible`. Any AI SDK provider works the same way,
+`openai('gpt-5.4-mini')` from `@ai-sdk/openai` included; the runner
+constructs no model of its own and reads no model variable, so nothing is
+implied. There is exactly one model: it drives `agent.act` and judges
+`agent.assert`, `agent.waitFor`, and `agent.extract`. The runner checks that
+one is configured when the first test acquires the `agent` fixture and stops
+the run with `MODEL_UNAVAILABLE` (exit 2) if none is; a missing key is the
+provider's own error on the first agent step.
 
 `system` shapes how the agent works. Later you can hand it your own tools, or
 replace it with a custom executor; [Your own agent](/agents) covers both.
@@ -209,10 +213,12 @@ the run ends, fails, or is interrupted:
 import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 export default {
   agents: {
     default: createAgent({
+      model: gateway('openai/gpt-5.4-mini'),
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },
@@ -265,8 +271,7 @@ jobs:
       - run: npx playwright install chromium --with-deps
       - run: npx --no-install e2e run --reporter list,junit
         env:
-          E2E_MODEL: openai/gpt-5.4-mini
-          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 ```
 
 `CI` switches the defaults to one worker and one retry and rejects

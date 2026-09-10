@@ -1,28 +1,46 @@
 import { packageVersion } from '../../internal/package-version.ts';
 import { getEnginePreset, type EngineId } from './engines.ts';
+import { getGatewayPreset, type GatewayId } from './gateways.ts';
 
 const AGENT_IMPORT = "import { createAgent } from '@e2edev/e2e/agent';";
-const AGENT_CONFIG = `  // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
-  // E2E_MODEL_ENDPOINT points at another OpenAI-compatible endpoint (default: the AI Gateway).
-  // To call a provider directly, pass an AI SDK model: createAgent({ model: openai('gpt-5.4-mini') }).
-  // That model is the one model for every agent.* call, checked once when the
-  // first test acquires the agent fixture.
+
+/** The model choice `init` writes: which gateway, and for an OpenAI-compatible one, where. */
+export interface ScaffoldModel {
+  readonly gateway: GatewayId;
+  readonly endpoint?: string;
+}
+
+/**
+ * The agents block. The model is a constructed AI SDK instance from the chosen
+ * gateway's own package, written out in full, so a reader sees where every
+ * model call goes and which variable holds the key without knowing any e2e
+ * default; there is none.
+ */
+function agentConfig(model: ScaffoldModel): string {
+  const preset = getGatewayPreset(model.gateway);
+  return `  // One model for every agent.* call, checked once when the first test acquires the agent fixture.
+  // ${preset.comment}
+  // Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.
   agents: {
     default: createAgent({
+      model: ${preset.model(model.endpoint)},
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },`;
+}
 
 /** Composes common setup, the selected engine, and optional AI support. */
-export function createScaffold(engineId: EngineId, ai: boolean) {
+export function createScaffold(engineId: EngineId, model: ScaffoldModel | undefined) {
   const engine = getEnginePreset(engineId);
+  const gateway = model === undefined ? undefined : getGatewayPreset(model.gateway);
   const imports = [
     "import type { E2EConfig } from '@e2edev/e2e';",
-    ...(ai ? [AGENT_IMPORT] : []),
+    ...(gateway === undefined ? [] : [AGENT_IMPORT]),
     ...engine.imports,
+    ...(gateway === undefined ? [] : [gateway.import]),
   ];
   const configFields = [
-    ...(ai ? [AGENT_CONFIG] : []),
+    ...(model === undefined ? [] : [agentConfig(model)]),
     engine.config,
   ];
 
@@ -30,7 +48,7 @@ export function createScaffold(engineId: EngineId, ai: boolean) {
     dependencies: {
       '@e2edev/e2e': `^${packageVersion(import.meta.url, '../../../package.json', '0.0.0')}`,
       ...engine.dependencies,
-      ...(ai ? { ai: '^7.0.0' } : {}),
+      ...(gateway === undefined ? {} : { ai: '^7.0.0', ...gateway.dependencies }),
     },
     config: `${imports.join('\n')}
 
@@ -38,7 +56,7 @@ export default {
 ${configFields.join('\n')}
 } satisfies E2EConfig;
 `,
-    example: engine.example + (ai ? engine.aiExample ?? '' : ''),
+    example: engine.example + (gateway === undefined ? '' : engine.aiExample ?? ''),
     runCommand: engine.runCommand,
   };
 }

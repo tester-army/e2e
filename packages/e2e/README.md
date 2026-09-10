@@ -104,18 +104,24 @@ Deterministic tests need no model. Agent steps — `agent.act`, `assert`,
 `waitFor`, and `extract` — require one:
 
 ```ts
+import { gateway } from 'ai';
+
 export default {
-  agents: { default: { model: 'anthropic/claude-sonnet-4.5' } },
+  agents: { default: { model: gateway('anthropic/claude-sonnet-4.5') } },
 } satisfies E2EConfig;
 ```
 
 ```bash
-E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... e2e run
+AI_GATEWAY_API_KEY=... e2e run
 ```
 
-A `provider/model-id` string goes through the
-[Vercel AI Gateway](https://vercel.com/docs/ai-gateway). To use a provider
-directly, pass any AI SDK model instance instead:
+The model is an AI SDK instance the config constructs; the runner has no
+gateway of its own. `gateway()` from `ai` is the
+[Vercel AI Gateway](https://vercel.com/docs/ai-gateway), `openrouter()` from
+`@openrouter/ai-sdk-provider` is [OpenRouter](https://openrouter.ai), and
+`createOpenAICompatible()` from `@ai-sdk/openai-compatible` reaches any
+endpoint speaking the OpenAI chat API. A provider's own package calls it
+directly:
 
 ```ts
 import { openai } from '@ai-sdk/openai';

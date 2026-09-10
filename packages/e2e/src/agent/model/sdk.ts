@@ -1,15 +1,15 @@
 /**
- * AI SDK adapter. One implementation serves every
- * provider: a `provider/model-id` reference resolves through the AI Gateway,
- * and a caller-supplied AI SDK model instance (`openai('gpt-4o')`, a local
- * provider, a scripted test model) is used directly. Everything after model
- * construction — bounded requests, closed-grammar validation, usage and error
- * translation — is provider-independent.
+ * AI SDK adapter. One implementation serves every provider: the
+ * caller-supplied AI SDK model instance (`gateway('openai/gpt-5.4-mini')`,
+ * `openrouter(...)`, `openai('gpt-4o')`, a local provider, a scripted test
+ * model) is used as is. Everything after the model — bounded requests,
+ * closed-grammar validation, usage and error translation — is
+ * provider-independent.
  */
 
 import type { ModelMessage } from 'ai';
 import { withHint } from '../../internal/errors.ts';
-import { GATEWAY_API_KEY_ENV, type ResolvedModel, type SdkLanguageModel } from '../../config/agent.ts';
+import type { ResolvedModel, SdkLanguageModel } from '../../config/agent.ts';
 import { aiSdk, loadAiSdk } from '../ai-sdk.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
@@ -25,11 +25,6 @@ import {
   type ModelResult,
   type ModelUsage,
 } from './adapter.ts';
-
-/** Default AI Gateway base URL used when no endpoint override is configured. */
-const DEFAULT_GATEWAY_ENDPOINT = 'https://ai-gateway.vercel.sh/v4/ai';
-
-const PROVIDER_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
 /**
  * Provider transport retries; distinct from runner-owned model-call budget.
@@ -49,28 +44,24 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
   if (model === undefined) {
     throw new AgentError(
       'MODEL_UNAVAILABLE',
-      'the agent fixture requires a model: pass one to createAgent({ model }), set agent.model, or set E2E_MODEL',
+      'the agent fixture requires a model: pass an AI SDK model instance to createAgent({ model }) or set agent.model',
     );
   }
-  const { endpoint, flavor } = validateModel(model);
   const adapterVersion = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
-  // The AI SDK is an optional peer: the language model is constructed on the
-  // first call, after the loader has resolved (or clearly refused) it.
-  let languageModel: SdkLanguageModel | undefined;
+  const languageModel = model.model;
 
   return {
     provenance: {
       provider: model.provider,
       model: model.id,
-      endpoint,
-      adapterVersion: `${flavor}/${adapterVersion}`,
+      // The instance owns its transport; the report records that the endpoint
+      // is whatever the provider package was configured with.
+      endpoint: 'provider-default',
+      adapterVersion: `ai-sdk/${adapterVersion}`,
     },
     async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
       const { generateText, jsonSchema, Output } = await loadAiSdk();
-      languageModel ??= instantiate(model).languageModel;
-      const cache = promptCacheHints(
-        model.kind === 'gateway' ? { provider: model.provider, modelId: model.id } : (languageModel as CacheModelRef),
-      );
+      const cache = promptCacheHints(languageModel as CacheModelRef);
       const images = call.images ?? [];
       const inputBound =
         tokenUpperBound(call.system) +
@@ -132,7 +123,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
         }
         return { value: output, usage: readUsage(result, inputBound) };
       } catch (cause) {
-        throw translateModelError(cause, issue, call.signal, model);
+        throw translateModelError(cause, issue, call.signal);
       }
     },
   };
@@ -159,58 +150,12 @@ function userMessage(prompt: string, images: readonly ModelImage[]): ModelMessag
 }
 
 /**
- * Builds the bare AI SDK language model for one resolved model reference, for
- * callers that drive the SDK directly (the default step executor) rather than
- * through the adapter. Fails with MODEL_UNAVAILABLE exactly like the adapter.
- * Gateway references require the AI SDK to be loaded (loadAiSdk) first; model
- * instances never touch it.
+ * The bare AI SDK language model of one resolved model, for callers that
+ * drive the SDK directly (the default step executor) rather than through the
+ * adapter.
  */
 export function instantiateLanguageModel(model: ResolvedModel): SdkLanguageModel {
-  return instantiate(model).languageModel;
-}
-
-/**
- * Validates one resolved model and derives its report provenance without
- * touching the AI SDK, so an adapter can be constructed — and refuse clearly —
- * before the optional peer dependency is ever loaded.
- */
-function validateModel(model: ResolvedModel): { endpoint: string; flavor: string } {
-  if (model.kind === 'instance') {
-    // The instance owns its transport; the report records that the endpoint is
-    // whatever the provider package defaults to.
-    return { endpoint: 'provider-default', flavor: 'ai-sdk' };
-  }
-  if (!PROVIDER_PATTERN.test(model.provider)) {
-    throw new AgentError(
-      'MODEL_UNAVAILABLE',
-      `unknown model provider "${model.provider}"; expected a gateway provider ID or an AI SDK model instance`,
-    );
-  }
-  if (model.apiKey === undefined) {
-    throw new AgentError(
-      'MODEL_UNAVAILABLE',
-      `no model credential: set ${model.apiKeyEnv} or ${GATEWAY_API_KEY_ENV}`,
-    );
-  }
-  return { endpoint: model.endpoint ?? DEFAULT_GATEWAY_ENDPOINT, flavor: 'ai-gateway' };
-}
-
-/**
- * The variable each gateway language model's credential was read from, keyed
- * by the model object the SDK is handed. The tool loop sees only that object,
- * and this is how a rejected credential is still reported by its source. A
- * name, never a value.
- */
-const credentialSources = new WeakMap<object, string>();
-
-/** Builds the AI SDK language model for one validated resolved model. */
-function instantiate(model: ResolvedModel): { languageModel: SdkLanguageModel } {
-  if (model.kind === 'instance') return { languageModel: model.model };
-  const { endpoint } = validateModel(model);
-  const gateway = aiSdk().createGateway({ apiKey: model.apiKey as string, baseURL: endpoint });
-  const languageModel = gateway.languageModel(`${model.provider}/${model.id}`);
-  credentialSources.set(languageModel, model.apiKeySource ?? model.apiKeyEnv);
-  return { languageModel };
+  return model.model;
 }
 
 interface UsageCarrier {
@@ -284,17 +229,22 @@ function parseJsonObject(text: string): unknown {
 }
 
 /**
- * The AI Gateway reports per-request cost in provider metadata when available;
- * other providers simply lack the key. `cost` is what the gateway bills; BYOK
- * routes bill the provider key directly and report `cost: "0"`, so fall back
- * to `marketCost`, the list-price estimate of the same request.
+ * Per-request cost, where the provider reports one in its metadata. The
+ * Vercel AI Gateway's `cost` is what it bills; BYOK routes bill the provider
+ * key directly and report `cost: "0"`, so fall back to `marketCost`, the
+ * list-price estimate of the same request. OpenRouter reports `usage.cost`
+ * when its provider is asked to account usage. Other providers simply lack
+ * the key.
  */
 export function readCost(
   metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
 ): number | undefined {
   const billed = parseCost(metadata?.['gateway']?.['cost']);
   if (billed !== undefined && billed > 0) return billed;
-  return parseCost(metadata?.['gateway']?.['marketCost']) ?? billed;
+  const market = parseCost(metadata?.['gateway']?.['marketCost']) ?? billed;
+  if (market !== undefined) return market;
+  const openrouter = metadata?.['openrouter']?.['usage'];
+  return typeof openrouter === 'object' && openrouter !== null ? parseCost((openrouter as Record<string, unknown>)['cost']) : undefined;
 }
 
 function parseCost(raw: unknown): number | undefined {
@@ -311,7 +261,6 @@ function translateModelError(
   rawCause: unknown,
   issue: string | undefined,
   signal: AbortSignal,
-  model: ResolvedModel,
 ): Error {
   const { APICallError, NoObjectGeneratedError } = aiSdk();
   const cause = unwrapRetry(rawCause);
@@ -346,7 +295,7 @@ function translateModelError(
   if (APICallError.isInstance(cause)) {
     return new AgentError(
       'MODEL_PROVIDER_FAILED',
-      withHint(`model provider failed: ${cause.message}`, credentialHint(cause, model)),
+      withHint(`model provider failed: ${cause.message}`, credentialHint(cause)),
       { cause },
     );
   }
@@ -358,18 +307,17 @@ function translateModelError(
 }
 
 /**
- * A rejected credential names the variable the runner read it from, whether
- * that was `E2E_MODEL_API_KEY`, the gateway's own `AI_GATEWAY_API_KEY`, or
- * the one `apiKeyEnv` chose. The gateway's own text only ever says
- * `AI_GATEWAY_API_KEY`. Takes the resolved model (the adapter path) or the SDK
- * model object (the tool loop path); a model that brought its own credential
- * has no variable to name. Requires the SDK to be loaded, which every caller
- * has done by the time a provider call has failed.
+ * A rejected credential is named for what it is. The model instance owns its
+ * credential, read from the provider package's own variable
+ * (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, ...) or passed at
+ * construction, so the runner can only say that the provider refused it.
+ * Requires the SDK to be loaded, which every caller has done by the time a
+ * provider call has failed.
  */
-export function credentialHint(cause: unknown, model?: ResolvedModel | SdkLanguageModel | string): string {
+export function credentialHint(cause: unknown): string {
   const failure = unwrapRetry(cause);
   if (!(failure instanceof Error)) return '';
-  // The gateway raises its own authentication error class and a raw provider
+  // Gateways raise their own authentication error classes and a raw provider
   // an APICallError; both carry the HTTP status, so that is what is read.
   const statusCode = (failure as { statusCode?: unknown }).statusCode;
   const rejected =
@@ -377,16 +325,7 @@ export function credentialHint(cause: unknown, model?: ResolvedModel | SdkLangua
     statusCode === 403 ||
     /unauthenticated|unauthorized|authentication/i.test(`${failure.name} ${failure.message}`);
   if (!rejected) return '';
-  const source = credentialSource(model);
-  if (source === undefined) return 'the provider rejected the credential the model instance was created with';
-  return `the gateway rejected the credential read from ${source}: check that the key is complete and belongs to the AI Gateway (https://vercel.com/docs/ai-gateway)`;
-}
-
-/** The variable a gateway model's credential came from; undefined for a model that owns its own. */
-function credentialSource(model: ResolvedModel | SdkLanguageModel | string | undefined): string | undefined {
-  if (model === undefined || typeof model !== 'object') return undefined;
-  if ('kind' in model) return model.kind === 'gateway' ? (model.apiKeySource ?? model.apiKeyEnv) : undefined;
-  return credentialSources.get(model);
+  return 'the provider rejected the credential the model instance was created with: check the variable the provider package reads, or the key passed at construction';
 }
 
 /**

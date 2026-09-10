@@ -410,10 +410,11 @@ and a removed export such as `defineConfig` with its replacement. A test
 failure carries its `cause` chain (`fetch failed: connect ECONNREFUSED
 127.0.0.1:3000`), and navigation to an address where nothing listens is
 `APP_UNREACHABLE` with the URL and the three ways to fix it, not an opaque
-engine failure. A model credential the gateway rejects is reported with the
-variable the runner read it from (`E2E_MODEL_API_KEY`, `AI_GATEWAY_API_KEY`,
-or the one the agent's `model.apiKeyEnv` names), and color codes in provider
-messages are stripped before they reach the terminal or the report.
+engine failure. A model credential the provider rejects is reported as such,
+pointing at the variable the provider package reads (`AI_GATEWAY_API_KEY`,
+`OPENROUTER_API_KEY`, ...) or the key passed at construction, and color codes
+in provider messages are stripped before they reach the terminal or the
+report.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" href="/quickstart" />

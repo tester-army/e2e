@@ -445,6 +445,7 @@ describe('telemetry events', () => {
       agent_steps_partial: 0,
       agent_steps_missed: 1,
       agent_steps_vision: 1,
+      model_gateway: 'anthropic',
       model_provider: 'anthropic',
       model_id: 'claude-sonnet-4-5',
       model_calls: 4,
@@ -465,6 +466,17 @@ describe('telemetry events', () => {
     const { properties } = runCompletedEvent(report, []);
     expect(properties['platforms']).toEqual(['other', 'web']);
     expect(properties['engines']).toEqual(['other', 'playwright@0.6.1']);
+  });
+
+  it('reports the gateway, the vendor, and the id of a gateway-served model', () => {
+    const report = sampleReport();
+    const [first] = report.run.results[0]!.attempts[0]!.steps;
+    (first as { model: { provider: string; model: string } }).model.provider = 'openrouter';
+    (first as { model: { provider: string; model: string } }).model.model = 'openai/gpt-5.4-mini';
+    const { properties } = runCompletedEvent(report, []);
+    expect(properties['model_gateway']).toBe('openrouter');
+    expect(properties['model_provider']).toBe('openai');
+    expect(properties['model_id']).toBe('gpt-5.4-mini');
   });
 
   it('folds a fine-tuned or routed model id into other', () => {

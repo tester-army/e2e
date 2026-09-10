@@ -119,21 +119,24 @@ written on the runner, and no notice is printed. Add
 
 ## Model credentials
 
-Deterministic tests need no model. For a suite that uses `agent`, pass the model
-and its key through the environment:
+Deterministic tests need no model. For a suite that uses `agent`, the config
+constructs the model with its provider package, and the job passes the key
+that package reads:
 
 ```yaml
       - name: Run agentic suite
         run: npx --no-install e2e run --config e2e.agent.config.ts
         env:
-          E2E_MODEL: ${{ vars.E2E_MODEL }}
-          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 ```
 
-`E2E_MODEL` is a `provider/model-id` reference and is not secret - keep it in a
-variable so you can see which model a run used. `E2E_MODEL_API_KEY` is the
-credential. Its value never enters logs, reports, or child-process arguments, and
-your app process cannot read it.
+`AI_GATEWAY_API_KEY` is what `gateway()` from `ai` reads; `openrouter()` reads
+`OPENROUTER_API_KEY`, and a provider called directly reads its own. The runner
+reads none of them, so the value never enters logs, reports, or child-process
+arguments, and your app process cannot read it. To switch models per run,
+have the config read a variable of your own, e.g.
+`gateway(process.env.MODEL ?? 'openai/gpt-5.4-mini')`, and keep it in a
+non-secret variable so you can see which model a run used.
 
 ## Keep model-backed tests opt-in
 

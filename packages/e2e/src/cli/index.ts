@@ -233,7 +233,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --agent ux tests/onboarding.e2e.ts',
-          'E2E_MODEL=provider/model-id E2E_MODEL_API_KEY=... e2e run --no-cache',
+          'AI_GATEWAY_API_KEY=... e2e run --no-cache',
         ]),
         '',
         helpSection(

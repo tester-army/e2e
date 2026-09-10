@@ -4,7 +4,7 @@ import agentConfig from './e2e.agent.config.ts';
 /**
  * The agent config plus the deterministic suite, for watching the list
  * reporter interleave agent steps with plain tests. Needs the same
- * `E2E_MODEL_API_KEY` as `test:agent`; never part of CI.
+ * `AI_GATEWAY_API_KEY` as `test:agent`; never part of CI.
  */
 export default {
   ...agentConfig,

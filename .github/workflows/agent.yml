@@ -17,7 +17,7 @@ on:
         type: choice
         options: [all, agent, dogfood]
       model:
-        description: 'Override E2E_MODEL (provider/model-id)'
+        description: 'Override the testbed model id (E2E_MODEL, e.g. openai/gpt-5.4-mini, served by the Vercel AI Gateway)'
         required: false
         type: string
 
@@ -100,9 +100,8 @@ jobs:
       - name: Run ${{ matrix.script }}
         continue-on-error: ${{ matrix.optional }}
         env:
-          E2E_MODEL_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
-          # The dogfood config builds its model with the AI SDK's gateway()
-          # directly, which reads this name; same credential either way.
+          # Every testbed config builds its model with the AI SDK's gateway(),
+          # which reads this variable; the secret keeps its historical name.
           AI_GATEWAY_API_KEY: ${{ secrets.E2E_MODEL_API_KEY }}
           # Read through a variable, not interpolated into the script, and left
           # unset when empty: the configs treat '' as a configured model id.

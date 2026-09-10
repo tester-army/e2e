@@ -50,7 +50,7 @@ try {
 | `SEED_DATA_MISSING` | Data the step depends on does not exist in the environment (blocked: seed_data) | configuration | 2 |
 | `TEST_SETUP_FAILED` | Test prerequisites outside the product failed to arrange (blocked: test_setup) | configuration | 2 |
 | `AUTOMATION_UNSUPPORTED` | The step needs an interaction the available toolset cannot perform, e.g. drag-and-drop (blocked: automation) | test | 1 |
-| `MODEL_UNAVAILABLE` | No model configured, an unknown provider, or a missing provider credential. Checked once per run when the `agent` fixture is first acquired; recorded as one run-level error that stops the run. | configuration | 2 |
+| `MODEL_UNAVAILABLE` | No model configured: neither `createAgent({ model })` nor `agent.model` holds an AI SDK model instance. Checked once per run when the `agent` fixture is first acquired; recorded as one run-level error that stops the run. | configuration | 2 |
 | `POLICY_DENIED` | Origin, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
 | `APP_UNREACHABLE` | The app process or URL did not respond, including a navigation the network refused (connection refused, name not resolved, timed out) because nothing listens at the engine's `url` | infrastructure | 3 |
 | `APP_ALREADY_RUNNING` | `readyUrl` already answered before the engine's `command` (or a `readyUrl` service) was spawned and `reuseExisting` was not in effect; stop that process or set `reuseExisting: true` locally | infrastructure | 3 |

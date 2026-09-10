@@ -43,16 +43,15 @@ export async function loadAiSdk(): Promise<AiSdk> {
 }
 
 /**
- * The already-loaded SDK, for the few synchronous seams (gateway model
- * construction) that run strictly after an async caller primed the cache.
+ * The already-loaded SDK, for the few synchronous seams (error-class checks)
+ * that run strictly after an async caller primed the cache.
  */
 export function aiSdk(): AiSdk {
   const state = cache();
   if (state.loaded === undefined) {
     throw new AgentError(
       'MODEL_UNAVAILABLE',
-      'gateway model references require the AI SDK, which has not been loaded; ' +
-        'supply an agent.model instance, or load the ai package before reading the model',
+      'the AI SDK has not been loaded; load the ai package before reading the model',
     );
   }
   return state.loaded;

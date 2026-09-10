@@ -81,10 +81,11 @@ The rules the skill states, and the reason each is there:
 npx --no-install e2e run tests/checkout.e2e.ts
 ```
 
-One file, not the suite, while iterating. Agent steps need `E2E_MODEL` and
-`E2E_MODEL_API_KEY` in the environment; a run without them fails with a
-model-config error before the browser starts, which is a good first check for
-an agent that sees exit code 2.
+One file, not the suite, while iterating. Agent steps need a model in the
+config and its provider's key in the environment (`AI_GATEWAY_API_KEY` for
+`gateway()` from `ai`); a run without a model fails with a model-config error
+before the browser starts, which is a good first check for an agent that sees
+exit code 2.
 
 The exit code says which side failed. 1 is a test. 2 is the CLI, config, or
 collection, and is deterministic; retrying it changes nothing. 3 is the

@@ -155,5 +155,5 @@ jobs:
 - Start the app through the engine's `command`; the runner tears it down on
   every exit path.
 - Agentic suites: a separate config, run on `schedule` or
-  `workflow_dispatch`, `E2E_MODEL` as a CI variable and `E2E_MODEL_API_KEY`
-  as a secret, never a required check.
+  `workflow_dispatch`, the key the config's model reads (`AI_GATEWAY_API_KEY`
+  for `gateway()` from `ai`) as a secret, never a required check.

@@ -19,8 +19,10 @@
     "packages/e2e/tests/tmp-projects/**"
   ],
   "ignoreDependencies": [
+    "@ai-sdk/openai-compatible",
     "@e2edev/e2e",
-    "@e2edev/playwright"
+    "@e2edev/playwright",
+    "@openrouter/ai-sdk-provider"
   ],
   "rules": {
     "unused-class-member": "warn",

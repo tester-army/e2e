@@ -19,7 +19,7 @@ import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
-import { createGateway } from 'ai';
+import { gateway } from 'ai';
 
 const ios = agentDevice({ platform: 'ios', app: 'Settings', session: 'e2e-testbed-device-ios' });
 const android = agentDevice({
@@ -42,9 +42,7 @@ export default {
   agents: {
     default: {
       executor: createAgent({ tools: agentDeviceTools(ios, android) }),
-      model: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
-        process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
-      ),
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       maxModelCalls: 40,
       context: [
         'The surface is a real mobile device (an iOS simulator or an Android',

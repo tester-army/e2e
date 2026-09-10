@@ -1,5 +1,6 @@
 import type { CacheMode, E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 const CACHE_MODES = ['off', 'read-only', 'read-write'] as const;
 
@@ -17,7 +18,7 @@ function cacheMode(): CacheMode {
  * `bench/`. Serves the PREBUILT app — run `pnpm run bench:build` first.
  * Run manually:
  *
- *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:bench
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:bench
  *
  * Like the other agentic suites this never gates a PR: every step spends
  * real model calls. `E2E_MODEL` overrides the pinned model.
@@ -39,7 +40,7 @@ export default {
   actionTimeout: 90_000,
   agents: {
     default: {
-      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
     },
   },
   // The bench exists to exercise the trace cache: run once to record, again

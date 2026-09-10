@@ -1,10 +1,12 @@
 import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 export default {
   agents: {
     default: createAgent({
+      model: gateway('openai/gpt-5.4-mini'),
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },

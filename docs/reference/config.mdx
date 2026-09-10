@@ -397,8 +397,8 @@ screen?: {
 ```ts
 agents?: Record<string, StepExecutor | {
   executor?: StepExecutor;
-  model?: string | ModelConfig | ModelInstance;
-  visionModel?: string | ModelConfig | ModelInstance;
+  model?: ModelInstance;
+  visionModel?: ModelInstance;
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;
@@ -409,7 +409,7 @@ agents?: Record<string, StepExecutor | {
 ```
 
 Agents by name. `default` is the one tests run with, and it exists even when
-the config names none: the built-in agent with the model from `E2E_MODEL`.
+the config names none: the built-in agent, which then needs a model from `createAgent({ model })`.
 Other names are other brains for the same suite: a run re-points its default
 with `e2e run --agent <name>`, a test or describe block pins one with
 `{ agent: 'name' }`, and any `agent.*` call can name one for that call. An
@@ -439,8 +439,8 @@ earlier releases is rejected with the replacement, `agents: { default: ... }`.
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
 | `executor` | `StepExecutor` | the built-in AI SDK executor | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Anything else is `INVALID_CONFIG`. Like a model instance it never crosses a process boundary; workers rebuild it from the config module. See [Your own agent](/agents). |
-| `model` | `string \| ModelConfig \| ModelInstance` | unset | - | No implicit default. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
-| `visionModel` | `string \| ModelConfig \| ModelInstance` | the agent's `model` | - | Model used by calls with `vision`. Same three forms as `model`. Built on first vision call. |
+| `model` | `ModelInstance` | unset | an AI SDK model instance | No implicit default and no runner-side gateway: the config constructs the model with a provider package. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
+| `visionModel` | `ModelInstance` | the agent's `model` | an AI SDK model instance | Model used by calls with `vision`. |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
 | `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike; the per-call token limit clamps it lower on a dense screen. Not a `limits` key. |
@@ -455,14 +455,6 @@ has room to think before the answer.
 ### model
 
 ```ts
-export interface ModelConfig {
-  provider: string;
-  id: string;
-  endpoint?: string;
-  /** Environment variable containing the provider credential. */
-  apiKeyEnv?: string;
-}
-
 export interface ModelInstance {
   readonly specificationVersion: string;
   readonly provider: string;
@@ -470,16 +462,26 @@ export interface ModelInstance {
 }
 ```
 
-| Form | Example | Behavior |
-| --- | --- | --- |
-| String | `'openai/gpt-4o'` | Split at the first `/` and routed through the AI Gateway. A leading or trailing `/` is `INVALID_CONFIG`. |
-| `ModelConfig` | `{ provider: 'openai', id: 'gpt-4o' }` | `provider` and `id` are required and non-empty |
-| `ModelInstance` | `openai('gpt-4o')` | Any AI SDK model instance. Detected structurally; owns its own transport and credentials. |
+The model is always an AI SDK model instance the config constructs. Detection
+is structural, so any provider package works without the runner depending on
+it, and the instance owns its transport and credentials: the runner has no
+gateway, endpoint, or key variable of its own.
 
-| `ModelConfig` key | Default | Rules |
-| --- | --- | --- |
-| `endpoint` | `E2E_MODEL_ENDPOINT`, else the gateway default | Absolute URL of any OpenAI-compatible endpoint. Must be HTTPS unless the host is loopback. The config value wins over the variable. |
-| `apiKeyEnv` | `'E2E_MODEL_API_KEY'` | Must match `/^[A-Za-z_][A-Za-z0-9_]*$/` |
+| Gateway | Constructor | Package | Reads |
+| --- | --- | --- | --- |
+| [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) | `gateway('openai/gpt-5.4-mini')` | `ai` | `AI_GATEWAY_API_KEY` |
+| [OpenRouter](https://openrouter.ai/models) | `openrouter('openai/gpt-5.4-mini')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
+| Any OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM, a vendor's own API) | `createOpenAICompatible({ name, baseURL, apiKey? }).chatModel('llama3.2')` | `@ai-sdk/openai-compatible` | `apiKey`, when the endpoint needs one |
+| A provider directly | `openai('gpt-5.4-mini')`, `anthropic(...)`, ... | `@ai-sdk/openai`, `@ai-sdk/anthropic`, ... | the provider's own variable |
+
+`e2e init` asks which gateway agent steps use and writes the import and the
+constructor into the config. A string in a model slot is `INVALID_CONFIG`
+naming the constructor to write instead, so no gateway is ever implied.
+
+Reports record the instance's `provider` and `modelId` as the step's
+`provider` and `model` (`gateway` and `openai/gpt-5.4-mini` for the Vercel
+AI Gateway) and `provider-default` as the endpoint. A run's `run-started`
+event carries `provider/model-id`.
 
 Each worker re-resolves the config module and constructs its own model instance,
 so an instance never crosses a process boundary. A config whose digest differs
@@ -649,11 +651,6 @@ resolves to:
 
 | Variable | Effect |
 | --- | --- |
-| `E2E_MODEL` | `provider/model-id` fallback when the agent's `model` is unset and its executor brought none |
-| `E2E_VISION_MODEL` | `provider/model-id` fallback when the agent's `visionModel` is unset |
-| `E2E_MODEL_API_KEY` | Default provider credential |
-| `AI_GATEWAY_API_KEY` | Gateway credential, used when the named key variable holds no value |
-| `E2E_MODEL_ENDPOINT` | Gateway endpoint when the agent's `model.endpoint` is unset |
 | `E2E_USER_<NAME>_USERNAME` | Overrides `credentials.<name>.username` |
 | `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
 | `CI` | Switches CI defaults and rejects focused tests |
@@ -663,16 +660,14 @@ resolves to:
 | Setting | Order |
 | --- | --- |
 | Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself (`url: process.env.APP_URL ?? ...`) |
-| Model | the model passed to `createAgent({ model })`, then `agent.model`, then `E2E_MODEL` parsed as `provider/model-id`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls |
-| Vision model | the agent's `visionModel`, then `E2E_VISION_MODEL`, then its `model` |
-| Model credential | the variable named by the agent's `model.apiKeyEnv`, else `E2E_MODEL_API_KEY`, then `AI_GATEWAY_API_KEY` |
-| Model endpoint | the agent's `model.endpoint`, then `E2E_MODEL_ENDPOINT`, then the gateway default |
+| Model | the model passed to `createAgent({ model })`, then `agent.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls. The runner reads no model variable |
+| Vision model | the agent's `visionModel`, then its `model` |
+| Model credential | the provider package's own (`AI_GATEWAY_API_KEY` for `gateway()` from `ai`, `OPENROUTER_API_KEY` for `openrouter()`) or the key passed at construction; read by the provider on the first model call, never by the runner |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
-"First non-empty" ignores values that are undefined or whitespace only. Naming
-`apiKeyEnv` replaces the default variable name rather than adding to it. A
-missing model credential is not a config error; it surfaces as
-`MODEL_UNAVAILABLE` when the `agent` fixture is first acquired. That check runs
+"First non-empty" ignores values that are undefined or whitespace only. A
+missing model is not a config error; it surfaces as `MODEL_UNAVAILABLE` when
+the `agent` fixture is first acquired. That check runs
 once per run and stops it (exit 2), so a suite without a model reports one
 run-level error rather than one blocked step per test. A custom executor with no
 model skips the check.

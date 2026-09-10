@@ -45,7 +45,7 @@ import { childProcessSpawner } from './worker/handle.ts';
 import { setCredentialRegistry } from '../credentials.ts';
 import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
-import type { ResolvedModel } from '../config/agent.ts';
+import { modelLabel } from '../config/agent.ts';
 import { declaredProcesses } from './declared-processes.ts';
 
 export interface RunOptions {
@@ -420,8 +420,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
     ...(config.agentName === 'default' ? {} : { agent: config.agentName }),
-    ...(config.agent.model === undefined ? {} : { model: modelName(config.agent.model) }),
-    ...(config.agent.visionModel === undefined ? {} : { visionModel: modelName(config.agent.visionModel) }),
+    ...(config.agent.model === undefined ? {} : { model: modelLabel(config.agent.model) }),
+    ...(config.agent.visionModel === undefined ? {} : { visionModel: modelLabel(config.agent.visionModel) }),
   });
 
   const executeRun = async (): Promise<void> => {
@@ -742,11 +742,6 @@ function withPreparedWorkers(
     );
   }
   return { ...plan, workers };
-}
-
-/** A configured model as `run-started` and the reporter name it. */
-function modelName(model: ResolvedModel): string {
-  return `${model.provider}/${model.id}`;
 }
 
 function selectionFilters(options: ListOptions): SelectionFilters {

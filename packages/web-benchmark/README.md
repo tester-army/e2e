@@ -21,7 +21,7 @@ planted bug.
 - `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
   deterministic config. It gates every PR too. Each step spends real model
-  calls (cents per run) and needs `E2E_MODEL_API_KEY`. `scenarios.e2e.ts`
+  calls (cents per run) and needs `AI_GATEWAY_API_KEY`. `scenarios.e2e.ts`
   drives every task scenario the accessibility tree can carry with one
   `agent.act` per scenario and checks the success message deterministically;
   scenarios the grammar cannot finish yet are declared and skipped with the
@@ -39,7 +39,7 @@ does not exist yet at install time, and CI installs before it builds.
 pnpm build                                          # from the repo root, once
 pnpm --filter @e2edev/web-benchmark test            # build the app, run tests/
 pnpm --filter @e2edev/web-benchmark test:headed
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/web-benchmark test:agent
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/web-benchmark test:agent
 pnpm --filter @e2edev/web-benchmark dev             # browse the scenarios on :4280
 ```
 

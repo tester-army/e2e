@@ -650,19 +650,13 @@ export interface Target {
   engine?: EngineHandle;
 }
 
-export interface ModelConfig {
-  provider: string;
-  id: string;
-  endpoint?: string;
-  /** Environment variable containing the provider credential. */
-  apiKeyEnv?: string;
-}
-
 /**
- * A live AI SDK language model instance, e.g. `openai('gpt-4o')` from
- * `@ai-sdk/openai` or any other provider implementing the AI SDK
- * `LanguageModelV2+` specification. The instance owns its own transport and
- * credentials. Detection is structural, so any AI SDK provider package works
+ * A live AI SDK language model instance: `gateway('openai/gpt-5.4-mini')`
+ * from `ai`, `openrouter(...)` from `@openrouter/ai-sdk-provider`,
+ * `openai('gpt-4o')` from `@ai-sdk/openai`, or any other provider
+ * implementing the AI SDK `LanguageModelV2+` specification. The instance owns
+ * its own transport and credentials; the runner knows no gateway or provider
+ * of its own. Detection is structural, so any AI SDK provider package works
  * without this runner depending on it.
  */
 export interface ModelInstance {
@@ -773,9 +767,10 @@ export interface AgentConfig {
    *. Omitted selects the built-in agent.
    */
   executor?: StepExecutor;
-  model?: string | ModelConfig | ModelInstance;
+  /** An AI SDK model instance; no implicit default. */
+  model?: ModelInstance;
   /** Model used by calls with `vision`; falls back to `model`. */
-  visionModel?: string | ModelConfig | ModelInstance;
+  visionModel?: ModelInstance;
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;
@@ -863,8 +858,8 @@ export interface E2EConfig {
    * The agents by name. Each is either an options block or the agent itself:
    * `createAgent(...)` from `@e2edev/e2e/agent`, or any hand-rolled
    * `StepExecutor`. `default` is the one tests run with; `e2e run --agent
-   * <name>` runs them with another. With an agent value, the model falls back
-   * to `E2E_MODEL` and every other option keeps its default. Agents never
+   * <name>` runs them with another. With an agent value, the model is the
+   * one it brought and every other option keeps its default. Agents never
    * cross a process boundary: workers re-resolve the config module and
    * construct their own, exactly like model instances.
    */

@@ -44,6 +44,18 @@ function plainToken(value: string): string {
   return PLAIN_TOKEN.test(value) ? value : 'other';
 }
 
+/**
+ * The vendor and public id of a step's model. A gateway serves ids in the
+ * `vendor/model` form and the report names the gateway as the provider, so
+ * the vendor is the id's first segment; an AI SDK instance's provider is the
+ * vendor already and its id has no such prefix.
+ */
+function splitModel(model: { readonly provider: string; readonly model: string }): { provider: string; id: string } {
+  const separator = model.model.indexOf('/');
+  if (separator <= 0) return { provider: model.provider, id: model.model };
+  return { provider: plainToken(model.model.slice(0, separator)), id: model.model.slice(separator + 1) };
+}
+
 /** `playwright@0.6.1`, and a project's own engine the same way; a name that is not a plain token is `other` alone. */
 function engineLabel(engine: { readonly name: string; readonly version: string }): string {
   const name = plainToken(engine.name);
@@ -93,6 +105,7 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
   const steps = recorded.flatMap((scope) => scope.steps ?? []);
   const models = steps.flatMap((step) => (step.model === undefined ? [] : [step.model]));
   const first = models[0];
+  const firstModel = first === undefined ? undefined : splitModel(first);
   const codes = unique(
     [...run.errors, ...recorded.flatMap(errorsOf)].map((error) => (ERROR_CODE.test(error.code) ? error.code : 'OTHER')),
   );
@@ -123,8 +136,9 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
-      model_provider: first?.provider ?? null,
-      model_id: first === undefined ? null : plainToken(first.model),
+      model_gateway: first?.provider ?? null,
+      model_provider: firstModel?.provider ?? null,
+      model_id: firstModel === undefined ? null : plainToken(firstModel.id),
       model_calls: models.reduce((total, model) => total + model.calls, 0),
       model_tokens: run.usage.modelTokens,
       model_cached_tokens: run.usage.modelCachedTokens ?? null,

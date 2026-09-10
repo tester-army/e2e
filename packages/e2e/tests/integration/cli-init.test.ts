@@ -32,6 +32,15 @@ function linkPackages(...names: readonly string[]): void {
   }
 }
 
+/** Links provider packages the generated config imports (`ai`, a gateway's provider) from this package's own install. */
+function linkModules(...names: readonly string[]): void {
+  for (const name of names) {
+    const target = path.join(dir, 'node_modules', name);
+    mkdirSync(path.dirname(target), { recursive: true });
+    symlinkSync(path.join(PACKAGE_ROOT, 'node_modules', name), target, 'junction');
+  }
+}
+
 beforeEach(() => {
   // Fixtures under the repository inherit its ESM package and hide this failure.
   dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-integration-'));
@@ -50,12 +59,16 @@ describe('initializing standalone projects', () => {
       vi.stubEnv('APP_URL', appUrl);
       await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
       linkPackages('e2e', 'playwright');
+      linkModules('ai');
 
       const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
       const config = resolveConfig(raw, { projectRoot: dir, env: {} });
       const collection = await collect(config);
 
       expect(config.targets).toMatchObject([{ name: 'web', platform: 'web', engine: { name: 'playwright' } }]);
+      // --yes writes the default gateway as its provider's constructor; the runner implies none, and no key is needed to load it.
+      expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toContain("model: gateway('openai/gpt-5.4-mini'),");
+      expect(config.agent.model).toMatchObject({ provider: 'gateway', id: 'openai/gpt-5.4-mini' });
       expect(config.targets[0]!.app.base).toMatchObject({ origin: appUrl ?? 'http://localhost:3000' });
       expect(config.targets[0]!.app.command).toBeUndefined();
       expect(collection.tests.map((test) => ({ title: test.title, file: test.file }))).toEqual([
@@ -65,18 +78,21 @@ describe('initializing standalone projects', () => {
   );
 
   it('loads the engine-less scaffold and collects its HTTP example', async () => {
-    const scaffold = createScaffold('none', true);
+    const scaffold = createScaffold('none', { gateway: 'openrouter' });
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
     writeFileSync(path.join(dir, 'tests/example.e2e.ts'), scaffold.example);
     linkPackages('e2e');
+    linkModules('ai', '@openrouter/ai-sdk-provider');
 
     const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
     const collection = await collect(config);
 
     expect(scaffold.dependencies).not.toHaveProperty('@e2edev/playwright');
+    expect(scaffold.dependencies).toMatchObject({ ai: '^7.0.0', '@openrouter/ai-sdk-provider': '^3.0.0' });
+    expect(config.agent.model).toMatchObject({ provider: expect.stringMatching(/^openrouter/), id: 'openai/gpt-5.4-mini' });
     expect(config.targets[0]!.app.base).toBeUndefined();
     expect(collection.tests.map((test) => test.title)).toEqual(['app responds']);
   });
@@ -86,12 +102,13 @@ describe('initializing standalone projects', () => {
     { host: 'linux', platform: 'android' },
   ] as const)('loads the $platform device scaffold generated on $host without a simulator', async ({ host, platform }) => {
     vi.spyOn(os, 'platform').mockReturnValue(host);
-    const scaffold = createScaffold('agent-device', true);
+    const scaffold = createScaffold('agent-device', { gateway: 'vercel' });
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
     writeFileSync(path.join(dir, 'tests/example.e2e.ts'), scaffold.example);
     linkPackages('e2e', 'agent-device');
+    linkModules('ai');
 
     const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
@@ -109,14 +126,15 @@ describe('initializing standalone projects', () => {
   it('runs the generated browser example against any page without a model key', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
     linkPackages('e2e', 'playwright');
+    linkModules('ai');
     const server = createServer((_request, response) => response.end('<p>hello</p>'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     try {
       const address = server.address();
       if (address === null || typeof address === 'string') throw new Error('expected TCP listener');
+      // The gateway model in the config constructs without a key; only an agent step would need one.
       const env: NodeJS.ProcessEnv = { ...process.env, APP_URL: `http://127.0.0.1:${address.port}` };
-      delete env.E2E_MODEL;
-      delete env.E2E_MODEL_API_KEY;
+      delete env.AI_GATEWAY_API_KEY;
       const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir, env });
       expect(stdout).toContain('1 passed');
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -218,6 +236,7 @@ describe('initializing standalone projects', () => {
   it('names look-alike test files when the globs match nothing', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
     linkPackages('e2e', 'playwright');
+    linkModules('ai');
     writeFileSync(path.join(dir, 'tests', 'login.test.ts'), 'export {};\n');
     rmSync(path.join(dir, 'tests', 'example.e2e.ts'));
     await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({

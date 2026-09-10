@@ -66,7 +66,7 @@ test('app opens', async ({ app, web }) => {
 });
 `,
       aiExample: `
-// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
+// Runs once the key the model in e2e.config.ts reads is in the environment:
 // test('the agent drives a flow', async ({ app, agent }) => {
 //   await app.open('/');
 //   await agent.act('one goal in plain language');
@@ -114,14 +114,14 @@ test('Settings opens', async ({ screen }) => {
 `,
       aiExample: ios
         ? `
-// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
+// Runs once the key the model in e2e.config.ts reads is in the environment:
 // test('the agent opens General', async ({ agent, device }) => {
 //   await agent.act('open General settings');
 //   await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
 // });
 `
         : `
-// Runs when E2E_MODEL and E2E_MODEL_API_KEY are set:
+// Runs once the key the model in e2e.config.ts reads is in the environment:
 // test('the agent opens Network settings', async ({ agent, device }) => {
 //   await agent.act('open Network & internet settings');
 //   await expect(device.locator('id=com.android.settings:id/collapsing_toolbar')).toHaveText('Network & internet');

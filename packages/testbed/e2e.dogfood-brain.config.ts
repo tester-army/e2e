@@ -12,13 +12,13 @@ import { playwright } from '@e2edev/playwright';
 import { createGateway, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
 
+const MODEL_ID = process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast';
+
 const mathBrain: StepExecutor = {
   name: 'math-brain',
   version: '1',
   async runStep(context) {
-    const model = createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(
-      process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
-    );
+    const model = createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(MODEL_ID);
     let verdict: StepVerdict | undefined;
     const compute = (name: string, body: () => number) =>
       context.budgets.runTool({ name, mutates: false }, async () => String(body()));
@@ -62,7 +62,7 @@ const mathBrain: StepExecutor = {
           ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
           ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
           provider: 'gateway',
-          modelId: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+          modelId: MODEL_ID,
         }),
     });
     return (

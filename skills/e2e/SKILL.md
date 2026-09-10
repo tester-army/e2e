@@ -18,6 +18,7 @@ target names an engine, `@e2edev/playwright` for browsers or
 import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 export default {
   targets: [
@@ -28,8 +29,13 @@ export default {
       }),
     },
   ],
-  // Only needed for agent.* steps; the model comes from E2E_MODEL.
-  agents: { default: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
+  // Only needed for agent.* steps. The model is an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.4-mini'),
+      system: 'You are a thorough QA agent. Verify every outcome on screen.',
+    }),
+  },
 } satisfies E2EConfig;
 ```
 
@@ -72,8 +78,8 @@ one. Without them, the installed CLI prints the same text:
 3. Write `tests/<feature>.e2e.ts`. Deterministic steps first. One `agent.act`
    per goal where the flow varies, and an `expect` on its outcome right after.
 4. Run one file: `npx --no-install e2e run tests/<feature>.e2e.ts`. Agent
-   steps need `E2E_MODEL=provider/model-id` and `E2E_MODEL_API_KEY` in the
-   environment; deterministic tests need neither.
+   steps need a model in the config and its provider's key in the environment
+   (`AI_GATEWAY_API_KEY` for `gateway()`); deterministic tests need neither.
 5. Read the failure: the reporter prints the error code, the message, and a
    code frame; `.e2e/report.json` has every step and artifact path. Fix the
    locator, the expectation, or the app. Never add a sleep.

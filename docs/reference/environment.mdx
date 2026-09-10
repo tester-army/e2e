@@ -19,11 +19,14 @@ lowercased first, so `FALSE` is off and `no` and `off` are on.
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
-| `E2E_MODEL` | value | `provider/model-id` used when the agent's `model` is unset and `createAgent` brought no model. Without any of the three, acquiring `agent` is `MODEL_UNAVAILABLE` |
-| `E2E_VISION_MODEL` | value | `provider/model-id` used when the agent's `visionModel` is unset; without either the vision model is `agent.model` |
-| `E2E_MODEL_API_KEY` | value | Default gateway credential. the agent's `model.apiKeyEnv` names another variable to read in its place |
-| `AI_GATEWAY_API_KEY` | value | Read when the named key variable (`E2E_MODEL_API_KEY` or `apiKeyEnv`) is blank |
-| `E2E_MODEL_ENDPOINT` | value | Gateway endpoint when the agent's `model.endpoint` is unset. Must parse as a URL, else `INVALID_CONFIG` |
+The runner reads no model variable. The model is an AI SDK instance your
+config constructs, and the provider package behind it reads its own
+credential: `gateway()` from `ai` reads `AI_GATEWAY_API_KEY`, `openrouter()`
+from `@openrouter/ai-sdk-provider` reads `OPENROUTER_API_KEY`, `openai()`
+from `@ai-sdk/openai` reads `OPENAI_API_KEY`, and so on. Those reads happen
+in your config module and the provider, on the first model call, not in the
+runner; a missing model is `MODEL_UNAVAILABLE` when `agent` is first acquired,
+and a missing key is the provider's own error on the first agent step.
 
 The order is spelled out under [Resolution order](/reference/config#resolution-order).
 

@@ -1,5 +1,6 @@
 import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 /**
  * Live trace view: `E2E_DEVTOOLS=1` registers the AI SDK devtools recorder,
@@ -19,7 +20,7 @@ if (process.env.E2E_DEVTOOLS !== undefined && process.env.E2E_DEVTOOLS !== '') {
 /**
  * Opt-in agentic suite against the local playground. Run manually:
  *
- *   E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
  *
  * Not part of CI: every test spends real model calls, and act flows and
  * judgments are structurally comparable across models, not identical.
@@ -46,12 +47,12 @@ export default {
   actionTimeout: 90_000,
   agents: {
     default: {
-      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       // Visual grounding is a much higher bar than accepting an image, so the
       // vision tier is pinned on its own: an `E2E_MODEL` override that brings a
       // cheaper model for planning keeps a model that points at the right pixel
       // for the calls that carry pixels.
-      visionModel: process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      visionModel: gateway(process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       context: [
         'This is the e2e playground app: a small multi-page site with todos,',
         'forms, a sign-in flow, a workspace wizard, and release notes.',

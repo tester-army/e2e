@@ -129,7 +129,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
     ...(options.model === undefined ? {} : { model: options.model }),
     async runStep(context: StepExecutorContext): Promise<StepVerdict> {
       // The AI SDK is an optional peer; load it before anything touches it —
-      // including the context's gateway-model getter below.
+      // including the context's model getter below.
       const ai = await loadAiSdk();
       // The context's model getter resolves the configured model on read, so
       // an executor that brought its own never touches (or fails on) it.
@@ -139,7 +139,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
       if (model === undefined) {
         throw new AgentError(
           'MODEL_UNAVAILABLE',
-          `the "${options.name}" executor requires a model: set agent.model, E2E_MODEL, or pass one to the executor`,
+          `the "${options.name}" executor requires a model: pass an AI SDK model instance to createAgent({ model }) or set agent.model`,
         );
       }
       const loop = new LoopRun(ai, options, context, model);
@@ -265,7 +265,7 @@ class LoopRun {
         }
         throw new AgentError(
           'MODEL_PROVIDER_FAILED',
-          withHint(`the model provider failed: ${message}`, credentialHint(cause, this.model)),
+          withHint(`the model provider failed: ${message}`, credentialHint(cause)),
           { cause },
         );
       }

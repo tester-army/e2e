@@ -56,6 +56,7 @@ unknown keys are `INVALID_CONFIG`.
 import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 export default {
   tests: 'tests/**/*.e2e.ts',
@@ -67,8 +68,13 @@ export default {
       }),
     },
   ],
-  // Only for agent.* steps. The model comes from E2E_MODEL unless set here.
-  agents: { default: createAgent({ system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
+  // Only for agent.* steps. The model is an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.4-mini'),
+      system: 'You are a thorough QA agent. Verify every outcome on screen.',
+    }),
+  },
   credentials: {
     admin: { username: 'admin@example.test', password: process.env.ADMIN_PASSWORD ?? '' },
   },
@@ -86,7 +92,7 @@ export default {
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers, at most the `workers` the engine declares per target (a device target: one per device). |
 | `reporters` | `['list']` | `list`, `json`, `junit`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
-| `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. Omitted, the built-in agent runs with `E2E_MODEL`. |
+| `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, context, visionModel, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. `model` is an AI SDK instance; without one anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
@@ -184,10 +190,7 @@ or read the address from the environment:
 
 | Variable | Effect |
 | --- | --- |
-| `E2E_MODEL` | `provider/model-id` for `agent.*` steps when the config sets no model. Routed through the Vercel AI Gateway. |
-| `E2E_MODEL_API_KEY` | Credential for that model. `AI_GATEWAY_API_KEY` is the fallback. |
-| `E2E_MODEL_ENDPOINT` | Any OpenAI-compatible endpoint URL for that model; the gateway is the default. HTTPS unless loopback. The agent's `model.endpoint` wins. |
-| `E2E_VISION_MODEL` | Model for calls with `vision`; falls back to the main model. |
+| `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, ... | Read by the provider package the config constructs the model with (`gateway()` from `ai`, `openrouter()`, `openai()`), not by the runner. The runner reads no model variable; the model is always an AI SDK instance in the config. |
 | `E2E_USER_<NAME>_USERNAME`, `E2E_USER_<NAME>_PASSWORD` | Override `credentials.<name>`. `<NAME>` is the credential name uppercased, other characters as `_`. |
 | `CI` | Turns on CI defaults: `retries: 1`, `workers: 1`, `test.only` rejected, cache read-only, `reuseExisting` ignored. |
 | `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK` | Turn anonymous usage telemetry off; `e2e telemetry disable` saves the same choice. `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it. |

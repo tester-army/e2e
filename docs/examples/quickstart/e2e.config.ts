@@ -1,15 +1,15 @@
 import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 export default {
-  // The model comes from E2E_MODEL; authenticate with E2E_MODEL_API_KEY.
-  // E2E_MODEL_ENDPOINT points at another OpenAI-compatible endpoint (default: the AI Gateway).
-  // To call a provider directly, pass an AI SDK model: createAgent({ model: openai('gpt-5.4-mini') }).
-  // That model is the one model for every agent.* call, checked once when the
-  // first test acquires the agent fixture.
+  // One model for every agent.* call, checked once when the first test acquires the agent fixture.
+  // The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.
+  // Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.
   agents: {
     default: createAgent({
+      model: gateway('openai/gpt-5.4-mini'),
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },

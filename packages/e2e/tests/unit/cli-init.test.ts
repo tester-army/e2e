@@ -34,6 +34,7 @@ beforeEach(() => {
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   vi.stubEnv('npm_config_user_agent', 'npm/11.0.0');
   vi.mocked(clack.select).mockReset().mockResolvedValue('none');
+  vi.mocked(clack.text).mockReset().mockResolvedValue('http://127.0.0.1:11434/v1');
   vi.mocked(clack.confirm).mockReset().mockResolvedValue(false);
   vi.mocked(clack.multiselect).mockReset().mockResolvedValue(['.agents/skills', '.claude/skills']);
   vi.mocked(clack.isCancel).mockImplementation((value) => typeof value === 'symbol');
@@ -56,7 +57,12 @@ describe('e2e init', () => {
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
-    expect(read('e2e.config.ts')).toContain('// To call a provider directly, pass an AI SDK model: createAgent({ model:');
+    // The default gateway is written out as its own provider's constructor, never implied by the runner.
+    expect(read('e2e.config.ts')).toContain("import { gateway } from 'ai';");
+    expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-5.4-mini'),");
+    expect(read('e2e.config.ts')).toContain('// The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.');
+    expect(read('e2e.config.ts')).toContain("// Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.");
+    expect(read('tests/example.e2e.ts')).toContain('// Runs once the key the model in e2e.config.ts reads is in the environment:');
     expect(read('e2e.config.ts')).toContain("playwright({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
     expect(read('e2e.config.ts')).toContain('// command: {');
     expect(read('tests/example.e2e.ts')).toContain("test('app opens'");
@@ -93,8 +99,8 @@ describe('e2e init', () => {
     { engine: 'agent-device', ai: false },
     { engine: 'agent-device', ai: true },
   ] as const)('matches imports and dependencies to engine=$engine, ai=$ai', async ({ engine, ai }) => {
-    vi.mocked(clack.select).mockResolvedValueOnce(engine);
-    vi.mocked(clack.confirm).mockResolvedValueOnce(ai).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    vi.mocked(clack.select).mockResolvedValueOnce(engine).mockResolvedValueOnce(ai ? 'openrouter' : 'none');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     const manifest = JSON.parse(read('package.json'));
     const device = engine === 'agent-device';
@@ -102,10 +108,15 @@ describe('e2e init', () => {
       '@e2edev/e2e',
       ...(engine === 'playwright' ? ['@e2edev/playwright'] : []),
       ...(device ? ['@e2edev/agent-device'] : []),
-      ...(ai ? ['ai'] : []),
+      ...(ai ? ['ai', '@openrouter/ai-sdk-provider'] : []),
     ]);
     expect(manifest.devDependencies.ai).toBe(ai ? '^7.0.0' : undefined);
+    expect(manifest.devDependencies['@openrouter/ai-sdk-provider']).toBe(ai ? '^3.0.0' : undefined);
     expect(read('e2e.config.ts').includes('createAgent')).toBe(ai);
+    expect(read('e2e.config.ts').includes("import { openrouter } from '@openrouter/ai-sdk-provider';")).toBe(ai);
+    expect(read('e2e.config.ts').includes("model: openrouter('openai/gpt-5.4-mini'),")).toBe(ai);
+    expect(read('e2e.config.ts').includes('// OpenRouter serves the model id and reads OPENROUTER_API_KEY.')).toBe(ai);
+    expect(clack.text).not.toHaveBeenCalled();
     expect(read('e2e.config.ts').includes('@e2edev/playwright')).toBe(engine === 'playwright');
     expect(read('tests/example.e2e.ts').includes('@e2edev/playwright')).toBe(engine === 'playwright');
     expect(read('e2e.config.ts').includes('@e2edev/agent-device')).toBe(device);
@@ -121,11 +132,12 @@ describe('e2e init', () => {
     { host: 'win32', platform: 'android', app: 'com.android.settings', label: 'Network & internet' },
   ] as const)('defaults agent-device to $platform on $host', async ({ host, platform, app, label }) => {
     vi.spyOn(os, 'platform').mockReturnValue(host);
-    vi.mocked(clack.select).mockResolvedValueOnce('agent-device');
-    vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    vi.mocked(clack.select).mockResolvedValueOnce('agent-device').mockResolvedValueOnce('none');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     expect(await init(dir)).toBe(0);
-    expect(clack.select).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    expect(clack.select).toHaveBeenCalledTimes(2);
+    expect(clack.select).toHaveBeenCalledWith(expect.objectContaining({
       initialValue: 'playwright',
       options: [
         expect.objectContaining({ value: 'playwright' }),
@@ -137,9 +149,48 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts')).toContain(label);
   });
 
+  it('offers every gateway and none, and asks an OpenAI-compatible endpoint for its URL', async () => {
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('openai-compatible');
+    vi.mocked(clack.text).mockResolvedValueOnce(' http://127.0.0.1:11434/v1 ');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    expect(await init(dir)).toBe(0);
+    expect(clack.select).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      message: expect.stringContaining('Which model gateway'),
+      initialValue: 'vercel',
+      options: [
+        expect.objectContaining({ value: 'vercel', label: 'Vercel AI Gateway' }),
+        expect.objectContaining({ value: 'openrouter', label: 'OpenRouter' }),
+        expect.objectContaining({ value: 'openai-compatible', label: 'OpenAI-compatible endpoint' }),
+        expect.objectContaining({ value: 'none' }),
+      ],
+    }));
+    expect(clack.text).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ placeholder: 'http://127.0.0.1:11434/v1' }));
+    expect(read('e2e.config.ts')).toContain("import { createOpenAICompatible } from '@ai-sdk/openai-compatible';");
+    expect(read('e2e.config.ts')).toContain(
+      "      model: createOpenAICompatible({\n        name: 'openai-compatible',\n        baseURL: 'http://127.0.0.1:11434/v1',\n        // apiKey: process.env.LLM_API_KEY,\n      }).chatModel('gpt-5.4-mini'),",
+    );
+    expect(read('e2e.config.ts')).toContain('// The endpoint serves the model id over the OpenAI chat API; pass apiKey when it needs one.');
+    expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
+    expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('@ai-sdk/openai-compatible', '^3.0.0');
+  });
+
+  it('validates the endpoint the way config resolution will', async () => {
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('openai-compatible');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect(await init(dir)).toBe(0);
+    const { validate } = vi.mocked(clack.text).mock.calls[0]![0] as { validate: (value: string | undefined) => string | undefined };
+    expect(validate(undefined)).toContain('enter the base URL');
+    expect(validate('   ')).toContain('enter the base URL');
+    expect(validate('not a url')).toContain('not a URL');
+    expect(validate('http://llm.example/v1')).toContain('HTTPS');
+    expect(validate('http://localhost:11434/v1')).toBeUndefined();
+    expect(validate('https://llm.example/v1')).toBeUndefined();
+  });
+
   it('accepts interactive selections and installs once after writing all files', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('playwright');
-    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('vercel');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
     vi.mocked(spawnSync).mockImplementationOnce(() => {
       expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
       expect(read('e2e.config.ts')).toContain('createAgent');
@@ -148,7 +199,7 @@ describe('e2e init', () => {
     });
 
     expect(await init(dir)).toBe(0);
-    expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('AI SDK v7'), initialValue: true }));
+    expect(clack.select).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('AI SDK v7'), initialValue: 'vercel' }));
     expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: 'Install dependencies with npm?' }));
     expect(spawnSync).toHaveBeenCalledExactlyOnceWith('npm', ['install'], {
       cwd: dir, stdio: 'inherit', shell: process.platform === 'win32',
@@ -157,19 +208,22 @@ describe('e2e init', () => {
   });
 
   it('writes the selected dependencies when installation is declined', async () => {
-    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('vercel');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect(await init(dir)).toBe(0);
     expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
     expect(spawnSync).not.toHaveBeenCalled();
     expect(output()).toContain('next: npm install, then APP_URL=');
   });
 
-  it.each(['engine', 'ai', 'skill', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
+  it.each(['engine', 'gateway', 'endpoint', 'skill', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
     const cancel = Symbol('cancel');
-    vi.mocked(clack.select).mockResolvedValueOnce(stage === 'engine' ? cancel : 'playwright');
+    vi.mocked(clack.select)
+      .mockResolvedValueOnce(stage === 'engine' ? cancel : 'playwright')
+      .mockResolvedValueOnce(stage === 'gateway' ? cancel : 'openai-compatible');
+    vi.mocked(clack.text).mockResolvedValueOnce(stage === 'endpoint' ? cancel : 'http://127.0.0.1:11434/v1');
     vi.mocked(clack.multiselect).mockResolvedValueOnce(stage === 'skill' ? cancel : ['.agents/skills']);
     vi.mocked(clack.confirm)
-      .mockResolvedValueOnce(stage === 'ai' ? cancel : true)
       .mockResolvedValueOnce(stage !== 'files')
       .mockResolvedValueOnce(cancel);
 
@@ -203,8 +257,8 @@ describe('e2e init', () => {
       custom: { enabled: true },
     };
     writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 4).replaceAll('\n', '\r\n')}\r\n`);
-    vi.mocked(clack.select).mockResolvedValueOnce('playwright');
-    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('vercel');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     expect(JSON.parse(read('package.json'))).toEqual({
       ...manifest,
@@ -234,7 +288,7 @@ describe('e2e init', () => {
     expect(clack.select).not.toHaveBeenCalled();
     expect(clack.confirm).not.toHaveBeenCalled();
     expect(output()).toContain('needs an interactive terminal');
-    expect(output()).toContain('pass --yes');
+    expect(output()).toContain('pass --yes to accept the defaults (Playwright, the Vercel AI Gateway, no installation)');
   });
 
   it('scaffolds with --yes without a terminal', async () => {
@@ -281,14 +335,14 @@ describe('e2e init', () => {
     } else {
       writeFileSync(path.join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
     }
-    vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
     await init(dir);
     expect(spawnSync).toHaveBeenCalledWith('pnpm', ['install'], expect.objectContaining({ cwd: dir }));
   });
 
   it('keeps the scaffold and returns a failure when installation fails', async () => {
     vi.mocked(spawnSync).mockReturnValueOnce(spawnResult(1));
-    vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
     expect(await init(dir)).toBe(2);
     expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(true);
     expect(output()).toContain('retry with npm install');
@@ -318,7 +372,7 @@ describe('e2e init', () => {
 
   it('installs the skill where selected, then refreshes only those copies', async () => {
     vi.mocked(clack.multiselect).mockResolvedValueOnce(['.claude/skills']);
-    vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect(await init(dir)).toBe(0);
     expect(clack.multiselect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       options: [expect.objectContaining({ value: '.agents/skills' }), expect.objectContaining({ value: '.claude/skills' })],
@@ -373,8 +427,8 @@ describe('e2e init', () => {
   });
 
   it('is idempotent', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('playwright');
-    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('vercel');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     const files = ['package.json', 'e2e.config.ts', 'tests/example.e2e.ts', '.gitignore', '.agents/skills/e2e/SKILL.md'];
     const before = files.map(read);

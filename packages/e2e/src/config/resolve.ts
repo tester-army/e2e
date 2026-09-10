@@ -720,7 +720,7 @@ const AGENT_NAME_PATTERN = TARGET_NAME_PATTERN;
 
 /**
  * Resolves `agents`: every named entry, and `default` even when the config
- * names none (the built-in agent with `E2E_MODEL`). The run's agent is
+ * names none (the built-in agent, which then needs `createAgent({ model })`). The run's agent is
  * `default` unless `--agent` picked another; an unknown name is a config
  * error before anything starts.
  */

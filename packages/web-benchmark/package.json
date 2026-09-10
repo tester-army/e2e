@@ -24,6 +24,7 @@
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
+    "ai": "7.0.93",
     "typescript": "7.0.2"
   }
 }

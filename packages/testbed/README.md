@@ -42,7 +42,7 @@ pnpm --filter @e2edev/e2e build            # the testbed runs the built runner
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
 pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, weekly schedule only
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, weekly schedule only
 pnpm --filter @e2edev/testbed app     # run the playground manually
 ```
 
@@ -53,12 +53,13 @@ artifacts under `.e2e/artifacts/`.
 
 `test:agent` spends real model calls, so it never gates a PR: it runs on the
 weekly `.github/workflows/agent.yml` schedule, by manual dispatch, or by hand. It
-pins `openai/gpt-5.6-luna-fast` and honours `E2E_MODEL` so the same suite can be
-replayed across providers:
+builds its model with the AI SDK's `gateway()`, pins `openai/gpt-5.6-luna-fast`, and
+honours the testbed's own `E2E_MODEL` variable so the same suite can be replayed
+across providers:
 
 ```bash
-E2E_MODEL_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
-E2E_MODEL=openai/gpt-5.4-mini E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent
+AI_GATEWAY_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
+E2E_MODEL=openai/gpt-5.4-mini AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
 ```
 
 Agentic assertions are structurally comparable across models, not textually
@@ -69,7 +70,7 @@ To see where the tokens went, record the run and open the trace in
 [unbox-ai](https://github.com/tester-army/unbox-ai):
 
 ```bash
-E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace
 npx unbox-ai .e2e/ai-trace.json          # viewer: treemap, waterfall, diffed turns
 npx unbox-ai runs .e2e/ai-trace.json     # one line per agent step, from the terminal
 ```
@@ -80,7 +81,7 @@ first, in this directory:
 
 ```bash
 npx unbox-ai devtools                    # live viewer on http://localhost:4983
-E2E_DEVTOOLS=1 E2E_MODEL_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --workers 1
+E2E_DEVTOOLS=1 AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --workers 1
 ```
 
 The devtools recorder names runs after their first prompt and keeps one

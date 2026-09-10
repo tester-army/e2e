@@ -8,6 +8,7 @@
  */
 
 import type { ToolExecutionOptions, ToolSet } from 'ai';
+
 import type { SdkLanguageModel } from '../config/agent.ts';
 import type { ProviderOptions } from '../types.ts';
 import { AgentError, isAgentError } from './error.ts';
@@ -46,7 +47,10 @@ function presenterFor(context: StepExecutorContext): ScreenPresenter {
 }
 
 export interface CreateAgentOptions {
-  /** AI SDK language model; defaults to the config-resolved `agent.model`. */
+  /**
+   * AI SDK language model, e.g. `gateway('openai/gpt-5.4-mini')` from `ai`;
+   * defaults to the config-resolved `agent.model`.
+   */
   readonly model?: SdkLanguageModel;
   /** Extra system guidance appended to the base execution rules. */
   readonly system?: string;

@@ -1,10 +1,10 @@
 /**
  * Worker-scoped model adapters. An agent's model is checked once per worker,
- * when the first test acquires that agent: adapter construction validates the
- * provider shape and the credential without a live request. A failure is
+ * when the first test acquires that agent: adapter construction checks that a
+ * model is configured without a live request. A failure is
  * reported once, to abort the run, instead of surfacing as one blocked step
- * per test. Adapters are shared across every agent that names the same
- * model: same provider, id, endpoint, and credential variable.
+ * per test. Adapters are shared across every agent that holds the same
+ * model instance.
  */
 
 import type { ModelAdapter } from '../agent/model/adapter.ts';
@@ -52,13 +52,7 @@ export class WorkerModels {
   };
 }
 
-/**
- * What makes two resolved models the same adapter. Every agent resolves its
- * own model object, so two agents naming `openai/gpt-5.6-luna-fast` must
- * share by what the reference says, not by object identity: provider, id,
- * endpoint, and the credential variable. A live instance is its own key.
- */
+/** Two agents share an adapter when they hold the same model instance. */
 function modelKey(model: ResolvedModel): unknown {
-  if (model.kind === 'instance') return model.model;
-  return `${model.provider}\u0000${model.id}\u0000${model.endpoint ?? ''}\u0000${model.apiKeyEnv}`;
+  return model.model;
 }
