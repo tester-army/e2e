@@ -25,15 +25,29 @@ import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './erro
 import { validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
-import { RUNTIME_CODES, type ExecutorPixels, type ExecutorVision, type StepExecutorContext, type StepVerdict } from './executor.ts';
+import { RUNTIME_CODES, type ExecutorPixels, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import type { AgentContext, AgentSelection } from './invocation.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
+import { ModelOutputInvalidError, type ModelImage } from './model/adapter.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import { ObservationFeed } from './observation-feed.ts';
 import { OperationQueue } from './operation-queue.ts';
+import { instrumentPhase } from './phases.ts';
+import { buildSystem } from './prompts.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
-import { askVisionModel, look, tapVisual, type VisionHost } from './vision-tier.ts';
+import { tokenFields } from './usage.ts';
+import { look, tapVisual, type VisionHost, type VisionRequest } from './vision-tier.ts';
+
+/**
+ * Ceiling on one harness-made vision call. A localization is one short
+ * structured answer and lands in a few seconds; a provider that takes longer
+ * is stalling, and the step's own clock should not be spent waiting on it.
+ */
+const VISION_CALL_TIMEOUT_MS = 30_000;
+
+/** Output ceiling for one vision call; a reasoning model spends part of it before the answer. */
+const VISION_MAX_OUTPUT_TOKENS = 8192;
 
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
 export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
@@ -155,6 +169,8 @@ class ActDispatch {
   private readonly accounting: StepAccounting;
   private readonly feed: ObservationFeed;
   private readonly dispatcher: ActionDispatcher;
+  /** What the pixel tier borrows from this step; see `visionHost`. */
+  private readonly vision: VisionHost;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
   private readonly stepCache: StepTraceSession | undefined;
   /** Timeline index of the step being dispatched. */
@@ -188,8 +204,8 @@ class ActDispatch {
       params: spec.params,
       secrets: spec.secrets,
       trace: () => this.stepCache,
-      tapVisual: (description) => tapVisual(this.visionHost(), description),
     });
+    this.vision = this.visionHost();
     // The dispatch always runs inside a recorded step (`dispatchAgentStep`
     // opens one); the index names the step to the executor and to the trace cache.
     const stepIndex = runtime.steps.currentStepIndex;
@@ -260,7 +276,13 @@ class ActDispatch {
         runTool: (call, body) => this.dispatcher.runTool(call, body),
       },
       observe: async (options = {}) => this.feed.view(await this.feed.observeSettled(options?.pixels === true), options),
-      vision: this.buildVision(),
+      vision: {
+        get tainted() {
+          return dispatch.runtime.taint.value;
+        },
+        tap: (description) => tapVisual(this.vision, description),
+        look: (options) => look(this.vision, options),
+      },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
         if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {
@@ -407,18 +429,6 @@ class ActDispatch {
     };
   }
 
-  /** The pixel-backed reads an executor may ask the harness for. */
-  private buildVision(): ExecutorVision {
-    // oxlint-disable-next-line typescript/no-this-alias
-    const dispatch = this;
-    return {
-      get tainted() {
-        return dispatch.runtime.taint.value;
-      },
-      look: (options) => look(this.visionHost(), options),
-    };
-  }
-
   /**
    * What the pixel tier (`vision-tier.ts`) borrows from this step: a settled
    * pixel observation, a counted model call, and the two taps. A further
@@ -432,17 +442,64 @@ class ActDispatch {
         const observation = await this.feed.observeSettled(true);
         return { observation, view: await this.feed.view(observation, { pixels: true }) };
       },
-      ask: async (request) => {
-        const answer = await askVisionModel(
-          { runtime: this.runtime, agent: this.agent, accounting: this.accounting },
-          request,
-        );
-        this.feed.notePixelsSent();
-        return answer;
-      },
+      ask: (request) => this.askVisionModel(request),
       tap: (id) => this.dispatcher.tap({ id }),
       tapAt: (point, description) => this.dispatcher.tapAt(point, description),
     };
+  }
+
+  /**
+   * One harness-made call to the agent's vision model, counted against the
+   * step's model-call budget and recorded like an executor's own call. The
+   * response is validated against a closed grammar; an answer outside it is
+   * reported as no answer rather than repaired, since the executor's model can
+   * rephrase and ask again.
+   */
+  private async askVisionModel<Value>(request: VisionRequest<Value>): Promise<Value | undefined> {
+    const { accounting, agent, runtime } = this;
+    accounting.checkpoint();
+    const adapter = agent.models.select(true);
+    const images: ModelImage[] = [
+      {
+        data: request.pixels.data,
+        mediaType: request.pixels.mediaType,
+        width: request.pixels.width,
+        height: request.pixels.height,
+      },
+    ];
+    try {
+      // Pixels the feed cleared are leaving the runner as model input.
+      this.feed.notePixelsSent();
+      const result = await instrumentPhase(
+        runtime,
+        { api: accounting.api, kind: 'model', phase: 'agent.model', name: request.schemaName },
+        () =>
+          adapter.generate({
+            system: `${buildSystem(request.task, agent.agentContext)}\n\n${request.rules}`,
+            prompt: request.prompt,
+            images,
+            schemaName: request.schemaName,
+            schema: request.schema,
+            validate: request.validate,
+            maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
+            maxInputTokens: runtime.config.limits.maxModelTokensPerCall,
+            providerOptions: agent.config.providerOptions,
+            signal: accounting.signal,
+            timeoutMs: Math.max(1, Math.min(accounting.remainingMs(), VISION_CALL_TIMEOUT_MS)),
+          }),
+        (generated) => ({
+          count: accounting.usage.record(generated.usage),
+          ...tokenFields(generated.usage),
+        }),
+      );
+      return result.value;
+    } catch (cause) {
+      if (cause instanceof ModelOutputInvalidError) return undefined;
+      throw cause;
+    } finally {
+      // The call is spent whatever it answered.
+      accounting.countModelCall();
+    }
   }
 
   private invented(code: AgentErrorCode, cause?: AgentError): AgentError {

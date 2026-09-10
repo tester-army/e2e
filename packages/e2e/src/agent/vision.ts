@@ -15,6 +15,7 @@
 
 import type { JSONSchema7 } from 'ai';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import { clamp, clampToViewport } from '../internal/geometry.ts';
 import type { Platform } from '../types.ts';
 import type { ExecutorObservation, ExecutorPixels } from './executor.ts';
 import type { AgentObservation } from './observation.ts';
@@ -209,12 +210,13 @@ export function imagePointToViewport(
   viewport: { readonly width: number; readonly height: number },
 ): ViewportPoint {
   const scale = pixels.scale > 0 ? pixels.scale : 1;
-  const x = Math.round(clamp(point.x, 0, Math.max(0, pixels.width - 1)) / scale);
-  const y = Math.round(clamp(point.y, 0, Math.max(0, pixels.height - 1)) / scale);
-  return {
-    x: clamp(x, 0, Math.max(0, viewport.width - 1)),
-    y: clamp(y, 0, Math.max(0, viewport.height - 1)),
-  };
+  return clampToViewport(
+    {
+      x: clamp(point.x, 0, Math.max(0, pixels.width - 1)) / scale,
+      y: clamp(point.y, 0, Math.max(0, pixels.height - 1)) / scale,
+    },
+    viewport,
+  );
 }
 
 /**
@@ -470,10 +472,6 @@ export function renderLook(response: LookResponse, observation: Pick<ExecutorObs
 
 function fail(issue: string): { ok: false; issue: string } {
   return { ok: false, issue };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 /** A finite number or null; undefined when neither. */

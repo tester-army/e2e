@@ -188,7 +188,7 @@ describe('createEngineSession', () => {
     const verbs = (extra: Partial<Engine>) =>
       [...createEngineSession({ engine: defineEngine(observingEngine(extra)), targetName: 't' }).verbs].toSorted();
     expect(verbs({})).toEqual([]);
-    expect(verbs({ perform: async () => undefined })).toEqual(['press', 'select', 'tap', 'tapVisual', 'type', 'typeSecret']);
+    expect(verbs({ perform: async () => undefined })).toEqual(['press', 'select', 'tap', 'type', 'typeSecret']);
     expect(verbs({ swipe: async () => undefined })).toEqual(['scroll']);
     expect(verbs({ tapAt: async () => undefined })).toEqual(['tapAt']);
     expect(verbs({ app: { navigate: async () => undefined } })).toEqual(['navigate']);

@@ -12,6 +12,7 @@
 
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
+import { clampToViewport } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
@@ -59,8 +60,6 @@ export interface ActionDispatcherOptions {
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The step's trace-cache session, read at commit time; undefined when caching is off. */
   readonly trace: () => StepTraceSession | undefined;
-  /** Runs a vision-located tap; supplied by the dispatch, which owns the pixel tier's host. */
-  readonly tapVisual: ExecutorActions['tapVisual'];
 }
 
 export class ActionDispatcher {
@@ -90,7 +89,6 @@ export class ActionDispatcher {
       scroll: (direction, target) => this.scroll(direction, target),
       navigate: (url) => this.navigate(url),
       tapAt: (point) => this.tapAt(point),
-      tapVisual: options.tapVisual,
     };
   }
 
@@ -116,14 +114,7 @@ export class ActionDispatcher {
     ) {
       throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
     }
-    const viewport = this.feed.latest?.viewport;
-    const clamped: ViewportPoint =
-      viewport === undefined
-        ? { x: Math.round(point.x), y: Math.round(point.y) }
-        : {
-            x: Math.min(Math.max(0, Math.round(point.x)), Math.max(0, viewport.width - 1)),
-            y: Math.min(Math.max(0, Math.round(point.y)), Math.max(0, viewport.height - 1)),
-          };
+    const clamped = clampToViewport(point, this.feed.latest?.viewport);
     await this.runAction('tapAt', async () => {
       await this.session.tapAt(clamped, this.accounting.actionOperation());
       return { name: 'tapAt', point: clamped, ...(description === undefined ? {} : { description }) };
@@ -296,12 +287,6 @@ export class ActionDispatcher {
     // than typing a value the app may not issue again.
     if (action.name === 'type' && isDerivedValue(action.value, this.options.instruction, this.options.params)) {
       trace.recordGap('type (run-time value)');
-      return;
-    }
-    // A bare point is this screen's geometry, not a descriptor replay could
-    // re-find; the flow hands off here rather than tapping where nothing may be.
-    if (action.name === 'tapAt') {
-      trace.recordGap('tap_visual (point)');
       return;
     }
     trace.record(action);

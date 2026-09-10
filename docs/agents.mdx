@@ -309,18 +309,20 @@ attempt scope, as they share the ledger.
 
 
 `ctx.actions` is the whole action surface (`tap`, `type`, `typeSecret`,
-`press`, `select`, `scroll`, `navigate`, `tapAt`, `tapVisual`) and
-`ctx.observe()` is the tree view of the app. `ctx.target.verbs` is the subset
-of those verbs the target's engine declared (an engine with `perform` gives
-`tap`/`type`/`typeSecret`/`press`/`select`/`tapVisual`, `swipe` gives
-`scroll`, `tapAt` gives `tapAt`, `app.navigate` gives `navigate`); offer a
-model exactly that vocabulary, as the built-in agent does, rather than a verb
-the surface can only reject. `ctx.actions.tapVisual(description)` and
-`ctx.vision.look({ question })` are the pixel path: the harness captures
-masked pixels, asks the agent's `visionModel`, and taps or describes on your
-executor's behalf, counting the call against the step's model-call budget;
-`ctx.vision.tainted` says when a secret fill has closed that path for the
-attempt, so an executor can leave the pixel verbs out of its vocabulary.
+`press`, `select`, `scroll`, `navigate`, `tapAt`) and `ctx.observe()` is the
+tree view of the app. `ctx.target.verbs` is the subset of those verbs the
+target's engine declared (an engine with `perform` gives
+`tap`/`type`/`typeSecret`/`press`/`select`, `swipe` gives `scroll`, `tapAt`
+gives `tapAt`, `app.navigate` gives `navigate`); offer a model exactly that
+vocabulary, as the built-in agent does, rather than a verb the surface can
+only reject. `ctx.vision.tap(description)` and `ctx.vision.look({ question })`
+are the pixel path: the harness captures masked pixels, asks the agent's
+`visionModel`, and taps or describes on your executor's behalf, counting the
+call against the step's model-call budget. The vision-located tap is not a
+verb of its own: it rides `tap` when the located point lands on a listed
+control and `tapAt` when it does not. `ctx.vision.tainted` says when a secret
+fill has closed that path for the attempt, so an executor can leave the pixel
+verbs out of its vocabulary.
 Secrets in params arrive as name-only placeholders; `actions.typeSecret(target,
 name)` performs the authorized fill without the plaintext ever passing through
 your code or a model.

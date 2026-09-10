@@ -27,20 +27,10 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
 /**
  * The agent's action grammar, by verb. A session declares which verbs its
  * engine can honor so the agent offers the model exactly that vocabulary.
- * `tapVisual` is the vision-located tap: it rides `perform` when the located
- * point sits on a node the tree lists, and `tapAt` when it does not, so it is
- * declared with `tap` and honors bare points only when `tapAt` is too.
+ * The vision-located tap is not a verb of its own: it rides `tap` when the
+ * located point sits on a node the tree lists, and `tapAt` when it does not.
  */
-export type GrammarVerb =
-  | 'tap'
-  | 'type'
-  | 'typeSecret'
-  | 'press'
-  | 'select'
-  | 'scroll'
-  | 'navigate'
-  | 'tapVisual'
-  | 'tapAt';
+export type GrammarVerb = 'tap' | 'type' | 'typeSecret' | 'press' | 'select' | 'scroll' | 'navigate' | 'tapAt';
 
 export interface Observation {
   /** Location captured with this tree, when the engine can provide it. */

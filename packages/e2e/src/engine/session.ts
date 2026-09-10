@@ -87,15 +87,11 @@ function normalize(cause: unknown, label: string): never {
   });
 }
 
-/**
- * The grammar verbs an engine declaration can honor. The vision-located tap
- * comes with `perform`: a located point that lands on a listed node is tapped
- * through it, and only a point on nothing needs `tapAt`.
- */
+/** The grammar verbs an engine declaration can honor. */
 function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVerb> {
   const verbs = new Set<GrammarVerb>();
   if (engine?.perform !== undefined) {
-    for (const verb of ['tap', 'type', 'typeSecret', 'press', 'select', 'tapVisual'] as const) verbs.add(verb);
+    for (const verb of ['tap', 'type', 'typeSecret', 'press', 'select'] as const) verbs.add(verb);
   }
   if (engine?.swipe !== undefined) verbs.add('scroll');
   if (engine?.tapAt !== undefined) verbs.add('tapAt');

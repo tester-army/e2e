@@ -302,10 +302,11 @@ export function createGrammarTools(
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
     });
   }
-  // The pixel verbs are offered while pixels can still leave the runner. Once
-  // a secret was filled in the attempt they could only decline, and a verb
-  // that is absent costs the model nothing where one that declines costs a turn.
-  if (verbs.has('tapVisual') && !context.vision.tainted) {
+  // The pixel verbs ride `tap` (a located point on a listed control is an
+  // ordinary tap) and are offered while pixels can still leave the runner.
+  // Once a secret was filled in the attempt they could only decline, and a
+  // verb that is absent costs the model nothing where one that declines costs a turn.
+  if (verbs.has('tap') && !context.vision.tainted) {
     const bare = verbs.has('tapAt');
     tools['tap_visual'] = schemaTool({
       description:
@@ -317,7 +318,7 @@ export function createGrammarTools(
           guard(async () => {
             let result;
             try {
-              result = await context.actions.tapVisual(description);
+              result = await context.vision.tap(description);
             } catch (cause) {
               if (isRuntimeHardStop(cause)) throw cause;
               const message = cause instanceof Error ? cause.message : String(cause);

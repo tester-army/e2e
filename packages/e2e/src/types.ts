@@ -126,7 +126,7 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * answer yes, while the pixels show the overlay. For a judgment that is about
  * what the screen presents, the tree is a distractor, so the mode that means it
  * removes it. It also costs fewer input tokens than `true`, not more.
- * *
+ *
  * In every mode that sends pixels but also the tree, pixel evidence degrades
  * away rather than failing the call when it cannot be proven redacted. `'only'`
  * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of

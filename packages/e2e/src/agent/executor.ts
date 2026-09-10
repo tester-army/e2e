@@ -172,32 +172,31 @@ export interface ExecutorActions {
    * point is not a descriptor replay can re-find.
    */
   tapAt(point: ViewportPoint): Promise<void>;
-  /**
-   * Taps the one control a description names, located in the screen's pixels
-   * by the agent's vision model. The harness captures masked pixels, asks the
-   * vision model for a point, hit-tests the point against the newest
-   * observation, and taps the control it lands on through `tap` — or the bare
-   * point through `tapAt` when nothing the tree lists is there. Nothing runs
-   * when the model abstains or pixels are withheld; the result says which.
-   */
-  tapVisual(description: string): Promise<VisualTapResult>;
 }
 
-/** What one `tapVisual` did, for the executor to relay to its model. */
-export interface VisualTapResult {
-  /**
-   * `tapped`: one action ran at `point`. `skipped`: nothing ran, because the
-   * vision model abstained, pixels were withheld, or the point sat on no
-   * listed node and the engine cannot tap a bare point.
-   */
-  readonly outcome: 'tapped' | 'skipped';
-  /** Where the tap landed, in the newest observation's CSS pixels. */
-  readonly point?: ViewportPoint;
-  /** The listed node the point resolved to, when a control contained it. */
-  readonly target?: ExecutorTarget;
-  /** Prose for a model: what happened, what was under the point, and what to do instead when skipped. */
-  readonly summary: string;
-}
+/** What one `vision.tap` did, for the executor to relay to its model. */
+export type VisualTapResult =
+  | {
+      /** One action ran at `point`. */
+      readonly outcome: 'tapped';
+      /** Where the tap landed, in the newest observation's CSS pixels. */
+      readonly point: ViewportPoint;
+      /** The listed node the point resolved to; absent when a bare point was tapped. */
+      readonly target?: ExecutorTarget;
+      /** Prose for a model: what was tapped and what sits under the point. */
+      readonly summary: string;
+    }
+  | {
+      /**
+       * Nothing ran: the vision model abstained, pixels were withheld, or the
+       * point sat on no listed node and the engine cannot tap a bare point.
+       */
+      readonly outcome: 'skipped';
+      /** The located point, when the model named one before the tap was declined. */
+      readonly point?: ViewportPoint;
+      /** Prose for a model: why nothing ran and what to do instead. */
+      readonly summary: string;
+    };
 
 /** What one `look` returned: a description of the pixels, or why there were none. */
 export interface LookResult {
@@ -221,11 +220,20 @@ export interface LookResult {
 export interface ExecutorVision {
   /**
    * True once a secret was filled in this attempt: pixels are withheld for
-   * the rest of it, so `look` and `actions.tapVisual` can only report that.
-   * An executor reads it when assembling its vocabulary, to leave the pixel
-   * verbs out rather than offer tools that can only decline.
+   * the rest of it, so `tap` and `look` can only report that. An executor
+   * reads it when assembling its vocabulary, to leave the pixel verbs out
+   * rather than offer tools that can only decline.
    */
   readonly tainted: boolean;
+  /**
+   * Taps the one control a description names, located in the screen's pixels
+   * by the vision model. The harness captures masked pixels, asks the model
+   * for a point, hit-tests the point against the newest observation, and taps
+   * the control it lands on through `actions.tap` — or the bare point through
+   * `actions.tapAt` when nothing the tree lists is there. Nothing runs when
+   * the model abstains or pixels are withheld; the result says which.
+   */
+  tap(description: string): Promise<VisualTapResult>;
   /**
    * Describes the current screen from masked pixels: the top layer, the main
    * content, visible controls by their verbatim text and region, form fields,

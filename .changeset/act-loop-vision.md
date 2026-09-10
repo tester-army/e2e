@@ -16,7 +16,9 @@ the observation's coordinates, and hit-tests it against the tree: a listed
 control under it is tapped by id through the ordinary `tap` path, policy and
 trace descriptor included; a point on nothing listed is tapped as a bare point
 through the engine's new `tapAt` member and recorded as a trace gap. The
-executor socket gains `actions.tapAt`, `actions.tapVisual`, and `vision.look`
-plus `vision.tainted`; the engine contract gains an optional `tapAt(point,
-context)` with the `pointer` capability and the `tapVisual`/`tapAt` grammar
-verbs. Steps that sent pixels record `visionInput` and `metrics.pixelBytes`.
+executor socket gains `actions.tapAt`, `vision.tap`, `vision.look`, and
+`vision.tainted`; the engine contract gains an optional `tapAt(point, context)`
+with the `pointer` capability and the `tapAt` grammar verb, and pins
+`SemanticNode.rect` to the top-level viewport's CSS pixels for nodes inside
+nested documents too. Steps that sent pixels record `visionInput` and
+`metrics.pixelBytes`.

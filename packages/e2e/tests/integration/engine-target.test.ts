@@ -181,10 +181,10 @@ const tapper: StepExecutor = {
   version: '1',
   async runStep(context) {
     // The executor is told exactly which grammar the surface honors: perform
-    // gives tap/type/press/select and the vision-located tap, and this toy has
-    // no swipe, navigate, or bare-point tap.
+    // gives tap/type/press/select, and this toy has no swipe, navigate, or
+    // bare-point tap.
     const verbs = [...context.target.verbs].toSorted();
-    if (context.target.platform !== 'ios' || verbs.join() !== 'press,select,tap,tapVisual,type,typeSecret') {
+    if (context.target.platform !== 'ios' || verbs.join() !== 'press,select,tap,type,typeSecret') {
       return { status: 'failed', summary: `unexpected target ${context.target.platform} ${verbs.join()}` };
     }
     for (let round = 0; round < 5; round += 1) {
