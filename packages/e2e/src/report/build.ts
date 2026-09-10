@@ -113,6 +113,8 @@ export interface ReportStep {
   cache?: StepCacheInfo | undefined;
   events: readonly StepEvent[];
   model?: StepModelInfo | undefined;
+  /** The configured agent an agent step ran with, by name. */
+  agent?: string | undefined;
   error?: ReportError | undefined;
   artifacts: readonly string[];
 }

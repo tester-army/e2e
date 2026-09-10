@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/e2e",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "keywords": [
     "e2e",
@@ -51,7 +51,7 @@
     "skills"
   ],
   "scripts": {
-    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json",
+    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const versions=Object.fromEntries(['playwright','agent-device'].map((dir)=>['@e2edev/'+dir,JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8')).version]));fs.writeFileSync('dist/cli/init/engine-versions.json',JSON.stringify(versions)+'\\n')\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

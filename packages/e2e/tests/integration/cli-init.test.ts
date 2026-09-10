@@ -120,7 +120,10 @@ describe('initializing standalone projects', () => {
       const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir, env });
       expect(stdout).toContain('1 passed');
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
-      expect(manifest.devDependencies['@e2edev/playwright']).toBe('0.x');
+      const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'playwright', 'package.json'), 'utf8')) as { version: string }).version;
+      expect(manifest.devDependencies['@e2edev/playwright']).toBe(`^${playwrightVersion}`);
+      const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'engine-versions.json'), 'utf8')) as Record<string, string>;
+      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/playwright']);
       expect(manifest.devDependencies.ai).toBe('^7.0.0');
       expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });
     } finally {
@@ -129,36 +132,41 @@ describe('initializing standalone projects', () => {
   });
 
   it.each([undefined, '{}', '{"type":"commonjs"}'])(
-    'explains the ESM requirement when package.json is %s',
+    'loads a .ts config and runs .ts tests with their helpers when package.json is %s',
     async (manifest) => {
       if (manifest !== undefined) writeFileSync(path.join(dir, 'package.json'), manifest);
       writeFileSync(path.join(dir, 'e2e.config.ts'), CONFIG);
+      mkdirSync(path.join(dir, 'tests'));
+      writeFileSync(path.join(dir, 'tests/helper.ts'), 'export const answer = (): number => 42;\n');
+      writeFileSync(
+        path.join(dir, 'tests/example.e2e.ts'),
+        "import { expect, test } from '@e2edev/e2e';\nimport { answer } from './helper.ts';\n\ntest('helpers load as ES modules', () => {\n  expect(answer()).toBe(42);\n});\n",
+      );
+      linkPackages('e2e');
 
-      await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
-        code: 'CONFIG_LOAD_FAILED',
-        message: expect.stringContaining('e2e requires ES modules'),
-      });
-      await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
-        code: 2,
-        stdout: expect.stringContaining(manifest === undefined ? 'run e2e init' : 'npm pkg set type=module'),
-      });
+      const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
+      const config = resolveConfig(raw, { projectRoot: dir, env: {} });
+      const collection = await collect(config);
+      expect(collection.tests.map((test) => test.title)).toEqual(['helpers load as ES modules']);
+
+      const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir });
+      expect(stdout).toContain('1 passed');
     },
   );
 
-  it('allows an .mts config but diagnoses a CommonJS scope around .ts tests', async () => {
+  it('collects .ts tests from a CommonJS-scoped tests directory next to an .mts config', async () => {
     writeFileSync(path.join(dir, 'package.json'), '{"type":"commonjs"}');
     writeFileSync(path.join(dir, 'e2e.config.mts'), CONFIG);
     const testsDir = path.join(dir, 'tests');
     mkdirSync(testsDir);
     writeFileSync(path.join(testsDir, 'package.json'), '{"type":"commonjs"}');
-    writeFileSync(path.join(testsDir, 'example.e2e.ts'), 'export {};\n');
+    writeFileSync(path.join(testsDir, 'example.e2e.ts'), "import { test } from '@e2edev/e2e';\n\ntest('registers', () => {});\n");
+    linkPackages('e2e');
 
     const raw = await loadConfigModule(path.join(dir, 'e2e.config.mts'));
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
-    await expect(collect(config)).rejects.toMatchObject({
-      code: 'COLLECTION_ERROR',
-      message: expect.stringContaining(`${path.join(testsDir, 'package.json')} does not set "type": "module"`),
-    });
+    const collection = await collect(config);
+    expect(collection.tests.map((test) => test.title)).toEqual(['registers']);
   });
 
   it('tells a project that skipped npm install to run it, naming its package manager', async () => {
@@ -220,8 +228,7 @@ describe('initializing standalone projects', () => {
     });
   });
 
-  it('preserves the original load error for ESM projects', async () => {
-    writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
+  it('preserves the original load error', async () => {
     writeFileSync(path.join(dir, 'e2e.config.ts'), "throw new Error('config setup failed');\n");
     await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
       code: 'CONFIG_LOAD_FAILED',
@@ -229,10 +236,9 @@ describe('initializing standalone projects', () => {
     });
   });
 
-  it('uses the target package scope of a symlinked config', async () => {
+  it('loads a config through a symlink', async () => {
     const sourceDir = path.join(dir, 'source');
     mkdirSync(sourceDir);
-    writeFileSync(path.join(sourceDir, 'package.json'), '{"type":"module"}');
     const source = path.join(sourceDir, 'e2e.config.ts');
     writeFileSync(source, CONFIG);
     const linked = path.join(dir, 'e2e.config.ts');

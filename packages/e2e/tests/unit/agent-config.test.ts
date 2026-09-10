@@ -536,8 +536,10 @@ describe('named agents', () => {
     expect(picked.agentName).toBe('ux');
     expect(picked.agent.model).toMatchObject({ provider: 'google', id: 'gemini-3.6-flash' });
     expect(picked.agent.context).toBe('Review the UX.');
-    // The selection also decides the observation budget the limits carry.
-    expect(picked.limits.maxObservationBytes).toBe(picked.agent.maxObservationBytes);
+    // The limits carry the largest observation budget any agent may use, whichever runs.
+    const uneven = resolve({ agents: { default: { maxObservationBytes: 4_096 }, ux: { maxObservationBytes: 65_536 } } });
+    expect(uneven.limits.maxObservationBytes).toBe(65_536);
+    expect(resolve({ agents: { default: { maxObservationBytes: 4_096 }, ux: { maxObservationBytes: 65_536 } } }, BASE_ENV, { agent: 'ux' }).limits.maxObservationBytes).toBe(65_536);
   });
 
   it('always has a default agent, the built-in one with E2E_MODEL, even when only others are named', () => {

@@ -151,11 +151,27 @@ Anywhere else is a type error or a `POLICY_DENIED` failure. That is what makes
 the blast radius knowable: there is no generic "give me the string" path to
 audit.
 
-The value never reaches a model, a log, a report, or a trace. Password fields
+The value never reaches a model, a log, a report, or a registered trace. Password fields
 arrive at the model masked, and any configured credential value found on screen
 is replaced with a placeholder before the observation leaves the runner. Reading
 a secure field back out is denied too, so assert the outcome - that the form
 submitted, that the dashboard rendered - rather than the secret.
+
+The trace the engine writes is the exception the runner closes itself. A
+Playwright trace records what happened, the filled value included: in the
+action's parameters, in every DOM snapshot of the field, and in the request
+that carried it. Once a secret was filled in an attempt, the runner rewrites
+every text entry of that attempt's trace archives before any of them is
+registered, hashed, or handed to an artifact store: JSON records value by
+value, other text as text, replacing each credential value (as typed,
+JSON-quoted, HTML-escaped, and URL-encoded) with `<secret:name>`. A binary
+entry that holds a credential's bytes is dropped from the archive. The report
+marks such a trace `redaction: "complete"`; a trace from an attempt that filled
+no secret is `not-required`. A trace that cannot be rewritten is deleted rather
+than kept, and the attempt's `secondaryErrors` say so. The screencast frames
+inside a trace are pixels, not text: a password field renders its own dots
+there, but anything else the page showed is in them, the same as in a
+screenshot or a video.
 
 ### Narrow where a credential may be used
 
@@ -194,6 +210,69 @@ One more consequence worth knowing: once a secret is filled, `agent.assert`
 stops attaching screenshot evidence for the rest of that attempt, because a page
 is free to mirror a typed value anywhere on screen. Fill secrets in a setup test
 and consume the session elsewhere to keep full evidence in the tests that matter.
+
+## Protected previews
+
+The app under test is often not public: a Vercel preview behind deployment
+protection, a tunnel with an interstitial page, a staging host behind HTTP
+basic authentication. The gate stands in front of the app, so no test step
+can pass it. The engine declares how to get through, and every path onto the
+page, a deterministic step or `agent.act`, goes through with it.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default {
+  targets: [
+    {
+      name: 'preview',
+      engine: playwright({
+        url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
+        identity: 'storefront',
+        headers: {
+          'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '',
+        },
+      }),
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+`headers` go on every request the browser sends to an allowed origin and on no
+request to any other, so a bypass secret never reaches a CDN, an analytics
+endpoint, or an identity provider the page also talks to. Header names are
+case-insensitive. A preview origin changes with every deploy; `identity` keeps
+cache and session entries keyed by what the app is (see
+[identity](/reference/config#the-app-under-test)).
+
+The same option skips ngrok's interstitial:
+
+```ts
+headers: { 'ngrok-skip-browser-warning': '1' },
+```
+
+A host behind HTTP basic authentication takes `basicAuth`. The browser answers
+a `401` challenge from an allowed origin with the credentials and a challenge
+from any other origin with nothing.
+
+```ts
+engine: playwright({
+  url: 'https://staging.example.com',
+  basicAuth: { username: 'preview', password: process.env.PREVIEW_PASSWORD ?? '' },
+}),
+```
+
+<Note>
+**Three costs of `headers`**
+
+Injecting headers routes every request of the attempt through the runner,
+which turns the browser's HTTP cache off for that target. Service workers are
+blocked for the same reason: routing never sees a worker's requests, so a page
+one controlled would reach the gate without the headers. And a Playwright
+trace records the requests it saw, headers included, so the trace of a
+protected preview carries the bypass secret; share it as you would the secret.
+</Note>
 
 <CardGroup cols={2}>
   <Card title="app and web reference" href="/reference/app-web">

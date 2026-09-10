@@ -46,7 +46,7 @@ import {
   type StepExecutorContext,
   type StepVerdict,
 } from './executor.ts';
-import type { AgentContext } from './invocation.ts';
+import type { AgentContext, AgentSelection } from './invocation.ts';
 import { isDerivedValue } from './derived.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
@@ -126,6 +126,8 @@ interface DispatchSpec {
   readonly timeout: number | undefined;
   readonly maxSteps: number | undefined;
   readonly maxModelCalls: number | undefined;
+  /** The configured agent the call named, if any. */
+  readonly agent: string | undefined;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -148,6 +150,7 @@ export async function runActStep(
     timeout: options?.timeout,
     maxSteps: options?.maxSteps,
     maxModelCalls: options?.maxModelCalls,
+    agent: options?.agent,
   });
 }
 
@@ -160,7 +163,7 @@ export async function runActStep(
 export async function runAssertStep(
   runtime: AgentContext,
   assertion: string,
-  options: { timeout?: number; vision?: unknown; screenshot?: boolean } | undefined,
+  options: { timeout?: number; vision?: unknown; screenshot?: boolean; agent?: string } | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
   const unsupported = (name: string): never => {
@@ -181,6 +184,7 @@ export async function runAssertStep(
     timeout: options?.timeout,
     maxSteps: undefined,
     maxModelCalls: undefined,
+    agent: options?.agent,
   });
 }
 
@@ -193,8 +197,11 @@ export async function runAssertStep(
  * (cache/context.ts).
  */
 async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<ActResult> {
+  // Resolved before the step opens, so an unknown name fails the call, not a
+  // recorded step, and the step carries the agent it ran with.
+  const agent = runtime.select(spec.agent);
   return runtime.steps.run('agent', spec.api, spec.instruction, async () => {
-    const dispatch = new ActDispatch(runtime, spec);
+    const dispatch = new ActDispatch(runtime, spec, agent);
     try {
       let verdict: StepVerdict;
       try {
@@ -202,7 +209,7 @@ async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Pro
       } catch (cause) {
         throw dispatch.settleThrown(toAgentError(cause));
       }
-      dispatch.settle(validateVerdict(verdict, runtime.executor.name));
+      dispatch.settle(validateVerdict(verdict, agent.executor.name));
       await dispatch.conclude('passed');
       return dispatch.result();
     } catch (cause) {
@@ -211,7 +218,7 @@ async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Pro
     } finally {
       dispatch.finish();
     }
-  }, { verifies: spec.kind === 'assert' });
+  }, { verifies: spec.kind === 'assert', agent: agent.name });
 }
 
 /**
@@ -289,21 +296,23 @@ class ActDispatch {
   constructor(
     private readonly runtime: AgentContext,
     private readonly spec: DispatchSpec,
+    /** The agent this step runs with. */
+    private readonly agent: AgentSelection,
   ) {
     this.stepSignal = AbortSignal.any([runtime.engine.signal, this.stepAbort.signal]);
     this.timeoutMs = resolveTimeout(spec.timeout, runtime.config.timeout);
     this.deadline = runtime.engine.deadline(this.timeoutMs);
     this.maxActions = resolveBoundedBudget(
       spec.maxSteps,
-      runtime.config.agent.maxSteps,
+      agent.config.maxSteps,
       'maxSteps',
     );
     this.maxModelCalls = resolveBoundedBudget(
       spec.maxModelCalls,
-      runtime.config.agent.maxModelCalls,
+      agent.config.maxModelCalls,
       'maxModelCalls',
     );
-    this.metrics.contextBytes = new TextEncoder().encode(runtime.agentContext ?? '').byteLength;
+    this.metrics.contextBytes = new TextEncoder().encode(agent.agentContext ?? '').byteLength;
     this.redact = runtime.redact;
     // The dispatch always runs inside a recorded step (`dispatchAct` opens
     // one); the index names the step to the executor and to the trace cache.
@@ -314,7 +323,7 @@ class ActDispatch {
     // trace would be empty — nothing to replay, nothing worth a read. An
     // executor that declared `cache: 'off'` sees every step itself.
     const cache =
-      spec.kind === 'act' && runtime.executor.cache !== 'off' ? runtime.cache : undefined;
+      spec.kind === 'act' && agent.executor.cache !== 'off' ? runtime.cache : undefined;
     this.stepCache =
       cache === undefined
         ? undefined
@@ -323,10 +332,10 @@ class ActDispatch {
             instruction: spec.instruction,
             params: spec.params,
             executor: {
-              name: runtime.executor.name,
-              ...(runtime.executor.version === undefined
+              name: agent.executor.name,
+              ...(agent.executor.version === undefined
                 ? {}
-                : { version: runtime.executor.version }),
+                : { version: agent.executor.version }),
             },
             redact: this.redact,
             testIdAttribute: runtime.config.testIdAttribute,
@@ -366,9 +375,9 @@ class ActDispatch {
       get model() {
         return dispatch.resolveModel();
       },
-      providerOptions: this.runtime.config.agent.providerOptions,
+      providerOptions: this.agent.config.providerOptions,
       ledger: ledger.text,
-      agentContext: this.runtime.agentContext,
+      agentContext: this.agent.agentContext,
       budgets: {
         maxActions: this.maxActions,
         maxModelCalls: this.maxModelCalls,
@@ -473,7 +482,7 @@ class ActDispatch {
   private async dispatchStep(): Promise<StepVerdict> {
     const replayed = await this.stepCache?.begin();
     if (replayed !== undefined) return replayed;
-    return this.runtime.executor.runStep(this.context());
+    return this.agent.executor.runStep(this.context());
   }
 
   /** The cache session's narrow view of this dispatch. */
@@ -583,7 +592,7 @@ class ActDispatch {
   private invented(code: AgentErrorCode, cause?: AgentError): AgentError {
     return new AgentError(
       'MODEL_OUTPUT_INVALID',
-      `executor "${this.runtime.executor.name}" reported runtime code ${code}, which the runtime never assigned`,
+      `executor "${this.agent.executor.name}" reported runtime code ${code}, which the runtime never assigned`,
       cause === undefined ? {} : { cause },
     );
   }
@@ -719,7 +728,7 @@ class ActDispatch {
    * step's model calls are never attributed to the wrong tier.
    */
   private modelInfo(): StepModelInfo {
-    const executor = this.runtime.executor;
+    const executor = this.agent.executor;
     const executorVersion = executor.version ?? '0';
     return this.usage.report({
       provider: this.modelProvider ?? executor.name,
@@ -750,7 +759,7 @@ class ActDispatch {
   /** Resolves the configured model once; executors that never read it never pay. */
   private resolveModel(): ModelInstance | undefined {
     if (!this.sdkModelResolved) {
-      const resolved = this.runtime.config.agent.model;
+      const resolved = this.agent.config.model;
       this.sdkModel = resolved === undefined ? undefined : instantiateLanguageModel(resolved);
       this.sdkModelResolved = true;
     }
@@ -929,7 +938,7 @@ class ActDispatch {
     const { config } = this.runtime;
     return observationByteBudget(
       {
-        maxObservationBytes: config.agent.maxObservationBytes,
+        maxObservationBytes: this.agent.config.maxObservationBytes,
         maxModelTokensPerCall: config.limits.maxModelTokensPerCall,
       },
       { fixedBytes: this.metrics.contextBytes + this.metrics.ledgerBytes, pixels },

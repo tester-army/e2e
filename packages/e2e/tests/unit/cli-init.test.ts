@@ -190,7 +190,7 @@ describe('e2e init', () => {
         stdoutSpy.mockClear();
         await init(dir, { yes: true });
         expect(read('package.json')).toBe(manifest);
-        expect(output().includes('npm pkg set type=module')).toBe(type !== 'module');
+        expect(output()).not.toContain('"type": "module"');
       }
     },
   );

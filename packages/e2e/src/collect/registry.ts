@@ -222,6 +222,9 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
       throw new CollectionError(`${label}: retries must be an integer from 0 through 10`);
     }
   }
+  if (options.agent !== undefined && (typeof options.agent !== 'string' || options.agent === '')) {
+    throw new CollectionError(`${label}: agent must be the name of a configured agent`);
+  }
 }
 
 function insideSerial(group: GroupNode | undefined): boolean {

@@ -265,7 +265,13 @@ export function resolveConfig(
   // observation budget is agent-owned, so the dependency runs one way.
   const baseLimits = resolveLimits(raw);
   const { agents, agentName, agent } = resolveAgents(raw.agents, env, ci, baseLimits, cli.agent);
-  const limits: ResolvedLimits = { ...baseLimits, maxObservationBytes: agent.maxObservationBytes };
+  // The report's ceiling is the largest any configured agent may use: a
+  // pinned agent's calls are bounded by its own value, and the run-level
+  // number must not read lower than what a step could actually send.
+  const limits: ResolvedLimits = {
+    ...baseLimits,
+    maxObservationBytes: Math.max(...[...agents.values()].map((entry) => entry.maxObservationBytes)),
+  };
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache);
 
   const resolved: ResolvedConfig = {

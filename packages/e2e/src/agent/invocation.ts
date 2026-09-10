@@ -8,6 +8,7 @@
 import type { StepExecutorContext } from './executor.ts';
 import type { JSONSchema7 } from 'ai';
 import type { AgentCacheContext } from '../cache/context.ts';
+import type { ResolvedAgentConfig } from '../config/agent.ts';
 import type { ResolvedApp, ResolvedConfig } from '../config/resolve.ts';
 import type { TargetSession, Observation } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
@@ -49,10 +50,15 @@ import { observationByteBudget } from './observation-budget.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
 
-/** Attempt-scoped services one agent fixture needs. */
-export interface AgentContext {
-  readonly engine: LocatorEngine;
-  readonly steps: StepRecorder;
+/**
+ * One configured agent as a call sees it: its resolved options, the executor
+ * `act` dispatches to, the models its calls talk to, and the trusted context
+ * its prompts open with.
+ */
+export interface AgentSelection {
+  /** The agent's name in `agents`. */
+  readonly name: string;
+  readonly config: ResolvedAgentConfig;
   /** The step executor `agent.act()` dispatches to. */
   readonly executor: StepExecutor;
   /**
@@ -63,6 +69,19 @@ export interface AgentContext {
   readonly customExecutor: boolean;
   /** Chooses the model for a call; a vision call may use a pinned one. */
   readonly models: ModelRouter;
+  /** Trusted project context: the agent's `context` then test/group agentContext. */
+  readonly agentContext: string | undefined;
+}
+
+/** Attempt-scoped services one agent fixture needs. */
+export interface AgentContext {
+  readonly engine: LocatorEngine;
+  readonly steps: StepRecorder;
+  /**
+   * The agent a call runs with: the one it names, else the test's pin, else
+   * the run's. An unknown name is `INVALID_ARGUMENT`.
+   */
+  readonly select: (name: string | undefined) => AgentSelection;
   readonly config: ResolvedConfig;
   /** The target this attempt runs on. */
   readonly target: StepExecutorContext['target'];
@@ -72,8 +91,6 @@ export interface AgentContext {
   readonly attempt: ExecutorAttempt;
   /** Completed steps quoted as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
-  /** Trusted project context: config.agent.context then test/group agentContext. */
-  readonly agentContext: string | undefined;
   readonly secrets: SecretResolver;
   /** The attempt's live redactor (SecretLedger); sees values the moment they exist. */
   readonly redact: (text: string) => string;
@@ -89,6 +106,8 @@ export interface AgentContext {
 export interface InvocationOptions {
   /** Public API name, e.g. `agent.assert`. */
   readonly api: string;
+  /** The configured agent the call named, if any. */
+  readonly agent?: string | undefined;
   /** Caller's instruction, e.g. the target phrase, used for debug step labels. */
   readonly label?: string;
   /** Short task description placed in the system message. */
@@ -143,14 +162,17 @@ export class Invocation {
   readonly pixelTier: boolean;
   /** Byte size of the invariant system message, measured once. */
   private readonly systemBytes: number;
+  /** The agent this invocation runs with. */
+  readonly agent: AgentSelection;
 
   constructor(
     private readonly runtime: AgentContext,
     private readonly options: InvocationOptions,
   ) {
+    this.agent = runtime.select(options.agent);
     this.deadline = runtime.engine.deadline(options.timeoutMs);
     this.pixelTier = options.vision === true || options.vision === 'only';
-    this.system = buildSystem(options.task, runtime.agentContext);
+    this.system = buildSystem(options.task, this.agent.agentContext);
     this.systemBytes = tokenUpperBound(this.system);
     this.ledger = serializeLedger(
       projectPriorSteps(runtime.priorSteps()),
@@ -168,7 +190,7 @@ export class Invocation {
    * for escalating is that the cheaper model's tree-only answer missed.
    */
   private get adapter(): ModelAdapter {
-    return this.runtime.models.select(this.pixelTier);
+    return this.agent.models.select(this.pixelTier);
   }
 
   /**
@@ -280,10 +302,10 @@ export class Invocation {
     // Nothing of the tree reaches the request, so the per-call token ceiling
     // does not bind it. The configured ceiling still bounds the walk, and a
     // fuller node map means a better hit-test for the point that comes back.
-    if (this.treeWithheld) return config.agent.maxObservationBytes;
+    if (this.treeWithheld) return this.agent.config.maxObservationBytes;
     return observationByteBudget(
       {
-        maxObservationBytes: config.agent.maxObservationBytes,
+        maxObservationBytes: this.agent.config.maxObservationBytes,
         maxModelTokensPerCall: config.limits.maxModelTokensPerCall,
       },
       { fixedBytes: this.systemBytes + this.ledger.bytes, pixels: this.pixelTier },
@@ -302,7 +324,7 @@ export class Invocation {
     prompt: PromptInput;
   }): Promise<Value> {
     let repair: PromptInput['repair'] = request.prompt.repair;
-    this.metrics.contextBytes = tokenUpperBound(this.runtime.agentContext ?? '');
+    this.metrics.contextBytes = tokenUpperBound(this.agent.agentContext ?? '');
     this.metrics.ledgerBytes = this.ledger.bytes;
     for (;;) {
       this.checkDeadline();
@@ -329,7 +351,7 @@ export class Invocation {
               validate: request.validate,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
               maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
-              providerOptions: this.runtime.config.agent.providerOptions,
+              providerOptions: this.agent.config.providerOptions,
               signal: this.runtime.engine.signal,
               timeoutMs: Math.max(1, this.deadline.remaining()),
             }),

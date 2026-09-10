@@ -128,6 +128,7 @@ export interface TestOptions {
   requires?: readonly Capability[];
   session?: string;
   agentContext?: string;
+  agent?: string;
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
@@ -151,6 +152,7 @@ export interface SetupOptions
 | `requires` | `readonly Capability[]` | `[]` | - | Innermost wins, replace |
 | `session` | `string` | unset | - | Innermost wins |
 | `agentContext` | `string` | unset | - | Concatenated outermost first, joined with a newline |
+| `agent` | `string` | the run's agent | a name in `agents`; unknown is `COLLECTION_ERROR` | Innermost wins. Pins the test or group to a configured agent; `--agent` re-points the run's default and never overrides a pin. A call's own `agent` option wins over it. |
 | `serial` | `boolean` | `false` | groups only | Nesting inside a serial group is a `COLLECTION_ERROR` |
 | `sessions` | `readonly string[]` | - | required on `test.setup`, static non-empty array of unique names | - |
 

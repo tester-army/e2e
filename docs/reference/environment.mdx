@@ -4,8 +4,9 @@ description: Every variable the runner and the first-party engines read, and wha
 ---
 
 The runner reads a closed set of variables. This page lists all of them, from
-an inventory of every `process.env` and `env[...]` read in `@e2edev/e2e` and
-`@e2edev/playwright`. A variable not listed here has no effect on a run.
+an inventory of every `process.env` and `env[...]` read in `@e2edev/e2e`,
+`@e2edev/playwright`, and the reporter packages. A variable not listed here
+has no effect on a run.
 
 Almost every read goes through an `env` object the runner is handed once, at
 config load. The exceptions are called out below.
@@ -75,6 +76,20 @@ rather than a person. Only the derived name is sent.
 | `npm_config_user_agent` | `package_manager`: the invoking package manager. `e2e init` reads the same variable to pick the install command |
 
 What is sent and how to read it is on the [Telemetry](/telemetry) page.
+
+## Reporters
+
+`@e2edev/github` reads the variables GitHub Actions sets, when a run finishes:
+
+| Variable | Reading | Effect |
+| --- | --- | --- |
+| `GITHUB_ACTIONS` | value | Without it the reporter posts nothing and says so |
+| `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_JOB` | value | Always set by the runner; a job missing one fails the reporter with the variable named. The repository and run id build the artifacts link, the event name is in the "not a pull request" row, and the workflow and job join the marker that lets a rerun find its own comment |
+| `GITHUB_TOKEN`, `GH_TOKEN` | value | The token the comment is posted with; the first one set wins. Unset, the job summary is still written |
+| `GITHUB_EVENT_PATH`, `GITHUB_REF` | value | The pull request number and head commit from the event payload, or the number from `refs/pull/N/merge` |
+| `GITHUB_SHA` | value | The commit source links point at when the event is not about a pull request |
+| `GITHUB_SERVER_URL`, `GITHUB_API_URL` | value | The GitHub host, for Enterprise Server; `https://github.com` and `https://api.github.com` by default |
+| `GITHUB_STEP_SUMMARY` | value | The job summary file the comment text is appended to |
 
 ## Engines
 

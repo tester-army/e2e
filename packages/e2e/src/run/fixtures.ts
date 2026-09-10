@@ -1,6 +1,7 @@
 /** Attempt-scoped fixture graph. */
 
 import { createAgentFixture } from '../agent/index.ts';
+import type { AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
@@ -9,9 +10,9 @@ import type { EngineFixtureContext } from '../engine/index.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { ConfigurationError, errorMessage, InfrastructureError } from '../internal/errors.ts';
+import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { SecretLedger } from '../internal/redact.ts';
+import { sessionSecrecy } from './secrecy.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -26,6 +27,7 @@ import {
 } from '../locator/screen.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import type { ArtifactRecord } from './records.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -43,6 +45,12 @@ export interface ArtifactSink {
 export interface ArtifactRegistration {
   /** When a time-based artifact (a video segment) began recording. */
   readonly startedAt?: string;
+  /**
+   * How much of the file the runner masked, when that was decided per
+   * artifact (a trace, rewritten or found to need no rewriting) rather than
+   * per kind.
+   */
+  readonly redaction?: ArtifactRecord['redaction'];
 }
 
 export interface AttemptEnvironment {
@@ -59,8 +67,10 @@ export interface AttemptEnvironment {
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
-  /** Trusted test/group agent context appended after config.agent.context. */
+  /** Trusted test/group agent context appended after the agent's own `context`. */
   readonly agentContext: string | undefined;
+  /** The configured agent the test is pinned to; undefined runs the run's agent. */
+  readonly agent?: string | undefined;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
   /** The attempt's trace cache context, or undefined when caching is off. */
@@ -70,9 +80,6 @@ export interface AttemptEnvironment {
   /** The worker's model adapters, checked once on the first `agent` acquisition. */
   readonly models: WorkerModels;
 }
-
-/** Secrets survive every fixture graph that shares the same live isolation. */
-const sessionSecrets = new WeakMap<TargetSession, { ledger: SecretLedger; taint: { value: boolean } }>();
 
 /** Builds the lazy fixture graph for one attempt. */
 export function createFixtures(
@@ -87,12 +94,7 @@ export function createFixtures(
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  let secrecy = sessionSecrets.get(environment.session);
-  if (secrecy === undefined) {
-    secrecy = { ledger: initialSecretLedger(environment), taint: { value: false } };
-    sessionSecrets.set(environment.session, secrecy);
-  }
-  const { ledger, taint } = secrecy;
+  const { ledger, taint } = sessionSecrecy(environment.session, environment.config.credentials);
   const secrets: SecretResolver = {
     async resolve(secret) {
       const credential = environment.config.credentials.get(secret.name);
@@ -130,16 +132,51 @@ export function createFixtures(
 
   let agent: Agent | undefined;
 
+  /**
+   * The agents this attempt can run with, resolved once each: the test's pin
+   * (else the run's agent) when a call names none, or any configured agent a
+   * call names. Each is preflighted on first use, so a second agent's missing
+   * credential surfaces where it is first needed, as one run-level failure.
+   */
+  const { config } = environment;
+  const attemptAgentName = environment.agent ?? config.agentName;
+  const selections = new Map<string, AgentSelection>();
+  const select = (requested: string | undefined): AgentSelection => {
+    if (requested !== undefined && (typeof requested !== 'string' || requested === '')) {
+      throw new TestError('INVALID_ARGUMENT', 'agent must be the name of a configured agent');
+    }
+    const name = requested ?? attemptAgentName;
+    const cached = selections.get(name);
+    if (cached !== undefined) return cached;
+    const resolved = config.agents.get(name);
+    if (resolved === undefined) {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        `unknown agent "${name}"; configured: ${[...config.agents.keys()].join(', ')}`,
+      );
+    }
+    environment.models.preflight(resolved);
+    const selection: AgentSelection = {
+      name,
+      config: resolved,
+      executor: resolved.executor ?? lazyDefaultExecutor(),
+      customExecutor: resolved.executor !== undefined,
+      models: createModelRouter(resolved, environment.models.build),
+      agentContext: joinAgentContext(resolved.context, environment.agentContext),
+    };
+    selections.set(name, selection);
+    return selection;
+  };
+
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
       if (agent !== undefined) return agent;
-      environment.models.preflight();
+      // The attempt's own agent is checked as the fixture is acquired, as before.
+      select(undefined);
       agent = createAgentFixture({
         engine,
         steps: environment.steps,
-        executor: environment.config.agent.executor ?? lazyDefaultExecutor(),
-        customExecutor: environment.config.agent.executor !== undefined,
-        models: createModelRouter(environment.config.agent, environment.models.build),
+        select,
         config: environment.config,
         target: {
           name: environment.target.name,
@@ -149,10 +186,6 @@ export function createFixtures(
         app: environment.target.app,
         attempt: environment.attempt,
         priorSteps: environment.priorSteps,
-        agentContext: joinAgentContext(
-          environment.config.agent.context,
-          environment.agentContext,
-        ),
         secrets,
         redact: ledger.redact,
         taint,
@@ -334,18 +367,6 @@ function joinAgentContext(
     (part): part is string => part !== undefined && part.trim() !== '',
   );
   return parts.length === 0 ? undefined : parts.join('\n');
-}
-
-/**
- * The session's secret ledger, seeded with the passwords known up front.
- * Provider-backed values join through the resolver at fill time.
- */
-function initialSecretLedger(environment: AttemptEnvironment): SecretLedger {
-  return new SecretLedger(
-    [...environment.config.credentials].flatMap(([name, { password }]) =>
-      typeof password === 'string' ? [[name, password] as const] : [],
-    ),
-  );
 }
 
 /** Navigation needs an app URL, and only the target's engine can declare one. */

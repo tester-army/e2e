@@ -59,6 +59,7 @@ const defaultOptions: ResolvedTestOptions = {
   platforms: undefined,
   requires: [],
   session: undefined,
+  agent: undefined,
   agentContext: undefined,
   skipReason: undefined,
   serial: false,

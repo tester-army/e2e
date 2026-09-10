@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { packageVersion } from '../../src/internal/package-version.ts';
+import { packageVersion, readJson } from '../../src/internal/package-version.ts';
 
 describe('packageVersion', () => {
   it('reads the version of a resolvable package.json (mirrors a driver manifest)', () => {
@@ -27,5 +27,15 @@ describe('packageVersion', () => {
 
   it('returns the fallback when the base URL is unusable', () => {
     expect(packageVersion('not-a-url', 'zod/package.json', 'fallback')).toBe('fallback');
+  });
+});
+
+describe('readJson', () => {
+  it('reads a resolvable JSON module', () => {
+    expect(readJson(import.meta.url, '../../package.json')).toMatchObject({ name: '@e2edev/e2e' });
+  });
+
+  it('returns undefined when the specifier cannot be resolved', () => {
+    expect(readJson(import.meta.url, './definitely-missing.json')).toBeUndefined();
   });
 });

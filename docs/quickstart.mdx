@@ -25,6 +25,10 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   ```bash pnpm
   pnpm dlx @e2edev/e2e@beta init
   ```
+
+  ```bash bun
+  bunx @e2edev/e2e@beta init
+  ```
   </CodeGroup>
 
   Accept the defaults: Playwright, AI testing on, and the coding-agent
@@ -78,9 +82,19 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   `https://app.example.com`.
   </Step>
   <Step title="Install">
-  ```bash
+  <CodeGroup>
+  ```bash npm
   npm install
   ```
+
+  ```bash pnpm
+  pnpm install
+  ```
+
+  ```bash bun
+  bun install
+  ```
+  </CodeGroup>
 
   Or whatever `init` printed as its `next:` line; it names the package
   manager your lockfile or `packageManager` field points at.
@@ -261,12 +275,11 @@ on the [CI page](/ci).
 
 ## Project notes
 
-Config and test files are ES modules. In an empty directory, `init` creates a
-private `package.json` with `"type": "module"`. An existing `package.json`
-keeps its module type; `init` prints `npm pkg set type=module` so you can opt
-in, which also changes how the package's existing `.js` files run. There is
-no `tsconfig.json` requirement; add one for editor completions on
-`e2e.config.ts` and `tests/`.
+Config and test files are ES modules, and e2e loads `.ts` files as such
+whatever the nearest `package.json` says, so a CommonJS app such as a Next.js
+project keeps its module type. In an empty directory, `init` creates a private
+`package.json` with `"type": "module"`. There is no `tsconfig.json`
+requirement; add one for editor completions on `e2e.config.ts` and `tests/`.
 
 For mobile tests, choose **agent-device** in `init` instead. It defaults to
 iOS on macOS and Android elsewhere, and writes a Settings example; see

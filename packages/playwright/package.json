@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/playwright",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Playwright browser engine for e2e agentic end-to-end testing",
   "keywords": [
     "e2e",

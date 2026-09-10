@@ -10,14 +10,16 @@ import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
 
 /**
- * How much of each kind the runner masked. Screenshots and traces mask secure
- * fields at the source. A recording masks nothing: a secure field renders its
- * own dots, but anything else the screen showed is in the frames, so a video
- * is the one kind the runner cannot vouch for.
+ * How much of each kind the runner masked, unless the registration says. A
+ * screenshot masks secure fields at the source; a log passes through the
+ * secret redactor. A recording masks nothing: a secure field renders its own
+ * dots, but anything else the screen showed is in the frames. A trace is
+ * decided per attempt by whoever stops it (see `redactTraceArchives`): one
+ * registered without that verdict was not rewritten, and says so.
  */
 const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord['redaction']>> = {
   screenshot: 'complete',
-  trace: 'complete',
+  trace: 'incomplete',
   video: 'incomplete',
   download: 'complete',
   log: 'complete',
@@ -81,7 +83,7 @@ export function createAttemptArtifacts(options: {
         kind,
         mediaType: mediaTypeFor(relativePath),
         ...(startedAt === undefined ? {} : { startedAt }),
-        redaction: REDACTION_BY_KIND[kind],
+        redaction: registration?.redaction ?? REDACTION_BY_KIND[kind],
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       };
       records.push(record);

@@ -686,9 +686,10 @@ describe('playwright engine lifecycle', () => {
         await engine.app!.navigate!(`${app.url}/`, operation('t1'));
         await engine.app!.clearState!(operation('t1'));
         await engine.app!.navigate!(`${app.url}/form`, operation('t1'));
-        const relative = await engine.artifacts!.stopTrace!(operation('t1'));
-        expect(relative).toBe('trace/trace.zip');
-        for (const file of [relative, 'trace/trace-part1.zip']) {
+        const archives = await engine.artifacts!.stopTrace!(operation('t1'));
+        // The segment closed at clearState comes first, then the final archive.
+        expect(archives).toEqual(['trace/trace-part1.zip', 'trace/trace.zip']);
+        for (const file of archives as readonly string[]) {
           const absolute = path.join(traceDir, file);
           expect(existsSync(absolute), file).toBe(true);
           expect(statSync(absolute).size).toBeGreaterThan(0);
@@ -731,7 +732,12 @@ describe('playwright engine lifecycle', () => {
         await engine.app!.navigate!(`${app.url}/`, operation('v1'));
         await settle();
         const segments = await engine.artifacts!.stopVideo!(operation('v1'));
-        expect(await engine.artifacts!.stopTrace!(operation('v1'))).toBe('trace/trace.zip');
+        // The restart and the state reset each closed a trace segment before the final archive.
+        expect(await engine.artifacts!.stopTrace!(operation('v1'))).toEqual([
+          'trace/trace-part1.zip',
+          'trace/trace-part2.zip',
+          'trace/trace.zip',
+        ]);
         expect(segments.map((segment) => segment.path)).toEqual([
           'video/video.webm',
           'video/video-part2.webm',

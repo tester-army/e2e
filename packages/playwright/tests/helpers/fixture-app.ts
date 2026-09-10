@@ -113,6 +113,39 @@ const TWINS = `<!doctype html>
 </body>
 </html>`;
 
+/** Shows the `x-fixture-header` request header, or `none`; see `headersPage`. */
+function headersPage(value: string | undefined): string {
+  return `<!doctype html>
+<html>
+<head><title>Fixture Headers</title></head>
+<body>
+<h1>${value ?? 'none'}</h1>
+</body>
+</html>`;
+}
+
+const PROTECTED = `<!doctype html>
+<html>
+<head><title>Fixture Protected</title></head>
+<body>
+<h1>Protected</h1>
+</body>
+</html>`;
+
+const UNAUTHORIZED = `<!doctype html>
+<html>
+<head><title>Fixture Unauthorized</title></head>
+<body>
+<h1>Unauthorized</h1>
+</body>
+</html>`;
+
+/** The one credential `/protected` accepts, as the browser presents it. */
+export const PROTECTED_CREDENTIAL = { username: 'ada', password: 'secret' } as const;
+const PROTECTED_AUTHORIZATION = `Basic ${Buffer.from(
+  `${PROTECTED_CREDENTIAL.username}:${PROTECTED_CREDENTIAL.password}`,
+).toString('base64')}`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/form': FORM,
@@ -140,6 +173,30 @@ export function startFixtureApp(): Promise<FixtureApp> {
         response.end(HOME);
       }, SLOW_RESPONSE_MS);
       request.on('close', () => clearTimeout(timer));
+      return;
+    }
+    if (url.pathname === '/sw.js') {
+      response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
+      response.end("self.addEventListener('fetch', () => {});");
+      return;
+    }
+    if (url.pathname === '/headers') {
+      const value = request.headers['x-fixture-header'];
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(headersPage(Array.isArray(value) ? value.join(',') : value));
+      return;
+    }
+    if (url.pathname === '/protected') {
+      if (request.headers.authorization === PROTECTED_AUTHORIZATION) {
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(PROTECTED);
+        return;
+      }
+      response.writeHead(401, {
+        'content-type': 'text/html; charset=utf-8',
+        'www-authenticate': 'Basic realm="fixture"',
+      });
+      response.end(UNAUTHORIZED);
       return;
     }
     const page = PAGES[url.pathname];

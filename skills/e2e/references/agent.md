@@ -6,7 +6,7 @@ transcript between calls. Deterministic tests never load a model.
 
 ## Configure a model
 
-Agents live under `agents` by name; `default` is the one tests use, and `e2e run --agent <name>` picks another. There is no default model. Pick one of three shapes for an entry:
+Agents live under `agents` by name; `default` is the one tests use, `e2e run --agent <name>` re-points that default, a test or describe pins one with `{ agent: 'name' }`, and any `agent.*` call can name one with `{ agent: 'name' }` (innermost wins). There is no default model. Pick one of three shapes for an entry:
 
 ```ts
 // e2e.config.ts

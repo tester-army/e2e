@@ -144,8 +144,13 @@ export interface VisionOption {
   vision?: VisionMode;
 }
 
+/** The configured agent (`agents.<name>`) one call runs with, in place of the test's. */
+export interface AgentOption {
+  agent?: string;
+}
+
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
-export interface AssertOptions extends VisionOption {
+export interface AssertOptions extends VisionOption, AgentOption {
   /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
@@ -153,7 +158,7 @@ export interface AssertOptions extends VisionOption {
 }
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
-export interface WaitForOptions extends VisionOption {
+export interface WaitForOptions extends VisionOption, AgentOption {
   /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
@@ -163,7 +168,7 @@ export interface WaitForOptions extends VisionOption {
 }
 
 /** `extract` options: one extraction plus one repair round, validated against `schema`. */
-export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption {
+export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption, AgentOption {
   schema: Schema;
   /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
   timeout?: number;
@@ -174,7 +179,7 @@ export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionO
  * budgets. Structured output and vision are judgment-tier options:
  * `extract` takes `schema`; `assert`, `waitFor`, and `extract` take `vision`.
  */
-export interface ActOptions {
+export interface ActOptions extends AgentOption {
   /**
    * JSON-safe values the instruction refers to, at most 64 KiB and 32 levels
    * deep. A `Secret` reaches the model by name only; the runner fills it.
@@ -444,6 +449,12 @@ export interface TestOptions {
   requires?: readonly Capability[];
   session?: string;
   agentContext?: string;
+  /**
+   * The configured agent (`agents.<name>`) this test or group runs with, in
+   * place of the run's agent. Innermost wins; a call's own `agent` option wins
+   * over it.
+   */
+  agent?: string;
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {

@@ -5,7 +5,6 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { esmPackageHint } from '../config/esm.ts';
 import { detectPackageManager } from '../internal/package-manager.ts';
 import { DOCS_URL } from './docs-url.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
@@ -82,10 +81,6 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const exampleExists = existsSync(path.join(cwd, examplePath));
   if (existingConfig !== undefined) clack.log.warn(`exists, not touching: ${existingConfig}`);
   if (exampleExists) clack.log.warn(`exists, not touching: ${examplePath}`);
-  if (pkg.original !== undefined) {
-    const hint = esmPackageHint(path.join(cwd, existingConfig ?? 'e2e.config.ts'));
-    if (hint !== undefined) clack.log.warn(hint);
-  }
 
   const gitignorePath = path.join(cwd, '.gitignore');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';

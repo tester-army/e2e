@@ -65,7 +65,7 @@ needs the Android SDK and an emulator. See [Device](/reference/device).
 
 | Creates | Content |
 | --- | --- |
-| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies and scripts are added. The runner uses the current CLI's version range, engine packages use `0.x`, and AI uses `^7.0.0`. A `test:e2e` script runs `e2e run` unless the project already defines one |
+| `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies and scripts are added. The runner uses the current CLI's version range, engine packages use the caret range of the engine version released with the CLI, and AI uses `^7.0.0`. A `test:e2e` script runs `e2e run` unless the project already defines one |
 | `e2e.config.ts` | Imports and target configuration match the selected engine and AI options. Playwright setup hands `APP_URL` (default `http://localhost:3000`) to `playwright({ url })` and shows the `command` option in a comment for starting the dev server; the HTTP example reads `APP_URL` in the test itself; device setup pins an app without a URL. With AI, a comment shows `createAgent({ model })` for calling a provider directly |
 | `tests/example.e2e.ts` | For Playwright, an app-open test that visits `/` and asserts `web.locator('body')` is visible, so it passes against any page, plus a commented agent test; an HTTP response check for the minimal setup; a deterministic Settings check for the selected device platform |
 | `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, and `.e2e/logs/` when missing. Adding `.e2e/cache/` prints a pointer to [Commit your traces](/reference/config#commit-your-traces), since committing replays is opt-in |
@@ -74,10 +74,6 @@ needs the Android SDK and an emulator. See [Device](/reference/device).
 ```bash
 npx --no-install e2e init --yes
 ```
-
-An existing `package.json` keeps its module type. When it does not set
-`"type": "module"`, `init` prints `npm pkg set type=module` as an explicit
-opt-in; converting also changes how the package's existing `.js` files run.
 
 The installer uses the project's `packageManager` field or lockfile, then the
 invoking package manager, falling back to npm. Declining installation still
@@ -165,7 +161,7 @@ platform, skipped, or is a setup test.
 | `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. Any other value exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it |
-| `--agent <name>` | string | `default` | Runs the suite with another configured agent (`agents.<name>` in the config). An unknown name is `INVALID_CONFIG` before any process starts, naming the configured agents. |
+| `--agent <name>` | string | `default` | Re-points the run's agent: every test and call that names no `agent` of its own runs with `agents.<name>`; a test or group pinned with `{ agent }` keeps its pin. An unknown name is `INVALID_CONFIG` before any process starts, naming the configured agents. |
 | `--retries <n>` | integer 0-10 | resolved config value | Replaces `config.retries`; out of range is `INVALID_CONFIG` |
 | `--workers <n>` | integer 1-1024 | resolved config value | Replaces `config.workers`; `--workers 0` is `INVALID_CONFIG` |
 | `--reporter <ids>` | comma-separated list | resolved config value | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. [Reporter objects](/reference/reporters) in the config keep running. |

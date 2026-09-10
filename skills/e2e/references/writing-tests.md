@@ -65,6 +65,7 @@ test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) 
 | `requires` | `[]` | Capabilities the engine must contribute, e.g. `['web']`. Otherwise the test is skipped at selection instead of failing with `UNSUPPORTED_CAPABILITY`. |
 | `session` | unset | Restore state saved by a setup test. |
 | `agentContext` | unset | Extra context for `agent.*` calls in this test or group. |
+| `agent` | the run's agent | Pin the test or group to a configured agent (`agents.<name>`). Innermost wins; `agent.act(..., { agent })` can name another for one call. |
 | `serial` | `false` | Groups only. Members share one app state, run in order on one worker, and retry as a whole. Inside, per-member `retries`, `session`, `platforms`, `requires`, and `skip` are errors. |
 
 Hook order follows nesting, not position: outer `beforeEach` first, inner

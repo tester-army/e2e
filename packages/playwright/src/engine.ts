@@ -48,6 +48,8 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       `playwright({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
     );
   }
+  if (options.headers !== undefined) validateHeaders(options.headers);
+  if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   const surface = new PlaywrightSurface(options);
   const handle = defineEngine({
     name: 'playwright',
@@ -88,6 +90,64 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
   });
   surfaces.set(handle, surface);
   return handle;
+}
+
+/** An HTTP header field name: one or more `token` characters (RFC 9110). */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/** A control character no HTTP field value may carry; a horizontal tab is the one the grammar allows. */
+// oxlint-disable-next-line no-control-regex -- the control characters are the point
+const FIELD_VALUE_CONTROL = /[\u0000-\u0008\u000A-\u001F\u007F]/;
+
+/** True for a plain object; the shape both options take. Config runs as JavaScript, so the types alone are no guard. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Refuses a header the browser could not send, at config load rather than at
+ * the first request: a name outside the token grammar, a value carrying a
+ * control character (a line break is a header-injection vector), or a value
+ * that is not a string at all.
+ */
+function validateHeaders(headers: unknown): void {
+  if (!isRecord(headers)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ headers }) must be an object of header name to value');
+  }
+  for (const [name, value] of Object.entries(headers)) {
+    if (!HEADER_NAME.test(name)) {
+      throw new ConfigurationError('INVALID_CONFIG', `playwright({ headers }) has an invalid header name: "${name}"`);
+    }
+    if (typeof value !== 'string') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `playwright({ headers }) header "${name}" must be a string, got ${typeof value}`,
+      );
+    }
+    if (FIELD_VALUE_CONTROL.test(value)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `playwright({ headers }) header "${name}" must not contain a control character`,
+      );
+    }
+  }
+}
+
+/** Refuses credentials the browser could not present: a missing field, or a `:` in the user name (RFC 7617). */
+function validateBasicAuth(basicAuth: unknown): void {
+  if (!isRecord(basicAuth)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) must be an object with username and password');
+  }
+  const { username, password } = basicAuth;
+  if (typeof username !== 'string' || username === '') {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) requires a non-empty username string');
+  }
+  if (username.includes(':')) {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) username must not contain ":"');
+  }
+  if (typeof password !== 'string') {
+    throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) requires a password string');
+  }
 }
 
 /** The app-declaration half of the options, so browser knobs never reach the manifest. */

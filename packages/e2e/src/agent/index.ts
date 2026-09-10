@@ -46,9 +46,9 @@ const EXTRACT_MODEL_CALLS = 2;
 /** One judgment plus one repair round for a response that missed the grammar. */
 const ASSERT_MODEL_CALLS = 2;
 
-const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision'] as const;
-const EXTRACT_KEYS = ['schema', 'timeout', 'vision'] as const;
-const ASSERT_KEYS = ['timeout', 'screenshot', 'vision'] as const;
+const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
+const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
+const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -60,9 +60,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
    */
   const stepTimeout = Math.max(MIN_STEP_TIMEOUT_MS, runtime.config.actionTimeout);
 
-  /** A per-call `vision` value always wins over the project default. */
-  const resolveVision = (requested: VisionMode | undefined): VisionMode => {
-    if (requested === undefined) return runtime.config.agent.vision;
+  /** A per-call `vision` value always wins over the agent's default. */
+  const resolveVision = (requested: VisionMode | undefined, agent: string | undefined): VisionMode => {
+    if (requested === undefined) return runtime.select(agent).config.vision;
     if (!isVisionMode(requested)) {
       throw new TestError('INVALID_ARGUMENT', "vision must be true, false, 'fallback', or 'only'");
     }
@@ -94,7 +94,8 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           invocation.finish();
         }
       },
-      stepOptions,
+      // Resolved before the step opens: an unknown name fails the call, and the step names its agent.
+      { ...stepOptions, agent: runtime.select(options.agent).name },
     );
 
   /** One judgment call against a fresh observation. */
@@ -116,14 +117,15 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.waitFor',
+          agent: options?.agent,
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: resolveBoundedBudget(
             options?.maxModelCalls,
-            runtime.config.agent.maxModelCalls,
+            runtime.select(options?.agent).config.maxModelCalls,
             'maxModelCalls',
           ),
-          vision: resolveVision(options?.vision),
+          vision: resolveVision(options?.vision, options?.agent),
         },
         condition,
         async (invocation) => {
@@ -152,10 +154,11 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       return step(
         {
           api: 'agent.extract',
+          agent: options.agent,
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, stepTimeout),
           maxModelCalls: EXTRACT_MODEL_CALLS,
-          vision: resolveVision(options.vision),
+          vision: resolveVision(options.vision, options.agent),
         },
         instruction,
         async (invocation) => {
@@ -202,16 +205,17 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       // brains swaps all the thinking. The built-in path keeps the optimized
       // judgment tier below: one call, plus one repair round for a response
       // that missed the grammar, vision-capable.
-      if (runtime.customExecutor) {
+      if (runtime.select(options?.agent).customExecutor) {
         return runAssertStep(runtime, assertion, options);
       }
       return step(
         {
           api: 'agent.assert',
+          agent: options?.agent,
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
-          vision: resolveVision(options?.vision),
+          vision: resolveVision(options?.vision, options?.agent),
         },
         assertion,
         async (invocation) => {

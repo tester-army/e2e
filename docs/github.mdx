@@ -1,0 +1,147 @@
+---
+title: Comment on the pull request
+description: The @e2edev/github reporter posts one comment per run from GitHub Actions and keeps it current.
+---
+
+A run that fails in CI is a red check and a log to open. `@e2edev/github` is a
+[reporter](/reference/reporters) that turns it into one pull request comment:
+the counts, every test that did not pass with its error and the evidence it
+left, and links to the source lines and to the workflow run holding the
+screenshots, traces, and recordings. A rerun edits the same comment. The same
+text goes to the job summary, so it is there on a push too.
+
+## Setup
+
+```bash
+npm install --save-dev @e2edev/github
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+import { github } from '@e2edev/github';
+
+export default {
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  reporters: ['list', github()],
+} satisfies E2EConfig;
+```
+
+Two lines in the workflow: the job may write pull request comments, and the
+step that runs `e2e` gets the token.
+
+```yaml title=".github/workflows/e2e.yml"
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  e2e:
+    steps:
+      # ...checkout, install, browsers
+      - name: Run e2e
+        run: npx --no-install e2e run --reporter list,junit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Upload artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-artifacts
+          path: .e2e/artifacts
+```
+
+Upload the artifacts on every outcome but a cancellation, not only on
+failure: the comment links to the workflow run as the place to fetch them, and
+a flaky test that passed on its second attempt still left a recording worth
+watching.
+
+## The comment
+
+The body the reporter posts, as markdown:
+
+```markdown
+### 🔴 e2e: 1 failed, 1 flaky, 3 passed, 1 skipped
+
+| | Test | Outcome | Evidence |
+| --- | --- | --- | --- |
+| 🔴 | [tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123) |
+| ⚠️ | [tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21) › invite a member by email | flaky: passed after 1 failed attempt | [screenshot, trace](https://github.com/acme/shop/actions/runs/123) |
+| ⏭️ | [tests/checkout.e2e.ts:30](https://github.com/acme/shop/blob/1a2b3c/tests/checkout.e2e.ts#L30) › checkout with Apple Pay | skipped: setup "authenticate as admin" failed |  |
+
+<details>
+<summary>3 passed tests</summary>
+
+- tests/example.e2e.ts › opens the app (850ms)
+- tests/dashboard.e2e.ts › the dashboard opens directly (2.1s)
+- tests/todos.e2e.ts › todos › survive a filter round-trip (6.4s)
+</details>
+
+Screenshots, traces, and recordings: [run artifacts](https://github.com/acme/shop/actions/runs/123).
+<sub>e2e 0.9.0 · 2m 15s · 1 target (web)</sub>
+```
+
+Failed tests first, then flaky, then skipped; passed tests are folded away.
+The test column links to the source line at the pull request's head commit.
+A run-level error such as `APP_UNREACHABLE` appears above the table, since no
+test result is meaningful under it. Titles and error messages are text a test
+wrote, so they are escaped and clipped before they enter the comment, and the
+whole body stays under GitHub's size limit: past fifty rows the table says how
+many more there are, and the passed list is dropped before anything else.
+
+The comment carries a hidden marker naming the config's `projectId`, the
+workflow, and the job, so two configs or two jobs on one pull request each
+keep their own comment, and a rerun edits the previous one. Matrix replicas of
+one job share all three, so give each its own `key`:
+
+```ts
+reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
+```
+
+with `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. Never use
+the run id as the key: a rerun has a new one and would post a second comment.
+
+The evidence column is the union over every attempt, so a flaky test shows
+the screenshot its failed attempt left even though the passing retry recorded
+none.
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `key` | unset | Joins the comment marker, so concurrent jobs with the same workflow, job, and project (a matrix) each keep their own comment |
+
+## When nothing is posted
+
+The reporter never changes the run's status or exit code. When it cannot
+post, it says why in one row under the summary:
+
+```
+       Report  .e2e/report.json
+
+       GitHub  not posted: set GITHUB_TOKEN in the step's env (GITHUB_TOKEN: ${{ github.token }}); written to the job summary
+```
+
+| Situation | What happens |
+| --- | --- |
+| Not on GitHub Actions | Nothing is written. Another CI has no ambient token to post with; the row says so and the run's exit code is unchanged. |
+| A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written; there is no pull request to comment on. |
+| No `GITHUB_TOKEN` in the step's `env` | The job summary is written; the row shows the line to add. `GH_TOKEN` is read too. |
+| A `pull_request` event from a fork | Its token is read-only, so the comment fails and the run prints the reason. The job summary is still written. A `pull_request_target` workflow has a writable token, with the care that event demands around secrets. |
+| An `issue_comment` event | On a pull request's comment thread, the comment is posted without source links: on this event the checked-out commit is the default branch, not the pull request's head. On a regular issue there is no pull request, so only the job summary is written. |
+| Missing `pull-requests: write` | The same failure, with the permission named. |
+
+The reporter reads the token, the event payload, and the repository when the
+run finishes, never when the config loads, and the token never enters the
+report or the trace cache. GitHub Enterprise Server works through
+`GITHUB_SERVER_URL` and `GITHUB_API_URL`, which the runner sets.
+
+## Rendering the comment elsewhere
+
+`renderComment(report, { marker, artifactsUrl, sourceUrl })` is exported: it
+takes a report-1 document and returns the comment body, so a service that
+receives the report can post the same comment under its own identity. The
+marker is what a rerun finds the comment by, so it is never cut: one longer
+than `MAX_MARKER_CHARS` (1024) is rejected rather than posted incomplete, and
+so is an `artifactsUrl` longer than `MAX_URL_CHARS` (2048); with both bounded
+the body is the only part that ever gives way to the size limit.

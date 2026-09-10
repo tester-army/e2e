@@ -15,6 +15,8 @@ export interface ResolvedTestOptions {
   readonly requires: readonly Capability[];
   readonly session: string | undefined;
   readonly agentContext: string | undefined;
+  /** The configured agent the test is pinned to; undefined runs the run's agent. */
+  readonly agent: string | undefined;
   readonly skipReason: string | undefined;
   readonly serial: boolean;
 }
@@ -71,6 +73,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   let platforms: readonly Platform[] | undefined;
   let requires: readonly Capability[] = [];
   let session: string | undefined;
+  let agent: string | undefined;
   let skipReason: string | undefined;
   const tags = new Set<string>();
   const agentContextParts: string[] = [];
@@ -81,6 +84,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     if (layer.platforms !== undefined) platforms = layer.platforms;
     if (layer.requires !== undefined) requires = layer.requires;
     if (layer.session !== undefined) session = layer.session;
+    if (layer.agent !== undefined) agent = layer.agent;
     if (layer.tags !== undefined) for (const tag of layer.tags) tags.add(tag);
     if (layer.agentContext !== undefined) agentContextParts.push(layer.agentContext);
     if (layer.skip !== undefined && layer.skip !== false) {
@@ -98,6 +102,14 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     retries = serialRetries;
   }
 
+  // A pin names a configured agent, or the test never runs: the error lands
+  // at selection, before any process starts, like every other config fact.
+  if (agent !== undefined && !config.agents.has(agent)) {
+    throw new CollectionError(
+      `test "${test.titlePath.join(' > ')}" in ${test.file} names agent "${agent}", which agents does not define; configured: ${[...config.agents.keys()].join(', ')}${didYouMean(agent, [...config.agents.keys()])}`,
+    );
+  }
+
   return {
     timeout,
     retries,
@@ -105,6 +117,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     platforms,
     requires,
     session,
+    agent,
     agentContext: agentContextParts.length === 0 ? undefined : agentContextParts.join('\n'),
     skipReason,
     serial: serialRoot !== undefined,

@@ -23,7 +23,7 @@ function temporaryPath(filePath: string): string {
 /** Writes `content` to `filePath` atomically; a failed write leaves no temporary file behind. */
 export async function writeFileAtomic(
   filePath: string,
-  content: string,
+  content: string | Uint8Array,
   options: AtomicWriteOptions = {},
 ): Promise<void> {
   const temporary = temporaryPath(filePath);
