@@ -33,7 +33,8 @@ function installExploreModel(options: {
   loop: (call: LoopCall) => readonly LoopToolCall[];
 }): ModelInstance {
   const loop = installFakeLoopModel(options.loop) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
-  const single = installFakeModel(options.plan) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
+  // Strict providers want every planner field present; the scripts name only the ones they use.
+  const single = installFakeModel((call) => ({ title: '', instruction: '', summary: '', ...options.plan(call) })) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
   return {
     ...single,
     provider: 'fake',
