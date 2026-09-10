@@ -35,37 +35,40 @@ const skipped = result({
   skip: { cause: 'explicit', reason: 'waiting on the API' },
 });
 const passing = result({ title: 'opens the app', status: 'passed', attempts: [attempt({ durationMs: 850 })] });
+const links = {
+  artifactsUrl: 'https://github.com/o/r/actions/runs/9',
+  sourceUrl: (file: string, line: number) => `https://github.com/o/r/blob/abc/${file}#L${line}`,
+};
 
 describe('renderComment', () => {
   it('leads with the counts, tables what did not pass, folds the passed tests, and links the evidence', () => {
     const body = renderComment(report({ status: 'failed', results: [passing, failing, flaky, skipped] }), {
       marker: '<!-- e2e-github project=x -->',
-      artifactsUrl: 'https://github.com/o/r/actions/runs/9',
-      sourceUrl: (file, line) => `https://github.com/o/r/blob/abc/${file}#L${line}`,
+      ...links,
     });
-    expect(
-      body.startsWith('<!-- e2e-github project=x -->\n### 🔴 e2e: 1 failed, 1 flaky, 1 passed, 1 skipped\n'),
-    ).toBe(true);
-    expect(body).toContain(
-      '| 🔴 | [tests/billing.e2e.ts:12](https://github.com/o/r/blob/abc/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/o/r/actions/runs/9) |',
+    expect(body).toBe(
+      [
+        '<!-- e2e-github project=x -->',
+        '### 🔴 e2e: 1 failed, 1 flaky, 1 passed, 1 skipped',
+        '',
+        '| | Test | Outcome | Evidence |',
+        '| --- | --- | --- | --- |',
+        '| 🔴 | [tests/billing.e2e.ts:12](https://github.com/o/r/blob/abc/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/o/r/actions/runs/9) |',
+        // The failed attempt's evidence counts: the passing retry recorded none.
+        '| ⚠️ | [tests/example.e2e.ts:3](https://github.com/o/r/blob/abc/tests/example.e2e.ts#L3) › todos survive a filter round-trip | flaky: passed after 1 failed attempt | [screenshot](https://github.com/o/r/actions/runs/9) |',
+        '| ⏭️ | [tests/example.e2e.ts:3](https://github.com/o/r/blob/abc/tests/example.e2e.ts#L3) › not ready yet | skipped: waiting on the API |  |',
+        '',
+        '<details>',
+        '<summary>1 passed test</summary>',
+        '',
+        '- tests/example.e2e.ts › opens the app (850ms)',
+        '</details>',
+        '',
+        'Screenshots, traces, and recordings: [run artifacts](https://github.com/o/r/actions/runs/9).',
+        '<sub>e2e 0.9.0 · 8.4s · 1 target (web)</sub>',
+        '',
+      ].join('\n'),
     );
-    expect(body).toContain('| ⚠️ | [tests/example.e2e.ts:3]');
-    // The failed attempt's evidence counts: the passing retry recorded none.
-    expect(body).toContain(
-      '| flaky: passed on attempt 2 after 1 failed attempt | [screenshot](https://github.com/o/r/actions/runs/9) |',
-    );
-    expect(body).toContain('| ⏭️ | ');
-    expect(body).toContain('| skipped: waiting on the API |');
-    expect(body).toContain(
-      '<summary>1 passed test</summary>\n\n- tests/example.e2e.ts › opens the app (850ms)\n</details>',
-    );
-    expect(body).toContain(
-      'Screenshots, traces, and recordings: [run artifacts](https://github.com/o/r/actions/runs/9).',
-    );
-    expect(body).toContain('<sub>e2e 0.9.0 · 8.4s · 1 target (web)</sub>');
-    // Failed rows come before flaky and skipped ones whatever the report order.
-    expect(body.indexOf('| 🔴 |')).toBeLessThan(body.indexOf('| ⚠️ |'));
-    expect(body.indexOf('| ⚠️ |')).toBeLessThan(body.indexOf('| ⏭️ |'));
   });
 
   it('is a passing headline with no table when everything passed', () => {
@@ -91,9 +94,11 @@ describe('renderComment', () => {
         ],
       }),
     );
-    expect(body).toContain(
-      '### 🔴 e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) http://127.0.0.1:3000 did not answer\n',
-    );
+    expect(body).toContain('### 🔴 e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) http://127.0.0.1:3000 did not answer\n');
+  });
+
+  it('says no tests selected when nothing ran and nothing failed', () => {
+    expect(renderComment(report())).toContain('### 🟢 e2e: no tests selected\n');
   });
 
   it('escapes what a test wrote and keeps it on one line', () => {
@@ -114,44 +119,81 @@ describe('renderComment', () => {
     expect(body).not.toContain('\u0007');
   });
 
+  it('clips long text by code point, never through an emoji', () => {
+    // 121 and 241 code points: the cut lands on the emoji, which must survive whole.
+    const long = result({
+      title: `${'x'.repeat(118)}💥yz`,
+      status: 'failed',
+      attempts: [attempt({ status: 'failed', error: { code: 'E', message: `${'m'.repeat(238)}💥zz` } })],
+    });
+    const body = renderComment(report({ status: 'failed', results: [long] }));
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    expect(body).not.toMatch(loneSurrogate);
+    expect(body).toContain(`${'x'.repeat(118)}💥…`);
+    expect(body).toContain(`${'m'.repeat(238)}💥…`);
+  });
+
   it('rounds a duration to whole seconds before splitting off the minutes', () => {
-    const at = (finishedAt: string) =>
-      renderComment({ ...report({ results: [passing] }), run: { ...report().run, results: [passing], finishedAt } } as never);
+    const at = (finishedAt: string) => renderComment(report({ results: [passing], finishedAt }));
     expect(at('2026-07-24T12:01:59.500Z')).toContain('· 2m 0s ·');
     expect(at('2026-07-24T12:01:29.400Z')).toContain('· 1m 29s ·');
     expect(at('2026-07-24T12:00:59.940Z')).toContain('· 59.9s ·');
   });
 
-  it('names the target only when the run has several', () => {
-    const body = renderComment(
-      report({ status: 'failed', results: [failing, passing], targets: ['web', 'mobile'] }),
-    );
+  it('names the target only when the run has several, and caps the footer list', () => {
+    const body = renderComment(report({ status: 'failed', results: [failing, passing], targets: ['web', 'mobile'] }));
     expect(body).toContain('upgrades to Pro (web) |');
     expect(body).toContain('opens the app (web) (850ms)');
     expect(body).toContain('2 targets (web, mobile)');
+    const many = renderComment(report({ results: [passing], targets: Array.from({ length: 12 }, (_, i) => `t${i}`) }));
+    expect(many).toContain('12 targets (t0, t1, t2, t3, t4, t5, t6, t7, and 4 more)</sub>');
   });
 
-  it('reads a serial member from its group', () => {
+  it('reads a serial member from its group, evidence from every group attempt', () => {
     const member = result({ title: 'step two', status: 'failed', serialGroupId: 'g1' });
     const group = {
       id: 'g1',
+      serialId: 'g1',
+      declarationIndex: 0,
+      file: member.file,
+      source: member.source,
+      titlePath: ['group'],
+      targetId: 'web',
+      platform: 'web',
+      memberTestIds: [member.testId],
+      status: 'failed' as const,
       attempts: [
+        { ...attempt({ status: 'failed', artifacts: ['trace'] }), members: [] },
         {
-          status: 'failed',
-          artifacts: [{ kind: 'screenshot' }],
+          ...attempt({ status: 'failed', artifacts: ['screenshot'] }),
           members: [
             {
-              testId: member['testId'],
-              status: 'failed',
+              id: 'm',
+              index: 0,
+              testId: member.testId,
+              status: 'failed' as const,
+              startedAt: '2026-07-24T12:00:00.000Z',
               durationMs: 40,
-              error: { category: 'test', code: 'ASSERTION_FAILED', message: 'nope', retryable: false },
+              steps: [],
+              error: { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'nope', retryable: false },
+              secondaryErrors: [],
             },
           ],
         },
       ],
     };
     const body = renderComment(report({ status: 'failed', results: [member], serialGroups: [group] }));
-    expect(body).toContain('| **ASSERTION_FAILED** nope | screenshot |');
+    expect(body).toContain('| **ASSERTION_FAILED** nope | screenshot, trace |');
+    // A member whose group is missing renders its status rather than an inspection of nothing.
+    const orphan = renderComment(report({ status: 'failed', results: [member] }));
+    expect(orphan).toContain('| failed |  |');
+  });
+
+  it('never says a flaky test passed after no failures, whatever a foreign document holds', () => {
+    const oneAttempt = result({ title: 'odd', status: 'flaky', attempts: [attempt({ status: 'passed' })] });
+    const body = renderComment(report({ results: [oneAttempt] }));
+    expect(body).toContain('| ⚠️ | `tests/example.e2e.ts:3` › odd | flaky |  |');
+    expect(body).not.toContain('-1');
   });
 
   it('caps the table and drops the passed list before the body outgrows a comment', () => {
@@ -163,13 +205,14 @@ describe('renderComment', () => {
       }),
     );
     const passes = Array.from({ length: 600 }, (_, index) =>
-      result({ title: [`suite ${index} `.repeat(15), 'b'.repeat(120), 'c'.repeat(120)], status: 'passed', attempts: [attempt({})] }),
+      result({ title: [`suite ${index} `.repeat(15), 'b'.repeat(120), 'c'.repeat(120)], status: 'passed', attempts: [attempt()] }),
     );
     const body = renderComment(report({ status: 'failed', results: [...failures, ...passes] }));
     expect(body).toContain('| | and 30 more | | |');
-    // The full body would pass 60k characters, so the passed list is the part that goes.
+    // The passed list is one block that no longer fits, so it goes whole and the note says so.
     expect(body).not.toContain('<details>');
     expect(body).toContain('600 passed');
+    expect(body).toContain("_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._");
     expect(body.length).toBeLessThan(65_536);
     const withPassed = renderComment(report({ results: passes.slice(0, 250).map((pass) => ({ ...pass, titlePath: ['short'] })) }));
     expect(withPassed).toContain('<summary>250 passed tests</summary>');
@@ -177,7 +220,7 @@ describe('renderComment', () => {
   });
 
   it('never returns a body GitHub would reject, whatever the report holds', () => {
-    // Fifty rows whose titles alone are longer than the whole budget allows.
+    // Sixty rows whose titles alone are longer than the whole budget allows.
     const wide = Array.from({ length: 60 }, (_, index) =>
       result({
         title: Array.from({ length: 30 }, (__, part) => `segment ${index}-${part} `.repeat(8)),
@@ -186,7 +229,7 @@ describe('renderComment', () => {
       }),
     );
     const errors = Array.from({ length: 40 }, (_, index) => ({
-      category: 'infrastructure',
+      category: 'infrastructure' as const,
       code: `RUN_ERROR_${index}`,
       message: 'e'.repeat(240),
       retryable: false,
@@ -201,7 +244,5 @@ describe('renderComment', () => {
     const targets = Array.from({ length: 300 }, (_, index) => `target-${index}-${'t'.repeat(60)}`);
     const crowded = renderComment(report({ results: [passing], targets }), { marker: `<!-- ${'m'.repeat(70_000)} -->` });
     expect(crowded.length).toBeLessThanOrEqual(60_000);
-    expect(renderComment(report({ results: [passing], targets }))).toContain('300 targets (target-0-');
-    expect(renderComment(report({ results: [passing], targets }))).toContain(', and 292 more)</sub>');
   });
 });

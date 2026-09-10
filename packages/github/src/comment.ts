@@ -19,21 +19,22 @@ type ArtifactKind = ReportResult['attempts'][number]['artifacts'][number]['kind'
 
 export interface CommentOptions {
   /** A hidden HTML comment the reporter finds its own comment by; left out of a job summary. */
-  readonly marker?: string;
+  readonly marker?: string | undefined;
   /** Where the run's artifacts can be fetched: the workflow run page, or a hosted run page. */
-  readonly artifactsUrl?: string;
+  readonly artifactsUrl?: string | undefined;
   /** A link to a source line, when the commit is known. */
-  readonly sourceUrl?: (file: string, line: number) => string;
+  readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
 }
 
 /** GitHub rejects a comment body past 65536 characters; stay clear of it. */
 const MAX_BODY_CHARS = 60_000;
+/** Reader caps, not size guards: past these the comment says how many more there are. */
 const MAX_TABLE_ROWS = 50;
 const MAX_RUN_ERRORS = 20;
-const MAX_FOOTER_TARGETS = 8;
-const TRUNCATED_NOTE = '_Comment truncated to fit GitHub\'s size limit; the full report is in the run artifacts._';
 const MAX_PASSED_LINES = 200;
+const MAX_FOOTER_TARGETS = 8;
 const MAX_CELL_CHARS = 240;
+const TRUNCATED_NOTE = "_Comment truncated to fit GitHub's size limit; the full report is in the run artifacts._";
 
 /** C0/C1 control characters except tab and newline; ANSI sequences are stripped first. */
 // oxlint-disable-next-line no-control-regex -- the control range is the point
@@ -42,6 +43,12 @@ const CONTROL_PATTERN = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
 /** One line of plain text: no color codes, no control characters, no line breaks. */
 function plain(text: string): string {
   return stripVTControlCharacters(text).replace(CONTROL_PATTERN, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Clips by code point, so an emoji at the cut never becomes a lone surrogate. */
+function clip(text: string, max: number): string {
+  const points = [...text];
+  return points.length <= max ? text : `${points.slice(0, max - 1).join('')}…`;
 }
 
 /**
@@ -57,12 +64,7 @@ function cell(text: string, max = MAX_CELL_CHARS): string {
     .replaceAll('>', '&gt;');
 }
 
-function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-}
-
 function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '0ms';
   if (ms < 1_000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
   // Round to whole seconds first, so 119.5 s is 2m 0s and never 1m 60s.
@@ -75,78 +77,68 @@ function plural(count: number, noun: string): string {
 }
 
 /**
- * What one result's final attempt left behind, wherever the report keeps it.
- * The evidence is the union over every attempt: a flaky test's failure
- * screenshot belongs to the attempt that failed, not to the one that passed.
+ * What a result left behind, wherever the report keeps it. A serial member's
+ * result has no attempts of its own: its error and duration live on the
+ * group's final attempt, keyed by test id. The evidence is the union over
+ * every attempt, since a flaky test's failure screenshot belongs to the
+ * attempt that failed, not to the one that passed.
  */
-interface FinalAttempt {
+interface Outcome {
   readonly durationMs: number;
   readonly error: ReportError | undefined;
-  readonly attempts: number;
+  /** Attempts that did not pass before the final one; what a flaky pass cost. */
+  readonly failedAttempts: number;
   readonly artifactKinds: readonly ArtifactKind[];
 }
 
-/**
- * A serial member's result has no attempts of its own: its error and duration
- * live on the group's final attempt, keyed by test id. Every other result
- * answers from its own final attempt.
- */
-function finalAttempt(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): FinalAttempt {
-  if (result.serialGroupId === undefined) {
-    const last = result.attempts.at(-1);
-    return {
-      durationMs: last?.durationMs ?? 0,
-      error: last?.error,
-      attempts: result.attempts.length,
-      artifactKinds: kinds(result.attempts.flatMap((attempt) => attempt.artifacts)),
-    };
-  }
-  const group = groups.get(result.serialGroupId);
-  const last = group?.attempts.at(-1);
-  const member = last?.members.find((candidate) => candidate.testId === result.testId);
+function outcome(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): Outcome {
+  const attempts = result.serialGroupId === undefined ? result.attempts : (groups.get(result.serialGroupId)?.attempts ?? []);
+  const last = attempts.at(-1);
+  const member =
+    result.serialGroupId === undefined || last === undefined || !('members' in last)
+      ? undefined
+      : last.members.find((candidate) => candidate.testId === result.testId);
   return {
-    durationMs: member?.durationMs ?? 0,
+    durationMs: member?.durationMs ?? last?.durationMs ?? 0,
     error: member?.error ?? last?.error,
-    attempts: group?.attempts.length ?? 0,
-    artifactKinds: kinds((group?.attempts ?? []).flatMap((attempt) => attempt.artifacts)),
+    failedAttempts: attempts.slice(0, -1).filter((attempt) => attempt.status !== 'passed').length,
+    artifactKinds: kinds(attempts.flatMap((attempt) => attempt.artifacts)),
   };
 }
 
-const KIND_ORDER: readonly ArtifactKind[] = ['screenshot', 'video', 'trace', 'download', 'log'];
+/** Screenshots first, then the recording, then the trace; the compiler fails when a kind is missing here. */
+const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, trace: 2, download: 3, log: 4 };
 
 function kinds(artifacts: readonly { readonly kind: ArtifactKind }[]): ArtifactKind[] {
-  const present = new Set(artifacts.map((artifact) => artifact.kind));
-  return KIND_ORDER.filter((kind) => present.has(kind));
+  return [...new Set(artifacts.map((artifact) => artifact.kind))].toSorted((a, b) => KIND_RANK[a] - KIND_RANK[b]);
 }
 
 type Bucket = 'failed' | 'flaky' | 'skipped' | 'passed';
 
-/** Failed first, then flaky, then skipped; passed tests fold away. */
-const BUCKETS: readonly Bucket[] = ['failed', 'flaky', 'skipped', 'passed'];
-
 function bucket(status: ReportResult['status']): Bucket {
-  switch (status) {
-    case 'passed':
-      return 'passed';
-    case 'flaky':
-      return 'flaky';
-    case 'skipped':
-      return 'skipped';
-    default:
-      return 'failed';
-  }
+  return status === 'passed' || status === 'flaky' || status === 'skipped' ? status : 'failed';
 }
 
 const ICON: Record<Bucket, string> = { failed: '🔴', flaky: '⚠️', skipped: '⏭️', passed: '🟢' };
 
-function headline(run: ReportRun, counts: Record<Bucket, number>): string {
+/** The order the table lists what did not pass; passed tests fold away below it. */
+const LISTED: readonly Bucket[] = ['failed', 'flaky', 'skipped'];
+
+function groupByBucket(results: readonly ReportResult[]): Map<Bucket, ReportResult[]> {
+  const groups = new Map<Bucket, ReportResult[]>();
+  for (const result of results) {
+    const key = bucket(result.status);
+    groups.set(key, [...(groups.get(key) ?? []), result]);
+  }
+  return groups;
+}
+
+function headline(run: ReportRun, groups: ReadonlyMap<Bucket, readonly ReportResult[]>): string {
   const parts = (['failed', 'flaky', 'passed', 'skipped'] as const)
-    .filter((key) => counts[key] > 0)
-    .map((key) => `${counts[key]} ${key}`);
-  const summary =
-    parts.length > 0 ? parts.join(', ') : run.errors.length > 0 ? 'no tests ran' : 'no tests selected';
-  const icon = run.status === 'passed' ? ICON.passed : ICON.failed;
-  return `### ${icon} e2e: ${summary}`;
+    .filter((key) => (groups.get(key)?.length ?? 0) > 0)
+    .map((key) => `${groups.get(key)?.length} ${key}`);
+  const summary = parts.length > 0 ? parts.join(', ') : run.errors.length > 0 ? 'no tests ran' : 'no tests selected';
+  return `### ${run.status === 'passed' ? ICON.passed : ICON.failed} e2e: ${summary}`;
 }
 
 function errorText(error: ReportError): string {
@@ -154,136 +146,103 @@ function errorText(error: ReportError): string {
   return `**${cell(error.code, 128)}**${phase} ${cell(error.message)}`.trim();
 }
 
-function title(result: ReportResult): string {
-  return result.titlePath.map((part) => cell(part, 120)).join(' › ');
-}
-
-function testCell(result: ReportResult, options: CommentOptions, manyTargets: boolean): string {
-  const location = `${result.source.file}:${result.source.line}`;
-  const link =
-    options.sourceUrl === undefined
-      ? `\`${plain(location).replaceAll('`', '')}\``
-      : `[${cell(location)}](${options.sourceUrl(result.source.file, result.source.line)})`;
-  const target = manyTargets ? ` (${cell(result.targetId, 64)})` : '';
-  return `${link} › ${title(result)}${target}`;
-}
-
-function outcomeCell(result: ReportResult, final: FinalAttempt): string {
-  switch (bucket(result.status)) {
-    case 'flaky': {
-      const failed = final.attempts - 1;
-      return `flaky: passed on attempt ${final.attempts} after ${plural(failed, 'failed attempt')}`;
-    }
-    case 'skipped':
-      return `skipped: ${cell(result.skip?.reason ?? 'skipped')}`;
-    default:
-      return final.error === undefined ? cell(result.status) : errorText(final.error);
+function outcomeCell(result: ReportResult, final: Outcome): string {
+  if (result.status === 'flaky' && final.failedAttempts > 0) {
+    return `flaky: passed after ${plural(final.failedAttempts, 'failed attempt')}`;
   }
+  if (result.status === 'skipped') return `skipped: ${cell(result.skip?.reason ?? 'skipped')}`;
+  return final.error === undefined ? cell(result.status) : errorText(final.error);
 }
 
-function evidenceCell(final: FinalAttempt, options: CommentOptions): string {
+function evidenceCell(final: Outcome, options: CommentOptions): string {
   if (final.artifactKinds.length === 0) return '';
   const text = final.artifactKinds.join(', ');
   return options.artifactsUrl === undefined ? text : `[${text}](${options.artifactsUrl})`;
 }
 
-function table(rows: readonly string[][], omitted: number): string[] {
-  if (rows.length === 0) return [];
-  const lines = ['| | Test | Outcome | Evidence |', '| --- | --- | --- | --- |'];
-  for (const row of rows) lines.push(`| ${row.join(' | ')} |`);
-  if (omitted > 0) lines.push(`| | and ${omitted} more | | |`);
-  return lines;
-}
-
-function passedSection(
-  passed: readonly { result: ReportResult; final: FinalAttempt }[],
-  manyTargets: boolean,
-): string[] {
-  if (passed.length === 0) return [];
-  const shown = passed.slice(0, MAX_PASSED_LINES);
-  const lines = ['<details>', `<summary>${plural(passed.length, 'passed test')}</summary>`, ''];
-  for (const { result, final } of shown) {
-    const target = manyTargets ? ` (${cell(result.targetId, 64)})` : '';
-    lines.push(`- ${cell(result.file, 200)} › ${title(result)}${target} (${formatDuration(final.durationMs)})`);
-  }
-  if (passed.length > shown.length) lines.push(`- and ${passed.length - shown.length} more`);
-  lines.push('</details>');
-  return lines;
-}
-
 function footer(run: ReportRun, options: CommentOptions): string[] {
   const duration = formatDuration(Date.parse(run.finishedAt) - Date.parse(run.startedAt));
-  const lines: string[] = [];
-  if (options.artifactsUrl !== undefined) {
-    lines.push(`Screenshots, traces, and recordings: [run artifacts](${options.artifactsUrl}).`);
-  }
   const shown = run.targets.slice(0, MAX_FOOTER_TARGETS).map((target) => cell(target.id, 64));
   if (run.targets.length > shown.length) shown.push(`and ${run.targets.length - shown.length} more`);
-  const targets = shown.join(', ');
-  lines.push(
-    `<sub>e2e ${cell(run.runner.version, 64)} · ${duration} · ${plural(run.targets.length, 'target')}${targets === '' ? '' : ` (${targets})`}</sub>`,
-  );
-  return lines;
+  const targets = shown.length === 0 ? '' : ` (${shown.join(', ')})`;
+  return [
+    ...(options.artifactsUrl === undefined
+      ? []
+      : [`Screenshots, traces, and recordings: [run artifacts](${options.artifactsUrl}).`]),
+    `<sub>e2e ${cell(run.runner.version, 64)} · ${duration} · ${plural(run.targets.length, 'target')}${targets}</sub>`,
+  ];
 }
 
 /** Renders the run as a pull request comment body. */
 export function renderComment(report: Report, options: CommentOptions = {}): string {
   const run = report.run;
-  const groups = new Map(run.serialGroups.map((group) => [group.id, group]));
+  const serialGroups = new Map(run.serialGroups.map((group) => [group.id, group]));
+  const groups = groupByBucket(run.results);
   const manyTargets = run.targets.length > 1;
-  const counts: Record<Bucket, number> = { failed: 0, flaky: 0, skipped: 0, passed: 0 };
-  const rows: string[][] = [];
-  const passed: { result: ReportResult; final: FinalAttempt }[] = [];
 
-  for (const kind of BUCKETS) {
-    for (const result of run.results) {
-      if (bucket(result.status) !== kind) continue;
-      counts[kind] += 1;
-      const final = finalAttempt(result, groups);
-      if (kind === 'passed') {
-        passed.push({ result, final });
-        continue;
-      }
-      rows.push([
-        ICON[kind],
-        testCell(result, options, manyTargets),
-        outcomeCell(result, final),
-        evidenceCell(final, options),
-      ]);
-    }
-  }
-
-  const head: string[] = [];
-  if (options.marker !== undefined) head.push(options.marker);
-  head.push(headline(run, counts), '');
-  const tail = footer(run, options);
-
-  const build = (withPassed: boolean): string[] => {
-    const lines: string[] = [];
-    const errors = run.errors.slice(0, MAX_RUN_ERRORS);
-    for (const error of errors) lines.push(`> ${errorText(error)}`);
-    if (run.errors.length > errors.length) lines.push(`> and ${run.errors.length - errors.length} more`);
-    if (errors.length > 0) lines.push('');
-    const shown = rows.slice(0, MAX_TABLE_ROWS);
-    lines.push(...table(shown, rows.length - shown.length));
-    if (shown.length > 0) lines.push('');
-    if (withPassed) {
-      const section = passedSection(passed, manyTargets);
-      if (section.length > 0) lines.push(...section, '');
-    }
-    return lines;
+  /** `file:line › suite › title (target)`, the location linked when the commit is known. */
+  const name = (result: ReportResult, location: string): string => {
+    const title = result.titlePath.map((part) => cell(part, 120)).join(' › ');
+    return `${location} › ${title}${manyTargets ? ` (${cell(result.targetId, 64)})` : ''}`;
   };
-  const join = (body: readonly string[]): string => `${[...head, ...body, ...tail].join('\n')}\n`;
+  const linked = (result: ReportResult): string => {
+    const location = `${result.source.file}:${result.source.line}`;
+    return options.sourceUrl === undefined
+      ? `\`${plain(location).replaceAll('`', '')}\``
+      : `[${cell(location)}](${options.sourceUrl(result.source.file, result.source.line)})`;
+  };
 
-  const full = join(build(true));
-  if (full.length <= MAX_BODY_CHARS) return full;
-  const withoutPassed = build(false);
-  if (join(withoutPassed).length <= MAX_BODY_CHARS) return join(withoutPassed);
-  // Still too long: drop body lines from the end until it fits, and say so.
-  const body = [...withoutPassed];
-  while (body.length > 0 && join([...body, TRUNCATED_NOTE]).length > MAX_BODY_CHARS) body.pop();
-  const truncated = join([...body, TRUNCATED_NOTE]);
-  // The head and footer are bounded by the caps above; a caller's own marker is
-  // not, so the last resort is a cut at the limit rather than a rejected post.
-  return truncated.length <= MAX_BODY_CHARS ? truncated : `${truncated.slice(0, MAX_BODY_CHARS - 1)}…`;
+  // Body parts in priority order; each is one line, except the passed list,
+  // which is one block since a `<details>` cannot be cut halfway.
+  const errors = run.errors.slice(0, MAX_RUN_ERRORS).map((error) => `> ${errorText(error)}`);
+  if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
+  const listed = LISTED.flatMap((key) => groups.get(key) ?? []);
+  const rows = listed.slice(0, MAX_TABLE_ROWS).map((result) => {
+    const final = outcome(result, serialGroups);
+    return `| ${ICON[bucket(result.status)]} | ${name(result, linked(result))} | ${outcomeCell(result, final)} | ${evidenceCell(final, options)} |`;
+  });
+  const table = rows.length === 0 ? [] : ['| | Test | Outcome | Evidence |', '| --- | --- | --- | --- |', ...rows];
+  if (listed.length > rows.length) table.push(`| | and ${listed.length - rows.length} more | | |`);
+  const passed = groups.get('passed') ?? [];
+  const passedBlock =
+    passed.length === 0
+      ? []
+      : [
+          [
+            '<details>',
+            `<summary>${plural(passed.length, 'passed test')}</summary>`,
+            '',
+            ...passed
+              .slice(0, MAX_PASSED_LINES)
+              .map((result) => `- ${name(result, cell(result.file, 200))} (${formatDuration(outcome(result, serialGroups).durationMs)})`),
+            ...(passed.length > MAX_PASSED_LINES ? [`- and ${passed.length - MAX_PASSED_LINES} more`] : []),
+            '</details>',
+          ].join('\n'),
+        ];
+  const sections = [errors, table, passedBlock].filter((section) => section.length > 0);
+
+  const head = [...(options.marker === undefined ? [] : [options.marker]), headline(run, groups), ''];
+  const tail = footer(run, options);
+  const render = (body: readonly string[]): string => `${[...head, ...body, ...tail].join('\n')}\n`;
+
+  // Greedy fit: keep whole parts in order while they fit, then say what was cut.
+  let size = render([TRUNCATED_NOTE]).length;
+  const body: string[] = [];
+  let cut = false;
+  for (const section of sections) {
+    for (const part of section) {
+      if (size + part.length + 1 > MAX_BODY_CHARS) {
+        cut = true;
+        break;
+      }
+      body.push(part);
+      size += part.length + 1;
+    }
+    if (cut) break;
+    body.push('');
+    size += 1;
+  }
+  const rendered = render(cut ? [...body, TRUNCATED_NOTE] : body);
+  // A caller's own marker is unbounded; cutting at the limit beats a rejected post.
+  return rendered.length <= MAX_BODY_CHARS ? rendered : `${rendered.slice(0, MAX_BODY_CHARS - 1)}…`;
 }

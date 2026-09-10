@@ -88,7 +88,10 @@ the pull request, with the error, the evidence, and a link to the source line,
 add the [GitHub reporter](/github): `reporters: ['list', github()]` in the
 config, `pull-requests: write` in the job's permissions, and
 `GITHUB_TOKEN: ${{ github.token }}` in the step's `env`. One comment per run,
-edited in place on a rerun.
+edited in place on a rerun. The comment links to the workflow run for its
+evidence, so upload `.e2e/artifacts` with `if: ${{ !cancelled() }}` rather than
+on failure alone: a flaky test that passed on its retry still left the
+recording of the attempt that did not.
 
 ## What CI changes automatically
 

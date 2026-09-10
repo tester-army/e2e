@@ -58,18 +58,27 @@ watching.
 
 ## The comment
 
-```
-### 🔴 e2e: 1 failed, 1 flaky, 5 passed
+The body the reporter posts, as markdown:
 
-|    | Test                                                | Outcome                                                 | Evidence                  |
-| -- | --------------------------------------------------- | ------------------------------------------------------- | ------------------------- |
-| 🔴 | tests/billing.e2e.ts:12 › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | screenshot, video, trace |
-| ⚠️ | tests/todos.e2e.ts:8 › todos survive a filter round-trip | flaky: passed on attempt 2 after 1 failed attempt   | screenshot, trace         |
+```markdown
+### 🔴 e2e: 1 failed, 1 flaky, 3 passed, 1 skipped
 
-▸ 5 passed tests
+| | Test | Outcome | Evidence |
+| --- | --- | --- | --- |
+| 🔴 | [tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12) › billing › upgrades to Pro | **ASSERTION_FAILED** expected heading "Your cart" to be visible | [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123) |
+| ⚠️ | [tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21) › invite a member by email | flaky: passed after 1 failed attempt | [screenshot, trace](https://github.com/acme/shop/actions/runs/123) |
+| ⏭️ | [tests/checkout.e2e.ts:30](https://github.com/acme/shop/blob/1a2b3c/tests/checkout.e2e.ts#L30) › checkout with Apple Pay | skipped: setup "authenticate as admin" failed |  |
 
-Screenshots, traces, and recordings: run artifacts.
-e2e 0.9.0 · 48.2s · 1 target (web)
+<details>
+<summary>3 passed tests</summary>
+
+- tests/example.e2e.ts › opens the app (850ms)
+- tests/dashboard.e2e.ts › the dashboard opens directly (2.1s)
+- tests/todos.e2e.ts › todos › survive a filter round-trip (6.4s)
+</details>
+
+Screenshots, traces, and recordings: [run artifacts](https://github.com/acme/shop/actions/runs/123).
+<sub>e2e 0.9.0 · 2m 15s · 1 target (web)</sub>
 ```
 
 Failed tests first, then flaky, then skipped; passed tests are folded away.
@@ -115,7 +124,7 @@ post, it says why in one row under the summary:
 
 | Situation | What happens |
 | --- | --- |
-| Not on GitHub Actions | Nothing is written. Another CI has no ambient token; the TesterArmy reporter (`@e2edev/testerarmy`) posts from any provider through the GitHub App. |
+| Not on GitHub Actions | Nothing is written. Another CI has no ambient token to post with; the row says so and the run's exit code is unchanged. |
 | A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written; there is no pull request to comment on. |
 | No `GITHUB_TOKEN` in the step's `env` | The job summary is written; the row shows the line to add. `GH_TOKEN` is read too. |
 | A `pull_request` event from a fork | Its token is read-only, so the comment fails and the run prints the reason. The job summary is still written. A `pull_request_target` workflow has a writable token, with the care that event demands around secrets. |

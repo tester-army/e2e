@@ -4,8 +4,6 @@ The GitHub reporter for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2
 From GitHub Actions, every run becomes one pull request comment, edited in
 place on reruns, and the same text lands in the job summary.
 
-## Install
-
 ```bash
 npm install --save-dev @e2edev/github
 ```
@@ -21,43 +19,13 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The job needs permission to comment and the step needs the token:
+The job needs `permissions: pull-requests: write` and the step that runs
+`e2e` needs `GITHUB_TOKEN: ${{ github.token }}` in its `env`. Matrix replicas
+of one job pass a `key` so their comments stay apart. When the reporter cannot
+post (another CI, a push, a fork's read-only token) it says why in one summary
+row and never changes the run's exit code.
 
-```yaml
-permissions:
-  contents: read
-  pull-requests: write
-
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      # ...checkout, install, browsers
-      - run: npx --no-install e2e run
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-```
-
-## What the comment holds
-
-The counts, the run-level errors, a table of every test that did not simply
-pass (its error, the screenshots, traces, and recordings it left, a link to
-its source at the pull request's head), the passed tests folded away, and a
-link to the workflow run, where `actions/upload-artifact` put the evidence.
-The comment carries a hidden marker per workflow and job, so a rerun edits
-the previous comment instead of adding one. Matrix replicas of one job need a
-`key` to tell their comments apart: `github({ key: process.env.MATRIX_BROWSER })`
-in the config, with `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`;
-without the mapping every replica passes `undefined` and they share one comment.
-
-## When nothing is posted
-
-The reporter says why in one summary row and never changes the run's exit
-code: off GitHub Actions, on an event that is not a pull request (the job
-summary is still written), without `GITHUB_TOKEN` or `GH_TOKEN`, or on a
-`pull_request` event from a fork, whose token is read-only. To post from
-another CI, or as an identity
-that is not the workflow, use the TesterArmy reporter, `@e2edev/testerarmy`.
+Full documentation lives at [e2e-docs.vercel.app/github](https://e2e-docs.vercel.app/github).
 
 ## License
 
