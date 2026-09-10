@@ -87,3 +87,9 @@ test.describe('asynchronous', async () => {});
 declare const condition: boolean;
 // @ts-expect-error a conditionally async describe is still asynchronous
 test.describe('conditionally asynchronous', () => condition ? undefined : Promise.resolve());
+
+// A test, a group, and a call each pin a configured agent by name.
+test('as the buyer', { agent: 'buyer' }, async () => {});
+test.describe('admin flows', { agent: 'admin' }, () => {});
+await agent.act('approve it', { agent: 'admin' });
+await agent.assert('it is approved', { agent: 'buyer' });

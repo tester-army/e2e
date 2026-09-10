@@ -405,9 +405,11 @@ agents?: Record<string, StepExecutor | {
 
 Agents by name. `default` is the one tests run with, and it exists even when
 the config names none: the built-in agent with the model from `E2E_MODEL`.
-Other names are other brains for the same suite, picked per run with
-`e2e run --agent <name>`; an unknown name is `INVALID_CONFIG` before anything
-starts, naming the configured ones. Names are ASCII letters, numbers, `_`,
+Other names are other brains for the same suite: a run re-points its default
+with `e2e run --agent <name>`, a test or describe block pins one with
+`{ agent: 'name' }`, and any `agent.*` call can name one for that call. An
+unknown name is `INVALID_CONFIG` (or `COLLECTION_ERROR` on a test) before
+anything starts, naming the configured ones. Names are ASCII letters, numbers, `_`,
 `-`, or `.`.
 
 ```ts title="e2e.config.ts"

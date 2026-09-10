@@ -51,6 +51,8 @@ blocked one throws an `AgentError` whose `code` and `blocked` flag say why.
 | `options.timeout` | `number` | `config.timeout` | positive safe integer |
 | `options.maxSteps` | `number` | `config.agent.maxSteps` | positive integer, at most the resolved limit |
 | `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
+| `options.agent` | `string` | the test's agent | a name in `agents` |
+| `options.agent` | `string` | the test's agent | a name in `agents`; unknown is `INVALID_ARGUMENT` before the step opens |
 
 Values come from your code through `options.params`, never from the model. A
 `Secret` in `params` is projected before the model sees anything: the model receives the
@@ -212,6 +214,7 @@ One fresh observation, exactly one judgment. It does not poll.
 | `options.timeout` | `number` | `30000` |
 | `options.screenshot` | `boolean` | `true` |
 | `options.vision` | `VisionMode` | `config.agent.vision`, `false` |
+| `options.agent` | `string` | the test's agent |
 
 Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and, when
 permitted, a screenshot path. Evidence is skipped with `screenshot: false` and
@@ -234,6 +237,7 @@ judgment.
 | --- | --- | --- | --- |
 | `condition` | `string` | - | - |
 | `options.timeout` | `number` | `30000` | positive safe integer |
+| `options.agent` | `string` | the test's agent | a name in `agents` |
 | `options.interval` | `number` | `3000` | integer 100-60000, milliseconds |
 | `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
 

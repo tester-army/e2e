@@ -131,7 +131,7 @@ export class TargetExecutor implements SerialHost {
     this.artifactsRoot = options.artifactsRoot;
     this.interruptSignal = options.interruptSignal;
     this.debug = options.debug ?? new DebugTrace(false);
-    this.models = new WorkerModels(options.config.agent, (error) => {
+    this.models = new WorkerModels((error) => {
       options.events?.onRunAbort?.({ error: serializeError(error) });
     });
     this.realms = new RealmManager({
@@ -767,6 +767,7 @@ export class TargetExecutor implements SerialHost {
         artifacts: artifacts.sink,
         priorSteps,
         agentContext: pair.options.agentContext,
+        agent: pair.options.agent,
         saveSession,
         ...(cache === undefined ? {} : { cache }),
         debug: this.debug,

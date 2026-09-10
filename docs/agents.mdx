@@ -83,6 +83,32 @@ export default {
 npx --no-install e2e run --agent thorough tests/checkout.e2e.ts
 ```
 
+A suite pins its agent with the `agent` option on a test or a describe block,
+and a single call can name another. Innermost wins: a call's `agent` beats
+the test's, which beats its groups, which beat the run. `--agent` re-points
+what unpinned tests use and never overrides a pin, so a persona stays itself
+while you benchmark a model across everything that has no opinion.
+
+```ts title="tests/checkout.e2e.ts"
+test.describe('checkout as a first-time buyer', { agent: 'buyer', session: 'guest' }, () => {
+  test('pays for one item', async ({ app, agent }) => { /* ... */ });
+  test('applies a promo code', async ({ app, agent }) => { /* ... */ });
+
+  test.describe('refunds', { agent: 'admin' }, () => {
+    test('refunds the order', async ({ agent }) => { /* ... */ });
+  });
+});
+
+// One step under another brain, inside any test; the ledger carries what came before.
+await agent.act('approve the pending reorder', { agent: 'admin' });
+```
+
+An `agent` naming nothing in `agents` fails at collection, before any process
+starts, and a call's unknown name is `INVALID_ARGUMENT`. Every agent step in
+the report records the agent it ran with, so two personas in one test stay
+distinguishable afterwards. Each agent's model is checked once per worker, on
+its first use, and shared with every other agent that names the same model.
+
 ## Add project tools
 
 `createAgent` builds the built-in agent extended with your tools (AI SDK

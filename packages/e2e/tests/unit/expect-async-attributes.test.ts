@@ -38,7 +38,7 @@ function createAttributeFixture(node: SemanticNode) {
     priorSteps: () => steps.completed(),
     agentContext: undefined,
     saveSession: undefined,
-    models: new WorkerModels(config.agent, () => {}),
+    models: new WorkerModels(() => {}),
   });
   return fixtures.screen;
 }

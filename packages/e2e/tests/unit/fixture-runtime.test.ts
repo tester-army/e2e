@@ -27,7 +27,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: () => 'artifact' }, priorSteps: () => steps.completed(),
     agentContext: undefined, saveSession: undefined,
-    models: new WorkerModels(config.agent, () => {}),
+    models: new WorkerModels(() => {}),
   });
   return { fixtures, steps };
 }

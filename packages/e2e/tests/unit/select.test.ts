@@ -30,6 +30,34 @@ function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.Proce
 }
 
 describe('resolveOptions', () => {
+  it('pins a test to a configured agent, innermost wins, and rejects a name agents does not define', async () => {
+    const agents = { agents: { default: {}, buyer: { context: 'buyer' }, admin: { context: 'admin' } } };
+    const col = await collection(() => {
+      test.describe('as a buyer', { agent: 'buyer' }, () => {
+        test('browses', noop);
+        test.describe('refunds', { agent: 'admin' }, () => {
+          test('refunds', noop);
+          test('as the buyer again', { agent: 'buyer' }, noop);
+        });
+      });
+      test('unpinned', noop);
+    });
+    const cfg = config(agents);
+    const pins = col.tests.map((entry) => resolveOptions(entry, cfg).agent);
+    expect(pins).toEqual(['buyer', 'admin', 'buyer', undefined]);
+
+    const unknown = await collection(() => {
+      test('elsewhere', { agent: 'buyr' }, noop);
+    });
+    expect(() => resolveOptions(unknown.tests[0]!, cfg)).toThrow(
+      /test "elsewhere" in tests\/a\.e2e\.ts names agent "buyr", which agents does not define; configured: default, buyer, admin; did you mean "buyer"\?/,
+    );
+  });
+
+  it('rejects an empty agent name at registration', async () => {
+    await expect(collection(() => { test('x', { agent: '' }, noop); })).rejects.toThrow(/test options: agent must be the name of a configured agent/);
+  });
+
   it('resolves precedence: test > inner group > outer group > config', async () => {
     const col = await collection(() => {
       test.describe('outer', { timeout: 10_000, retries: 2, tags: ['outer'] }, () => {

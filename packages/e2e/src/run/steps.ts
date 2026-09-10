@@ -132,6 +132,8 @@ export interface StepRecord {
   cache?: StepCacheInfo;
   events: StepEvent[];
   model?: StepModelInfo;
+  /** The configured agent an agent step ran with, by name. */
+  agent?: string;
   error?: SerializedError;
   artifacts: string[];
 }
@@ -174,6 +176,8 @@ export interface StepRunOptions {
    * names.
    */
   readonly verifies?: boolean;
+  /** The configured agent an agent step runs with, recorded on the step. */
+  readonly agent?: string | undefined;
 }
 
 export interface StepRecorderOptions {
@@ -237,6 +241,7 @@ export class StepRecorder {
       startedAt,
       durationMs: 0,
       events: [],
+      ...(options.agent === undefined ? {} : { agent: options.agent }),
       artifacts: [],
     };
     this.steps.push(record);

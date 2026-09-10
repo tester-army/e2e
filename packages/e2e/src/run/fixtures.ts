@@ -1,6 +1,7 @@
 /** Attempt-scoped fixture graph. */
 
 import { createAgentFixture } from '../agent/index.ts';
+import type { AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
@@ -9,7 +10,7 @@ import type { EngineFixtureContext } from '../engine/index.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { ConfigurationError, errorMessage, InfrastructureError } from '../internal/errors.ts';
+import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { SecretLedger } from '../internal/redact.ts';
 import { obj } from '../internal/objects.ts';
@@ -59,8 +60,10 @@ export interface AttemptEnvironment {
   readonly artifacts: ArtifactSink;
   /** Completed steps agent prompts quote as prior context; serial members see the whole group. */
   readonly priorSteps: () => readonly StepRecord[];
-  /** Trusted test/group agent context appended after config.agent.context. */
+  /** Trusted test/group agent context appended after the agent's own `context`. */
   readonly agentContext: string | undefined;
+  /** The configured agent the test is pinned to; undefined runs the run's agent. */
+  readonly agent?: string | undefined;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
   /** The attempt's trace cache context, or undefined when caching is off. */
@@ -130,16 +133,51 @@ export function createFixtures(
 
   let agent: Agent | undefined;
 
+  /**
+   * The agents this attempt can run with, resolved once each: the test's pin
+   * (else the run's agent) when a call names none, or any configured agent a
+   * call names. Each is preflighted on first use, so a second agent's missing
+   * credential surfaces where it is first needed, as one run-level failure.
+   */
+  const { config } = environment;
+  const attemptAgentName = environment.agent ?? config.agentName;
+  const selections = new Map<string, AgentSelection>();
+  const select = (requested: string | undefined): AgentSelection => {
+    if (requested !== undefined && (typeof requested !== 'string' || requested === '')) {
+      throw new TestError('INVALID_ARGUMENT', 'agent must be the name of a configured agent');
+    }
+    const name = requested ?? attemptAgentName;
+    const cached = selections.get(name);
+    if (cached !== undefined) return cached;
+    const resolved = config.agents.get(name);
+    if (resolved === undefined) {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        `unknown agent "${name}"; configured: ${[...config.agents.keys()].join(', ')}`,
+      );
+    }
+    environment.models.preflight(resolved);
+    const selection: AgentSelection = {
+      name,
+      config: resolved,
+      executor: resolved.executor ?? lazyDefaultExecutor(),
+      customExecutor: resolved.executor !== undefined,
+      models: createModelRouter(resolved, environment.models.build),
+      agentContext: joinAgentContext(resolved.context, environment.agentContext),
+    };
+    selections.set(name, selection);
+    return selection;
+  };
+
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
       if (agent !== undefined) return agent;
-      environment.models.preflight();
+      // The attempt's own agent is checked as the fixture is acquired, as before.
+      select(undefined);
       agent = createAgentFixture({
         engine,
         steps: environment.steps,
-        executor: environment.config.agent.executor ?? lazyDefaultExecutor(),
-        customExecutor: environment.config.agent.executor !== undefined,
-        models: createModelRouter(environment.config.agent, environment.models.build),
+        select,
         config: environment.config,
         target: {
           name: environment.target.name,
@@ -149,10 +187,6 @@ export function createFixtures(
         app: environment.target.app,
         attempt: environment.attempt,
         priorSteps: environment.priorSteps,
-        agentContext: joinAgentContext(
-          environment.config.agent.context,
-          environment.agentContext,
-        ),
         secrets,
         redact: ledger.redact,
         taint,

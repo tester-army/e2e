@@ -17,6 +17,37 @@ test('asks the agent', async ({ app, agent }) => {
 });
 `;
 
+const PINNED_SUITE = `
+import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test.describe('as the buyer', { agent: 'buyer' }, () => {
+  test('buyer browses', async ({ app, agent }) => {
+    await app.open();
+    expect((await agent.act('browse')).summary).toBe('done by buyer-brain');
+  });
+
+  test.describe('refunds', { agent: 'admin' }, () => {
+    test('admin refunds, buyer confirms', async ({ app, agent }) => {
+      await app.open();
+      expect((await agent.act('refund')).summary).toBe('done by admin-brain');
+      expect((await agent.act('confirm', { agent: 'buyer' })).summary).toBe('done by buyer-brain');
+      await agent.assert('the refund shows', { agent: 'buyer' });
+    });
+  });
+});
+
+test('unpinned follows the run', async ({ app, agent }) => {
+  await app.open();
+  expect((await agent.act('whatever')).summary).toContain('done by');
+});
+
+test('an unknown agent on a call fails that call', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('x', { agent: 'nobody' });
+});
+`;
+
 /** An executor that signs its verdict, so the report shows which one ran. */
 function signing(name: string): StepExecutor {
   return { name, async runStep() { return { status: 'passed', summary: `done by ${name}` }; } };
@@ -50,6 +81,59 @@ describe('named agents', () => {
     expect(started[1]).toMatchObject({ type: 'run-started', agent: 'ux' });
   }, 120_000);
 
+  it('pins suites and calls to agents, records each step\'s agent, and keeps pins under --agent', async () => {
+    const pinned = createProject({ 'tests/pinned.e2e.ts': PINNED_SUITE });
+    try {
+      const config = {
+        tests: 'tests/**/*.e2e.ts',
+        cache: 'off' as const,
+        agents: { default: signing('house'), buyer: signing('buyer-brain'), admin: signing('admin-brain'), thorough: signing('thorough-brain') },
+      };
+      const outcome = await runExisting(pinned, { appUrl: app.url, config, runOptions: { agent: 'thorough' } });
+      const byTitle = Object.fromEntries(outcome.report.run.results.map((result) => [result.titlePath.at(-1), result]));
+
+      // Pins hold under --agent; the unpinned test follows the run's agent.
+      expect(byTitle['buyer browses']!.status).toBe('passed');
+      expect(byTitle['admin refunds, buyer confirms']!.status).toBe('passed');
+      expect(byTitle['unpinned follows the run']!.status).toBe('passed');
+      expect(agentSteps(byTitle['unpinned follows the run']!)[0]?.explanation).toBe('done by thorough-brain');
+
+      // Every agent step names the agent it ran with, per call.
+      expect(agentSteps(byTitle['buyer browses']!).map((step) => step.agent)).toEqual(['buyer']);
+      expect(agentSteps(byTitle['admin refunds, buyer confirms']!).map((step) => [step.api, step.agent])).toEqual([
+        ['agent.act', 'admin'],
+        ['agent.act', 'buyer'],
+        ['agent.assert', 'buyer'],
+      ]);
+      expect(agentSteps(byTitle['unpinned follows the run']!).map((step) => step.agent)).toEqual(['thorough']);
+
+      // A call naming nothing configured fails that call before its step opens.
+      const unknown = byTitle['an unknown agent on a call fails that call']!;
+      expect(unknown.status).toBe('failed');
+      expect(unknown.attempts[0]!.error).toMatchObject({ code: 'INVALID_ARGUMENT' });
+      expect(unknown.attempts[0]!.error?.message).toMatch(/unknown agent "nobody"; configured: default, buyer, admin, thorough/);
+      expect(agentSteps(unknown)).toHaveLength(0);
+      expect(outcome.exitCode).toBe(1);
+    } finally {
+      pinned.cleanup();
+    }
+  }, 120_000);
+
+  it('fails collection when a test pins an agent the config does not define', async () => {
+    const pinned = createProject({ 'tests/pinned.e2e.ts': PINNED_SUITE });
+    try {
+      const outcome = await runExisting(pinned, {
+        appUrl: app.url,
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: signing('house'), buyer: signing('buyer-brain') } },
+      });
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.report.run.errors[0]?.message).toMatch(/names agent "admin", which agents does not define; configured: default, buyer/);
+      expect(outcome.report.run.results).toHaveLength(0);
+    } finally {
+      pinned.cleanup();
+    }
+  }, 60_000);
+
   it('fails the run before any test when --agent names nothing configured', async () => {
     const outcome = await runExisting(project, {
       appUrl: app.url,
@@ -61,6 +145,10 @@ describe('named agents', () => {
     expect(outcome.report.run.results).toHaveLength(0);
   }, 60_000);
 });
+
+function agentSteps(result: Awaited<ReturnType<typeof runExisting>>['report']['run']['results'][number]) {
+  return result.attempts[0]!.steps.filter((step) => step.kind === 'agent');
+}
 
 function stepSummary(outcome: Awaited<ReturnType<typeof runExisting>>): string | undefined {
   const step = outcome.report.run.results[0]?.attempts[0]?.steps.find((candidate) => candidate.api === 'agent.act');
