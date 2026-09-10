@@ -40,14 +40,22 @@ describe('WorkerModels', () => {
     expect(second).not.toBe(first);
   });
 
-  it('preflights each agent once and reports the first failure to the run', () => {
+  it('preflights each agent once, exempts a custom executor without a model, and reports a failure to the run once then rethrows it', () => {
     const failures: string[] = [];
     const models = new WorkerModels((error) => failures.push(error.code));
-    const resolved = agents({ default: { model: 'openai/gpt-5.6-luna-fast' }, brain: { executor: { name: 'brain', async runStep() { return { status: 'passed' as const, summary: 'ok' }; } } } });
+    const resolved = agents({
+      default: { model: 'openai/gpt-5.6-luna-fast' },
+      brain: { executor: { name: 'brain', async runStep() { return { status: 'passed' as const, summary: 'ok' }; } } },
+      keyless: { model: { provider: 'openai', id: 'gpt-5.6-luna-fast', apiKeyEnv: 'E2E_TEST_KEY_THAT_IS_NOT_SET' } },
+    });
     models.preflight(resolved.get('default')!);
     models.preflight(resolved.get('default')!);
-    // A custom executor without a model needs no preflight.
     models.preflight(resolved.get('brain')!);
     expect(failures).toEqual([]);
+    // The agent without a credential fails once to the run, and every later preflight rethrows the same failure.
+    expect(() => models.preflight(resolved.get('keyless')!)).toThrow(/MODEL_UNAVAILABLE|E2E_TEST_KEY_THAT_IS_NOT_SET/);
+    expect(() => models.preflight(resolved.get('keyless')!)).toThrow();
+    expect(() => models.preflight(resolved.get('default')!)).toThrow();
+    expect(failures).toEqual(['MODEL_UNAVAILABLE']);
   });
 });

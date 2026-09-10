@@ -75,6 +75,8 @@ export default {
     default: { model: 'openai/gpt-5.6-luna-fast' },
     thorough: { model: 'anthropic/claude-opus-5', context: 'Verify every claim on screen before concluding.' },
     ux: createAgent({ system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
+    buyer: { context: 'You are a first-time buyer who has never seen this site.' },
+    admin: createAgent({ system: ADMIN_PLAYBOOK, tools: { resetOrders } }),
   },
 } satisfies E2EConfig;
 ```
