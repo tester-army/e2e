@@ -3,11 +3,12 @@ title: Choosing a model
 description: Which model an agent uses, which package constructs it, and where its key comes from.
 ---
 
-Each model is an AI SDK model instance your config constructs. An agent has
-a base model and can name a separate model for visual judgments. The runner
-has no default model, no gateway of its own,
-and reads no model or key variable. The line in `e2e.config.ts` that builds
-the instance decides who serves it and how it authenticates.
+The built-in agent uses an AI SDK model instance your config constructs and
+can name a separate model for visual judgments. [Custom executors](/executors)
+own their model calls and may run without a model. The runner has no default
+model, no gateway of its own, and reads no model or key variable. The line in
+`e2e.config.ts` that builds the instance decides who serves it and how it
+authenticates.
 
 ## Pick a gateway or a provider
 
@@ -117,17 +118,18 @@ import { createOpenRouter, openrouter } from '@openrouter/ai-sdk-provider';
 // Reads OPENROUTER_API_KEY when the first model call is made.
 openrouter('openai/gpt-5.6-luna');
 
-// The same, with the key named in the config. Any variable, any source.
+// Use MY_TEAM_MODEL_KEY when set; otherwise use OPENROUTER_API_KEY.
 const apiKey = process.env.MY_TEAM_MODEL_KEY;
-if (apiKey === undefined) throw new Error('Set MY_TEAM_MODEL_KEY');
-createOpenRouter({ apiKey }).chat('openai/gpt-5.6-luna');
+createOpenRouter({
+  ...(apiKey === undefined ? {} : { apiKey }),
+}).chat('openai/gpt-5.6-luna');
 ```
 
 Three consequences:
 
 - **The key is read late.** Constructing `gateway('...')` needs no variable.
   Deterministic suites, `e2e list`, and config loading all work without a
-  key. Only the first `agent.*` step asks the provider for one.
+  key. Only a step that calls a model needs the provider's key.
 - **There is no `E2E_*` key variable.** The runner never sees the key, so it
   has nothing to name. Set the variable the package you imported documents.
 - **The runner never logs it.** The key lives in your config module and the
@@ -143,7 +145,6 @@ packages:
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
-import { createAgent } from '@e2edev/e2e/agent';
 import { openai } from '@ai-sdk/openai';
 import { gateway } from 'ai';
 
@@ -151,7 +152,7 @@ export default {
   targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
   agents: {
     default: {
-      executor: createAgent({ system: 'You are a thorough QA agent.' }),
+      context: 'You are a thorough QA agent.',
       model: gateway('openai/gpt-5.6-luna'),
       // Pixels go to a model that grounds well, called directly.
       visionModel: openai('gpt-5.4'),
@@ -161,12 +162,18 @@ export default {
 } satisfies E2EConfig;
 ```
 
-`model` drives `agent.act` and text-only judgments. When a judgment sends
-pixels, it uses `visionModel` if configured, otherwise `model`. Each provider
-needs its key when its model is first used; a run with no visual judgments
+With no configured executor, `model` drives `agent.act` and text-only judgments.
+When a judgment sends pixels, it uses `visionModel` if configured, otherwise
+`model`. Each provider needs its key when its model is first used; a run with no visual judgments
 does not need the separate vision provider's key.
 An `agents.<name>.model` that names a different model than the one passed to
 `createAgent({ model })` is `INVALID_CONFIG`.
+
+A configured executor, including `createAgent(...)`, handles `agent.act`
+and `agent.assert` through `runStep`. That assertion path rejects `vision`
+and `screenshot` options. An executor may implement both methods without a
+model. `agent.waitFor` and `agent.extract` still use the built-in judgment
+tier and its model routing; see [Custom executors](/executors#replace-the-executor).
 
 To switch models per run without editing the config, read a variable of your
 own:
@@ -177,8 +184,8 @@ model: gateway(process.env.MODEL ?? 'openai/gpt-5.6-luna'),
 
 ## Models that refuse forced tool calls
 
-`agent.act` asks the model for a tool call on every turn. Some models reject
-that request shape. Anthropic's Claude Fable 5.1 answers HTTP 400 to any
+The built-in `agent.act` loop asks the model for a tool call on every turn.
+Some models reject that request shape. Anthropic's Claude Fable 5.1 answers HTTP 400 to any
 forced tool choice. The runner recognizes the refusal, retries with the
 choice left to the model and a tools-only rule in its instructions, and keeps
 that mode for the rest of the process. The refused request does not count as

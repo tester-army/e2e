@@ -3,10 +3,12 @@ title: Caching agent steps
 description: A passing agent.act records its actions, and the next run replays them with no model call.
 ---
 
-The trace cache stores verified `agent.act()` steps under `.e2e/cache/` in
-`read-write` mode. The next run replays their actions with no model call and hands back to
-the live agent the moment the app stops matching the recording. Judgments
-(`assert`, `waitFor`, `extract`) are never cached.
+In `read-write` mode, the trace cache stores verified `agent.act()` steps.
+The default file store uses `.e2e/cache/`, configurable through `cache.dir`;
+with `cache.store`, entries go to that custom store instead. The next run
+replays their actions with no model call and hands back to the live agent
+when the app stops matching the recording. Judgments (`assert`, `waitFor`,
+`extract`) are never cached.
 
 The cache is on by default. Turn it off per run to check whether a failure
 comes from the recording rather than the app:
@@ -34,10 +36,14 @@ test('adds an item', async ({ app, agent, screen }) => {
 ```
 
 A trailing `act` with no later recorded verification is never cached. In
-`read-write` mode, a failed attempt keeps only traces verified before the
-failure and evicts unverified entries. Later passing runs can record them
-again. `read-only` mode neither evicts nor records; refresh stale entries in
-a `read-write` run, or remove them with `e2e cache clear`.
+`read-write` mode, a failed attempt writes only traces verified before the
+failure and attempts to evict unverified entries. Automatic eviction requires
+the store's optional `delete` method, which the file store provides. Custom
+stores without it may retain stale entries.
+
+`read-only` mode neither evicts nor records. File-store entries can be removed
+with `e2e cache clear` and recorded again in a `read-write` run. That command
+rejects custom stores; use that store's own tools for cleanup.
 
 ## When a replay hands off
 
@@ -46,7 +52,8 @@ captured end anchors, the element descriptions that appeared or changed
 during the step. If a recorded path or anchor does not match after the
 actions run, the step hands off to the live agent to check its outcome. In
 `read-write` mode, an entry the agent must repair with further actions is
-evicted so a broken recording does not accumulate repairs.
+submitted for eviction through the same optional `delete` method instead of
+being rewritten with the repairs.
 
 Some steps produce no end anchors, for example when only an input value or
 checkbox state changes. An empty anchor set passes the anchor check. Such a
@@ -114,8 +121,8 @@ flow changes enough that the next passing run should record it from scratch.
 
 ## Inspect the cache
 
-Entries are files named by digest, so the directory listing says nothing.
-The CLI reads it:
+The file store names entries by digest, so the directory listing says nothing.
+The CLI inspects and clears file-store entries only:
 
 ```bash
 npx --no-install e2e cache ls
