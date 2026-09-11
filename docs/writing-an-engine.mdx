@@ -95,7 +95,7 @@ never silently.
 | Member | Capability | Unlocks |
 | --- | --- | --- |
 | `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
-| `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, `type_secret`, node `scroll`, and the `Locator` action set |
+| `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, node `scroll`, and the `Locator` action set; `type_secret` when the step declares credentials and the engine supports secure filling |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
 | `swipe(direction, momentum, context)` | (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
@@ -105,10 +105,12 @@ never silently.
 | `url(context)` | | trace start anchors, the secret-fill origin check |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
-The agent derives its toolset from this manifest: a verb whose member is
-absent is never offered to the model. Every node action, whether the agent
-or a `Locator` asked for it, arrives as one `LocatorAction` on `perform`, so
-you implement each action once and throw `UNSUPPORTED_CAPABILITY` for a kind
+The agent derives its toolset from this manifest and the step's declared
+credentials: a verb whose member is absent is never offered to the model.
+Every secret fill still passes the runner's secure-field and origin checks.
+Every node action, whether the agent or a `Locator` asked for it, arrives
+as one `LocatorAction` on `perform`. Implement each action once and throw
+`UNSUPPORTED_CAPABILITY` for a kind
 the surface cannot express.
 
 ### Lifecycle

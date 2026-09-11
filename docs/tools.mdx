@@ -20,7 +20,9 @@ const seedCart = defineTool(
     description: 'Seed the cart with a SKU via the store test API',
     inputSchema: z.object({ sku: z.string() }),
     execute: async ({ sku }) => {
-      const url = new URL('/api/test/cart', process.env.APP_URL ?? 'http://localhost:3000');
+      const baseUrl = new URL(process.env.APP_URL ?? 'http://localhost:3000');
+      baseUrl.pathname = `${baseUrl.pathname.replace(/\/+$/, '')}/`;
+      const url = new URL('api/test/cart', baseUrl);
       url.searchParams.set('sku', sku);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Cart seeding failed: HTTP ${response.status}`);
