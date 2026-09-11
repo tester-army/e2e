@@ -206,7 +206,14 @@ export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return envFlag(env, 'CI');
 }
 
-/** Resolves a raw config object plus environment into an immutable resolved config. */
+/** The free port the run assigned to each target whose URL asked for one, by target name. */
+export type PortAssignments = Readonly<Record<string, number>>;
+
+/**
+ * Resolves a raw config object plus environment into an immutable resolved
+ * config. `ports` are the free ports the runner already assigned, so a worker
+ * re-resolving the same file lands on the same app URLs.
+ */
 export function resolveConfig(
   raw: E2EConfig,
   options: {
@@ -214,6 +221,7 @@ export function resolveConfig(
     configPath?: string;
     env?: NodeJS.ProcessEnv;
     cli?: CliOverrides;
+    ports?: PortAssignments;
   },
 ): ResolvedConfig {
   const env = options.env ?? process.env;
@@ -238,7 +246,7 @@ export function resolveConfig(
     );
   }
 
-  const targets = resolveTargets(raw, options.projectRoot);
+  const targets = resolveTargets(raw, options.projectRoot, options.ports ?? {});
   const tests = normalizeTests(raw.tests);
 
   const timeout = positiveInt(raw.timeout, 'timeout', 'milliseconds') ?? 120_000;
@@ -307,6 +315,22 @@ export function resolveConfig(
     configDigest: computeConfigDigest(raw, projectId),
   };
   return resolved;
+}
+
+/**
+ * The config with every target's app re-resolved against the port the run
+ * assigned it. Pure, so the runner and each worker reach the same URLs from
+ * the same declaration and ports; the digest stands, because the ports never
+ * enter it.
+ */
+export function assignPorts(config: ResolvedConfig, ports: PortAssignments): ResolvedConfig {
+  return {
+    ...config,
+    targets: config.targets.map((target) => ({
+      ...target,
+      app: resolveTargetApp(target.name, target.engine, config.projectRoot, ports[target.name]),
+    })),
+  };
 }
 
 /**
@@ -556,7 +580,7 @@ function isTraceCacheStore(value: unknown): value is TraceCacheStore {
 }
 
 
-function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedTarget[] {
+function resolveTargets(raw: E2EConfig, projectRoot: string, ports: PortAssignments): readonly ResolvedTarget[] {
   if (raw.targets === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -613,7 +637,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string): readonly ResolvedT
       index,
       platform,
       engine: target.engine,
-      app: resolveTargetApp(name, target.engine, projectRoot),
+      app: resolveTargetApp(name, target.engine, projectRoot, ports[name]),
     };
   });
 }

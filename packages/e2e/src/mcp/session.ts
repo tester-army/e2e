@@ -18,6 +18,7 @@ import { credentials } from '../credentials.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { LocatorEngine } from '../locator/engine.ts';
+import { allocateAppPorts } from '../run/app-ports.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
@@ -136,7 +137,8 @@ export class SessionHost {
   }
 
   private async openSession(options: OpenSessionOptions): Promise<string> {
-    const config = await this.options.loadConfig(options.config);
+    // A session is its own run: a URL declared with port 0 gets a port here.
+    const config = await allocateAppPorts(await this.options.loadConfig(options.config));
     const target = this.resolveTarget(config, options.target);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();

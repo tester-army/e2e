@@ -2,9 +2,24 @@ import { describe, expect, it } from 'vitest';
 import {
   isLoopbackHost,
   normalizeBaseUrl,
+  portOf,
+  requestsFreePort,
   resolveNavigationUrl,
   urlMatches,
+  withPort,
 } from '../../src/internal/urls.ts';
+
+describe('base URL ports', () => {
+  it('tells a free-port request from a fixed or default port, and re-serializes on another port', () => {
+    const requested = normalizeBaseUrl('http://[::1]:0/app/');
+    expect(requestsFreePort(requested)).toBe(true);
+    expect(portOf(requested)).toBe(0);
+    expect(withPort(requested, 4321)).toEqual({ href: 'http://[::1]:4321/app/', origin: 'http://[::1]:4321', basePath: '/app/' });
+    expect(requestsFreePort(normalizeBaseUrl('https://app.test'))).toBe(false);
+    expect(portOf(normalizeBaseUrl('https://app.test'))).toBe(443);
+    expect(portOf(normalizeBaseUrl('http://localhost:3000'))).toBe(3000);
+  });
+});
 
 describe('normalizeBaseUrl', () => {
   it('normalizes default ports, dot segments, and IDNA hosts', () => {
@@ -21,6 +36,14 @@ describe('normalizeBaseUrl', () => {
   it('rejects plain HTTP for non-loopback hosts', () => {
     expect(() => normalizeBaseUrl('http://example.test')).toThrow(/loopback/);
     expect(normalizeBaseUrl('http://127.0.0.1:8080').origin).toBe('http://127.0.0.1:8080');
+  });
+
+  it('accepts port 0 on a literal loopback address only, where the run picks a free port', () => {
+    expect(normalizeBaseUrl('http://127.0.0.1:0').origin).toBe('http://127.0.0.1:0');
+    expect(normalizeBaseUrl('http://[::1]:0/app').href).toBe('http://[::1]:0/app');
+    // A name may resolve to another address than the one the command binds.
+    expect(() => normalizeBaseUrl('localhost:0/app')).toThrow(/port 0 .* 127\.0\.0\.1 or \[::1\]/);
+    expect(() => normalizeBaseUrl('https://app.test:0')).toThrow(/port 0 .* 127\.0\.0\.1 or \[::1\]/);
   });
 
   it('rejects non-http(s) schemes', () => {

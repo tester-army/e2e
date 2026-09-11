@@ -33,6 +33,7 @@ import { junitReporter } from '../report/junit.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
+import { allocateAppPorts, assignedPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
@@ -234,10 +235,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // resolution), so the emitter below is built exactly once from the set
   // actually in force. When config itself failed, the CLI's own value is the
   // best available, and the failure still renders through it.
-  const loaded = await debug.time('config.load', () => loadRunConfig(options, cwd, env, cli)).then(
-    (config) => ({ config, error: undefined }),
-    (cause: unknown) => ({ config: undefined, error: classifyError(cause) }),
-  );
+  //
+  // Free ports for URLs declared with port 0 are chosen here, once: workers
+  // re-resolve the config and get the assignments in their bootstrap.
+  const loaded = await debug
+    .time('config.load', () => loadRunConfig(options, cwd, env, cli).then(allocateAppPorts))
+    .then(
+      (config) => ({ config, error: undefined }),
+      (cause: unknown) => ({ config: undefined, error: classifyError(cause) }),
+    );
 
   // Every reporter, built-in or configured, is one `Reporter` on one spine:
   // the ids name the shipped ones, and a config failure still leaves the ids
@@ -593,6 +599,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             projectRoot: config.projectRoot,
             configDigest: config.configDigest,
             cli,
+            ports: assignedPorts(config),
             runId,
             artifactsRoot,
             headed: options.headed ?? false,

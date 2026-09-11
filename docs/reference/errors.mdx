@@ -80,7 +80,7 @@ These appear in terminal output and in the report as plain string codes.
 | `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, engine }`, an `engine` that is not a `defineEngine` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context`, an `expect.poll` `timeout` or `interval` that is not a finite number of milliseconds | configuration | 2 |
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
 | `APP_URL_REQUIRED` | A navigation or relative URL on a target whose engine declares no `url`, or a declared `command` with no `url` or `readyUrl` to poll | configuration | 2 |
-| `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, or unparseable | configuration | 2 |
+| `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, port 0 on a host other than a literal loopback address (`127.0.0.1`, `[::1]`), a loopback address the run could not bind a free port on, or unparseable | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
 | `TARGET_REQUIRED` | `e2e mcp`: the config declares several targets and neither `--target` nor `open_session` named one | configuration | 2 |

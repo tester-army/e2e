@@ -113,13 +113,49 @@ export interface EngineAppDeclaration {
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `url` | `string` | unset | Required once a test calls `app.open()` or navigates relatively, else `APP_URL_REQUIRED` at that call. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; plain HTTP only for loopback |
-| `command` | `CommandConfig` | unset | The app process. Targets declaring the same command share one process |
-| `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. A `command` with neither is `APP_URL_REQUIRED` at config load |
+| `url` | `string` | unset | Required once a test calls `app.open()` or navigates relatively, else `APP_URL_REQUIRED` at that call. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; plain HTTP only for loopback. Port `0` on `127.0.0.1` or `[::1]` asks the run for a [free port](#free-ports); on any other host, `localhost` included, it is `INVALID_APP_URL` |
+| `command` | `CommandConfig` | unset | The app process. `{port}` in `args` entries and `env` values expands to the port of the resolved `url`. Targets declaring the same command share one process |
+| `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. `{port}` expands to the port of `url`. A `command` with neither is `APP_URL_REQUIRED` at config load |
 | `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before the app command and torn down in reverse |
 | `allowedOrigins` | `readonly string[]` | the origin of `url`, else none | Each entry must be a serialized origin |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts and without a URL, otherwise `'production'` | A label for the report and the cache/session identity; it never gates a run |
-| `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache and session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one across different apps |
+| `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache and session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one across different apps. A `url` with port `0` derives it from the declared `:0`, not from the port a run was given |
+
+### Free ports
+
+A `url` on a literal loopback address with port `0` (`http://127.0.0.1:0`,
+`http://[::1]:0`) asks the run for a free TCP port on that address. The runner
+picks one when the config loads, before anything spawns, and substitutes it
+wherever the declaration used the port: the base URL `app.open()` resolves
+against, the default `allowedOrigins` entry (and an explicit entry spelled
+with the same host and `:0`), the default `readyUrl`, and the report's target
+record. Worker processes receive the same assignment. The command must take
+the port through `{port}` in `args` or `env`; nothing else tells it where to
+listen, and a server left on its default port never answers where the runner
+probes.
+
+```ts title="e2e.config.ts"
+engine: playwright({
+  url: 'http://127.0.0.1:0',
+  command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } },
+}),
+```
+
+A loopback name such as `localhost:0` is `INVALID_APP_URL`: it may resolve to
+an address other than the one the command binds, and a port free on `::1`
+says nothing about `127.0.0.1`. Write the address the command will bind. Port
+`0` on any other host is `INVALID_APP_URL` too, as is a loopback address this
+machine cannot bind.
+
+The port is free when chosen and handed to the command a moment later; another
+process binding it in between fails the app's start with the usual
+`APP_UNREACHABLE`, which a retry of the run resolves. Each target asking for
+port `0` gets its own port, so two targets meant to share one dev server
+should share a fixed port instead. Only the app URL is allocated: services
+keep the ports their config gives them, and a service that must know the
+app's port reads `{port}`. The default `identity` derives from the declared
+URL with `:0`, so trace cache and session entries do not churn with the port;
+tests read the allocated URL from [`app.baseUrl`](/reference/app).
 
 ### command
 
@@ -139,9 +175,9 @@ export interface CommandConfig {
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `executable` | `string` | | Required, non-empty, resolved with the process `PATH`. Never shell-interpreted |
-| `args` | `readonly string[]` | `[]` | Passed verbatim |
+| `args` | `readonly string[]` | `[]` | Passed verbatim, except that `{port}` expands to the port of the target's `url` |
 | `cwd` | `string` | project root | Resolved from the project root |
-| `env` | `Record<string, string>` | `{}` | Adds to the inherited set |
+| `env` | `Record<string, string>` | `{}` | Adds to the inherited set; `{port}` in a value expands like in `args`. On a target without a `url` the token is `INVALID_CONFIG` |
 | `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE`. One `still starting` notice at half the budget, once that half is at least 5 s |
 | `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
 | `log` | `string` | unset (output discarded) | File that receives stdout and stderr, appended; resolved from the project root and must stay inside it. The raw, unredacted output; keep it in an ignored directory. A startup failure quotes the last 20 lines appended since the command started, `env` values replaced by `<secret:NAME>` markers |
@@ -167,9 +203,14 @@ export interface ServiceConfig extends CommandConfig {
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `name` | `string` | executable base name | Label in errors, reporter output, and the report. Non-empty, at most 64 characters, unique across named services |
-| `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's |
+| `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's. `{port}` expands to the app's port |
 | `waitForExit` | `boolean` | `false` | The process is the step: ready when it exits 0. A non-zero exit is `APP_UNREACHABLE` |
-| `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on within its own `startupTimeout` |
+| `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on within its own `startupTimeout`. `{port}` expands in its `args` and `env` too |
+
+`{port}` in a service's `args`, `env`, `readyUrl`, and `teardown` is the port
+of the target's `url`, allocated or fixed: a service keeps its own port and
+learns the app's through the token. Two targets whose services expand to the
+same values share those services.
 
 Exactly one of `readyUrl` or `waitForExit` is required per service.
 `reuseExisting` works on a `readyUrl` service and skips its `teardown`; on a

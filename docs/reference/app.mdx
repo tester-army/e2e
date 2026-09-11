@@ -9,6 +9,7 @@ the origin policy.
 
 ```ts
 export interface App {
+  readonly baseUrl: string | undefined;
   open(path?: string): Promise<void>;
   restart(): Promise<void>;
   clearState(): Promise<void>;
@@ -16,6 +17,12 @@ export interface App {
   screenshot(label?: string): Promise<string>;
 }
 ```
+
+`baseUrl` is the resolved base URL of the target's app, the one `open()`
+resolves paths against: the engine's `url` normalized, with the port the run
+allocated when the URL was declared with port `0` (see
+[free ports](/reference/config#free-ports)). It is `undefined` on a target
+whose engine declares no `url`.
 
 No `App` method takes a `timeout` option. Each budget is additionally capped
 by the remaining test timeout.

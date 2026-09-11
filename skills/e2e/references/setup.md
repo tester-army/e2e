@@ -110,9 +110,9 @@ process, and identity. `playwright()` accepts:
 
 | Option | Meaning |
 | --- | --- |
-| `url` | Base URL for `app.open()` and relative navigation. A missing scheme becomes `https://`, or `http://` for a loopback host. Required once a test navigates. |
-| `command` | The process that serves `url`. See below. |
-| `readyUrl` | Readiness probe when it differs from `url`. |
+| `url` | Base URL for `app.open()` and relative navigation. A missing scheme becomes `https://`, or `http://` for a loopback host. Required once a test navigates. Port `0` on `127.0.0.1` or `[::1]` asks the run for a free port. |
+| `command` | The process that serves `url`. `{port}` in `args` and `env` expands to the port of `url`. See below. |
+| `readyUrl` | Readiness probe when it differs from `url`. `{port}` expands here too. |
 | `services` | Dependency processes started before `command`, in order. |
 | `allowedOrigins` | Origins tests and the agent may navigate to. Default: the origin of `url`. |
 | `environment` | `'test'`, `'staging'`, `'production'`. Inferred from the host; a label for the report and the cache key. |
@@ -185,6 +185,15 @@ How it behaves:
   then runs their `teardown` commands in reverse.
 - `executable` is resolved on `PATH` and never shell-interpreted. Point it at
   the server itself rather than at a wrapper script.
+- `url: 'http://127.0.0.1:0'` (or `[::1]:0`, never `localhost:0`) asks the
+  run for a free port, so two checkouts can run at once. The command must take
+  it through `{port}` in `args` or `env`; the token also expands in `readyUrl`
+  and the services:
+  `command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } }`.
+  Tests read the allocated URL from `app.baseUrl`; the cache identity keeps
+  the declared `:0`. Services keep their own ports. A port another process
+  grabs between allocation and spawn fails the start with `APP_UNREACHABLE`;
+  rerun.
 
 To test an app started elsewhere, point `url` at it and start it yourself,
 or read the address from the environment:

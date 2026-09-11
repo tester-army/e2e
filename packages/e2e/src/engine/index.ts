@@ -111,7 +111,10 @@ export interface EngineAppDeclaration {
    * Base URL of an addressable app: `app.open()` opens it and relative
    * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
    * fragment; a missing scheme becomes `https://`, or `http://` for a
-   * loopback host. Plain HTTP is accepted for loopback hosts only.
+   * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
+   * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port,
+   * substituted wherever the declaration used it and handed to `command` and
+   * `services` as `{port}`.
    */
   readonly url?: string;
   /**

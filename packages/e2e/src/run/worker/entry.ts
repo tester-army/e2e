@@ -74,6 +74,7 @@ async function bootstrap(
     configPath: message.configPath,
     env: process.env,
     cli: message.cli,
+    ports: message.ports,
   });
   if (config.configDigest !== message.configDigest) {
     throw new ConfigurationError(

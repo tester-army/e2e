@@ -9,7 +9,7 @@
 
 import type { TestIdentity } from '../../collect/collect.ts';
 import type { ResolvedTestOptions } from '../../collect/select.ts';
-import type { CliOverrides, ResolvedTarget } from '../../config/resolve.ts';
+import type { CliOverrides, PortAssignments, ResolvedTarget } from '../../config/resolve.ts';
 import type { AiTraceSnapshot } from '../../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
@@ -48,6 +48,12 @@ export interface WorkerBootstrap {
    * catch it.
    */
   readonly cli: CliOverrides;
+  /**
+   * The free ports the runner assigned to app URLs declared with port 0, by
+   * target name. Chosen once in the runner and outside the digest, so a
+   * worker must be told them to resolve the same URLs.
+   */
+  readonly ports: PortAssignments;
   readonly targetName: string;
   /** This worker's slot among the target's workers; see `EngineInitInfo.workerSlot`. */
   readonly workerSlot: number;

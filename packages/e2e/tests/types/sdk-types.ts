@@ -9,6 +9,7 @@ import {
   expect,
   test,
   type Agent,
+  type App,
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
@@ -24,6 +25,7 @@ import { createAgent, defineTool, type DefaultAgent } from '../../src/agent/publ
 import type { Report } from '../../src/index.ts';
 
 declare const agent: Agent;
+declare const appFixture: App;
 declare const remoteStore: TraceCacheStore;
 declare const artifactStore: ArtifactStore;
 declare const asyncExpectation: AsyncExpectation;
@@ -85,6 +87,11 @@ void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
 // @ts-expect-error role queries never match hidden nodes; visible is the one visibility knob
 screen.getByRole('button', { hidden: true });
+// @ts-expect-error a surface without a url has no base URL; a test must handle undefined
+const appOrigin: string = appFixture.baseUrl;
+void appOrigin;
+// @ts-expect-error the base URL is the runner's to resolve, never a test's to set
+appFixture.baseUrl = 'http://127.0.0.1:3000/';
 
 const actResult = await agent.act('open billing', { params: { plan: 'pro' }, timeout: 10_000 });
 actResult.summary satisfies string;

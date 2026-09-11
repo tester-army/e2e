@@ -8,7 +8,14 @@ import path from 'node:path';
 import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
-import { isImplicitTestHost, normalizeBaseUrl, type NormalizedBaseUrl } from '../internal/urls.ts';
+import {
+  isImplicitTestHost,
+  normalizeBaseUrl,
+  portOf,
+  requestsFreePort,
+  withPort,
+  type NormalizedBaseUrl,
+} from '../internal/urls.ts';
 import type { CommandConfig, ServiceConfig } from '../types.ts';
 import { httpUrl, positiveInt } from './validate.ts';
 
@@ -33,6 +40,17 @@ export interface ResolvedService extends ResolvedCommand {
 }
 
 /**
+ * A declared URL with port 0 asks the run for a free port on its loopback
+ * host. `port` is the one the run assigned, undefined until it did: a config
+ * resolved outside a run (`e2e list`, the cache CLI) keeps the `:0` URL.
+ */
+export interface PortRequest {
+  /** The hostname to bind, as the URL spelled it. */
+  readonly host: string;
+  readonly port: number | undefined;
+}
+
+/**
  * The app one target drives, as the harness resolved the engine's `app`
  * declaration. Navigation policy, cache and session identity, the report's
  * target record, and the app processes all read from here; a target without a
@@ -41,6 +59,8 @@ export interface ResolvedService extends ResolvedCommand {
 export interface ResolvedApp {
   /** Normalized base URL; undefined for a surface without addressable locations. */
   readonly base: NormalizedBaseUrl | undefined;
+  /** The free-port request the declared URL made; undefined when it names a port or there is no URL. */
+  readonly portRequest: PortRequest | undefined;
   readonly allowedOrigins: readonly string[];
   readonly environment: 'test' | 'staging' | 'production';
   /**
@@ -64,15 +84,30 @@ const ENVIRONMENTS = new Set(['test', 'staging', 'production']);
  * origins, a command needs something to poll, services need one readiness
  * contract each, and the identity defaults to where the app is served when
  * the engine gives none. `projectRoot` anchors every command's `log` path.
+ * `port` is the free port the run assigned to a URL declared with port 0: it
+ * replaces the 0 in the base URL, the default origin and readiness probe, and
+ * any explicit origin spelled with the same host and `:0`. The default
+ * identity keeps the declared `:0`, so cache and session entries survive the
+ * port changing every run. `{port}` in the command, the services, and their
+ * readiness URLs expands to the port the app is served on, assigned or fixed.
  */
 export function resolveTargetApp(
   targetName: string,
   engine: EngineHandle | undefined,
   projectRoot: string,
+  port?: number,
 ): ResolvedApp {
   const declared: EngineAppDeclaration = engine?.app ?? {};
   const where = `target "${targetName}" engine ${engine?.name ?? 'none'}`;
-  const base = declared.url === undefined ? undefined : normalizeBaseUrl(declared.url);
+  const declaredBase = declared.url === undefined ? undefined : normalizeBaseUrl(declared.url);
+  const portRequest = declaredBase === undefined ? undefined : freePortRequest(declaredBase, port);
+  const base =
+    declaredBase !== undefined && portRequest?.port !== undefined ? withPort(declaredBase, portRequest.port) : declaredBase;
+  // What `{port}` expands to. While a requested port is unassigned this is 0,
+  // the port the base URL still carries, so the config resolves and validates
+  // the same way before and after assignment.
+  const appPort = base === undefined ? undefined : portOf(base);
+  const expand = (value: string, label: string): string => expandPort(value, appPort, label);
 
   const environment =
     declared.environment ??
@@ -84,11 +119,11 @@ export function resolveTargetApp(
     );
   }
 
-  const allowedOrigins = declared.allowedOrigins ?? (base === undefined ? [] : [base.origin]);
-  if (!Array.isArray(allowedOrigins)) {
+  const declaredOrigins = declared.allowedOrigins ?? (base === undefined ? [] : [base.origin]);
+  if (!Array.isArray(declaredOrigins)) {
     throw new ConfigurationError('INVALID_CONFIG', `${where} app.allowedOrigins must be an array`);
   }
-  for (const origin of allowedOrigins) {
+  const allowedOrigins = declaredOrigins.map((origin) => {
     let parsed: URL;
     try {
       parsed = new URL(origin);
@@ -101,16 +136,27 @@ export function resolveTargetApp(
         `${where} allowed origin must be a serialized origin, got ${origin} (expected ${parsed.origin})`,
       );
     }
-  }
+    // An explicit origin spelled like the declared URL follows its port.
+    if (portRequest?.port !== undefined && parsed.port === '0' && parsed.hostname === portRequest.host) {
+      parsed.port = String(portRequest.port);
+      return parsed.origin;
+    }
+    return origin;
+  });
 
   const identity = declared.identity;
   if (identity !== undefined && (typeof identity !== 'string' || identity.trim() === '')) {
     throw new ConfigurationError('INVALID_CONFIG', `${where} app.identity must be a non-empty string`);
   }
 
-  const command = declared.command;
+  const command =
+    declared.command === undefined ? undefined : expandCommandPort(declared.command, `${where} app.command`, expand);
   if (command !== undefined) validateCommand(command, `${where} app.command`, projectRoot);
-  const readyUrl = httpUrl(declared.readyUrl, `${where} app.readyUrl`) ?? base?.href;
+  const readyUrl =
+    httpUrl(
+      declared.readyUrl === undefined ? undefined : expand(declared.readyUrl, `${where} app.readyUrl`),
+      `${where} app.readyUrl`,
+    ) ?? base?.href;
   if (command !== undefined && readyUrl === undefined) {
     throw new ConfigurationError(
       'APP_URL_REQUIRED',
@@ -120,12 +166,65 @@ export function resolveTargetApp(
 
   return {
     base,
+    portRequest,
     allowedOrigins,
     environment,
-    identity: identity ?? (base === undefined ? undefined : `${base.origin}${base.basePath}`),
+    identity: identity ?? (declaredBase === undefined ? undefined : `${declaredBase.origin}${declaredBase.basePath}`),
     command,
     readyUrl: command === undefined ? undefined : readyUrl,
-    services: resolveServices(declared.services, projectRoot, `${where} app.services`),
+    services: resolveServices(declared.services, projectRoot, `${where} app.services`, expand),
+  };
+}
+
+/** The request a URL declared with port 0 makes, carrying the port the run assigned it so far. */
+function freePortRequest(declaredBase: NormalizedBaseUrl, port: number | undefined): PortRequest | undefined {
+  if (!requestsFreePort(declaredBase)) return undefined;
+  return { host: new URL(declaredBase.href).hostname, port };
+}
+
+/** The token a command, a service, or a readiness URL writes where the app's port goes. */
+const PORT_TOKEN = '{port}';
+
+/** Substitutes `{port}` in one configured value, given where the value came from for the error. */
+type PortExpander = (value: string, label: string) => string;
+
+/**
+ * Substitutes `{port}` in one configured string. A target without a URL has
+ * no port to offer, so the token there is a config error naming the field.
+ */
+function expandPort(value: string, port: number | undefined, label: string): string {
+  if (!value.includes(PORT_TOKEN)) return value;
+  if (port === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} uses ${PORT_TOKEN}, but the target declares no url to take the port from`,
+    );
+  }
+  return value.replaceAll(PORT_TOKEN, String(port));
+}
+
+/**
+ * The command with `{port}` expanded in every `args` entry and `env` value.
+ * Malformed shapes pass through untouched for `validateCommand` to name.
+ */
+function expandCommandPort<T extends CommandConfig>(command: T, label: string, expand: PortExpander): T {
+  if (typeof command !== 'object' || command === null) return command;
+  const { args, env } = command;
+  return {
+    ...command,
+    ...(Array.isArray(args)
+      ? { args: args.map((arg) => (typeof arg === 'string' ? expand(arg, `${label}.args`) : arg)) }
+      : {}),
+    ...(typeof env === 'object' && env !== null
+      ? {
+          env: Object.fromEntries(
+            Object.entries(env).map(([key, value]) => [
+              key,
+              typeof value === 'string' ? expand(value, `${label}.env.${key}`) : value,
+            ]),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -240,22 +339,31 @@ function serviceName(service: ServiceConfig, position: string, taken: Set<string
  * command; `reuseExisting` stays on it, and only a `readyUrl` service may set it.
  * `projectRoot` anchors each `log` path; `prefix` names the declaring target
  * in errors, so a failing service is traceable to the engine that declared it.
+ * `expand` substitutes `{port}` in each service's args, env, readiness URL,
+ * and teardown; the default leaves values as written.
  */
 export function resolveServices(
   raw: EngineAppDeclaration['services'],
   projectRoot: string,
   prefix = 'app.services',
+  expand: PortExpander = (value) => value,
 ): readonly ResolvedService[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
     throw new ConfigurationError('INVALID_CONFIG', `${prefix} must be an array`);
   }
   const names = new Set<string>();
-  return raw.map((service: ServiceConfig, index): ResolvedService => {
+  return raw.map((declaredService: ServiceConfig, index): ResolvedService => {
     const position = `${prefix}[${index}]`;
+    const service = expandCommandPort(declaredService, position, expand);
     validateCommand(service, position, projectRoot);
-    const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown, ...command } = service;
-    const readyUrl = httpUrl(rawReadyUrl, `${position}.readyUrl`);
+    const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown: declaredTeardown, ...command } = service;
+    const readyUrl = httpUrl(
+      rawReadyUrl === undefined ? undefined : expand(rawReadyUrl, `${position}.readyUrl`),
+      `${position}.readyUrl`,
+    );
+    const teardown =
+      declaredTeardown === undefined ? undefined : expandCommandPort(declaredTeardown, `${position}.teardown`, expand);
     if ((readyUrl !== undefined) === (waitForExit === true)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',

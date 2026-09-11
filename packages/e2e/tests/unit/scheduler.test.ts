@@ -34,6 +34,7 @@ const defaultOptions: ResolvedTestOptions = {
 
 const EMPTY_APP: ResolvedTarget['app'] = {
   base: undefined,
+  portRequest: undefined,
   allowedOrigins: [],
   environment: 'test',
   identity: undefined,

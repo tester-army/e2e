@@ -401,6 +401,12 @@ export interface Locator extends Screen {
 }
 
 export interface App {
+  /**
+   * The resolved base URL of the target's app, with the port the run
+   * allocated when the engine declared port 0; undefined for a surface whose
+   * engine declares no `url`.
+   */
+  readonly baseUrl: string | undefined;
   /** Opens the app: the declared URL, a path relative to it, or an absolute URL within the allowed origins. */
   open(path?: string): Promise<void>;
   /** Recreates the execution context while preserving persisted state. */

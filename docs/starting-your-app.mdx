@@ -85,6 +85,29 @@ and `args` are passed verbatim. `startupTimeout` (default 60 s) bounds the
 wait for `url`; set `readyUrl` when the health endpoint is not the base URL.
 Every option is in the [config reference](/reference/config#command).
 
+### Let the runner pick the port
+
+Two checkouts of one project cannot both start on port 3000. Declare the
+`url` with port `0` on the loopback address the command binds, and the runner
+picks a free port before anything spawns. The command must take it through
+`{port}` in `args` or `env`; a dev server left on its default port never
+answers where the runner probes.
+
+```ts
+engine: playwright({
+  url: 'http://127.0.0.1:0',
+  command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } },
+}),
+```
+
+Tests read the allocated URL from `app.baseUrl`, and the trace cache keys on
+the declared `:0`, so entries survive the port changing. The port is free when
+chosen and handed to the command a moment later; another process grabbing it
+in between fails the start with `APP_UNREACHABLE`, which a rerun resolves.
+`localhost:0` is rejected, because the name may resolve to another address
+than the one the command binds: write `127.0.0.1` or `[::1]`. Details are in
+the [config reference](/reference/config#free-ports).
+
 ## Start dependencies first
 
 A database, a migration, an auth emulator: declare them as `services`. They

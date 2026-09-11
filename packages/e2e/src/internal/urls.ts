@@ -41,6 +41,40 @@ export function normalizeBaseUrl(raw: string): NormalizedBaseUrl {
       `plain HTTP is allowed only for loopback hosts: ${raw}`,
     );
   }
+  if (url.port === '0' && !isLoopbackAddress(url.hostname)) {
+    throw new ConfigurationError(
+      'INVALID_APP_URL',
+      `port 0 asks the run for a free port and takes only the loopback address the command will bind, 127.0.0.1 or [::1]; a name like localhost may resolve to another one: ${raw}`,
+    );
+  }
+  return { href: url.href, origin: url.origin, basePath: url.pathname };
+}
+
+/**
+ * True for a literal loopback address, `127.x.x.x` or `[::1]`. A free port is
+ * free on one address family only, so a port-0 URL must name the address the
+ * command binds rather than a name that may resolve to either.
+ */
+function isLoopbackAddress(hostname: string): boolean {
+  return hostname === '[::1]' || /^127(\.\d{1,3}){3}$/.test(hostname);
+}
+
+/** True when the URL was declared with port 0: the run picks a free port on its address and substitutes it. */
+export function requestsFreePort(base: NormalizedBaseUrl): boolean {
+  return new URL(base.href).port === '0';
+}
+
+/** The port the base URL is served on: the explicit one, else the scheme's default. */
+export function portOf(base: NormalizedBaseUrl): number {
+  const url = new URL(base.href);
+  if (url.port !== '') return Number(url.port);
+  return url.protocol === 'https:' ? 443 : 80;
+}
+
+/** The base URL re-serialized on another port; everything else is kept. */
+export function withPort(base: NormalizedBaseUrl, port: number): NormalizedBaseUrl {
+  const url = new URL(base.href);
+  url.port = String(port);
   return { href: url.href, origin: url.origin, basePath: url.pathname };
 }
 

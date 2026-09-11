@@ -433,6 +433,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint
     });
 
   return {
+    baseUrl: target.app.base?.href,
     open: (openPath?: string) => navigate('app.open', openPath ?? '/', openPath),
     async restart(): Promise<void> {
       await steps.run('app', 'app.restart', '', async () => {
