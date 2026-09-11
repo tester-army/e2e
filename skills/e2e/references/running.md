@@ -3,14 +3,14 @@
 ## Commands
 
 ```bash
-npx --no-install e2e run [files...] [options]   # run tests
-npx --no-install e2e explore [goal] [options]   # explore the app toward a goal, no test file (see the explore topic)
-npx --no-install e2e list [files...] [options]  # print what run would select, without running
-npx --no-install e2e init [--yes]               # scaffold a project, refresh the agent skill
-npx --no-install e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, explore, debugging, mcp
-npx --no-install e2e cache ls|clear|stats       # read or empty the trace cache
-npx --no-install e2e mcp [--target <name>]      # serve the project to a coding agent over MCP (topic mcp)
-npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the switch
+npx e2e run [files...] [options]   # run tests
+npx e2e explore [goal] [options]   # explore the app toward a goal, no test file (see the explore topic)
+npx e2e list [files...] [options]  # print what run would select, without running
+npx e2e init [--yes]               # scaffold a project, refresh the agent skill
+npx e2e guide [topic]              # print this skill: setup, writing-tests, agent, running, explore, debugging, mcp
+npx e2e cache ls|clear|stats       # read or empty the trace cache
+npx e2e mcp [--target <name>]      # serve the project to a coding agent over MCP (topic mcp)
+npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the switch
 ```
 
 `run` flags:
@@ -33,11 +33,11 @@ npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: sta
 | `--video` | Record every attempt (WebM on a browser engine, MP4 on a device engine) under its artifact directory; the failure recap names the file. Fails with `UNSUPPORTED_ARTIFACT` when the engine cannot record. |
 
 ```bash
-npx --no-install e2e run tests/signup.e2e.ts
-npx --no-install e2e run signup.e2e.ts        # the same file by name, from any directory the config globs cover
-npx --no-install e2e run tests/agent --tag smoke
-npx --no-install e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
-CI=1 npx --no-install e2e run   # reproduce the CI defaults locally
+npx e2e run tests/signup.e2e.ts
+npx e2e run signup.e2e.ts   # the same file by name, from any directory the config globs cover
+npx e2e run tests/agent --tag smoke
+npx e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
+CI=1 npx e2e run            # reproduce the CI defaults locally
 ```
 
 `list` takes the same files and the selection flags (`--config`, `--target`,
@@ -47,8 +47,8 @@ app, an engine, or a worker. `--reporter json` prints `{ "pairs": [...] }`.
 Use it to check a filter before a run.
 
 ```bash
-npx --no-install e2e list --tag smoke
-npx --no-install e2e list tests/signup.e2e.ts --reporter json
+npx e2e list --tag smoke
+npx e2e list tests/signup.e2e.ts --reporter json
 ```
 
 A `package.json` script keeps it short: `"test:e2e": "e2e run"`, then
@@ -137,7 +137,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: npx playwright install chromium --with-deps
-      - run: npx --no-install e2e run --reporter list,junit
+      - run: npx e2e run --reporter list,junit
         env:
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
           E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}

@@ -7,10 +7,10 @@ test. It needs a config with a target and an agent that holds a model,
 nothing else.
 
 ```bash
-npx --no-install e2e explore                                         # goal: "Explore the app and find bugs"
-npx --no-install e2e explore 'Explore checkout like a first-time buyer and report anything off'
-npx --no-install e2e explore --target web --max-steps 4 --headed
-npx --no-install e2e explore 'Hunt for broken forms' --video
+npx e2e explore   # goal: "Explore the app and find bugs"
+npx e2e explore 'Explore checkout like a first-time buyer and report anything off'
+npx e2e explore --target web --max-steps 4 --headed
+npx e2e explore 'Hunt for broken forms' --video
 ```
 
 ## What a run does

@@ -24,7 +24,7 @@ export const MCP_LOCATIONS = [
 const MCP_SERVER_NAME = 'e2e';
 
 /** How every client starts the server: the project's own e2e, never a fetched one. */
-const SERVER_ENTRY = { command: 'npx', args: ['--no-install', 'e2e', 'mcp'] } as const;
+const SERVER_ENTRY = { command: 'npx', args: ['e2e', 'mcp'] } as const;
 
 export interface McpRegistration {
   /** Project-relative file, e.g. `.mcp.json`. */

@@ -69,8 +69,8 @@ nothing.
 ## Watch it happen
 
 ```bash
-npx --no-install e2e run --headed          # a visible browser
-npx --no-install e2e run --video           # requires an engine that records video
+npx e2e run --headed          # a visible browser
+npx e2e run --video           # requires an engine that records video
 ```
 
 `--video` requires recording support from every selected engine; an engine
@@ -87,9 +87,9 @@ in the config to record attempts in CI and keep only recordings from failures.
 Three flags look inside an agent step:
 
 ```bash
-npx --no-install e2e run --debug     # timings and a step table on stderr
-npx --no-install e2e run --ai-trace  # every model call, for a trace viewer
-npx --no-install e2e run --no-cache  # run the agent live instead of replaying
+npx e2e run --debug     # timings and a step table on stderr
+npx e2e run --ai-trace  # every model call, for a trace viewer
+npx e2e run --no-cache  # run the agent live instead of replaying
 ```
 
 `--debug` appends two tables after the reporter's output: phase timings for

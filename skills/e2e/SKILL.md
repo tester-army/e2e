@@ -56,7 +56,7 @@ test('a member upgrades to Pro', async ({ app, agent, screen, web }) => {
 
 Read the topic for the job before writing code. The files sit next to this
 one. Without them, the installed CLI prints the same text:
-`npx --no-install e2e guide <topic>` (`e2e guide` alone prints this page).
+`npx e2e guide <topic>` (`e2e guide` alone prints this page).
 
 | Topic | File | Read it when |
 | --- | --- | --- |
@@ -81,7 +81,7 @@ one. Without them, the installed CLI prints the same text:
    exact names and check a locator before you write it.
 3. Write `tests/<feature>.e2e.ts`. Deterministic steps first. One `agent.act`
    per goal where the flow varies, and an `expect` on its outcome right after.
-4. Run one file: `npx --no-install e2e run tests/<feature>.e2e.ts`. Agent
+4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent
    steps need a model in the config and its provider's key in the environment
    (`AI_GATEWAY_API_KEY` for `gateway()`); deterministic tests need neither.
 5. Read the failure: the reporter prints the error code, the message, and a
@@ -90,8 +90,7 @@ one. Without them, the installed CLI prints the same text:
 
 ## Rules
 
-- Run the CLI as `npx --no-install e2e ...` (or `pnpm exec e2e ...`), so npx
-  never fetches a different package.
+- Run the CLI as `npx e2e ...` (or `pnpm exec e2e ...`).
 - The config is `export default { ... } satisfies E2EConfig` with
   `import type { E2EConfig } from '@e2edev/e2e'`. `targets` is required and
   each target names its engine. The engine declares the app:

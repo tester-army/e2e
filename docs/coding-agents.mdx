@@ -10,7 +10,7 @@ writing a test. `e2e init` installs the skill and registers the MCP server.
 ## The skill
 
 ```bash
-npx --no-install e2e init
+npx e2e init
 ```
 
 | Path | Read by | Content |
@@ -23,7 +23,7 @@ and the list of topics. An agent reads a topic file only when it needs it.
 Re-running `init` after an upgrade refreshes the copies.
 
 Without `init`, `npx skills add tester-army/e2e` installs the skill from the
-repository, and `npx --no-install e2e guide [topic]` prints it from the
+repository, and `npx e2e guide [topic]` prints it from the
 installed package.
 
 `init` does not touch `AGENTS.md`, `CLAUDE.md`, or Cursor rules. Agents that
@@ -46,7 +46,7 @@ session's catalog by name.
 `.cursor/mcp.json` for Cursor. To register it with Claude Code by hand:
 
 ```bash
-claude mcp add e2e -- npx --no-install e2e mcp
+claude mcp add e2e -- npx e2e mcp
 ```
 
 See the [MCP server reference](/reference/mcp) for its tools, session rules,
@@ -77,8 +77,6 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
 
 The rules the skill states, and why each is there:
 
-- `npx --no-install e2e`, never `npx e2e`. The bare form fetches whatever
-  package is called `e2e` on npm when the runner is not installed locally.
 - One `agent.act` per goal, followed by an `expect`. The assertion makes the
   step's cache entry eligible for replay, and it is what fails when the agent
   did the wrong thing.
@@ -90,7 +88,7 @@ The rules the skill states, and why each is there:
 ## How an agent runs it
 
 ```bash
-npx --no-install e2e run tests/checkout.e2e.ts
+npx e2e run tests/checkout.e2e.ts
 ```
 
 Run one file while iterating. With no executor configured, acquiring `agent`

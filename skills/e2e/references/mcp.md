@@ -12,14 +12,14 @@ The server ships with `@e2edev/e2e`. `e2e init` offers to register it; by
 hand:
 
 ```bash
-claude mcp add e2e -- npx --no-install e2e mcp          # Claude Code
+claude mcp add e2e -- npx e2e mcp   # Claude Code
 ```
 
 Or declare it in the client's project config (`.mcp.json` for Claude Code,
 `.cursor/mcp.json` for Cursor, `.vscode/mcp.json` for VS Code):
 
 ```json
-{ "mcpServers": { "e2e": { "command": "npx", "args": ["--no-install", "e2e", "mcp"] } } }
+{ "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
 Flags: `--config <path>` names the default config file, `--target <name>`
@@ -65,7 +65,7 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
    `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`.
 3. Write `tests/<feature>.e2e.ts` (topic `writing-tests`). Deterministic steps
    where you saw exact names; `agent.act` where the flow varies.
-4. Run it from the shell: `npx --no-install e2e run tests/<feature>.e2e.ts`,
+4. Run it from the shell: `npx e2e run tests/<feature>.e2e.ts`,
    read the failure (topic `debugging`), fix, repeat.
 5. `close_session` when you are done exploring; an idle session closes on its
    own after 30 minutes and never outlives 4 hours. To look at another

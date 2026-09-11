@@ -122,8 +122,8 @@ changeset lands on `main`, the release workflow opens a `chore: version
 packages` pull request that applies the pending changesets. Merging that PR
 re-runs the full gate, publishes the new versions, and creates the matching
 GitHub release. The `e2e` CLI binary keeps its unscoped name; the unscoped
-`e2e` package on npmjs is a placeholder the team reserved, so run it as
-`npx --no-install e2e`.
+`e2e` package on npmjs is a placeholder the team reserved so that nobody
+else can claim the bin name.
 
 ### Release channels
 

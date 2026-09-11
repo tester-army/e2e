@@ -22,8 +22,8 @@ npx @e2edev/e2e@beta init       # npm
 pnpm dlx @e2edev/e2e@beta init  # pnpm
 ```
 
-When `@e2edev/e2e` is already installed, run `npx --no-install e2e init`
-instead, so the installed version scaffolds.
+When `@e2edev/e2e` is already installed, run `npx e2e init` instead, so the
+installed version scaffolds.
 
 The wizard asks for the engine (Web with Playwright by default; Mobile with
 agent-device and None are the alternatives), which model gateway agent steps
@@ -248,7 +248,7 @@ export default {
 
 ## Done when
 
-- `npx --no-install e2e run tests/example.e2e.ts` passes against the app.
+- `npx e2e run tests/example.e2e.ts` passes against the app.
 - `package.json` has a script such as `"test:e2e": "e2e run"`.
 - `.gitignore` lists the `.e2e/` outputs (init adds them). Committing
   `.e2e/cache/` is opt-in: remove that line to share `agent.act` replays.

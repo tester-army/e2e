@@ -31,7 +31,7 @@ describe('the bundled agent skill', () => {
     const overview = readGuide(undefined) ?? '';
     expect(overview.startsWith('# e2e')).toBe(true);
     expect(overview).not.toContain('\n---\n');
-    expect(overview).toContain('npx --no-install e2e guide <topic>');
+    expect(overview).toContain('npx e2e guide <topic>');
     for (const topic of skillTopics()) {
       const text = readGuide(topic) ?? '';
       expect(text.startsWith('# ')).toBe(true);
@@ -41,9 +41,9 @@ describe('the bundled agent skill', () => {
     expect(readGuide('../SKILL')).toBeUndefined();
   });
 
-  it('never documents a bare npx e2e', () => {
+  it('runs the installed CLI as npx e2e, without --no-install or the scoped package name', () => {
     for (const file of readSkillFiles()) {
-      expect(file.content, file.relative).not.toMatch(/npx e2e\b/);
+      expect(file.content, file.relative).not.toMatch(/--no-install/);
       expect(file.content, file.relative).not.toMatch(/npx @e2edev\/e2e (run|guide)\b/);
     }
   });

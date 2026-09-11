@@ -14,7 +14,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const ENTRY = { command: 'npx', args: ['--no-install', 'e2e', 'mcp'] };
+const ENTRY = { command: 'npx', args: ['e2e', 'mcp'] };
 
 describe('planMcpRegistration', () => {
   it('creates each missing file with the e2e server entry', () => {

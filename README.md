@@ -17,7 +17,7 @@ test('user can sign up', async ({ app, agent }) => {
 
 ```bash
 pnpm add -D @e2edev/e2e @e2edev/playwright playwright
-AI_GATEWAY_API_KEY=... npx --no-install e2e run
+AI_GATEWAY_API_KEY=... npx e2e run
 ```
 
 Deterministic suites using `screen`, `app`, `web`, and `expect` need no model.
@@ -61,7 +61,7 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 
 `e2e init` installs an agent skill into `.agents/skills/` and
 `.claude/skills/`, and `npx skills add tester-army/e2e` installs it
-anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
+anywhere else. Without it, `npx e2e guide` prints the same text.
 See [Coding agents](https://e2e.mintlify.app/coding-agents).
 
 `e2e mcp` opens a live session on the app for a coding agent over MCP, with

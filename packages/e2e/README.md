@@ -10,7 +10,7 @@ pnpm dlx @e2edev/e2e init
 ## Usage
 
 ```bash
-APP_URL=http://localhost:3000 npx --no-install e2e run
+APP_URL=http://localhost:3000 npx e2e run
 ```
 
 Init adds the runner to `devDependencies`, offers Playwright or agent-device
@@ -168,8 +168,8 @@ read a failing run. `npx skills add tester-army/e2e` installs the same skill
 from the repository. An agent without it can print the text:
 
 ```bash
-npx --no-install e2e guide                # the overview and the topic list
-npx --no-install e2e guide writing-tests  # one topic
+npx e2e guide                # the overview and the topic list
+npx e2e guide writing-tests  # one topic
 ```
 
 ## Current limitations

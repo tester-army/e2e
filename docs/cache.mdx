@@ -14,7 +14,7 @@ The cache is on by default. Turn it off per run to check whether a failure
 comes from the recording rather than the app:
 
 ```bash
-npx --no-install e2e run --no-cache
+npx e2e run --no-cache
 ```
 
 ## When a step is recorded
@@ -125,9 +125,9 @@ The file store names entries by digest, so the directory listing says nothing.
 The CLI inspects and clears file-store entries only:
 
 ```bash
-npx --no-install e2e cache ls
-npx --no-install e2e cache stats
-npx --no-install e2e cache clear
+npx e2e cache ls
+npx e2e cache stats
+npx e2e cache clear
 ```
 
 ```text

@@ -46,14 +46,14 @@ An entry takes one of three shapes:
 Without a flag, tests run as `default`. `--agent` re-points them:
 
 ```bash
-npx --no-install e2e run --agent thorough tests/checkout.e2e.ts
+npx e2e run --agent thorough tests/checkout.e2e.ts
 ```
 
 Several names run every unpinned test once per agent, a whole-suite sweep
 without touching a file:
 
 ```bash
-npx --no-install e2e run --agent buyer,admin
+npx e2e run --agent buyer,admin
 ```
 
 ## Pin an agent in the suite

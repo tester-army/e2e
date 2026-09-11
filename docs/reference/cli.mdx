@@ -4,16 +4,16 @@ description: e2e init, guide, mcp, run, explore, list, cache, and telemetry, fla
 ---
 
 ```bash
-npx --no-install e2e init [directory]
-npx --no-install e2e guide [topic]
-npx --no-install e2e mcp [options]
-npx --no-install e2e run [files...] [options]
-npx --no-install e2e explore [goal] [options]
-npx --no-install e2e list [files...] [options]
-npx --no-install e2e cache ls|clear|stats [--config <path>]
-npx --no-install e2e telemetry [status|enable|disable]
-npx --no-install e2e --help
-npx --no-install e2e --version
+npx e2e init [directory]
+npx e2e guide [topic]
+npx e2e mcp [options]
+npx e2e run [files...] [options]
+npx e2e explore [goal] [options]
+npx e2e list [files...] [options]
+npx e2e cache ls|clear|stats [--config <path>]
+npx e2e telemetry [status|enable|disable]
+npx e2e --help
+npx e2e --version
 ```
 
 The CLI needs Node.js 22.12 or newer and says so, naming both versions, before
@@ -27,7 +27,7 @@ it loads anything else on an older runtime.
 | `-v`, `--version` | Prints the installed `@e2edev/e2e` version, nothing else, and exits 0. |
 
 ```console
-$ npx --no-install e2e --version
+$ npx e2e --version
 0.11.0
 ```
 
@@ -78,14 +78,14 @@ needs the Android SDK and an emulator. See [Testing iOS and Android](/mobile).
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | The agent skill: `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic, in the directories selected in the wizard |
 
 ```bash
-npx --no-install e2e init --yes
+npx e2e init --yes
 ```
 
 The installer uses the project's `packageManager` field or lockfile, then the
 invoking package manager, falling back to npm. Declining installation still
 saves the dependencies to `package.json`, and the closing `next:` line starts
 with the install command, followed by the run command for the engine:
-`APP_URL=http://localhost:3000 npx --no-install e2e run` for Playwright.
+`APP_URL=http://localhost:3000 npx e2e run` for Playwright.
 Device setup runs without `APP_URL`. When the project has no
 `tsconfig.json`, `init` prints a one-line suggestion to add one.
 
@@ -108,8 +108,8 @@ names the flag instead of waiting for input that never comes.
 ## e2e guide
 
 ```bash
-npx --no-install e2e guide            # the overview
-npx --no-install e2e guide setup      # one topic
+npx e2e guide            # the overview
+npx e2e guide setup      # one topic
 ```
 
 Prints the skill that `init` installs: how to add e2e to a project, write
@@ -127,7 +127,7 @@ an agent uses it.
 ## e2e mcp
 
 ```bash
-npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
+npx e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
 Serves a project's live app to a coding agent over the Model Context
@@ -220,7 +220,7 @@ per-phase split, model calls, tokens, and the gateway's cost when it reported
 one. A run without agent steps prints the timings alone.
 
 ```console
-$ npx --no-install e2e run --debug
+$ npx e2e run --debug
 ...
 [e2e debug] phase timings (wall 14.2s)
   phase               count   total     avg     max
@@ -248,13 +248,13 @@ run (`12.4k tokens · 38% cached · $0.01`), and the report records it per step
 (`usage.modelCachedTokens`).
 
 ```bash
-npx --no-install e2e run
-npx --no-install e2e run tests/signup.e2e.ts --tag smoke
-npx --no-install e2e run tests/agent
-npx --no-install e2e run 'tests/**/*.smoke.e2e.ts'
-npx --no-install e2e run --target web,webkit --tag smoke --tag billing --tag-mode all
-npx --no-install e2e run --reporter json --workers 4 --retries 2
-npx --no-install e2e run --reporter list,junit
+npx e2e run
+npx e2e run tests/signup.e2e.ts --tag smoke
+npx e2e run tests/agent
+npx e2e run 'tests/**/*.smoke.e2e.ts'
+npx e2e run --target web,webkit --tag smoke --tag billing --tag-mode all
+npx e2e run --reporter json --workers 4 --retries 2
+npx e2e run --reporter list,junit
 ```
 
 ### Output
@@ -349,10 +349,10 @@ Exit codes: `0` when steps ran and no finding of kind `issue` was reported,
 Ctrl-C.
 
 ```bash
-npx --no-install e2e explore
-npx --no-install e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
-npx --no-install e2e explore --target web --max-steps 4 --headed
-npx --no-install e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
+npx e2e explore
+npx e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
+npx e2e explore --target web --max-steps 4 --headed
+npx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 ```
 
 ## e2e list
@@ -381,10 +381,10 @@ Pairs that a tag, target, or platform filter removed are not listed; they are
 not part of the run either.
 
 ```bash
-npx --no-install e2e list
-npx --no-install e2e list tests/signup.e2e.ts
-npx --no-install e2e list --tag smoke --target web
-npx --no-install e2e list --reporter json
+npx e2e list
+npx e2e list tests/signup.e2e.ts
+npx e2e list --tag smoke --target web
+npx e2e list --reporter json
 ```
 
 ## e2e cache
@@ -403,10 +403,10 @@ absent store, because a cache nobody has filled yet is not an error.
 | `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
 
 ```bash
-npx --no-install e2e cache ls
-npx --no-install e2e cache stats
-npx --no-install e2e cache clear
-npx --no-install e2e cache ls --config packages/web/e2e.config.ts
+npx e2e cache ls
+npx e2e cache stats
+npx e2e cache clear
+npx e2e cache ls --config packages/web/e2e.config.ts
 ```
 
 ```text
@@ -443,9 +443,9 @@ names your config declares; [Telemetry](/telemetry) lists every property.
 | `e2e telemetry enable` | Saves the opt-in and prints the status. A variable set in the environment still wins, and the status says so. |
 
 ```bash
-npx --no-install e2e telemetry
-npx --no-install e2e telemetry disable
-E2E_TELEMETRY_DEBUG=1 npx --no-install e2e run
+npx e2e telemetry
+npx e2e telemetry disable
+E2E_TELEMETRY_DEBUG=1 npx e2e run
 ```
 
 `E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` turn telemetry off for one

@@ -264,7 +264,8 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   scope (`e2e` -> `@e2edev/e2e`; entry points follow the name). Provenance
   is off (npm only attests public packages) and the release job authenticates
   with the `NPM_TOKEN` secret. The unscoped `e2e` on npmjs is a placeholder
-  the team reserved: never document a bare `npx e2e`, always
-  `npx --no-install e2e`.
+  the team reserved so the bin name cannot be claimed by anyone else. Document
+  the CLI as `npx e2e`; npx runs the locally installed bin first, and the
+  flag `--no-install` adds nothing once the package is a dependency.
 - Private packages are skipped entirely by changesets (`privatePackages: false`),
   so `@e2edev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.

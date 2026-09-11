@@ -40,7 +40,7 @@ jobs:
     steps:
       # ...checkout, install, browsers
       - name: Run e2e
-        run: npx --no-install e2e run --reporter list,junit
+        run: npx e2e run --reporter list,junit
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Upload artifacts

@@ -283,7 +283,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('mcp')
     .summary('serve the project to a coding agent over MCP')
     .description(
-      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add e2e -- npx --no-install e2e mcp.',
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add e2e -- npx e2e mcp.',
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
@@ -292,7 +292,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       'after',
       [
         '',
-        examples(['e2e mcp', 'e2e mcp --target web --headless', 'claude mcp add e2e -- npx --no-install e2e mcp']),
+        examples(['e2e mcp', 'e2e mcp --target web --headless', 'claude mcp add e2e -- npx e2e mcp']),
         '',
         docsLine('/reference/mcp'),
       ].join('\n'),

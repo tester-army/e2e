@@ -494,7 +494,7 @@ describe('e2e guide', () => {
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
     expect(written(stdoutSpy).startsWith('# e2e')).toBe(true);
-    expect(written(stdoutSpy)).toContain('npx --no-install e2e guide <topic>');
+    expect(written(stdoutSpy)).toContain('npx e2e guide <topic>');
   });
 
   it('prints one topic', async () => {

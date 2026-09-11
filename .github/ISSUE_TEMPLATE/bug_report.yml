@@ -25,7 +25,7 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: Output of `npx --no-install e2e --version`, plus the engine package version and Node version.
+      description: Output of `npx e2e --version`, plus the engine package version and Node version.
       placeholder: "@e2edev/e2e 0.5.0, @e2edev/playwright 0.5.0, node 26.1"
     validations:
       required: true

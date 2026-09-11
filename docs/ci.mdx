@@ -38,7 +38,7 @@ jobs:
 
       # list keeps the log readable; junit writes .e2e/junit.xml for the CI test summary.
       - name: Run e2e
-        run: npx --no-install e2e run --reporter list,junit
+        run: npx e2e run --reporter list,junit
         env:
           APP_URL: http://127.0.0.1:3000
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
@@ -68,9 +68,8 @@ jobs:
 
 Actions are pinned to commit SHAs. A tag is mutable, and a workflow with
 repository secrets is the wrong place to run code that can change under you.
-`--no-install` makes `npx` fail rather than fetch a mutable version from the
-registry; with `--frozen-lockfile`, the runner, the engine, and the browser
-all come from your lockfile.
+With `--frozen-lockfile`, the runner, the engine, and the browser all come
+from your lockfile, and `npx e2e` runs that installed copy.
 
 Point your CI's test summary at `.e2e/junit.xml` and failures show up as test
 results instead of a red step. A startup failure such as `APP_UNREACHABLE`
@@ -80,7 +79,7 @@ request, add the [GitHub reporter](/github).
 ## What CI changes
 
 CI mode is on when the `CI` variable is set and is not empty, `0`, or `false`.
-That is the only signal, so `CI=1 npx --no-install e2e run` reproduces CI
+That is the only signal, so `CI=1 npx e2e run` reproduces CI
 behavior locally.
 
 | Setting | Local | CI | Why |
@@ -94,7 +93,7 @@ behavior locally.
 Override any of them when you mean it:
 
 ```bash
-npx --no-install e2e run --workers 4 --retries 0
+npx e2e run --workers 4 --retries 0
 ```
 
 [Telemetry](/telemetry) attributes CI runs to the vendor rather than to a
@@ -108,7 +107,7 @@ passes the key the provider package reads:
 
 ```yaml
       - name: Run agentic suite
-        run: npx --no-install e2e run --config e2e.agent.config.ts
+        run: npx e2e run --config e2e.agent.config.ts
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 ```

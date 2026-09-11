@@ -4,7 +4,7 @@ description: Give a coding agent a live session on the app, with the testing age
 ---
 
 ```bash
-npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
+npx e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
 `e2e mcp` is an MCP server over stdio for a coding agent such as Claude Code
@@ -32,7 +32,7 @@ offers to register it in `.mcp.json` (Claude Code) and `.cursor/mcp.json`
 (Cursor); a later `init` refreshes the files that exist. By hand:
 
 ```bash
-claude mcp add e2e -- npx --no-install e2e mcp
+claude mcp add e2e -- npx e2e mcp
 ```
 
 Every client that reads a project-level MCP config takes the same entry:
@@ -40,7 +40,7 @@ Every client that reads a project-level MCP config takes the same entry:
 ```json
 {
   "mcpServers": {
-    "e2e": { "command": "npx", "args": ["--no-install", "e2e", "mcp"] }
+    "e2e": { "command": "npx", "args": ["e2e", "mcp"] }
   }
 }
 ```

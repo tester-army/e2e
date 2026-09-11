@@ -26,7 +26,7 @@ export default {
 ```
 
 ```bash
-AI_GATEWAY_API_KEY=... npx --no-install e2e run
+AI_GATEWAY_API_KEY=... npx e2e run
 ```
 
 - The model is always an AI SDK instance the config constructs; the runner
@@ -205,8 +205,8 @@ state is not on screen after the replay.
 ## Inspect what the model did
 
 ```bash
-npx --no-install e2e run tests/checkout.e2e.ts --debug      # step table, transcripts as artifacts
-npx --no-install e2e run tests/checkout.e2e.ts --ai-trace   # writes .e2e/ai-trace.json
+npx e2e run tests/checkout.e2e.ts --debug      # step table, transcripts as artifacts
+npx e2e run tests/checkout.e2e.ts --ai-trace   # writes .e2e/ai-trace.json
 npx unbox-ai runs .e2e/ai-trace.json                        # one line per agent step
 npx unbox-ai summary .e2e/ai-trace.json --run 0             # turns, tokens, tool calls of one step
 ```

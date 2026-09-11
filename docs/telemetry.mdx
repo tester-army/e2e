@@ -13,12 +13,12 @@ leaves the machine.
 Any one of these turns it off:
 
 ```bash
-npx --no-install e2e telemetry disable   # saved in ~/.config/e2e/telemetry.json
+npx e2e telemetry disable   # saved in ~/.config/e2e/telemetry.json
 export E2E_TELEMETRY_DISABLED=1          # for a shell or a CI job
 export DO_NOT_TRACK=1                    # the cross-tool convention
 ```
 
-`npx --no-install e2e telemetry` prints the status and, when it is off, why.
+`npx e2e telemetry` prints the status and, when it is off, why.
 `enable` reverses a saved `disable`; a variable set in the environment still
 wins. A `disable` takes effect at once, even for a command already running in
 another terminal: every command reads the file again before it sends.
@@ -26,7 +26,7 @@ another terminal: every command reads the file again before it sends.
 ## See what would be sent
 
 ```bash
-E2E_TELEMETRY_DEBUG=1 npx --no-install e2e run
+E2E_TELEMETRY_DEBUG=1 npx e2e run
 ```
 
 prints every event to stderr as `[telemetry] {...}` and sends nothing. What you

@@ -224,7 +224,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     clack.log.success(`${registration.existing ? 'updated' : 'created'} ${registration.relative} (e2e mcp server)`);
   }
   if (mcpFiles.length === 0) {
-    clack.log.info('skipped the MCP server; register it later with: claude mcp add e2e -- npx --no-install e2e mcp');
+    clack.log.info('skipped the MCP server; register it later with: claude mcp add e2e -- npx e2e mcp');
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';

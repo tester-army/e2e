@@ -74,8 +74,8 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts')).toContain("await expect(web.locator('body')).toBeVisible();");
     expect(read('tests/example.e2e.ts')).toContain('// test(');
     expect(read('tests/example.e2e.ts')).not.toContain('fetch(');
-    expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['--no-install', 'e2e', 'mcp'] } } });
-    expect(JSON.parse(read('.cursor/mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['--no-install', 'e2e', 'mcp'] } } });
+    expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
+    expect(JSON.parse(read('.cursor/mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(read('.gitignore')).toContain('.e2e/cache/');
@@ -467,7 +467,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npm exec e2e guide');
-    expect(output()).toContain('claude mcp add e2e -- npx --no-install e2e mcp');
+    expect(output()).toContain('claude mcp add e2e -- npx e2e mcp');
   });
 
   it('is idempotent', async () => {
