@@ -122,6 +122,14 @@ export interface StepAgentDetails {
   visionOnly?: boolean;
 }
 
+/** Every model record a step carries: the executor's, then the vision model's when the step made vision calls. */
+export function stepModels(step: {
+  readonly model?: StepModelInfo | undefined;
+  readonly visionModel?: StepModelInfo | undefined;
+}): StepModelInfo[] {
+  return [step.model, step.visionModel].filter((model): model is StepModelInfo => model !== undefined);
+}
+
 export interface StepRecord {
   id: string;
   index: number;

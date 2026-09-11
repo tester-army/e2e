@@ -28,6 +28,7 @@ import type {
   StepRecord,
   VisionDegradation,
 } from '../run/steps.ts';
+import { stepModels } from '../run/steps.ts';
 
 export interface ReportSource {
   file: string;
@@ -568,8 +569,7 @@ function computeUsage(options: {
       usage.maxModelCallsInStep = Math.max(usage.maxModelCallsInStep, metrics.modelCalls);
       usage.maxActionStepsInStep = Math.max(usage.maxActionStepsInStep, metrics.actionSteps);
     }
-    for (const model of [step.model, step.visionModel]) {
-      if (model === undefined) continue;
+    for (const model of stepModels(step)) {
       usage.modelTokens = Math.min(Number.MAX_SAFE_INTEGER, usage.modelTokens + model.inputTokens + model.outputTokens);
       if (model.cacheReadTokens !== undefined) {
         cachedTokens = Math.min(Number.MAX_SAFE_INTEGER, (cachedTokens ?? 0) + model.cacheReadTokens);

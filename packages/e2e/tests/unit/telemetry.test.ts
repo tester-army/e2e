@@ -486,6 +486,20 @@ describe('telemetry events', () => {
     expect(properties['model_id']).toBe('gpt-5.4-mini');
   });
 
+  it("counts a step's vision model calls alongside the executor's", () => {
+    const report = sampleReport();
+    const [first] = report.run.results[0]!.attempts[0]!.steps;
+    const executorCalls = (first as { model: { calls: number } }).model.calls;
+    const before = runCompletedEvent(report, []).properties['model_calls'] as number;
+    (first as { visionModel?: unknown }).visionModel = {
+      ...(first as { model: object }).model,
+      model: 'grounding-pro',
+      calls: 2,
+    };
+    expect(runCompletedEvent(report, []).properties['model_calls']).toBe(before + 2);
+    expect(executorCalls).toBeGreaterThan(0);
+  });
+
   it('folds a fine-tuned or routed model id into other', () => {
     const report = sampleReport();
     const [first] = report.run.results[0]!.attempts[0]!.steps;
