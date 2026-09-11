@@ -441,9 +441,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
     // Several run agents have no one model to name; each step names its own.
     ...(config.agentNames.length !== 1 || config.agent.model === undefined ? {} : { model: modelLabel(config.agent.model) }),
-    ...(config.agentNames.length !== 1 || config.agent.visionModel === undefined
-      ? {}
-      : { visionModel: modelLabel(config.agent.visionModel) }),
   });
 
   const executeRun = async (): Promise<void> => {

@@ -767,8 +767,6 @@ export interface AgentConfig {
   executor?: StepExecutor;
   /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
-  /** Model used by calls with `vision`; falls back to `model`. */
-  visionModel?: ModelInstance;
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;

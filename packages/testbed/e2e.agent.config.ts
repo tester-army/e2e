@@ -51,11 +51,6 @@ export default {
       // The drawn keypad flow is one step of a dozen taps, each a model turn.
       maxSteps: 40,
       maxModelCalls: 60,
-      // Visual grounding is a much higher bar than accepting an image, so the
-      // vision tier is pinned on its own: an `E2E_MODEL` override that brings a
-      // cheaper model for planning keeps a model that points at the right pixel
-      // for the calls that carry pixels.
-      visionModel: gateway(process.env.E2E_VISION_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       context: [
         'This is the e2e playground app: a small multi-page site with todos,',
         'forms, a sign-in flow, a workspace wizard, and release notes.',

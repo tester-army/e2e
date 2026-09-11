@@ -99,53 +99,43 @@ export function installFakeModel(
   options: { modelId?: string } = {},
 ): ModelInstance {
   fakeCalls.length = 0;
-  return createFakeModel(responder, options);
-}
-
-/**
- * Builds one more scripted model sharing the same call log, for tests that pin
- * a second model such as `agent.visionModel`.
- */
-export function createFakeModel(
-  responder: FakeResponder,
-  instance: { modelId?: string } = {},
-): ModelInstance {
-  const modelId = instance.modelId ?? 'scripted';
+  const modelId = options.modelId ?? 'scripted';
   return createScriptedInstance(
     'fake',
     modelId,
-    async (options: {
+    async (request: {
       prompt: FakePrompt;
       responseFormat?: { type: string; name?: string; schema?: unknown } | undefined;
       maxOutputTokens?: number | undefined;
       temperature?: number | undefined;
       providerOptions?: unknown;
     }) => {
-      const system = promptText(options.prompt, 'system');
-      const prompt = promptText(options.prompt, 'user');
+      const system = promptText(request.prompt, 'system');
+      const prompt = promptText(request.prompt, 'user');
       const observation = section(prompt, 'observation');
       const parsed: FakeCall = {
         modelId,
-        schemaName: options.responseFormat?.name ?? inferSchemaName(prompt),
+        schemaName: request.responseFormat?.name ?? inferSchemaName(prompt),
         system,
         prompt,
         instruction: section(prompt, 'instruction').trim(),
         observation,
         revision: promptRevision(prompt),
         lines: observation.split('\n').filter((line) => line.trim() !== ''),
-        images: promptImages(options.prompt),
+        images: promptImages(request.prompt),
         settings: {
-          maxOutputTokens: options.maxOutputTokens,
-          temperature: options.temperature,
-          providerOptions: options.providerOptions,
+          maxOutputTokens: request.maxOutputTokens,
+          temperature: request.temperature,
+          providerOptions: request.providerOptions,
         },
       };
       fakeCalls.push(parsed);
-      const raw = enforceRequestSchema(responder(parsed), options.responseFormat?.schema);
+      const raw = enforceRequestSchema(responder(parsed), request.responseFormat?.schema);
       return scriptedResult([{ type: 'text' as const, text: JSON.stringify(raw) }], 'stop');
     },
   );
 }
+
 
 /** Concatenates the text of every prompt message with the given role. */
 function promptText(prompt: FakePrompt, role: string): string {

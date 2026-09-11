@@ -51,21 +51,9 @@ describe('agent config defaults', () => {
     expect(() => resolve({ agents: { default: { vision: 1 } } } as never)).toThrow(/agents\.default\.vision/);
   });
 
-  it('resolves a separate vision model, defaulting to none', () => {
-    expect(resolve({}).agent.visionModel).toBeUndefined();
-    const config = resolve({
-      agents: { default: { model: fakeModel('fake', 'text'), visionModel: fakeModel('fake', 'grounding') } },
-    });
-    expect(config.agent.model).toMatchObject({ provider: 'fake', id: 'text' });
-    expect(config.agent.visionModel).toMatchObject({ provider: 'fake', id: 'grounding' });
-  });
-
-  it('names agent.visionModel in its own diagnostics', () => {
-    expect(() => resolve({ agents: { default: { visionModel: 'nope' } } } as never)).toThrow(
-      /agents\.default\.visionModel must be an AI SDK model instance, not the string "nope"/,
-    );
-    expect(() => resolve({ agents: { default: { visionModel: { id: 'x' } } } } as never)).toThrow(
-      /agents\.default\.visionModel must be an AI SDK model instance/,
+  it('rejects visionModel, the key the removed judgment model tier used', () => {
+    expect(() => resolve({ agents: { default: { visionModel: fakeModel('fake', 'grounding') } } } as never)).toThrow(
+      /unknown agents\.default key "visionModel"/,
     );
   });
 

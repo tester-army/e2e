@@ -76,11 +76,6 @@ export type RunEventFact =
        * absent when none is configured or the run names several agents.
        */
       readonly model?: string;
-      /**
-       * The model calls with `vision` use, in the same form; absent when
-       * `agent.visionModel` is unset and pixels go to `model`.
-       */
-      readonly visionModel?: string;
     }
   | {
       /**

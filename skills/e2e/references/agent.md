@@ -42,7 +42,6 @@ AI_GATEWAY_API_KEY=... npx --no-install e2e run
   lazily and fails without it.
 - `context` in the config and `agentContext` on a test or group add trusted
   project vocabulary to every prompt.
-- `visionModel` serves judgments that send pixels; the act loop's screenshots go to `model`.
 - The model passed to `createAgent({ model })` is the one model for every
   `agent.*` call, `act` and the judgments alike.
   An agent `model` naming a different model is `INVALID_CONFIG`.

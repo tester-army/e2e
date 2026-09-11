@@ -28,7 +28,7 @@ export default {
 
 An entry takes one of three shapes:
 
-- **An options block.** `model`, `context`, `visionModel`, `vision`,
+- **An options block.** `model`, `context`, `vision`,
   `maxSteps`, `maxModelCalls`, `providerOptions`. This runs the built-in
   agent with those settings.
 - **`createAgent(...)`.** The built-in agent with a `system` prompt and your
@@ -37,11 +37,9 @@ An entry takes one of three shapes:
   composed with the model and budget options.
 
 `context` is a sentence or two of project vocabulary that reaches every
-`agent.*` call. `system` on `createAgent` shapes how the agent works.
-`visionModel` pins a separate model for judgments that carry pixels
-(`vision` on `assert`, `waitFor`, `extract`); the act loop shows screenshots
-to its own `model`. The [config reference](/reference/config#agents) lists
-every key.
+`agent.*` call. `system` on `createAgent` shapes how the agent works. One
+`model` serves every call, screenshots included, so it has to accept images.
+The [config reference](/reference/config#agents) lists every key.
 
 ## Pick an agent per run
 

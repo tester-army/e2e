@@ -44,7 +44,6 @@ import {
   type ModelAdapter,
   type ModelImage,
 } from './model/adapter.ts';
-import type { ModelRouter } from './model/router.ts';
 import { pixelsForModel, prepareObservation, type AgentObservation } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import type { ProtocolValidation } from './protocol.ts';
@@ -67,8 +66,8 @@ export interface AgentSelection {
    * default path keeps the optimized single-judgment tier.
    */
   readonly customExecutor: boolean;
-  /** Chooses the model for a call; a vision call may use a pinned one. */
-  readonly models: ModelRouter;
+  /** The adapter over the agent's model, built on first use. */
+  readonly model: () => ModelAdapter;
   /** Trusted project context: the agent's `context` then test/group agentContext. */
   readonly agentContext: string | undefined;
 }
@@ -184,9 +183,8 @@ export class Invocation {
     return this.runtime.engine.session;
   }
 
-  /** The model this invocation talks to: the pinned vision model when it sends pixels. */
   private get adapter(): ModelAdapter {
-    return this.agent.models.select(this.pixelTier);
+    return this.agent.model();
   }
 
   /**

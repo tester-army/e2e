@@ -80,7 +80,7 @@ writer and an ISO `at` timestamp.
 
 ```ts
 type RunEventFact =
-  | { type: 'run-started'; runId; projectId; projectRoot; artifactsRoot; ci; targets; agents?; model?; visionModel? }
+  | { type: 'run-started'; runId; projectId; projectRoot; artifactsRoot; ci; targets; agents?; model? }
   | { type: 'plan'; total; files: { file; target; tests }[] }
   | { type: 'notice'; target; message }
   | { type: 'setup'; step: SetupStep; state: 'started' }

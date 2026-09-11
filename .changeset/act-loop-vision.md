@@ -22,5 +22,7 @@ a trace gap. The executor socket gains `actions.tapAt(point)` with the same
 routing and `pixelsTainted`; the engine contract gains an optional
 `tapAt(point, context)` with the `pointer` capability and the `tapAt` grammar
 verb, and pins `SemanticNode.rect` to the top-level viewport's CSS pixels for
-nodes inside nested documents too. `visionModel` now serves judgments only.
+nodes inside nested documents too. `agent.visionModel` is gone: the act model reads
+screenshots itself, so it is multimodal by requirement, and the judgments
+send their pixels to the same `model`.
 Steps that sent pixels record `visionInput` and `metrics.pixelBytes`.

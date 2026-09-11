@@ -47,12 +47,6 @@ export interface ResolvedAgentConfig {
   readonly executor: StepExecutor | undefined;
   /** Undefined until a model is configured; acquiring `agent` then fails. */
   readonly model: ResolvedModel | undefined;
-  /**
-   * Model used by calls with `vision`. Visual grounding is a much higher bar
-   * than accepting an image, so the tier that needs it can be pinned
-   * separately. Undefined falls back to `model`.
-   */
-  readonly visionModel: ResolvedModel | undefined;
   readonly maxSteps: number;
   readonly maxModelCalls: number;
   readonly maxObservationBytes: number;
@@ -81,7 +75,6 @@ export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 const AGENT_KEYS = new Set([
   'executor',
   'model',
-  'visionModel',
   'maxSteps',
   'maxModelCalls',
   'maxObservationBytes',
@@ -170,7 +163,6 @@ export function resolveAgentConfig(
   return {
     executor,
     model: resolveCanonicalModel(agent?.model, executor?.model, label),
-    visionModel: resolveModel(agent?.visionModel, `${label}.visionModel`),
     maxSteps,
     maxModelCalls,
     maxObservationBytes,
@@ -294,9 +286,8 @@ function resolveCanonicalModel(
 }
 
 /**
- * Resolves one model slot. `label` is a parameter because the same check
- * serves `agent.model` and `agent.visionModel`; every diagnostic then names
- * the key the author actually wrote. There is no implicit default model and
+ * Resolves the model slot; `label` names the key the author wrote, so every
+ * diagnostic points at it. There is no implicit default model and
  * no environment fallback; an unconfigured model fails at its first model
  * call, so a custom-executor run needs none.
  */

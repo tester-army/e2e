@@ -4,7 +4,6 @@ import { createAgentFixture } from '../agent/index.ts';
 import type { AgentContext, AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
-import { createModelRouter } from '../agent/model/router.ts';
 import type { WorkerModels } from './worker-models.ts';
 import type { EngineFixtureContext } from '../engine/index.ts';
 import type { TargetSession } from '../engine/surface.ts';
@@ -165,7 +164,11 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       config: resolved,
       executor: resolved.executor ?? lazyDefaultExecutor(),
       customExecutor: resolved.executor !== undefined,
-      models: createModelRouter(resolved, environment.models.build),
+      // Built on first use: a run whose `agent.act()` steps go to a custom
+      // executor may have no model at all and must not fail on a
+      // MODEL_UNAVAILABLE it would never hit; a judgment still fails with it
+      // on its first call.
+      model: lazily(() => environment.models.build(resolved.model)),
       agentContext: joinAgentContext(resolved.context, environment.agentContext),
     };
     selections.set(name, selection);
@@ -460,4 +463,10 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint
       });
     },
   };
+}
+
+/** Builds a value on first read and keeps it. */
+function lazily<T>(build: () => T): () => T {
+  let built: { value: T } | undefined;
+  return () => (built ??= { value: build() }).value;
 }

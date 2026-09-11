@@ -7,7 +7,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import {
-  createFakeModel,
   fakeCalls,
   installFakeModel,
   judgment,
@@ -43,12 +42,6 @@ test('fails pixels-only rather than judging the tree after a secret fill', async
   await screen.getByLabel('Password').fill(credentials.user('member').password);
   await agent.assert('the password field looks filled', { vision: 'only' });
 });
-
-test('routes a vision call to the pinned vision model', async ({ app, agent }) => {
-  await app.open();
-  await agent.assert('the page has a heading', { vision: true });
-  await agent.assert('the page has a heading');
-});
 `;
 
 function respond(call: FakeCall): unknown {
@@ -64,14 +57,13 @@ describe('agent vision (judgments)', () => {
   beforeAll(async () => {
     app = await startFixtureApp();
     const model = installFakeModel(respond, { modelId: 'scripted-text' });
-    const visionModel = createFakeModel(respond, { modelId: 'scripted-grounding' });
     const run = await runProject(
       { 'tests/vision.e2e.ts': SUITE },
       {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agents: { default: { model, visionModel } },
+          agents: { default: { model } },
           credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
         },
       },
@@ -180,26 +172,5 @@ describe('agent vision (judgments)', () => {
     expect(step.visionInput).toBeUndefined();
     // Nothing was asked of the model: the tree was never an acceptable answer.
     expect(step.metrics!.modelCalls).toBe(0);
-  });
-
-  it('sends a vision call to the pinned vision model and others to the main one', () => {
-    const title = 'routes a vision call to the pinned vision model';
-    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
-    const [visionStep, plainStep] = attempt.steps.filter((step) => step.api === 'agent.assert');
-    expect(visionStep!.visionInput).toBe(true);
-    expect(visionStep!.model!.model).toBe('scripted-grounding');
-    expect(plainStep!.visionInput).toBeUndefined();
-    expect(plainStep!.model!.model).toBe('scripted-text');
-  });
-
-  it('carries the image to the vision model, not the main one', () => {
-    const visionCall = fakeCalls.find(
-      (call) => call.instruction === 'the page has a heading' && call.images.length > 0,
-    )!;
-    expect(visionCall.modelId).toBe('scripted-grounding');
-    const plainCall = fakeCalls.find(
-      (call) => call.instruction === 'the page has a heading' && call.images.length === 0,
-    )!;
-    expect(plainCall.modelId).toBe('scripted-text');
   });
 });

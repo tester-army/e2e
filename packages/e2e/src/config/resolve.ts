@@ -804,7 +804,6 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
                 : {
                     ...entry,
                     ...(isModelInstance(entry.model) ? { model: modelIdentity(entry.model) } : {}),
-                    ...(isModelInstance(entry.visionModel) ? { visionModel: modelIdentity(entry.visionModel) } : {}),
                   },
             ]),
           ),

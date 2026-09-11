@@ -345,8 +345,7 @@ export class ListReporter implements Reporter {
     if (event.ci) details.push('CI');
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {
-      const vision = event.visionModel === undefined ? '' : ` · vision ${bounded(event.visionModel)}`;
-      this.models = `${bounded(event.model)}${vision}`;
+      this.models = bounded(event.model);
       this.output.write(BADGE_PADDING + pc.dim(`model ${this.models}`));
     }
     this.output.write('');

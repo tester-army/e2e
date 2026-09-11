@@ -232,8 +232,8 @@ are billed as input tokens. `act` has no such option; its pixel path is the
 | `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
 
 Set `vision` on the agent in config to make a mode the project default; a
-per-call value wins. Calls that send pixels use the agent's `visionModel`
-when set, and its `model` otherwise, and keep it for the whole invocation.
+per-call value wins. Pixels go to the agent's `model`, the same one the act
+loop shows its screenshots to.
 
 <Warning>
 **Use `'only'` for questions about what the page presents**

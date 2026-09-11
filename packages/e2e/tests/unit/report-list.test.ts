@@ -117,7 +117,7 @@ function serialGroup(
 }
 
 function runStarted(
-  overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string; visionModel?: string } = {},
+  overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string } = {},
 ): RunEventFact {
   const projectRoot = overrides.projectRoot ?? '/project';
   return {
@@ -129,7 +129,6 @@ function runStarted(
     ci: overrides.ci ?? false,
     targets: overrides.targets ?? ['chromium'],
     ...(overrides.model === undefined ? {} : { model: overrides.model }),
-    ...(overrides.visionModel === undefined ? {} : { visionModel: overrides.visionModel }),
   };
 }
 
@@ -259,12 +258,6 @@ describe('ListReporter', () => {
     const bare = capture();
     plainReporter(bare.output).handle(runStarted());
     expect(bare.lines.some((line) => line.includes('model'))).toBe(false);
-  });
-
-  it('names a separate vision model next to the text model', () => {
-    const { lines, output } = capture();
-    plainReporter(output).handle(runStarted({ model: 'openai/gpt-5.6-luna-fast', visionModel: 'google/gemini-3-flash' }));
-    expect(lines[3]).toBe('      model openai/gpt-5.6-luna-fast · vision google/gemini-3-flash');
   });
 
   it('omits the CI marker outside CI', () => {
@@ -744,31 +737,6 @@ describe('ListReporter', () => {
       expect(lines).toContain(' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms ai 12.4k tokens · $0.0123');
       expect(lines).toContain('   ✓ suite > case 120ms ai 12.4k tokens · $0.0123');
       expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls · openai/gpt-5.6-luna-fast');
-    });
-
-    it('names both models on the AI row when vision calls go to a separate model', () => {
-      const { lines, output } = capture();
-      const reporter = plainReporter(output);
-      reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast', visionModel: 'google/gemini-3-flash' }));
-      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
-      const step = {
-        id: 's',
-        index: 0,
-        kind: 'agent',
-        api: 'agent.act',
-        label: 'do it',
-        status: 'passed',
-        startedAt: new Date(0).toISOString(),
-        durationMs: 10,
-        events: [],
-        artifacts: [],
-        model: { calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
-      } as unknown as AttemptRecord['steps'][number];
-      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
-      reporter.handle(runFinished({ reportPath: 'r.json' }));
-      expect(lines).toContain(
-        '         AI  12.4k tokens · $0.0123 · 3 model calls · openai/gpt-5.6-luna-fast · vision google/gemini-3-flash',
-      );
     });
 
     it('leaves the model off the AI row when none is configured', () => {
