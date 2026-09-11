@@ -5,6 +5,7 @@ import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 import type { ExecutorNode, ExecutorPixels } from './executor.ts';
+import { sizeForModel } from './pixels.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
@@ -131,7 +132,9 @@ export function pixelsForModel(
   if (observation.pixels === undefined) {
     return { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' };
   }
-  return { pixels: observation.pixels };
+  // Sized here, once per observation a model receives, not per capture: the
+  // settle loop captures several times per action and only digests the bytes.
+  return { pixels: { ...sizeForModel(observation.pixels), maskedRegionCount: observation.pixels.maskedRegionCount } };
 }
 
 /**

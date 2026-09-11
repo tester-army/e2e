@@ -63,6 +63,7 @@
     "@vitest/expect": "5.0.0",
     "commander": "15.0.0",
     "picocolors": "1.1.1",
+    "pngjs": "7.0.0",
     "tsx": "4.23.13",
     "zod": "4.6.1"
   },
@@ -79,6 +80,7 @@
     "@e2edev/playwright": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.0.0",
     "@types/node": "26.4.1",
+    "@types/pngjs": "6.0.5",
     "ai": "7.0.97",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",

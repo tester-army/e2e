@@ -104,7 +104,11 @@ the model never spends a turn discovering that it needs one; any screen with
 a listed control opens tree-only and the model asks when the tree falls
 short. Older screenshots are elided from the conversation in batches, keeping
 the newest two, so a long flow in pixel mode carries a bounded number of
-images. Both tools are offered only while no secret has been filled in the
+images, and each is resampled to a long side of at most 768 pixels before it
+goes to the model: on a drawn keypad and a drawn wizard that size kept every
+run passing at a third less cost than the full capture, and 512 did not.
+Coordinates the model returns are in that image; the harness scales them
+back. Both tools are offered only while no secret has been filled in the
 attempt, since pixels are withheld from then on (`PIXEL_TAINTED`); `tap_at`
 needs an engine that can tap by node (`perform`) or by point (`tapAt`, the
 `pointer` capability, which the Playwright and agent-device engines declare),

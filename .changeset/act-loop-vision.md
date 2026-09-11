@@ -9,8 +9,11 @@ given in that screenshot's pixel coordinates. The act model receives the image
 itself, so nothing is lost in a description and no second model call is spent
 on a localizer. Once a screenshot was sent the step is in pixel mode: every
 action result carries a fresh screenshot, and older screenshots are elided
-from the conversation in batches, keeping the newest two, so a long flow on a
-canvas carries a bounded number of images. A screen that lists nothing to act
+from the conversation in batches, keeping the newest two, and each is
+resampled to a long side of at most 768 pixels, so a long flow on a canvas
+carries a bounded number of images at a third of the full capture's cost.
+While the step shows pixels, the wait after an action watches the pixels too,
+so a tap that redraws a canvas is read as soon as the redraw lands. A screen that lists nothing to act
 on by id opens with a screenshot already attached. `tap_at` is routed onto the
 tree: a listed control under the point is tapped by id through the ordinary
 `tap` path, policy and trace descriptor included; a point on nothing listed is

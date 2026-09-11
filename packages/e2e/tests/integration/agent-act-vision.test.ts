@@ -53,20 +53,20 @@ function actModel(call: LoopCall) {
   ];
   const calls = call.toolResults.length;
   if (call.prompt.includes('pick the red pin')) {
-    // The red pin is drawn at (300, 60) on a canvas fixed at the viewport origin.
+    // The red pin is drawn at CSS (300, 60); the model taps in the 768-wide screenshot, 0.6 image px per CSS px.
     if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
-    if (calls === 1) return [{ toolName: 'tap_at', input: { x: 300, y: 60 } }];
+    if (calls === 1) return [{ toolName: 'tap_at', input: { x: 180, y: 36 } }];
     return conclude('passed');
   }
   if (call.prompt.includes('press the reset button')) {
-    // The Reset button is fixed at left 0, top 260, 100 by 30.
+    // The Reset button is fixed at left 0, top 260, 100 by 30: CSS (50, 275) is image (30, 165).
     if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
-    if (calls === 1) return [{ toolName: 'tap_at', input: { x: 50, y: 275 } }];
+    if (calls === 1) return [{ toolName: 'tap_at', input: { x: 30, y: 165 } }];
     return conclude('passed');
   }
   if (call.prompt.includes('pick the blue pin on the bare map')) {
-    // The opening prompt carried the screenshot: the blue pin is at (80, 140) with no screenshot call.
-    return calls === 0 ? [{ toolName: 'tap_at', input: { x: 80, y: 140 } }] : conclude('passed');
+    // The opening prompt carried the screenshot: the blue pin at CSS (80, 140) is image (48, 84), no screenshot call.
+    return calls === 0 ? [{ toolName: 'tap_at', input: { x: 48, y: 84 } }] : conclude('passed');
   }
   if (call.prompt.includes('tap blind')) {
     return calls === 0 ? [{ toolName: 'tap_at', input: { x: 300, y: 60 } }] : conclude('failed');
@@ -149,7 +149,7 @@ describe('agent.act pixel verbs', () => {
     expect(step.metrics!.modelCalls).toBe(2);
     expect(step.visionInput).toBe(true);
     const [first] = turnsOf('pick the blue pin on the bare map');
-    expect(first!.prompt).toContain('Screenshot attached: 1280 by 720 pixels');
+    expect(first!.prompt).toContain('Screenshot attached: 768 by 432 pixels (0.6 per CSS pixel)');
     // An ordinary page opens tree-only: one listed control is enough to act by id.
     const [home] = turnsOf('tap blind');
     expect(home!.prompt).not.toContain('Screenshot attached');
