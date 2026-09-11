@@ -251,11 +251,14 @@ function assembleTree(
     const raw = nodes[index]!;
     const embedded = frameChildren.get(index);
     // A child document measured its nodes against its own viewport. Shifted by
-    // the boundary element's box, every box in the tree is in the top-level
-    // viewport's CSS pixels, the space the screenshot and a point tap share.
-    // The shift is the frame's border box; a bordered iframe is off by its
-    // border width, which is within a tap target.
-    if (embedded !== undefined) childLists[index]!.unshift(offsetTree(embedded, raw.rect.x, raw.rect.y));
+    // the boundary element's box and clipped to it, every box in the tree is
+    // in the top-level viewport's CSS pixels, the space the screenshot and a
+    // point tap share, and a child that overflows its frame cannot claim a
+    // point over the page around it. The shift is the frame's border box; a
+    // bordered iframe is off by its border width, which is within a tap
+    // target. A frame under a CSS transform is not unwound: its boxes are
+    // where the untransformed frame would put them.
+    if (embedded !== undefined) childLists[index]!.unshift(placeInFrame(embedded, raw.rect));
     const node = toSemanticNode({ id: ids[index]!, revision: '' }, raw, childLists[index]!, framePath);
     built[index] = node;
     if (raw.parent >= 0) childLists[raw.parent]!.unshift(node);
@@ -263,16 +266,29 @@ function assembleTree(
   return built[0]!;
 }
 
-/** The tree with every box translated by (dx, dy); unchanged when the shift is zero. */
-function offsetTree(node: SemanticNode, dx: number, dy: number): SemanticNode {
-  if (dx === 0 && dy === 0) return node;
+type Rect = NonNullable<SemanticNode['rect']>;
+
+/** The tree with every box translated into the frame's space and clipped to its box; a box left empty by the clip is dropped. */
+function placeInFrame(node: SemanticNode, frame: Rect): SemanticNode {
+  const { rect, ...rest } = node;
+  const placed = rect === undefined ? undefined : clipRect(offsetRect(rect, frame), frame);
   return {
-    ...node,
-    ...(node.rect === undefined
-      ? {}
-      : { rect: { x: node.rect.x + dx, y: node.rect.y + dy, width: node.rect.width, height: node.rect.height } }),
-    ...(node.children === undefined ? {} : { children: node.children.map((child) => offsetTree(child, dx, dy)) }),
+    ...rest,
+    ...(placed === undefined ? {} : { rect: placed }),
+    ...(node.children === undefined ? {} : { children: node.children.map((child) => placeInFrame(child, frame)) }),
   };
+}
+
+function offsetRect(rect: Rect, by: Rect): Rect {
+  return { x: rect.x + by.x, y: rect.y + by.y, width: rect.width, height: rect.height };
+}
+
+function clipRect(rect: Rect, bounds: Rect): Rect | undefined {
+  const x = Math.max(rect.x, bounds.x);
+  const y = Math.max(rect.y, bounds.y);
+  const width = Math.min(rect.x + rect.width, bounds.x + bounds.width) - x;
+  const height = Math.min(rect.y + rect.height, bounds.y + bounds.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : undefined;
 }
 
 export function toSemanticNode(
