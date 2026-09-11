@@ -215,7 +215,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     writeFileSync(gitignorePath, `${existingIgnore}${prefix}${missingIgnore.join('\n')}\n`, 'utf8');
     clack.log.success(`updated .gitignore (${missingIgnore.length} entries)`);
     if (missingIgnore.includes(CACHE_IGNORE_ENTRY)) {
-      clack.log.info(`${CACHE_IGNORE_ENTRY} is ignored; committing agent.act replays is opt-in, see ${DOCS_URL}/reference/config#commit-your-traces`);
+      clack.log.info(`${CACHE_IGNORE_ENTRY} is ignored; committing agent.act replays is opt-in, see ${DOCS_URL}/cache#commit-your-traces`);
     }
   }
 
