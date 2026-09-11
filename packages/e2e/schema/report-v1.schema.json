@@ -187,6 +187,7 @@
             "gap",
             "target-not-found",
             "target-ambiguous",
+            "viewport-changed",
             "action-failed",
             "action-uncertain",
             "end-mismatch"

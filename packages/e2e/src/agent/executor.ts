@@ -240,6 +240,8 @@ export type ReplayHandOffReason =
   | 'gap'
   | 'target-not-found'
   | 'target-ambiguous'
+  /** A recorded bare-point tap met a viewport of another size; the point would land elsewhere. */
+  | 'viewport-changed'
   | 'action-failed'
   | 'action-uncertain'
   | 'end-mismatch';

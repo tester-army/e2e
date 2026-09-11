@@ -145,3 +145,45 @@ describe('describeTarget', () => {
     ).toBeUndefined();
   });
 });
+
+describe('TraceRecorder: bare-point taps', () => {
+  const viewport = { width: 1280, height: 720 };
+  const map: SemanticNode = { ref: { id: 'm1', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 100, y: 200, width: 400, height: 200 } };
+
+  it('records the point with its viewport, and where it sat inside the node that contained it', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'tapAt', point: { x: 400, y: 260 }, viewport, under: map });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' });
+    expect(trace?.actions[0]).toEqual({
+      name: 'tapAt',
+      summary: 'tap the point (400, 260) on img "Map"',
+      point: { x: 400, y: 260 },
+      viewport,
+      within: { target: { role: 'img', name: 'Map' }, fx: 0.75, fy: 0.3 },
+    });
+    expect(trace?.truncated).toBeUndefined();
+  });
+
+  it('records a point on nothing listed by the viewport alone, and reads it back', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'tapAt', point: { x: 300, y: 60 }, viewport });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' })!;
+    expect(trace.actions[0]).toEqual({ name: 'tapAt', summary: 'tap the point (300, 60)', point: { x: 300, y: 60 }, viewport });
+    const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
+    expect(entry?.payload.actions[0]).toEqual(trace.actions[0]);
+  });
+
+  it('rejects a stored point tap whose viewport or fraction is malformed', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'tapAt', point: { x: 300, y: 60 }, viewport });
+    const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize({ ...conclusion, startPath: '/canvas' })!)));
+    const broken = (patch: (action: Record<string, unknown>) => void) => {
+      const copy = JSON.parse(JSON.stringify(entry));
+      patch(copy.payload.actions[0]);
+      return readTraceEntry(copy);
+    };
+    expect(broken((action) => { action['viewport'] = { width: 0, height: 720 }; })).toBeUndefined();
+    expect(broken((action) => { action['within'] = { target: { role: 'img' }, fx: 1.5, fy: 0 }; })).toBeUndefined();
+    expect(broken((action) => { action['point'] = { x: 'left', y: 60 }; })).toBeUndefined();
+  });
+});

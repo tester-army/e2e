@@ -17,8 +17,12 @@ so a tap that redraws a canvas is read as soon as the redraw lands. A screen tha
 on by id opens with a screenshot already attached. `tap_at` is routed onto the
 tree: a listed control under the point is tapped by id through the ordinary
 `tap` path, policy and trace descriptor included; a point on nothing listed is
-tapped as a bare point through the engine's new `tapAt` member and recorded as
-a trace gap. The executor socket gains `actions.tapAt(point)` with the same
+tapped as a bare point through the engine's new `tapAt` member. The trace
+cache replays a bare point the way a coordinate-driven tool does, at the same
+point on a viewport of the recorded size or at the same place inside the
+re-found node that contained it, and hands the step to the model when the
+viewport changed (`viewport-changed`) or the node is gone; the recorded end
+state still gates a replay passing on its own. The executor socket gains `actions.tapAt(point)` with the same
 routing and `pixelsTainted`; the engine contract gains an optional
 `tapAt(point, context)` with the `pointer` capability and the `tapAt` grammar
 verb, and pins `SemanticNode.rect` to the top-level viewport's CSS pixels for

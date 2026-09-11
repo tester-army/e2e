@@ -45,7 +45,10 @@ function makeHost(
   paths: (string | undefined)[],
   screens: (readonly SemanticNode[])[] = [[]],
 ): StepCacheHost {
-  const nextScreen = async () => nodeMap((screens.length > 1 ? screens.shift() : screens[0]) ?? []);
+  const nextScreen = async () => ({
+    nodes: nodeMap((screens.length > 1 ? screens.shift() : screens[0]) ?? []),
+    viewport: { width: 1280, height: 720 },
+  });
   return {
     observe: nextScreen,
     observeSettled: nextScreen,
@@ -348,7 +351,7 @@ describe('StepTraceSession', () => {
       observeSettled: async () => {
         looks += 1;
         if (looks > 1) throw new Error('surface went away');
-        return nodeMap([]);
+        return { nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
       },
     };
     const session = makeSession(context, host);
@@ -368,7 +371,7 @@ describe('StepTraceSession', () => {
         observeSettled: async () => {
           looks += 1;
           if (when === 'baseline' || looks > 1) throw new AgentError('CANCELLED', 'the attempt was cancelled');
-          return nodeMap([]);
+          return { nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
         },
       };
       const session = makeSession(context, host);

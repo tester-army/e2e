@@ -129,9 +129,17 @@ export class ActionDispatcher {
           `the point (${String(clamped.x)}, ${String(clamped.y)}) is on nothing the screen lists and this engine taps listed nodes only; tap a node by id instead`,
         );
       }
+      // The node whose box contained the point is the trace's handle on it;
+      // the tree's root is the page itself and follows no layout shift.
+      const under = hit.under === undefined || hit.under.ref.id === observation.tree.ref.id ? undefined : hit.under;
       await this.runActionNow('tapAt', async () => {
         await this.session.tapAt(clamped, this.accounting.actionOperation());
-        return { name: 'tapAt', point: clamped };
+        return {
+          name: 'tapAt',
+          point: clamped,
+          viewport: { width: observation.viewport.width, height: observation.viewport.height },
+          ...(under === undefined ? {} : { under }),
+        };
       });
       return { point: clamped, summary };
     });

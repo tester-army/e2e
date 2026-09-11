@@ -114,9 +114,13 @@ later screenshot (`PIXEL_TAINTED`), and each result says so; `tap_at`
 needs an engine that can tap by node (`perform`) or by point (`tapAt`, the
 `pointer` capability, which the Playwright and agent-device engines declare),
 and on an engine without `tapAt` the point must land on a listed control. A
-bare-point tap is recorded in the trace cache as a gap, so a step that needed
-one does not replay past it. A step that sent pixels records `visionInput:
-true` and `metrics.pixelBytes`.
+bare-point tap replays from the [trace cache](/cache) the way a
+coordinate-driven tool does: the same point on a viewport of the recorded
+size, or, when a listed node contained the point, the same place inside that
+node's live box. A viewport of another size or a node that cannot be re-found
+hands the step to the model, and the recorded end state still has to return
+before a replay passes on its own. A step that sent pixels records
+`visionInput: true` and `metrics.pixelBytes`.
 
 The pixel path asks the act model to ground a point in an image, and models
 differ widely there. Measured on a drawn ten-key keypad and an eight-screen

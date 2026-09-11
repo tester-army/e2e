@@ -32,6 +32,7 @@ import {
   replayTrace,
   verifyAnchors,
   type ObservedNodes,
+  type ObservedScreen,
   type ReplayHost,
   type ReplayOutcome,
 } from './replay.ts';
@@ -245,7 +246,7 @@ export class StepTraceSession {
    * when this step may write.
    */
   private async captureStart(): Promise<void> {
-    if (this.recorder !== undefined) this.startNodes = await probeScreen(this.host);
+    if (this.recorder !== undefined) this.startNodes = (await probeScreen(this.host))?.nodes;
     this.startPath = await this.host.currentPath(this.startNodes);
   }
 
@@ -356,7 +357,7 @@ export class StepTraceSession {
    */
   private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
     if (this.startNodes === undefined || recorder.recordedCount === 0) return;
-    const endNodes = await probeScreen(this.host);
+    const endNodes = (await probeScreen(this.host))?.nodes;
     if (endNodes === undefined) return;
     const endPath = await this.host.currentPath(endNodes);
     const endAnchors = describeAnchors(this.startNodes, endNodes, this.options);
@@ -407,7 +408,7 @@ export class StepTraceSession {
  * stops (timeout, cancellation) are the step's truth even when they land
  * during cache bookkeeping, and propagate.
  */
-async function probeScreen(host: StepCacheHost): Promise<ObservedNodes | undefined> {
+async function probeScreen(host: StepCacheHost): Promise<ObservedScreen | undefined> {
   try {
     return await host.observeSettled();
   } catch (cause) {

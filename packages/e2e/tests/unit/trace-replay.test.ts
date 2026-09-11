@@ -20,8 +20,11 @@ const tapUpgrade: RecordedAction = {
   target: { role: 'button', name: 'Upgrade' },
 };
 
+const VIEWPORT = { width: 1280, height: 720 };
+
 function makeHost(options: {
   nodes?: SemanticNode[];
+  viewport?: { width: number; height: number };
   onAction?: (name: string, detail: unknown) => void | Promise<void>;
   remainingMs?: number;
 }): ReplayHost & { calls: string[]; observations: number } {
@@ -48,7 +51,7 @@ function makeHost(options: {
     observations: 0,
     observe: async () => {
       host.observations += 1;
-      return new Map((options.nodes ?? [upgrade, email]).map((n) => [n.ref.id, n]));
+      return screen(options.nodes ?? [upgrade, email], options.viewport);
     },
     // Settled looks come from the same source; `host.observe` is read at call
     // time so a test may swap the screen sequence in after construction.
@@ -60,6 +63,11 @@ function makeHost(options: {
     testIdAttribute: 'data-testid',
   };
   return host;
+}
+
+/** One observed screen over the given nodes. */
+function screen(nodes: readonly SemanticNode[], viewport = VIEWPORT) {
+  return { nodes: new Map(nodes.map((n) => [n.ref.id, n])), viewport };
 }
 
 describe('verifyAnchors', () => {
@@ -107,7 +115,7 @@ describe('verifyAnchors', () => {
       // Present from the second look on: the effect landed after the last action.
       const list = host.observations >= 3 ? [upgrade, saved] : [upgrade];
       shown = host.observations >= 3;
-      return new Map(list.map((n) => [n.ref.id, n]));
+      return screen(list);
     };
     await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(true);
     expect(shown).toBe(true);
@@ -222,4 +230,50 @@ describe('replayTrace', () => {
       code: 'STEP_BUDGET_EXHAUSTED',
     });
   });
+});
+
+describe('replayTrace: bare-point taps', () => {
+  const pin: RecordedAction = {
+    name: 'tapAt',
+    summary: 'tap the point (300, 60)',
+    point: { x: 300, y: 60 },
+    viewport: VIEWPORT,
+  };
+
+  it('replays the recorded point as given when the viewport is the recorded size', async () => {
+    const points: unknown[] = [];
+    const host = makeHost({ onAction: (name, detail) => void (name === 'tapAt' && points.push(detail)) });
+    const outcome = await replayTrace(host, trace([pin]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(points).toEqual([{ x: 300, y: 60 }]);
+  });
+
+  it('hands off with viewport-changed when the viewport is another size, without tapping', async () => {
+    const host = makeHost({ viewport: { width: 390, height: 844 } });
+    const outcome = await replayTrace(host, trace([pin]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'viewport-changed' });
+    expect(host.calls).toEqual([]);
+  });
+
+  it('follows the node the point was placed in: the same place inside its live box', async () => {
+    const map: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 100, y: 200, width: 400, height: 200 } };
+    const points: unknown[] = [];
+    const host = makeHost({ nodes: [map, email], onAction: (name, detail) => void (name === 'tapAt' && points.push(detail)) });
+    const outcome = await replayTrace(
+      host,
+      trace([{ ...pin, within: { target: { role: 'img', name: 'Map' }, fx: 0.75, fy: 0.3 } }]),
+    );
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    // The recording had the map at (0, 0) with the pin at (300, 60); the live map moved to (100, 200).
+    expect(points).toEqual([{ x: 400, y: 260 }]);
+  });
+
+  it('diverges when the node the point was placed in is gone or has no box', async () => {
+    const boxless: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'img', name: 'Map' };
+    const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
+    const gone = await replayTrace(makeHost({ nodes: [email] }), trace([{ ...pin, within }]));
+    expect(gone).toMatchObject({ completed: false, stopReason: 'target-not-found' });
+    const flat = await replayTrace(makeHost({ nodes: [boxless] }), trace([{ ...pin, within }]));
+    expect(flat).toMatchObject({ completed: false, stopReason: 'target-not-found' });
+  }, 30_000);
 });

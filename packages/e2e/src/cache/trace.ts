@@ -151,6 +151,32 @@ export interface NavigateAction extends ActionBase {
   readonly url: string;
 }
 
+/** A viewport size in CSS pixels, the precondition of a replayed point. */
+export interface TraceViewport {
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * A tap at a bare viewport point, the way a coordinate-driven tool replays:
+ * the same point on the same-sized viewport. When a listed node with a
+ * durable descriptor contained the point, the point's place inside that
+ * node's box is kept too, and replay re-finds the node and taps the same
+ * place in its live box, so a layout shift moves the tap with it. The end
+ * anchors decide whether the tap did what it did the first time.
+ */
+export interface TapAtAction extends ActionBase {
+  readonly name: 'tapAt';
+  readonly point: { readonly x: number; readonly y: number };
+  readonly viewport: TraceViewport;
+  readonly within?: {
+    readonly target: TraceTargetDescriptor;
+    /** The point's place inside the node's box, 0 at the left or top edge and 1 at the right or bottom. */
+    readonly fx: number;
+    readonly fy: number;
+  };
+}
+
 /**
  * A project-tool mutation the grammar cannot reproduce — a gap that ends any
  * replay rather than silently skipping a state change.
@@ -167,6 +193,7 @@ export type RecordedAction =
   | SelectAction
   | ScrollAction
   | NavigateAction
+  | TapAtAction
   | ToolGapAction;
 
 export interface ActionTrace {
@@ -375,11 +402,55 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       const url = readInputText(raw['url']);
       return url === undefined ? undefined : { name: 'navigate', summary, url };
     }
+    case 'tapAt': {
+      const point = readPoint(raw['point']);
+      const viewport = readViewport(raw['viewport']);
+      if (point === undefined || viewport === undefined) return undefined;
+      const within = raw['within'] === undefined ? undefined : readWithin(raw['within']);
+      if (raw['within'] !== undefined && within === undefined) return undefined;
+      return { name: 'tapAt', summary, point, viewport, ...(within === undefined ? {} : { within }) };
+    }
     case 'tool':
       return { name: 'tool', summary };
     default:
       return undefined;
   }
+}
+
+function readPoint(document: unknown): TapAtAction['point'] | undefined {
+  const raw = readObject(document);
+  const x = raw?.['x'];
+  const y = raw?.['y'];
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  return { x, y };
+}
+
+function readViewport(document: unknown): TraceViewport | undefined {
+  const raw = readObject(document);
+  const width = raw?.['width'];
+  const height = raw?.['height'];
+  if (!Number.isInteger(width) || !Number.isInteger(height) || (width as number) <= 0 || (height as number) <= 0) {
+    return undefined;
+  }
+  return { width: width as number, height: height as number };
+}
+
+function readWithin(document: unknown): NonNullable<TapAtAction['within']> | undefined {
+  const raw = readObject(document);
+  const target = raw === undefined ? undefined : readDescriptor(raw['target']);
+  const fx = raw?.['fx'];
+  const fy = raw?.['fy'];
+  if (target === undefined || !isFraction(fx) || !isFraction(fy)) return undefined;
+  return { target, fx, fy };
+}
+
+function isFraction(value: unknown): value is number {
+  return typeof value === 'number' && value >= 0 && value <= 1;
+}
+
+function readObject(document: unknown): Record<string, unknown> | undefined {
+  if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
+  return document as Record<string, unknown>;
 }
 
 const DESCRIPTOR_FIELDS = [

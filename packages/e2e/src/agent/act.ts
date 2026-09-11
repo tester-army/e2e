@@ -29,7 +29,9 @@ import { RUNTIME_CODES, type ExecutorPixels, type StepExecutorContext, type Step
 import type { AgentContext, AgentSelection } from './invocation.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
+import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
+import type { ObservedScreen } from './replay.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
@@ -393,8 +395,8 @@ class ActDispatch {
   /** The cache session's narrow view of this step. */
   private cacheHost(): StepCacheHost {
     return {
-      observe: async () => (await this.feed.observeLatest()).nodes,
-      observeSettled: async () => (await this.feed.observeSettled()).nodes,
+      observe: async () => screenOf(await this.feed.observeLatest()),
+      observeSettled: async () => screenOf(await this.feed.observeSettled()),
       actions: this.dispatcher.actions,
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
@@ -453,4 +455,9 @@ class ActDispatch {
     }
     return this.sdkModel;
   }
+}
+
+/** The replay engine's view of a capture: the nodes, and the viewport a recorded point is checked against. */
+function screenOf(observation: AgentObservation): ObservedScreen {
+  return { nodes: observation.nodes, viewport: { width: observation.viewport.width, height: observation.viewport.height } };
 }

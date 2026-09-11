@@ -147,9 +147,9 @@ returning a pixels-only snapshot (`nodes: []` plus `pixels`) and `tapAt` for
 the taps: a screen that lists nothing opens with its screenshot attached, the
 model names a point in it with `tap_at`, and the harness hands the point to
 `tapAt` when the tree lists nothing there, so a surface with no refs to hand
-out still gets tapped through the grammar. Bare points are recorded as trace
-gaps rather than replayed, so a replay of such a step hands off to the live
-executor at the first bare point; nothing else in the harness changes.
+out still gets tapped through the grammar. Bare points replay as recorded on a
+viewport of the same size, and the recorded end state decides whether the
+replay passes on its own; nothing else in the harness changes.
 
 ### State is a credential
 

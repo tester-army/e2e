@@ -14,8 +14,8 @@
 
 import { anchorsPresent } from '../cache/anchors.ts';
 import { relocateDescriptor, type RelocationResult } from '../cache/relocate.ts';
-import type { ActionTrace, RecordedAction, TraceTargetDescriptor } from '../cache/trace.ts';
-import type { SemanticNode } from '../engine/surface.ts';
+import type { ActionTrace, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
+import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { sleep } from '../internal/time.ts';
 import {
   isRuntimeHardStop,
@@ -33,16 +33,22 @@ const RETRY_TIMEOUT_MS = 15_000;
 /** The nodes of one observation, keyed by their per-observation ids. */
 export type ObservedNodes = ReadonlyMap<string, SemanticNode>;
 
+/** One look at the screen: its nodes, and the viewport they were laid out in. */
+export interface ObservedScreen {
+  readonly nodes: ObservedNodes;
+  readonly viewport: TraceViewport;
+}
+
 /** What the replay engine needs from the dispatch, and nothing more. */
 export interface ReplayHost {
   /** One raw capture, for the looks between retries. */
-  observe(): Promise<ObservedNodes>;
+  observe(): Promise<ObservedScreen>;
   /**
    * One settled capture — the dispatch's own, so a replayed action never
    * lands on a screen still reacting to the previous one, and the pacing can
    * never drift from the executor-facing observe.
    */
-  observeSettled(): Promise<ObservedNodes>;
+  observeSettled(): Promise<ObservedScreen>;
   /** The step's policed action grammar; targets are fresh-observation ids. */
   readonly actions: ExecutorActions;
   readonly signal: AbortSignal;
@@ -76,7 +82,11 @@ type PlannedCall =
       readonly descriptor: TraceTargetDescriptor;
       readonly invoke: (target: ExecutorTarget) => Promise<void>;
     }
-  | { readonly kind: 'free'; readonly invoke: () => Promise<void> };
+  | { readonly kind: 'free'; readonly invoke: () => Promise<void> }
+  /** A bare point, replayed as given once the viewport is the recorded size. */
+  | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport }
+  /** A bare point placed inside a re-found node's live box. */
+  | { readonly kind: 'within'; readonly descriptor: TraceTargetDescriptor; readonly fx: number; readonly fy: number };
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   switch (action.name) {
@@ -118,6 +128,10 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
           };
     case 'navigate':
       return { kind: 'free', invoke: () => actions.navigate(action.url) };
+    case 'tapAt':
+      return action.within === undefined
+        ? { kind: 'point', point: action.point, viewport: action.viewport }
+        : { kind: 'within', descriptor: action.within.target, fx: action.within.fx, fy: action.within.fy };
   }
 }
 
@@ -137,12 +151,33 @@ export async function replayTrace(host: ReplayHost, trace: ActionTrace): Promise
     const planned = planCall(action, host.actions);
     if (planned.kind === 'gap') return stop('gap');
     try {
-      if (planned.kind === 'targeted') {
-        const relocated = await relocate(host, planned.descriptor);
-        if (relocated.kind === 'failed') return stop(relocated.failure);
-        await planned.invoke({ id: relocated.id });
-      } else {
-        await planned.invoke();
+      switch (planned.kind) {
+        case 'targeted': {
+          const relocated = await relocate(host, planned.descriptor);
+          if (relocated.kind === 'failed') return stop(relocated.failure);
+          await planned.invoke({ id: relocated.id });
+          break;
+        }
+        case 'free':
+          await planned.invoke();
+          break;
+        case 'point': {
+          const { viewport } = await host.observeSettled();
+          if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
+            return stop('viewport-changed');
+          }
+          await host.actions.tapAt(planned.point);
+          break;
+        }
+        case 'within': {
+          const relocated = await relocate(host, planned.descriptor);
+          if (relocated.kind === 'failed') return stop(relocated.failure);
+          const box = relocated.node.rect;
+          // A re-found node without a box gives the point nowhere to land.
+          if (box === undefined || box.width <= 0 || box.height <= 0) return stop('target-not-found');
+          await host.actions.tapAt({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
+          break;
+        }
       }
     } catch (cause) {
       if (isReplayFatal(cause, host.signal)) throw cause;
@@ -177,7 +212,7 @@ export async function verifyAnchors(
   if (anchors.length === 0) return true;
   const startedMs = Date.now();
   try {
-    const present = await pollSettled(host, (nodes) =>
+    const present = await pollSettled(host, ({ nodes }) =>
       anchorsPresent(anchors, nodes, host) ? true : undefined,
     );
     if (present === true) return true;
@@ -188,7 +223,7 @@ export async function verifyAnchors(
     const deadline = startedMs + Math.min(waitMs, Math.max(0, host.remainingMs() - END_WAIT_RESERVE_MS));
     while (Date.now() < deadline && !host.signal.aborted) {
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
-      if (anchorsPresent(anchors, await host.observe(), host)) return true;
+      if (anchorsPresent(anchors, (await host.observe()).nodes, host)) return true;
     }
     return false;
   } catch (cause) {
@@ -210,14 +245,21 @@ const END_WAIT_RESERVE_MS = 20_000;
 async function relocate(
   host: ReplayHost,
   descriptor: TraceTargetDescriptor,
-): Promise<RelocationResult> {
+): Promise<Relocated> {
   const options = { redact: host.redact, testIdAttribute: host.testIdAttribute };
-  const settled = await pollSettled(host, (nodes) => {
+  const settled = await pollSettled(host, ({ nodes }): Relocated | undefined => {
     const result = relocateDescriptor(descriptor, nodes, options);
-    return result.kind === 'failed' && result.failure === 'target-not-found' ? undefined : result;
+    if (result.kind === 'failed') return result.failure === 'target-not-found' ? undefined : result;
+    const node = nodes.get(result.id);
+    return node === undefined ? undefined : { kind: 'found', id: result.id, node };
   });
   return settled ?? { kind: 'failed', failure: 'target-not-found' };
 }
+
+/** A relocation with the node it found, for a replay that needs its box. */
+type Relocated =
+  | { readonly kind: 'found'; readonly id: string; readonly node: SemanticNode }
+  | Extract<RelocationResult, { kind: 'failed' }>;
 
 /**
  * Probes a settled observation, then re-probes fresh raw captures on a fixed
@@ -230,12 +272,12 @@ async function relocate(
  */
 async function pollSettled<T>(
   host: ReplayHost,
-  probe: (nodes: ObservedNodes) => T | undefined,
+  probe: (screen: ObservedScreen) => T | undefined,
 ): Promise<T | undefined> {
   const startedMs = Date.now();
-  let nodes = await host.observeSettled();
+  let screen = await host.observeSettled();
   for (let attempt = 0; ; attempt += 1) {
-    const answer = probe(nodes);
+    const answer = probe(screen);
     if (answer !== undefined) return answer;
     const delay = RETRY_DELAYS_MS[attempt];
     if (
@@ -246,7 +288,7 @@ async function pollSettled<T>(
       return undefined;
     }
     await sleep(delay, host.signal);
-    nodes = await host.observe();
+    screen = await host.observe();
   }
 }
 

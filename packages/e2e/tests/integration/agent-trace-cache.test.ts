@@ -680,3 +680,91 @@ describe('trace cache: modes that never write', () => {
     }
   }, 120_000);
 });
+
+const PIN_SUITE = `import { test, expect } from '@e2edev/e2e';
+
+test('picks the red pin', async ({ app, agent, screen }) => {
+  await app.open('/canvas');
+  await agent.act('pick the red pin on the map');
+  await expect(screen.getByRole('status')).toHaveText('red');
+});
+`;
+
+/** Taps the red pin, drawn at CSS (300, 60) on a canvas the tree does not list. No model. */
+function pinExecutor(record: ExecutorRecord): StepExecutor {
+  return {
+    name: 'pin-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      await context.observe();
+      const tapped = await context.actions.tapAt({ x: 300, y: 60 });
+      return { status: 'passed', summary: tapped.summary };
+    },
+  };
+}
+
+describe('trace cache: a bare-point tap replays like a coordinate-driven tool', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const records: ExecutorRecord[] = [];
+
+  const options = () => {
+    const record: ExecutorRecord = { calls: 0, prefixes: [] };
+    records.push(record);
+    return {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        reporters: ['json'] as const,
+        agents: { default: pinExecutor(record) },
+        cache: 'read-write' as const,
+      },
+    };
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/pin.e2e.ts': PIN_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('records the point with its viewport and replays it zero-turn on the same-sized viewport', async () => {
+    const first = await runExisting(project, options());
+    expect(first.exitCode).toBe(0);
+    const { document } = readOnlyEntry(project);
+    expect(document.payload.actions).toEqual([
+      { name: 'tapAt', summary: 'tap the point (300, 60)', point: { x: 300, y: 60 }, viewport: { width: 1280, height: 720 } },
+    ]);
+    expect(document.payload.endAnchors).toContainEqual({ role: 'status', name: 'Hit', text: 'red' });
+
+    const second = await runExisting(project, options());
+    expect(second.exitCode).toBe(0);
+    expect(records.at(-1)!.calls).toBe(0);
+    const step = resultByTitle(second, 'picks the red pin').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
+    expect(step.events.filter((event) => event.kind === 'engine').map((event) => event.name)).toEqual(['tapAt']);
+  }, 240_000);
+
+  it('hands the step to the executor when the recorded viewport is not the live one', async () => {
+    const { file, document } = readOnlyEntry(project);
+    document.payload.actions[0].viewport = { width: 390, height: 844 };
+    writeFileSync(file, JSON.stringify(document, null, 2), 'utf8');
+
+    const outcome = await runExisting(project, options());
+    expect(outcome.exitCode).toBe(0);
+    const record = records.at(-1)!;
+    expect(record.calls).toBe(1);
+    // Nothing replayed, so the executor starts from the top with no prefix; the miss carries the reason.
+    expect(record.prefixes[0]).toBeUndefined();
+    const step = resultByTitle(outcome, 'picks the red pin').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'missed', reason: 'viewport-changed', replayedActions: 0, totalActions: 1 });
+    // The pass re-stages the entry with the live viewport: healed.
+    expect(readOnlyEntry(project).document.payload.actions[0]).toMatchObject({ viewport: { width: 1280, height: 720 } });
+  }, 240_000);
+});

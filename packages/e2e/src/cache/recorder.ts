@@ -167,10 +167,23 @@ export class TraceRecorder {
         };
       case 'navigate':
         return { name: 'navigate', summary, url: this.verbatim(action.url) };
-      case 'tapAt':
-        // A bare point is this screen's geometry, not something replay can
-        // re-find; recorded as a gap, the same way a project-tool mutation is.
-        return { name: 'tool', summary };
+      case 'tapAt': {
+        // The point replays as given on a same-sized viewport. When a listed
+        // node with a durable descriptor contained it, its place inside that
+        // node's box is kept too, so replay can follow the node instead.
+        const box = action.under?.rect;
+        const within =
+          target === undefined || box === undefined || box.width <= 0 || box.height <= 0
+            ? undefined
+            : { target, fx: fraction((action.point.x - box.x) / box.width), fy: fraction((action.point.y - box.y) / box.height) };
+        return {
+          name: 'tapAt',
+          summary,
+          point: action.point,
+          viewport: { width: action.viewport.width, height: action.viewport.height },
+          ...(within === undefined ? {} : { within }),
+        };
+      }
     }
   }
 
@@ -194,4 +207,9 @@ export class TraceRecorder {
     }
     this.actions.push(action);
   }
+}
+
+/** A place inside a box as a fraction of its side, clamped to the box and rounded so the entry stays small. */
+function fraction(value: number): number {
+  return Math.round(Math.min(1, Math.max(0, value)) * 10_000) / 10_000;
 }
