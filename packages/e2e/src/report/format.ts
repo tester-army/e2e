@@ -201,6 +201,63 @@ export function usageText(usage: AiUsage): string | undefined {
   return `${formatTokens(usage.tokens)} tokens${cached}${cost}`;
 }
 
+/**
+ * How the trace cache handled a run's agent steps, by step: replayed whole
+ * with no model turn, replayed in part before the model took over, or missed.
+ * A run with the cache off records no cache detail and tallies nothing.
+ */
+export interface CacheTally {
+  replayed: number;
+  handedOff: number;
+  missed: number;
+}
+
+export function emptyCacheTally(): CacheTally {
+  return { replayed: 0, handedOff: 0, missed: 0 };
+}
+
+export function addCacheTally(into: CacheTally, counts: CacheTally): void {
+  into.replayed += counts.replayed;
+  into.handedOff += counts.handedOff;
+  into.missed += counts.missed;
+}
+
+/** The trace cache's part in several step lists, by step. */
+export function stepsCacheTally(stepLists: readonly (readonly StepRecord[])[]): CacheTally {
+  const counts = emptyCacheTally();
+  for (const steps of stepLists) {
+    for (const step of steps) {
+      switch (step.cache?.mode) {
+        case 'self-finalized':
+          counts.replayed += 1;
+          break;
+        case 'agent-concluded':
+          counts.handedOff += 1;
+          break;
+        case 'missed':
+          counts.missed += 1;
+          break;
+        case undefined:
+          break;
+      }
+    }
+  }
+  return counts;
+}
+
+/**
+ * `9 replayed · 2 handed off · 4 missed`, zero counts left out, or undefined
+ * when no step went through the trace cache.
+ */
+export function cacheText(pc: Colors, counts: CacheTally): string | undefined {
+  const parts = [
+    counts.replayed > 0 ? pc.green(`${counts.replayed} replayed`) : undefined,
+    counts.handedOff > 0 ? pc.yellow(`${counts.handedOff} handed off`) : undefined,
+    counts.missed > 0 ? `${counts.missed} missed` : undefined,
+  ].filter((part) => part !== undefined);
+  return parts.length === 0 ? undefined : parts.join(pc.dim(' · '));
+}
+
 /** `usageText` labeled `ai …` for lines where nothing else names it. */
 export function aiSegment(usage: AiUsage): string | undefined {
   const text = usageText(usage);

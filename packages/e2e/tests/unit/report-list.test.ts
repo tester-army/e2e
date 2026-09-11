@@ -794,6 +794,66 @@ describe('ListReporter', () => {
       expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls');
     });
 
+    it('tallies the trace cache under the AI row by step, leaving zero counts out', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const step = (id: string, cache: object | undefined, calls: number) =>
+        ({
+          id,
+          index: 0,
+          kind: 'agent',
+          api: 'agent.act',
+          label: 'do it',
+          status: 'passed',
+          startedAt: new Date(0).toISOString(),
+          durationMs: 10,
+          events: [],
+          artifacts: [],
+          ...(cache === undefined ? {} : { cache }),
+          model: { calls, inputTokens: 1_000, outputTokens: 100 },
+        }) as unknown as AttemptRecord['steps'][number];
+      const steps = [
+        step('replayed-1', { mode: 'self-finalized', replayedActions: 3, totalActions: 3 }, 0),
+        step('replayed-2', { mode: 'self-finalized', replayedActions: 2, totalActions: 2 }, 0),
+        step('handed-off', { mode: 'agent-concluded', reason: 'end-mismatch', replayedActions: 1, totalActions: 3 }, 2),
+        step('uncached', undefined, 3),
+      ];
+      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps })] })));
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      const ai = lines.findIndex((line) => line.trimStart().startsWith('AI'));
+      expect(lines[ai + 1]).toBe('      Cache  2 replayed · 1 handed off');
+    });
+
+    it('shows a cold cache as misses and no Cache row at all when the cache is off', () => {
+      const run = (cache: object | undefined) => {
+        const { lines, output } = capture();
+        const reporter = plainReporter(output);
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+        const step = {
+          id: 's',
+          index: 0,
+          kind: 'agent',
+          api: 'agent.act',
+          label: 'do it',
+          status: 'passed',
+          startedAt: new Date(0).toISOString(),
+          durationMs: 10,
+          events: [],
+          artifacts: [],
+          ...(cache === undefined ? {} : { cache }),
+          model: { calls: 3, inputTokens: 1_000, outputTokens: 100 },
+        } as unknown as AttemptRecord['steps'][number];
+        reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
+        reporter.handle(runFinished({ reportPath: 'r.json' }));
+        return lines;
+      };
+      expect(run({ mode: 'missed', reason: 'no-entry', replayedActions: 0, totalActions: 0 })).toContain('      Cache  1 missed');
+      expect(run(undefined).some((line) => line.trimStart().startsWith('Cache'))).toBe(false);
+    });
+
     it('renders a config failure: run-error then run-finished, no run-started', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
