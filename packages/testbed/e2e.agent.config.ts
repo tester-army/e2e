@@ -48,6 +48,9 @@ export default {
   agents: {
     default: {
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
+      // The drawn keypad flow is one step of a dozen taps, each a model turn.
+      maxSteps: 40,
+      maxModelCalls: 60,
       // Visual grounding is a much higher bar than accepting an image, so the
       // vision tier is pinned on its own: an `E2E_MODEL` override that brings a
       // cheaper model for planning keeps a model that points at the right pixel

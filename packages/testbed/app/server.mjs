@@ -29,6 +29,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/frames">Frames</a>
     <a href="/board">Board</a>
     <a href="/canvas">Canvas</a>
+    <a href="/canvas-flow">Keypad</a>
     <a href="/downloads">Downloads</a>
   </nav>
   ${body}
@@ -390,6 +391,63 @@ const pages = {
            document.getElementById('picked').textContent = picked
              ? 'picked the ' + picked.name + ' pin'
              : 'missed at ' + Math.round(x) + ',' + Math.round(y);
+         });
+       </script>`,
+    ),
+
+  // A long pixels-only flow: a drawn keypad whose every control and whose
+  // feedback (the digits entered so far) exist only as canvas pixels. The DOM
+  // learns the outcome only when the drawn OK button is pressed, so a run has
+  // to see the canvas to make progress and the test can still assert the end.
+  '/canvas-flow': () =>
+    layout(
+      'Drawn keypad',
+      `<h1>Drawn keypad</h1>
+       <p>Everything below is painted on a canvas; nothing is marked up.</p>
+       <canvas id="pad" width="420" height="560"></canvas>
+       <output id="result" role="status" aria-label="Result">waiting</output>
+       <script>
+         const canvas = document.getElementById('pad');
+         const context = canvas.getContext('2d');
+         const keys = [];
+         const labels = ['1','2','3','4','5','6','7','8','9','CLR','0','OK'];
+         labels.forEach((label, index) => {
+           const column = index % 3;
+           const row = Math.floor(index / 3);
+           keys.push({ label, x: 30 + column * 125, y: 120 + row * 105, w: 105, h: 85 });
+         });
+         let entered = '';
+         function draw() {
+           context.fillStyle = '#f4f4f5';
+           context.fillRect(0, 0, 420, 560);
+           context.fillStyle = '#111827';
+           context.fillRect(30, 30, 355, 60);
+           context.fillStyle = '#f9fafb';
+           context.font = '32px monospace';
+           context.textBaseline = 'middle';
+           context.textAlign = 'left';
+           context.fillText(entered === '' ? 'enter code' : entered, 45, 60);
+           for (const key of keys) {
+             context.fillStyle = key.label === 'OK' ? '#15803d' : key.label === 'CLR' ? '#b45309' : '#e5e7eb';
+             context.fillRect(key.x, key.y, key.w, key.h);
+             context.fillStyle = key.label === 'OK' || key.label === 'CLR' ? '#ffffff' : '#111827';
+             context.font = 'bold 30px sans-serif';
+             context.textAlign = 'center';
+             context.fillText(key.label, key.x + key.w / 2, key.y + key.h / 2);
+           }
+         }
+         draw();
+         canvas.addEventListener('click', (event) => {
+           const box = canvas.getBoundingClientRect();
+           const x = event.clientX - box.left;
+           const y = event.clientY - box.top;
+           const key = keys.find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
+           if (!key) return;
+           if (key.label === 'CLR') entered = '';
+           else if (key.label === 'OK') {
+             document.getElementById('result').textContent = 'code accepted: ' + entered;
+           } else if (entered.length < 12) entered += key.label;
+           draw();
          });
        </script>`,
     ),
