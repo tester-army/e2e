@@ -7,9 +7,13 @@
   whatever the nearest `package.json` `type` says, so a CommonJS package (a
   Next.js app, for instance) needs no change. Write them with `import`, never
   `require` or `module.exports`.
-- For browser tests, `@e2edev/playwright`. Missing browsers download when the
-  engine first boots. In CI install them up front:
-  `npx playwright install chromium --with-deps`.
+- For browser tests, `@e2edev/playwright` plus `playwright` (`>=1.63.0 <2`),
+  a peer dependency the engine does not install itself: an app that already
+  depends on Playwright keeps its version and its browser cache. A version
+  outside the range may be rejected by the package manager as an unmet peer
+  (npm's `ERESOLVE`); upgrade `playwright` within the range.
+  Missing browsers download when the engine first boots. In CI install them
+  up front: `npx playwright install chromium --with-deps`.
 
 ## Scaffold
 
@@ -42,7 +46,7 @@ project.
 Without the wizard:
 
 ```bash
-npm install --save-dev @e2edev/e2e@beta @e2edev/playwright@beta ai@^7
+npm install --save-dev @e2edev/e2e@beta @e2edev/playwright@beta playwright ai@^7
 ```
 
 `ai` (the Vercel AI SDK, v7) is only needed for `agent.*` steps.

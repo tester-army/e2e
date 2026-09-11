@@ -51,7 +51,7 @@
     "skills"
   ],
   "scripts": {
-    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const versions=Object.fromEntries(['playwright','agent-device'].map((dir)=>['@e2edev/'+dir,JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8')).version]));fs.writeFileSync('dist/cli/init/engine-versions.json',JSON.stringify(versions)+'\\n')\"",
+    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['playwright','agent-device'].map((dir)=>['@e2edev/'+dir,read(dir).version]));versions.playwright=read('playwright').devDependencies.playwright;fs.writeFileSync('dist/cli/init/engine-versions.json',JSON.stringify(versions)+'\\n')\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -82,6 +82,7 @@
     "ai": "7.0.97",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "playwright": "1.63.0",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
   },

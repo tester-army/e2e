@@ -11,8 +11,14 @@ seam with no privilege either way.
 ## Install
 
 ```bash
-npm install --save-dev @e2edev/e2e @e2edev/playwright
+npm install --save-dev @e2edev/e2e @e2edev/playwright playwright
 ```
+
+Bring your own Playwright: `playwright` is a peer dependency (`>=1.63.0 <2`),
+not something this package installs. An app that already depends on Playwright
+keeps its version, one copy in `node_modules`, and one browser cache. A version
+outside the range may be rejected by your package manager as an unmet peer
+(npm's `ERESOLVE`), so upgrade `playwright` within the range.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';

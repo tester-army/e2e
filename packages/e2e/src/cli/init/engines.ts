@@ -39,6 +39,16 @@ function engineDependency(name: string): Readonly<Record<string, string>> {
   return { [name]: engineRange(ENGINE_VERSIONS?.[name]) };
 }
 
+/**
+ * The range init writes for `playwright`, which `@e2edev/playwright` peers on
+ * rather than installs, so an app that already ships Playwright keeps one copy
+ * and one browser cache. The build records the version the engine was built
+ * and tested against; from source, where nothing is recorded, any 1.x will do.
+ */
+export function playwrightRange(version: string | undefined): string {
+  return version === undefined ? '^1' : `^${version}`;
+}
+
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
 export function getEnginePresets() {
   const ios = os.platform() === 'darwin';
@@ -47,7 +57,7 @@ export function getEnginePresets() {
       id: 'playwright',
       label: 'Web',
       hint: 'Playwright',
-      dependencies: engineDependency('@e2edev/playwright'),
+      dependencies: { ...engineDependency('@e2edev/playwright'), playwright: playwrightRange(ENGINE_VERSIONS?.['playwright']) },
       imports: ["import { playwright } from '@e2edev/playwright';"],
       config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
   targets: [{

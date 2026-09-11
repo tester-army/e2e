@@ -7,6 +7,13 @@ description: The browser engine, its options, and the web fixture it contributes
 A web target names it as its engine, and it contributes the `web` fixture for
 browser-only work. Import `test` from the package to have `web` typed.
 
+Bring your own Playwright: the package declares `playwright` as a peer
+dependency (`>=1.63.0 <2`) and does not install it. An app that already depends
+on Playwright keeps its version, one copy in `node_modules`, and one browser
+cache; `e2e init` adds `playwright` only to a project that has none. A version
+outside the range may be rejected by your package manager as an unmet peer
+(npm's `ERESOLVE`), so upgrade `playwright` within the range.
+
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';

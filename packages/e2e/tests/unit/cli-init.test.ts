@@ -57,7 +57,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', ai: '^7.0.0' },
+      devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', playwright: '^1', ai: '^7.0.0' },
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
@@ -112,7 +112,7 @@ describe('e2e init', () => {
     const device = engine === 'agent-device';
     expect(Object.keys(manifest.devDependencies)).toEqual([
       '@e2edev/e2e',
-      ...(engine === 'playwright' ? ['@e2edev/playwright'] : []),
+      ...(engine === 'playwright' ? ['@e2edev/playwright', 'playwright'] : []),
       ...(device ? ['@e2edev/agent-device'] : []),
       ...(ai ? ['ai', '@openrouter/ai-sdk-provider'] : []),
     ]);
@@ -245,7 +245,7 @@ describe('e2e init', () => {
     async (type) => {
       const manifest = `${JSON.stringify({
         name: 'existing-app', type, scripts: { 'test:e2e': 'e2e run --workers 1' },
-        dependencies: { '@e2edev/e2e': 'workspace:*', '@e2edev/playwright': 'workspace:*', ai: '^7.0.12' },
+        dependencies: { '@e2edev/e2e': 'workspace:*', '@e2edev/playwright': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12' },
       }, null, 4)}\n`;
       writeFileSync(path.join(dir, 'package.json'), manifest);
       for (let run = 0; run < 2; run += 1) {
@@ -284,9 +284,23 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       ...manifest,
       scripts: { dev: 'vite', 'test:e2e': 'e2e run' },
-      devDependencies: { ...manifest.devDependencies, '@e2edev/e2e': expect.any(String) },
+      devDependencies: { ...manifest.devDependencies, '@e2edev/e2e': expect.any(String), playwright: '^1' },
     });
     expect(read('package.json')).toContain('\r\n    "name"');
+  });
+
+  it("keeps the app's own playwright and adds only the engine next to it", async () => {
+    const manifest = {
+      name: 'existing-app',
+      dependencies: { playwright: '1.59.0-alpha-2026-01-01' },
+    };
+    writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce('none');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await init(dir);
+    const written = JSON.parse(read('package.json'));
+    expect(written.dependencies).toEqual(manifest.dependencies);
+    expect(Object.keys(written.devDependencies)).toEqual(['@e2edev/e2e', '@e2edev/playwright']);
   });
 
   it.each([

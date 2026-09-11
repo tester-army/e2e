@@ -31,9 +31,10 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   </CodeGroup>
 
   Accept the defaults: Web (Playwright), the Vercel AI Gateway, and the
-  coding-agent skill. `init` adds the packages to `devDependencies`, a
-  `test:e2e` script, and `.gitignore` entries, and writes the config, an
-  example test, and the skill files. It never overwrites a file that exists.
+  coding-agent skill. `init` adds `@e2edev/e2e`, `@e2edev/playwright`,
+  `playwright`, and `ai` to `devDependencies`, a `test:e2e` script, and
+  `.gitignore` entries, and writes the config, an example test, and the skill
+  files. It never overwrites a file that exists.
 
   ```ts title="e2e.config.ts"
   import type { E2EConfig } from '@e2edev/e2e';

@@ -16,7 +16,7 @@ test('user can sign up', async ({ app, agent }) => {
 ```
 
 ```bash
-pnpm add -D @e2edev/e2e @e2edev/playwright
+pnpm add -D @e2edev/e2e @e2edev/playwright playwright
 AI_GATEWAY_API_KEY=... npx --no-install e2e run
 ```
 
