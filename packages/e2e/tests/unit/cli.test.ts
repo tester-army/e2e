@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -74,6 +74,38 @@ describe('e2e run argument parsing', () => {
   it('collects positional files', async () => {
     await invoke('run', 'tests/a.e2e.ts', 'tests/b.e2e.ts');
     expect(lastRunOptions().files).toEqual(['tests/a.e2e.ts', 'tests/b.e2e.ts']);
+  });
+
+  it('rejects a flag that arrived as a file argument with exit code 2 and never runs', async () => {
+    await invoke('run', '--', '--headed');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toMatch(
+      /^error: "--headed" is a flag, not a test file\. It arrived as a file because a "--" came before it; "(?:pnpm|npm run|yarn|bun run) test:e2e -- --headed" reaches e2e as "run -- --headed" when the package manager forwards the separator\. Run the CLI directly instead: (?:pnpm exec|npm exec|yarn|bun run) e2e run --headed\n\(add --help for usage\)\n$/u,
+    );
+  });
+
+  it('keeps the whole forwarded tail in the hint, option values and files included', async () => {
+    await invoke('run', '--', 'tests/a.e2e.ts', '--tag', 'smoke', 'tests/b.e2e.ts');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toMatch(
+      /Run the CLI directly instead: (?:pnpm exec|npm exec|yarn|bun run) e2e run --tag smoke tests\/b\.e2e\.ts\n/u,
+    );
+  });
+
+  it('passes a dash-prefixed name through when it names an existing file', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-dash-'));
+    writeFileSync(path.join(dir, '-smoke.e2e.ts'), '');
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    try {
+      await invoke('run', '--', '-smoke.e2e.ts');
+      expect(lastRunOptions().files).toEqual(['-smoke.e2e.ts']);
+      expect(process.exitCode).toBe(0);
+    } finally {
+      cwdSpy.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('passes --agent through as the agents of the run', async () => {
@@ -244,6 +276,16 @@ describe('e2e list', () => {
       ].join('\n'),
     );
     expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a flag that arrived as a file argument with exit code 2 and never lists', async () => {
+    await invoke('list', '--', '--tag', 'smoke');
+    expect(listMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    const stderr = written(stderrSpy);
+    expect(stderr.startsWith('error: "--tag" is a flag, not a test file.')).toBe(true);
+    expect(stderr).toMatch(/Run the CLI directly instead: (?:pnpm exec|npm exec|yarn|bun run) e2e list --tag smoke\n/u);
+    expect(stderr.endsWith('(add --help for usage)\n')).toBe(true);
   });
 
   it('prints { pairs } with --reporter json', async () => {

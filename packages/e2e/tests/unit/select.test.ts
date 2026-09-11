@@ -313,6 +313,13 @@ describe('select', () => {
     expect(() => select(col, config(), {}, { passWithNoTests: true })).not.toThrow();
   });
 
+  it('offers the nearest discovered file name when the unmatched positional was a bare name', async () => {
+    const col = await collection(() => {}, 'tests/agent.e2e.ts', ['agnet.e2e.ts']);
+    expect(() => select(col, config())).toThrow(
+      'no test file matched agnet.e2e.ts (did you mean agent.e2e.ts?); the config globs discovered tests/agent.e2e.ts; pass --pass-with-no-tests to allow this',
+    );
+  });
+
   it('explains empty discovery with the globs, the root, and any look-alike files', () => {
     expect(() => select(emptyCollection(), config())).toThrow(
       'no test file matched "tests/**/*.e2e.ts" under /root; create tests/example.e2e.ts (e2e init writes one), or set tests in the config; pass --pass-with-no-tests to allow this',

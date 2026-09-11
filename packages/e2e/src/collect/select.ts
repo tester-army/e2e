@@ -300,9 +300,11 @@ function describeNoTests(
     return `${where}; create tests/example.e2e.ts (e2e init writes one), or set tests in the config`;
   }
   if (files.length === 0 && unmatchedPositionals.length > 0) {
+    // A positional may be a whole path or just a file name, so a near miss is looked for as either.
+    const baseNames = discovered.map((file) => file.slice(file.lastIndexOf('/') + 1));
     const named = unmatchedPositionals
       .map((positional) => {
-        const match = suggest(positional, discovered);
+        const match = suggest(positional, discovered) ?? suggest(positional, baseNames);
         return match === undefined ? positional : `${positional} (did you mean ${match}?)`;
       })
       .join(', ');

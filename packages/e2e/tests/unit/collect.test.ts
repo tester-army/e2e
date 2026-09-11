@@ -53,9 +53,45 @@ describe('selectPositionals', () => {
   });
 
   it('never selects a file the config globs did not discover', () => {
-    const selection = selectPositionals(root, DISCOVERED, ['tests/agent', 'tests/agent/notes.md']);
+    const selection = selectPositionals(root, DISCOVERED, ['tests/agent', 'tests/agent/notes.md', 'notes.md', 'notes']);
     expect(selection.files).toEqual(['tests/agent/b.e2e.ts', 'tests/agent/nested/c.e2e.ts']);
-    expect(selection.unmatched).toEqual(['tests/agent/notes.md']);
+    expect(selection.unmatched).toEqual(['tests/agent/notes.md', 'notes.md', 'notes']);
+  });
+
+  it('matches a bare file name anywhere beneath the root', () => {
+    expect(selectPositionals(root, DISCOVERED, ['a.e2e.ts']).files).toEqual(['tests/a.e2e.ts']);
+    expect(selectPositionals(root, DISCOVERED, ['c.e2e.ts']).files).toEqual(['tests/agent/nested/c.e2e.ts']);
+  });
+
+  it('matches a file name with every extension dropped', () => {
+    expect(selectPositionals(root, DISCOVERED, ['b']).files).toEqual(['tests/agent/b.e2e.ts']);
+    expect(selectPositionals(root, DISCOVERED, ['d']).files).toEqual(['tests/other/d.e2e.ts']);
+    // With a dot the positional is a file name, so its extensions have to be spelled out.
+    expect(selectPositionals(root, DISCOVERED, ['b.e2e']).unmatched).toEqual(['b.e2e']);
+  });
+
+  it('matches a trailing run of path segments', () => {
+    expect(selectPositionals(root, DISCOVERED, ['agent/b.e2e.ts']).files).toEqual(['tests/agent/b.e2e.ts']);
+    expect(selectPositionals(root, DISCOVERED, ['nested/c.e2e.ts']).files).toEqual(['tests/agent/nested/c.e2e.ts']);
+    expect(selectPositionals(root, DISCOVERED, ['./agent/b.e2e.ts']).files).toEqual(['tests/agent/b.e2e.ts']);
+  });
+
+  it('never matches a name inside a path segment', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['ests/a.e2e.ts', 'e2e.ts', '.e2e.ts', 'gent/b.e2e.ts']);
+    expect(selection.files).toEqual([]);
+    expect(selection.unmatched).toEqual(['ests/a.e2e.ts', 'e2e.ts', '.e2e.ts', 'gent/b.e2e.ts']);
+  });
+
+  it('keeps names case-sensitive on every filesystem', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['A.e2e.ts', 'B', 'Agent/b.e2e.ts']);
+    expect(selection.files).toEqual([]);
+    expect(selection.unmatched).toEqual(['A.e2e.ts', 'B', 'Agent/b.e2e.ts']);
+  });
+
+  it('unions names with the other forms and preserves discovery order', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['d.e2e.ts', 'tests/agent/*.e2e.ts', 'a']);
+    expect(selection.files).toEqual(['tests/a.e2e.ts', 'tests/agent/b.e2e.ts', 'tests/other/d.e2e.ts']);
+    expect(selection.unmatched).toEqual([]);
   });
 
   it('matches a glob against the discovered files with the config grammar', () => {

@@ -17,7 +17,7 @@ npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: sta
 
 | Flag | Effect |
 | --- | --- |
-| `[files...]` | Files, directories, or quoted globs relative to the project root. They narrow the config `tests` glob, never bypass it. |
+| `[files...]` | Files, directories, or quoted globs relative to the project root, or a bare file name (`signup.e2e.ts`, `signup`, `agent/signup.e2e.ts` all select `tests/agent/signup.e2e.ts`). They narrow the config `tests` glob, never bypass it. |
 | `--config <path>` | Explicit config file. Default: `e2e.config.ts` or `.mts` found upward from the working directory. |
 | `--target <ids>` | Comma-separated target names. Only selected targets start app commands and services; unknown names fail before startup. |
 | `--tag <tag>` | Repeatable tag filter; `--tag-mode all` requires every tag. |
@@ -34,6 +34,7 @@ npx --no-install e2e telemetry [disable|enable] # anonymous usage telemetry: sta
 
 ```bash
 npx --no-install e2e run tests/signup.e2e.ts
+npx --no-install e2e run signup.e2e.ts        # the same file by name, from any directory the config globs cover
 npx --no-install e2e run tests/agent --tag smoke
 npx --no-install e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
 CI=1 npx --no-install e2e run   # reproduce the CI defaults locally
@@ -51,7 +52,10 @@ npx --no-install e2e list tests/signup.e2e.ts --reporter json
 ```
 
 A `package.json` script keeps it short: `"test:e2e": "e2e run"`, then
-`pnpm test:e2e tests/signup.e2e.ts`.
+`pnpm test:e2e tests/signup.e2e.ts`. pnpm forwards a `--` separator literally,
+so `pnpm test:e2e -- --headed` reaches e2e as `run -- --headed` and is
+rejected with exit 2 rather than run headless; write `pnpm test:e2e --headed`
+or `pnpm exec e2e run --headed` instead.
 
 ## The trace cache
 

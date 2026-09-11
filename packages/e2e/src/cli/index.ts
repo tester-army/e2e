@@ -1,8 +1,10 @@
 /** e2e CLI. */
 
+import { existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { Argument, Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import picocolors from 'picocolors';
+import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import { list, run, type ListedPair, type RunOutcome } from '../run/runner.ts';
@@ -50,6 +52,31 @@ function parseBoundedInt(bounds: { readonly min: number; readonly max: number })
     }
     return parsed;
   };
+}
+
+const FILES_DESCRIPTION =
+  'test files, directories, or globs relative to the project root; a bare file name (signup.e2e.ts, signup) or a trailing part of the path (agent/signup.e2e.ts) also selects the file';
+
+/**
+ * A flag commander took for a file because a `--` came before it, which is
+ * what a package manager forwards from `pnpm test:e2e -- --headed`. Left
+ * alone, the flag is dropped and the run goes on without it, so the action
+ * fails as a usage error naming the command that keeps the flag a flag: the
+ * whole tail from the first such value, so option values stay with their
+ * option. A dash-prefixed name that exists is a file, as it always was.
+ */
+function rejectForwardedFlags(command: Command, files: readonly string[]): void {
+  const cwd = process.cwd();
+  const first = files.findIndex((value) => value.startsWith('-') && !existsSync(resolvePath(cwd, value)));
+  if (first === -1) return;
+  const tail = files.slice(first).join(' ');
+  const manager = detectPackageManager(cwd);
+  const forwarded = `${runScriptCommand(manager, 'test:e2e')} -- ${tail}`;
+  const direct = execCommand(manager, `e2e ${command.name()} ${tail}`);
+  command.error(
+    `error: "${files[first]}" is a flag, not a test file. It arrived as a file because a "--" came before it; "${forwarded}" reaches e2e as "${command.name()} -- ${tail}" when the package manager forwards the separator. Run the CLI directly instead: ${direct}`,
+    { exitCode: 2 },
+  );
 }
 
 const REPORTERS = ['list', 'json', 'junit'] as const;
@@ -280,7 +307,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .description(
       'Run the tests the config discovers and write .e2e/report.json. Files, directories, and quoted globs narrow that selection, as do --tag and --target.',
     )
-    .argument('[files...]', 'test files, directories, or globs relative to the project root')
+    .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <ids>', 'comma-separated target names (default: all targets)', parseList)
@@ -348,8 +375,9 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           video?: boolean;
         },
         command: Command,
-      ) =>
-        runToOutcome(telemetry, command, (signals) =>
+      ) => {
+        rejectForwardedFlags(command, files);
+        return runToOutcome(telemetry, command, (signals) =>
           run({
             files,
             configPath: options.config,
@@ -370,7 +398,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
           }),
-        ),
+        );
+      },
     );
 
   program
@@ -465,7 +494,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .description(
       'Collect and select tests exactly as run does, print one line per test and target (file › title [target]), and exit. Nothing starts: no app process, no engine, no worker. The same files, --tag, and --target flags narrow the selection.',
     )
-    .argument('[files...]', 'test files, directories, or globs relative to the project root')
+    .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <ids>', 'comma-separated target names (default: all targets)', parseList)
@@ -501,7 +530,9 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           passWithNoTests?: boolean;
           reporter: ListReporter;
         },
+        command: Command,
       ) => {
+        rejectForwardedFlags(command, files);
         let pairs: ListedPair[];
         try {
           ({ pairs } = await list({

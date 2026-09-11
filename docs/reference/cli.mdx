@@ -153,6 +153,11 @@ Test files, directories, or globs relative to the project root:
 - a file path (`tests/signup.e2e.ts`) selects that file;
 - a directory (`tests/agent`, `.`) selects every test file the config globs
   discover beneath it;
+- a name that exists nowhere selects every discovered file whose path ends with
+  it at a segment boundary: `signup.e2e.ts` and `agent/signup.e2e.ts` both
+  select `tests/agent/signup.e2e.ts`, while `gent/signup.e2e.ts` selects
+  nothing. Without a `/` or a `.` it is matched against the file name with
+  every extension dropped, so `signup` selects it too;
 - a glob (`'tests/**/*.smoke.e2e.ts'`, quoted so the shell leaves it to the
   runner) uses the same grammar as the config `tests` globs: `*`, `?`, and a
   complete `**` segment. A malformed glob is `INVALID_GLOB`.
@@ -161,15 +166,23 @@ Positional paths intersect with the config globs and with tag, platform, and
 capability filters: they narrow the selection, they do not bypass it, so a file
 the config globs do not match is never selected. An existing file or directory
 follows the filesystem's case rules (so `tests/Agent` finds `tests/agent` on
-Windows and macOS but not on Linux), while globs are case-sensitive everywhere.
-A path outside the project root, including one on another drive, is
-`COLLECTION_ERROR`.
+Windows and macOS but not on Linux), while names and globs are case-sensitive
+everywhere. A path outside the project root, including one on another drive,
+is `COLLECTION_ERROR`.
+
+A positional that starts with `-` and names no existing entry is a usage error
+(exit 2), not a file. It gets there when a package manager forwards the `--`
+separator: `pnpm test:e2e -- --headed` reaches e2e as `run -- --headed`, and
+the CLI would otherwise take `--headed` for a file and run headless. The
+message names the direct form for the detected package manager with everything
+from that flag on, so `-- --tag smoke` gets `pnpm exec e2e run --tag smoke`. A
+file that really starts with a dash (`-smoke.e2e.ts`) still selects as before.
 
 When nothing is left to run, the `NO_TESTS` message says why, from the most
 upstream cause: the globs matched no file (naming look-alike files such as
 `tests/login.test.ts` beneath the globbed directories, which is usually the
-file meant), a positional matched no file (with the nearest discovered file
-when there is one, so `tests/agnet.e2e.ts` gets `did you mean
+file meant), a positional matched no file (with the nearest discovered path or
+file name when there is one, so `tests/agnet.e2e.ts` gets `did you mean
 tests/agent.e2e.ts?`), a matched file registered no tests (its `test` import
 is from somewhere else), or every collected test was filtered by tag or
 platform, skipped, or is a setup test.

@@ -208,9 +208,14 @@ const GLOB_CHARACTERS = /[*?]/;
  * Narrows the files the config globs discovered by positional arguments. Each
  * positional resolves from the project root and is one of: a glob (any `*` or
  * `?`) in the test glob grammar matched against the discovered files, an
- * existing directory selecting every discovered file beneath it, or a file
- * path matched exactly. Positionals only narrow: a file the config globs did
- * not discover is never selected. Discovery order is preserved.
+ * existing directory selecting every discovered file beneath it, an existing
+ * file matched exactly, or a name: a positional that exists nowhere selects
+ * the discovered files whose root-relative path equals it or ends with it at a
+ * segment boundary (`saved-tests.e2e.ts`, `regression/saved-tests.e2e.ts`),
+ * and one with no `/` and no `.` selects the files whose base name up to the
+ * first `.` equals it (`saved-tests`). Names are exact and case-sensitive,
+ * like globs. Positionals only narrow: a file the config globs did not
+ * discover is never selected. Discovery order is preserved.
  */
 export function selectPositionals(
   projectRoot: string,
@@ -243,7 +248,7 @@ function positionalMatcher(projectRoot: string, positional: string): (file: stri
   if (normalized === '.') return () => true;
   const absolutePath = path.resolve(projectRoot, normalized);
   const stats = statSync(absolutePath, { throwIfNoEntry: false });
-  if (stats === undefined) return (file) => file === normalized;
+  if (stats === undefined) return nameMatcher(normalized);
   // An existing file or directory follows the filesystem's own case rules.
   const onDisk = onDiskRelativePath(projectRoot, absolutePath) ?? normalized;
   if (stats.isDirectory()) {
@@ -251,6 +256,24 @@ function positionalMatcher(projectRoot: string, positional: string): (file: stri
     return (file) => file.startsWith(prefix);
   }
   return (file) => file === onDisk;
+}
+
+/**
+ * Matches a positional that names no existing entry the way people type file
+ * names: the whole root-relative path, a trailing run of its segments, or the
+ * base name with every extension dropped when the positional could be one.
+ * Mid-segment substrings never match, so `ests/a.e2e.ts` selects nothing.
+ */
+function nameMatcher(name: string): (file: string) => boolean {
+  const suffix = `/${name}`;
+  const bareName = !name.includes('/') && !name.includes('.');
+  return (file) => {
+    if (file === name || file.endsWith(suffix)) return true;
+    if (!bareName) return false;
+    const base = file.slice(file.lastIndexOf('/') + 1);
+    const dot = base.indexOf('.');
+    return (dot === -1 ? base : base.slice(0, dot)) === name;
+  };
 }
 
 /** Builds one CollectedFile from an already-produced registration. */
