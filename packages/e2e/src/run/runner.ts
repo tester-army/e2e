@@ -26,6 +26,7 @@ import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
+import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { jsonReporter } from '../report/json.ts';
@@ -115,10 +116,16 @@ export interface InMemoryTests {
   readonly file: string;
   readonly registration: ModuleRegistration;
   /**
-   * The exploration record `e2e explore` adds to the report as `run.explore`,
-   * read once the run is over so it carries the final steps and findings.
+   * The exploration behind `e2e explore`: its progress becomes `explore` run
+   * events, and its record is read once the run is over, as `run.explore`.
    */
-  readonly explore?: (() => ReportExplore) | undefined;
+  readonly explore?: InMemoryExplore | undefined;
+}
+
+/** What the runner needs from an exploration: its moments as they happen, and its record at the end. */
+export interface InMemoryExplore {
+  snapshot(): ReportExplore;
+  subscribe(listener: (progress: ExploreProgress) => void): void;
 }
 
 /** How long a reporter's `onRunFinished` may take before the run stops waiting for it. */
@@ -309,7 +316,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       serialGroups,
       runErrors,
       targetProvenance,
-      explore: options.tests?.explore?.(),
+      explore: options.tests?.explore?.snapshot(),
     });
 
   /**
@@ -542,6 +549,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // is on the clock and a one-off download is not.
     startedAt = timestamp();
     emit({ type: 'plan', total: selection.pairs.length, files: plannedFiles(selection) });
+    options.tests?.explore?.subscribe((progress) => emit({ type: 'explore', progress }));
 
     // Each selected engine declares the app it drives: the dependency
     // processes it needs and the command that starts it. Every service is

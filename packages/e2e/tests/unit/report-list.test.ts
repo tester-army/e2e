@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
-import type { RunEventFact, RunEventResult } from '../../src/run/events.ts';
+import type { RunEventFact, RunEventOf, RunEventResult } from '../../src/run/events.ts';
 import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 
 // eslint-disable-next-line no-control-regex
@@ -1584,5 +1584,214 @@ describe('ListReporter', () => {
     longReporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
     longReporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', title: ['x'.repeat(20_000)] })));
     expect(Buffer.byteLength(longLines[1] ?? '', 'utf8')).toBeLessThan(10_000);
+  });
+});
+
+describe('explore runs', () => {
+  const GOAL = 'Explore checkout like a first-time buyer';
+  const FINDING = {
+    id: 'f-1',
+    index: 0,
+    step: 1,
+    kind: 'issue' as const,
+    severity: 4 as const,
+    title: 'Cart total shows $0.00 with two items',
+    expected: 'The total equals the sum of the two line items',
+    actual: 'The cart shows "Total: $0.00" under two items priced $12.00 and $8.00 each',
+    reproduction: ['Open the catalog', 'Add two books to the cart', 'Open the cart'],
+    path: '/cart',
+    artifactId: 'shot-1',
+    reportedAt: '2026-09-11T10:00:05.000Z',
+  };
+  const WARNING = {
+    ...FINDING,
+    id: 'f-2',
+    index: 1,
+    step: 2,
+    kind: 'warning' as const,
+    severity: 1 as const,
+    title: 'Footer misspells Receive',
+    expected: 'Receive',
+    actual: 'Recieve',
+    reproduction: ['Scroll to the footer'],
+    path: '/',
+    artifactId: undefined,
+    reportedAt: '2026-09-11T10:00:20.000Z',
+  };
+  const STEP_1 = { index: 1, title: 'Cart', instruction: 'Add two books and open the cart' };
+  const STEP_2 = { index: 2, title: 'Checkout', instruction: 'Pay for the cart' };
+
+  function explore(progress: Extract<RunEventFact, { type: 'explore' }>['progress']): RunEventFact {
+    return { type: 'explore', progress };
+  }
+
+  function stepEvent(progress: RunEventOf<'step'>['progress']): RunEventFact {
+    return { type: 'step', testId: 't1', agent: 'default', target: 'web', progress };
+  }
+
+  function engineEvent(name: string, detail?: string): RunEventFact {
+    return stepEvent({
+      phase: 'event',
+      api: 'agent.act',
+      event: { kind: 'engine', name, startedAt: '2026-09-11T10:00:04.000Z', durationMs: 40, status: 'passed', ...(detail === undefined ? {} : { detail }) },
+    });
+  }
+
+  /** The whole exploration from its start to the closing assessment, as the run's stream carries it. */
+  function play(reporter: ListReporter): void {
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'web', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'web', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    reporter.handle(explore({ phase: 'planning' }));
+    reporter.handle(stepEvent({ phase: 'start', kind: 'agent', api: 'agent.extract', label: 'Plan the next step' }));
+    reporter.handle(stepEvent({ phase: 'end', kind: 'agent', api: 'agent.extract', label: 'Plan the next step', status: 'passed', durationMs: 900, modelCalls: 1 }));
+    reporter.handle(explore({ phase: 'step-started', step: STEP_1 }));
+    reporter.handle(stepEvent({ phase: 'start', kind: 'agent', api: 'agent.act', label: STEP_1.instruction }));
+    reporter.handle(engineEvent('tap', 'tap link "Catalog"'));
+    reporter.handle(engineEvent('tap', 'tap button "Add to cart"'));
+    reporter.handle(engineEvent('tool:report_finding'));
+    reporter.handle(explore({ phase: 'finding', finding: FINDING }));
+    reporter.handle(stepEvent({ phase: 'end', kind: 'agent', api: 'agent.act', label: STEP_1.instruction, status: 'passed', durationMs: 32_000, modelCalls: 6 }));
+    reporter.handle(explore({ phase: 'step-finished', step: { ...STEP_1, status: 'passed', summary: 'Cart holds two items', startedAt: '2026-09-11T10:00:01.000Z', durationMs: 32_000 } }));
+    reporter.handle(explore({ phase: 'planning' }));
+    reporter.handle(explore({ phase: 'step-started', step: STEP_2 }));
+    reporter.handle(explore({ phase: 'finding', finding: WARNING }));
+    reporter.handle(
+      explore({
+        phase: 'step-finished',
+        step: { ...STEP_2, status: 'failed', summary: 'The Pay button stayed disabled with every field filled', errorCode: 'STEP_FAILED', startedAt: '2026-09-11T10:00:40.000Z', durationMs: 91_000 },
+      }),
+    );
+    reporter.handle(explore({ phase: 'finished', ended: 'finished', summary: 'Checkout cannot be completed. Script the cart total.' }));
+    reporter.handle(
+      finished(
+        result({
+          status: 'failed',
+          id: 't1',
+          file: 'explore',
+          title: [GOAL],
+          target: 'web',
+          attempts: [
+            attempt({
+              status: 'failed',
+              error: { category: 'test', code: 'ASSERTION_FAILED', message: 'exploration found 1 issue(s): [severity 4] Cart total shows $0.00 with two items', retryable: false },
+              artifacts: [{ id: 'shot-1', kind: 'screenshot', mediaType: 'image/png', path: 'web/explore/attempt-0/finding-1.png', redaction: 'complete', producer: { kind: 'attempt' } }],
+            }),
+          ],
+        }),
+      ),
+    );
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '/project/.e2e/report.json' }));
+  }
+
+  it('without a live window, streams the header, each finding, and each step as they happen, then the findings with their evidence', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    play(reporter);
+    const text = lines.join('\n');
+    expect(lines).toContain(` ❯ |web| Exploring  ${GOAL}`);
+    expect(lines).toContain('   ⚑ high issue  Cart total shows $0.00 with two items (/cart)');
+    expect(lines).toContain('   ✓ 1  Cart 32.00s · 2 actions · 1 finding');
+    expect(lines).toContain('   ⚑ trivial warning  Footer misspells Receive (/)');
+    expect(lines).toContain('   × 2  Checkout 91.00s · 1 finding failed');
+    expect(lines).toContain('        The Pay button stayed disabled with every field filled');
+    expect(lines).toContain('   ended: the agent covered the goal');
+    // The planner's and the charter's own agent steps are not rows of their own.
+    expect(text).not.toContain('agent.extract');
+    expect(text).not.toContain('agent.act');
+    // The one synthetic test has no file block, test counters, or failure entry: its verdict is the findings.
+    expect(text).not.toContain('Failed Tests');
+    expect(text).not.toContain('Test Files');
+    expect(text).not.toContain('exploration found');
+    expect(lines).toContainEqual(expect.stringContaining(' Findings 2 '));
+    const first = lines.indexOf(' 1. high issue       Cart total shows $0.00 with two items');
+    expect(first).toBeGreaterThan(0);
+    expect(lines.slice(first + 1, first + 9)).toEqual([
+      '    /cart · step 1',
+      '    expected  The total equals the sum of the two line items',
+      '    actual    The cart shows "Total: $0.00" under two items priced $12.00 and',
+      '              $8.00 each',
+      '    steps     1. Open the catalog',
+      '              2. Add two books to the cart',
+      '              3. Open the cart',
+      '    evidence  .e2e/artifacts/web/explore/attempt-0/finding-1.png',
+    ]);
+    const second = lines.indexOf(' 2. trivial warning  Footer misspells Receive');
+    expect(lines[second + 1]).toBe('    / · step 2');
+    const assessment = lines.indexOf(' Assessment');
+    expect(lines[assessment + 1]).toBe('   Checkout cannot be completed. Script the cart total.');
+    expect(lines).toContain('   Findings  1 issue | 1 warning');
+    expect(lines).toContain('      Steps  2 of 4 · 1 passed · 1 failed · the agent covered the goal');
+    expect(lines).toContain('     Report  .e2e/report.json');
+  });
+
+  it('with a live window, shows the exploration in the window and prints the record with its steps once the run is over', () => {
+    const lines: string[] = [];
+    const frames: string[] = [];
+    const output = {
+      write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')),
+      raw: (text: string) => frames.push(text.replace(ANSI_PATTERN, '')),
+    };
+    const reporter = plainReporter(output, true);
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'web', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'web', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    reporter.handle(explore({ phase: 'planning' }));
+    expect(frames.at(-1)).toContain('↳ planning step 1 of 4');
+    expect(frames.at(-1)).toContain('Steps  0 done of 4 · planning');
+    reporter.handle(explore({ phase: 'step-started', step: STEP_1 }));
+    reporter.handle(stepEvent({ phase: 'start', kind: 'agent', api: 'agent.act', label: STEP_1.instruction }));
+    reporter.handle(engineEvent('tap', 'tap button "Add to cart"'));
+    reporter.handle(engineEvent('tool:report_finding'));
+    reporter.handle(explore({ phase: 'finding', finding: FINDING }));
+    const frame = frames.at(-1)!;
+    expect(frame).toContain(`Exploring  ${GOAL}`);
+    expect(frame).toContain('↳ 1  Cart (step 1 of 4)');
+    expect(frame).toContain('› tap button "Add to cart" (40ms)');
+    expect(frame).toContain('⚑ high issue  Cart total shows $0.00 with two items (/cart)');
+    expect(frame).not.toContain('report_finding');
+    expect(frame).toContain('Findings  1 issue');
+    expect(frame).toContain('Steps  0 done of 4 · step 1 running');
+    expect(lines).toEqual(expect.not.arrayContaining([expect.stringContaining('Exploring')]));
+    play(reporter);
+    expect(lines).toContain(` × |web| Explored  ${GOAL}`);
+    expect(lines).toContain('   ✓ 1  Cart 32.00s · 2 actions · 1 finding');
+    expect(lines).toContain('   × 2  Checkout 91.00s · 1 finding failed');
+    expect(lines.join('\n')).not.toContain('Failed Tests');
+  });
+
+  it('keeps a failure that is not the findings verdict, such as a run that explored nothing', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'web', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'web', 'explore'));
+    reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
+    reporter.handle(explore({ phase: 'finished', ended: 'aborted' }));
+    reporter.handle(
+      finished(
+        result({
+          status: 'failed',
+          id: 't1',
+          file: 'explore',
+          title: [GOAL],
+          target: 'web',
+          attempts: [
+            attempt({
+              status: 'failed',
+              error: { category: 'test', code: 'AUTOMATION_UNSUPPORTED', message: 'exploration concluded nothing: no step ran and no finding was recorded', retryable: false },
+            }),
+          ],
+        }),
+      ),
+    );
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+    expect(lines).toContain('   no step ran');
+    expect(lines).toContain('   ended: the run was cut short');
+    expect(lines.join('\n')).toContain('AUTOMATION_UNSUPPORTED: exploration concluded nothing');
+    expect(lines).toContain('   Findings  none');
+    expect(lines).toContain('      Steps  0 of 4 · the run was cut short');
   });
 });

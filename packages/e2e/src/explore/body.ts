@@ -70,6 +70,7 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
   const accounts = options.accounts ?? [];
   return async ({ agent, app }) => {
     const deadline = now() + state.budgets.timeoutMs;
+    state.start();
     if (options.openApp) await app.open();
     // Resolved here, once the runner has the credential registry up.
     const secrets =
@@ -97,6 +98,7 @@ async function runSteps(loop: Loop): Promise<Ending> {
     const stop = mustFinish(state, remaining());
     if (stop !== undefined && remaining() < MIN_PLAN_TIMEOUT_MS) return { ended: stop.ended };
     let plan: PlanDecision;
+    state.planning();
     try {
       plan = await planNext(agent, state, {
         mustFinish: stop !== undefined,

@@ -17,6 +17,7 @@
  * never fail the run.
  */
 
+import type { ExploreProgress } from '../explore/progress.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ResultRecord, SerialGroupRecord } from './records.ts';
@@ -166,6 +167,16 @@ export type RunEventFact =
        */
       readonly type: 'serial-group';
       readonly group: SerialGroupRecord;
+    }
+  | {
+      /**
+       * One moment of an `e2e explore` run: the exploration starting as its
+       * test does, the planner deciding, a step opening or closing, a finding
+       * the instant it is reported, and the closing assessment. Absent from
+       * `e2e run`; the record is `run.explore` in the report.
+       */
+      readonly type: 'explore';
+      readonly progress: ExploreProgress;
     }
   | { readonly type: 'run-error'; readonly error: SerializedError }
   | {

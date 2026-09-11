@@ -2,24 +2,20 @@
  * The record of one exploration: the goal, its budgets, the steps the agent
  * planned and ran, and the findings it reported. One instance is shared by
  * the planner, the explorer's finding tool, the exploration body, and the
- * summary reporter, and its snapshot becomes `run.explore` in the report.
+ * run's event spine, and its snapshot becomes `run.explore` in the report.
  * The state is the report boundary: every free text is bounded to the
- * schema's ceilings here, and nowhere else.
+ * schema's ceilings here, and nowhere else. Each change is announced to the
+ * listeners `subscribe` registered, as `ExploreProgress`.
  */
 
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import type { ExploreBudgets, ExploreListener, ExploreProgress, OpenedStep } from './progress.ts';
 
-export interface ExploreBudgets {
-  readonly maxSteps: number;
-  readonly timeoutMs: number;
-}
+export type { ExploreBudgets, OpenedStep } from './progress.ts';
 
 /** A finding as the tool reports it; the state assigns identity, position, and time. */
-export type FindingInput = Omit<ReportExploreFinding, 'id' | 'index' | 'step' | 'reportedAt' | 'artifactId'>;
-
-/** A step as opened: title and charter bounded to the report's ceilings, which is what the step runs with. */
-export type OpenedStep = Pick<ReportExploreStep, 'index' | 'title' | 'instruction'>;
+export type FindingInput = Omit<ReportExploreFinding, 'id' | 'index' | 'step' | 'reportedAt'>;
 
 /** Ceilings mirroring `schema/report-v1.schema.json` `explore`. */
 export const MAX_TITLE_CHARS = 200;
@@ -41,6 +37,7 @@ export class ExploreState {
   #ended: ReportExplore['ended'] = 'aborted';
   #summary: string | undefined;
   #open: OpenStep | undefined;
+  readonly #listeners: ExploreListener[] = [];
 
   constructor(
     readonly goal: string,
@@ -58,6 +55,25 @@ export class ExploreState {
     return this.#summary;
   }
 
+  /** Registers a listener for every change from here on. */
+  subscribe(listener: ExploreListener): void {
+    this.#listeners.push(listener);
+  }
+
+  #notify(progress: ExploreProgress): void {
+    for (const listener of this.#listeners) listener(progress);
+  }
+
+  /** Announces the exploration beginning: the goal and its budgets. */
+  start(): void {
+    this.#notify({ phase: 'started', goal: this.goal, budgets: { maxSteps: this.budgets.maxSteps, timeoutMs: this.budgets.timeoutMs } });
+  }
+
+  /** Announces that the planner is deciding what comes next. */
+  planning(): void {
+    this.#notify({ phase: 'planning' });
+  }
+
   /** Opens the next step; the index is one-based. */
   beginStep(title: string, instruction: string): OpenedStep {
     if (this.#open !== undefined) throw new Error(`exploration step ${this.#open.index} is still open`);
@@ -69,7 +85,9 @@ export class ExploreState {
       startedMs: this.now(),
     };
     const { index, title: heading, instruction: charter } = this.#open;
-    return { index, title: heading, instruction: charter };
+    const step = { index, title: heading, instruction: charter };
+    this.#notify({ phase: 'step-started', step });
+    return step;
   }
 
   /** Closes the open step with its outcome. */
@@ -88,10 +106,11 @@ export class ExploreState {
       durationMs: Math.max(0, this.now() - open.startedMs),
     };
     this.steps.push(step);
+    this.#notify({ phase: 'step-finished', step });
     return step;
   }
 
-  /** Records one finding against the step in progress. */
+  /** Records one finding against the step in progress, with its evidence screenshot's artifact id when one was kept. */
   addFinding(input: FindingInput): ReportExploreFinding {
     const finding: ReportExploreFinding = {
       id: uuidv7(this.now()),
@@ -105,23 +124,19 @@ export class ExploreState {
       reproduction: input.reproduction.slice(0, MAX_REPRODUCTION_STEPS).map((entry) => clip(entry, MAX_REPRODUCTION_CHARS)),
       ...(input.path === undefined ? {} : { path: clip(input.path, MAX_PATH_CHARS) }),
       ...(input.observationRevision === undefined ? {} : { observationRevision: input.observationRevision }),
+      ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
       reportedAt: timestamp(new Date(this.now())),
     };
     this.findings.push(finding);
+    this.#notify({ phase: 'finding', finding });
     return finding;
-  }
-
-  /** Attaches the evidence screenshot kept for a finding, by its artifact id. */
-  attachEvidence(id: string, artifactId: string): void {
-    const index = this.findings.findIndex((finding) => finding.id === id);
-    if (index === -1) return;
-    this.findings[index] = { ...this.findings[index]!, artifactId };
   }
 
   /** Closes the record: why exploration stopped and, when the agent gave one, its closing assessment. */
   end(ended: ReportExplore['ended'], summary?: string): void {
     this.#ended = ended;
     this.#summary = summary === undefined || summary.trim() === '' ? undefined : clip(summary, MAX_SUMMARY_CHARS);
+    this.#notify({ phase: 'finished', ended, summary: this.#summary });
   }
 
   get issues(): readonly ReportExploreFinding[] {

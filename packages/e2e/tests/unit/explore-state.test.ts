@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
-import { summaryRows } from '../../src/explore/reporter.ts';
+import type { ExploreProgress } from '../../src/explore/progress.ts';
 import { clip, ExploreState } from '../../src/explore/state.ts';
 
 const SCHEMA_PATH = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'schema', 'report-v1.schema.json');
@@ -58,10 +58,8 @@ describe('ExploreState', () => {
     const early = finding(state, { title: 'Reported before any step' });
     expect(early.step).toBeUndefined();
     state.beginStep('Cart', 'open the cart');
-    const inStep = finding(state);
-    expect(inStep).toMatchObject({ index: 1, step: 1, kind: 'issue', severity: 4 });
-    state.attachEvidence(inStep.id, 'attempt-1:artifact:0');
-    expect(state.findings[1]!.artifactId).toBe('attempt-1:artifact:0');
+    const inStep = finding(state, { artifactId: 'attempt-1:artifact:0' });
+    expect(inStep).toMatchObject({ index: 1, step: 1, kind: 'issue', severity: 4, artifactId: 'attempt-1:artifact:0' });
     expect(state.issues).toHaveLength(2);
   });
 
@@ -132,26 +130,39 @@ describe('ExploreState', () => {
   });
 });
 
-describe('summaryRows', () => {
-  it('summarizes steps, findings by severity, and the assessment', () => {
+describe('ExploreState progress', () => {
+  it('announces every change to its listeners, in order, with the bounded records', () => {
     const state = new ExploreState('goal', { maxSteps: 4, timeoutMs: 300_000 });
+    const seen: ExploreProgress[] = [];
+    state.subscribe((progress) => seen.push(progress));
+    state.start();
+    state.planning();
     state.beginStep('Cart', 'a');
-    state.endStep('passed');
-    state.beginStep('Checkout', 'b');
-    state.endStep('exhausted');
-    finding(state, { title: 'Minor misalignment', kind: 'warning', severity: 2 });
     finding(state, { title: 'Total shows $0.00', severity: 4, path: '/cart' });
+    state.endStep('passed', 'covered');
+    state.planning();
     state.end('step-limit', 'Checkout is broken.');
-    const rows = summaryRows(state);
-    expect(rows.map((row) => row.label.trim())).toEqual(['Explored', 'Findings', 'S4 issue', 'S2 warning', 'Assessment']);
-    expect(rows[0]!.text).toBe('2 steps (1 passed, 1 ended at their limit); ended: the step limit was reached');
-    expect(rows[1]!.text).toBe('1 issue, 1 warning');
-    expect(rows[2]!.text).toBe('Total shows $0.00 (/cart)');
+    expect(seen.map((progress) => progress.phase)).toEqual([
+      'started',
+      'planning',
+      'step-started',
+      'finding',
+      'step-finished',
+      'planning',
+      'finished',
+    ]);
+    expect(seen[0]).toEqual({ phase: 'started', goal: 'goal', budgets: { maxSteps: 4, timeoutMs: 300_000 } });
+    expect(seen[2]).toMatchObject({ step: { index: 1, title: 'Cart', instruction: 'a' } });
+    expect(seen[3]).toMatchObject({ finding: { index: 0, step: 1, title: 'Total shows $0.00', path: '/cart' } });
+    expect(seen[4]).toMatchObject({ step: { index: 1, status: 'passed', summary: 'covered' } });
+    expect(seen[6]).toEqual({ phase: 'finished', ended: 'step-limit', summary: 'Checkout is broken.' });
   });
 
-  it('says none when nothing was found', () => {
+  it('announces the end without a summary when none was given', () => {
     const state = new ExploreState('goal', { maxSteps: 4, timeoutMs: 300_000 });
-    state.end('finished');
-    expect(summaryRows(state).map((row) => row.text)).toEqual(['0 steps (0 passed); ended: the agent covered the goal', 'none']);
+    const seen: ExploreProgress[] = [];
+    state.subscribe((progress) => seen.push(progress));
+    state.end('aborted', '  ');
+    expect(seen).toEqual([{ phase: 'finished', ended: 'aborted', summary: undefined }]);
   });
 });

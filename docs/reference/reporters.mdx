@@ -89,10 +89,17 @@ type RunEventFact =
   | { type: 'step'; testId; agent; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
   | { type: 'serial-group'; group: SerialGroupRecord }
+  | { type: 'explore'; progress: ExploreProgress }
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
+
+`explore` appears only in an `e2e explore` run: `started` as its test begins,
+`planning` while the model decides the next charter, `step-started`
+and `step-finished` around each exploration step, `finding` the moment one is
+reported, and `finished` with why the exploration ended and the assessment.
+The record of all of it is `run.explore` in the report.
 
 `run-started` comes first and `run-finished` last. `test-finished` carries
 the full result record, including every attempt's artifacts, so a reporter

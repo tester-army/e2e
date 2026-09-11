@@ -45,6 +45,7 @@ import {
   type Colors,
   type Counters,
 } from './format.ts';
+import { ExploreView } from './list-explore.ts';
 import { isShownEvent, type FileGroup, type RunningTest, type TestLine } from './list-model.ts';
 import { stepLine } from './list-steps.ts';
 import { LiveWindow } from './live-window.ts';
@@ -224,6 +225,12 @@ export class ListReporter implements Reporter {
    * has scrolled away by the time a long run ends.
    */
   private models: string | undefined;
+  /**
+   * The exploration an `e2e explore` run reports through `explore` events;
+   * while present, its view stands in for the one synthetic test's file
+   * block, live rows, failure entry, and test counters.
+   */
+  private explore: ExploreView | undefined;
 
   constructor(
     private readonly output: ListReporterOutput = DEFAULT_OUTPUT,
@@ -271,6 +278,9 @@ export class ListReporter implements Reporter {
         break;
       case 'serial-group':
         this.serialGroup(event.group);
+        break;
+      case 'explore':
+        this.exploreProgress(event.progress);
         break;
       case 'run-error':
         this.errors.push(event.error);
@@ -462,6 +472,7 @@ export class ListReporter implements Reporter {
       }
       case 'event': {
         const { current } = running;
+        this.explore?.action(progress.event);
         if (current === undefined || !isShownEvent(progress.event)) break;
         current.events.push(progress.event);
         this.window.redraw();
@@ -482,6 +493,8 @@ export class ListReporter implements Reporter {
         }
         const { api, label, status, durationMs, modelCalls } = progress;
         const step = { api, label, status, durationMs, modelCalls };
+        // An exploration's planner and charter steps show as the exploration's own rows.
+        if (this.explore !== undefined) break;
         if (this.live) {
           running.steps.push(step);
           this.window.redraw();
@@ -525,6 +538,15 @@ export class ListReporter implements Reporter {
     addUsage(this.runUsage, usage);
     addCacheTally(this.runCache, cache);
     const title = this.titledAs(result.test.titlePath.join(' > '), result.agent);
+    if (this.explore !== undefined) {
+      // The exploration's verdict is its findings; any other error is a failure of its own.
+      this.explore.result(result.attempts.flatMap((attempt) => attempt.artifacts));
+      if (error !== undefined && !this.explore.isVerdict(error)) {
+        this.failures.push({ group, title, status: result.status, error, videos });
+      }
+      this.window.redraw();
+      return;
+    }
     const line: TestLine = {
       title,
       declarationIndex: result.test.declarationIndex,
@@ -656,10 +678,11 @@ export class ListReporter implements Reporter {
     const { pc } = this;
     const files = this.fileCounters();
     const tests = this.testCounters();
-    const rows = [
-      padTitle(pc, 'Test Files') + (files.total === 0 ? this.emptyState('no test files', 'none started') : stateString(pc, files)),
-      padTitle(pc, 'Tests') + (tests.total === 0 ? this.emptyState('no tests executed', 'none executed') : stateString(pc, tests)),
-    ];
+    const rows =
+      this.explore?.summaryRows() ?? [
+        padTitle(pc, 'Test Files') + (files.total === 0 ? this.emptyState('no test files', 'none started') : stateString(pc, files)),
+        padTitle(pc, 'Tests') + (tests.total === 0 ? this.emptyState('no tests executed', 'none executed') : stateString(pc, tests)),
+      ];
     const ai = usageText(this.runUsage);
     if (ai !== undefined) {
       const models = this.models === undefined ? '' : ` · ${this.models}`;
@@ -689,7 +712,56 @@ export class ListReporter implements Reporter {
   /** The live window: the running tree, then the summary. */
   private renderWindow(): string[] {
     const running = [...this.pairs.values()].filter((test) => test.executing);
+    if (this.explore !== undefined) {
+      return this.explore.liveRows(this.exploreBadge(), running[0]?.current?.events, this.summaryRows(false), Date.now());
+    }
     return this.tree.render(running, this.summaryRows(false), Date.now(), this.inFlight);
+  }
+
+  /** The badge of the explored target: an exploration runs on exactly one. */
+  private exploreBadge(): string {
+    return this.badge(this.targets[0] ?? '');
+  }
+
+  /**
+   * One moment of an exploration. The first creates the view and, without a
+   * live window, prints the header; from then on a finished step and a
+   * finding each print at once without one, and the window shows them with
+   * one.
+   */
+  private exploreProgress(progress: RunEventOf<'explore'>['progress']): void {
+    if (progress.phase === 'started') {
+      this.explore = new ExploreView(this.pc, progress);
+      if (!this.live) {
+        this.print(this.explore.header(this.exploreBadge(), 'Exploring'));
+      }
+      this.window.redraw();
+      return;
+    }
+    const view = this.explore;
+    if (view === undefined) return;
+    view.progress(progress);
+    if (!this.live) {
+      if (progress.phase === 'step-finished' && view.lastStep !== undefined) {
+        for (const line of view.stepLines(view.lastStep)) this.print(line);
+      } else if (progress.phase === 'finding') {
+        this.print(view.findingLine(progress.finding));
+      }
+    }
+    this.window.redraw();
+  }
+
+  /**
+   * An exploration's permanent record: the header and, with a live window,
+   * the steps it was the only home of; then the findings with their
+   * evidence, and the closing assessment.
+   */
+  private printExplore(): void {
+    const view = this.explore;
+    if (view === undefined) return;
+    for (const line of view.record(this.exploreBadge(), this.live)) this.print(line);
+    for (const line of view.findingsSection((target) => this.displayPath(target), this.artifactsRoot)) this.print(line);
+    for (const line of view.assessment()) this.print(line);
   }
 
   /** vitest's `Failed Tests` section: a banner, then each failure with its code frame. */
@@ -787,6 +859,7 @@ export class ListReporter implements Reporter {
     for (const group of this.groups.values()) {
       if (!group.printed && group.lines.length > 0) this.printGroup(group);
     }
+    this.printExplore();
     this.printFailures();
     this.printErrors();
     this.print('');

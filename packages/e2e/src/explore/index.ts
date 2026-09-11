@@ -3,8 +3,9 @@
  * as `run` loads it, the explorer replaces the executor of the agent the run
  * uses, and the exploration body is registered in memory as the run's only
  * test, so the reporters, `report.json`, artifacts, video, the AI trace, and
- * the exit codes are the runner's own. The record of the exploration rides
- * along as `run.explore`.
+ * the exit codes are the runner's own. The exploration's progress travels
+ * as `explore` run events, which the list reporter renders, and its record
+ * rides along as `run.explore`.
  */
 
 import { MAX_PARAMS_BYTES } from '../agent/act-validation.ts';
@@ -20,7 +21,6 @@ import type { AgentConfig, BuiltinReporter, E2EConfig } from '../types.ts';
 import { createExploreBody } from './body.ts';
 import { createExplorer } from './executor.ts';
 import type { PlanAccount } from './plan.ts';
-import { exploreReporter } from './reporter.ts';
 import { ExploreState } from './state.ts';
 
 const DEFAULT_GOAL = 'Explore the app and find bugs';
@@ -113,14 +113,13 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     rawConfig: {
       ...rawConfig,
       agents: { ...rawConfig.agents, [agentName]: exploreAgentConfig(rawConfig.agents?.[agentName], explorer) },
-      reporters: [...(rawConfig.reporters ?? ['list']), exploreReporter(state)],
     },
     agent: options.agent,
     env,
     tests: {
       file: EXPLORE_FILE,
       registration: exploreRegistration(state, target.app.base !== undefined, accounts),
-      explore: () => state.snapshot(),
+      explore: state,
     },
     targetIds: [target.name],
     headed: options.headed,

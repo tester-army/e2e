@@ -68,14 +68,60 @@ checked.
 
 ## What you get
 
+The terminal follows the exploration as it happens: each finding the moment
+the agent reports it, and each step as it finishes, by title.
+
 ```text
-   Explored  4 steps (3 passed, 1 failed); ended: the agent covered the goal
-   Findings  2 issues, 1 warning
-   S4 issue  Checkout total shows $0.00 with two items in the cart (/cart)
-   S3 issue  Promo code field accepts any text and shows no error (/checkout)
- S2 warning  Footer links wrap onto two lines at 1280px (/)
- Assessment  Browsing and the cart work. Checkout computes the total wrong...
+ ❯  web  Exploring  Explore this bookshop like a careful first-time buyer: browse the catalog, ...
+   ⚑ medium issue  Home greeting exposes an unresolved userName template (/)
+   ⚑ high issue  Neuromancer shows an impossible negative stock availability (/catalog)
+   ✓ 1  Catalog browsing 31.46s · 7 actions · 4 findings
+   ⚑ high issue  Cart total does not update when Hyperion quantity increases (/cart)
+   ⚑ trivial warning  Checkout newsletter label misspells Receive (/checkout)
+   ✓ 2  Cart quantities and removal 19.47s · 4 actions · 3 findings
+   ended: the agent covered the goal
 ```
+
+Then a `Findings` section, issues before warnings and the most severe first,
+each with where it was seen, what was expected against what the screen
+showed, the steps that reach it, and the screenshot taken as evidence. The
+assessment and the summary close the run.
+
+```text
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Findings 7 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ 1. high issue       Cart total does not update when Hyperion quantity increases
+    /cart · step 2
+    expected  Increasing Hyperion from 1 to 2 should change the cart total from
+              $25.25 to $39.25, matching $28.00 plus Solaris at $11.25.
+    actual    The screen shows Hyperion quantity 2 and line total $28.00, but
+              the Cart total still reads "$25.25".
+    steps     1. Open the cart with Hyperion and Solaris each at quantity 1.
+              2. Click the "+" button labeled "Increase Hyperion quantity" once.
+    evidence  .e2e/artifacts/web/explore__Explore_20this_20bookshop.../attempt-0/finding-5.png
+
+ 2. medium issue     Orders page says 3 orders but lists only 2
+    ...
+
+ Assessment
+   The exploration goal was covered: the catalog, cart, checkout, Account,
+   Orders, and Sign in flows were exercised, including a successful order. The
+   non-first Orders entry did not open a detail view. The cart quantity and
+   removal flow is the highest-value flow to turn into a scripted test.
+
+   Findings  6 issues | 1 warning
+      Steps  3 of 8 · 3 passed · the agent covered the goal
+         AI  157.6k tokens · 26% cached · $0.12 · 30 model calls · gateway/google/gemini-3.6-flash
+   Start at  20:37:20
+   Duration  93.67s
+     Report  .e2e/report.json
+```
+
+Severity reads as a word: `critical` (5), `high` (4), `medium` (3), `low`
+(2), `trivial` (1). An `issue` fails the run; a `warning` never does. The
+exploration is the run's one test, so the usual file block and `Failed Tests`
+entry give way to this record; a failure that is not the verdict, such as a
+provider error or a run that explored nothing, still prints as one.
 
 `.e2e/report.json` carries the exploration under `run.explore`: the goal, the
 budgets, why the run ended, the assessment, every step, and every finding.

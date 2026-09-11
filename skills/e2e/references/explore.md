@@ -53,9 +53,15 @@ Exit code `0`: steps ran and no `issue` was reported (warnings allowed). Exit
 code `1`: at least one `issue`, or no step ran and nothing was found (the run
 is `blocked`). `2` and `3` as for `run`.
 
-The terminal prints each step live and, under the summary, `Explored`,
-`Findings`, one row per finding sorted by severity, and `Assessment`.
-`.e2e/report.json` has the record under `run.explore`:
+The terminal shows the exploration step by step: each step by its title with
+its duration, actions, and findings, and each finding the moment it is
+reported as `⚑ high issue  Title (/path)`. At the end a `Findings` section
+lists every finding, issues first and the most severe first, each with where
+it was seen, its screenshot path, what was expected against what the screen
+showed, and the steps that reach it; then the `Assessment` and the summary
+(`Findings`, `Steps`, `AI`, `Duration`, `Report`). Severity words: critical 5,
+high 4, medium 3, low 2, trivial 1. `.e2e/report.json` has the record under
+`run.explore`:
 
 ```json
 {
