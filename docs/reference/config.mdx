@@ -83,10 +83,13 @@ export interface Target {
 
 `{ engine: playwright({ url }) }` is a complete target. Two targets on one
 platform name themselves. A target without an engine runs opaquely through
-agent tools; the runner cannot observe or drive it through an engine. Tests
-whose `requires` list names a capability the target lacks are skipped for
-that target. Calling an unsupported engine operation or acquiring a fixture
-it does not contribute fails with `UNSUPPORTED_CAPABILITY`.
+agent tools; the runner cannot observe or drive it through an engine.
+Ordinary tests whose `requires` list names a capability the target lacks are
+skipped for that target. A `test.setup` needed by a selected session consumer
+must be runnable there; if its required capabilities are missing, selection
+fails with `COLLECTION_ERROR`. Calling an unsupported engine operation or
+acquiring a fixture it does not contribute fails with
+`UNSUPPORTED_CAPABILITY`.
 
 ## The app under test
 

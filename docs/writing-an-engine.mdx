@@ -95,7 +95,7 @@ never silently.
 | Member | Capability | Unlocks |
 | --- | --- | --- |
 | `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
-| `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, node `scroll`, and the `Locator` action set; `type_secret` when the step declares credentials and the engine supports secure filling |
+| `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, node `scroll`, and the `Locator` action set; `type_secret` when the step declares credentials |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
 | `swipe(direction, momentum, context)` | (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
@@ -107,11 +107,16 @@ never silently.
 
 The agent derives its toolset from this manifest and the step's declared
 credentials: a verb whose member is absent is never offered to the model.
-Every secret fill still passes the runner's secure-field and origin checks.
 Every node action, whether the agent or a `Locator` asked for it, arrives
 as one `LocatorAction` on `perform`. Implement each action once and throw
-`UNSUPPORTED_CAPABILITY` for a kind
-the surface cannot express.
+`UNSUPPORTED_CAPABILITY` for a kind the surface cannot express.
+
+There is no separate secure-fill capability flag. Before dispatching a
+secret fill, the runner checks the declared credential, allowed origin,
+current observation, and compatible editable field. The engine receives a
+`fill` action with `sensitive: true` and must handle it securely or throw
+`UNSUPPORTED_CAPABILITY`; declaring `perform` does not hide the tool when
+that particular action is unsupported.
 
 ### Lifecycle
 

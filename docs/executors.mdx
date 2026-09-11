@@ -132,8 +132,14 @@ performs the authorized fill without the plaintext passing through your code.
 A custom executor can run both `agent.act` and `agent.assert` without a
 model. Its `agent.assert` dispatches to `runStep` under the act budgets and
 `config.timeout`; `vision` and `screenshot` are `UNSUPPORTED_CAPABILITY`
-there. The built-in judgment tier still requires a model for `agent.assert`,
-`agent.waitFor`, and `agent.extract`, otherwise it raises `MODEL_UNAVAILABLE`.
+there.
+
+Without a configured executor, the runner checks for a model when `agent`
+is first acquired, after the engine attempt starts. A missing model raises
+`MODEL_UNAVAILABLE` then. A custom executor with no model passes that check.
+Its `agent.waitFor` and `agent.extract` calls still use the built-in judgment
+tier and raise `MODEL_UNAVAILABLE` when they need a model and none is
+configured.
 
 ### Driving the page yourself
 

@@ -96,11 +96,14 @@ explorer; a hand-rolled executor has no vocabulary to reuse and is replaced
 by the built-in agent for the run, with a notice.
 
 Configured `credentials` reach the explorer as step secrets. The planner is
-told each account's name and username, never its password. On an engine that
-supports authorized secret filling, the agent can sign in through
-`type_secret`. Otherwise that tool is unavailable and the explorer skips
-password sign-in. The password never enters a prompt, a transcript, or a
-finding.
+told each account's name and username, never its password. The `type_secret`
+tool is offered when credentials are configured and the selected engine
+declares `perform`. Each fill still needs the runner's authorization and an
+engine that can handle a sensitive fill; unsupported fills can fail when
+called. There is no separate capability flag that hides the tool for those
+engines. Without configured credentials or `perform`, the tool is absent
+and the explorer is instructed to skip password sign-in. The password never
+enters a prompt, a transcript, or a finding.
 
 With several targets, pass `--target`; otherwise the first configured target
 is explored and the CLI says so. The trace cache is off and retries are zero

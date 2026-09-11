@@ -61,6 +61,7 @@ A read-only tool can look at the screen through the same redacted view the
 executor uses. This tool saves the available pixels as report evidence:
 
 ```ts
+import { randomUUID } from 'node:crypto';
 import { defineTool, getToolContext } from '@e2edev/e2e/agent';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -76,7 +77,7 @@ const captureEvidence = defineTool(
       if (pixels === undefined) {
         return { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' };
       }
-      const id = await context.attachScreenshot(pixels, 'evidence');
+      const id = await context.attachScreenshot(pixels, `evidence-${randomUUID()}`);
       return { evidence: id };
     },
   }),
@@ -93,6 +94,8 @@ body already occupies the action queue.
 of the step. It lands in the attempt's artifact directory, in the report's
 artifact records, and in a configured artifact store, and the call resolves
 with the artifact's id.
+Use a unique label for each capture so later images do not overwrite earlier
+ones.
 
 ## Device toolkits
 

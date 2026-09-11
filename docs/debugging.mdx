@@ -44,16 +44,19 @@ Artifacts land under `.e2e/artifacts/`, one directory per attempt:
   either verdict unless `screenshot: false` disables it. Capture can fail or
   be withheld. A failed `expect` does not capture one automatically;
   `app.screenshot('label')` captures one explicitly when pixels are allowed.
-- **A Playwright trace** (`trace.zip`) on a Playwright target. Open it with
-  `npx playwright show-trace <file>`.
+- **Playwright traces** when the `trace` artifact kind is enabled and capture
+  succeeds. Open a trace with `npx playwright show-trace <file>`.
 - **Downloads** a test saved through `web.waitForDownload`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
 Once a secret was filled in an attempt, the runner rewrites the attempt's
 trace before it is kept, replacing every credential value with
 `<secret:name>`. The report marks such a trace `redaction: "complete"`. A
-trace that cannot be rewritten is deleted. All screenshot evidence, including
-`app.screenshot()`, is denied for the rest of the attempt after a secret fill.
+trace inside the attempt's artifact directory that cannot be rewritten is
+deleted. If an engine returns a path outside that directory, the runner
+withholds the trace with `TRACE_WITHHELD` and leaves the file untouched.
+All screenshot evidence, including `app.screenshot()`, is denied for the
+rest of the attempt after a secret fill.
 Videos are recorded with `redaction: "incomplete"` because a screencast masks
 nothing.
 
