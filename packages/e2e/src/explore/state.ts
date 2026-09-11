@@ -69,9 +69,9 @@ export class ExploreState {
     this.#notify({ phase: 'started', goal: this.goal, budgets: { maxSteps: this.budgets.maxSteps, timeoutMs: this.budgets.timeoutMs } });
   }
 
-  /** Announces that the planner is deciding what comes next. */
-  planning(): void {
-    this.#notify({ phase: 'planning' });
+  /** Announces that the planner is deciding what comes next: a step, or the closing assessment. */
+  planning(closing: boolean): void {
+    this.#notify({ phase: 'planning', closing });
   }
 
   /** Opens the next step; the index is one-based. */

@@ -1643,7 +1643,7 @@ describe('explore runs', () => {
     reporter.handle(plan([{ file: 'explore', target: 'web', tests: 1 }]));
     reporter.handle(testStarted('t1', GOAL, 'web', 'explore'));
     reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
-    reporter.handle(explore({ phase: 'planning' }));
+    reporter.handle(explore({ phase: 'planning', closing: false }));
     reporter.handle(stepEvent({ phase: 'start', kind: 'agent', api: 'agent.extract', label: 'Plan the next step' }));
     reporter.handle(stepEvent({ phase: 'end', kind: 'agent', api: 'agent.extract', label: 'Plan the next step', status: 'passed', durationMs: 900, modelCalls: 1 }));
     reporter.handle(explore({ phase: 'step-started', step: STEP_1 }));
@@ -1654,7 +1654,7 @@ describe('explore runs', () => {
     reporter.handle(explore({ phase: 'finding', finding: FINDING }));
     reporter.handle(stepEvent({ phase: 'end', kind: 'agent', api: 'agent.act', label: STEP_1.instruction, status: 'passed', durationMs: 32_000, modelCalls: 6 }));
     reporter.handle(explore({ phase: 'step-finished', step: { ...STEP_1, status: 'passed', summary: 'Cart holds two items', startedAt: '2026-09-11T10:00:01.000Z', durationMs: 32_000 } }));
-    reporter.handle(explore({ phase: 'planning' }));
+    reporter.handle(explore({ phase: 'planning', closing: false }));
     reporter.handle(explore({ phase: 'step-started', step: STEP_2 }));
     reporter.handle(explore({ phase: 'finding', finding: WARNING }));
     reporter.handle(
@@ -1738,9 +1738,13 @@ describe('explore runs', () => {
     reporter.handle(plan([{ file: 'explore', target: 'web', tests: 1 }]));
     reporter.handle(testStarted('t1', GOAL, 'web', 'explore'));
     reporter.handle(explore({ phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } }));
-    reporter.handle(explore({ phase: 'planning' }));
+    reporter.handle(explore({ phase: 'planning', closing: false }));
     expect(frames.at(-1)).toContain('↳ planning step 1 of 4');
     expect(frames.at(-1)).toContain('Steps  0 done of 4 · planning');
+    // The budget can end the run before the step cap: the planner is then writing the assessment, not a step.
+    reporter.handle(explore({ phase: 'planning', closing: true }));
+    expect(frames.at(-1)).toContain('↳ planning the closing assessment');
+    expect(frames.at(-1)).toContain('Steps  0 done of 4 · closing');
     reporter.handle(explore({ phase: 'step-started', step: STEP_1 }));
     reporter.handle(stepEvent({ phase: 'start', kind: 'agent', api: 'agent.act', label: STEP_1.instruction }));
     reporter.handle(engineEvent('tap', 'tap button "Add to cart"'));

@@ -95,7 +95,8 @@ export class ExploreView {
   private readonly steps: FinishedStep[] = [];
   private readonly findings: ReportExploreFinding[] = [];
   private open: OpenStep | undefined;
-  private planning = false;
+  /** What the planner is deciding while no step is open: nothing, the next step, or the closing assessment. */
+  private planning: 'step' | 'closing' | undefined;
   private ended: ReportExplore['ended'] | undefined;
   private summary: string | undefined;
   /** The exploration test's artifacts, once its result arrived: where a finding's screenshot is. */
@@ -119,10 +120,10 @@ export class ExploreView {
       case 'started':
         break;
       case 'planning':
-        this.planning = true;
+        this.planning = progress.closing ? 'closing' : 'step';
         break;
       case 'step-started':
-        this.planning = false;
+        this.planning = undefined;
         this.open = { step: progress.step, actions: 0, findings: [] };
         break;
       case 'step-finished': {
@@ -136,7 +137,7 @@ export class ExploreView {
         this.open?.findings.push(progress.finding);
         break;
       case 'finished':
-        this.planning = false;
+        this.planning = undefined;
         this.ended = progress.ended;
         this.summary = progress.summary;
         break;
@@ -263,9 +264,8 @@ export class ExploreView {
     const { pc } = this;
     if (this.ended !== undefined || budget < 1) return [];
     if (this.open === undefined) {
-      if (!this.planning) return [];
-      const next = this.steps.length + 1;
-      const what = next > this.budgets.maxSteps ? 'the closing assessment' : `step ${next} of ${this.budgets.maxSteps}`;
+      if (this.planning === undefined) return [];
+      const what = this.planning === 'closing' ? 'the closing assessment' : `step ${this.steps.length + 1} of ${this.budgets.maxSteps}`;
       return [`${LIVE_INDENT}${pc.dim(`${F_DOWN_RIGHT} planning ${what}`)}`, `${LIVE_INDENT}  ${waitingRow(pc, now, 'Thinking')}`].slice(0, budget);
     }
     const { step } = this.open;
@@ -307,7 +307,8 @@ export class ExploreView {
     if (this.ended === undefined) {
       steps.push(`${done} done of ${this.budgets.maxSteps}`);
       if (this.open !== undefined) steps.push(`step ${this.open.step.index} running`);
-      else if (this.planning) steps.push('planning');
+      else if (this.planning === 'closing') steps.push('closing');
+      else if (this.planning === 'step') steps.push('planning');
     } else {
       steps.push(`${done} of ${this.budgets.maxSteps}`, ...this.outcomeParts(), pc.dim(ENDED_TEXT[this.ended]));
     }

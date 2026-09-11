@@ -91,6 +91,10 @@ type FindingReport = z.output<typeof FINDING_SCHEMA>;
  * model with the finding's number so it is not reported twice.
  */
 function createFindingTool(state: ExploreState): DefinedTool {
+  // Numbered as the calls arrive, before any await: a model may report two
+  // findings in one turn, and read-only tools run in parallel, so the
+  // finding's own index is not known until its screenshot is saved.
+  let reported = 0;
   return defineTool(
     {
       description:
@@ -98,13 +102,15 @@ function createFindingTool(state: ExploreState): DefinedTool {
       inputSchema: FINDING_SCHEMA,
       execute: async (input: FindingReport, executionOptions: ToolExecutionOptions<unknown>) => {
         const { observe, attachScreenshot } = getToolContext(executionOptions);
+        reported += 1;
+        const label = `finding-${reported}`;
         const observation = await observe({ pixels: true }).catch(() => undefined);
         // Evidence is worth keeping, never worth failing the finding for. It
         // is saved first, so the finding is announced complete, evidence included.
         const artifactId =
           observation?.pixels === undefined
             ? undefined
-            : await attachScreenshot(observation.pixels, `finding-${state.findings.length + 1}`).catch(() => undefined);
+            : await attachScreenshot(observation.pixels, label).catch(() => undefined);
         const finding = state.addFinding({ ...input, path: observation?.path, observationRevision: observation?.revision, artifactId });
         return `Finding ${finding.index + 1} recorded (${finding.kind}, severity ${finding.severity}): ${finding.title}. Do not report it again; continue the charter or conclude the step.`;
       },

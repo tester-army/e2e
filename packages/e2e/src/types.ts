@@ -883,7 +883,8 @@ export type ReporterSummary = readonly { readonly label: string; readonly text: 
  * A reporter in `reporters`, the contract the built-in `list`, `json`, and
  * `junit` reporters implement too. `onEvent` sees every run event as it
  * happens, exactly what the `list` reporter renders, and must not block: a
- * throw quarantines it for the rest of the run. `onRunFinished` runs once
+ * throw quarantines it for the rest of the run. Event types are added over
+ * time; a reporter handles the ones it knows and ignores the rest. `onRunFinished` runs once
  * `report.json` is written and the summary has printed; it is awaited within
  * a fixed budget, and the rows it resolves with print under the summary. Its
  * `signal` aborts when that budget runs out or the run is forced to stop, so

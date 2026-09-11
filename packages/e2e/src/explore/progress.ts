@@ -19,8 +19,8 @@ export type OpenedStep = Pick<ReportExploreStep, 'index' | 'title' | 'instructio
 export type ExploreProgress =
   /** The exploration begins: its test has started and the app is about to open. */
   | { readonly phase: 'started'; readonly goal: string; readonly budgets: ExploreBudgets }
-  /** The planner is deciding the next charter, or the closing assessment. */
-  | { readonly phase: 'planning' }
+  /** The planner is deciding the next charter, or (`closing`) the assessment that ends the run. */
+  | { readonly phase: 'planning'; readonly closing: boolean }
   | { readonly phase: 'step-started'; readonly step: OpenedStep }
   | { readonly phase: 'step-finished'; readonly step: ReportExploreStep }
   /** One finding, as recorded; its evidence screenshot, when kept, is the attempt artifact `artifactId` names. */

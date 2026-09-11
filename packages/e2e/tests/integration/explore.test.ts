@@ -93,6 +93,34 @@ describe('e2e explore', () => {
     await app?.close();
   });
 
+  it('keeps a screenshot per finding when the model reports two in one turn', async () => {
+    const SECOND_FINDING = { ...COUNTER_FINDING, title: 'Increment button has no accessible description', severity: 2 };
+    const model = installExploreModel({
+      plan: (call) =>
+        call.instruction.includes('(none yet')
+          ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' }
+          : { decision: 'finish', summary: 'Two defects on the home page.' },
+      loop: (call) => {
+        // Read-only tools run in parallel: both findings pick their evidence name before either is recorded.
+        if (call.turn === 1) {
+          return [
+            { toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING },
+            { toolName: FINDING_TOOL_NAME, input: SECOND_FINDING },
+          ];
+        }
+        return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }];
+      },
+    });
+    const outcome = await runExplore(project, app, model);
+    const record = outcome.report.run.explore!;
+    expect(record.findings.map((finding) => finding.title).toSorted()).toEqual([COUNTER_FINDING.title, SECOND_FINDING.title].toSorted());
+    const artifacts = outcome.report.run.results[0]!.attempts[0]!.artifacts;
+    const paths = record.findings.map((finding) => artifacts.find((artifact) => artifact.id === finding.artifactId)?.path);
+    expect(paths.every((entry) => entry !== undefined)).toBe(true);
+    expect(new Set(paths).size).toBe(2);
+    expect(paths.map((entry) => entry!.split('/').at(-1)).toSorted()).toEqual(['finding-1.png', 'finding-2.png']);
+  });
+
   it('plans steps, records the finding with its evidence, and fails the run for the issue', async () => {
     const planPrompts: string[] = [];
     const model = installExploreModel({

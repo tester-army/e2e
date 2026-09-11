@@ -98,7 +98,7 @@ async function runSteps(loop: Loop): Promise<Ending> {
     const stop = mustFinish(state, remaining());
     if (stop !== undefined && remaining() < MIN_PLAN_TIMEOUT_MS) return { ended: stop.ended };
     let plan: PlanDecision;
-    state.planning();
+    state.planning(stop !== undefined);
     try {
       plan = await planNext(agent, state, {
         mustFinish: stop !== undefined,

@@ -136,11 +136,11 @@ describe('ExploreState progress', () => {
     const seen: ExploreProgress[] = [];
     state.subscribe((progress) => seen.push(progress));
     state.start();
-    state.planning();
+    state.planning(false);
     state.beginStep('Cart', 'a');
     finding(state, { title: 'Total shows $0.00', severity: 4, path: '/cart' });
     state.endStep('passed', 'covered');
-    state.planning();
+    state.planning(true);
     state.end('step-limit', 'Checkout is broken.');
     expect(seen.map((progress) => progress.phase)).toEqual([
       'started',
@@ -152,6 +152,8 @@ describe('ExploreState progress', () => {
       'finished',
     ]);
     expect(seen[0]).toEqual({ phase: 'started', goal: 'goal', budgets: { maxSteps: 4, timeoutMs: 300_000 } });
+    expect(seen[1]).toEqual({ phase: 'planning', closing: false });
+    expect(seen[5]).toEqual({ phase: 'planning', closing: true });
     expect(seen[2]).toMatchObject({ step: { index: 1, title: 'Cart', instruction: 'a' } });
     expect(seen[3]).toMatchObject({ finding: { index: 0, step: 1, title: 'Total shows $0.00', path: '/cart' } });
     expect(seen[4]).toMatchObject({ step: { index: 1, status: 'passed', summary: 'covered' } });

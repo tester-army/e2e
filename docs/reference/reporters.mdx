@@ -101,6 +101,10 @@ and `step-finished` around each exploration step, `finding` the moment one is
 reported, and `finished` with why the exploration ended and the assessment.
 The record of all of it is `run.explore` in the report.
 
+New event types are added over time, as `explore` was; a reporter handles the
+types it knows and ignores the rest, so a `switch` over `event.type` leaves
+its `default` branch empty rather than treating it as unreachable.
+
 `run-started` comes first and `run-finished` last. `test-finished` carries
 the full result record, including every attempt's artifacts, so a reporter
 that uploads evidence as it lands has what it needs before the run is over.
