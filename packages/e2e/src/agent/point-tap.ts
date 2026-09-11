@@ -10,7 +10,7 @@
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { clamp, clampToViewport } from '../internal/geometry.ts';
 import type { ExecutorPixels } from './executor.ts';
-import type { AgentObservation } from './observation.ts';
+import { INTERACTIVE_ROLES, type AgentObservation } from './observation.ts';
 
 /**
  * Scales a point read off a screenshot into the observation's CSS pixels and
@@ -34,31 +34,6 @@ export function imagePointToViewport(
   );
 }
 
-/**
- * Roles a hit-tested point may resolve to. Tapping a node taps its center,
- * which is only what the caller asked for when the node is the control
- * itself: a point inside a paragraph, a region, or the document lands on the
- * point, not on the center of a box that happens to contain it.
- */
-const CONTROL_ROLES: ReadonlySet<string> = new Set([
-  'button',
-  'link',
-  'textbox',
-  'searchbox',
-  'combobox',
-  'checkbox',
-  'radio',
-  'switch',
-  'tab',
-  'menuitem',
-  'menuitemcheckbox',
-  'menuitemradio',
-  'option',
-  'slider',
-  'spinbutton',
-  'treeitem',
-]);
-
 export interface HitTest {
   /** The innermost enabled control whose box contains the point, if any. */
   readonly control: SemanticNode | undefined;
@@ -71,7 +46,10 @@ export interface HitTest {
  * wins (deepest in the tree, then the smallest box); hidden nodes and nodes
  * without a box are skipped. Every box is in the top-level viewport's CSS
  * pixels, nested documents included (`SemanticNode.rect`), so a control
- * inside an iframe is found like any other.
+ * inside an iframe is found like any other. Only an enabled interactive
+ * role counts as the control: tapping a node taps its center, which is what
+ * the caller asked for only when the node is the control itself, not a
+ * paragraph or region that happens to contain the point.
  */
 export function hitTest(observation: AgentObservation, point: ViewportPoint): HitTest {
   let control: { node: SemanticNode; depth: number; area: number } | undefined;
@@ -84,7 +62,7 @@ export function hitTest(observation: AgentObservation, point: ViewportPoint): Hi
     if (point.y < rect.y || point.y >= rect.y + rect.height) continue;
     const candidate = { node, depth: depthOf(node.ref.id, observation.parents), area: rect.width * rect.height };
     if (inner(candidate, under)) under = candidate;
-    if (CONTROL_ROLES.has(node.role ?? '') && node.states?.disabled !== true && inner(candidate, control)) {
+    if (INTERACTIVE_ROLES.has(node.role ?? '') && node.states?.disabled !== true && inner(candidate, control)) {
       control = candidate;
     }
   }

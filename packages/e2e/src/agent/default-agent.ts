@@ -12,8 +12,10 @@ import type { ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import { AgentError } from './error.ts';
 import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
-import { createGrammarTools, GRAMMAR_TOOL_NAMES, screenshotNote } from './primitives.ts';
-import { compactScreenHistory, compactScreenshotHistory, interactiveNodeCount, ScreenPresenter } from './screen-update.ts';
+import { interactiveNodeCount } from './observation.ts';
+import { createGrammarTools, GRAMMAR_TOOL_NAMES } from './primitives.ts';
+import { ScreenPresenter } from './screen-update.ts';
+import { compactScreenHistory, compactScreenshotHistory } from './transcript-compaction.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool, toolAppliesTo, withToolContext } from './tool.ts';
@@ -28,15 +30,6 @@ Rules:
 - You may issue several actions in one turn when each targets a node already on screen and no earlier action in the turn changes what a later one targets: fill several fields, then press the submit button as the last action. Actions run in order; each result reports its own changes. Anything that changes the page (a tap on a link or button, a navigation, a submit) should be the last action of its turn.
 - If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude. Scrolling may repeat (times) or be issued several times in one turn to move far; each result reports what came into the tree.
 - Pixel tools, when offered: screenshot attaches the viewport's pixels when the tree lacks what you need (a shape on a canvas, a pin on a map, a region of an image, a control inside a system sheet) or contradicts what you expect; once you have one, every action result carries a fresh screenshot so you can see what the action did. tap_at(x, y) taps a point in the latest screenshot's pixel coordinates; a listed control under the point is tapped by its id. Tap by id whenever the screen lists the target, and take a screenshot rather than guessing what is drawn.`;
-
-/**
- * With no listed interactive node at all, the opening prompt carries a
- * screenshot: the tree describes a canvas, a game, or a semantics-free native
- * screen too poorly to act on, and the model would only ask for one. One
- * listed control is enough to leave the decision to the model — a small page
- * is not a blind one.
- */
-const THIN_SCREEN_INTERACTIVE_NODES = 0;
 
 /** One presenter per dispatched step, shared by the opening prompt and the tools that follow it. */
 const presenters = new WeakMap<StepExecutorContext, ScreenPresenter>();
@@ -107,9 +100,12 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
     }),
     buildPrompt: async (context) => {
       let observation = await context.observe();
-      // A screen the tree cannot drive is shown in pixels from the first
-      // turn: a round trip to discover that it is a canvas is a turn wasted.
-      if (!context.pixelsTainted && interactiveNodeCount(observation) <= THIN_SCREEN_INTERACTIVE_NODES) {
+      // With no listed interactive node at all, the opening prompt carries a
+      // screenshot: the tree describes a canvas, a game, or a semantics-free
+      // native screen too poorly to act on, and the model would only spend a
+      // turn asking for one. One listed control is enough to leave the
+      // decision to the model; a small page is not a blind one.
+      if (!context.pixelsTainted && interactiveNodeCount(observation) === 0) {
         observation = await context.observe({ pixels: true });
       }
       const parts = [
@@ -126,18 +122,14 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       if (context.ledger !== '') {
         parts.push(`Previously completed steps:\n${context.ledger}`);
       }
-      const presenter = presenterFor(context);
-      parts.push(presenter.initial(observation));
-      const pixels = observation.pixels;
-      if (pixels === undefined) return parts.join('\n\n');
-      presenter.attached(observation);
-      parts.push(screenshotNote(pixels));
+      const opening = presenterFor(context).open(observation);
+      if (typeof opening === 'string') return [...parts, opening].join('\n\n');
       return [
         {
           role: 'user',
           content: [
-            { type: 'text', text: parts.join('\n\n') },
-            { type: 'image', image: pixels.data, mediaType: pixels.mediaType },
+            { type: 'text', text: [...parts, opening.text].join('\n\n') },
+            { type: 'file', data: opening.pixels.data, mediaType: opening.pixels.mediaType },
           ],
         },
       ];

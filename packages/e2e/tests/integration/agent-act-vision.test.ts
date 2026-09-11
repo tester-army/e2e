@@ -122,7 +122,6 @@ describe('agent.act pixel verbs', () => {
     expect(step.metrics!.pixelBytes).toBeGreaterThan(0);
     const [, second, third] = turnsOf('pick the red pin');
     // The screenshot result is content: the screen text plus an image file part.
-    expect(second!.lastToolResult).toContain('Screenshot taken.');
     expect(second!.lastToolResult).toContain('"type":"file"');
     expect(second!.lastToolResult).toContain('"mediaType":"image/png"');
     expect(second!.lastToolResult).toContain('tap_at takes coordinates in this image');

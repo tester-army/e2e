@@ -196,7 +196,6 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const before = await call('screenshot');
     expect(before.isError, before.text).toBe(false);
     expect(before.images).toBe(1);
-    expect(before.text).toContain('Screenshot taken.');
     expect(before.text).toContain('Screenshot attached: 768 by 432 pixels (0.6 per CSS pixel).');
 
     const filled = await call('type_secret', { target: nodeId(after.text, /textbox "Password"/), name: 'admin' });

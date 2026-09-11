@@ -12,17 +12,11 @@
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { AgentErrorCode } from '../types.ts';
-import type { VisionDegradation } from '../run/steps.ts';
-import {
-  isRuntimeHardStop,
-  BLOCKABLE_CODES,
-  type ExecutorPixels,
-  type StepExecutorContext,
-  type StepVerdict,
-} from './executor.ts';
+import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
+import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport } from './point-tap.ts';
-import { ScreenPresenter } from './screen-update.ts';
+import { ScreenPresenter, type ScreenOutput } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
 const MODEL_ERROR_CODES = [
@@ -93,13 +87,7 @@ type ModelOutput =
       readonly value: ({ readonly type: 'text'; readonly text: string } | { readonly type: 'file'; readonly data: { readonly type: 'data'; readonly data: string }; readonly mediaType: string })[];
     };
 
-/**
- * What a grammar tool hands back: the screen as text, plus the screenshot
- * when the step is showing pixels. The image rides the tool result itself,
- * so the model sees what its action did rather than a description of it.
- */
-type ScreenOutput = string | { readonly text: string; readonly pixels: ExecutorPixels };
-
+/** A rendered screen as the model receives it: text, or text with the screenshot attached as a file part. */
 function screenModelOutput({ output }: { readonly output: ScreenOutput }): ModelOutput {
   if (typeof output === 'string') return { type: 'text', value: output };
   return {
@@ -113,25 +101,6 @@ function screenModelOutput({ output }: { readonly output: ScreenOutput }): Model
       },
     ],
   };
-}
-
-/** The line under a screenshot: its pixel size and the coordinate space `tap_at` reads. */
-export function screenshotNote(pixels: Pick<ExecutorPixels, 'width' | 'height' | 'scale'>): string {
-  return `Screenshot attached: ${String(pixels.width)} by ${String(pixels.height)} pixels${
-    pixels.scale === 1 ? '' : ` (${String(pixels.scale)} per CSS pixel)`
-  }. tap_at takes coordinates in this image: x from the left edge, y from the top edge.`;
-}
-
-/** Why pixels did not reach the model, and what to do instead. */
-function withheldAdvice(code: VisionDegradation | undefined): string {
-  switch (code) {
-    case 'PIXEL_TAINTED':
-      return 'a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED). Work from the tree and tap listed nodes by id.';
-    case 'MASKING_UNPROVEN':
-      return 'the engine could not prove every secure field on screen masked (MASKING_UNPROVEN). Work from the tree and tap listed nodes by id.';
-    default:
-      return 'this engine captures no pixels (UNSUPPORTED_CAPABILITY). Work from the tree and tap listed nodes by id.';
-  }
 }
 
 /** The conclusion tool and the verdict it collected. */
@@ -213,16 +182,6 @@ export interface GrammarToolOptions {
 }
 
 /**
- * AI SDK tools over the harness action grammar, limited to the verbs the
- * target's engine declared. A verb the surface cannot honor is not offered
- * at all, so the model never learns vocabulary it can only be rejected on.
- *
- * Every action returns what it changed on screen. Tool bodies run one at a
- * time in call order, action and its look at the result together, so a turn
- * that batches several actions gets one coherent result per action rather
- * than every result describing the state after the last one.
- */
-/**
  * Every name `createGrammarTools` may hand out. The grammar owns these in the
  * model's vocabulary whatever the engine declares, so a project tool cannot
  * take one: it would be silently shadowed on one engine and live on another.
@@ -240,6 +199,16 @@ export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'tap_at',
 ]);
 
+/**
+ * AI SDK tools over the harness action grammar, limited to the verbs the
+ * target's engine declared. A verb the surface cannot honor is not offered
+ * at all, so the model never learns vocabulary it can only be rejected on.
+ *
+ * Every action returns what it changed on screen. Tool bodies run one at a
+ * time in call order, action and its look at the result together, so a turn
+ * that batches several actions gets one coherent result per action rather
+ * than every result describing the state after the last one.
+ */
 export function createGrammarTools(
   context: StepExecutorContext,
   options: GrammarToolOptions = {},
@@ -248,37 +217,17 @@ export function createGrammarTools(
   const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
   const { verbs } = context.target;
 
-  // The chain is always already settled-to-undefined, so a failed body
-  // reaches its own caller and never poisons the queue (same idiom as the
-  // dispatch's own serialization).
-  let chain: Promise<unknown> = Promise.resolve();
-  const inOrder = <T>(body: () => Promise<T>): Promise<T> => {
-    const run = chain.then(body);
-    chain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  };
+  // One queue for the tool bodies: an action and its look at the result run
+  // together, so a batched turn gets one coherent result per action.
+  const queue = new OperationQueue();
+  const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
 
   /**
    * The screen after an action, as the model reads it: the changes since the
-   * screen it holds, and, once the step is showing pixels, a fresh screenshot
-   * of them. Pixels the harness withholds mid-step (a secret was just filled)
-   * are reported once as text.
+   * screen it holds and, once the step is showing pixels, a fresh screenshot.
    */
-  const present = async (lead: string, expectChange?: boolean): Promise<ScreenOutput> => {
-    const observation = await context.observe({ pixels: screen.showingPixels });
-    if (!screen.showingPixels) return screen.update(observation, { lead, expectChange });
-    // In pixel mode an unchanged tree is not a failed action: what the action
-    // did may be drawn, not listed, so the screenshot is the evidence.
-    const text = screen.update(observation, { lead, expectChange: false });
-    if (observation.pixels === undefined) {
-      return `${text}\n\nNo screenshot this time: ${withheldAdvice(observation.pixelsWithheld)}`;
-    }
-    screen.attached(observation);
-    return { text: `${text}\n\n${screenshotNote(observation.pixels)}`, pixels: observation.pixels };
-  };
+  const present = async (lead: string, expectChange?: boolean): Promise<ScreenOutput> =>
+    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, expectChange });
 
   /**
    * Performs one action and reads its result. A failed action still returns
@@ -408,20 +357,7 @@ export function createGrammarTools(
       description:
         'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
       inputSchema: z.object({}),
-      execute: () =>
-        inOrder(() =>
-          guard(async () => {
-            const observation = await context.observe({ pixels: true });
-            if (observation.pixels === undefined) {
-              return `No screenshot: ${withheldAdvice(observation.pixelsWithheld)}`;
-            }
-            screen.attached(observation);
-            return {
-              text: `${screen.update(observation, { lead: 'Screenshot taken.' })}\n\n${screenshotNote(observation.pixels)}`,
-              pixels: observation.pixels,
-            };
-          }),
-        ),
+      execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
       toModelOutput: screenModelOutput,
     });
     if (verbs.has('tap') || verbs.has('tapAt')) {

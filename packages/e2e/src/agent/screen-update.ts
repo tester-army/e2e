@@ -8,21 +8,17 @@
  * saw earlier still names the same element, and a diff is a complete update
  * rather than a hint. A screen that changed mostly goes out whole again.
  *
- * Every full screen the transcript carries is a candidate for elision once
- * newer full screens supersede it; diffs are small and stay. That keeps the
- * conversation prefix stable turn after turn, which is what lets a provider
- * serve the resent context from its prompt cache.
+ * A screen may carry its pixels too. The presenter is where a screenshot
+ * joins the text: it notes the image's size and coordinate space under the
+ * screen, remembers that the model now holds pixels (from then on the step is
+ * in pixel mode and an unchanged tree is not a failed action), and explains
+ * once why pixels the step asked for were withheld. The transcript-side
+ * elision of superseded screens and screenshots lives in
+ * `transcript-compaction.ts`.
  */
 
-import type { ModelMessage } from 'ai';
 import type { ExecutorObservation, ExecutorPixels } from './executor.ts';
-
-/**
- * How many of the newest full screens stay verbatim in the transcript. One:
- * a whole new screen means the page changed mostly, and the screen it
- * replaced is dead weight on every later turn. Change updates never elide.
- */
-const FULL_SCREEN_PRESERVE_COUNT = 1;
+import type { VisionDegradation } from '../run/steps.ts';
 
 /** A diff past this many lines goes out as the full screen instead. */
 const MAX_DIFF_LINES = 60;
@@ -30,8 +26,8 @@ const MAX_DIFF_LINES = 60;
 /** A diff touching more than this share of the new screen goes out whole. */
 const MAX_DIFF_SHARE = 0.5;
 
-/** Every full screen is introduced by this phrase; the elision looks for it. */
-const FULL_SCREEN_PATTERN = /Current screen \(revision /;
+/** Every full screen is introduced by this phrase; the transcript elision looks for it. */
+export const FULL_SCREEN_PATTERN = /Current screen \(revision /;
 
 /** The screen as the model last received it, indexed for comparison. */
 interface ShownScreen {
@@ -62,20 +58,23 @@ export interface ShownScreenshot {
   readonly viewport: ExecutorObservation['viewport'];
 }
 
+/**
+ * A rendered screen: text alone, or text with the screenshot the model
+ * receives alongside it. The image rides the tool result (or the opening
+ * prompt) itself, so the model sees what its action did rather than a
+ * description of it.
+ */
+export type ScreenOutput = string | { readonly text: string; readonly pixels: ExecutorPixels };
+
+/** True for a rendered screen that carries its screenshot. */
+export function isScreenOutput(value: unknown): value is Exclude<ScreenOutput, string> {
+  return typeof value === 'object' && value !== null && 'text' in value && 'pixels' in value;
+}
+
 /** Renders one step's screens for the model and remembers what it has seen. */
 export class ScreenPresenter {
   private shown: ShownScreen | undefined;
   private screenshot: ShownScreenshot | undefined;
-
-  /**
-   * Records that a screenshot went to the model. From here on the step is in
-   * pixel mode: every later result carries a fresh screenshot, so a flow on a
-   * surface the tree cannot describe keeps seeing its own effects.
-   */
-  attached(observation: ExecutorObservation): void {
-    if (observation.pixels === undefined) return;
-    this.screenshot = { pixels: observation.pixels, viewport: observation.viewport };
-  }
 
   /** True once a screenshot went to the model in this step. */
   get showingPixels(): boolean {
@@ -119,6 +118,65 @@ export class ScreenPresenter {
       `${lead}Screen changes since revision ${previous.revision} (now revision ${observation.revision}${describeLocation(observation)}, ${String(next.nodes)} nodes): ${describeCounts(diff)}. ${assurance}`,
       ...diff,
     ].join('\n');
+  }
+
+  /** The step's first screen, whole, with its screenshot when the observation carries one. */
+  open(observation: ExecutorObservation): ScreenOutput {
+    this.attach(observation);
+    return this.withScreenshot(observation, this.initial(observation));
+  }
+
+  /**
+   * A later screen as the model reads it: the changes since the screen it
+   * holds and, once the step is showing pixels, the screenshot too. In pixel
+   * mode an unchanged tree is not a failed action: what the action did may be
+   * drawn, not listed, so the screenshot is the evidence and no action is
+   * blamed for leaving the tree alone.
+   */
+  present(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): ScreenOutput {
+    this.attach(observation);
+    const text = this.update(observation, {
+      lead: options.lead,
+      expectChange: this.showingPixels ? false : options.expectChange,
+    });
+    return this.withScreenshot(observation, text);
+  }
+
+  /** Records that a screenshot is going to the model; from here on the step is in pixel mode. */
+  private attach(observation: ExecutorObservation): void {
+    if (observation.pixels === undefined) return;
+    this.screenshot = { pixels: observation.pixels, viewport: observation.viewport };
+  }
+
+  /**
+   * The rendered screen with its screenshot and the coordinate note, or with
+   * the reason the pixels the step asked for did not come, or as is when no
+   * pixels were asked for.
+   */
+  private withScreenshot(observation: ExecutorObservation, text: string): ScreenOutput {
+    const { pixels } = observation;
+    if (pixels !== undefined) return { text: `${text}\n\n${screenshotNote(pixels)}`, pixels };
+    if (observation.pixelsWithheld === undefined) return text;
+    return `${text}\n\nNo screenshot: ${withheldAdvice(observation.pixelsWithheld)}`;
+  }
+}
+
+/** The line under a screenshot: its pixel size and the coordinate space `tap_at` reads. */
+function screenshotNote(pixels: Pick<ExecutorPixels, 'width' | 'height' | 'scale'>): string {
+  return `Screenshot attached: ${String(pixels.width)} by ${String(pixels.height)} pixels${
+    pixels.scale === 1 ? '' : ` (${String(pixels.scale)} per CSS pixel)`
+  }. tap_at takes coordinates in this image: x from the left edge, y from the top edge.`;
+}
+
+/** Why pixels did not reach the model, and what to do instead. */
+function withheldAdvice(code: VisionDegradation): string {
+  switch (code) {
+    case 'PIXEL_TAINTED':
+      return 'a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED). Work from the tree and tap listed nodes by id.';
+    case 'MASKING_UNPROVEN':
+      return 'the engine could not prove every secure field on screen masked (MASKING_UNPROVEN). Work from the tree and tap listed nodes by id.';
+    case 'UNSUPPORTED_CAPABILITY':
+      return 'this engine captures no pixels (UNSUPPORTED_CAPABILITY). Work from the tree and tap listed nodes by id.';
   }
 }
 
@@ -211,203 +269,4 @@ function diffScreens(previous: ShownScreen, next: ShownScreen): string[] {
     if (id !== undefined && !next.byId.has(id)) lines.push(`removed ${line}`);
   }
   return lines;
-}
-
-/**
- * Bytes of superseded full screens a transcript carries before they are
- * elided. Rewriting an earlier message changes the request prefix, and the
- * provider's prompt cache serves only an unchanged prefix, so a stale screen
- * that still fits under this budget stays verbatim: re-reading it from the
- * cache costs a tenth of sending its replacement, and the elision is then
- * one batch rather than one rewrite per turn. A two-turn step never elides.
- */
-const KEEP_STALE_SCREEN_BYTES = 32 * 1024;
-
-export interface CompactScreenHistoryOptions {
-  /** Stale full-screen bytes tolerated before elision; defaults to the cache-friendly budget. */
-  readonly keepStaleBytes?: number;
-}
-
-/**
- * Elides full screens the transcript no longer needs: every full screen but
- * the newest few is reduced to its lead and a notice, in the opening prompt
- * and in tool results alike, once the stale screens together outgrow the
- * budget. Diffs are never touched. Returns the input array unchanged when
- * nothing qualifies, so the caller can skip the override.
- */
-export function compactScreenHistory(
-  messages: ModelMessage[],
-  options: CompactScreenHistoryOptions = {},
-): ModelMessage[] {
-  const screens = messages.flatMap((message) => screenParts(message).filter((text) => text !== undefined));
-  let stale = screens.length - FULL_SCREEN_PRESERVE_COUNT;
-  if (stale <= 0) return messages;
-  const staleBytes = screens.slice(0, stale).reduce((bytes, text) => bytes + Buffer.byteLength(text, 'utf8'), 0);
-  if (staleBytes <= (options.keepStaleBytes ?? KEEP_STALE_SCREEN_BYTES)) return messages;
-  return messages.map((message) => {
-    if (stale <= 0) return message;
-    if (message.role === 'user') {
-      if (typeof message.content === 'string') {
-        if (!FULL_SCREEN_PATTERN.test(message.content)) return message;
-        stale -= 1;
-        return { ...message, content: elideScreen(message.content) };
-      }
-      const content = message.content.map((part) => {
-        if (stale <= 0 || part.type !== 'text' || !FULL_SCREEN_PATTERN.test(part.text)) return part;
-        stale -= 1;
-        return { ...part, text: elideScreen(part.text) };
-      });
-      return { ...message, content };
-    }
-    if (message.role !== 'tool') return message;
-    const texts = screenParts(message);
-    if (!texts.some((text) => text !== undefined)) return message;
-    const content = message.content.map((part, index) => {
-      const text = texts[index];
-      if (text === undefined || stale <= 0) return part;
-      stale -= 1;
-      return { ...part, output: { type: 'text' as const, value: elideScreen(text) } };
-    });
-    return { ...message, content };
-  });
-}
-
-/** Everything before the screen, then the notice in place of the tree. */
-function elideScreen(text: string): string {
-  const at = text.search(FULL_SCREEN_PATTERN);
-  const head = at <= 0 ? (text.split('\n', 1)[0] ?? '') : text.slice(0, at).trimEnd();
-  return `${head}\n[earlier screen elided; the newest "Current screen" plus the changes after it describe the screen]`;
-}
-
-/** Per-part full-screen text of one message; undefined for parts without one. */
-function screenParts(message: ModelMessage): (string | undefined)[] {
-  if (message.role === 'user') {
-    if (typeof message.content === 'string') {
-      return [FULL_SCREEN_PATTERN.test(message.content) ? message.content : undefined];
-    }
-    return message.content.map((part) =>
-      part.type === 'text' && FULL_SCREEN_PATTERN.test(part.text) ? part.text : undefined,
-    );
-  }
-  if (message.role !== 'tool') return [];
-  return message.content.map((part) => {
-    if (part.type !== 'tool-result') return undefined;
-    const output = part.output;
-    if (output.type !== 'text' || typeof output.value !== 'string') return undefined;
-    return FULL_SCREEN_PATTERN.test(output.value) ? output.value : undefined;
-  });
-}
-
-/** Roles whose lines mark a screen as something the tree can drive. */
-const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
-  'button',
-  'link',
-  'textbox',
-  'searchbox',
-  'combobox',
-  'checkbox',
-  'radio',
-  'switch',
-  'tab',
-  'menuitem',
-  'menuitemcheckbox',
-  'menuitemradio',
-  'option',
-  'slider',
-  'spinbutton',
-  'treeitem',
-]);
-
-/**
- * How many listed nodes the model could act on by id. A screen with almost
- * none is one the tree cannot describe (a canvas, a game, a native surface
- * the platform exposes no semantics for), and the model needs pixels from
- * the first turn rather than a round trip to discover that.
- */
-export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'text'>): number {
-  let count = 0;
-  for (const line of observation.text.split('\n')) {
-    const role = /^\s*#\S+ (\S+)/.exec(line)?.[1];
-    if (role !== undefined && INTERACTIVE_ROLES.has(role)) count += 1;
-  }
-  return count;
-}
-
-/** How many of the newest screenshots stay in the transcript verbatim. */
-const SCREENSHOT_PRESERVE_COUNT = 2;
-
-/**
- * Superseded screenshots tolerated before they are elided in one batch, so
- * the conversation never carries more than five images. Measured on a
- * 13-turn canvas flow (gpt-5.6, one screenshot per turn, about 670 input
- * tokens each): letting images pile up was cheaper per run — a stale image
- * re-read from the provider's cache costs a tenth of its tokens, while every
- * elision rewrites the request prefix and the rest of the conversation is
- * re-read at full price once — but the model then mis-sequenced the taps in
- * four runs of six, against none of six with this batch. A model that holds
- * a dozen near-identical screenshots loses track of which one is current;
- * the accuracy is worth the cache misses.
- */
-const SCREENSHOT_ELIDE_BATCH = 3;
-
-const SCREENSHOT_ELIDED_NOTICE = '[earlier screenshot elided; the newest screenshots show the current screen]';
-
-export interface CompactScreenshotHistoryOptions {
-  /** Newest screenshots kept verbatim; defaults to two. */
-  readonly preserve?: number;
-  /** Superseded screenshots tolerated before a batch elision; defaults to three. */
-  readonly batch?: number;
-}
-
-/**
- * Elides screenshots the transcript no longer needs: every image but the
- * newest few becomes a one-line notice, in the opening prompt and in tool
- * results alike, once enough stale images have piled up. Returns the input
- * array unchanged when nothing qualifies.
- */
-export function compactScreenshotHistory(
-  messages: ModelMessage[],
-  options: CompactScreenshotHistoryOptions = {},
-): ModelMessage[] {
-  const preserve = options.preserve ?? SCREENSHOT_PRESERVE_COUNT;
-  const total = messages.reduce((count, message) => count + countImages(message), 0);
-  let stale = total - preserve;
-  if (stale < (options.batch ?? SCREENSHOT_ELIDE_BATCH)) return messages;
-  return messages.map((message) => {
-    if (stale <= 0 || countImages(message) === 0) return message;
-    if (message.role === 'user' && typeof message.content !== 'string') {
-      const content = message.content.map((part) => {
-        if (stale <= 0 || part.type !== 'image') return part;
-        stale -= 1;
-        return { type: 'text' as const, text: SCREENSHOT_ELIDED_NOTICE };
-      });
-      return { ...message, content };
-    }
-    if (message.role !== 'tool') return message;
-    const content = message.content.map((part) => {
-      if (part.type !== 'tool-result' || part.output.type !== 'content') return part;
-      const value = part.output.value.map((item) => {
-        if (stale <= 0 || !isImageItem(item)) return item;
-        stale -= 1;
-        return { type: 'text' as const, text: SCREENSHOT_ELIDED_NOTICE };
-      });
-      return { ...part, output: { type: 'content' as const, value } };
-    });
-    return { ...message, content };
-  });
-}
-
-function countImages(message: ModelMessage): number {
-  if (message.role === 'user') {
-    return typeof message.content === 'string' ? 0 : message.content.filter((part) => part.type === 'image').length;
-  }
-  if (message.role !== 'tool') return 0;
-  return message.content.reduce((count, part) => {
-    if (part.type !== 'tool-result' || part.output.type !== 'content') return count;
-    return count + part.output.value.filter(isImageItem).length;
-  }, 0);
-}
-
-function isImageItem(item: { readonly type: string; readonly mediaType?: string }): boolean {
-  return item.type === 'file' && (item.mediaType ?? '').startsWith('image/');
 }

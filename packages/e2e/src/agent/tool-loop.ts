@@ -20,7 +20,8 @@ import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
 import { promptCacheHints, type CacheModelRef, type PromptCacheHints } from './model/prompt-cache.ts';
-import { compactScreenHistory } from './screen-update.ts';
+import { isScreenOutput } from './screen-update.ts';
+import { compactScreenHistory } from './transcript-compaction.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
   RUNTIME_CODES,
@@ -632,10 +633,7 @@ function truncate(text: string, max: number): string {
 
 /** A tool result for the transcript: a screenshot-carrying result reads as its text plus the image size, never the bytes. */
 function describeOutput(output: unknown): string {
-  if (typeof output === 'object' && output !== null && 'pixels' in output && 'text' in output) {
-    const { text, pixels } = output as { text: unknown; pixels: { data?: { byteLength?: number } } };
-    return `${String(text)}\n[screenshot, ${String(pixels.data?.byteLength ?? 0)} bytes]`;
-  }
+  if (isScreenOutput(output)) return `${output.text}\n[screenshot, ${String(output.pixels.data.byteLength)} bytes]`;
   return safeJson(output);
 }
 

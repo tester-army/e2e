@@ -4,7 +4,7 @@ import type { Observation, SemanticNode } from '../engine/surface.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
 import type { VisionDegradation } from '../run/steps.ts';
-import type { ExecutorNode, ExecutorPixels } from './executor.ts';
+import type { ExecutorNode, ExecutorObservation, ExecutorPixels } from './executor.ts';
 import { sizeForModel } from './pixels.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
@@ -134,7 +134,46 @@ export function pixelsForModel(
   }
   // Sized here, once per observation a model receives, not per capture: the
   // settle loop captures several times per action and only digests the bytes.
-  return { pixels: { ...sizeForModel(observation.pixels), maskedRegionCount: observation.pixels.maskedRegionCount } };
+  return { pixels: sizeForModel(observation.pixels) };
+}
+
+/**
+ * Roles the model can act on by id: the controls a hit-tested point resolves
+ * to, and the lines that mark a screen as one the tree can drive at all.
+ */
+export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
+  'button',
+  'link',
+  'textbox',
+  'searchbox',
+  'combobox',
+  'checkbox',
+  'radio',
+  'switch',
+  'tab',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'option',
+  'slider',
+  'spinbutton',
+  'treeitem',
+]);
+
+/**
+ * How many listed nodes the model could act on by id, read off the rendered
+ * lines. A screen with none is one the tree cannot describe (a canvas, a
+ * game, a native surface the platform exposes no semantics for), and the
+ * model needs pixels from the first turn rather than a round trip to discover
+ * that. Lives next to `formatNode` so the line grammar keeps one owner.
+ */
+export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'text'>): number {
+  let count = 0;
+  for (const line of observation.text.split('\n')) {
+    const role = /^\s*#\S+ (\S+)/.exec(line)?.[1];
+    if (role !== undefined && INTERACTIVE_ROLES.has(role)) count += 1;
+  }
+  return count;
 }
 
 /**
