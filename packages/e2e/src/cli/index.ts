@@ -353,7 +353,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('explore')
     .summary('explore the app toward a goal and report findings, without a test file')
     .description(
-      'Run the agent against the app with a goal instead of a test: it plans one exploration step at a time, drives the app, reports every defect it has evidence of, and ends with an assessment. The run writes .e2e/report.json like e2e run, with the exploration record under run.explore. The model comes from agent.model or E2E_MODEL.',
+      'Run the agent against the app with a goal instead of a test: it plans one exploration step at a time, drives the app, reports every defect it has evidence of, and ends with an assessment. The run writes .e2e/report.json like e2e run, with the exploration record under run.explore. The model is the one the selected agent holds, as for e2e run.',
     )
     .argument('[goal]', 'what to explore, in a sentence (default: "Explore the app and find bugs")')
     .optionsGroup('Selection:')
@@ -388,7 +388,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           "e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'",
           'e2e explore --target web --max-steps 4 --headed',
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
-          "E2E_MODEL=provider/model-id e2e explore 'Hunt for broken forms and dead links' --video",
+          "e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
         exitCodesSection(EXPLORE_EXIT_CODES),
