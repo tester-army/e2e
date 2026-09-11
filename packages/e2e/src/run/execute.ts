@@ -30,6 +30,7 @@ import { AttemptBudget } from './budget.ts';
 import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { createEngineSession } from '../engine/session.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
+import { publishAttempt } from '../expect/attempt.ts';
 import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
@@ -803,6 +804,12 @@ export class TargetExecutor implements SerialHost {
         debug: this.debug,
         models: this.models,
       });
+      // `expect.poll` takes no fixture, so the attempt it runs on is
+      // published here and cleared when `attemptEnd` fires in `finally`.
+      publishAttempt(
+        { attemptId, assertionTimeout: this.config.assertionTimeout, budget },
+        attemptEnd.signal,
+      );
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');
       const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach');

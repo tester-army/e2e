@@ -166,7 +166,10 @@ read. Reading a password field's value is `POLICY_DENIED`.
 
 `expect(locator)` polls for up to `config.assertionTimeout` (5 s) or
 `{ timeout }`; `.not` inverts. `expect(web)` gives the browser matchers.
-`expect(value)` is synchronous.
+`expect(value)` is synchronous. `expect.poll(read, { timeout?, interval?,
+message? })` re-reads a value until a value matcher passes
+(`assertionTimeout` and 100 ms by default, stopping with the attempt); a
+throwing read keeps polling, and it is not a report step.
 
 ```ts
 await expect(screen.getByRole('status')).toHaveText('Saved');
@@ -175,6 +178,7 @@ await expect(screen.getByTestId('todo')).toHaveCount(3);
 await expect(web).toHaveURL('/dashboard');   // relative to the base URL, or a RegExp
 await expect(web).toHaveTitle(/Dashboard/);
 expect(await screen.getByTestId('total').textContent()).toContain('$');
+await expect.poll(() => db.orders.count(), { timeout: 15_000 }).toBe(1);   // re-reads until it holds
 ```
 
 | Locator matchers | Web matchers | Value matchers |

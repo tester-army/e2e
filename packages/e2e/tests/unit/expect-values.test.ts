@@ -52,6 +52,17 @@ describe('value matchers', () => {
     failsWith(() => e2eExpect('abc').toMatch(/xyz/), /to match/);
   });
 
+  it('toMatch gives the same answer on every test of a global or sticky regexp', () => {
+    const global = /done/g;
+    e2eExpect('done').toMatch(global);
+    e2eExpect('done').toMatch(global);
+    failsWith(() => e2eExpect('done').not.toMatch(global), /not to match/);
+    failsWith(() => e2eExpect('done').not.toMatch(global), /not to match/);
+    const sticky = /done/y;
+    e2eExpect('done').toMatch(sticky);
+    e2eExpect('done').toMatch(sticky);
+  });
+
   it('numeric comparisons', () => {
     e2eExpect(5).toBeGreaterThan(4);
     e2eExpect(3).toBeLessThan(4);

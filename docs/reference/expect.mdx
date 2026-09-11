@@ -3,12 +3,16 @@ title: expect
 description: "Locator assertions, fixture assertions, and plain value matchers."
 ---
 
-`expect` dispatches on its argument.
+`expect` dispatches on its argument; `expect.poll` re-reads a value until a
+matcher holds.
 
 ```ts
-export function expect(actual: Locator): AsyncExpectation;
-export function expect<E extends object>(actual: Expectable<E>): E;
-export function expect<T>(actual: T): ValueExpectation<T>;
+export interface Expect {
+  (actual: Locator): AsyncExpectation;
+  <E extends object>(actual: Expectable<E>): E;
+  <T>(actual: T): ValueExpectation<T>;
+  poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
+}
 ```
 
 An engine-contributed fixture may carry its own expectation surface
@@ -131,7 +135,8 @@ export interface ValueExpectation<T> {
 }
 ```
 
-Synchronous, no options, no timeout.
+Synchronous, no options, no timeout. For a value the app is still writing,
+see [Polling a value](#polling-a-value).
 
 | Matcher | Requires |
 | --- | --- |
@@ -153,6 +158,72 @@ expect(total).toContain('$');
 expect(items.length).toBeGreaterThan(0);
 expect(payload).toEqual({ ok: true });
 ```
+
+## Polling a value
+
+`expect.poll(read)` re-reads a value until a value matcher passes. An agent
+step returns once the model has observed the app, which can be before the
+write it triggered has landed; poll the read that proves the write instead of
+sleeping.
+
+```ts
+export interface PollOptions {
+  timeout?: number;
+  interval?: number;
+  message?: string;
+}
+
+export type PollExpectation<T> = {
+  readonly not: PollExpectation<T>;
+} & {
+  readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (
+    ...args: Parameters<ValueExpectation<T>[K]>
+  ) => Promise<void>;
+};
+```
+
+Every value matcher is there under the same name and parameters, returning a
+promise; `.not` flips the check. Each sample calls `read`, then runs the
+matcher on the result. A matcher failure or a `read` that throws is one
+failing sample and polling continues. A `read` that hangs is cut at the
+deadline, so one stuck request cannot stretch the wait.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `timeout` | `config.assertionTimeout`, 5000 ms | Deadline for the whole poll, in milliseconds. Capped by the attempt's own deadline: the test `timeout` in the body, `cleanupTimeout` in an `afterEach` hook. In a standalone script, outside any attempt, 5000 ms. |
+| `interval` | 100 ms | Pause between samples. |
+| `message` | none | Extra line in the timeout error. |
+
+The poll runs on the attempt's budget. When the attempt is cancelled or
+times out, the loop and any read in flight stop at once with `CANCELLED`, so
+a timed-out test never keeps reading through teardown. `timeout` must be a
+finite number of milliseconds, 0 or more, and `interval` a finite number
+above 0; anything else is `INVALID_CONFIG` when `expect.poll` is called,
+before the first read.
+
+At the deadline it throws `ASSERTION_FAILED` naming the matcher, then
+`message` when given, then the last sample: the last matcher failure, the
+last `read` error, or `no read completed`.
+
+```text
+expect.poll(...).toBe(...) timed out after 5000 ms
+the batch never finished
+last: expected "running" to be "done"
+```
+
+```ts
+await agent.act('create a test named "AI checkout regression" described as {description}', {
+  params: { description },
+});
+await expect
+  .poll(() => getTest(workspace).then((row) => row?.title), { timeout: 15_000 })
+  .toBe('AI checkout regression');
+await expect.poll(async () => (await listTests(workspace)).length).toBeGreaterThan(1);
+await expect.poll(() => readStatus(), { message: 'the batch never finished' }).not.toBe('running');
+```
+
+Unlike a locator matcher, `expect.poll` is not recorded as a report step: it
+touches no fixture, so a timeout surfaces only as the test's failure.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" href="/writing-tests" />

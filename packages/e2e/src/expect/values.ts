@@ -2,6 +2,7 @@
 
 import { equals, iterableEquality } from '@vitest/expect';
 import { TestError } from '../internal/errors.ts';
+import { testPattern } from '../internal/regexp.ts';
 import type { ValueExpectation } from '../types.ts';
 
 function fail(message: string): never {
@@ -124,8 +125,12 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     if (typeof actual !== 'string') {
       fail(`toMatch requires a string, got ${format(actual)}`);
     }
+    // A global or sticky RegExp keeps `lastIndex` between tests; a matcher
+    // that is polled must see the same answer for the same value every time.
     const matches =
-      typeof expected === 'string' ? actual.includes(expected) : expected.test(actual);
+      typeof expected === 'string'
+        ? actual.includes(expected)
+        : testPattern(expected.source, expected.flags, actual);
     this.check(
       matches,
       () => `expected ${format(actual)} to match ${format(expected)}`,

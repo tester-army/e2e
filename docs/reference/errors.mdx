@@ -77,7 +77,7 @@ These appear in terminal output and in the report as plain string codes.
 | `CONFIG_NOT_FOUND` | `--config <path>` names a file that does not exist, or no `e2e.config.ts` or `e2e.config.mts` exists from the working directory up to the repository root | configuration | 2 |
 | `CONFIG_AMBIGUOUS` | Both `e2e.config.ts` and `e2e.config.mts` in one directory | configuration | 2 |
 | `CONFIG_LOAD_FAILED` | The config module failed to import: a package that is declared but not installed, an undeclared package, a wrong subpath, or a removed export. The message names the fix | configuration | 2 |
-| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, engine }`, an `engine` that is not a `defineEngine` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context` | configuration | 2 |
+| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, engine }`, an `engine` that is not a `defineEngine` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context`, an `expect.poll` `timeout` or `interval` that is not a finite number of milliseconds | configuration | 2 |
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
 | `APP_URL_REQUIRED` | A navigation or relative URL on a target whose engine declares no `url`, or a declared `command` with no `url` or `readyUrl` to poll | configuration | 2 |
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, or unparseable | configuration | 2 |
@@ -110,7 +110,7 @@ These appear in terminal output and in the report as plain string codes.
 | `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
 | `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
 | `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |
-| `WORKER_PROTOCOL` | A worker reported a unit other than the one it was running | infrastructure | 3 |
+| `WORKER_PROTOCOL` | A worker reported a unit other than the one it was running, or started an attempt while another was still running | infrastructure | 3 |
 | `SESSION_KEY_INVALID` | A worker received a session key that is not 32 bytes. Packaging or IPC fault. | infrastructure | 3 |
 | `REPORT_WRITE_FAILED` | `report.json` or `ai-trace.json` could not be written. Recorded as a run error; the in-memory outcome is still complete. A `junit.xml` that could not be written is the `junit` reporter's stderr line instead | infrastructure | 3 |
 | `EVALUATE_FAILED` | `web.evaluate` threw inside the page (`@e2edev/playwright`) | test | 1 |

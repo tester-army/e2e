@@ -591,6 +591,37 @@ export interface ValueExpectation<T> {
   toBeLessThan(expected: number): void;
 }
 
+export interface PollOptions {
+  /** Deadline in milliseconds. Default 5000. */
+  timeout?: number;
+  /** Pause between reads in milliseconds. Default 100. */
+  interval?: number;
+  /** Extra line in the timeout error, after the matcher line. */
+  message?: string;
+}
+
+/**
+ * The asynchronous form of every `ValueExpectation<T>` matcher: the same
+ * names and parameters, each resolving once the re-read value passes.
+ * Derived from `ValueExpectation<T>` so the two cannot drift.
+ */
+export type PollExpectation<T> = {
+  readonly not: PollExpectation<T>;
+} & {
+  readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (
+    ...args: Parameters<ValueExpectation<T>[K]>
+  ) => Promise<void>;
+};
+
+/** The `expect` entry: dispatch on the argument, plus `expect.poll`. */
+export interface Expect {
+  (actual: Locator): AsyncExpectation;
+  <E extends object>(actual: Expectable<E>): E;
+  <T>(actual: T): ValueExpectation<T>;
+  /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
+  poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
+}
+
 export interface CommandConfig {
   executable: string;
   args?: readonly string[];

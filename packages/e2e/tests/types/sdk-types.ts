@@ -6,15 +6,18 @@
 
 import { z } from 'zod';
 import {
+  expect,
   test,
   type Agent,
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
+  type PollExpectation,
   type Reporter,
   type RunEvent,
   type Screen,
   type TraceCacheStore,
+  type ValueExpectation,
 } from '../../src/index.ts';
 import type { EngineHandle } from '../../src/engine/index.ts';
 import { createAgent, defineTool, type DefaultAgent } from '../../src/agent/public.ts';
@@ -62,6 +65,20 @@ declare const reporter: Reporter;
 ({ reporters: ['xunit'] }) satisfies E2EConfig;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
+
+// expect.poll carries every value matcher and no other, each resolving to void.
+declare const pollMatcherNames: Exclude<keyof PollExpectation<string>, 'not'>;
+declare const valueMatcherNames: Exclude<keyof ValueExpectation<string>, 'not'>;
+pollMatcherNames satisfies typeof valueMatcherNames;
+valueMatcherNames satisfies typeof pollMatcherNames;
+void (expect.poll(() => 'x', { timeout: 15_000, interval: 250, message: 'never settled' }).toBe('x') satisfies Promise<void>);
+void (expect.poll(async () => 1).not.toBeGreaterThan(1) satisfies Promise<void>);
+// @ts-expect-error the matcher is typed by what the read returns
+void expect.poll(() => 'x').toBe(1);
+// @ts-expect-error poll takes a read function, not the value itself
+void expect.poll('x').toBe('x');
+// @ts-expect-error the synchronous matchers take no options; a value that is still settling goes through expect.poll
+expect('x').toBe('x', { timeout: 1000 });
 screen.getByRole('button', { name: 'Save', visible: true });
 void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 // @ts-expect-error one of label, value, or index, never two

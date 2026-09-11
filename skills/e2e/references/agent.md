@@ -142,6 +142,14 @@ await expect(screen.getByRole('status')).toHaveText('Created "Atlas" on the Pro 
 The check makes the test model-portable (the path may differ between models,
 the end state may not), and it is what lets the trace cache record the step.
 
+State the step writes off screen (a database row, an API read) can land after
+`act` returns; poll the read instead of sleeping:
+
+```ts
+await agent.act('create a test named "AI checkout regression"');
+await expect.poll(() => getTest(workspace).then((row) => row?.title), { timeout: 15_000 }).toBe('AI checkout regression');
+```
+
 ## What the model sees
 
 A redacted snapshot of the screen (roles, names, text, states), a summary of
