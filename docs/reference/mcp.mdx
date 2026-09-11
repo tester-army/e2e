@@ -86,7 +86,8 @@ what its engine can do:
 | `observe` | none | A fresh observation: one node per line as `#id role "name" ...`, the current path, and the revision. |
 | `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | As the testing agent's tools: a node id from the newest observation, plus the value, key, direction, URL, or credential name | The action's summary and what changed on screen since the last observation. A verb the engine does not declare is not in the catalog (`agentDevice(...)` has no `navigate`); calling it fails with `UNSUPPORTED_CAPABILITY`. `type_secret` is listed when the config declares `credentials`, and fills the named credential's password without the plaintext ever reaching the agent. |
 | `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which (role, name, text, states), and the `screen.*` call to write. Zero or several matches name the error a test would get (`LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`) and how to narrow. |
-| `screenshot` | none | The masked viewport as an image, or the reason it is withheld. |
+| `screenshot` | none | The masked viewport as an image, resampled to a 768 px long side, with what changed on screen. From then on every action result in the session carries a fresh screenshot. Listed while no secret has been filled. |
+| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `tapAt`. Listed with `screenshot`, on engines that can tap by node or by point. |
 
 Project tools passed to `createAgent({ tools })` follow in the catalog under
 their own names, scoped to the session target's platform, and run through
@@ -108,7 +109,8 @@ Sessions enforce what tests enforce. Navigation stays inside the engine's
 allowed origins (`POLICY_DENIED` otherwise). Node ids are valid only against
 the newest observation; a stale id fails with `LOCATOR_NOT_FOUND` instead of
 acting on the wrong node. Secrets fill only through `type_secret`, and once a
-secret is on screen every later `screenshot` is withheld (`PIXEL_TAINTED`).
+secret has been filled `screenshot` and `tap_at` leave the catalog: pixels are
+withheld for the rest of the session (`PIXEL_TAINTED`).
 Nothing a session does is recorded as a test result or into the trace
 cache; its artifacts land under `.e2e/artifacts/<target>/sessions/`.
 

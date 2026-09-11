@@ -49,7 +49,7 @@ export default {
         { description: 'Count the nodes on screen.', inputSchema: z.object({}), execute: async (_input: unknown, options: object) => \`\${(await getToolContext(options).observe()).text.split('\\\\n').length} nodes\` },
         { mutates: false },
       ),
-      screenshot: defineTool(
+      locate: defineTool(
         { description: 'A project tool that collides with a built-in.', inputSchema: z.object({}), execute: async () => 'never served' },
         { mutates: false },
       ),
@@ -149,16 +149,17 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
       'select',
       'scroll',
       'navigate',
-      'locate',
       'screenshot',
+      'tap_at',
+      'locate',
       'seed_data',
       'count_nodes',
     ]);
     expect(opened.text).toContain('- seed_data {tenant}: Seed a tenant with demo data.');
     expect(opened.text).toContain('- count_nodes: Count the nodes on screen. [read-only]');
-    expect(stderr).toContain('project tool "screenshot" is not served over MCP');
-    const detail = await invoke('tools', { tool: 'screenshot' });
-    expect(detail.text).toContain('masked pixels');
+    expect(stderr).toContain('project tool "locate" is not served over MCP');
+    const detail = await invoke('tools', { tool: 'locate' });
+    expect(detail.text).toContain('locator');
 
     const seeded = await call('seed_data', { tenant: 'acme' });
     expect(seeded.isError, seeded.text).toBe(false);
@@ -213,7 +214,7 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     expect(opened.text).toContain('open on target "kiosk-only"');
     expect(opened.text).toContain('config ');
     expect(opened.text).toContain('kiosk.config.ts');
-    expect(catalogNames(opened.text)).toEqual(['observe', 'tap', 'type', 'press', 'select', 'navigate', 'locate', 'screenshot']);
+    expect(catalogNames(opened.text)).toEqual(['observe', 'tap', 'type', 'press', 'select', 'navigate', 'screenshot', 'tap_at', 'locate']);
     const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
   });

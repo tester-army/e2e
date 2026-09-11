@@ -134,9 +134,10 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- select \{target, value\}: /),
       expect.stringMatching(/^- scroll \{direction, target\?, times\?\}: /),
       expect.stringMatching(/^- navigate \{url\}: /),
+      expect.stringMatching(/^- screenshot: Attach a screenshot of the current viewport.* \[read-only\]$/),
+      expect.stringMatching(/^- tap_at \{x, y\}: Tap a point in the latest screenshot/),
       expect.stringMatching(/^- type_secret \{target, name\}: /),
       expect.stringMatching(/^- locate \{role\?, name\?, text\?, label\?, placeholder\?, testId\?, exact\?\}: .* \[read-only\]$/),
-      expect.stringMatching(/^- screenshot: Look at the masked pixels.* \[read-only\]$/),
     ]);
     expect(opened.text).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);
     expect(opened.text).toContain('button "Increment"');
@@ -144,7 +145,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 10 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 11 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin" (password)');
@@ -195,7 +196,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const before = await call('screenshot');
     expect(before.isError, before.text).toBe(false);
     expect(before.images).toBe(1);
-    expect(before.text).toMatch(/^Screen \d+x\d+ at revision b\d+ \(\/\)\.$/);
+    expect(before.text).toContain('Screenshot taken.');
+    expect(before.text).toContain('Screenshot attached: 768 by 432 pixels (0.6 per CSS pixel).');
 
     const filled = await call('type_secret', { target: nodeId(after.text, /textbox "Password"/), name: 'admin' });
     expect(filled.isError, filled.text).toBe(false);
@@ -204,7 +206,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const tainted = await call('screenshot');
     expect(tainted.images).toBe(0);
-    expect(tainted.text).toContain('Screenshot withheld: PIXEL_TAINTED');
+    expect(tainted.text).toContain('No screenshot: a secret was filled in this attempt');
+    expect(tainted.text).toContain('PIXEL_TAINTED');
 
     const denied = await call('navigate', { url: 'https://example.com/' });
     expect(denied.text).toMatch(/^Navigated to https:\/\/example\.com\/\. failed: /);

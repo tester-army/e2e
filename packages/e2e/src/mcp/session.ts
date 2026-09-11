@@ -337,7 +337,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools the open session can run through call: observe, the grammar its engine honors (tap, type, press, select, scroll, navigate, type_secret), locate, screenshot, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools the open session can run through call: observe, the grammar its engine honors (tap, type, press, select, scroll, navigate, type_secret, and screenshot and tap_at while no secret has been filled), locate, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),

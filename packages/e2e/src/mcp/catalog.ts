@@ -1,17 +1,18 @@
 /**
  * The catalog of a live session: every tool `call` can run, as AI SDK tools.
  * `observe` shows the whole screen, the grammar is what the target's engine
- * honors, `locate` tries a semantic locator the way a test would, `screenshot`
- * serves the masked pixels, and the project's own tools follow. Built-in
+ * honors — `screenshot` and `tap_at` among it while pixels may leave the
+ * runner — `locate` tries a semantic locator the way a test would, and the
+ * project's own tools follow. Built-in
  * names win: a project tool named like one is neither listed nor reachable,
  * the precedence the testing agent's toolset applies.
  */
 
-import { tool as aiTool, type ToolSet } from 'ai';
+import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { isDefaultAgent, projectTools } from '../agent/default-agent.ts';
 import type { StepExecutor, StepExecutorContext } from '../agent/executor.ts';
-import { createGrammarTools } from '../agent/primitives.ts';
+import { createGrammarTools, GRAMMAR_TOOL_NAMES } from '../agent/primitives.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
 import type { LocatorExpression, SemanticNode, TargetSession } from '../engine/surface.ts';
 import { ConfigurationError } from '../internal/errors.ts';
@@ -21,10 +22,7 @@ import type { Role } from '../types.ts';
 
 /** How many matching nodes `locate` describes. */
 const MAX_LOCATE_NODES = 10;
-/** The grammar's tool names: a missing one is a verb the target's engine does not declare, not a typo. */
-const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set(['tap', 'type', 'type_secret', 'press', 'select', 'scroll', 'navigate']);
-
-/** True for a grammar verb, whether or not this session's engine declares it. */
+/** True for a grammar tool name, whether or not this session's engine declares the verb: a missing one is not a typo. */
 export function isGrammarVerb(name: string): boolean {
   return GRAMMAR_TOOL_NAMES.has(name);
 }
@@ -56,7 +54,6 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     observe: fullObserveTool(context, screen),
     ...verbs,
     locate: locateTool(options.locator, options.session),
-    screenshot: screenshotTool(context),
   };
   const defined = isDefaultAgent(options.executor) ? options.executor.tools : {};
   const readOnly = new Set(['observe', 'locate', 'screenshot']);
@@ -85,36 +82,6 @@ function fullObserveTool(context: StepExecutorContext, screen: ScreenPresenter):
     inputSchema: z.object({}),
     execute: async () => screen.initial(await context.observe()),
   };
-}
-
-/**
- * The session's `screenshot`: the masked pixels as an image part, or the
- * reason they are withheld, rendered through `toModelOutput` in the encoding
- * the engine packs' own screenshot tools use, so `call` serves both alike.
- */
-function screenshotTool(context: StepExecutorContext): ToolSet[string] {
-  return aiTool({
-    description:
-      'Look at the masked pixels of the current screen. Secure fields are masked; the image is withheld when masking cannot be proven or a secret was filled in this session. Use when the observation tree is sparse or contradicts what you expect.',
-    inputSchema: z.object({}),
-    execute: async () => context.observe({ pixels: true }),
-    toModelOutput: ({ output }) => {
-      if (output.pixels === undefined) {
-        return {
-          type: 'text',
-          value: `Screenshot withheld: ${output.pixelsWithheld ?? 'the engine captures no pixels'}. The observation tree is still available through observe.`,
-        };
-      }
-      const { data, mediaType, width, height } = output.pixels;
-      return {
-        type: 'content',
-        value: [
-          { type: 'text', text: `Screen ${width}x${height} at revision ${output.revision}${output.path === undefined ? '' : ` (${output.path})`}.` },
-          { type: 'file', data: { type: 'data', data: Buffer.from(data).toString('base64') }, mediaType },
-        ],
-      };
-    },
-  });
 }
 
 /** The session's `locate`: a semantic locator tried against the live screen, with the verdict a test would get. */
