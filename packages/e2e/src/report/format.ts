@@ -8,7 +8,7 @@ import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultStatus } from '../run/records.ts';
-import { stepModels, type StepRecord } from '../run/steps.ts';
+import type { StepRecord } from '../run/steps.ts';
 
 /** A picocolors instance; the reporter decides whether it emits color. */
 export type Colors = ReturnType<typeof picocolors.createColors>;
@@ -160,14 +160,13 @@ export function addUsage(into: AiUsage, usage: AiUsage): void {
 /** Accumulates the model usage of one step list into a running total. */
 function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
   for (const step of steps) {
-    for (const model of stepModels(step)) {
-      usage.calls += model.calls;
-      usage.tokens += model.inputTokens + model.outputTokens;
-      usage.inputTokens += model.inputTokens;
-      usage.cachedTokens += model.cacheReadTokens ?? 0;
-      if (model.estimatedCostUsd !== undefined) {
-        usage.costUsd = (usage.costUsd ?? 0) + model.estimatedCostUsd;
-      }
+    if (step.model === undefined) continue;
+    usage.calls += step.model.calls;
+    usage.tokens += step.model.inputTokens + step.model.outputTokens;
+    usage.inputTokens += step.model.inputTokens;
+    usage.cachedTokens += step.model.cacheReadTokens ?? 0;
+    if (step.model.estimatedCostUsd !== undefined) {
+      usage.costUsd = (usage.costUsd ?? 0) + step.model.estimatedCostUsd;
     }
   }
 }

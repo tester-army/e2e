@@ -528,9 +528,9 @@ export interface Engine {
   /**
    * capability: pointer - requires observation. Taps one viewport point, in
    * the CSS pixels of `SemanticNode.rect`, with no node behind it: the
-   * agent's `tap_visual` verb lands here when the point a vision model
-   * located sits on nothing the tree lists (a shape on a canvas, a pin on a
-   * map, a control in a system sheet). Dispatch the pointer at the point as
+   * agent's `tap_at` verb lands here when the point the model named in a
+   * screenshot sits on nothing the tree lists (a shape on a canvas, a pin on
+   * a map, a control in a system sheet). Dispatch the pointer at the point as
    * given; the harness has already clamped it to the viewport.
    */
   tapAt?(point: ViewportPoint, context: OperationContext): Promise<void>;

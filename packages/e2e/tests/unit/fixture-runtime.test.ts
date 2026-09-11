@@ -289,7 +289,7 @@ describe('project tool dispatch', () => {
 
   it("rejects a project tool that takes one of the agent's own tool names", () => {
     const tool = defineTool({ inputSchema: z.object({}), execute: async () => 'shadowed' }, { mutates: false });
-    for (const name of ['look', 'tap', 'observe', 'complete_step']) {
+    for (const name of ['screenshot', 'tap', 'observe', 'complete_step']) {
       expect(() => createAgent({ tools: { [name]: tool } })).toThrow(`the ${name} tool name is reserved`);
     }
   });

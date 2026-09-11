@@ -10,7 +10,7 @@
  * - `ActionDispatcher`: the verb table, target resolution, recording.
  * - `StepTraceSession`: replay, live recording, and the stage-or-evict decision.
  *
- * Capabilities beyond the grammar (the pixel tier, secret fills) are modules
+ * Capabilities beyond the grammar (secret fills, the trace cache) are modules
  * over those collaborators, borrowed through a small host each. What stays in
  * this file is the wiring, the executor's context, and the mapping of the
  * executor's verdict onto the runner's error taxonomy.
@@ -28,26 +28,11 @@ import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { RUNTIME_CODES, type ExecutorPixels, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import type { AgentContext, AgentSelection } from './invocation.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
-import { ModelOutputInvalidError, type ModelImage } from './model/adapter.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import { ObservationFeed } from './observation-feed.ts';
 import { OperationQueue } from './operation-queue.ts';
-import { instrumentPhase } from './phases.ts';
-import { buildSystem } from './prompts.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
-import { tokenFields } from './usage.ts';
-import { look, tapVisual, type VisionHost, type VisionRequest } from './vision-tier.ts';
-
-/**
- * Ceiling on one harness-made vision call. A localization is one short
- * structured answer and lands in a few seconds; a provider that takes longer
- * is stalling, and the step's own clock should not be spent waiting on it.
- */
-const VISION_CALL_TIMEOUT_MS = 30_000;
-
-/** Output ceiling for one vision call; a reasoning model spends part of it before the answer. */
-const VISION_MAX_OUTPUT_TOKENS = 8192;
 
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
 export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
@@ -169,10 +154,6 @@ class ActDispatch {
   private readonly accounting: StepAccounting;
   private readonly feed: ObservationFeed;
   private readonly dispatcher: ActionDispatcher;
-  /** Call-order serialization of the step's observations and actions. */
-  private readonly queue: OperationQueue;
-  /** What the pixel tier borrows from this step; see `visionHost`. */
-  private readonly vision: VisionHost;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
   private readonly stepCache: StepTraceSession | undefined;
   /** Timeline index of the step being dispatched. */
@@ -197,17 +178,16 @@ class ActDispatch {
     });
     // One queue for observations and actions alike: call order is what keeps
     // a batched turn from resolving two targets against one stale screen.
-    this.queue = new OperationQueue();
-    this.feed = new ObservationFeed(runtime, this.accounting, this.queue, {
+    const queue = new OperationQueue();
+    this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
     });
-    this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, this.queue, {
+    this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
       params: spec.params,
       secrets: spec.secrets,
       trace: () => this.stepCache,
     });
-    this.vision = this.visionHost();
     // The dispatch always runs inside a recorded step (`dispatchAgentStep`
     // opens one); the index names the step to the executor and to the trace cache.
     const stepIndex = runtime.steps.currentStepIndex;
@@ -278,16 +258,8 @@ class ActDispatch {
         runTool: (call, body) => this.dispatcher.runTool(call, body),
       },
       observe: async (options = {}) => this.feed.view(await this.feed.observeSettled(options?.pixels === true), options),
-      vision: {
-        get tainted() {
-          return dispatch.runtime.taint.value;
-        },
-        // Each pixel verb is one queued transaction: the screenshot, the
-        // localization, and the tap it decides on run with no other action
-        // landing in between, so the point is never applied to a screen the
-        // pixels no longer show. The host's members therefore run unqueued.
-        tap: (description) => this.queue.run(() => tapVisual(this.vision, description)),
-        look: (options) => this.queue.run(() => look(this.vision, options)),
+      get pixelsTainted() {
+        return dispatch.runtime.taint.value;
       },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
@@ -401,11 +373,9 @@ class ActDispatch {
     const cacheInfo = this.stepCache?.cacheInfo;
     const latest = this.feed.latest;
     const model = this.accounting.modelInfo(this.agent.executor);
-    const visionModel = this.accounting.visionModelInfo();
     this.runtime.steps.attachAgentDetails({
       metrics: { ...metrics },
       ...(model === undefined ? {} : { model }),
-      ...(visionModel === undefined ? {} : { visionModel }),
       ...(cacheInfo === undefined ? {} : { cache: cacheInfo }),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(latest !== undefined ? { observationRevision: latest.revision } : {}),
@@ -437,79 +407,6 @@ class ActDispatch {
       replaying: (active) => this.runtime.steps.replaying(active),
     };
   }
-
-  /**
-   * What the pixel tier (`vision-tier.ts`) borrows from this step: a settled
-   * pixel observation, a counted model call, and the two taps. A further
-   * capability gets a host of its own here and a module of its own there.
-   */
-  private visionHost(): VisionHost {
-    return {
-      platform: this.runtime.target.platform,
-      verbs: this.runtime.target.verbs,
-      observePixels: async () => {
-        const observation = await this.feed.observeSettledNow(true);
-        return { observation, view: await this.feed.view(observation, { pixels: true }) };
-      },
-      ask: (request) => this.askVisionModel(request),
-      tap: (id) => this.dispatcher.tapNow({ id }),
-      tapAt: (point, description) => this.dispatcher.tapAtNow(point, description),
-    };
-  }
-
-  /**
-   * One harness-made call to the agent's vision model, counted against the
-   * step's model-call budget and recorded like an executor's own call. The
-   * response is validated against a closed grammar; an answer outside it is
-   * reported as no answer rather than repaired, since the executor's model can
-   * rephrase and ask again.
-   */
-  private async askVisionModel<Value>(request: VisionRequest<Value>): Promise<Value | undefined> {
-    this.accounting.checkpoint();
-    const adapter = this.agent.models.select(true);
-    const images: ModelImage[] = [
-      {
-        data: request.pixels.data,
-        mediaType: request.pixels.mediaType,
-        width: request.pixels.width,
-        height: request.pixels.height,
-      },
-    ];
-    try {
-      // Pixels the feed cleared are leaving the runner as model input.
-      this.feed.notePixelsSent();
-      const result = await instrumentPhase(
-        this.runtime,
-        { api: this.accounting.api, kind: 'model', phase: 'agent.model', name: request.schemaName },
-        () =>
-          adapter.generate({
-            system: `${buildSystem(request.task, this.agent.agentContext)}\n\n${request.rules}`,
-            prompt: request.prompt,
-            images,
-            schemaName: request.schemaName,
-            schema: request.schema,
-            validate: request.validate,
-            maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
-            maxInputTokens: this.runtime.config.limits.maxModelTokensPerCall,
-            providerOptions: this.agent.config.providerOptions,
-            signal: this.accounting.signal,
-            timeoutMs: Math.max(1, Math.min(this.accounting.remainingMs(), VISION_CALL_TIMEOUT_MS)),
-          }),
-        (generated) => ({
-          count: this.accounting.recordVisionUsage(generated.usage),
-          ...tokenFields(generated.usage),
-        }),
-      );
-      return result.value;
-    } catch (cause) {
-      if (cause instanceof ModelOutputInvalidError) return undefined;
-      throw cause;
-    } finally {
-      // The call is spent whatever it answered.
-      this.accounting.countVisionCall(adapter.provenance);
-    }
-  }
-
 
   private invented(code: AgentErrorCode, cause?: AgentError): AgentError {
     return new AgentError(

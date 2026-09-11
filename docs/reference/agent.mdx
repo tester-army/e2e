@@ -83,34 +83,32 @@ spent, and `cache`: how the [trace cache](/cache) took part
 (`self-finalized`, `agent-concluded`, or `missed` with a `reason`; absent when
 caching is off).
 
-### Pixel tools: tap_visual and look
+### Pixel tools: screenshot and tap_at
 
 `act` takes no `vision` option. Pixels reach an `act` step through two tools
-the built-in agent offers while pixels can leave the runner, both answered by
-the agent's `visionModel` (its `model` when none is pinned) and each counted as
-one model call of the step:
+the built-in agent offers while pixels can leave the runner. The act model
+itself receives the image: no separate vision model, no extra model call, and
+nothing lost in a description.
 
 | Tool | What it does |
 | --- | --- |
-| `tap_visual({ description })` | The harness captures a masked screenshot, the vision model names the point the description means (or abstains), the point is scaled into the observation's coordinates and hit-tested against the tree. A listed control under it is tapped by its id, exactly like `tap`; a point on nothing listed is tapped as a bare point through the engine's `tapAt`. The result names what was tapped and what sits under the point. |
-| `look({ question? })` | The vision model describes the screenshot as text: the top layer (a sheet, dialog, or keyboard), the main content, the visible controls by their exact text and position, form fields, errors, and an answer to the question. It names no node ids; the model keeps addressing the tree. |
+| `screenshot()` | Attaches a masked screenshot of the viewport to the tool result, with the changes since the screen the model holds. From then on the step is in pixel mode: every action result carries a fresh screenshot, so the model sees what each action did. |
+| `tap_at({ x, y })` | Taps a point given in the latest screenshot's pixel coordinates. The harness scales the point into the observation's CSS pixels and hit-tests it against the tree: a listed control under it is tapped by its id, exactly like `tap`, with a replayable descriptor; a point on nothing listed is tapped as a bare point through the engine's `tapAt`. The result names what was tapped or what sits under the point, and carries a fresh screenshot. |
 
-`tap_visual` is the last resort for a target the tree does not list: a shape or
-pin painted on a canvas, a region of an image, a control inside a system sheet.
-The agent's rules say to tap by id whenever the screen lists the target, and
-the vision model is asked to abstain rather than guess; an abstain taps nothing
-and comes back with what to do instead (dismiss the layer in front, scroll it
-into view, describe it more precisely). Both tools are offered only while no
-secret has been filled in the attempt, since pixels are withheld from then on
-(`PIXEL_TAINTED`), and `tap_visual` needs an engine that can tap, by node
-(`perform`) or by point (`tapAt`, the `pointer` capability, which the
-Playwright and agent-device engines declare); a pixels-only engine with
-`tapAt` alone gets it too. A tap that resolved to a listed control is
-recorded in the trace cache like any tap; a bare-point tap is recorded as a
-gap, so a step that needed one does not replay past it. A step that sent
-pixels records `visionInput: true` and `metrics.pixelBytes`, and its vision
-calls under `visionModel`, apart from the executor's own `model`, so a step
-that mixed a cheap act model with a pinned grounding model reports each.
+A screen that lists nothing to act on by id (a canvas, a game, a
+semantics-free native screen) opens with a screenshot already attached, so
+the model never spends a turn discovering that it needs one; any screen with
+a listed control opens tree-only and the model asks when the tree falls
+short. Older screenshots are elided from the conversation in batches, keeping
+the newest two, so a long flow in pixel mode carries a bounded number of
+images. Both tools are offered only while no secret has been filled in the
+attempt, since pixels are withheld from then on (`PIXEL_TAINTED`); `tap_at`
+needs an engine that can tap by node (`perform`) or by point (`tapAt`, the
+`pointer` capability, which the Playwright and agent-device engines declare),
+and on an engine without `tapAt` the point must land on a listed control. A
+bare-point tap is recorded in the trace cache as a gap, so a step that needed
+one does not replay past it. A step that sent pixels records `visionInput:
+true` and `metrics.pixelBytes`.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
@@ -125,7 +123,7 @@ a malformed instruction, oversized `params`, or an unknown option; and
 `assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
 the model is shown: the semantic tree, a masked screenshot of the current
 observation, or both. Sending pixels needs a model that accepts images. (`act`
-has no such option; its pixel path is the `tap_visual` and `look` tools above.)
+has no such option; its pixel path is the `screenshot` and `tap_at` tools above.)
 
 ```ts
 await agent.assert('the chart trends upward', { vision: true });

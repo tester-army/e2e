@@ -2,25 +2,22 @@
 "@e2edev/e2e": minor
 ---
 
-The act loop gets a pixel tier. Two tools join the built-in agent's grammar
-while no secret has been filled in the attempt: `tap_visual({ description })`
-taps a visible target the tree does not list (a shape or pin painted on a
-canvas, a region of an image, a control inside a system sheet), and
-`look({ question? })` describes the screen from its pixels as text. Both are
-answered by the agent's `visionModel` (its `model` when none is pinned) and
-counted as model calls of the step; the agent model itself never receives an
-image, so any act model works and the transcript stays text. For `tap_visual`
-the harness captures masked pixels, asks the vision model for one point (or an
-abstain with a reason, relayed with what to do instead), scales the point into
-the observation's coordinates, and hit-tests it against the tree: a listed
-control under it is tapped by id through the ordinary `tap` path, policy and
-trace descriptor included; a point on nothing listed is tapped as a bare point
-through the engine's new `tapAt` member and recorded as a trace gap. The
-executor socket gains `actions.tapAt`, `vision.tap`, `vision.look`, and
-`vision.tainted`; the engine contract gains an optional `tapAt(point, context)`
-with the `pointer` capability and the `tapAt` grammar verb, and pins
-`SemanticNode.rect` to the top-level viewport's CSS pixels for nodes inside
-nested documents too. Steps that sent pixels record `visionInput` and
-`metrics.pixelBytes`, and the report gains an optional step `visionModel`
-record so the vision model's calls and tokens are never booked under the act
-model.
+The act loop sees pixels. Two tools join the built-in agent's grammar while no
+secret has been filled in the attempt: `screenshot()` attaches a masked
+screenshot of the viewport to its result, and `tap_at({ x, y })` taps a point
+given in that screenshot's pixel coordinates. The act model receives the image
+itself, so nothing is lost in a description and no second model call is spent
+on a localizer. Once a screenshot was sent the step is in pixel mode: every
+action result carries a fresh screenshot, and older screenshots are elided
+from the conversation in batches, keeping the newest two, so a long flow on a
+canvas carries a bounded number of images. A screen that lists nothing to act
+on by id opens with a screenshot already attached. `tap_at` is routed onto the
+tree: a listed control under the point is tapped by id through the ordinary
+`tap` path, policy and trace descriptor included; a point on nothing listed is
+tapped as a bare point through the engine's new `tapAt` member and recorded as
+a trace gap. The executor socket gains `actions.tapAt(point)` with the same
+routing and `pixelsTainted`; the engine contract gains an optional
+`tapAt(point, context)` with the `pointer` capability and the `tapAt` grammar
+verb, and pins `SemanticNode.rect` to the top-level viewport's CSS pixels for
+nodes inside nested documents too. `visionModel` now serves judgments only.
+Steps that sent pixels record `visionInput` and `metrics.pixelBytes`.

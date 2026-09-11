@@ -98,7 +98,7 @@ never silently.
 | `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, node `scroll`, and the `Locator` action set; `type_secret` when the step declares credentials |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
 | `swipe(direction, momentum, context)` | - (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
-| `tapAt(point, context)` | `pointer` (needs `observe`) | the agent's `tap_visual` verb when the vision-located point lands on nothing the tree lists |
+| `tapAt(point, context)` | `pointer` (needs `observe`) | the agent's `tap_at` verb when the point lands on nothing the tree lists |
 | `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
 | `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']`, `artifacts: ['video']` / `--video` |
 | `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?,services?}` | - | declares the app under test: navigation policy, cache and session identity, the report's target record, and the app process the runner starts ([reference](/reference/config#the-app-under-test)) |
@@ -144,9 +144,10 @@ binds.
 A surface that offers screenshots and coordinates but no semantic tree (a
 desktop shell, a canvas app, a computer-use agent) declares `observe` returning
 a pixels-only snapshot (`nodes: []` plus `pixels`) and `tapAt` for the taps:
-the agent's `tap_visual` verb has the vision model name a point in the
-screenshot and hands it to `tapAt` when the tree lists nothing there, so a
-surface with no refs to hand out still gets tapped through the grammar. Bare
+a screen that lists nothing opens with its screenshot attached, the model
+names a point in it with `tap_at`, and the harness hands the point to `tapAt`
+when the tree lists nothing there, so a surface with no refs to hand out
+still gets tapped through the grammar. Bare
 points are recorded as trace gaps rather than replayed, so such a surface runs
 every step live; nothing else in the harness changes.
 

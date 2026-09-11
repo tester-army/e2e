@@ -10,7 +10,7 @@
  */
 
 import type { Report1Document, ReportError, ReportStep } from '../report/build.ts';
-import { STEP_KINDS, stepModels } from '../run/steps.ts';
+import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 
 export interface TelemetryEvent {
@@ -103,7 +103,7 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
   const { run } = report;
   const recorded = [...scopes(report)];
   const steps = recorded.flatMap((scope) => scope.steps ?? []);
-  const models = steps.flatMap((step) => stepModels(step));
+  const models = steps.flatMap((step) => (step.model === undefined ? [] : [step.model]));
   const first = models[0];
   const firstModel = first === undefined ? undefined : splitModel(first);
   const codes = unique(

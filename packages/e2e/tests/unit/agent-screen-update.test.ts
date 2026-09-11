@@ -1,7 +1,12 @@
 import type { ModelMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
 import type { ExecutorObservation } from '../../src/agent/executor.ts';
-import { compactScreenHistory, ScreenPresenter } from '../../src/agent/screen-update.ts';
+import {
+  compactScreenHistory,
+  compactScreenshotHistory,
+  interactiveNodeCount,
+  ScreenPresenter,
+} from '../../src/agent/screen-update.ts';
 
 function screen(revision: string, lines: readonly string[], extra: Partial<ExecutorObservation> = {}): ExecutorObservation {
   return {
@@ -206,5 +211,83 @@ describe('compactScreenHistory', () => {
     });
     expect(compacted[1]).toEqual(messages[1]);
     expect(compacted.slice(3)).toEqual(messages.slice(3));
+  });
+});
+
+describe('interactiveNodeCount', () => {
+  it('counts the listed nodes the model could act on by id', () => {
+    expect(interactiveNodeCount(screen('b1', HOME))).toBe(3);
+    expect(interactiveNodeCount(screen('b1', ['#n1 document "Canvas"', ' #n2 heading "Map"', ' #n3 status "Picked"']))).toBe(0);
+  });
+});
+
+describe('compactScreenshotHistory', () => {
+  const png = Buffer.from('not really a png').toString('base64');
+  const shot = (id: string): ModelMessage => ({
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: id,
+        toolName: 'tap_at',
+        output: {
+          type: 'content',
+          value: [
+            { type: 'text', text: `Tapped the point (1, 1). Screen changes (${id}).` },
+            { type: 'file', data: { type: 'data', data: png }, mediaType: 'image/png' },
+          ],
+        },
+      },
+    ],
+  });
+  const opening: ModelMessage = {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'Execute this test step: tap the pin\n\nCurrent screen (revision b1, 3 nodes):\n#n1 document' },
+      { type: 'image', image: png, mediaType: 'image/png' },
+    ],
+  };
+  const images = (messages: readonly ModelMessage[]): number =>
+    messages.reduce((count, message) => {
+      if (message.role === 'user' && typeof message.content !== 'string') {
+        return count + message.content.filter((part) => part.type === 'image').length;
+      }
+      if (message.role !== 'tool') return count;
+      return (
+        count +
+        message.content.reduce(
+          (inner, part) =>
+            part.type === 'tool-result' && part.output.type === 'content'
+              ? inner + part.output.value.filter((item) => item.type === 'file').length
+              : inner,
+          0,
+        )
+      );
+    }, 0);
+
+  it('keeps every screenshot while few are stale, so the request prefix stays cacheable', () => {
+    const messages = [opening, shot('t1'), shot('t2'), shot('t3')];
+    expect(compactScreenshotHistory(messages)).toBe(messages);
+    expect(images(messages)).toBe(4);
+  });
+
+  it('elides the older screenshots in one batch, keeping the newest two and every text', () => {
+    const messages = [opening, shot('t1'), shot('t2'), shot('t3'), shot('t4')];
+    const compacted = compactScreenshotHistory(messages);
+    expect(compacted).not.toBe(messages);
+    expect(images(compacted)).toBe(2);
+    const first = compacted[0]!;
+    expect(first.role).toBe('user');
+    expect(JSON.stringify(first)).toContain('[earlier screenshot elided');
+    expect(JSON.stringify(first)).toContain('Current screen (revision b1');
+    const t1 = compacted[1]!;
+    expect(JSON.stringify(t1)).toContain('Tapped the point (1, 1). Screen changes (t1).');
+    expect(JSON.stringify(t1)).not.toContain('"type":"file"');
+    expect(JSON.stringify(compacted[4]!)).toContain('"type":"file"');
+  });
+
+  it('honours a caller-supplied preserve count and batch size', () => {
+    const messages = [shot('t1'), shot('t2'), shot('t3')];
+    expect(images(compactScreenshotHistory(messages, { preserve: 1, batch: 1 }))).toBe(1);
   });
 });

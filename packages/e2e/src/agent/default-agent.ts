@@ -12,8 +12,8 @@ import type { ToolExecutionOptions, ToolSet } from 'ai';
 import type { SdkLanguageModel } from '../config/agent.ts';
 import { AgentError } from './error.ts';
 import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
-import { createGrammarTools, GRAMMAR_TOOL_NAMES } from './primitives.ts';
-import { compactScreenHistory, ScreenPresenter } from './screen-update.ts';
+import { createGrammarTools, GRAMMAR_TOOL_NAMES, screenshotNote } from './primitives.ts';
+import { compactScreenHistory, compactScreenshotHistory, interactiveNodeCount, ScreenPresenter } from './screen-update.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import type { DefinedTool } from './tool.ts';
 import { isDefinedTool, toolAppliesTo, withToolContext } from './tool.ts';
@@ -27,7 +27,16 @@ Rules:
 - Every action result already waited for the effect and contains the changes, so do not call observe after an action. Call observe only after waiting for something the last result showed in progress.
 - You may issue several actions in one turn when each targets a node already on screen and no earlier action in the turn changes what a later one targets: fill several fields, then press the submit button as the last action. Actions run in order; each result reports its own changes. Anything that changes the page (a tap on a link or button, a navigation, a submit) should be the last action of its turn.
 - If the target is not on screen, bring it on screen with the tools you have (scroll, navigate) or conclude. Scrolling may repeat (times) or be issued several times in one turn to move far; each result reports what came into the tree.
-- Pixel tools, when offered: tap_visual taps a visible target the screen does not list (a shape on a canvas, a pin on a map, a region of an image, a control inside a system sheet), located in a screenshot by a vision model from your description; look describes the screen from its pixels without naming ids. Each costs a model call, so tap by id whenever the screen lists the target, and describe the target to tap_visual directly from the instruction rather than calling look first: look is for reading pixels the tree lacks, or for a tap_visual that was skipped or landed wrong.`;
+- Pixel tools, when offered: screenshot attaches the viewport's pixels when the tree lacks what you need (a shape on a canvas, a pin on a map, a region of an image, a control inside a system sheet) or contradicts what you expect; once you have one, every action result carries a fresh screenshot so you can see what the action did. tap_at(x, y) taps a point in the latest screenshot's pixel coordinates; a listed control under the point is tapped by its id. Tap by id whenever the screen lists the target, and take a screenshot rather than guessing what is drawn.`;
+
+/**
+ * With no listed interactive node at all, the opening prompt carries a
+ * screenshot: the tree describes a canvas, a game, or a semantics-free native
+ * screen too poorly to act on, and the model would only ask for one. One
+ * listed control is enough to leave the decision to the model — a small page
+ * is not a blind one.
+ */
+const THIN_SCREEN_INTERACTIVE_NODES = 0;
 
 /** One presenter per dispatched step, shared by the opening prompt and the tools that follow it. */
 const presenters = new WeakMap<StepExecutorContext, ScreenPresenter>();
@@ -91,13 +100,18 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
     system,
     ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
     ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
-    prepareMessages: (messages) => compactScreenHistory(messages),
+    prepareMessages: (messages) => compactScreenshotHistory(compactScreenHistory(messages)),
     tools: (context, helpers) => ({
       ...guardedTools(helpers, projectTools(context, userTools)),
       ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
     }),
     buildPrompt: async (context) => {
-      const observation = await context.observe();
+      let observation = await context.observe();
+      // A screen the tree cannot drive is shown in pixels from the first
+      // turn: a round trip to discover that it is a canvas is a turn wasted.
+      if (!context.pixelsTainted && interactiveNodeCount(observation) <= THIN_SCREEN_INTERACTIVE_NODES) {
+        observation = await context.observe({ pixels: true });
+      }
       const parts = [
         context.step.kind === 'assert'
           ? `Judge whether this assertion holds; do not change application state: ${context.step.instruction}`
@@ -112,8 +126,21 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       if (context.ledger !== '') {
         parts.push(`Previously completed steps:\n${context.ledger}`);
       }
-      parts.push(presenterFor(context).initial(observation));
-      return parts.join('\n\n');
+      const presenter = presenterFor(context);
+      parts.push(presenter.initial(observation));
+      const pixels = observation.pixels;
+      if (pixels === undefined) return parts.join('\n\n');
+      presenter.attached(observation);
+      parts.push(screenshotNote(pixels));
+      return [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: parts.join('\n\n') },
+            { type: 'image', image: pixels.data, mediaType: pixels.mediaType },
+          ],
+        },
+      ];
     },
   });
   const agent: DefaultAgent = { ...executor, options: { ...options, tools: userTools }, tools: userTools };

@@ -213,9 +213,9 @@ runs one attempt at a time):
 | `alert` | gap | Accept or dismiss a system alert. |
 | `screenshot` | read | Show the model the actual pixels. |
 
-The grammar verbs (`tap`, `type`, `scroll`, `tap_visual`, `look`) come from
+The grammar verbs (`tap`, `type`, `scroll`, `screenshot`, `tap_at`) come from
 the engine manifest and need no tool; the engine declares `tapAt`, so a
-`tap_visual` whose point lands on nothing the tree lists taps the bare point in
+`tap_at` whose point lands on nothing the tree lists taps the bare point in
 logical pixels. `type_secret` is not offered: secret fills require an origin the
 runner can check, and `app://` has none.
 

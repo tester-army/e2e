@@ -63,7 +63,7 @@ export class ObservationFeed {
   private pixelsDecided: string | undefined;
   /** Why requested pixels did not become model input, when they did not. */
   private visionDegraded: VisionDegradation | undefined;
-  /** True once pixels this feed cleared reached a model. */
+  /** True once pixels this feed cleared were handed to the executor as model input. */
   private pixelsSent = false;
 
   constructor(
@@ -94,15 +94,6 @@ export class ObservationFeed {
    */
   observeSettled(pixels = false): Promise<AgentObservation> {
     return this.queue.run(() => this.observeNow(true, pixels));
-  }
-
-  /**
-   * `observeSettled` for a caller already running inside the operation queue
-   * — the pixel tier, whose capture, localization, and tap are one queued
-   * transaction, so no action lands between the screenshot and the tap.
-   */
-  observeSettledNow(pixels = false): Promise<AgentObservation> {
-    return this.observeNow(true, pixels);
   }
 
   /** The executor's view of one capture: redacted text, and the tree and pixels it asked for. */
@@ -197,11 +188,6 @@ export class ObservationFeed {
     if (relocated.kind !== 'found') return undefined;
     const node = observation.nodes.get(relocated.id);
     return node === undefined ? undefined : { node, observation };
-  }
-
-  /** Marks that pixels this feed cleared became model input. */
-  notePixelsSent(): void {
-    this.pixelsSent = true;
   }
 
   /** The step's pixel record for the report. */
@@ -305,6 +291,7 @@ export class ObservationFeed {
       return { pixelsWithheld: outcome.withheld };
     }
     this.recordPixelDecision('allowed');
+    this.pixelsSent = true;
     const metrics = this.accounting.metrics;
     metrics.pixelBytes = Math.max(metrics.pixelBytes ?? 0, outcome.pixels.data.byteLength);
     return { pixels: outcome.pixels };

@@ -656,14 +656,14 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
     expect(loopCalls.length).toBeGreaterThanOrEqual(2);
     expect(loopCalls[0]!.toolNames).toEqual([
       'complete_step',
-      'look',
       'navigate',
       'observe',
       'press',
+      'screenshot',
       'scroll',
       'select',
       'tap',
-      'tap_visual',
+      'tap_at',
       'type',
     ]);
     expect(loopCalls[0]!.prompt).toContain('increment the counter once');

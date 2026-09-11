@@ -30,8 +30,8 @@ export type RecordableAction =
   | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
   | ({ readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
-  /** A tap on a bare viewport point, from a vision-located target the tree did not list. */
-  | { readonly name: 'tapAt'; readonly point: ViewportPoint; readonly description?: string };
+  /** A tap on a bare viewport point that no listed control contained. */
+  | { readonly name: 'tapAt'; readonly point: ViewportPoint };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
 interface Placement {
@@ -150,9 +150,7 @@ export function describeAction(
       case 'navigate':
         return `navigate to ${safe(action.url)}`;
       case 'tapAt':
-        return `tap the point (${String(action.point.x)}, ${String(action.point.y)})${
-          action.description === undefined ? '' : ` for ${safe(action.description)}`
-        }`;
+        return `tap the point (${String(action.point.x)}, ${String(action.point.y)})`;
     }
   })();
   return { target, summary: bound(prose, MAX_TRACE_SUMMARY_CHARS) };

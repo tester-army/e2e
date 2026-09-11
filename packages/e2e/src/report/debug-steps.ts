@@ -7,7 +7,7 @@
 
 import { formatMs, table } from '../internal/debug.ts';
 import type { ResultRecord, SerialGroupRecord } from '../run/records.ts';
-import { stepModels, type StepModelInfo, type StepRecord } from '../run/steps.ts';
+import type { StepRecord } from '../run/steps.ts';
 
 /**
  * Renders one aligned table of every agent step in the run, in execution
@@ -28,38 +28,23 @@ export function agentStepTable(
   );
   const mixedModels = models.size > 1;
 
-  // A step's vision calls are booked under their own model record; the
-  // table sums both, so the calls and the cost are the whole step's.
-  const rows = steps.map((step) => {
-    const records = stepModels(step);
-    const sum = (read: (model: StepModelInfo) => number | undefined): number | undefined => {
-      const known = records.map(read).filter((value): value is number => value !== undefined);
-      return known.length === 0 ? undefined : known.reduce((total, value) => total + value, 0);
-    };
-    const cost = sum((model) => model.estimatedCostUsd);
-    return [
-      truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 64),
-      ...(mixedModels
-        ? [step.model === undefined ? '-' : `${step.model.provider}/${step.model.model}`]
-        : []),
-      formatMs(step.durationMs),
-      formatMs(eventMs(step, 'model')),
-      formatMs(eventMs(step, 'observation')),
-      formatMs(eventMs(step, 'engine')),
-      String(sum((model) => model.calls) ?? 0),
-      `${String(sum((model) => model.inputTokens) ?? 0)}/${String(sum((model) => model.outputTokens) ?? 0)}`,
-      cachedShare(records),
-      cost === undefined ? '-' : formatUsd(cost),
-    ];
-  });
+  const rows = steps.map((step) => [
+    truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 64),
+    ...(mixedModels
+      ? [step.model === undefined ? '-' : `${step.model.provider}/${step.model.model}`]
+      : []),
+    formatMs(step.durationMs),
+    formatMs(eventMs(step, 'model')),
+    formatMs(eventMs(step, 'observation')),
+    formatMs(eventMs(step, 'engine')),
+    String(step.model?.calls ?? 0),
+    `${String(step.model?.inputTokens ?? 0)}/${String(step.model?.outputTokens ?? 0)}`,
+    cachedShare(step),
+    step.model?.estimatedCostUsd === undefined ? '-' : formatUsd(step.model.estimatedCostUsd),
+  ]);
 
   const knownCosts = steps
-    .map((step) => {
-      const costs = stepModels(step).map((model) => model.estimatedCostUsd);
-      return costs.some((value) => value !== undefined)
-        ? costs.reduce<number>((total, value) => total + (value ?? 0), 0)
-        : undefined;
-    })
+    .map((step) => step.model?.estimatedCostUsd)
     .filter((cost): cost is number => cost !== undefined);
   const total =
     knownCosts.length === 0
@@ -119,14 +104,12 @@ function eventMs(step: StepRecord, kind: 'model' | 'observation' | 'engine'): nu
  * The share of the step's input the provider served from its prompt cache,
  * `38% (5700)`; `-` when the provider reports no cache split.
  */
-function cachedShare(models: readonly StepModelInfo[]): string {
-  const reporting = models.filter((model) => model.cacheReadTokens !== undefined);
-  if (reporting.length === 0) return '-';
-  const inputTokens = reporting.reduce((total, model) => total + model.inputTokens, 0);
-  const cached = reporting.reduce((total, model) => total + (model.cacheReadTokens ?? 0), 0);
-  if (inputTokens === 0) return '0%';
-  const share = Math.round((cached / inputTokens) * 100);
-  return `${String(share)}% (${String(cached)})`;
+function cachedShare(step: StepRecord): string {
+  const model = step.model;
+  if (model?.cacheReadTokens === undefined) return '-';
+  if (model.inputTokens === 0) return '0%';
+  const share = Math.round((model.cacheReadTokens / model.inputTokens) * 100);
+  return `${String(share)}% (${String(model.cacheReadTokens)})`;
 }
 
 function truncate(value: string, maxLength: number): string {

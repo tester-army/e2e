@@ -19,11 +19,12 @@ import { containerKey, describeAction, type RecordableAction } from './actions.t
 import { describePosition } from '../cache/relocate.ts';
 import { isDerivedValue } from './derived.ts';
 import { AgentError } from './error.ts';
-import type { ExecutorActions, ExecutorTarget } from './executor.ts';
+import type { ExecutorActions, ExecutorTarget, PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed } from './observation-feed.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
+import { describePointTap, hitTest } from './point-tap.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
@@ -98,25 +99,50 @@ export class ActionDispatcher {
   }
 
   /**
-   * `tap` for a caller already running inside the operation queue — the pixel
-   * tier, whose capture, localization, and tap are one queued transaction.
+   * Taps one viewport point, routed onto the tree. The hit test runs in
+   * queue order against the newest observation, like a targeted action's
+   * resolution: a listed, enabled control containing the point is tapped by
+   * its id, so policy, stale relocation, and the trace descriptor see an
+   * ordinary tap; a point on nothing listed goes to the engine as a bare
+   * point when it takes one. Clamped to the viewport first, so a point placed
+   * off the edge lands on the edge rather than failing the engine.
    */
-  tapNow(target: ExecutorTarget): Promise<void> {
-    return this.runActionNow('tap', this.targeted(target, (node) => this.performTap(node)));
-  }
-
-  /**
-   * Taps one bare viewport point. Clamped to the newest observation's
-   * viewport, so a point the model placed off the edge lands on the edge
-   * rather than failing the engine.
-   */
-  tapAt(point: ViewportPoint, description?: string): Promise<void> {
-    return this.runAction('tapAt', this.pointTap(point, description));
-  }
-
-  /** `tapAt` for a caller already running inside the operation queue; see `tapNow`. */
-  tapAtNow(point: ViewportPoint, description?: string): Promise<void> {
-    return this.runActionNow('tapAt', this.pointTap(point, description));
+  tapAt(point: ViewportPoint): Promise<PointTapResult> {
+    if (
+      typeof point?.x !== 'number' ||
+      typeof point.y !== 'number' ||
+      !Number.isFinite(point.x) ||
+      !Number.isFinite(point.y)
+    ) {
+      throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
+    }
+    return this.queue.run(async () => {
+      const latest = this.feed.latest;
+      const clamped = clampToViewport(point, latest?.viewport);
+      const hit = latest === undefined ? undefined : hitTest(latest, clamped);
+      const observation = latest ?? { text: '' };
+      if (hit?.control !== undefined && this.verbs.has('tap')) {
+        const id = hit.control.ref.id;
+        await this.runActionNow('tap', this.targeted({ id }, (node) => this.performTap(node)));
+        return {
+          point: clamped,
+          target: { id },
+          summary: describePointTap({ point: clamped, control: hit.control, under: hit.under, observation }),
+        };
+      }
+      const summary = describePointTap({ point: clamped, control: undefined, under: hit?.under, observation });
+      if (!this.verbs.has('tapAt')) {
+        throw new TestError(
+          'UNSUPPORTED_CAPABILITY',
+          `the point (${String(clamped.x)}, ${String(clamped.y)}) is on nothing the screen lists and this engine taps listed nodes only; tap a node by id instead`,
+        );
+      }
+      await this.runActionNow('tapAt', async () => {
+        await this.session.tapAt(clamped, this.accounting.actionOperation());
+        return { name: 'tapAt', point: clamped };
+      });
+      return { point: clamped, summary };
+    });
   }
 
   /** Records project tools through the same budget and operation queue as grammar actions. */
@@ -146,26 +172,13 @@ export class ActionDispatcher {
     return this.runtime.engine.session;
   }
 
+  private get verbs() {
+    return this.runtime.target.verbs;
+  }
+
   private async performTap(node: SemanticNode): Promise<RecordableAction> {
     await this.session.perform(node.ref, { kind: 'tap' }, this.accounting.actionOperation());
     return { name: 'tap', node };
-  }
-
-  /** The body of one bare-point tap; the argument is checked before anything is queued. */
-  private pointTap(point: ViewportPoint, description: string | undefined): () => Promise<RecordableAction> {
-    if (
-      typeof point?.x !== 'number' ||
-      typeof point.y !== 'number' ||
-      !Number.isFinite(point.x) ||
-      !Number.isFinite(point.y)
-    ) {
-      throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
-    }
-    const clamped = clampToViewport(point, this.feed.latest?.viewport);
-    return async () => {
-      await this.session.tapAt(clamped, this.accounting.actionOperation());
-      return { name: 'tapAt', point: clamped, ...(description === undefined ? {} : { description }) };
-    };
   }
 
   private type(target: ExecutorTarget, value: string): Promise<void> {

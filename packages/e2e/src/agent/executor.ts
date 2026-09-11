@@ -167,80 +167,24 @@ export interface ExecutorActions {
   navigate(url: string): Promise<void>;
   /**
    * Taps one viewport point, in the CSS pixels of the newest observation
-   * (`SemanticNode.rect` space), with no node behind it. Offered only by an
-   * engine with a `pointer` capability. The trace cache records a gap: a bare
-   * point is not a descriptor replay can re-find.
+   * (`SemanticNode.rect` space; a point read off `pixels` is divided by its
+   * `scale`). The point is routed onto the tree: a listed, enabled control
+   * whose box contains it is tapped by its id, exactly like `tap`, with a
+   * replayable descriptor; a point on nothing listed goes to the engine as a
+   * bare point when it has the `pointer` capability, recorded as a trace gap.
+   * Fails when the point is on nothing listed and the engine taps nodes only.
    */
-  tapAt(point: ViewportPoint): Promise<void>;
+  tapAt(point: ViewportPoint): Promise<PointTapResult>;
 }
 
-/** What one `vision.tap` did, for the executor to relay to its model. */
-export type VisualTapResult =
-  | {
-      /** One action ran at `point`. */
-      readonly outcome: 'tapped';
-      /** Where the tap landed, in the newest observation's CSS pixels. */
-      readonly point: ViewportPoint;
-      /** The listed node the point resolved to; absent when a bare point was tapped. */
-      readonly target?: ExecutorTarget;
-      /** Prose for a model: what was tapped and what sits under the point. */
-      readonly summary: string;
-    }
-  | {
-      /**
-       * Nothing ran: the vision model abstained, pixels were withheld, or the
-       * point sat on no listed node and the engine cannot tap a bare point.
-       */
-      readonly outcome: 'skipped';
-      /** The located point, when the model named one before the tap was declined. */
-      readonly point?: ViewportPoint;
-      /** Prose for a model: why nothing ran and what to do instead. */
-      readonly summary: string;
-    };
-
-/** What one `look` returned: a description of the pixels, or why there were none. */
-export interface LookResult {
-  /**
-   * The vision model's account of the screen as text, or, when pixels were
-   * withheld, the reason. Always model-safe prose.
-   */
-  readonly description: string;
-  /** Set when no pixels reached the vision model; `description` then names it. */
-  readonly withheld?: VisionDegradation;
-  /** The observation the pixels were captured with, so a presenter can report its tree changes too. */
-  readonly observation: ExecutorObservation;
-}
-
-/**
- * Pixel-backed reads the harness performs on the executor's behalf with the
- * agent's vision model (`agent.visionModel`, else `agent.model`). Every call
- * counts against the step's model-call budget and is recorded like an
- * executor-made call.
- */
-export interface ExecutorVision {
-  /**
-   * True once a secret was filled in this attempt: pixels are withheld for
-   * the rest of it, so `tap` and `look` can only report that. An executor
-   * reads it when assembling its vocabulary, to leave the pixel verbs out
-   * rather than offer tools that can only decline.
-   */
-  readonly tainted: boolean;
-  /**
-   * Taps the one control a description names, located in the screen's pixels
-   * by the vision model. The harness captures masked pixels, asks the model
-   * for a point, hit-tests the point against the newest observation, and taps
-   * the control it lands on through `actions.tap` — or the bare point through
-   * `actions.tapAt` when nothing the tree lists is there. Nothing runs when
-   * the model abstains or pixels are withheld; the result says which.
-   */
-  tap(description: string): Promise<VisualTapResult>;
-  /**
-   * Describes the current screen from masked pixels: the top layer, the main
-   * content, visible controls by their verbatim text and region, form fields,
-   * and errors, plus an answer when `question` is given. Descriptive only;
-   * node ids never come from pixels.
-   */
-  look(options?: { readonly question?: string }): Promise<LookResult>;
+/** What one `tapAt` did, for the executor to relay to its model. */
+export interface PointTapResult {
+  /** Where the tap landed, in the newest observation's CSS pixels. */
+  readonly point: ViewportPoint;
+  /** The listed control the point resolved to; absent when a bare point was tapped. */
+  readonly target?: ExecutorTarget;
+  /** Prose for a model: what was tapped, or what sits under a bare point. */
+  readonly summary: string;
 }
 
 /** Usage detail of one executor-made model call, all fields optional. */
@@ -377,8 +321,13 @@ export interface StepExecutorContext {
    */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
-  /** Pixel-backed reads through the agent's vision model. */
-  readonly vision: ExecutorVision;
+  /**
+   * True once a secret was filled in this attempt: `observe({ pixels: true })`
+   * withholds pixels for the rest of it. An executor reads it when assembling
+   * its vocabulary, to leave screenshot verbs out rather than offer tools
+   * that can only decline.
+   */
+  readonly pixelsTainted: boolean;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a
    * `log` artifact when the run collects debug detail (`--debug`); a no-op

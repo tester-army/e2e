@@ -15,7 +15,50 @@ import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
 export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  // The Vercel AI Gateway; reads AI_GATEWAY_API_KEY. openrouter() from
+  // @openrouter/ai-sdk-provider and openai() from @ai-sdk/openai work the same way.
+  agents: { default: createAgent({ model: gateway('anthropic/claude-sonnet-4.5') }) },
+} satisfies E2EConfig;
+```
+
+`e2e init` asks which gateway agent steps use and writes the import and the
+constructor. A string in a model slot (`model: 'openai/gpt-5.4-mini'`) is
+`INVALID_CONFIG` naming the constructor to write instead. Which package to
+pick, where each reads its key, and how several models share one config is on
+[Models and credentials](/models).
+
+The model `createAgent` receives is the one model for the whole `agent`
+fixture: it plans `agent.act` and it judges `agent.assert`, `agent.waitFor`,
+and `agent.extract`. Configure the model in one
+place: an `agent.model` that names a different model than the executor's is
+`INVALID_CONFIG` at config resolution.
+
+The runner checks once per run, when the first test acquires the `agent`
+fixture, that a model is configured, so a missing model is one run-level
+`MODEL_UNAVAILABLE` (exit 2) that stops the run, not one failed step per test.
+A missing or rejected key is the provider's own error, reported on the first
+agent step as `MODEL_PROVIDER_FAILED` with a hint naming the credential. A
+custom executor with no model is exempt: its `act` steps need none, and a
+judgment call without a model still fails with `MODEL_UNAVAILABLE`.
+
+An agent also accepts an options block when you have nothing to
+construct: `agents: { default: { model: gateway('anthropic/claude-sonnet-4.5'), context: '...' } }`
+runs `createAgent()` with those settings. `context` is a sentence or two of
+project vocabulary and reaches every `agent.*` call; `visionModel` pins a
+separate model for judgments that carry pixels (`vision: true` on `assert`,
+`waitFor`, `extract`); the act loop shows screenshots to its own model. The AI SDK (`ai`) is an optional
+peer dependency; deterministic suites and model-free executors never load it.
+
+## Several agents
+
+`agents` is a record, and `default` is the entry tests run with. Other entries
+are other brains for the same suite: a model that reads screens more carefully,
+a playbook for a UX review, a tool set only one kind of run needs. A run picks
+one with `--agent`; without the flag it is `default`, and the run summary names
+any other.
+
+```ts title="e2e.config.ts"
+export default {
   agents: {
     default: { model: gateway('openai/gpt-5.6-luna') },
     thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen before concluding.' },
@@ -152,7 +195,7 @@ mid-flow. A tool that only makes sense on some targets declares them:
 `{ ..., platforms: ['ios', 'android'] }` keeps a swipe tool off a web target,
 and the model never sees a verb the surface cannot honor. Tool names are the
 model's vocabulary, and the agent's own names (`observe`, `tap`, `type`,
-`type_secret`, `press`, `select`, `scroll`, `navigate`, `tap_visual`, `look`,
+`type_secret`, `press`, `select`, `scroll`, `navigate`, `screenshot`, `tap_at`,
 `complete_step`) are reserved: `createAgent` rejects a project tool that
 reuses one, since it would be shadowed on one engine and live on another.
 `createAgent()` with no arguments is exactly what runs by default;
@@ -320,14 +363,13 @@ target's engine declared (an engine with `perform` gives
 `tap`/`type`/`typeSecret`/`press`/`select`, `swipe` gives `scroll`, `tapAt`
 gives `tapAt`, `app.navigate` gives `navigate`); offer a model exactly that
 vocabulary, as the built-in agent does, rather than a verb the surface can
-only reject. `ctx.vision.tap(description)` and `ctx.vision.look({ question })`
-are the pixel path: the harness captures masked pixels, asks the agent's
-`visionModel`, and taps or describes on your executor's behalf, counting the
-call against the step's model-call budget. The vision-located tap is not a
-verb of its own: it rides `tap` when the located point lands on a listed
-control and `tapAt` when it does not. `ctx.vision.tainted` says when a secret
-fill has closed that path for the attempt, so an executor can leave the pixel
-verbs out of its vocabulary.
+only reject. `ctx.observe({ pixels: true })` is the pixel path: masked
+pixels for your own model, or `pixelsWithheld` naming why there are none.
+`ctx.actions.tapAt(point)` taps a viewport point routed onto the tree: a
+listed control under it is tapped by id with a replayable descriptor, a point
+on nothing listed goes to the engine's `tapAt` as a bare point.
+`ctx.pixelsTainted` says when a secret fill has closed the pixel path for the
+attempt, so an executor can leave screenshot verbs out of its vocabulary.
 Secrets in params arrive as name-only placeholders; `actions.typeSecret(target,
 name)` performs the authorized fill without the plaintext ever passing through
 your code or a model.
@@ -394,8 +436,8 @@ mechanical, scope `act` to the step that breaks, and give slow providers
 
 `act` takes no `schema` and no `vision` option: structured data comes from
 `agent.extract({ schema })`, and pixels reach an `act` step through its
-`tap_visual` and `look` tools, which the harness answers with `visionModel`
-and counts as model calls of the step.
+`screenshot` and `tap_at` tools: the act model sees the screenshot itself,
+and every later action result carries a fresh one.
 
 ## Inspect a run
 

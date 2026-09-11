@@ -67,10 +67,10 @@ allows; an engine without such a bound omits it.
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay |
-| `perform` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, node `scroll`, and `tap_visual` when the located point lands on a listed node) and the `Locator` action set with platform actionability checks |
+| `perform` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, node `scroll`, and `tap_at` when the point lands on a listed node) and the `Locator` action set with platform actionability checks |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
 | `swipe` | - | `observe` | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
-| `tapAt` | `pointer` | `observe` | the agent's `tap_visual` verb when the vision-located point lands on nothing the tree lists: a tap at one viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
+| `tapAt` | `pointer` | `observe` | the agent's `tap_at` verb when the point lands on nothing the tree lists: a tap at one viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
 | `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']`, `artifacts: ['video']` and `--video` |
@@ -78,11 +78,11 @@ allows; an engine without such a bound omits it.
 | `url` | - | - | trace start anchors, the secret-fill origin check |
 
 The agent offers the model only the verbs the engine declares: `tap`, `type`,
-`press`, `select`, `type_secret`, and `tap_visual` need `perform`; `scroll`
-needs `swipe` (a scroll aimed at a node is `perform` with `{ kind: 'swipe' }`);
-`navigate` needs `app.navigate`. A `tap_visual` whose point lands on nothing
-listed reaches `tapAt`; without it, the tool reports that this engine taps
-listed nodes only. An undeclared verb is absent from the toolset rather than
+`press`, `select`, and `type_secret` need `perform`; `scroll` needs `swipe`
+(a scroll aimed at a node is `perform` with `{ kind: 'swipe' }`); `navigate`
+needs `app.navigate`; `tap_at` needs `perform` or `tapAt`. A `tap_at` whose
+point lands on nothing listed reaches `tapAt`; without it, the tool reports
+that this engine taps listed nodes only. An undeclared verb is absent from the toolset rather than
 a runtime surprise.
 
 `engine.capabilities` is the computed `ReadonlySet` of capability names and is

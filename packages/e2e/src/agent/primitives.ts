@@ -12,8 +12,16 @@
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { AgentErrorCode } from '../types.ts';
-import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
+import type { VisionDegradation } from '../run/steps.ts';
+import {
+  isRuntimeHardStop,
+  BLOCKABLE_CODES,
+  type ExecutorPixels,
+  type StepExecutorContext,
+  type StepVerdict,
+} from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
+import { imagePointToViewport } from './point-tap.ts';
 import { ScreenPresenter } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
@@ -43,9 +51,6 @@ const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
 const MAX_SCROLL_TIMES = 5;
 
-/** Longest description a pixel verb takes; a target is named in a sentence, not a paragraph. */
-const MAX_DESCRIPTION_CHARS = 500;
-
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
  * tree does not record. An unchanged screen after one of these is the normal
@@ -70,12 +75,63 @@ export const VERDICT_RULES = `Verdict rules:
  * A plain AI SDK function tool with its input typed from the schema — what
  * `tool()` from `ai` does, without loading `ai` to do it.
  */
-function schemaTool<Schema extends z.ZodType>(definition: {
+function schemaTool<Schema extends z.ZodType, Output = string>(definition: {
   readonly description: string;
   readonly inputSchema: Schema;
-  readonly execute: (input: z.output<Schema>) => Promise<string>;
+  readonly execute: (input: z.output<Schema>) => Promise<Output>;
+  /** Maps a structured result onto model content; a string result needs none. */
+  readonly toModelOutput?: (options: { readonly output: Output }) => ModelOutput;
 }): Tool {
-  return definition;
+  return definition as Tool;
+}
+
+/** The model-facing shape of a tool result: text, or text with a screenshot attached. */
+type ModelOutput =
+  | { readonly type: 'text'; readonly value: string }
+  | {
+      readonly type: 'content';
+      readonly value: ({ readonly type: 'text'; readonly text: string } | { readonly type: 'file'; readonly data: { readonly type: 'data'; readonly data: string }; readonly mediaType: string })[];
+    };
+
+/**
+ * What a grammar tool hands back: the screen as text, plus the screenshot
+ * when the step is showing pixels. The image rides the tool result itself,
+ * so the model sees what its action did rather than a description of it.
+ */
+type ScreenOutput = string | { readonly text: string; readonly pixels: ExecutorPixels };
+
+function screenModelOutput({ output }: { readonly output: ScreenOutput }): ModelOutput {
+  if (typeof output === 'string') return { type: 'text', value: output };
+  return {
+    type: 'content',
+    value: [
+      { type: 'text', text: output.text },
+      {
+        type: 'file',
+        data: { type: 'data', data: Buffer.from(output.pixels.data).toString('base64') },
+        mediaType: output.pixels.mediaType,
+      },
+    ],
+  };
+}
+
+/** The line under a screenshot: its pixel size and the coordinate space `tap_at` reads. */
+export function screenshotNote(pixels: Pick<ExecutorPixels, 'width' | 'height' | 'scale'>): string {
+  return `Screenshot attached: ${String(pixels.width)} by ${String(pixels.height)} pixels${
+    pixels.scale === 1 ? '' : ` (${String(pixels.scale)} per CSS pixel)`
+  }. tap_at takes coordinates in this image: x from the left edge, y from the top edge.`;
+}
+
+/** Why pixels did not reach the model, and what to do instead. */
+function withheldAdvice(code: VisionDegradation | undefined): string {
+  switch (code) {
+    case 'PIXEL_TAINTED':
+      return 'a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED). Work from the tree and tap listed nodes by id.';
+    case 'MASKING_UNPROVEN':
+      return 'the engine could not prove every secure field on screen masked (MASKING_UNPROVEN). Work from the tree and tap listed nodes by id.';
+    default:
+      return 'this engine captures no pixels (UNSUPPORTED_CAPABILITY). Work from the tree and tap listed nodes by id.';
+  }
 }
 
 /** The conclusion tool and the verdict it collected. */
@@ -146,7 +202,7 @@ export interface GrammarToolOptions {
    * (budget, timeout, cancel) propagates out of the tool; the chassis's guard
    * instead turns it into text and ends the loop.
    */
-  readonly guard?: (body: () => Promise<string>) => Promise<string>;
+  readonly guard?: <T>(body: () => Promise<T>) => Promise<T | string>;
   /**
    * Renders screens for the model and remembers what it has seen, so every
    * result after the first reports the changes rather than the whole tree.
@@ -180,8 +236,8 @@ export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'select',
   'scroll',
   'navigate',
-  'tap_visual',
-  'look',
+  'screenshot',
+  'tap_at',
 ]);
 
 export function createGrammarTools(
@@ -189,7 +245,7 @@ export function createGrammarTools(
   options: GrammarToolOptions = {},
 ): ToolSet {
   const guard = options.guard ?? ((body) => body());
-  const screen = options.screen ?? new ScreenPresenter();
+  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
   const { verbs } = context.target;
 
   // The chain is always already settled-to-undefined, so a failed body
@@ -206,30 +262,49 @@ export function createGrammarTools(
   };
 
   /**
+   * The screen after an action, as the model reads it: the changes since the
+   * screen it holds, and, once the step is showing pixels, a fresh screenshot
+   * of them. Pixels the harness withholds mid-step (a secret was just filled)
+   * are reported once as text.
+   */
+  const present = async (lead: string, expectChange?: boolean): Promise<ScreenOutput> => {
+    const observation = await context.observe({ pixels: screen.showingPixels });
+    if (!screen.showingPixels) return screen.update(observation, { lead, expectChange });
+    // In pixel mode an unchanged tree is not a failed action: what the action
+    // did may be drawn, not listed, so the screenshot is the evidence.
+    const text = screen.update(observation, { lead, expectChange: false });
+    if (observation.pixels === undefined) {
+      return `${text}\n\nNo screenshot this time: ${withheldAdvice(observation.pixelsWithheld)}`;
+    }
+    screen.attached(observation);
+    return { text: `${text}\n\n${screenshotNote(observation.pixels)}`, pixels: observation.pixels };
+  };
+
+  /**
    * Performs one action and reads its result. A failed action still returns
    * the screen, so the model can act on a stale-id or not-found failure at
    * once instead of spending a turn to observe; runtime hard stops propagate
    * to the guard, which ends the loop. The guard runs inside the queue, so a
    * batched call that queued behind a hard stop or a verdict is skipped when
-   * its turn comes rather than acted on because it was queued in time.
+   * its turn comes rather than acted on because it was queued in time. The
+   * action may return its own lead line, for a result only it can describe.
    */
   const acting = (
     description: string,
-    action: () => Promise<void>,
+    action: () => Promise<string | void>,
     expectChange = true,
-  ): Promise<string> =>
+  ): Promise<ScreenOutput> =>
     inOrder(() =>
       guard(async () => {
+        let lead = description;
         try {
-          await action();
+          lead = (await action()) ?? description;
         } catch (cause) {
           if (isRuntimeHardStop(cause)) throw cause;
           const message = cause instanceof Error ? cause.message : String(cause);
-          const observation = await context.observe();
-          return screen.update(observation, { lead: `${description} failed: ${message}` });
+          return present(`${description} failed: ${message}`);
         }
-        const observation = await context.observe();
-        return screen.update(observation, { lead: description, expectChange });
+        return present(lead, expectChange);
       }),
     );
 
@@ -243,7 +318,8 @@ export function createGrammarTools(
       description:
         'Look at the screen again and get what changed since the screen you last received. Action results already include their changes, so call this only after waiting for something in progress, never right after an action.',
       inputSchema: z.object({}),
-      execute: () => inOrder(() => guard(async () => screen.update(await context.observe()))),
+      execute: () => inOrder(() => guard(() => present('Observed.', false))),
+      toModelOutput: screenModelOutput,
     }),
   };
   if (verbs.has('tap')) {
@@ -252,6 +328,7 @@ export function createGrammarTools(
         'Tap or click one node. The result waits for the effect (a navigation, a route change, a submit) and reports what changed.',
       inputSchema: z.object({ target }),
       execute: ({ target: id }) => acting(`Tapped #${id}.`, () => context.actions.tap({ id })),
+      toModelOutput: screenModelOutput,
     });
   }
   if (verbs.has('type')) {
@@ -318,53 +395,55 @@ export function createGrammarTools(
       description: 'Navigate to a URL or app-relative path within the allowed origins.',
       inputSchema: z.object({ url: z.string().min(1) }),
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
+      toModelOutput: screenModelOutput,
     });
   }
   // The pixel verbs are offered while pixels can still leave the runner. Once
   // a secret was filled in the attempt they could only decline, and a verb
   // that is absent costs the model nothing where one that declines costs a
-  // turn. tap_visual lands either as a tap by id or as a bare point, so it
-  // needs one of the two; look needs only the observation every step has.
-  const pixelVerbs = !context.vision.tainted;
-  if (pixelVerbs && (verbs.has('tap') || verbs.has('tapAt'))) {
-    const bare = verbs.has('tapAt');
-    tools['tap_visual'] = schemaTool({
+  // turn. tap_at lands either as a tap by id or as a bare point, so it needs
+  // one of the two; screenshot needs only the observation every step has.
+  if (!context.pixelsTainted) {
+    tools['screenshot'] = schemaTool({
       description:
-        'Tap a visible target the screen does not list, located in a screenshot by a vision model: a shape or pin painted on a canvas or map, a region of an image, a control inside a system sheet. Last resort: when the screen lists the target, tap it by id. Describe the target by its exact visible text and where it sits, e.g. "the red pin near the top right of the map" or "blue Continue button at the bottom of the sheet".' +
-        (bare ? '' : ' On this engine the located point must land on a listed control.'),
-      inputSchema: z.object({ description: z.string().min(1).max(MAX_DESCRIPTION_CHARS) }),
-      execute: ({ description }) =>
+        'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
+      inputSchema: z.object({}),
+      execute: () =>
         inOrder(() =>
           guard(async () => {
-            let result;
-            try {
-              result = await context.vision.tap(description);
-            } catch (cause) {
-              if (isRuntimeHardStop(cause)) throw cause;
-              const message = cause instanceof Error ? cause.message : String(cause);
-              return screen.update(await context.observe(), { lead: `tap_visual failed: ${message}` });
+            const observation = await context.observe({ pixels: true });
+            if (observation.pixels === undefined) {
+              return `No screenshot: ${withheldAdvice(observation.pixelsWithheld)}`;
             }
-            if (result.outcome === 'skipped') return result.summary;
-            return screen.update(await context.observe(), { lead: result.summary, expectChange: true });
+            screen.attached(observation);
+            return {
+              text: `${screen.update(observation, { lead: 'Screenshot taken.' })}\n\n${screenshotNote(observation.pixels)}`,
+              pixels: observation.pixels,
+            };
           }),
         ),
+      toModelOutput: screenModelOutput,
     });
-  }
-  if (pixelVerbs) {
-    tools['look'] = schemaTool({
-      description:
-        'Describe the screen from its pixels through a vision model: the top layer (a sheet, dialog, or keyboard), the main content, the visible controls by their exact text and position, form fields, errors, and an answer to your question when you ask one. Use it when the screen lists too little (a canvas, an image, a system sheet) or contradicts what you expect. It names no node ids and costs a model call.',
-      inputSchema: z.object({
-        question: z.string().max(MAX_DESCRIPTION_CHARS).optional().describe('What to answer from the pixels, e.g. "which tab is highlighted?"'),
-      }),
-      execute: ({ question }) =>
-        inOrder(() =>
-          guard(async () => {
-            const result = await context.vision.look(question === undefined ? {} : { question });
-            return `${result.description}\n\n${screen.update(result.observation)}`;
-          }),
-        ),
-    });
+    if (verbs.has('tap') || verbs.has('tapAt')) {
+      tools['tap_at'] = schemaTool({
+        description:
+          'Tap a point in the latest screenshot, given as pixel coordinates in that image (x from the left edge, y from the top edge). Aim for the center of the target. A listed control under the point is tapped by its id; otherwise the bare point is tapped' +
+          (verbs.has('tapAt') ? '.' : ', which this engine cannot do: the point must land on a listed control.') +
+          ' Last resort: when the screen lists the target, tap it by id.',
+        inputSchema: z.object({ x: z.number(), y: z.number() }),
+        execute: ({ x, y }) => {
+          const shot = screen.latestScreenshot;
+          if (shot === undefined) {
+            return Promise.resolve(
+              'No screenshot has been taken in this step: tap_at coordinates are pixels of the latest screenshot. Call screenshot first, or tap a listed node by id.',
+            );
+          }
+          const point = imagePointToViewport({ x, y }, shot.pixels, shot.viewport);
+          return acting(`tap_at (${String(x)}, ${String(y)})`, async () => (await context.actions.tapAt(point)).summary);
+        },
+        toModelOutput: screenModelOutput,
+      });
+    }
   }
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.

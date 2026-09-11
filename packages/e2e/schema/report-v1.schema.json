@@ -239,7 +239,6 @@
         "cache": { "$ref": "#/$defs/stepCache" },
         "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
         "model": { "$ref": "#/$defs/model" },
-        "visionModel": { "$ref": "#/$defs/model" },
         "agent": { "type": "string", "minLength": 1 },
         "error": { "$ref": "#/$defs/error" },
         "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },

@@ -15,7 +15,7 @@
  */
 
 import type { ModelMessage } from 'ai';
-import type { ExecutorObservation } from './executor.ts';
+import type { ExecutorObservation, ExecutorPixels } from './executor.ts';
 
 /**
  * How many of the newest full screens stay verbatim in the transcript. One:
@@ -56,9 +56,36 @@ export interface ScreenUpdateOptions {
   readonly expectChange?: boolean | undefined;
 }
 
+/** The screenshot the model holds newest, and the viewport it was taken of. */
+export interface ShownScreenshot {
+  readonly pixels: ExecutorPixels;
+  readonly viewport: ExecutorObservation['viewport'];
+}
+
 /** Renders one step's screens for the model and remembers what it has seen. */
 export class ScreenPresenter {
   private shown: ShownScreen | undefined;
+  private screenshot: ShownScreenshot | undefined;
+
+  /**
+   * Records that a screenshot went to the model. From here on the step is in
+   * pixel mode: every later result carries a fresh screenshot, so a flow on a
+   * surface the tree cannot describe keeps seeing its own effects.
+   */
+  attached(observation: ExecutorObservation): void {
+    if (observation.pixels === undefined) return;
+    this.screenshot = { pixels: observation.pixels, viewport: observation.viewport };
+  }
+
+  /** True once a screenshot went to the model in this step. */
+  get showingPixels(): boolean {
+    return this.screenshot !== undefined;
+  }
+
+  /** The newest screenshot the model holds; the coordinate space of `tap_at`. */
+  get latestScreenshot(): ShownScreenshot | undefined {
+    return this.screenshot;
+  }
 
   /** The step's first screen, whole. */
   initial(observation: ExecutorObservation): string {
@@ -269,4 +296,118 @@ function screenParts(message: ModelMessage): (string | undefined)[] {
     if (output.type !== 'text' || typeof output.value !== 'string') return undefined;
     return FULL_SCREEN_PATTERN.test(output.value) ? output.value : undefined;
   });
+}
+
+/** Roles whose lines mark a screen as something the tree can drive. */
+const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
+  'button',
+  'link',
+  'textbox',
+  'searchbox',
+  'combobox',
+  'checkbox',
+  'radio',
+  'switch',
+  'tab',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'option',
+  'slider',
+  'spinbutton',
+  'treeitem',
+]);
+
+/**
+ * How many listed nodes the model could act on by id. A screen with almost
+ * none is one the tree cannot describe (a canvas, a game, a native surface
+ * the platform exposes no semantics for), and the model needs pixels from
+ * the first turn rather than a round trip to discover that.
+ */
+export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'text'>): number {
+  let count = 0;
+  for (const line of observation.text.split('\n')) {
+    const role = /^\s*#\S+ (\S+)/.exec(line)?.[1];
+    if (role !== undefined && INTERACTIVE_ROLES.has(role)) count += 1;
+  }
+  return count;
+}
+
+/** How many of the newest screenshots stay in the transcript verbatim. */
+const SCREENSHOT_PRESERVE_COUNT = 2;
+
+/**
+ * Superseded screenshots tolerated before they are elided in one batch, so
+ * the conversation never carries more than five images. Measured on a
+ * 13-turn canvas flow (gpt-5.6, one screenshot per turn, about 670 input
+ * tokens each): letting images pile up was cheaper per run — a stale image
+ * re-read from the provider's cache costs a tenth of its tokens, while every
+ * elision rewrites the request prefix and the rest of the conversation is
+ * re-read at full price once — but the model then mis-sequenced the taps in
+ * four runs of six, against none of six with this batch. A model that holds
+ * a dozen near-identical screenshots loses track of which one is current;
+ * the accuracy is worth the cache misses.
+ */
+const SCREENSHOT_ELIDE_BATCH = 3;
+
+const SCREENSHOT_ELIDED_NOTICE = '[earlier screenshot elided; the newest screenshots show the current screen]';
+
+export interface CompactScreenshotHistoryOptions {
+  /** Newest screenshots kept verbatim; defaults to two. */
+  readonly preserve?: number;
+  /** Superseded screenshots tolerated before a batch elision; defaults to three. */
+  readonly batch?: number;
+}
+
+/**
+ * Elides screenshots the transcript no longer needs: every image but the
+ * newest few becomes a one-line notice, in the opening prompt and in tool
+ * results alike, once enough stale images have piled up. Returns the input
+ * array unchanged when nothing qualifies.
+ */
+export function compactScreenshotHistory(
+  messages: ModelMessage[],
+  options: CompactScreenshotHistoryOptions = {},
+): ModelMessage[] {
+  const preserve = options.preserve ?? SCREENSHOT_PRESERVE_COUNT;
+  const total = messages.reduce((count, message) => count + countImages(message), 0);
+  let stale = total - preserve;
+  if (stale < (options.batch ?? SCREENSHOT_ELIDE_BATCH)) return messages;
+  return messages.map((message) => {
+    if (stale <= 0 || countImages(message) === 0) return message;
+    if (message.role === 'user' && typeof message.content !== 'string') {
+      const content = message.content.map((part) => {
+        if (stale <= 0 || part.type !== 'image') return part;
+        stale -= 1;
+        return { type: 'text' as const, text: SCREENSHOT_ELIDED_NOTICE };
+      });
+      return { ...message, content };
+    }
+    if (message.role !== 'tool') return message;
+    const content = message.content.map((part) => {
+      if (part.type !== 'tool-result' || part.output.type !== 'content') return part;
+      const value = part.output.value.map((item) => {
+        if (stale <= 0 || !isImageItem(item)) return item;
+        stale -= 1;
+        return { type: 'text' as const, text: SCREENSHOT_ELIDED_NOTICE };
+      });
+      return { ...part, output: { type: 'content' as const, value } };
+    });
+    return { ...message, content };
+  });
+}
+
+function countImages(message: ModelMessage): number {
+  if (message.role === 'user') {
+    return typeof message.content === 'string' ? 0 : message.content.filter((part) => part.type === 'image').length;
+  }
+  if (message.role !== 'tool') return 0;
+  return message.content.reduce((count, part) => {
+    if (part.type !== 'tool-result' || part.output.type !== 'content') return count;
+    return count + part.output.value.filter(isImageItem).length;
+  }, 0);
+}
+
+function isImageItem(item: { readonly type: string; readonly mediaType?: string }): boolean {
+  return item.type === 'file' && (item.mediaType ?? '').startsWith('image/');
 }
