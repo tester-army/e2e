@@ -11,14 +11,13 @@ describe('agent tool pack', () => {
     const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
     const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => fake.client));
     const tools = agentDeviceTools(ios);
-    expect(Object.keys(tools).toSorted()).toEqual(['alert', 'open_app', 'screenshot', 'swipe', 'type_text']);
+    expect(Object.keys(tools).toSorted()).toEqual(['alert', 'open_app', 'swipe', 'type_text']);
     for (const defined of Object.values(tools)) {
       expect(defined.annotations.platforms).toEqual(['ios']);
     }
     for (const defined of Object.values(agentDeviceTools(ios, android))) {
       expect(defined.annotations.platforms).toEqual(['ios', 'android']);
     }
-    expect(tools['screenshot']?.annotations.mutates).toBe(false);
     const foreign = defineEngine({ name: 'other', version: '1', spiVersion: 1 });
     expect(() => agentDeviceTools(foreign)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
   });

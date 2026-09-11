@@ -1,23 +1,18 @@
 /**
  * Agent-side tools for device targets. Everything a model plans through
- * beyond the grammar verbs the engine already unlocks (tap, type, scroll)
- * lives here: opening another app, a free-form swipe, typing into the focused
- * field, system alerts, and a look at the pixels when the accessibility tree
- * is not enough. Each tool is scoped to the platforms of the engines it was
- * built from, so a mixed suite never offers it on a browser.
+ * beyond the grammar verbs the engine already unlocks (tap, type, scroll,
+ * screenshot, tap_at) lives here: opening another app, a free-form swipe,
+ * typing into the focused field, and system alerts. Each tool is scoped to
+ * the platforms of the engines it was built from, so a mixed suite never
+ * offers it on a browser.
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { defineTool, getToolContext, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
+import { defineTool, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
 import { EngineError, type EngineHandle } from '@e2edev/e2e/engine';
 import { surfaceOf } from './engine.ts';
 import type { AgentDeviceSurface } from './surface.ts';
-
-interface Screenshot {
-  readonly png?: string;
-  readonly withheld?: string;
-}
 
 function requireSurface(engine: EngineHandle): AgentDeviceSurface {
   const surface = surfaceOf(engine);
@@ -120,24 +115,6 @@ export function agentDeviceTools(
         },
       }),
       annotate(true),
-    ),
-    screenshot: defineTool(
-      tool<Record<string, never>, Screenshot, Record<string, unknown>>({
-        description:
-          'Look at the actual screen pixels. Use when the observation tree is sparse or contradicts what you expect.',
-        inputSchema: z.object({}),
-        execute: async (_input, options) => {
-          const observation = await getToolContext(options).observe({ pixels: true });
-          return observation.pixels === undefined
-            ? { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' }
-            : { png: Buffer.from(observation.pixels.data).toString('base64') };
-        },
-        // The model gets the image itself, not a file path it cannot open.
-        toModelOutput: ({ output }) => output.png === undefined
-          ? { type: 'text', value: `Screenshot withheld: ${output.withheld}` }
-          : { type: 'content', value: [{ type: 'file', data: { type: 'data', data: output.png }, mediaType: 'image/png' }] },
-      }),
-      annotate(false),
     ),
   };
 }

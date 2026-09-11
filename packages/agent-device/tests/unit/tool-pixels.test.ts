@@ -1,4 +1,4 @@
-/** The real tool pack and harness, driven by a fake device and a scripted model. */
+/** The real tool pack and harness, driven by a fake device and a scripted model: a tainted device offers no pixel verbs. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -17,7 +17,7 @@ const { run } = (await import(builtRunnerModule)) as {
   run: (options: object) => Promise<{ status: string }>;
 };
 
-it('withholds a device screenshot after a secret fill without capturing pixels', async () => {
+it('offers no pixel verbs after a secret fill and captures no pixels', async () => {
   const root = fileURLToPath(new URL('../../../e2e/tests/tmp-projects/', import.meta.url));
   mkdirSync(root, { recursive: true });
   const project = mkdtempSync(path.join(root, 'tool-pixels-'));
@@ -28,17 +28,15 @@ it('withholds a device screenshot after a secret fill without capturing pixels',
     });`);
   const fake = createFakeClient({ 'capture.snapshot': () => SETTINGS_SNAPSHOT });
   const engine = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
-  let turn = 0;
-  let seenToolResult = '';
+  let offered: string[] = [];
   const model = {
     specificationVersion: 'v4' as const, provider: 'test', modelId: 'scripted', supportedUrls: {},
     doStream: async () => { throw new Error('unused'); },
-    doGenerate: async (options: { prompt: readonly { role: string; content: unknown }[] }) => {
-      turn += 1;
-      seenToolResult = JSON.stringify(options.prompt.filter((message) => message.role === 'tool'));
+    doGenerate: async (options: { tools?: readonly { name: string }[] }) => {
+      offered = (options.tools ?? []).map((tool) => tool.name);
       return {
-        content: [{ type: 'tool-call', toolCallId: `call-${turn}`, toolName: turn === 1 ? 'screenshot' : 'complete_step',
-          input: JSON.stringify(turn === 1 ? {} : { status: 'passed', summary: 'pixels withheld' }) }],
+        content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'complete_step',
+          input: JSON.stringify({ status: 'passed', summary: 'pixels withheld' }) }],
         finishReason: { unified: 'tool-calls', raw: 'tool-calls' },
         usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [],
       };
@@ -52,7 +50,10 @@ it('withholds a device screenshot after a secret fill without capturing pixels',
       agents: { default: { executor: createAgent({ tools: agentDeviceTools(engine) }), model } },
     } });
     expect(outcome.status).toBe('passed');
-    expect(seenToolResult).toContain('PIXEL_TAINTED');
+    // The pack's own tools are offered; the grammar's pixel verbs are not, the viewport being tainted.
+    expect(offered).toContain('open_app');
+    expect(offered).not.toContain('screenshot');
+    expect(offered).not.toContain('tap_at');
     expect(fake.methods()).not.toContain('capture.screenshot');
   } finally {
     rmSync(project, { recursive: true, force: true });
