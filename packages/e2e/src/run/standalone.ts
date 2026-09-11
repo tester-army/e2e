@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import type { AgentContext } from '../agent/invocation.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { setCredentialRegistry } from '../credentials.ts';
+import { releaseCredentialRegistry, setCredentialRegistry } from '../credentials.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
@@ -92,7 +92,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
   } catch (cause) {
-    setCredentialRegistry(undefined);
+    releaseCredentialRegistry(config.credentials);
     throw cause;
   }
 
@@ -134,7 +134,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     } catch (cause) {
       recordCleanupFailure(cause);
     }
-    setCredentialRegistry(undefined);
+    releaseCredentialRegistry(config.credentials);
   };
 
   let session: TargetSession;

@@ -15,6 +15,8 @@ const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href
 const { SessionHost } = (await import(sessionModule)) as typeof import('../../src/mcp/session.ts');
 const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).href;
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
+const credentialsModule = new URL('../../dist/credentials.js', import.meta.url).href;
+const { credentials } = (await import(credentialsModule)) as typeof import('../../src/credentials.ts');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -24,7 +26,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
 
   const host = (fake: FakeEngineHandle, options: { headed?: boolean; idleMs?: number; ttlMs?: number } = {}) => {
     const config = resolveConfig(
-      { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }] } as never,
+      { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }], credentials: { admin: { username: 'admin', password: 'pw' } } } as never,
       { projectRoot: dir, env: {} },
     );
     return new SessionHost({
@@ -79,6 +81,19 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(short.isOpen).toBe(false);
     expect(logs.some((line) => line.includes('exceeded its 1000 ms timeout'))).toBe(true);
     expect(fake.stats()).toMatchObject({ attemptsEnded: 1, disposes: 1 });
+  });
+
+  it('keeps the credential registry of a session opened while the previous one closes', async () => {
+    const fake = createFakeEngine();
+    const first = host(fake);
+    await first.open({});
+    const closing = first.close('done');
+    const second = host(fake);
+    await second.open({});
+    await closing;
+    expect(credentials.user('admin').username).toBe('admin');
+    await second.close('done');
+    expect(() => credentials.user('admin')).toThrow(/only available while the e2e runner is active/);
   });
 
   it('tears down an attempt whose first observation failed, then opens the next one', async () => {

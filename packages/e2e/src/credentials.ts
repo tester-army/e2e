@@ -15,6 +15,15 @@ export function setCredentialRegistry(map: ReadonlyMap<string, ResolvedCredentia
   else credentialsSlot.set(globalThis, map);
 }
 
+/**
+ * Removes `map` from the slot if it is still the installed registry. A host
+ * that closes one attempt while opening the next must not wipe what the new
+ * attempt just installed.
+ */
+export function releaseCredentialRegistry(map: ReadonlyMap<string, ResolvedCredential>): void {
+  if (credentialsSlot.get(globalThis) === map) credentialsSlot.delete(globalThis);
+}
+
 function getRegistry(): ReadonlyMap<string, ResolvedCredential> | undefined {
   return credentialsSlot.get(globalThis);
 }
